@@ -34,6 +34,7 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         } catch {
           // Ignore send errors while closing a failed preview bridge.
         }
+        ws.close(1011, "Preview bridge message handling failed");
       });
       return;
     }

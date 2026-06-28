@@ -174,6 +174,10 @@ function closeSocketIfOpen(socket: WebSocket): void {
   }
 }
 
+function createPreviewBridgeFailureResponse(error: unknown): Response {
+  return new Response(`Preview bridge request failed: ${String(error)}`, { status: 502 });
+}
+
 async function getAuthContext(
   command: PreviewCommandOptions,
   dependencies: CliPreviewDependencies,
@@ -209,6 +213,29 @@ export async function runPreviewCommand(
   await waitForSocketOpen(socket);
   const pending = new Map<string, PendingPreviewRequest>();
   const browserSockets = new Map<string, PreviewBrowserSocket>();
+  const failActiveStreams = (reason: string) => {
+    for (const request of pending.values()) {
+      request.reject(new Error(reason));
+    }
+    pending.clear();
+    for (const browserSocket of browserSockets.values()) {
+      browserSocket.close(1011, reason);
+    }
+    browserSockets.clear();
+  };
+  const sendBridgeMessage = (message: PreviewBridgeClientMessage): boolean => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    try {
+      socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  socket.addEventListener("close", () => failActiveStreams("Preview bridge closed"));
+  socket.addEventListener("error", () => failActiveStreams("Preview bridge failed"));
   socket.addEventListener("message", (event) => {
     if (typeof event.data !== "string") {
       return;
@@ -216,7 +243,7 @@ export async function runPreviewCommand(
     const message = JSON.parse(event.data) as PreviewBridgeServerMessage | { type: "connected" };
     if (message.type === "connected" || message.type === "ready" || message.type === "bridge.ping") {
       if (message.type === "bridge.ping") {
-        socket.send(JSON.stringify({ type: "bridge.pong" } satisfies PreviewBridgeClientMessage));
+        sendBridgeMessage({ type: "bridge.pong" });
       }
       return;
     }
@@ -280,22 +307,31 @@ export async function runPreviewCommand(
         return;
       }
       const streamId = crypto.randomUUID();
-      const url = new URL(req.url);
-      const bodyBytes = req.method === "GET" || req.method === "HEAD"
-        ? undefined
-        : new Uint8Array(await req.arrayBuffer());
-      const responsePromise = new Promise<Response>((resolve, reject) => {
-        pending.set(streamId, { resolve, reject, chunks: [] });
-      });
-      socket.send(JSON.stringify({
-        type: "request.start",
-        streamId,
-        method: req.method,
-        path: `${url.pathname}${url.search}`,
-        headers: Array.from(req.headers.entries()),
-        body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
-      } satisfies PreviewBridgeClientMessage));
-      return await responsePromise;
+      try {
+        const url = new URL(req.url);
+        const bodyBytes = req.method === "GET" || req.method === "HEAD"
+          ? undefined
+          : new Uint8Array(await req.arrayBuffer());
+        const responsePromise = new Promise<Response>((resolve, reject) => {
+          pending.set(streamId, { resolve, reject, chunks: [] });
+        });
+        const sent = sendBridgeMessage({
+          type: "request.start",
+          streamId,
+          method: req.method,
+          path: `${url.pathname}${url.search}`,
+          headers: Array.from(req.headers.entries()),
+          body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
+        });
+        if (!sent) {
+          pending.delete(streamId);
+          return createPreviewBridgeFailureResponse("Preview bridge is not connected");
+        }
+        return await responsePromise;
+      } catch (error) {
+        pending.delete(streamId);
+        return createPreviewBridgeFailureResponse(error);
+      }
     },
     websocket: {
       open(ws) {
@@ -303,12 +339,16 @@ export async function runPreviewCommand(
         const request = ws.data.request as Request;
         const url = new URL(request.url);
         browserSockets.set(streamId, ws);
-        socket.send(JSON.stringify({
+        const sent = sendBridgeMessage({
           type: "websocket.open",
           streamId,
           path: `${url.pathname}${url.search}`,
           headers: Array.from(request.headers.entries()),
-        } satisfies PreviewBridgeClientMessage));
+        });
+        if (!sent) {
+          browserSockets.delete(streamId);
+          ws.close(1011, "Preview bridge is not connected");
+        }
       },
       message(ws, data) {
         const streamId = ws.data.streamId as string;
@@ -317,22 +357,26 @@ export async function runPreviewCommand(
           : data instanceof Buffer
             ? new Uint8Array(data)
             : data;
-        socket.send(JSON.stringify({
+        const sent = sendBridgeMessage({
           type: "websocket.message",
           streamId,
           body: encodeBase64(body),
           binary: typeof data !== "string",
-        } satisfies PreviewBridgeClientMessage));
+        });
+        if (!sent) {
+          browserSockets.delete(streamId);
+          ws.close(1011, "Preview bridge is not connected");
+        }
       },
       close(ws, code, reason) {
         const streamId = ws.data.streamId as string;
         browserSockets.delete(streamId);
-        socket.send(JSON.stringify({
+        sendBridgeMessage({
           type: "websocket.close",
           streamId,
           code,
           reason,
-        } satisfies PreviewBridgeClientMessage));
+        });
       },
     },
   });

@@ -132,7 +132,7 @@ export const migrations: Migration[] = [
           cli_hostname TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
-          status TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
           connected_at TEXT,
           closed_at TEXT,
           error_message TEXT,

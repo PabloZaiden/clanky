@@ -3,7 +3,6 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createServer } from "node:net";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import {
   type PreviewBridgeClientMessage,
@@ -24,7 +23,9 @@ import {
 } from "../persistence/preview-sessions";
 import { createLogger } from "./logger";
 import { previewEventEmitter } from "./event-emitter";
+import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig, getSshConnectionTargetFromWorkspace } from "./ssh-connection-target";
+import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 
 const log = createLogger("core:preview-session-manager");
@@ -37,6 +38,7 @@ interface PreviewRuntime {
   user: CurrentUser;
   targetBaseUrl: string;
   tunnel?: ChildProcess;
+  tunnelLocalPort?: number;
 }
 
 interface PreviewBridgeSocket {
@@ -53,86 +55,6 @@ interface UpstreamWebSocketState {
 function normalizeInitialPath(value: string): string {
   const trimmed = value.trim() || "/";
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-}
-
-async function allocateLocalPort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, LOCAL_TUNNEL_HOST, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Failed to allocate local preview tunnel port")));
-        return;
-      }
-      const port = address.port;
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(port);
-      });
-    });
-  });
-}
-
-async function waitForProcessStartup(child: ChildProcess): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let stderr = "";
-    const timer = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      resolve();
-    }, STARTUP_GRACE_MS);
-
-    const cleanup = () => {
-      clearTimeout(timer);
-      child.off("error", onError);
-      child.off("exit", onExit);
-      child.stderr?.off("data", onStderr);
-    };
-    const onError = (error: Error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(new Error(stderr.trim() || `Preview tunnel exited early (code=${String(code)}, signal=${String(signal)})`));
-    };
-    const onStderr = (chunk: Buffer | string) => {
-      stderr += chunk.toString();
-    };
-
-    child.on("error", onError);
-    child.on("exit", onExit);
-    child.stderr?.on("data", onStderr);
-  });
-}
-
-async function waitForProcessExit(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) {
-    return;
-  }
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, STOP_TIMEOUT_MS);
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
 }
 
 function decodeBase64(value: string): Uint8Array {
@@ -240,6 +162,7 @@ export class PreviewSessionManager {
       user: requireCurrentUser(),
       targetBaseUrl: `http://${targetHost}:${String(targetPort)}`,
       tunnel: sshTunnel?.child,
+      tunnelLocalPort: sshTunnel?.localPort,
     });
     previewEventEmitter.emit({
       type: "preview.created",
@@ -282,7 +205,7 @@ export class PreviewSessionManager {
     const runtime = this.runtimes.get(id);
     if (runtime?.tunnel) {
       runtime.tunnel.kill("SIGTERM");
-      await waitForProcessExit(runtime.tunnel);
+      await waitForProcessExit(runtime.tunnel, STOP_TIMEOUT_MS);
       if (runtime.tunnel.exitCode === null) {
         runtime.tunnel.kill("SIGKILL");
       }
@@ -623,7 +546,7 @@ export class PreviewSessionManager {
     remoteHost: string,
     remotePort: number,
   ): Promise<{ child: ChildProcess; localPort: number }> {
-    const localPort = await allocateLocalPort();
+    const localPort = await ensureLocalPortAvailable(this.getReservedTunnelPorts());
     const target = getSshConnectionTargetFromWorkspace(workspace);
     const config = buildSshProcessConfig({
       target,
@@ -643,8 +566,18 @@ export class PreviewSessionManager {
       env: config.env,
       stdio: ["ignore", "ignore", "pipe"],
     });
-    await waitForProcessStartup(child);
+    await waitForProcessStartup(child, STARTUP_GRACE_MS);
     return { child, localPort };
+  }
+
+  private getReservedTunnelPorts(): Set<number> {
+    const reserved = new Set<number>();
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.tunnelLocalPort) {
+        reserved.add(runtime.tunnelLocalPort);
+      }
+    }
+    return reserved;
   }
 }
 

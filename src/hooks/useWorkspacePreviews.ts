@@ -2,7 +2,7 @@
  * Hook for workspace live previews.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PreviewEvent, PreviewSession } from "../types";
 import { appFetch } from "../lib/public-path";
 import { isPreviewEvent, useAppEvents } from "./useAppEvents";
@@ -26,23 +26,48 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
   const [previews, setPreviews] = useState<PreviewSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(false);
 
   const refresh = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
-      setLoading(true);
-      setError(null);
-      const response = await appFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/previews`);
-      setPreviews(await readJsonResponse<PreviewSession[]>(response, "List previews"));
+      if (isMountedRef.current) {
+        setLoading(true);
+        setError(null);
+      }
+      const response = await appFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/previews`, {
+        signal: controller.signal,
+      });
+      const nextPreviews = await readJsonResponse<PreviewSession[]>(response, "List previews");
+      if (controller.signal.aborted || !isMountedRef.current) {
+        return;
+      }
+      setPreviews(nextPreviews);
     } catch (err) {
-      setError(String(err));
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      if (isMountedRef.current) {
+        setError(String(err));
+      }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      if (!controller.signal.aborted && isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [workspaceId]);
 
   const closePreview = useCallback(async (previewId: string): Promise<boolean> => {
     try {
-      setError(null);
+      if (isMountedRef.current) {
+        setError(null);
+      }
       const response = await appFetch(`/api/previews/${encodeURIComponent(previewId)}`, {
         method: "DELETE",
       });
@@ -50,7 +75,9 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
       await refresh();
       return true;
     } catch (err) {
-      setError(String(err));
+      if (isMountedRef.current) {
+        setError(String(err));
+      }
       return false;
     }
   }, [refresh]);
@@ -64,7 +91,12 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
   useAppEvents<PreviewEvent>(handleEvent, isPreviewEvent);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void refresh();
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
   }, [refresh]);
 
   return { previews, loading, error, refresh, closePreview };
