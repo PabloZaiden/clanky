@@ -13,7 +13,6 @@ import { GitService } from "../git-service";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
-import { portForwardManager } from "../port-forward-manager";
 
 async function deleteLinkedTaskChat(taskId: string): Promise<void> {
   const { chatManager } = await import("../chat-manager");
@@ -196,12 +195,6 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<{ su
 
   if (!isDraft && task.state.status !== "accepted_local" && task.state.status !== "merged" && task.state.status !== "pushed" && task.state.status !== "deleted") {
     return { success: false, error: `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.` };
-  }
-
-  try {
-    await portForwardManager.deleteForwardsByTaskId(taskId);
-  } catch (error) {
-    return { success: false, error: `Failed to delete linked port forwards: ${String(error)}` };
   }
 
   try {

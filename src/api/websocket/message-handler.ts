@@ -3,6 +3,7 @@ import { createLogger } from "../../core/logger";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 import type { startTerminalBridge, sendTerminalAuthError } from "./terminal";
+import { previewSessionManager } from "../../core/preview-session-manager";
 
 const log = createLogger("api:websocket");
 
@@ -11,16 +12,6 @@ type TerminalHelpers = {
   sendTerminalAuthError: typeof sendTerminalAuthError;
 };
 
-function getProxyMessagePayload(msg: string | Buffer): string | Uint8Array<ArrayBuffer> {
-  if (typeof msg === "string") {
-    return msg;
-  }
-
-  const payload = new Uint8Array(new ArrayBuffer(msg.length));
-  payload.set(msg);
-  return payload;
-}
-
 /**
  * Creates the WebSocket message handler bound to the given terminal helpers.
  * Accepting helpers by reference (not closure) allows tests to spy on the
@@ -28,6 +19,26 @@ function getProxyMessagePayload(msg: string | Buffer): string | Uint8Array<Array
  */
 export function createMessageHandler(helpers: TerminalHelpers) {
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
+    if (ws.data.previewBridgeMode) {
+      if (!ws.data.user) {
+        ws.close(1008, "Authenticated user context is required for preview bridges");
+        return;
+      }
+      void runWithCurrentUser(ws.data.user, () => previewSessionManager.handleBridgeMessage(ws, msg)).catch((error: Error) => {
+        log.warn("Preview bridge message failed", {
+          previewId: ws.data.previewBridgeSessionId,
+          error: String(error),
+        });
+        try {
+          ws.send(JSON.stringify({ type: "stream.error", error: String(error) }));
+        } catch {
+          // Ignore send errors while closing a failed preview bridge.
+        }
+        ws.close(1011, "Preview bridge message handling failed");
+      });
+      return;
+    }
+
     if (ws.data.vncMode) {
       if (ws.data.vncSocket && !ws.data.vncSocket.destroyed) {
         ws.data.vncSocket.write(typeof msg === "string" ? Buffer.from(msg) : msg);
@@ -42,39 +53,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         vncSessionId: ws.data.vncSessionId,
       });
       ws.close(1011, "VNC TCP bridge is not open");
-      return;
-    }
-
-    if (ws.data.portForwardMode) {
-      const proxySocket = ws.data.proxySocket;
-
-      if (proxySocket?.readyState === WebSocket.OPEN) {
-        proxySocket.send(getProxyMessagePayload(msg));
-        return;
-      }
-
-      // Treat CONNECTING as transient — the upstream may open shortly.
-      // Drop the message silently instead of closing the client, to avoid
-      // flaky disconnects during the handshake/startup window.
-      if (proxySocket?.readyState === WebSocket.CONNECTING) {
-        log.debug("Dropping port-forward message while upstream proxy is still connecting", {
-          portForwardId: ws.data.portForwardId,
-        });
-        return;
-      }
-
-      // Upstream is definitively unavailable (CLOSING, CLOSED, or missing) — close the client.
-      log.warn("Closing port-forward WebSocket because upstream proxy is not open", {
-        portForwardId: ws.data.portForwardId,
-        proxyReadyState: proxySocket ? proxySocket.readyState : "missing",
-      });
-      try {
-        ws.close(1011, "Upstream proxy is not open");
-      } catch (closeError) {
-        log.debug("Error while closing WebSocket after upstream proxy failure", {
-          error: String(closeError),
-        });
-      }
       return;
     }
 

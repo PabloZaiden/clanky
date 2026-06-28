@@ -2,7 +2,7 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { useTask, useTaskPortForwards, useMarkdownPreference, useToast } from "../../hooks";
+import { useTask, useMarkdownPreference, useToast } from "../../hooks";
 import { Button, StatusBadge } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
@@ -18,7 +18,6 @@ import { useTabState } from "./use-tab-state";
 import { useTaskContent } from "./use-task-content";
 import { useTaskActions } from "./use-task-actions";
 import { useModels } from "./use-models";
-import { usePortForwardActions } from "./use-port-forward-actions";
 import { useLogDisplayState } from "./use-log-display-state";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
@@ -57,7 +56,6 @@ export function TaskDetails({
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
-  const { forwards, loading: forwardsLoading, error: forwardsError, createForward, deleteForward } = useTaskPortForwards(taskId);
   const logDisplay = useLogDisplayState();
   const { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange } = useTabState({
     taskId, task,
@@ -90,7 +88,6 @@ export function TaskDetails({
     directory: task?.config.directory,
     workspaceId: task?.config.workspaceId,
   });
-  const portForward = usePortForwardActions({ taskId, toast, createForward, deleteForward });
   const frameworkHeader = useFrameworkMainHeaderSlots();
 
   if (loading && !task) {
@@ -207,8 +204,6 @@ export function TaskDetails({
             feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             logDisplay={logDisplay}
-            portForward={portForward}
-            portForwardData={{ forwards, forwardsLoading, forwardsError }}
             content={content}
             actions={actions}
             onFileOpenError={toast.error}

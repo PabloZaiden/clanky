@@ -5,7 +5,7 @@
  * - draft.ts           : POST /api/tasks/:id/draft/start
  * - accept-push.ts     : accept, push, update-branch, mark-merged
  * - discard-purge.ts   : discard, purge
- * - ssh-ports.ts       : ssh-session, port-forwards
+ * - ssh-ports.ts       : ssh-session
  * - pending.ts         : pending-prompt, pending, follow-up
  * - plan.ts            : plan/feedback, plan/accept, plan/discard
  */

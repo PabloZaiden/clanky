@@ -6,7 +6,6 @@ import {
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
   CreateTaskRequestSchema,
-  CreatePortForwardRequestSchema,
   CreateProvisioningJobRequestSchema,
   CreateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
@@ -167,13 +166,6 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/tasks/:id/discard": {
     description: "Discard a task and remove its working branch.",
-  },
-  "/api/tasks/:id/port-forwards": {
-    description: "Create or list task port forwards.",
-    requestSchema: CreatePortForwardRequestSchema,
-  },
-  "/api/tasks/:id/port-forwards/:forwardId": {
-    description: "Delete a task port forward.",
   },
   "/api/tasks/:id/pull-request": {
     description: "Read pull request navigation details for a task.",

@@ -141,6 +141,8 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return buildRouteHash("workspace", { workspaceId: route.workspaceId });
     case "workspace-files":
       return buildRouteHash("workspace-files", { workspaceId: route.workspaceId, startDirectory: route.startDirectory });
+    case "workspace-previews":
+      return buildRouteHash("workspace-previews", { workspaceId: route.workspaceId });
     case "workspace-settings":
       return buildRouteHash("workspace-settings", { workspaceId: route.workspaceId });
     case "ssh-server":

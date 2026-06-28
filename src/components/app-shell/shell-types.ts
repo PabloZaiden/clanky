@@ -153,6 +153,7 @@ export type ShellRoute =
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }
   | { view: "workspace-files"; workspaceId: string; startDirectory?: string }
+  | { view: "workspace-previews"; workspaceId: string }
   | { view: "workspace-settings"; workspaceId: string }
   | { view: "ssh-server"; serverId: string }
   | { view: "vnc-session"; serverId: string }

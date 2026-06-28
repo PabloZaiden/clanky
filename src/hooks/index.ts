@@ -3,7 +3,7 @@
  */
 
 export { useWebSocket, useGlobalEvents, useTaskEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
-export { AppEventsProvider, isAgentEvent, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
+export { AppEventsProvider, isAgentEvent, isChatEvent, isPreviewEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
 export { useChats, type UseChatsResult } from "./useChats";
 export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
@@ -11,7 +11,7 @@ export { useTask, type UseTaskResult } from "./useTask";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";
 export { useSshSession, type UseSshSessionResult } from "./useSshSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
-export { useTaskPortForwards, type UseTaskPortForwardsResult } from "./useTaskPortForwards";
+export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWorkspacePreviews";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
 export { useResolvedTheme, type ResolvedTheme } from "./useResolvedTheme";
@@ -50,9 +50,6 @@ export {
 export {
   acceptTaskApi,
   pushTaskApi,
-  createTaskPortForwardApi,
-  deleteTaskPortForwardApi,
-  listTaskPortForwardsApi,
   updateBranchApi,
   stopTaskApi,
   discardTaskApi,
@@ -73,7 +70,6 @@ export {
   sendFollowUpApi,
   setPendingApi,
   clearPendingApi,
-  type CreatePortForwardRequest,
   type AcceptTaskResult,
   type PushTaskResult,
   type AddressCommentsResult,

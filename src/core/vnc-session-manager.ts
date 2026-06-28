@@ -15,8 +15,8 @@ import {
 import { getSshServerConfig } from "../persistence/ssh-servers";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
-import { ensureLocalPortAvailable } from "./port-forward/port-allocator";
-import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./port-forward/process-lifecycle";
+import { ensureLocalPortAvailable } from "./local-port-allocator";
+import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { createLogger } from "./logger";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 
