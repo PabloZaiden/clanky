@@ -6,7 +6,7 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
-import { TranscriptInlineCode } from "./log-viewer/transcript-file-links";
+import { renderTranscriptTextNodes, TranscriptInlineCode } from "./log-viewer/transcript-file-links";
 
 export interface MarkdownRendererProps {
   /** Markdown content to render */
@@ -72,6 +72,16 @@ export function MarkdownRenderer({
               {children}
             </a>
           ),
+          p: ({ children, className, ...props }) => (
+            <p {...props} className={className}>
+              {renderTranscriptTextNodes(children, fileLinkContext)}
+            </p>
+          ),
+          li: ({ children, className, ...props }) => (
+            <li {...props} className={className}>
+              {renderTranscriptTextNodes(children, fileLinkContext)}
+            </li>
+          ),
           code: ({ children, className }) => {
             // Check if this is inline code or a code block
             const isInline = !className;
@@ -94,12 +104,12 @@ export function MarkdownRenderer({
           ),
           th: ({ children, className, ...props }) => (
             <th {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
-              {children}
+              {renderTranscriptTextNodes(children, fileLinkContext)}
             </th>
           ),
           td: ({ children, className, ...props }) => (
             <td {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
-              {children}
+              {renderTranscriptTextNodes(children, fileLinkContext)}
             </td>
           ),
         }}

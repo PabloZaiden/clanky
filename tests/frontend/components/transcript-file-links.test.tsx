@@ -25,6 +25,8 @@ afterEach(() => {
 });
 
 describe("TranscriptTextContent file links", () => {
+  const sessionArtifactDirectory = "/root/.copilot/session-state/0bd94aa8-002a-484f-acda-f9bf2bce67c0/files/preview-e2e-screenshots";
+
   test("renders candidate paths as links without metadata requests", async () => {
     const fetchMock = mock(async () => {
       throw new Error("metadata should not be requested during render");
@@ -44,6 +46,31 @@ describe("TranscriptTextContent file links", () => {
 
     await Promise.resolve();
     expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("renders plain absolute session artifact directory paths as links", () => {
+    render(createElement(TranscriptTextContent, {
+      content: `Screenshots: ${sessionArtifactDirectory}`,
+      className: "text-sm",
+      fileLinkContext: createFileLinkContext(),
+    }));
+
+    const link = document.querySelector(`[data-file-link-path='${sessionArtifactDirectory}']`);
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toBe(sessionArtifactDirectory);
+  });
+
+  test("keeps trailing punctuation outside plain absolute path links", () => {
+    render(createElement(TranscriptTextContent, {
+      content: `Open (${sessionArtifactDirectory}).`,
+      className: "text-sm",
+      fileLinkContext: createFileLinkContext(),
+    }));
+
+    const link = document.querySelector(`[data-file-link-path='${sessionArtifactDirectory}']`);
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toBe(sessionArtifactDirectory);
+    expect(document.body.textContent).toContain(`(${sessionArtifactDirectory}).`);
   });
 
   test("validates only the clicked path before opening it", async () => {
@@ -67,6 +94,7 @@ describe("TranscriptTextContent file links", () => {
         },
       }), { status: 200 });
     });
+
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     render(createElement(TranscriptTextContent, {
@@ -84,8 +112,54 @@ describe("TranscriptTextContent file links", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(openFile).toHaveBeenCalledWith({
+      kind: "file",
       path: "src/index.ts",
       startDirectory: "/workspace/project",
+    });
+  });
+
+  test("validates and opens directory paths by navigating to the directory root", async () => {
+    const openFile = mock((_target: TranscriptFileLinkTarget) => {});
+    const fetchMock = mock(async (input: string | URL | Request) => {
+      const requestUrl = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      const url = new URL(requestUrl, window.location.href);
+
+      expect(url.pathname).toBe("/api/workspaces/workspace-1/files/metadata");
+      expect(url.searchParams.get("path")).toBe(".");
+      expect(url.searchParams.get("startDirectory")).toBe(sessionArtifactDirectory);
+
+      return new Response(JSON.stringify({
+        file: {
+          kind: "directory",
+          path: "",
+          absolutePath: sessionArtifactDirectory,
+        },
+      }), { status: 200 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    render(createElement(TranscriptTextContent, {
+      content: sessionArtifactDirectory,
+      className: "text-sm",
+      fileLinkContext: createFileLinkContext(openFile),
+    }));
+
+    const link = document.querySelector(`[data-file-link-path='${sessionArtifactDirectory}']`);
+    expect(link).not.toBeNull();
+    link!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+
+    await waitFor(() => {
+      expect(openFile).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(openFile).toHaveBeenCalledWith({
+      kind: "directory",
+      path: ".",
+      startDirectory: sessionArtifactDirectory,
     });
   });
 

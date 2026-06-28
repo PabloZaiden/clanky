@@ -41,6 +41,8 @@ export interface TranscriptFileLinkTarget {
   path: string;
   /** Explorer root directory that should scope the file open/navigation. */
   startDirectory: string;
+  /** Whether the target should open as a file or navigate to a directory root. */
+  kind?: "file" | "directory";
 }
 
 export interface TranscriptFileLinkContext {

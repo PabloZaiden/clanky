@@ -490,23 +490,23 @@ export function ChatDetails({
         startDirectory: chatWorkingDirectory,
       },
       rootDirectory: chatWorkingDirectory,
-      getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
+      getFileHref: ({ path, startDirectory, kind }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
         view: "code-explorer",
         target: embeddedTaskId
           ? {
               contentType: "task",
               taskId: embeddedTaskId,
               startDirectory,
-              filePath: path,
+              filePath: kind === "directory" ? undefined : path,
             }
           : {
               contentType: "chat",
               chatId: chat.config.id,
               startDirectory,
-              filePath: path,
+              filePath: kind === "directory" ? undefined : path,
             },
       })}`,
-      openFile: ({ path, startDirectory }: TranscriptFileLinkTarget) => {
+      openFile: ({ path, startDirectory, kind }: TranscriptFileLinkTarget) => {
         replaceShellRoute({
           view: "code-explorer",
           target: embeddedTaskId
@@ -514,13 +514,13 @@ export function ChatDetails({
                 contentType: "task",
                 taskId: embeddedTaskId,
                 startDirectory,
-                filePath: path,
+                filePath: kind === "directory" ? undefined : path,
               }
             : {
                 contentType: "chat",
                 chatId: chat.config.id,
                 startDirectory,
-                filePath: path,
+                filePath: kind === "directory" ? undefined : path,
               },
         });
       },
