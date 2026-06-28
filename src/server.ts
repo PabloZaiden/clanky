@@ -104,7 +104,21 @@ function registerRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): v
 }
 
 const routes = defineRoutes<ClankyRealtimeEvent>({
-  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
+  "/api/previews/bridge": {
+    auth: "user",
+    sameOrigin: "always",
+    GET: (req, ctx) => {
+      const user = ctx.requireUser();
+      const upgraded = ctx.server?.upgrade(req, {
+        data: {
+          webappSocketHandler: "clanky",
+          previewBridgeMode: true,
+          user,
+        },
+      });
+      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+    },
+  },
   "/api/ssh-terminal": {
     auth: "user",
     sameOrigin: "always",
@@ -152,21 +166,7 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
       return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
     },
   },
-  "/api/previews/bridge": {
-    auth: "user",
-    sameOrigin: "always",
-    GET: (req, ctx) => {
-      const user = ctx.requireUser();
-      const upgraded = ctx.server?.upgrade(req, {
-        data: {
-          webappSocketHandler: "clanky",
-          previewBridgeMode: true,
-          user,
-        },
-      });
-      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-    },
-  },
+  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
 });
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
