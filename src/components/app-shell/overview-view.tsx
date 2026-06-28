@@ -7,9 +7,7 @@ import {
   buildActiveWorkSidebarItems,
   type ShellRoute,
   type SidebarActiveWorkItem,
-  type SidebarChatNode,
   type SidebarServerNode,
-  type SidebarWorkspaceNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -58,10 +56,6 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
   return { label: item.sessionNode.badge, variant: item.sessionNode.badgeVariant };
 }
 
-function getQuickChatRoute(chatNode: SidebarChatNode): ShellRoute {
-  return { view: "chat", chatId: chatNode.chat.config.id };
-}
-
 export function OverviewView({
   servers,
   sessionsByServerId,
@@ -71,7 +65,6 @@ export function OverviewView({
   serverNodes,
   workspaceGroups,
   sidebarWorkspaceGroups,
-  quickChatWorkspace,
   headerOffsetClassName,
   onNavigate,
 }: {
@@ -83,7 +76,6 @@ export function OverviewView({
   serverNodes: SidebarServerNode[];
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
-  quickChatWorkspace: SidebarWorkspaceNode | null;
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
 }) {
@@ -91,9 +83,6 @@ export function OverviewView({
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }),
     [serverNodes, sidebarWorkspaceGroups],
   );
-  const quickChats = useMemo(() => {
-    return quickChatWorkspace?.chats ?? [];
-  }, [quickChatWorkspace]);
   const serverMapItems = useMemo(() => {
     return servers.map((server) => ({
       server,
@@ -146,36 +135,6 @@ export function OverviewView({
                   </button>
                 );
               })}
-            </div>
-          </div>
-        )}
-
-        {quickChats.length > 0 && (
-          <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Quick Chats</h2>
-            </div>
-            <div className="space-y-2">
-              {quickChats.map((chatNode) => (
-                <button
-                  key={chatNode.chat.config.id}
-                  type="button"
-                  onClick={() => onNavigate(getQuickChatRoute(chatNode))}
-                  className="flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="block break-words text-sm font-medium text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-                      {chatNode.title}
-                    </span>
-                    <span className="mt-1 block break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                      {quickChatWorkspace?.workspace.name}
-                    </span>
-                  </span>
-                  <StatusBadge variant={chatNode.badgeVariant} className="shrink-0">
-                    {chatNode.badge}
-                  </StatusBadge>
-                </button>
-              ))}
             </div>
           </div>
         )}
