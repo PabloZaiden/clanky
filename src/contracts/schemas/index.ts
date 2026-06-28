@@ -106,7 +106,6 @@ export {
 export {
   CreateSshSessionRequestSchema,
   UpdateSshSessionRequestSchema,
-  CreatePortForwardRequestSchema,
 } from "./ssh-session";
 
 // Workspace file explorer schemas

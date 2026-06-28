@@ -15,7 +15,6 @@
  * - ssh-sessions: Workspace-backed persistent SSH sessions
  * - provisioning: Remote workspace provisioning jobs
  * - websocket: Real-time event streaming (handled separately)
- * - port-forwards: Browser-facing proxy routes handled separately in src/index.ts
  * 
  * @module api
  */
@@ -33,12 +32,13 @@ import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
 import { agentsRoutes } from "./agents";
 import { vncSessionRoutes } from "./vnc-sessions";
+import { previewRoutes } from "./previews";
 
 /**
  * All API routes combined.
  * 
  * Spread this object into Bun's serve() routes option to register all endpoints.
- * The WebSocket endpoint and browser-facing port-forward proxy routes are handled separately in src/index.ts.
+ * The WebSocket endpoint is handled separately in src/index.ts.
  * 
  * @example
  * ```typescript
@@ -64,6 +64,7 @@ export const apiRoutes = {
   ...chatsRoutes,
   ...agentsRoutes,
   ...vncSessionRoutes,
+  ...previewRoutes,
 };
 
 // Re-export individual route modules
@@ -76,10 +77,10 @@ export * from "./workspaces";
 export * from "./agents-md";
 export * from "./ssh-servers";
 export * from "./ssh-server-files";
-export * from "./port-forwards";
 export * from "./ssh-sessions";
 export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats";
 export * from "./agents";
 export * from "./vnc-sessions";
+export * from "./previews";

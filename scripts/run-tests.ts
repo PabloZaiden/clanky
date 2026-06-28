@@ -43,7 +43,6 @@ const measuredFileWeights: Record<string, number> = {
   "tests/api/tasks-control.test.ts": 2,
   "tests/api/tasks-crud.test.ts": 2,
   "tests/api/tasks-pending.test.ts": 2,
-  "tests/api/tasks-port-forwards.test.ts": 2,
   "tests/api/ssh-server-files.test.ts": 2,
   "tests/api/ssh-servers.test.ts": 2,
   "tests/integration/user-scenarios/regular-task.test.ts": 2,

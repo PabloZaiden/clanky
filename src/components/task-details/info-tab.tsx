@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES, type Task } from "../../types/task";
-import type { PortForward } from "../../types";
 import type { UpdateTaskRequest } from "../../types";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
-import { appAbsoluteUrl } from "../../lib/public-path";
-import { Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
 import { taskDetailsTabContentFullWidthClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface InfoTabProps {
@@ -14,17 +11,6 @@ interface InfoTabProps {
   onOpenTaskFiles: () => void;
   sshConnecting: boolean;
   onConnectViaSsh: () => void;
-  newForwardPort: string;
-  onNewForwardPortChange: (v: string) => void;
-  creatingForward: boolean;
-  onCreateForward: () => void;
-  forwards: PortForward[];
-  forwardsLoading: boolean;
-  forwardsError: string | null;
-  onOpenForward: (id: string) => void;
-  onCopyForwardUrl: (id: string) => void;
-  onDeleteForward: (id: string) => void;
-  taskId: string;
   planningSettingsSubmitting: boolean;
   onUpdatePlanningSettings: (
     request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">,
@@ -37,17 +23,6 @@ export function InfoTab({
   onOpenTaskFiles,
   sshConnecting,
   onConnectViaSsh,
-  newForwardPort,
-  onNewForwardPortChange,
-  creatingForward,
-  onCreateForward,
-  forwards,
-  forwardsLoading,
-  forwardsError,
-  onOpenForward,
-  onCopyForwardUrl,
-  onDeleteForward,
-  taskId,
   planningSettingsSubmitting,
   onUpdatePlanningSettings,
 }: InfoTabProps) {
@@ -263,106 +238,6 @@ export function InfoTab({
             <span className="text-gray-400 dark:text-gray-500">→</span>
           </button>
 
-          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Forward a Port</div>
-            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Expose a remote service through a Clanky URL in a new browser window.
-            </div>
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-500 dark:text-gray-400">Remote port</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  step={1}
-                  value={newForwardPort}
-                  onChange={(e) => onNewForwardPortChange(e.target.value)}
-                  className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100"
-                  inputMode="numeric"
-                  placeholder=""
-                />
-              </label>
-              <Button
-                size="sm"
-                onClick={onCreateForward}
-                disabled={creatingForward}
-              >
-                {creatingForward ? "Creating..." : "Create Port Forward"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Port Forwards</h4>
-            {forwardsLoading && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">Refreshing...</span>
-            )}
-          </div>
-          {forwardsError && (
-            <p className="mb-3 text-sm text-red-600 dark:text-red-400">{forwardsError}</p>
-          )}
-          {forwards.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No forwarded ports yet. Create one above.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {forwards.map((forward) => (
-                <div
-                  key={forward.config.id}
-                  className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-neutral-900"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge variant={getPortForwardStatusBadgeVariant(forward.state.status)}>
-                          {getPortForwardStatusLabel(forward.state.status)}
-                        </StatusBadge>
-                        <span className="font-mono text-sm text-gray-900 dark:text-gray-100">
-                          {forward.config.remoteHost}:{forward.config.remotePort}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">
-                        {appAbsoluteUrl(`/task/${taskId}/port/${forward.config.id}/`)}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Local listener: {forward.config.localPort}
-                      </div>
-                      {forward.state.error && (
-                        <div className="text-xs text-red-600 dark:text-red-400">
-                          {forward.state.error}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => onOpenForward(forward.config.id)}
-                        disabled={forward.state.status !== "active"}
-                      >
-                        Open
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => onCopyForwardUrl(forward.config.id)}
-                      >
-                        Copy URL
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => onDeleteForward(forward.config.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>

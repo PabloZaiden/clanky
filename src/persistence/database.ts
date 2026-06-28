@@ -467,26 +467,27 @@ function createTables(database: Database): void {
       WHERE status IN ('starting', 'active', 'stopping')
     `);
 
-    // Forwarded ports table - port forwarding for SSH sessions
+    // Preview sessions table - CLI-owned workspace live previews
     database.run(`
-      CREATE TABLE IF NOT EXISTS forwarded_ports (
+      CREATE TABLE IF NOT EXISTS preview_sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
-        task_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
-        ssh_session_id TEXT,
         remote_host TEXT NOT NULL,
         remote_port INTEGER NOT NULL,
+        local_host TEXT NOT NULL,
         local_port INTEGER NOT NULL,
+        local_url TEXT NOT NULL,
+        initial_path TEXT NOT NULL,
+        cli_client_id TEXT,
+        cli_hostname TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'starting',
-        pid INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
         connected_at TEXT,
+        closed_at TEXT,
         error_message TEXT,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-        FOREIGN KEY (ssh_session_id) REFERENCES ssh_sessions(id) ON DELETE CASCADE
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       )
     `);
 
@@ -656,24 +657,14 @@ function createTables(database: Database): void {
       ON ssh_server_sessions(user_id, created_at DESC)
     `);
 
-    // Forwarded ports indexes
+    // Preview session indexes
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_forwarded_ports_task_id
-      ON forwarded_ports(user_id, task_id, created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_preview_sessions_workspace_created
+      ON preview_sessions(user_id, workspace_id, created_at DESC)
     `);
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_forwarded_ports_ssh_session_id
-      ON forwarded_ports(user_id, ssh_session_id)
-    `);
-    database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_forwarded_ports_local_port_active
-      ON forwarded_ports(local_port)
-      WHERE status IN ('starting', 'active', 'stopping')
-    `);
-    database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_forwarded_ports_workspace_remote_port_active
-      ON forwarded_ports(user_id, workspace_id, remote_port)
-      WHERE status IN ('starting', 'active', 'stopping')
+      CREATE INDEX IF NOT EXISTS idx_preview_sessions_status_updated
+      ON preview_sessions(user_id, status, updated_at DESC)
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_agents_workspace_created_at ON agents(user_id, workspace_id, created_at DESC)
@@ -733,7 +724,7 @@ export function resetDatabase(): void {
   // workspaces(id), so we must drop in reverse dependency order to satisfy
   // FK constraints.
   const dropAllTables = db.transaction(() => {
-    db!.run("DROP TABLE IF EXISTS forwarded_ports");
+    db!.run("DROP TABLE IF EXISTS preview_sessions");
     db!.run("DROP TABLE IF EXISTS agent_runs");
     db!.run("DROP TABLE IF EXISTS agents");
     db!.run("DROP TABLE IF EXISTS review_comments");

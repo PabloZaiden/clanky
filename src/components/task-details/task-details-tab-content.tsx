@@ -11,8 +11,6 @@ import type { TabId } from "./types";
 import type { LogDisplayState } from "./use-log-display-state";
 import type { UseTaskContentResult } from "./use-task-content";
 import type { UseTaskActionsResult } from "./use-task-actions";
-import type { UsePortForwardActionsResult } from "./use-port-forward-actions";
-import type { PortForward } from "../../types";
 import { LogTab } from "./log-tab";
 import type { TranscriptFileLinkTarget } from "../log-viewer";
 import { InfoTab } from "./info-tab";
@@ -41,8 +39,6 @@ interface TaskDetailsTabContentProps {
 
   // Bundled state from hooks
   logDisplay: LogDisplayState;
-  portForward: UsePortForwardActionsResult;
-  portForwardData: { forwards: PortForward[]; forwardsLoading: boolean; forwardsError: string | null };
   content: UseTaskContentResult;
   actions: UseTaskActionsResult;
   onFileOpenError: (message: string) => void;
@@ -63,8 +59,6 @@ export function TaskDetailsTabContent({
   toolCalls,
   logs,
   logDisplay,
-  portForward,
-  portForwardData,
   content,
   actions,
   onFileOpenError,
@@ -132,17 +126,6 @@ export function TaskDetailsTabContent({
           onOpenTaskFiles={actions.handleOpenTaskFiles}
           sshConnecting={actions.sshConnecting}
           onConnectViaSsh={actions.handleConnectViaSsh}
-          newForwardPort={portForward.newForwardPort}
-          onNewForwardPortChange={portForward.setNewForwardPort}
-          creatingForward={portForward.creatingForward}
-          onCreateForward={portForward.handleCreateForward}
-          forwards={portForwardData.forwards}
-          forwardsLoading={portForwardData.forwardsLoading}
-          forwardsError={portForwardData.forwardsError}
-          onOpenForward={portForward.handleOpenForward}
-          onCopyForwardUrl={portForward.handleCopyForwardUrl}
-          onDeleteForward={portForward.handleDeleteForward}
-          taskId={taskId}
           planningSettingsSubmitting={actions.planningSettingsSubmitting}
           onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />

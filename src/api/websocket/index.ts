@@ -4,7 +4,6 @@
  * Supports three websocket surfaces:
  * - WS /api/ws for task events and SSH session lifecycle events
  * - WS /api/ssh-terminal for interactive SSH terminal streams
- * - forwarded-port proxy websocket upgrades under /task/:taskId/port/:forwardId
  *
  * Features:
  * - Real-time task and SSH session event streaming
@@ -21,8 +20,7 @@
  * - task.plan.ready, task.plan.feedback, task.plan.accepted, task.plan.discarded
  * - task.pending.updated, task.automatic_pr_flow.updated
  * - ssh_session.created, ssh_session.updated, ssh_session.deleted, ssh_session.status
- * - ssh_session.port_forward.created, ssh_session.port_forward.updated,
- *   ssh_session.port_forward.deleted, ssh_session.port_forward.status
+ * - preview.created, preview.connected, preview.closed, preview.failed
  *
  * @module api/websocket
  */

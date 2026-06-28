@@ -21,6 +21,7 @@ import {
 } from "./api-catalog";
 import { runUpdateCommand, type CliUpdateDependencies, type UpdateCommandOptions } from "./update";
 import { runWsCommand, type CliWsDependencies, type WsCommandOptions } from "./ws";
+import { runPreviewCommand, type CliPreviewDependencies, type PreviewCommandOptions } from "./preview";
 
 type CliHelpEntry = {
   name: string;
@@ -77,6 +78,13 @@ const CLI_HELP_ENTRIES: CliHelpEntry[] = [
     description: "Stream live WebSocket events for tasks, chats, SSH, or provisioning.",
     usage: [
       "clanky ws [base-url] [--task-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+    ],
+  },
+  {
+    name: "preview",
+    description: "Start a local CLI-owned live preview for a workspace service.",
+    usage: [
+      "clanky preview --workspace <id-or-name> --port <remote-port> [--remote-host <host>] [--host <local-host>] [--local-port <port>] [--path <path>] [--open]",
     ],
   },
 ];
@@ -137,7 +145,10 @@ export type CliCommand =
    }
   | ({
       action: "ws";
-    } & WsCommandOptions);
+    } & WsCommandOptions)
+  | ({
+      action: "preview";
+    } & PreviewCommandOptions);
 
 export type MainCommand = CliCommand;
 
@@ -149,6 +160,7 @@ export interface CliRuntimeDependencies extends CliOutputDependencies {
   runCliFn?: typeof runCli;
   updateDependencies?: Partial<CliUpdateDependencies>;
   wsDependencies?: Partial<CliWsDependencies>;
+  previewDependencies?: Partial<CliPreviewDependencies>;
 }
 
 interface CliParseDependencies {
@@ -175,6 +187,19 @@ function getDefaultClientId(getHostname: () => string = hostname): string {
   return localHostname || DEFAULT_CLIENT_ID;
 }
 
+function parsePortOption(name: string, value: string): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw createUsageError(`${name} must be an integer between 1 and 65535`);
+  }
+  return port;
+}
+
+function normalizePreviewPathOption(value: string | undefined): string {
+  const trimmed = value?.trim() || "/";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
 function parseCommandArguments(
   args: string[],
   allowedOptions: string[],
@@ -189,6 +214,7 @@ function parseCommandArguments(
     if (!arg) {
       continue;
     }
+
     if (!arg.startsWith("--")) {
       positionals.push(arg);
       continue;
@@ -521,6 +547,46 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     };
   }
 
+  if (action === "preview") {
+    const { positionals, options, flags } = parseCommandArguments(restArgs, [
+      "--workspace",
+      "--port",
+      "--remote-host",
+      "--host",
+      "--local-port",
+      "--path",
+      "--base-url",
+    ], ["--open"]);
+    if (positionals.length > 0) {
+      throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+    }
+    const workspace = options["--workspace"]?.trim();
+    if (!workspace) {
+      throw createUsageError("Missing required option: --workspace");
+    }
+    const rawPort = options["--port"]?.trim();
+    if (!rawPort) {
+      throw createUsageError("Missing required option: --port");
+    }
+    let baseUrl: string | undefined;
+    try {
+      baseUrl = options["--base-url"] ? normalizeBaseUrlValue(options["--base-url"]) : undefined;
+    } catch (error) {
+      throw createUsageError(String(error).replace(/^Error:\s*/, ""));
+    }
+    return {
+      action,
+      baseUrl,
+      workspace,
+      port: parsePortOption("--port", rawPort),
+      remoteHost: options["--remote-host"]?.trim() || "127.0.0.1",
+      host: options["--host"]?.trim() || "127.0.0.1",
+      localPort: options["--local-port"] ? parsePortOption("--local-port", options["--local-port"]) : undefined,
+      path: normalizePreviewPathOption(options["--path"]),
+      open: flags.has("--open"),
+    };
+  }
+
   throw createUsageError(`Unknown command: ${action}`);
 }
 
@@ -590,6 +656,15 @@ export async function runCli(
           out,
           err,
           ...dependencies.wsDependencies,
+        });
+      case "preview":
+        return await runPreviewCommand(command, {
+          fetchFn,
+          now,
+          out,
+          err,
+          getHostname: dependencies.getHostname,
+          ...dependencies.previewDependencies,
         });
     }
   } catch (error) {

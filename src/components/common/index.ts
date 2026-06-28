@@ -15,8 +15,6 @@ export {
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
-  getPortForwardStatusBadgeVariant,
-  getPortForwardStatusLabel,
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
   getStatusBadgeVariant,

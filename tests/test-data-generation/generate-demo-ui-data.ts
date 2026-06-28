@@ -31,7 +31,7 @@ const USER_OWNED_SEED_TABLES = [
   "tasks",
   "chats",
   "review_comments",
-  "forwarded_ports",
+  "preview_sessions",
 ] as const;
 
 function prepareSeedSqlForCurrentSchema(sql: string): string {

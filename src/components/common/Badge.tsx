@@ -3,7 +3,7 @@
  */
 
 import type { HTMLAttributes } from "react";
-import type { ChatStatus, PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
+import type { ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
 
 export type BadgeVariant = 
   | "default" 
@@ -148,26 +148,6 @@ export function getSshSessionStatusLabel(status: SshSessionStatus): string {
     case "disconnected": return "Disconnected";
     case "failed": return "Failed";
     case "ready": return "Ready";
-  }
-}
-
-export function getPortForwardStatusBadgeVariant(status: PortForwardStatus): BadgeVariant {
-  switch (status) {
-    case "active": return "success";
-    case "failed": return "error";
-    case "starting": return "running";
-    case "stopping": return "warning";
-    case "stopped": return "stopped";
-  }
-}
-
-export function getPortForwardStatusLabel(status: PortForwardStatus): string {
-  switch (status) {
-    case "active": return "Active";
-    case "failed": return "Failed";
-    case "starting": return "Starting";
-    case "stopping": return "Stopping";
-    case "stopped": return "Stopped";
   }
 }
 

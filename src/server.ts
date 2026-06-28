@@ -6,7 +6,6 @@ import type { Server } from "bun";
 import index from "./index.html";
 import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
-import { portForwardProxyRoutes } from "./api/port-forwards";
 import { websocketHandlers } from "./api/websocket";
 import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
 import { resetStaleTasks } from "./persistence/tasks";
@@ -23,6 +22,7 @@ import {
   provisioningEventEmitter,
   sshSessionEventEmitter,
   taskEventEmitter,
+  previewEventEmitter,
 } from "./core/event-emitter";
 import { getPublicBasePathFromForwardedPrefix } from "./utils/public-base-path";
 import { runWithCurrentUser } from "./core/user-context";
@@ -100,11 +100,25 @@ function registerRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): v
   agentEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { agentId: event.agentId }));
   sshSessionEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { sshSessionId: event.sshSessionId }));
   provisioningEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { provisioningJobId: event.provisioningJobId }));
+  previewEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { workspaceId: event.workspaceId }));
 }
 
 const routes = defineRoutes<ClankyRealtimeEvent>({
-  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
-  ...adaptLegacyRoutes(portForwardProxyRoutes as unknown as Record<string, LegacyRouteValue>),
+  "/api/previews/bridge": {
+    auth: "user",
+    sameOrigin: "always",
+    GET: (req, ctx) => {
+      const user = ctx.requireUser();
+      const upgraded = ctx.server?.upgrade(req, {
+        data: {
+          webappSocketHandler: "clanky",
+          previewBridgeMode: true,
+          user,
+        },
+      });
+      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+    },
+  },
   "/api/ssh-terminal": {
     auth: "user",
     sameOrigin: "always",
@@ -152,6 +166,7 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
       return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
     },
   },
+  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
 });
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
