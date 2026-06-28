@@ -389,9 +389,6 @@ export function buildActiveWorkSidebarItems(
   const chatItems: SidebarActiveWorkItem[] = [];
   const sessionItems: SidebarActiveWorkItem[] = [];
   const workspaceSessionIds = new Set<string>();
-  const quickChatIds = new Set(
-    options.quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? [],
-  );
 
   for (const group of workspaceGroups) {
     for (const workspaceNode of group.workspaces) {
@@ -451,17 +448,11 @@ export function buildActiveWorkSidebarItems(
     }
   }
 
-  const items = [
+  return [
     ...taskItems,
     ...chatItems,
     ...sessionItems,
   ];
-
-  if (quickChatIds.size === 0) {
-    return items;
-  }
-
-  return items.filter((item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id));
 }
 
 function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
