@@ -69,7 +69,8 @@ function buildChatActionItems({
   onDelete,
 }: ChatActionItemOptions): ActionMenuItem[] {
   const isActive = ["starting", "streaming", "interrupting", "reconnecting"].includes(chat.state.status);
-  const hasMessages = chat.state.messages.length > 0;
+  const hasMessages = chat.state.hasMessages ?? chat.state.messages.length > 0;
+  const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
 
   return [
     {
@@ -99,7 +100,7 @@ function buildChatActionItems({
       id: "transcript",
       label: "Transcript",
       onAction: onTranscript,
-      disabled: !hasMessages,
+      disabled: !hasTranscript,
     },
     {
       id: "delete",

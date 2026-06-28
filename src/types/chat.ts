@@ -108,6 +108,8 @@ export interface ChatState {
   messages: PersistedMessage[];
   logs: TaskLogEntry[];
   toolCalls: PersistedToolCall[];
+  hasMessages?: boolean;
+  hasTranscript?: boolean;
   pendingPermissionRequests?: ChatPermissionRequest[];
   activeMessageId?: string;
   interruptRequested?: boolean;

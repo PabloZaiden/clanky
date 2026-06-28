@@ -3,6 +3,7 @@
  */
 
 import type { Chat, ChatConfig, ChatSource, ChatState } from "../../types";
+import type { PersistedMessage, PersistedToolCall } from "../../types/task";
 import { DEFAULT_CHAT_CONFIG } from "../../types/chat";
 import { createLogger } from "../../core/logger";
 import { requirePersistenceUserId } from "../ownership";
@@ -66,6 +67,21 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
     log.warn(`Failed to parse JSON in field "${fieldName}" for chat ${String(rowId)}: ${String(error)}`);
     return fallback;
   }
+}
+
+export function hasMessageContent(message: PersistedMessage): boolean {
+  return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
+}
+
+function booleanColumn(row: Record<string, unknown>, columnName: string): boolean | undefined {
+  const value = row[columnName];
+  if (value === 1 || value === true) {
+    return true;
+  }
+  if (value === 0 || value === false) {
+    return false;
+  }
+  return undefined;
 }
 
 function requireChatString(row: Record<string, unknown>, columnName: string, rowId: unknown): string {
@@ -173,15 +189,23 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     mode: ((row["mode"] as ChatConfig["mode"] | null) ?? DEFAULT_CHAT_CONFIG.mode),
   };
 
+  const messages = row["messages"] ? safeJsonParse<PersistedMessage[]>(row["messages"] as string, [], "messages", rowId) : [];
+  const logs = row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [];
+  const toolCalls = row["tool_calls"] ? safeJsonParse<PersistedToolCall[]>(row["tool_calls"] as string, [], "tool_calls", rowId) : [];
+  const hasMessages = booleanColumn(row, "has_messages") ?? messages.some(hasMessageContent);
+  const hasTranscript = booleanColumn(row, "has_transcript") ?? (hasMessages || toolCalls.length > 0);
+
   const state: ChatState = {
     id: config.id,
     status: row["status"] as ChatState["status"],
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,
     lastActivityAt: (row["last_activity_at"] as string | null) ?? undefined,
-    messages: row["messages"] ? safeJsonParse(row["messages"] as string, [], "messages", rowId) : [],
-    logs: row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [],
-    toolCalls: row["tool_calls"] ? safeJsonParse(row["tool_calls"] as string, [], "tool_calls", rowId) : [],
+    messages,
+    logs,
+    toolCalls,
+    hasMessages,
+    hasTranscript,
     pendingPermissionRequests: row["pending_permission_requests"]
       ? safeJsonParse(row["pending_permission_requests"] as string, [], "pending_permission_requests", rowId)
       : [],
