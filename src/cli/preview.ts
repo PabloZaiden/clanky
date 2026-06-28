@@ -32,6 +32,16 @@ interface PendingPreviewRequest {
   chunks: Uint8Array[];
 }
 
+interface PreviewBrowserSocket {
+  send(data: string | Uint8Array): void;
+  close(code?: number, reason?: string): void;
+}
+
+interface PreviewListenerData {
+  request: Request;
+  streamId: string;
+}
+
 export interface CliPreviewDependencies {
   fetchFn: typeof fetch;
   now: () => Date;
@@ -198,6 +208,7 @@ export async function runPreviewCommand(
   const socket = createSocket(bridgeUrl, { headers });
   await waitForSocketOpen(socket);
   const pending = new Map<string, PendingPreviewRequest>();
+  const browserSockets = new Map<string, PreviewBrowserSocket>();
   socket.addEventListener("message", (event) => {
     if (typeof event.data !== "string") {
       return;
@@ -210,6 +221,22 @@ export async function runPreviewCommand(
       return;
     }
     const streamId = "streamId" in message && typeof message.streamId === "string" ? message.streamId : undefined;
+    const browserSocket = streamId ? browserSockets.get(streamId) : undefined;
+    if (message.type === "websocket.message" && browserSocket) {
+      const payload = decodeBase64(message.body);
+      browserSocket.send(message.binary ? payload : new TextDecoder().decode(payload));
+      return;
+    }
+    if (message.type === "websocket.close" && streamId && browserSocket) {
+      browserSockets.delete(streamId);
+      browserSocket.close(message.code, message.reason);
+      return;
+    }
+    if (message.type === "stream.error" && streamId && browserSocket) {
+      browserSockets.delete(streamId);
+      browserSocket.close(1011, message.error);
+      return;
+    }
     const request = streamId ? pending.get(streamId) : undefined;
     if (!request) {
       return;
@@ -240,12 +267,17 @@ export async function runPreviewCommand(
   });
 
   const serve = dependencies.serve ?? Bun.serve;
-  const server = serve({
+  const server = serve<PreviewListenerData>({
     hostname: command.host,
     port: command.localPort ?? 0,
     async fetch(req) {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        return new Response("WebSocket preview streams are not supported by this listener yet", { status: 501 });
+        const streamId = crypto.randomUUID();
+        const upgraded = server.upgrade(req, { data: { request: req, streamId } });
+        if (!upgraded) {
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+        return;
       }
       const streamId = crypto.randomUUID();
       const url = new URL(req.url);
@@ -264,6 +296,44 @@ export async function runPreviewCommand(
         body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
       } satisfies PreviewBridgeClientMessage));
       return await responsePromise;
+    },
+    websocket: {
+      open(ws) {
+        const streamId = ws.data.streamId as string;
+        const request = ws.data.request as Request;
+        const url = new URL(request.url);
+        browserSockets.set(streamId, ws);
+        socket.send(JSON.stringify({
+          type: "websocket.open",
+          streamId,
+          path: `${url.pathname}${url.search}`,
+          headers: Array.from(request.headers.entries()),
+        } satisfies PreviewBridgeClientMessage));
+      },
+      message(ws, data) {
+        const streamId = ws.data.streamId as string;
+        const body = typeof data === "string"
+          ? new TextEncoder().encode(data)
+          : data instanceof Buffer
+            ? new Uint8Array(data)
+            : data;
+        socket.send(JSON.stringify({
+          type: "websocket.message",
+          streamId,
+          body: encodeBase64(body),
+          binary: typeof data !== "string",
+        } satisfies PreviewBridgeClientMessage));
+      },
+      close(ws, code, reason) {
+        const streamId = ws.data.streamId as string;
+        browserSockets.delete(streamId);
+        socket.send(JSON.stringify({
+          type: "websocket.close",
+          streamId,
+          code,
+          reason,
+        } satisfies PreviewBridgeClientMessage));
+      },
     },
   });
 

@@ -101,11 +101,35 @@ export interface PreviewBridgeErrorMessage {
   error: string;
 }
 
+export interface PreviewBridgeWebSocketOpenMessage {
+  type: "websocket.open";
+  streamId: string;
+  path: string;
+  headers: Array<[string, string]>;
+}
+
+export interface PreviewBridgeWebSocketMessage {
+  type: "websocket.message";
+  streamId: string;
+  body: string;
+  binary: boolean;
+}
+
+export interface PreviewBridgeWebSocketCloseMessage {
+  type: "websocket.close";
+  streamId: string;
+  code?: number;
+  reason?: string;
+}
+
 export type PreviewBridgeClientMessage =
   | PreviewBridgeHelloMessage
   | PreviewBridgeRequestStartMessage
   | PreviewBridgeBodyMessage
   | PreviewBridgeEndMessage
+  | PreviewBridgeWebSocketOpenMessage
+  | PreviewBridgeWebSocketMessage
+  | PreviewBridgeWebSocketCloseMessage
   | { type: "bridge.pong" };
 
 export type PreviewBridgeServerMessage =
@@ -114,4 +138,6 @@ export type PreviewBridgeServerMessage =
   | PreviewBridgeBodyMessage
   | PreviewBridgeEndMessage
   | PreviewBridgeErrorMessage
+  | PreviewBridgeWebSocketMessage
+  | PreviewBridgeWebSocketCloseMessage
   | { type: "bridge.ping" };
