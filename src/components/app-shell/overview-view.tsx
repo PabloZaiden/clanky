@@ -88,8 +88,8 @@ export function OverviewView({
   onNavigate: (route: ShellRoute) => void;
 }) {
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace, serverNodes }),
-    [quickChatWorkspace, serverNodes, sidebarWorkspaceGroups],
+    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }),
+    [serverNodes, sidebarWorkspaceGroups],
   );
   const quickChats = useMemo(() => {
     return quickChatWorkspace?.chats ?? [];

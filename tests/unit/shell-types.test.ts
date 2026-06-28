@@ -5,6 +5,7 @@ import {
   buildServerSidebarNodes,
   buildWorkspaceSidebarGroups,
 } from "../../src/components/app-shell/shell-types";
+import type { Chat } from "../../src/types/chat";
 import type { SshServer, SshServerSession } from "../../src/types/ssh-server";
 import type { SshSession } from "../../src/types/ssh-session";
 import { getDefaultServerSettings } from "../../src/types/settings";
@@ -82,6 +83,34 @@ function createServerSession(): SshServerSession {
   };
 }
 
+function createChat(): Chat {
+  return {
+    config: {
+      id: "chat-1",
+      name: "Quick Chat",
+      workspaceId: "workspace-1",
+      scope: "workspace",
+      directory: "/workspaces/one",
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.5",
+        variant: "",
+      },
+      useWorktree: true,
+      createdAt: BASE_TIMESTAMP,
+      updatedAt: BASE_TIMESTAMP,
+      mode: "chat",
+    },
+    state: {
+      id: "chat-1",
+      status: "idle",
+      messages: [],
+      logs: [],
+      toolCalls: [],
+    },
+  };
+}
+
 describe("sidebar node builders", () => {
   test("keeps workspace SSH sessions out of SSH server session nodes", () => {
     const workspaceSession = createWorkspaceSession();
@@ -114,6 +143,19 @@ describe("sidebar node builders", () => {
     expect(buildActiveWorkSidebarItems(workspaceGroups, { serverNodes }).map((item) => item.key)).toEqual([
       "ssh-session:workspace-session-1",
       "ssh-server-session:server-session-1",
+    ]);
+  });
+
+  test("includes quick chats in active work", () => {
+    const quickChat = createChat();
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [createWorkspace()],
+      tasks: [],
+      chats: [quickChat],
+      sessions: [],
+    });
+    expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([
+      "chat:chat-1",
     ]);
   });
 });
