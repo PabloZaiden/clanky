@@ -217,4 +217,178 @@ describe("workspace previews", () => {
       upstreamServer.stop(true);
     }
   });
+
+  test("bridges subdirectory preview requests and rewrites target-origin redirects", async () => {
+    let upstreamPort = 0;
+    const upstreamServer = Bun.serve({
+      port: 0,
+      fetch(req): Response {
+        const url = new URL(req.url);
+        if (url.pathname === "/myapp") {
+          return new Response(null, {
+            status: 308,
+            headers: {
+              location: `http://127.0.0.1:${String(upstreamPort)}/myapp/`,
+            },
+          });
+        }
+        if (url.pathname === "/myapp/assets/app.js") {
+          return new Response("console.log('myapp');", {
+            headers: {
+              "content-type": "text/javascript",
+            },
+          });
+        }
+        return new Response(`Unexpected path: ${url.pathname}`, { status: 404 });
+      },
+    });
+    upstreamPort = upstreamServer.port!;
+
+    try {
+      await runWithCurrentUser(testOwnerUser, async () => {
+        await createWorkspace(buildWorkspace("workspace-1", "App"));
+        const sentMessages: PreviewBridgeServerMessage[] = [];
+        const bridgeSocket = {
+          data: { user: testOwnerUser },
+          send(data: string | Uint8Array) {
+            if (typeof data === "string") {
+              sentMessages.push(JSON.parse(data) as PreviewBridgeServerMessage);
+            }
+          },
+          close() {},
+        };
+
+        await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+          type: "hello",
+          workspace: "workspace-1",
+          remoteHost: "127.0.0.1",
+          remotePort: upstreamServer.port,
+          localHost: "127.0.0.1",
+          localPort: 43123,
+          localUrl: "http://127.0.0.1:43123/myapp",
+          initialPath: "/myapp",
+          cliHostname: "devbox",
+        }));
+        const ready = await waitForBridgeMessage(sentMessages, (message) => message.type === "ready");
+        expect(ready.type).toBe("ready");
+
+        await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+          type: "request.start",
+          streamId: "redirect-1",
+          method: "GET",
+          path: "/myapp",
+          headers: [],
+        }));
+        const redirectStart = await waitForBridgeMessage(
+          sentMessages,
+          (message) => message.type === "response.start" && message.streamId === "redirect-1",
+        );
+        if (redirectStart.type !== "response.start") {
+          throw new Error(`Expected response.start, received ${redirectStart.type}`);
+        }
+        expect(redirectStart.status).toBe(308);
+        expect(new Headers(redirectStart.headers).get("location")).toBe("http://127.0.0.1:43123/myapp/");
+
+        await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+          type: "request.start",
+          streamId: "asset-1",
+          method: "GET",
+          path: "/myapp/assets/app.js",
+          headers: [],
+        }));
+        const assetStart = await waitForBridgeMessage(
+          sentMessages,
+          (message) => message.type === "response.start" && message.streamId === "asset-1",
+        );
+        if (assetStart.type !== "response.start") {
+          throw new Error(`Expected response.start, received ${assetStart.type}`);
+        }
+        expect(assetStart.status).toBe(200);
+        const assetBody = await waitForBridgeMessage(
+          sentMessages,
+          (message) => message.type === "response.body" && message.streamId === "asset-1",
+        );
+        if (assetBody.type !== "response.body") {
+          throw new Error(`Expected response.body, received ${assetBody.type}`);
+        }
+        expect(decodeBase64(assetBody.body)).toBe("console.log('myapp');");
+
+        await previewSessionManager.closeBridgeSession(bridgeSocket, "test done");
+      });
+    } finally {
+      upstreamServer.stop(true);
+    }
+  });
+
+  test("falls back to local host and port when CLI preview localUrl is invalid", async () => {
+    let upstreamPort = 0;
+    const upstreamServer = Bun.serve({
+      port: 0,
+      fetch(req): Response {
+        const url = new URL(req.url);
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `http://127.0.0.1:${String(upstreamPort)}${url.pathname}`,
+          },
+        });
+      },
+    });
+    upstreamPort = upstreamServer.port!;
+
+    try {
+      await runWithCurrentUser(testOwnerUser, async () => {
+        await createWorkspace(buildWorkspace("workspace-1", "App"));
+
+        for (const [index, localUrl] of ["", "not a valid URL"].entries()) {
+          const sentMessages: PreviewBridgeServerMessage[] = [];
+          const bridgeSocket = {
+            data: { user: testOwnerUser },
+            send(data: string | Uint8Array) {
+              if (typeof data === "string") {
+                sentMessages.push(JSON.parse(data) as PreviewBridgeServerMessage);
+              }
+            },
+            close() {},
+          };
+          const localPort = 43123 + index;
+
+          await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+            type: "hello",
+            workspace: "workspace-1",
+            remoteHost: "127.0.0.1",
+            remotePort: upstreamServer.port,
+            localHost: "127.0.0.1",
+            localPort,
+            localUrl,
+            initialPath: "/",
+            cliHostname: "devbox",
+          }));
+          const ready = await waitForBridgeMessage(sentMessages, (message) => message.type === "ready");
+          expect(ready.type).toBe("ready");
+
+          await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+            type: "request.start",
+            streamId: `redirect-${String(index)}`,
+            method: "GET",
+            path: "/dashboard",
+            headers: [],
+          }));
+          const redirectStart = await waitForBridgeMessage(
+            sentMessages,
+            (message) => message.type === "response.start" && message.streamId === `redirect-${String(index)}`,
+          );
+          if (redirectStart.type !== "response.start") {
+            throw new Error(`Expected response.start, received ${redirectStart.type}`);
+          }
+          expect(redirectStart.status).toBe(302);
+          expect(new Headers(redirectStart.headers).get("location")).toBe(`http://127.0.0.1:${String(localPort)}/dashboard`);
+
+          await previewSessionManager.closeBridgeSession(bridgeSocket, "test done");
+        }
+      });
+    } finally {
+      upstreamServer.stop(true);
+    }
+  });
 });
