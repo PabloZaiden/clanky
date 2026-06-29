@@ -5,6 +5,12 @@
       "source": "microsoft/playwright-cli",
       "sourceType": "github",
       "computedHash": "76f0d3375f1fc87f8bbf8adf4d4b3847541bcd873aba3d4477cc1120daabb494"
+    },
+    "webapp": {
+      "source": "pablozaiden/webapp",
+      "sourceType": "github",
+      "skillPath": "skills/webapp/SKILL.md",
+      "computedHash": "6b43c91fbc293514307d9759f4378f79529cfc9052010194683df206cc247af3"
     }
   }
 }
