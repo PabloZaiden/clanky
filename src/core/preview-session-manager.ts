@@ -106,6 +106,22 @@ function rewritePreviewResponseHeaders(headers: Headers, runtime: PreviewRuntime
   ]);
 }
 
+function derivePreviewLocalOrigin(localUrl: string, localHost: string, localPort: number): string {
+  const trimmedLocalUrl = localUrl.trim();
+  if (trimmedLocalUrl) {
+    try {
+      return new URL(trimmedLocalUrl).origin;
+    } catch (error) {
+      log.warn("Invalid preview localUrl from CLI bridge; falling back to local host and port", { error: String(error) });
+    }
+  }
+
+  const fallbackUrl = new URL("http://localhost");
+  fallbackUrl.hostname = localHost;
+  fallbackUrl.port = String(localPort);
+  return fallbackUrl.origin;
+}
+
 export class PreviewSessionManager {
   private runtimes = new Map<string, PreviewRuntime>();
   private upstreamSockets = new Map<string, Map<string, UpstreamWebSocketState>>();
@@ -188,7 +204,7 @@ export class PreviewSessionManager {
     await savePreviewSession(preview);
     const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
     this.runtimes.set(preview.config.id, {
-      localOrigin: new URL(options.localUrl).origin,
+      localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
       user: requireCurrentUser(),
       targetBaseUrl,
       targetOrigin: new URL(targetBaseUrl).origin,
