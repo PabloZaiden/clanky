@@ -17,6 +17,10 @@ interface AdvancedOptionsProps {
   onCheapModelChange: (value: string) => void;
   models: ModelInfo[];
   modelsLoading: boolean;
+  variantDiscovery?: {
+    directory: string;
+    workspaceId: string;
+  };
 }
 
 export function AdvancedOptions({
@@ -34,6 +38,7 @@ export function AdvancedOptions({
   onCheapModelChange,
   models,
   modelsLoading,
+  variantDiscovery,
 }: AdvancedOptionsProps) {
   return (
     <>
@@ -60,6 +65,7 @@ export function AdvancedOptions({
               onChange={onCheapModelChange}
               models={models}
               loading={modelsLoading}
+              variantDiscovery={variantDiscovery}
               additionalOptions={[{
                 value: SAME_AS_TASK_CHEAP_MODEL_VALUE,
                 label: "Same as task model",

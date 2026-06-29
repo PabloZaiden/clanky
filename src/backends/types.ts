@@ -333,4 +333,7 @@ export interface Backend {
 
   /** Get available models */
   getModels(directory: string): Promise<ModelInfo[]>;
+
+  /** Get available variants for one model, when supported by the backend */
+  getModelVariants?(directory: string, modelID: string): Promise<string[]>;
 }

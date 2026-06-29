@@ -1318,43 +1318,25 @@ export class AcpBackend implements Backend {
     return AGENT_PROVIDER_OPTIONS.find((option) => option.id === providerID)?.label ?? providerID;
   }
 
-  private async discoverModelVariantsFromConfigOptions(
+  private async discoverModelVariantsForConfigOptions(
     directory: string,
     sessionId: string,
     initialConfigOptions: ConfigOption[],
-  ): Promise<ModelInfo[]> {
+    modelID: string,
+  ): Promise<string[]> {
     const modelOption = this.getModelConfigOption(initialConfigOptions);
-    if (!modelOption) {
-      return [];
+    if (!modelOption?.options.some((option) => option.value === modelID)) {
+      return [""];
     }
 
     let configOptions = initialConfigOptions;
-    const discovered: ModelInfo[] = [];
-
-    for (const option of modelOption.options) {
-      const modelID = option.value;
-      if (!modelID) {
-        continue;
-      }
-
-      const currentModelOption = this.getModelConfigOption(configOptions);
-      if (currentModelOption?.currentValue !== modelID) {
-        configOptions = await this.setConfigOption(sessionId, currentModelOption?.id ?? "model", modelID);
-      }
-
-      this.rememberDefaultReasoningEffort(directory, modelID, configOptions);
-      const providerID = this.getDiscoveredModelProviderID();
-      discovered.push({
-        providerID,
-        providerName: this.getDiscoveredModelProviderName(providerID),
-        modelID,
-        modelName: option.name,
-        connected: true,
-        variants: this.buildReasoningEffortVariants(configOptions),
-      });
+    const currentModelOption = this.getModelConfigOption(configOptions);
+    if (currentModelOption?.currentValue !== modelID) {
+      configOptions = await this.setConfigOption(sessionId, currentModelOption?.id ?? "model", modelID);
     }
 
-    return discovered;
+    this.rememberDefaultReasoningEffort(directory, modelID, configOptions);
+    return this.buildReasoningEffortVariants(configOptions);
   }
 
   /**
@@ -1375,7 +1357,6 @@ export class AcpBackend implements Backend {
         modelID: opt.value,
         modelName: opt.name,
         connected: true,
-        variants: [""],
       };
     });
   }
@@ -1998,7 +1979,7 @@ export class AcpBackend implements Backend {
    */
   async getModels(directory: string): Promise<ModelInfo[]> {
     const cached = this.getCachedModels(directory);
-    if (cached?.complete) {
+    if (cached) {
       return cached.models;
     }
 
@@ -2011,33 +1992,44 @@ export class AcpBackend implements Backend {
     try {
       // Try config options first, then fall back to legacy fields
       const configOptions = this.parseConfigOptions(result);
-      if (this.supportsConfigOptionVariantDiscovery() && sessionId && configOptions.length > 0) {
-        const discoveredModels = await this.discoverModelVariantsFromConfigOptions(directory, sessionId, configOptions);
-        if (discoveredModels.length > 0) {
-          this.setCachedModels(directory, discoveredModels, true);
-          return discoveredModels;
-        }
-      }
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
-        this.setCachedModels(
-          directory,
-          configModels,
-          this.shouldTreatCachedModelsAsComplete(),
-        );
+        this.setCachedModels(directory, configModels, true);
         return configModels;
       }
 
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
-        this.setCachedModels(
-          directory,
-          models,
-          this.shouldTreatCachedModelsAsComplete(),
-        );
+        this.setCachedModels(directory, models, true);
         return models;
       }
-      return cached?.models ?? [];
+      return [];
+    } finally {
+      if (sessionId) {
+        await this.cleanupDiscoverySession(sessionId);
+      }
+    }
+  }
+
+  async getModelVariants(directory: string, modelID: string): Promise<string[]> {
+    const result = await this.sendRpcRequest<unknown>("session/new", {
+      cwd: directory,
+      mcpServers: [],
+    });
+    const sessionId = isRecord(result) ? getString(result["sessionId"]) : undefined;
+
+    try {
+      const configOptions = this.parseConfigOptions(result);
+      if (!this.supportsConfigOptionVariantDiscovery() || !sessionId || configOptions.length === 0) {
+        return [""];
+      }
+
+      return await this.discoverModelVariantsForConfigOptions(
+        directory,
+        sessionId,
+        configOptions,
+        modelID,
+      );
     } finally {
       if (sessionId) {
         await this.cleanupDiscoverySession(sessionId);

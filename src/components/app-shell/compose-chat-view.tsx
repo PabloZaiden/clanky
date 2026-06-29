@@ -660,6 +660,10 @@ export function ComposeChatView({
             models={modelOptions}
             loading={modelOptionsLoading}
             showDisconnected
+            variantDiscovery={!isServerChat && selectedWorkspace ? {
+              directory: selectedWorkspace.directory,
+              workspaceId: selectedWorkspace.id,
+            } : undefined}
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
             emptyText={isServerChat ? "Enter SSH credentials to load models" : "Select a workspace to load models"}
           />

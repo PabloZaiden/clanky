@@ -118,6 +118,7 @@ export function CreateTaskForm({
     renderActions,
     uploadedPlan,
   });
+  const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   const uploadedPlanLocked = !!uploadedPlan;
 
   useEffect(() => {
@@ -181,6 +182,10 @@ export function CreateTaskForm({
         onChange={setSelectedModel}
         models={models}
         modelsLoading={modelsLoading}
+        variantDiscovery={selectedWorkspace ? {
+          directory: selectedWorkspace.directory,
+          workspaceId: selectedWorkspace.id,
+        } : undefined}
       />
 
       {!uploadedPlan && (
@@ -264,6 +269,10 @@ export function CreateTaskForm({
         onCheapModelChange={setSelectedCheapModel}
         models={models}
         modelsLoading={modelsLoading}
+        variantDiscovery={selectedWorkspace ? {
+          directory: selectedWorkspace.directory,
+          workspaceId: selectedWorkspace.id,
+        } : undefined}
       />
 
       {/* Actions - only render inline if renderActions prop is not provided */}

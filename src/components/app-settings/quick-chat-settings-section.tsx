@@ -182,6 +182,10 @@ export function QuickChatSettingsSection({
             loading={modelsLoading}
             disabled={loading || saving || !selectedWorkspace}
             showDisconnected
+            variantDiscovery={selectedWorkspace ? {
+              directory: selectedWorkspace.directory,
+              workspaceId: selectedWorkspace.id,
+            } : undefined}
             placeholder="Select a quick chat model..."
             emptyText={selectedWorkspace ? "No models available" : "Select a workspace to load models"}
             additionalOptions={savedModelUnavailable
