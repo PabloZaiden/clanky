@@ -32,6 +32,8 @@ export interface WebSocketData {
   previewBridgeMode?: boolean;
   /** Registered preview session for a CLI bridge socket */
   previewBridgeSessionId?: string;
+  /** Keepalive timer for CLI live-preview bridge sockets */
+  previewBridgeKeepalive?: ReturnType<typeof setInterval>;
   /** Authenticated framework user for websocket operations that need persistence ownership */
   user?: CurrentUser;
   /** Active TCP socket for VNC bridge traffic */

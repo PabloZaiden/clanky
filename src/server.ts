@@ -33,6 +33,8 @@ type LegacyRouteHandler = (req: Request, server?: Server<WebAppWebSocketData>) =
 type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
 type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
 
+const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
+
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeRegistered = false;
 
@@ -109,6 +111,7 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
     sameOrigin: "always",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
+      ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
       const upgraded = ctx.server?.upgrade(req, {
         data: {
           webappSocketHandler: "clanky",

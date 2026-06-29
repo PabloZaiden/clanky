@@ -84,13 +84,29 @@ export async function getPreviewSession(id: string): Promise<PreviewSession | nu
   return row ? rowToPreview(row) : null;
 }
 
-export async function listPreviewSessionsByWorkspace(workspaceId: string): Promise<PreviewSession[]> {
+export async function deletePreviewSession(id: string): Promise<void> {
+  const db = getDatabase();
+  db.run(
+    "DELETE FROM preview_sessions WHERE id = ? AND user_id = ?",
+    [id, requirePersistenceUserId()],
+  );
+  log.debug("Deleted preview session", { id });
+}
+
+export async function listPreviewSessionsByWorkspaceAndStatuses(
+  workspaceId: string,
+  statuses: PreviewSessionStatus[],
+): Promise<PreviewSession[]> {
+  if (statuses.length === 0) {
+    return [];
+  }
+  const placeholders = statuses.map(() => "?").join(", ");
   const db = getDatabase();
   const rows = db.query(`
     SELECT * FROM preview_sessions
-    WHERE workspace_id = ? AND user_id = ?
-    ORDER BY created_at DESC
-  `).all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
+    WHERE workspace_id = ? AND user_id = ? AND status IN (${placeholders})
+    ORDER BY updated_at DESC
+  `).all(workspaceId, requirePersistenceUserId(), ...statuses) as Record<string, unknown>[];
   return rows.map(rowToPreview);
 }
 

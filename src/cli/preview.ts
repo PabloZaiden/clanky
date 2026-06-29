@@ -13,6 +13,7 @@ import type {
 } from "../types";
 
 const WS_READY_STATE_CLOSING = 2;
+const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
 
 export interface PreviewCommandOptions extends StatusCommandOptions {
   workspace: string;
@@ -334,6 +335,7 @@ export async function runPreviewCommand(
       }
     },
     websocket: {
+      idleTimeout: PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS,
       open(ws) {
         const streamId = ws.data.streamId as string;
         const request = ws.data.request as Request;
