@@ -24,8 +24,8 @@ export const modelsRoutes = {
      * Query Parameters:
      * - directory (required): Working directory path for model context
      * - workspaceId (required): Workspace ID to use for server settings
-     * - providerID (required): Provider ID selected by the client
      * - modelID (required): Model ID selected by the client
+     * - providerID (optional, ignored): Provider comes from workspace settings
      *
      * @returns Object with variants array
      */
@@ -33,7 +33,6 @@ export const modelsRoutes = {
       const url = new URL(req.url);
       const directory = url.searchParams.get("directory");
       const workspaceId = url.searchParams.get("workspaceId");
-      const providerID = url.searchParams.get("providerID");
       const modelID = url.searchParams.get("modelID");
 
       if (!directory) {
@@ -42,10 +41,6 @@ export const modelsRoutes = {
 
       if (!workspaceId) {
         return errorResponse("missing_workspace_id", "workspaceId query parameter is required");
-      }
-
-      if (!providerID) {
-        return errorResponse("missing_provider_id", "providerID query parameter is required");
       }
 
       if (!modelID) {
@@ -61,7 +56,6 @@ export const modelsRoutes = {
         const variants = await getModelVariantsForWorkspace(
           workspaceId,
           directory,
-          providerID,
           modelID,
           workspace,
         );
@@ -70,7 +64,6 @@ export const modelsRoutes = {
         log.error("Failed to discover model variants", {
           workspaceId,
           directory,
-          providerID,
           modelID,
           error: String(error),
         });

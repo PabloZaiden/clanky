@@ -35,18 +35,37 @@ function getCacheValue<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): 
 }
 
 function setCacheValue<T>(cache: Map<string, TimedCacheEntry<T>>, key: string, value: T): void {
+  pruneExpiredCacheEntries(cache);
   cache.set(key, {
     value,
     expiresAt: Date.now() + MODEL_DISCOVERY_CACHE_TTL_MS,
   });
 }
 
-function getModelListCacheKey(workspaceId: string, provider: string): string {
-  return `${workspaceId}:${provider}`;
+function pruneExpiredCacheEntries<T>(cache: Map<string, TimedCacheEntry<T>>): void {
+  const now = Date.now();
+  for (const [entryKey, entry] of cache) {
+    if (entry.expiresAt <= now) {
+      cache.delete(entryKey);
+    }
+  }
 }
 
-function getModelVariantCacheKey(workspaceId: string, provider: string, modelID: string): string {
-  return `${workspaceId}:${provider}:${modelID}`;
+function createCacheKey(parts: string[]): string {
+  return JSON.stringify(parts);
+}
+
+function getModelListCacheKey(connectionId: string, provider: string, directory: string): string {
+  return createCacheKey(["models", connectionId, provider, directory]);
+}
+
+function getModelVariantCacheKey(
+  workspaceId: string,
+  provider: string,
+  directory: string,
+  modelID: string,
+): string {
+  return createCacheKey(["variants", workspaceId, provider, directory, modelID]);
 }
 
 /**
@@ -175,7 +194,7 @@ export async function getModelsForWorkspace(
   }
 
   const settings = workspace.serverSettings;
-  const cacheKey = getModelListCacheKey(workspaceId, settings.agent.provider);
+  const cacheKey = getModelListCacheKey(workspaceId, settings.agent.provider, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
@@ -196,7 +215,7 @@ export async function getModelsForSettings(
   directory: string,
   settings: ServerSettings,
 ): Promise<ModelInfo[]> {
-  const cacheKey = getModelListCacheKey(connectionId, settings.agent.provider);
+  const cacheKey = getModelListCacheKey(connectionId, settings.agent.provider, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
@@ -215,7 +234,6 @@ export async function getModelsForSettings(
 export async function getModelVariantsForWorkspace(
   workspaceId: string,
   directory: string,
-  providerID: string,
   modelID: string,
   workspaceOverride?: Awaited<ReturnType<typeof getWorkspace>>,
 ): Promise<string[]> {
@@ -225,7 +243,7 @@ export async function getModelVariantsForWorkspace(
   }
 
   const settings = workspace.serverSettings;
-  const cacheKey = getModelVariantCacheKey(workspaceId, providerID, modelID);
+  const cacheKey = getModelVariantCacheKey(workspaceId, settings.agent.provider, directory, modelID);
   const cached = getCacheValue(modelVariantCache, cacheKey);
   if (cached) {
     return cached;

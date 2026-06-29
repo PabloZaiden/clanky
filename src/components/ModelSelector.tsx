@@ -300,13 +300,18 @@ export function ModelSelector({
         const params = new URLSearchParams({
           directory: variantDirectory,
           workspaceId: variantWorkspaceId,
-          providerID: parsedValue.providerID,
           modelID: parsedValue.modelID,
         });
         const response = await appFetch(`/api/models/variants?${params.toString()}`, {
           signal: controller.signal,
         });
         if (!response.ok) {
+          if (!controller.signal.aborted) {
+            setVariantOverrides((current) => ({
+              ...current,
+              [selectedVariantKey]: [""],
+            }));
+          }
           return;
         }
         const data = await response.json() as { variants?: string[] };
