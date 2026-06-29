@@ -1,7 +1,12 @@
 [install]
 exact = true
 minimumReleaseAge = 259200 # 3 days in seconds — avoids freshly published malicious packages
-minimumReleaseAgeExcludes = ["@pablozaiden/installer", "@pablozaiden/webapp"]
+# Keep this minimal: only first-party packages that Clanky intentionally upgrades before
+# the global safety window elapses should bypass minimumReleaseAge.
+minimumReleaseAgeExcludes = [
+  "@pablozaiden/installer",
+  "@pablozaiden/webapp", # First-party framework upgraded in lockstep with Clanky compatibility work.
+]
 
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
