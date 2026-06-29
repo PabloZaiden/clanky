@@ -39,7 +39,8 @@ interface PreviewBrowserSocket {
 }
 
 interface PreviewListenerData {
-  request: Request;
+  headers: Array<[string, string]>;
+  path: string;
   streamId: string;
 }
 
@@ -301,11 +302,22 @@ export async function runPreviewCommand(
     async fetch(req) {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
         const streamId = crypto.randomUUID();
-        const upgraded = server.upgrade(req, { data: { request: req, streamId } });
-        if (!upgraded) {
-          return new Response("WebSocket upgrade failed", { status: 400 });
+        try {
+          const url = new URL(req.url);
+          const upgraded = server.upgrade(req, {
+            data: {
+              headers: Array.from(req.headers.entries()),
+              path: `${url.pathname}${url.search}`,
+              streamId,
+            },
+          });
+          if (!upgraded) {
+            return new Response("WebSocket upgrade failed", { status: 400 });
+          }
+          return;
+        } catch (error) {
+          return createPreviewBridgeFailureResponse(error);
         }
-        return;
       }
       const streamId = crypto.randomUUID();
       try {
@@ -337,15 +349,13 @@ export async function runPreviewCommand(
     websocket: {
       idleTimeout: PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS,
       open(ws) {
-        const streamId = ws.data.streamId as string;
-        const request = ws.data.request as Request;
-        const url = new URL(request.url);
+        const { headers, path, streamId } = ws.data;
         browserSockets.set(streamId, ws);
         const sent = sendBridgeMessage({
           type: "websocket.open",
           streamId,
-          path: `${url.pathname}${url.search}`,
-          headers: Array.from(request.headers.entries()),
+          path,
+          headers,
         });
         if (!sent) {
           browserSockets.delete(streamId);
@@ -353,7 +363,7 @@ export async function runPreviewCommand(
         }
       },
       message(ws, data) {
-        const streamId = ws.data.streamId as string;
+        const { streamId } = ws.data;
         const body = typeof data === "string"
           ? new TextEncoder().encode(data)
           : data instanceof Buffer
@@ -371,7 +381,7 @@ export async function runPreviewCommand(
         }
       },
       close(ws, code, reason) {
-        const streamId = ws.data.streamId as string;
+        const { streamId } = ws.data;
         browserSockets.delete(streamId);
         sendBridgeMessage({
           type: "websocket.close",
