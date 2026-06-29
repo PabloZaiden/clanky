@@ -5,14 +5,11 @@
  * from CreateTaskForm and TaskActionBar into a reusable component.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { ModelInfo } from "../types";
-import { createLogger } from "../lib/logger";
-import { appFetch } from "../lib/public-path";
+import { useModelVariants } from "../hooks/useModelVariants";
 
 // ─── Shared model utilities ───────────────────────────────────────────────────
-
-const log = createLogger("ModelSelector");
 
 const REASONING_EFFORT_ORDER = new Map([
   ["low", 0],
@@ -24,6 +21,19 @@ const REASONING_EFFORT_ORDER = new Map([
 /** Build a model key string from provider, model, and variant. */
 export function makeModelKey(providerID: string, modelID: string, variant?: string): string {
   return `${providerID}:${modelID}:${variant ?? ""}`;
+}
+
+function makeModelBaseKey(providerID: string, modelID: string): string {
+  return `${providerID}:${modelID}`;
+}
+
+function parseModelBaseKey(key: string): { providerID: string; modelID: string } | null {
+  const parts = key.split(":");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return {
+    providerID: parts[0],
+    modelID: parts[1],
+  };
 }
 
 /** Parse a model key string into its parts. */
@@ -168,38 +178,29 @@ interface RenderModelOptionsConfig {
 }
 
 /**
- * Render <option> elements for a model, expanding variants into separate options.
- * For models without variants, renders a single option.
- * For models with variants, renders one option per variant.
+ * Render a model <option>. Variants are selected separately by ModelSelector.
  */
 export function renderModelOptions(
   model: ModelInfo,
   config: RenderModelOptionsConfig = {},
 ) {
   const { disabled = false, currentModelKey } = config;
-  const variants =
-    model.variants && model.variants.length > 0
-      ? sortModelVariants(model.variants)
-      : [""]; // No variants = single option with empty variant
+  const optionValue = makeModelBaseKey(model.providerID, model.modelID);
+  const current = currentModelKey ? parseModelKey(currentModelKey) : null;
+  const isCurrent = current
+    ? current.providerID === model.providerID && current.modelID === model.modelID
+    : false;
 
-  return variants.map((variant) => {
-    const optionValue = makeModelKey(model.providerID, model.modelID, variant);
-    const displayName = variant
-      ? `${model.modelName} (${variant})`
-      : model.modelName;
-    const isCurrent = currentModelKey ? optionValue === currentModelKey : false;
-
-    return (
-      <option
-        key={optionValue}
-        value={optionValue}
-        disabled={disabled || isCurrent}
-      >
-        {displayName}
-        {isCurrent ? " (current)" : ""}
-      </option>
-    );
-  });
+  return (
+    <option
+      key={optionValue}
+      value={optionValue}
+      disabled={disabled}
+    >
+      {model.modelName}
+      {isCurrent ? " (current)" : ""}
+    </option>
+  );
 }
 
 // ─── ModelSelector component ─────────────────────────────────────────────────
@@ -267,119 +268,109 @@ export function ModelSelector({
   compactLabel = "AI",
   variantDiscovery,
 }: ModelSelectorProps) {
-  const [variantOverrides, setVariantOverrides] = useState<Record<string, string[]>>({});
   const parsedValue = useMemo(() => parseModelKey(value), [value]);
-  const selectedVariantKey = parsedValue
-    ? `${parsedValue.providerID}:${parsedValue.modelID}`
-    : null;
-  const variantDirectory = variantDiscovery?.directory;
-  const variantWorkspaceId = variantDiscovery?.workspaceId;
-
-  useEffect(() => {
-    if (!variantDirectory || !variantWorkspaceId || !parsedValue || !selectedVariantKey) {
-      return;
+  const selectedModel = useMemo(() => {
+    if (!parsedValue) {
+      return null;
     }
-
-    const selectedModel = models.find((model) =>
+    return models.find((model) =>
       model.providerID === parsedValue.providerID
       && model.modelID === parsedValue.modelID
-      && model.connected
-    );
-    if (!selectedModel) {
+    ) ?? null;
+  }, [models, parsedValue]);
+
+  const knownVariants = selectedModel?.variants && selectedModel.variants.length > 0
+    ? sortModelVariants(selectedModel.variants)
+    : [];
+  const shouldDiscoverVariants = Boolean(
+    variantDiscovery
+    && selectedModel
+    && selectedModel.connected
+    && knownVariants.length === 0
+    && parsedValue,
+  );
+  const { variants: discoveredVariants, variantsLoading } = useModelVariants({
+    directory: variantDiscovery?.directory,
+    workspaceId: variantDiscovery?.workspaceId,
+    modelID: parsedValue?.modelID,
+    enabled: shouldDiscoverVariants,
+  });
+
+  const variantOptions = useMemo(() => {
+    const source = knownVariants.length > 0
+      ? knownVariants
+      : discoveredVariants.length > 0 ? discoveredVariants : [];
+    const variants = parsedValue?.variant && !source.includes(parsedValue.variant)
+      ? [parsedValue.variant, ...source]
+      : source;
+    return sortModelVariants([...new Set(variants)]);
+  }, [discoveredVariants, knownVariants, parsedValue]);
+
+  useEffect(() => {
+    if (!parsedValue || !selectedModel || variantsLoading || variantOptions.length === 0) {
       return;
     }
-
-    const knownVariants = variantOverrides[selectedVariantKey] ?? selectedModel.variants;
-    if (knownVariants && knownVariants.length > 0) {
-      return;
+    const preferredVariant = variantOptions.includes(parsedValue.variant)
+      ? parsedValue.variant
+      : variantOptions[0] ?? "";
+    if (preferredVariant !== parsedValue.variant) {
+      onChange(makeModelKey(parsedValue.providerID, parsedValue.modelID, preferredVariant));
     }
-
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const params = new URLSearchParams({
-          directory: variantDirectory,
-          workspaceId: variantWorkspaceId,
-          modelID: parsedValue.modelID,
-        });
-        const response = await appFetch(`/api/models/variants?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          if (!controller.signal.aborted) {
-            setVariantOverrides((current) => ({
-              ...current,
-              [selectedVariantKey]: [""],
-            }));
-          }
-          return;
-        }
-        const data = await response.json() as { variants?: string[] };
-        if (controller.signal.aborted) {
-          return;
-        }
-        const variants = data.variants && data.variants.length > 0 ? data.variants : [""];
-        setVariantOverrides((current) => ({
-          ...current,
-          [selectedVariantKey]: variants,
-        }));
-        if (parsedValue.variant === "" && variants.length > 0 && !variants.includes("")) {
-          onChange(makeModelKey(parsedValue.providerID, parsedValue.modelID, variants[0]!));
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        log.warn("Failed to lazily discover model variants", {
-          providerID: parsedValue.providerID,
-          modelID: parsedValue.modelID,
-          error: String(error),
-        });
-      }
-    })();
-
-    return () => controller.abort();
-  }, [
-    models,
-    onChange,
-    parsedValue,
-    selectedVariantKey,
-    variantDirectory,
-    variantOverrides,
-    variantWorkspaceId,
-  ]);
-
-  const displayModels = useMemo(() => models.map((model) => {
-    const key = `${model.providerID}:${model.modelID}`;
-    const override = variantOverrides[key];
-    const variants = override ?? model.variants;
-    if (
-      parsedValue
-      && parsedValue.variant
-      && !override
-      && parsedValue.providerID === model.providerID
-      && parsedValue.modelID === model.modelID
-      && (!variants || !variants.includes(parsedValue.variant))
-    ) {
-      return {
-        ...model,
-        variants: [parsedValue.variant, ...(variants ?? [])],
-      };
-    }
-    return override ? { ...model, variants: override } : model;
-  }), [models, parsedValue, variantOverrides]);
+  }, [onChange, parsedValue, selectedModel, variantOptions, variantsLoading]);
 
   const { modelsByProvider, connectedProviders, disconnectedProviders } =
-    groupModelsByProvider(displayModels);
-  const hasOptions = additionalOptions.length > 0 || displayModels.length > 0;
+    groupModelsByProvider(models);
+  const hasOptions = additionalOptions.length > 0 || models.length > 0;
   const isSelectDisabled = disabled || loading || !hasOptions;
+  const selectedModelBaseKey = parsedValue && selectedModel
+    ? makeModelBaseKey(parsedValue.providerID, parsedValue.modelID)
+    : value;
+  const hasVariantChoices = variantOptions.some((variant) => variant !== "");
+  const showVariantSelect = Boolean(selectedModel && (variantsLoading || hasVariantChoices));
+  const selectedVariantValue = variantOptions.includes(parsedValue?.variant ?? "")
+    ? parsedValue?.variant ?? ""
+    : variantOptions[0] ?? "";
 
-  const select = (
+  function handleModelChange(modelValue: string): void {
+    if (!modelValue) {
+      onChange("");
+      return;
+    }
+
+    const parsedModel = parseModelBaseKey(modelValue);
+    if (!parsedModel) {
+      onChange(modelValue);
+      return;
+    }
+
+    const model = models.find((entry) =>
+      entry.providerID === parsedModel.providerID
+      && entry.modelID === parsedModel.modelID
+    );
+    if (!model) {
+      onChange(modelValue);
+      return;
+    }
+
+    const variants = model.variants && model.variants.length > 0
+      ? sortModelVariants(model.variants)
+      : [];
+    onChange(makeModelKey(model.providerID, model.modelID, variants[0] ?? ""));
+  }
+
+  function handleVariantChange(variant: string): void {
+    if (!parsedValue || !selectedModel) {
+      return;
+    }
+    onChange(makeModelKey(parsedValue.providerID, parsedValue.modelID, variant));
+  }
+
+  const modelSelect = (
     <select
       id={id}
       aria-label={ariaLabel}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+      value={selectedModelBaseKey}
+      onChange={(e) => handleModelChange(e.target.value)}
       disabled={isSelectDisabled}
       className={compact
         ? `peer absolute inset-0 h-full w-full opacity-0 ${className}`
@@ -387,7 +378,7 @@ export function ModelSelector({
     >
       {loading && <option value="">{loadingText}</option>}
       {!loading && !hasOptions && <option value="">{emptyText}</option>}
-      {!loading && displayModels.length > 0 && (
+      {!loading && models.length > 0 && (
         <>
           <option value="">{placeholder}</option>
           {additionalOptions.map((option) => (
@@ -426,7 +417,7 @@ export function ModelSelector({
           )}
         </>
       )}
-      {!loading && displayModels.length === 0 && additionalOptions.length > 0 && (
+      {!loading && models.length === 0 && additionalOptions.length > 0 && (
         <>
           <option value="">{placeholder}</option>
           {additionalOptions.map((option) => (
@@ -439,19 +430,70 @@ export function ModelSelector({
     </select>
   );
 
+  const variantSelect = showVariantSelect ? (
+    <select
+      id={id ? `${id}-variant` : undefined}
+      aria-label={ariaLabel ? `${ariaLabel} variant` : "Model variant"}
+      value={selectedVariantValue}
+      onChange={(e) => handleVariantChange(e.target.value)}
+      disabled={disabled || loading || variantsLoading}
+      className={compact
+        ? `peer absolute inset-0 h-full w-full opacity-0 ${className}`
+        : className}
+    >
+      {variantsLoading && <option value={selectedVariantValue}>Loading variants...</option>}
+      {!variantsLoading && variantOptions.map((variant) => {
+        const variantValue = variant;
+        const current = currentModelKey ? parseModelKey(currentModelKey) : null;
+        const isCurrent = current
+          ? current.providerID === parsedValue?.providerID
+            && current.modelID === parsedValue?.modelID
+            && current.variant === variantValue
+          : false;
+        return (
+          <option
+            key={variantValue}
+            value={variantValue}
+            disabled={isCurrent}
+          >
+            {variantValue || "Default"}
+            {isCurrent ? " (current)" : ""}
+          </option>
+        );
+      })}
+    </select>
+  ) : null;
+
   if (!compact) {
-    return select;
+    if (!variantSelect) {
+      return modelSelect;
+    }
+    return (
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.45fr)]">
+        {modelSelect}
+        {variantSelect}
+      </div>
+    );
   }
 
+  const compactButtonClassName = "pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500";
+
   return (
-    <div className="relative h-9 w-9 shrink-0">
-      {select}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500"
-      >
-        {compactLabel}
+    <div className="flex shrink-0 gap-1">
+      <div className="relative h-9 w-9 shrink-0">
+        {modelSelect}
+        <div aria-hidden="true" className={compactButtonClassName}>
+          {compactLabel}
+        </div>
       </div>
+      {variantSelect && (
+        <div className="relative h-9 w-9 shrink-0">
+          {variantSelect}
+          <div aria-hidden="true" className={compactButtonClassName}>
+            V
+          </div>
+        </div>
+      )}
     </div>
   );
 }
