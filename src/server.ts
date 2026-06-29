@@ -11,7 +11,7 @@ import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persist
 import { resetStaleTasks } from "./persistence/tasks";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
-import { DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS, getServerStartupMessages } from "./core/server-config";
+import { getServerStartupMessages } from "./core/server-config";
 import { log, setLogLevel } from "./core/logger";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
@@ -32,6 +32,8 @@ type ClankyRealtimeEvent = ResourceRealtimeEvent | Record<string, unknown>;
 type LegacyRouteHandler = (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>;
 type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
 type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
+
+const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeRegistered = false;
@@ -109,7 +111,7 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
     sameOrigin: "always",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
-      ctx.server?.timeout(req, DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS);
+      ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
       const upgraded = ctx.server?.upgrade(req, {
         data: {
           webappSocketHandler: "clanky",
