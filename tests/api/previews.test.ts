@@ -95,7 +95,32 @@ describe("workspace previews", () => {
 
       expect(await previewSessionManager.closePreview(preview.config.id, "test close")).toBe(true);
       const closed = await previewSessionManager.getPreview(preview.config.id);
-      expect(closed?.state.status).toBe("closed");
+      expect(closed).toBeNull();
+      expect(await previewSessionManager.listWorkspacePreviews("workspace-1")).toEqual([]);
+    });
+  });
+
+  test("does not expose closed previews from workspace or active lists", async () => {
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await createWorkspace(buildWorkspace("workspace-1", "App"));
+      const { preview } = await previewSessionManager.registerCliPreview({
+        workspace: "workspace-1",
+        remoteHost: "127.0.0.1",
+        remotePort: 3000,
+        localHost: "127.0.0.1",
+        localPort: 43123,
+        localUrl: "http://127.0.0.1:43123/",
+        initialPath: "/",
+        cliHostname: "devbox",
+      });
+
+      expect(await previewSessionManager.listActivePreviews()).toHaveLength(1);
+      expect(await previewSessionManager.closePreview(preview.config.id, "test close")).toBe(true);
+      expect(await previewSessionManager.listActivePreviews()).toEqual([]);
+      expect(await previewSessionManager.listWorkspacePreviews("workspace-1")).toEqual([]);
+      expect(
+        getDatabase().query("SELECT COUNT(*) AS count FROM preview_sessions").get() as { count: number },
+      ).toEqual({ count: 0 });
     });
   });
 

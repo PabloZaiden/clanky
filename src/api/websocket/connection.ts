@@ -20,9 +20,33 @@ const log = createLogger("api:websocket");
 
 /** Maximum number of concurrent WebSocket connections allowed */
 export const MAX_CONNECTIONS = 100;
+export const PREVIEW_BRIDGE_KEEPALIVE_INTERVAL_MS = 30000;
 
 /** Set of active WebSocket connections for tracking and limit enforcement */
 export const activeConnections = new Set<ServerWebSocket<WebSocketData>>();
+
+export function startPreviewBridgeKeepalive(
+  ws: ServerWebSocket<WebSocketData>,
+  intervalMs = PREVIEW_BRIDGE_KEEPALIVE_INTERVAL_MS,
+): ReturnType<typeof setInterval> {
+  const timer = setInterval(() => {
+    try {
+      ws.send(JSON.stringify({ type: "bridge.ping" }));
+    } catch (sendError) {
+      log.trace("Failed to send preview bridge keepalive", { error: String(sendError) });
+    }
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
+}
+
+function clearPreviewBridgeKeepalive(ws: ServerWebSocket<WebSocketData>): void {
+  if (!ws.data.previewBridgeKeepalive) {
+    return;
+  }
+  clearInterval(ws.data.previewBridgeKeepalive);
+  ws.data.previewBridgeKeepalive = undefined;
+}
 
 function getChatEventScope(event: ChatEvent): string | undefined {
   if ("scope" in event) {
@@ -84,6 +108,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
   if (previewBridgeMode) {
     ws.send(JSON.stringify({ type: "connected" }));
+    ws.data.previewBridgeKeepalive = startPreviewBridgeKeepalive(ws);
     return;
   }
 
@@ -278,6 +303,7 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
+  clearPreviewBridgeKeepalive(ws);
 
   if (ws.data.unsubscribers) {
     for (const unsubscribe of ws.data.unsubscribers) {
@@ -316,6 +342,7 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
   }
+  clearPreviewBridgeKeepalive(ws);
   if (ws.data.unsubscribers) {
     for (const unsubscribe of ws.data.unsubscribers) {
       unsubscribe();

@@ -16,9 +16,10 @@ import {
 } from "../types";
 import { getWorkspace, listWorkspaces, touchWorkspace } from "../persistence/workspaces";
 import {
+  deletePreviewSession,
   getPreviewSession,
+  listPreviewSessionsByWorkspaceAndStatuses,
   listPreviewSessionsByStatuses,
-  listPreviewSessionsByWorkspace,
   savePreviewSession,
 } from "../persistence/preview-sessions";
 import { createLogger } from "./logger";
@@ -183,7 +184,7 @@ export class PreviewSessionManager {
 
   async listWorkspacePreviews(workspaceId: string): Promise<PreviewSession[]> {
     await this.initialize();
-    return await listPreviewSessionsByWorkspace(workspaceId);
+    return await listPreviewSessionsByWorkspaceAndStatuses(workspaceId, ["active", "closing"]);
   }
 
   async listActivePreviews(): Promise<PreviewSession[]> {
@@ -228,7 +229,7 @@ export class PreviewSessionManager {
         error: reason,
       },
     };
-    await savePreviewSession(closedPreview);
+    await deletePreviewSession(id);
     previewEventEmitter.emit({
       type: "preview.closed",
       previewId: id,
@@ -261,7 +262,7 @@ export class PreviewSessionManager {
         error,
       },
     };
-    await savePreviewSession(failedPreview);
+    await deletePreviewSession(id);
     previewEventEmitter.emit({
       type: "preview.failed",
       previewId: id,
@@ -530,7 +531,7 @@ export class PreviewSessionManager {
           error: "Preview was closed because the server restarted or the bridge connection was lost",
         },
       };
-      await savePreviewSession(closedPreview);
+      await deletePreviewSession(preview.config.id);
       previewEventEmitter.emit({
         type: "preview.closed",
         previewId: preview.config.id,
