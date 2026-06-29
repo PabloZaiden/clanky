@@ -5,9 +5,14 @@
  * from CreateTaskForm and TaskActionBar into a reusable component.
  */
 
+import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "../types";
+import { createLogger } from "../lib/logger";
+import { appFetch } from "../lib/public-path";
 
 // ─── Shared model utilities ───────────────────────────────────────────────────
+
+const log = createLogger("ModelSelector");
 
 const REASONING_EFFORT_ORDER = new Map([
   ["low", 0],
@@ -61,7 +66,7 @@ export function modelVariantExists(
   const model = models.find((m) => m.providerID === providerID && m.modelID === modelID);
   if (!model) return false;
   if (!model.variants || model.variants.length === 0) {
-    return variant === "";
+    return true;
   }
   return model.variants.includes(variant);
 }
@@ -95,7 +100,7 @@ export function getPreferredModelVariant(
     return null;
   }
   if (!model.variants || model.variants.length === 0) {
-    return "";
+    return variant;
   }
   if (model.variants.includes(variant)) {
     return variant;
@@ -236,6 +241,11 @@ export interface ModelSelectorProps {
   compact?: boolean;
   /** Label shown inside the compact trigger. */
   compactLabel?: string;
+  /** Workspace context for lazy per-model variant discovery. */
+  variantDiscovery?: {
+    directory: string;
+    workspaceId: string;
+  };
 }
 
 export function ModelSelector({
@@ -255,10 +265,108 @@ export function ModelSelector({
   ariaLabel,
   compact = false,
   compactLabel = "AI",
+  variantDiscovery,
 }: ModelSelectorProps) {
+  const [variantOverrides, setVariantOverrides] = useState<Record<string, string[]>>({});
+  const parsedValue = useMemo(() => parseModelKey(value), [value]);
+  const selectedVariantKey = parsedValue
+    ? `${parsedValue.providerID}:${parsedValue.modelID}`
+    : null;
+  const variantDirectory = variantDiscovery?.directory;
+  const variantWorkspaceId = variantDiscovery?.workspaceId;
+
+  useEffect(() => {
+    if (!variantDirectory || !variantWorkspaceId || !parsedValue || !selectedVariantKey) {
+      return;
+    }
+
+    const selectedModel = models.find((model) =>
+      model.providerID === parsedValue.providerID
+      && model.modelID === parsedValue.modelID
+      && model.connected
+    );
+    if (!selectedModel) {
+      return;
+    }
+
+    const knownVariants = variantOverrides[selectedVariantKey] ?? selectedModel.variants;
+    if (knownVariants && knownVariants.length > 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          directory: variantDirectory,
+          workspaceId: variantWorkspaceId,
+          providerID: parsedValue.providerID,
+          modelID: parsedValue.modelID,
+        });
+        const response = await appFetch(`/api/models/variants?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json() as { variants?: string[] };
+        if (controller.signal.aborted) {
+          return;
+        }
+        const variants = data.variants && data.variants.length > 0 ? data.variants : [""];
+        setVariantOverrides((current) => ({
+          ...current,
+          [selectedVariantKey]: variants,
+        }));
+        if (parsedValue.variant === "" && variants.length > 0 && !variants.includes("")) {
+          onChange(makeModelKey(parsedValue.providerID, parsedValue.modelID, variants[0]!));
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        log.warn("Failed to lazily discover model variants", {
+          providerID: parsedValue.providerID,
+          modelID: parsedValue.modelID,
+          error: String(error),
+        });
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    models,
+    onChange,
+    parsedValue,
+    selectedVariantKey,
+    variantDirectory,
+    variantOverrides,
+    variantWorkspaceId,
+  ]);
+
+  const displayModels = useMemo(() => models.map((model) => {
+    const key = `${model.providerID}:${model.modelID}`;
+    const override = variantOverrides[key];
+    const variants = override ?? model.variants;
+    if (
+      parsedValue
+      && parsedValue.variant
+      && !override
+      && parsedValue.providerID === model.providerID
+      && parsedValue.modelID === model.modelID
+      && (!variants || !variants.includes(parsedValue.variant))
+    ) {
+      return {
+        ...model,
+        variants: [parsedValue.variant, ...(variants ?? [])],
+      };
+    }
+    return override ? { ...model, variants: override } : model;
+  }), [models, parsedValue, variantOverrides]);
+
   const { modelsByProvider, connectedProviders, disconnectedProviders } =
-    groupModelsByProvider(models);
-  const hasOptions = additionalOptions.length > 0 || models.length > 0;
+    groupModelsByProvider(displayModels);
+  const hasOptions = additionalOptions.length > 0 || displayModels.length > 0;
   const isSelectDisabled = disabled || loading || !hasOptions;
 
   const select = (
@@ -274,7 +382,7 @@ export function ModelSelector({
     >
       {loading && <option value="">{loadingText}</option>}
       {!loading && !hasOptions && <option value="">{emptyText}</option>}
-      {!loading && models.length > 0 && (
+      {!loading && displayModels.length > 0 && (
         <>
           <option value="">{placeholder}</option>
           {additionalOptions.map((option) => (
@@ -313,7 +421,7 @@ export function ModelSelector({
           )}
         </>
       )}
-      {!loading && models.length === 0 && additionalOptions.length > 0 && (
+      {!loading && displayModels.length === 0 && additionalOptions.length > 0 && (
         <>
           <option value="">{placeholder}</option>
           {additionalOptions.map((option) => (

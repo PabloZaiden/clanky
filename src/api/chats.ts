@@ -126,19 +126,6 @@ export const chatsRoutes = {
         if (quickChatValidation) {
           return quickChatValidation;
         }
-      } else {
-        const modelValidation = await isModelEnabled(
-          workspace.id,
-          workspace.directory,
-          body.model.providerID,
-          body.model.modelID,
-        );
-        if (!modelValidation.enabled) {
-          return errorResponse(
-            modelValidation.errorCode ?? "model_not_enabled",
-            modelValidation.error ?? "The selected model is not available",
-          );
-        }
       }
 
       try {

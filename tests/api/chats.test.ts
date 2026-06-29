@@ -915,7 +915,7 @@ describe("Chats API Integration", () => {
     expect(nameGenerationPrompts).toHaveLength(1);
   });
 
-  test("allows model validation bypass only for saved quick chat settings", async () => {
+  test("creates standard chats without model discovery while preserving quick chat settings validation", async () => {
     const unavailableModel = { providerID: "missing-provider", modelID: "missing-model", variant: "" };
 
     const standardResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -929,8 +929,9 @@ describe("Chats API Integration", () => {
         baseBranch: "main",
       }),
     });
-    expect(standardResponse.status).toBe(400);
-    expect((await standardResponse.json()).error).toBe("provider_not_found");
+    expect(standardResponse.status).toBe(201);
+    const standardChat = await standardResponse.json();
+    expect(standardChat.config.model).toEqual(unavailableModel);
 
     const mismatchedQuickResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

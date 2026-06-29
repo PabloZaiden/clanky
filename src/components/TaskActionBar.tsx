@@ -42,6 +42,11 @@ export interface TaskActionBarProps {
   models: ModelInfo[];
   /** Whether models are loading */
   modelsLoading: boolean;
+  /** Workspace context for lazy per-model variant discovery */
+  variantDiscovery?: {
+    directory: string;
+    workspaceId: string;
+  };
   /** Callback when user submits a message and/or model change */
   onSubmit: (options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }) => Promise<boolean>;
   /** Callback when user stops the active agent without sending a message */
@@ -62,6 +67,7 @@ export function TaskActionBar({
   currentModel,
   models,
   modelsLoading,
+  variantDiscovery,
   onSubmit,
   onStop,
   disabled = false,
@@ -199,6 +205,7 @@ export function TaskActionBar({
                     disabled={secondaryActionsDisabled}
                     showDisconnected={true}
                     currentModelKey={currentModelKey}
+                    variantDiscovery={variantDiscovery}
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
                     loadingText="Loading..."
                     emptyText="Select model..."

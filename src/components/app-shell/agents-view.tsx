@@ -328,6 +328,10 @@ function AgentForm({
             models={models}
             loading={modelsLoading}
             showDisconnected
+            variantDiscovery={selectedWorkspace ? {
+              directory: selectedWorkspace.directory,
+              workspaceId: selectedWorkspace.id,
+            } : undefined}
             className={inputClassName}
             emptyText="Select a workspace to load models"
           />

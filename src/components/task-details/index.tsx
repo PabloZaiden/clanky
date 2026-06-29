@@ -216,6 +216,10 @@ export function TaskDetails({
           mode={config.mode} isPlanning={isPlanning} isGenerating={isGenerating}
           currentModel={config.model}
           models={models} modelsLoading={modelsLoading}
+          variantDiscovery={{
+            directory: config.directory,
+            workspaceId: config.workspaceId,
+          }}
           requireMessage={canTerminalFollowUp}
           submitLabel={canTerminalFollowUp ? "Restart" : undefined}
           onStop={isActive || isPlanning ? stopTask : undefined}

@@ -9,7 +9,7 @@
 import { getWorkspace } from "../../persistence/workspaces";
 import { createLogger } from "../../core/logger";
 import { errorResponse } from "../helpers";
-import { getModelsForWorkspace } from "./model-discovery";
+import { getModelVariantsForWorkspace, getModelsForWorkspace } from "./model-discovery";
 
 const log = createLogger("api:models");
 
@@ -17,6 +17,68 @@ const log = createLogger("api:models");
  * Models API routes.
  */
 export const modelsRoutes = {
+  "/api/models/variants": {
+    /**
+     * GET /api/models/variants - Get lazily discovered variants for one model.
+     *
+     * Query Parameters:
+     * - directory (required): Working directory path for model context
+     * - workspaceId (required): Workspace ID to use for server settings
+     * - providerID (required): Provider ID selected by the client
+     * - modelID (required): Model ID selected by the client
+     *
+     * @returns Object with variants array
+     */
+    async GET(req: Request): Promise<Response> {
+      const url = new URL(req.url);
+      const directory = url.searchParams.get("directory");
+      const workspaceId = url.searchParams.get("workspaceId");
+      const providerID = url.searchParams.get("providerID");
+      const modelID = url.searchParams.get("modelID");
+
+      if (!directory) {
+        return errorResponse("missing_directory", "directory query parameter is required");
+      }
+
+      if (!workspaceId) {
+        return errorResponse("missing_workspace_id", "workspaceId query parameter is required");
+      }
+
+      if (!providerID) {
+        return errorResponse("missing_provider_id", "providerID query parameter is required");
+      }
+
+      if (!modelID) {
+        return errorResponse("missing_model_id", "modelID query parameter is required");
+      }
+
+      const workspace = await getWorkspace(workspaceId);
+      if (!workspace) {
+        return errorResponse("workspace_not_found", `Workspace not found: ${workspaceId}`, 404);
+      }
+
+      try {
+        const variants = await getModelVariantsForWorkspace(
+          workspaceId,
+          directory,
+          providerID,
+          modelID,
+          workspace,
+        );
+        return Response.json({ variants });
+      } catch (error) {
+        log.error("Failed to discover model variants", {
+          workspaceId,
+          directory,
+          providerID,
+          modelID,
+          error: String(error),
+        });
+        return errorResponse("model_variants_failed", String(error), 500);
+      }
+    },
+  },
+
   "/api/models": {
     /**
      * GET /api/models - Get available AI models.
