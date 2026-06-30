@@ -13,15 +13,15 @@ describe("clanky preview command parsing", () => {
       baseUrl: undefined,
       workspace: "app",
       port: 3000,
-      remoteHost: "127.0.0.1",
-      host: "127.0.0.1",
+      remoteHost: "localhost",
+      host: "localhost",
       localPort: undefined,
       path: "/dashboard",
       open: false,
     });
   });
 
-  test("rejects invalid ports and accepts LAN exposure flag", () => {
+  test("rejects invalid ports and accepts host overrides", () => {
     expect(() => parseCliCommand(["preview", "--workspace", "app", "--port", "70000"])).toThrow("--port must be an integer between 1 and 65535");
     expect(parseCliCommand([
       "preview",
@@ -29,6 +29,8 @@ describe("clanky preview command parsing", () => {
       "app",
       "--port",
       "3000",
+      "--remote-host",
+      "127.0.0.1",
       "--host",
       "0.0.0.0",
       "--local-port",
@@ -36,6 +38,7 @@ describe("clanky preview command parsing", () => {
       "--open",
     ])).toMatchObject({
       action: "preview",
+      remoteHost: "127.0.0.1",
       host: "0.0.0.0",
       localPort: 43123,
       open: true,
