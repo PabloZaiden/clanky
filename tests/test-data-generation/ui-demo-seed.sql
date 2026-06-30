@@ -4,6 +4,34 @@
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
+INSERT INTO webapp_users (
+  id,
+  username,
+  role,
+  auth_version,
+  created_at,
+  updated_at,
+  last_login_at,
+  disabled_at
+) VALUES (
+  'admin',
+  'admin',
+  'owner',
+  1,
+  '2026-04-16T18:00:00.000Z',
+  '2026-04-16T18:00:00.000Z',
+  NULL,
+  NULL
+)
+ON CONFLICT(id) DO UPDATE SET
+  username = excluded.username,
+  role = excluded.role,
+  auth_version = excluded.auth_version,
+  created_at = excluded.created_at,
+  updated_at = excluded.updated_at,
+  last_login_at = excluded.last_login_at,
+  disabled_at = excluded.disabled_at;
+
 INSERT INTO ssh_servers (
   id,
   name,
@@ -426,7 +454,12 @@ INSERT INTO tasks (
   'sess-demo-plan-1',
   'http://localhost:7777',
   2,
-  '# Plan\n1. Add a compact filter bar.\n2. Filter tasks, chats, and sessions consistently.\n3. Persist the selection for refresh recovery.\n\nPLAN_READY',
+  '# Plan
+1. Add a compact filter bar.
+2. Filter tasks, chats, and sessions consistently.
+3. Persist the selection for refresh recovery.
+
+PLAN_READY',
   1,
   1,
   NULL,
@@ -1255,47 +1288,58 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   addressed_at = excluded.addressed_at;
 
-INSERT INTO forwarded_ports (
+INSERT INTO preview_sessions (
   id,
-  task_id,
+  user_id,
   workspace_id,
-  ssh_session_id,
   remote_host,
   remote_port,
+  local_host,
   local_port,
+  local_url,
+  initial_path,
+  cli_client_id,
+  cli_hostname,
   created_at,
   updated_at,
   status,
-  pid,
   connected_at,
+  closed_at,
   error_message
 ) VALUES (
-  'demo-forwarded-port-1',
-  'demo-task-running',
+  'demo-preview-session-1',
+  'admin',
   'demo-workspace-api',
-  'demo-workspace-session-task-running',
   '127.0.0.1',
   4173,
+  '127.0.0.1',
   54173,
+  'http://127.0.0.1:54173',
+  '/',
+  'demo-cli-client',
+  'demo-workstation',
   '2026-04-16T19:15:00.000Z',
   '2026-04-16T19:15:30.000Z',
   'active',
-  41002,
   '2026-04-16T19:15:30.000Z',
+  NULL,
   NULL
 )
 ON CONFLICT(id) DO UPDATE SET
-  task_id = excluded.task_id,
   workspace_id = excluded.workspace_id,
-  ssh_session_id = excluded.ssh_session_id,
   remote_host = excluded.remote_host,
   remote_port = excluded.remote_port,
+  local_host = excluded.local_host,
   local_port = excluded.local_port,
+  local_url = excluded.local_url,
+  initial_path = excluded.initial_path,
+  cli_client_id = excluded.cli_client_id,
+  cli_hostname = excluded.cli_hostname,
   created_at = excluded.created_at,
   updated_at = excluded.updated_at,
   status = excluded.status,
-  pid = excluded.pid,
   connected_at = excluded.connected_at,
+  closed_at = excluded.closed_at,
   error_message = excluded.error_message;
 
 COMMIT;

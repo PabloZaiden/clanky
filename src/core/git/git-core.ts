@@ -13,6 +13,7 @@ const DEFAULT_GIT_SSH_COMMAND = "ssh";
 const ACCEPT_NEW_HOST_KEY_OPTION = "-o StrictHostKeyChecking=accept-new";
 const KNOWN_HOSTS_OPTION_NAME = "UserKnownHostsFile";
 const CLANKY_KNOWN_HOSTS_FILENAME = "clanky-known-hosts";
+const LOCAL_GIT_FALLBACK_COMMANDS = ["/usr/local/bin/git", "/usr/bin/git"];
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -32,6 +33,16 @@ export async function runGitCommand(
   log.trace(`[GitService] Running: ${cmdStr} in ${directory}`);
   const gitArgs = ["-C", directory, ...args];
   let result = await executor.exec("git", gitArgs, { cwd: directory });
+
+  if (!result.success && result.stderr.includes("posix_spawn 'git'")) {
+    for (const fallbackCommand of LOCAL_GIT_FALLBACK_COMMANDS) {
+      log.debug(`[GitService] Retrying with local git fallback: ${fallbackCommand}`);
+      result = await executor.exec(fallbackCommand, gitArgs, { cwd: directory });
+      if (result.success || !result.stderr.includes("ENOENT")) {
+        break;
+      }
+    }
+  }
 
   if (!result.success && shouldRetryWithAcceptedHostKey(result.stderr)) {
     log.info(`[GitService] Retrying with auto-accepted SSH host key: ${cmdStr}`);
