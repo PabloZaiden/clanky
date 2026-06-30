@@ -21,6 +21,7 @@ interface ProvisioningSnapshotResponse {
         id: string;
         devcontainerSubpath?: string;
         devboxTemplate?: string;
+        githubUser?: string;
       };
     state: {
       status: string;
@@ -116,11 +117,12 @@ describe("Provisioning API integration", () => {
 
   test("creates a provisioning job and completes with a workspace snapshot", async () => {
     const sshServer = await createServer();
-    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
+    const executor = new ProvisioningTestExecutor({
       devboxStatusOutput: createDevboxStatusOutput({
         workdir: "/workspaces/example",
       }),
-    }));
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
 
     const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
       method: "POST",
@@ -132,6 +134,7 @@ describe("Provisioning API integration", () => {
         basePath: "/workspaces",
         devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
         devboxTemplate: "python",
+        githubUser: " work-account ",
         provider: "copilot",
         credentialToken: null,
         mode: "provision",
@@ -144,16 +147,56 @@ describe("Provisioning API integration", () => {
     const started = await response.json() as ProvisioningSnapshotResponse;
     expect(started.job.config.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
     expect(started.job.config.devboxTemplate).toBe("python");
+    expect(started.job.config.githubUser).toBe("work-account");
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.job.state.status).toBe("completed");
     expect(completed.job.state.workspaceId).toBeTruthy();
     expect(completed.workspace?.directory).toBe("/workspaces/example");
+    const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
+    expect(devboxUpCall?.args).toEqual(["up", "--template", "python", "--gh-user", "work-account"]);
 
     const logsResponse = await fetch(`${baseUrl}/api/provisioning-jobs/${started.job.config.id}/logs`);
     expect(logsResponse.ok).toBe(true);
     const logs = await logsResponse.json() as { success: boolean; logs: Array<{ text: string }> };
     expect(logs.success).toBe(true);
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
+  });
+
+  test("omits devbox GitHub user args when githubUser is blank", async () => {
+    const sshServer = await createServer();
+    const executor = new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/workspaces/no-gh-user",
+      }),
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Default GH Workspace",
+        sshServerId: sshServer.config.id,
+        repoUrl: "https://github.com/octocat/default-gh.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: "backend",
+        devboxTemplate: null,
+        githubUser: "   ",
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    expect(started.job.config.githubUser).toBeUndefined();
+    await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+
+    const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
+    expect(devboxUpCall?.args).toEqual(["up", "--devcontainer-subpath", "backend"]);
   });
 
   test("hides provisioning SSH secrets by default and includes them with sensitive=true", async () => {

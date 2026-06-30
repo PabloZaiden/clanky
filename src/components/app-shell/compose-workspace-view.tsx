@@ -14,6 +14,10 @@ import type { ShellRoute } from "./shell-types";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { SshServer } from "../../types/ssh-server";
+import {
+  getAutomaticWorkspaceBasePath,
+  saveLastAutomaticWorkspaceSshServerId,
+} from "../../lib/automatic-workspace-preferences";
 
 interface ComposeWorkspaceViewProps {
   shellHeaderOffsetClassName: string;
@@ -63,6 +67,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticDevcontainerSubpath,
     automaticDevboxTemplate,
     setAutomaticDevboxTemplate,
+    automaticGithubUser,
+    setAutomaticGithubUser,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
     automaticProvider,
@@ -121,11 +127,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       : workspaceCreateSubmitting || workspacesSaving;
   const createActionDisabled =
     workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid;
-  const advancedSummary = automaticDevboxTemplate
-    ? `Template: ${automaticDevboxTemplate}`
-    : automaticDevcontainerSubpath
-      ? "Devcontainer variant configured"
-      : "Optional template and repo devcontainer overrides";
+  const advancedSummaryItems = [
+    automaticDevboxTemplate ? `Template: ${automaticDevboxTemplate}` : null,
+    !automaticDevboxTemplate && automaticDevcontainerSubpath ? "Devcontainer variant configured" : null,
+    automaticGithubUser.trim() ? `GitHub account: ${automaticGithubUser.trim()}` : null,
+  ].filter((item): item is string => item !== null);
+  const advancedSummary = advancedSummaryItems.length > 0
+    ? advancedSummaryItems.join(" · ")
+    : "Optional template, repo devcontainer, and GitHub account overrides";
 
   const createModeControls = (
     <>
@@ -280,11 +289,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   onChange={(event) => {
                     const newServerId = event.target.value;
                     setAutomaticServerId(newServerId);
+                    saveLastAutomaticWorkspaceSshServerId(newServerId);
                     setAutomaticDevboxTemplate("");
                     const selectedServer = servers.find((s) => s.config.id === newServerId);
-                    if (selectedServer?.config.repositoriesBasePath) {
-                      setAutomaticBasePath(selectedServer.config.repositoriesBasePath);
-                    }
+                    setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
                   }}
                   className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
                 >
@@ -445,6 +453,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
                       )}
                     </div>
+
+                    <InlineField
+                      id="automatic-github-user"
+                      label="GitHub CLI account"
+                      value={automaticGithubUser}
+                      onChange={setAutomaticGithubUser}
+                      placeholder="work-account"
+                      help="Optional. When set, devbox runs with --gh-user for GH_TOKEN injection. Leave blank to use the current default gh account."
+                    />
 
                     <InlineField
                       id="automatic-devcontainer-subpath"

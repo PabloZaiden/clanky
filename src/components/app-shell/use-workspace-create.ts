@@ -5,6 +5,10 @@ import type { AgentProvider, ServerSettings } from "../../types/settings";
 import type { CreateWorkspaceRequest } from "../../types/workspace";
 import type { SshServer } from "../../types/ssh-server";
 import { appFetch } from "../../lib/public-path";
+import {
+  getAutomaticWorkspaceBasePath,
+  getDefaultAutomaticWorkspaceServer,
+} from "../../lib/automatic-workspace-preferences";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { ToastContextValue } from "../../hooks/useToast";
 import type { ShellRoute } from "./shell-types";
@@ -34,6 +38,8 @@ export interface UseWorkspaceCreateResult {
   setAutomaticDevcontainerSubpath: (subpath: string) => void;
   automaticDevboxTemplate: string;
   setAutomaticDevboxTemplate: (template: string) => void;
+  automaticGithubUser: string;
+  setAutomaticGithubUser: (githubUser: string) => void;
   automaticAdvancedOpen: boolean;
   setAutomaticAdvancedOpen: (open: boolean) => void;
   automaticProvider: AgentProvider;
@@ -79,6 +85,7 @@ export function useWorkspaceCreate({
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
+  const [automaticGithubUser, setAutomaticGithubUser] = useState("");
   const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
@@ -114,25 +121,26 @@ export function useWorkspaceCreate({
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
-    setAutomaticServerId(servers[0]?.config.id ?? "");
+    const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
+    setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
-    setAutomaticBasePath("/workspaces");
+    setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
+    setAutomaticGithubUser("");
     setAutomaticAdvancedOpen(false);
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
   }, [provisioning.activeJobId, provisioning.snapshot?.job.state.status, route, servers]);
 
   useEffect(() => {
-    if (route.view !== "compose" || route.kind !== "workspace" || automaticServerId || !servers[0]) {
+    if (route.view !== "compose" || route.kind !== "workspace" || automaticServerId || servers.length === 0) {
       return;
     }
-    setAutomaticServerId(servers[0].config.id);
-    if (servers[0].config.repositoriesBasePath) {
-      setAutomaticBasePath(servers[0].config.repositoriesBasePath);
-    }
+    const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
+    setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
+    setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
   }, [automaticServerId, route, servers]);
 
   useEffect(() => {
@@ -183,7 +191,8 @@ export function useWorkspaceCreate({
     setAutomaticBasePath(config.basePath);
     setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
     setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
-    setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath));
+    setAutomaticGithubUser(config.githubUser ?? "");
+    setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
     setAutomaticProvider(config.provider);
     setAutomaticPassword("");
     provisioning.clearActiveJob();
@@ -221,6 +230,7 @@ export function useWorkspaceCreate({
             ? null
             : automaticDevcontainerSubpath.trim() || null,
           devboxTemplate: automaticDevboxTemplate.trim() || null,
+          githubUser: automaticGithubUser.trim() || null,
           provider: automaticProvider,
           createNewRepository: automaticCreateNewRepository,
           password: automaticPassword,
@@ -285,6 +295,8 @@ export function useWorkspaceCreate({
     setAutomaticDevcontainerSubpath,
     automaticDevboxTemplate,
     setAutomaticDevboxTemplate,
+    automaticGithubUser,
+    setAutomaticGithubUser,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
     automaticProvider,
