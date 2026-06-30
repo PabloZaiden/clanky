@@ -37,12 +37,27 @@ const USER_OWNED_SEED_TABLES = [
 function prepareSeedSqlForCurrentSchema(sql: string): string {
   let preparedSql = sql;
   for (const tableName of USER_OWNED_SEED_TABLES) {
-    preparedSql = preparedSql.replaceAll(
-      `INSERT INTO ${tableName} (\n  id,`,
-      `INSERT INTO ${tableName} (\n  id,\n  user_id,`,
+    const insertPattern = new RegExp(
+      `INSERT INTO ${tableName} \\([\\s\\S]*?\\nON CONFLICT\\(id\\)[\\s\\S]*?;`,
+      "g",
     );
+
+    preparedSql = preparedSql.replaceAll(insertPattern, (statement: string) => {
+      const columnListEnd = statement.indexOf("\n) VALUES");
+      const columnList = columnListEnd === -1 ? statement : statement.slice(0, columnListEnd);
+      if (columnList.includes("\n  user_id,")) {
+        return statement;
+      }
+
+      return statement
+        .replace(
+          `INSERT INTO ${tableName} (\n  id,`,
+          `INSERT INTO ${tableName} (\n  id,\n  user_id,`,
+        )
+        .replace(/\) VALUES \(\n  ('demo-[^']+',)/, `) VALUES (\n  $1\n  '${DEMO_OWNER_USER_ID}',`);
+    });
   }
-  return preparedSql.replaceAll(/\) VALUES \(\n  ('demo-[^']+',)/g, `) VALUES (\n  $1\n  '${DEMO_OWNER_USER_ID}',`);
+  return preparedSql;
 }
 
 function parseArgs(argv: string[]): CliOptions {

@@ -1290,6 +1290,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO preview_sessions (
   id,
+  user_id,
   workspace_id,
   remote_host,
   remote_port,
@@ -1307,6 +1308,7 @@ INSERT INTO preview_sessions (
   error_message
 ) VALUES (
   'demo-preview-session-1',
+  'admin',
   'demo-workspace-api',
   '127.0.0.1',
   4173,
