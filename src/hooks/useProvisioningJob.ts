@@ -19,6 +19,7 @@ export interface StartProvisioningJobRequest {
   basePath: string;
   devcontainerSubpath: string | null;
   devboxTemplate: string | null;
+  githubUser?: string | null;
   provider: AgentProvider;
   createNewRepository?: boolean;
   password?: string;
@@ -203,6 +204,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           basePath: request.basePath.trim(),
           devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,
           devboxTemplate: request.devboxTemplate?.trim() ? request.devboxTemplate.trim() : null,
+          githubUser: request.githubUser?.trim() ? request.githubUser.trim() : null,
           provider: request.provider,
           credentialToken: credentialToken ?? null,
           mode: request.mode,

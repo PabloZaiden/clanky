@@ -19,6 +19,8 @@ interface AutomaticWorkspaceFormProps {
   onDevcontainerSubpathChange: (subpath: string) => void;
   devboxTemplate: string;
   onDevboxTemplateChange: (template: string) => void;
+  githubUser: string;
+  onGithubUserChange: (githubUser: string) => void;
   provider: AgentProvider;
   onProviderChange: (provider: AgentProvider) => void;
   password: string;
@@ -48,6 +50,8 @@ export function AutomaticWorkspaceForm({
   onDevcontainerSubpathChange,
   devboxTemplate,
   onDevboxTemplateChange,
+  githubUser,
+  onGithubUserChange,
   provider,
   onProviderChange,
   password,
@@ -61,11 +65,17 @@ export function AutomaticWorkspaceForm({
   advancedOpen,
   onAdvancedOpenChange,
 }: AutomaticWorkspaceFormProps) {
-  const advancedSummary = devboxTemplate
-    ? `Template: ${devboxTemplate}`
-    : devcontainerSubpath
-      ? "Devcontainer variant configured"
-      : "Optional template and repo devcontainer overrides";
+  const trimmedDevboxTemplate = devboxTemplate.trim();
+  const trimmedDevcontainerSubpath = devcontainerSubpath.trim();
+  const trimmedGithubUser = githubUser.trim();
+  const advancedSummaryItems = [
+    trimmedDevboxTemplate ? `Template: ${trimmedDevboxTemplate}` : null,
+    !trimmedDevboxTemplate && trimmedDevcontainerSubpath ? "Devcontainer variant configured" : null,
+    trimmedGithubUser ? `GitHub account: ${trimmedGithubUser}` : null,
+  ].filter((item): item is string => item !== null);
+  const advancedSummary = advancedSummaryItems.length > 0
+    ? advancedSummaryItems.join(" · ")
+    : "Optional template, repo devcontainer, and GitHub account overrides";
 
   return (
     <>
@@ -245,6 +255,26 @@ export function AutomaticWorkspaceForm({
               {templatesError && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
               )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="automatic-github-user"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                GitHub CLI Account
+              </label>
+              <input
+                type="text"
+                id="automatic-github-user"
+                value={githubUser}
+                onChange={(e) => onGithubUserChange(e.target.value)}
+                placeholder="work-account"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 font-mono"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Optional. When set, devbox runs with <code>--gh-user</code> for GH_TOKEN injection. Leave blank to use the current default gh account.
+              </p>
             </div>
 
             <div>

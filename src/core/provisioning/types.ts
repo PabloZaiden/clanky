@@ -7,6 +7,7 @@ export interface StartProvisioningJobOptions {
   basePath: string;
   devcontainerSubpath?: string;
   devboxTemplate?: string;
+  githubUser?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
   createNewRepository?: boolean;

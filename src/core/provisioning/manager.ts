@@ -54,15 +54,17 @@ function buildDevboxArgs(
   options: {
     devcontainerSubpath?: string;
     devboxTemplate?: string;
+    githubUser?: string;
   },
 ): string[] {
   const args: string[] = [command];
   if (command === "up" && options.devboxTemplate) {
     args.push("--template", options.devboxTemplate);
-    return args;
-  }
-  if (options.devcontainerSubpath) {
+  } else if (options.devcontainerSubpath) {
     args.push("--devcontainer-subpath", options.devcontainerSubpath);
+  }
+  if (options.githubUser) {
+    args.push("--gh-user", options.githubUser);
   }
   return args;
 }
@@ -89,6 +91,7 @@ export class ProvisioningManager {
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
           devboxTemplate: normalizeOptionalValue(options.devboxTemplate),
+          githubUser: normalizeOptionalValue(options.githubUser),
           provider: options.provider,
           mode,
           createNewRepository: options.createNewRepository === true,
@@ -299,6 +302,7 @@ export class ProvisioningManager {
         args: buildDevboxArgs("up", {
           devcontainerSubpath: record.job.config.devcontainerSubpath,
           devboxTemplate: record.job.config.devboxTemplate,
+          githubUser: record.job.config.githubUser,
         }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
@@ -610,6 +614,7 @@ export class ProvisioningManager {
         command: "devbox",
         args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
           devcontainerSubpath,
+          githubUser: record.job.config.githubUser,
         }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,

@@ -49,6 +49,7 @@ export const provisioningRoutes = {
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,
           devboxTemplate: validation.data.devboxTemplate ?? undefined,
+          githubUser: validation.data.githubUser ?? undefined,
           provider: validation.data.provider,
           mode: validation.data.mode,
           createNewRepository: validation.data.createNewRepository,
