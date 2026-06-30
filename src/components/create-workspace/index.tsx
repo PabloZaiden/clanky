@@ -9,6 +9,11 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import type { AgentProvider, ServerSettings, SshServer } from "../../types";
 import type { CreateWorkspaceRequest } from "../../types/workspace";
 import { appFetch } from "../../lib/public-path";
+import {
+  getAutomaticWorkspaceBasePath,
+  getDefaultAutomaticWorkspaceServer,
+  saveLastAutomaticWorkspaceSshServerId,
+} from "../../lib/automatic-workspace-preferences";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { useProvisioningJob } from "../../hooks/useProvisioningJob";
 import { getCreateWorkspaceDefaultServerSettings } from "../../types/settings";
@@ -64,6 +69,7 @@ export function CreateWorkspaceModal({
     automaticBasePath: string;
     automaticDevcontainerSubpath: string;
     automaticDevboxTemplate: string;
+    automaticGithubUser: string;
     automaticCreateNewRepository: boolean;
     automaticProvider: AgentProvider;
   } | null>(null);
@@ -79,6 +85,7 @@ export function CreateWorkspaceModal({
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
+  const [automaticGithubUser, setAutomaticGithubUser] = useState("");
   const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
@@ -112,12 +119,14 @@ export function CreateWorkspaceModal({
     setMode("manual");
     setName("");
     setDirectory("");
-    setAutomaticServerId(registeredSshServers[0]?.config.id ?? "");
+    const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(registeredSshServers);
+    setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
-    setAutomaticBasePath("/workspaces");
+    setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
+    setAutomaticGithubUser("");
     setAutomaticAdvancedOpen(false);
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
@@ -156,6 +165,7 @@ export function CreateWorkspaceModal({
         automaticBasePath: automaticBasePath.trim(),
         automaticDevcontainerSubpath: automaticDevcontainerSubpath.trim(),
         automaticDevboxTemplate: automaticDevboxTemplate.trim(),
+        automaticGithubUser: automaticGithubUser.trim(),
         automaticCreateNewRepository,
         automaticProvider,
       };
@@ -168,6 +178,7 @@ export function CreateWorkspaceModal({
           ? null
           : automaticDevcontainerSubpath.trim() || null,
         devboxTemplate: automaticDevboxTemplate.trim() || null,
+        githubUser: automaticGithubUser.trim() || null,
         provider: automaticProvider,
         createNewRepository: automaticCreateNewRepository,
         password: automaticPassword,
@@ -281,6 +292,7 @@ export function CreateWorkspaceModal({
       automaticBasePath: config.basePath,
       automaticDevcontainerSubpath: config.devcontainerSubpath ?? "",
       automaticDevboxTemplate: config.devboxTemplate ?? "",
+      automaticGithubUser: config.githubUser ?? "",
       automaticProvider: config.provider,
     } : (refMatchesActiveJob ? saved : null);
 
@@ -293,7 +305,8 @@ export function CreateWorkspaceModal({
       setAutomaticBasePath(values.automaticBasePath);
       setAutomaticDevcontainerSubpath(values.automaticDevcontainerSubpath);
       setAutomaticDevboxTemplate(values.automaticDevboxTemplate);
-      setAutomaticAdvancedOpen(Boolean(values.automaticDevboxTemplate || values.automaticDevcontainerSubpath));
+      setAutomaticGithubUser(values.automaticGithubUser);
+      setAutomaticAdvancedOpen(Boolean(values.automaticDevboxTemplate || values.automaticDevcontainerSubpath || values.automaticGithubUser));
       setAutomaticProvider(values.automaticProvider);
       setAutomaticPassword("");
     }
@@ -366,11 +379,10 @@ export function CreateWorkspaceModal({
               serverId={automaticServerId}
               onServerIdChange={(serverId) => {
                 setAutomaticServerId(serverId);
+                saveLastAutomaticWorkspaceSshServerId(serverId);
                 setAutomaticDevboxTemplate("");
                 const selectedServer = registeredSshServers.find((server) => server.config.id === serverId);
-                if (selectedServer?.config.repositoriesBasePath) {
-                  setAutomaticBasePath(selectedServer.config.repositoriesBasePath);
-                }
+                setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
               }}
               repoUrl={automaticRepoUrl}
               onRepoUrlChange={setAutomaticRepoUrl}
@@ -395,6 +407,8 @@ export function CreateWorkspaceModal({
                 autoSelectedDevboxTemplateRef.current = null;
                 setAutomaticDevboxTemplate(template);
               }}
+              githubUser={automaticGithubUser}
+              onGithubUserChange={setAutomaticGithubUser}
               provider={automaticProvider}
               onProviderChange={setAutomaticProvider}
               password={automaticPassword}

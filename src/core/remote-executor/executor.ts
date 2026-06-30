@@ -284,11 +284,17 @@ export class CommandExecutorImpl implements CommandExecutor {
         };
       }
 
+      const commandEnv = {
+        ...process.env,
+        PATH: process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
+        ...env,
+      };
+
       const proc = Bun.spawn([command, ...args], {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
-        ...(env ? { env: { ...process.env, ...env } } : {}),
+        env: commandEnv,
       });
 
       const stdoutPromise = readProcessStream(proc.stdout, onStdoutChunk);

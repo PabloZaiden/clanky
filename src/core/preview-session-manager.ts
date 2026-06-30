@@ -36,8 +36,10 @@ const STOP_TIMEOUT_MS = 2000;
 const WS_READY_STATE_CLOSING = 2;
 
 interface PreviewRuntime {
+  localOrigin: string;
   user: CurrentUser;
   targetBaseUrl: string;
+  targetOrigin: string;
   tunnel?: ChildProcess;
   tunnelLocalPort?: number;
 }
@@ -77,6 +79,47 @@ function createUpstreamWebSocket(url: URL, headers: Record<string, string>): Web
     new (url: string | URL, options?: Bun.WebSocketOptions): WebSocket;
   };
   return new BunWebSocket(url, { headers });
+}
+
+function rewritePreviewLocationHeader(value: string, runtime: PreviewRuntime): string {
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("//") && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed))) {
+    return value;
+  }
+
+  let locationUrl: URL;
+  try {
+    locationUrl = new URL(trimmed, runtime.targetBaseUrl);
+  } catch {
+    return value;
+  }
+  if (locationUrl.origin !== runtime.targetOrigin) {
+    return value;
+  }
+  return `${runtime.localOrigin}${locationUrl.pathname}${locationUrl.search}${locationUrl.hash}`;
+}
+
+function rewritePreviewResponseHeaders(headers: Headers, runtime: PreviewRuntime): Array<[string, string]> {
+  return Array.from(headers.entries()).map(([name, value]) => [
+    name,
+    name.toLowerCase() === "location" ? rewritePreviewLocationHeader(value, runtime) : value,
+  ]);
+}
+
+function derivePreviewLocalOrigin(localUrl: string, localHost: string, localPort: number): string {
+  const trimmedLocalUrl = localUrl.trim();
+  if (trimmedLocalUrl) {
+    try {
+      return new URL(trimmedLocalUrl).origin;
+    } catch (error) {
+      log.warn("Invalid preview localUrl from CLI bridge; falling back to local host and port", { error: String(error) });
+    }
+  }
+
+  const fallbackUrl = new URL("http://localhost");
+  fallbackUrl.hostname = localHost;
+  fallbackUrl.port = String(localPort);
+  return fallbackUrl.origin;
 }
 
 export class PreviewSessionManager {
@@ -159,9 +202,12 @@ export class PreviewSessionManager {
       },
     };
     await savePreviewSession(preview);
+    const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
     this.runtimes.set(preview.config.id, {
+      localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
       user: requireCurrentUser(),
-      targetBaseUrl: `http://${targetHost}:${String(targetPort)}`,
+      targetBaseUrl,
+      targetOrigin: new URL(targetBaseUrl).origin,
       tunnel: sshTunnel?.child,
       tunnelLocalPort: sshTunnel?.localPort,
     });
@@ -179,7 +225,7 @@ export class PreviewSessionManager {
       preview,
       timestamp: now,
     });
-    return { preview, targetBaseUrl: `http://${targetHost}:${String(targetPort)}`, tunnel: sshTunnel?.child };
+    return { preview, targetBaseUrl, tunnel: sshTunnel?.child };
   }
 
   async listWorkspacePreviews(workspaceId: string): Promise<PreviewSession[]> {
@@ -345,7 +391,7 @@ export class PreviewSessionManager {
         type: "response.start",
         streamId: message.streamId,
         status: response.status,
-        headers: Array.from(response.headers.entries()),
+        headers: rewritePreviewResponseHeaders(response.headers, runtime),
       }));
       if (response.body) {
         const reader = response.body.getReader();
