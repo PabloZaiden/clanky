@@ -127,10 +127,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       : workspaceCreateSubmitting || workspacesSaving;
   const createActionDisabled =
     workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid;
+  const trimmedAutomaticDevboxTemplate = automaticDevboxTemplate.trim();
+  const trimmedAutomaticDevcontainerSubpath = automaticDevcontainerSubpath.trim();
+  const trimmedAutomaticGithubUser = automaticGithubUser.trim();
   const advancedSummaryItems = [
-    automaticDevboxTemplate ? `Template: ${automaticDevboxTemplate}` : null,
-    !automaticDevboxTemplate && automaticDevcontainerSubpath ? "Devcontainer variant configured" : null,
-    automaticGithubUser.trim() ? `GitHub account: ${automaticGithubUser.trim()}` : null,
+    trimmedAutomaticDevboxTemplate ? `Template: ${trimmedAutomaticDevboxTemplate}` : null,
+    !trimmedAutomaticDevboxTemplate && trimmedAutomaticDevcontainerSubpath ? "Devcontainer variant configured" : null,
+    trimmedAutomaticGithubUser ? `GitHub account: ${trimmedAutomaticGithubUser}` : null,
   ].filter((item): item is string => item !== null);
   const advancedSummary = advancedSummaryItems.length > 0
     ? advancedSummaryItems.join(" · ")

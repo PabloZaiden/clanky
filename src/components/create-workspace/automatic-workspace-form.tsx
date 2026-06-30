@@ -65,10 +65,13 @@ export function AutomaticWorkspaceForm({
   advancedOpen,
   onAdvancedOpenChange,
 }: AutomaticWorkspaceFormProps) {
+  const trimmedDevboxTemplate = devboxTemplate.trim();
+  const trimmedDevcontainerSubpath = devcontainerSubpath.trim();
+  const trimmedGithubUser = githubUser.trim();
   const advancedSummaryItems = [
-    devboxTemplate ? `Template: ${devboxTemplate}` : null,
-    !devboxTemplate && devcontainerSubpath ? "Devcontainer variant configured" : null,
-    githubUser.trim() ? `GitHub account: ${githubUser.trim()}` : null,
+    trimmedDevboxTemplate ? `Template: ${trimmedDevboxTemplate}` : null,
+    !trimmedDevboxTemplate && trimmedDevcontainerSubpath ? "Devcontainer variant configured" : null,
+    trimmedGithubUser ? `GitHub account: ${trimmedGithubUser}` : null,
   ].filter((item): item is string => item !== null);
   const advancedSummary = advancedSummaryItems.length > 0
     ? advancedSummaryItems.join(" · ")
