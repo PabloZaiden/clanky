@@ -5,8 +5,8 @@
  * It is included in `src/index.html`.
  */
 
-import { createRoot } from "react-dom/client";
 import { configureClientRuntime } from "@/client-sdk/public-path";
+import { renderWebApp } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -14,13 +14,12 @@ import { ToastProvider } from "./components/common/Toast";
 
 function start() {
   configureClientRuntime();
-  const root = createRoot(document.getElementById("root")!);
-  root.render(
+  renderWebApp(
     <ErrorBoundary>
       <ToastProvider>
         <App />
       </ToastProvider>
-    </ErrorBoundary>
+    </ErrorBoundary>,
   );
 }
 
