@@ -26,6 +26,7 @@ const ALLOWED_SSH_SESSION_COLUMNS = new Set([
   "remote_session_name",
   "created_at",
   "updated_at",
+  "is_private",
   "status",
   "last_connected_at",
   "error_message",
@@ -54,6 +55,7 @@ function sshSessionToRow(session: SshSession): Record<string, unknown> {
     remote_session_name: session.config.remoteSessionName,
     created_at: session.config.createdAt,
     updated_at: session.config.updatedAt,
+    is_private: session.config.isPrivate ? 1 : 0,
     status: session.state.status,
     last_connected_at: session.state.lastConnectedAt ?? null,
     error_message: session.state.error ?? null,
@@ -77,6 +79,7 @@ function rowToSshSession(row: Record<string, unknown>): SshSession {
       remoteSessionName: row["remote_session_name"] as string,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
+      isPrivate: row["is_private"] === 1,
     },
     state: {
       status: row["status"] as SshSession["state"]["status"],

@@ -42,6 +42,7 @@ export const UpdateChatRequestSchema = z.object({
   model: ModelConfigSchema.optional(),
   baseBranch: z.string().optional(),
   useWorktree: z.boolean().optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 export const SendChatMessageRequestSchema = z.object({

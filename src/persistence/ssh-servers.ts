@@ -29,6 +29,7 @@ const ALLOWED_SSH_SERVER_COLUMNS = new Set([
   "repositories_base_path",
   "created_at",
   "updated_at",
+  "is_private",
 ]);
 
 const ALLOWED_SSH_SERVER_SESSION_COLUMNS = new Set([
@@ -41,6 +42,7 @@ const ALLOWED_SSH_SERVER_SESSION_COLUMNS = new Set([
   "remote_session_name",
   "created_at",
   "updated_at",
+  "is_private",
   "status",
   "last_connected_at",
   "error_message",
@@ -66,6 +68,7 @@ function sshServerConfigToRow(config: SshServerConfig): Record<string, unknown> 
     repositories_base_path: config.repositoriesBasePath ?? null,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
+    is_private: config.isPrivate ? 1 : 0,
   };
 }
 
@@ -78,6 +81,7 @@ function rowToSshServerConfig(row: Record<string, unknown>): SshServerConfig {
     repositoriesBasePath: (row["repositories_base_path"] as string | null) ?? null,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
+    isPrivate: row["is_private"] === 1,
   };
 }
 
@@ -92,6 +96,7 @@ function sshServerSessionToRow(session: SshServerSession): Record<string, unknow
     remote_session_name: session.config.remoteSessionName,
     created_at: session.config.createdAt,
     updated_at: session.config.updatedAt,
+    is_private: session.config.isPrivate ? 1 : 0,
     status: session.state.status,
     last_connected_at: session.state.lastConnectedAt ?? null,
     error_message: session.state.error ?? null,
@@ -113,6 +118,7 @@ function rowToSshServerSession(row: Record<string, unknown>): SshServerSession {
         remoteSessionName: row["remote_session_name"] as string,
         createdAt: row["created_at"] as string,
         updatedAt: row["updated_at"] as string,
+        isPrivate: row["is_private"] === 1,
     },
     state: {
       status: row["status"] as SshServerSession["state"]["status"],

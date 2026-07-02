@@ -188,10 +188,12 @@ export async function getTaskSummariesImpl(ctx: TaskCtx): Promise<Task[]> {
 const ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<TaskConfig, "id" | "createdAt">>>([
   "autoAcceptPlan",
   "fullyAutonomous",
+  "isPrivate",
 ]);
 
 const POST_APPROVAL_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<TaskConfig, "id" | "createdAt">>>([
   "fullyAutonomous",
+  "isPrivate",
 ]);
 
 function createTaskUpdateError(
@@ -216,6 +218,7 @@ function getDefinedUpdateKeys(
 function syncActivePlanningConfig(engine: { config: TaskConfig }, updatedConfig: TaskConfig): void {
   engine.config.autoAcceptPlan = updatedConfig.autoAcceptPlan;
   engine.config.fullyAutonomous = updatedConfig.fullyAutonomous;
+  engine.config.isPrivate = updatedConfig.isPrivate;
   engine.config.updatedAt = updatedConfig.updatedAt;
 }
 

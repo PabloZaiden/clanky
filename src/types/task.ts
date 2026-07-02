@@ -35,6 +35,8 @@ export interface TaskConfig {
   createdAt: string;
   /** ISO 8601 timestamp of the last configuration update */
   updatedAt: string;
+  /** Whether the item should be visually hidden when private items are hidden in the browser */
+  isPrivate?: boolean;
 
   /** Workspace ID this task belongs to */
   workspaceId: string;

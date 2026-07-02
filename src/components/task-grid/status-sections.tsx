@@ -16,6 +16,7 @@ export interface StatusSectionsProps {
   viewMode: DashboardViewMode;
   onEditDraft: (taskId: string) => void;
   onSelectTask?: (taskId: string) => void;
+  isTaskPrivateHidden?: (task: Task) => boolean;
 }
 
 /** Renders collapsible status sections for a given set of grouped tasks */
@@ -25,6 +26,7 @@ export function StatusSections({
   viewMode,
   onEditDraft,
   onSelectTask,
+  isTaskPrivateHidden = () => false,
 }: StatusSectionsProps) {
   function getTaskActions(sectionKey: StatusSectionKey, taskId: string): TaskActions {
     const actions: TaskActions = {};
@@ -58,6 +60,7 @@ export function StatusSections({
                   <TaskRow
                     key={task.config.id}
                     task={task}
+                    privateHidden={isTaskPrivateHidden(task)}
                     {...getTaskActions(key, task.config.id)}
                   />
                 ))}
@@ -68,6 +71,7 @@ export function StatusSections({
                   <TaskCard
                     key={task.config.id}
                     task={task}
+                    privateHidden={isTaskPrivateHidden(task)}
                     {...getTaskActions(key, task.config.id)}
                   />
                 ))}

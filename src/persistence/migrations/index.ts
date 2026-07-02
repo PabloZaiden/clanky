@@ -149,6 +149,29 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    name: "add_private_sidebar_items",
+    up: (db) => {
+      const privateTables = [
+        "workspaces",
+        "tasks",
+        "chats",
+        "agents",
+        "ssh_servers",
+        "ssh_sessions",
+        "ssh_server_sessions",
+      ] as const;
+
+      for (const tableName of privateTables) {
+        const columns = getTableColumns(db, tableName);
+        if (columns.includes("is_private")) {
+          continue;
+        }
+        db.run(`ALTER TABLE ${tableName} ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0`);
+      }
+    },
+  },
 ];
 
 /**

@@ -159,12 +159,20 @@ export async function updateStandaloneSshSessionApi(
   sessionId: string,
   request: UpdateSshSessionRequest,
 ): Promise<SshServerSession> {
+  const body: UpdateSshSessionRequest = {};
+  if (typeof request.name === "string") {
+    body.name = request.name.trim();
+  }
+  if (typeof request.isPrivate === "boolean") {
+    body.isPrivate = request.isPrivate;
+  }
+
   return await apiCall<SshServerSession>(
     `/api/ssh-server-sessions/${sessionId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: request.name.trim() }),
+      body: JSON.stringify(body),
     },
     "Update standalone SSH session",
   );

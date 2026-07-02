@@ -14,6 +14,7 @@ import {
 export function TaskCard({
   task,
   onClick,
+  privateHidden = false,
 }: TaskSummaryProps) {
   const { config, state } = task;
   const isActive = isTaskActive(state.status);
@@ -30,9 +31,9 @@ export function TaskCard({
 
   return (
     <Card
-      clickable={!!onClick}
-      onClick={onClick}
-      className={`relative flex h-full flex-col ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""}`}
+      clickable={!!onClick && !privateHidden}
+      onClick={privateHidden ? undefined : onClick}
+      className={`relative flex h-full flex-col ${privateHidden ? "clanky-private-obscured" : ""} ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""}`}
       bodyClassName="flex min-h-0 flex-1 flex-col"
     >
       {/* Status indicator */}

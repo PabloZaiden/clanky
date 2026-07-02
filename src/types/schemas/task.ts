@@ -144,6 +144,7 @@ export const UpdateTaskRequestSchema = z.object({
   planMode: z.boolean().optional(),
   autoAcceptPlan: z.boolean().optional(),
   fullyAutonomous: z.boolean().optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 /**

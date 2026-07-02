@@ -79,6 +79,8 @@ export interface SshSessionConfig {
   createdAt: SshSessionBaseConfig["createdAt"];
   /** ISO 8601 timestamp of the last configuration update */
   updatedAt: SshSessionBaseConfig["updatedAt"];
+  /** Whether the item should be visually hidden when private items are hidden in the browser */
+  isPrivate?: boolean;
 }
 
 /**

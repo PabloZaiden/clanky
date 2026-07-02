@@ -52,6 +52,7 @@ async function applyTaskUpdates(
     if (body.planMode !== undefined) updates.planMode = body.planMode;
     if (body.autoAcceptPlan !== undefined) updates.autoAcceptPlan = body.autoAcceptPlan;
     if (body.fullyAutonomous !== undefined) updates.fullyAutonomous = body.fullyAutonomous;
+    if (body.isPrivate !== undefined) updates.isPrivate = body.isPrivate;
 
     if (body.model !== undefined) {
       updates.model = {

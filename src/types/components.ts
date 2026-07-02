@@ -20,4 +20,6 @@ export interface TaskSummaryProps {
   task: Task;
   /** Callback when the component is clicked */
   onClick?: () => void;
+  /** Whether the full summary container should be visually obscured and non-clickable */
+  privateHidden?: boolean;
 }

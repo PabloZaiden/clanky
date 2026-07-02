@@ -49,6 +49,7 @@ export interface AgentConfig extends AgentConfigSnapshot {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  isPrivate?: boolean;
   mode: "agent";
 }
 

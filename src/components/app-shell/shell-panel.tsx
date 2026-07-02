@@ -109,9 +109,19 @@ export function ShellPanel({
   );
 }
 
-export function SummaryCard({ label, value, meta }: { label: string; value: string | number; meta: string }) {
+export function SummaryCard({
+  label,
+  value,
+  meta,
+  className = "",
+}: {
+  label: string;
+  value: string | number;
+  meta: string;
+  className?: string;
+}) {
   return (
-    <div className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+    <div className={`min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50 ${className}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{label}</p>
       <p className="mt-2 overflow-hidden break-words [overflow-wrap:anywhere] text-2xl font-semibold text-gray-950 sm:text-3xl dark:text-gray-100">{value}</p>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{meta}</p>

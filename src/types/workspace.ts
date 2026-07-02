@@ -42,6 +42,8 @@ export interface Workspace {
   createdAt: string;
   /** ISO 8601 timestamp of the last update */
   updatedAt: string;
+  /** Whether the item should be visually hidden when private items are hidden in the browser */
+  isPrivate?: boolean;
   /** Directory on the remote host where the repo was cloned (for auto-provisioned workspaces) */
   sourceDirectory?: string;
   /** ID of the SSH server used for provisioning */

@@ -22,6 +22,7 @@ const CHAT_LIST_COLUMNS = [
   "directory",
   "created_at",
   "updated_at",
+  "is_private",
   "model_provider_id",
   "model_model_id",
   "model_variant",

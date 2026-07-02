@@ -87,7 +87,8 @@ export class SshSessionManager {
     const updatedSession: SshSession = {
       config: {
         ...session.config,
-        name: request.name.trim(),
+        ...(request.name !== undefined ? { name: request.name.trim() } : {}),
+        ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
         updatedAt: new Date().toISOString(),
       },
       state: session.state,

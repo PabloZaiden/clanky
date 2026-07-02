@@ -7,6 +7,7 @@ import type { DeleteWorkspaceRequest, Task, SshServer } from "../types";
 import type { StatusGroups, WorkspaceGroup } from "../hooks/useTaskGrouping";
 import type { DashboardViewMode } from "../types/preferences";
 import { WorkspaceHeader, StatusSections, UnassignedSection, EmptyWorkspacesSection } from "./task-grid";
+import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../lib/private-items";
 
 export interface TaskGridProps {
   tasks: Task[];
@@ -21,6 +22,7 @@ export interface TaskGridProps {
   onEditDraft: (taskId: string) => void;
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+  showPrivateItems?: boolean;
 }
 
 export function TaskGrid({
@@ -36,6 +38,7 @@ export function TaskGrid({
   onEditDraft,
   onOpenWorkspaceSettings,
   onDeleteWorkspace,
+  showPrivateItems = false,
 }: TaskGridProps) {
   return (
     <div>
@@ -83,6 +86,7 @@ export function TaskGrid({
       {/* Workspace-grouped task sections */}
       {workspaceGroups.map(({ workspace, tasks: workspaceTasks, statusGroups }) => {
         if (workspaceTasks.length === 0) return null;
+        const workspacePrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
 
         return (
           <div key={workspace.id} className="mb-10">
@@ -90,7 +94,12 @@ export function TaskGrid({
               workspace={workspace}
               taskCount={workspaceTasks.length}
               registeredSshServers={registeredSshServers}
-              onOpenSettings={() => onOpenWorkspaceSettings(workspace.id)}
+              onOpenSettings={() => {
+                if (!workspacePrivateHidden) {
+                  onOpenWorkspaceSettings(workspace.id);
+                }
+              }}
+              privateHidden={workspacePrivateHidden}
             />
             <div className="space-y-6 pl-2">
               <StatusSections
@@ -99,6 +108,10 @@ export function TaskGrid({
                 viewMode={viewMode}
                 onEditDraft={onEditDraft}
                 onSelectTask={onSelectTask}
+                isTaskPrivateHidden={(task) => shouldObscurePrivateItem(
+                  isEffectivelyPrivate(task.config, [workspace]),
+                  showPrivateItems,
+                )}
               />
             </div>
           </div>
@@ -120,6 +133,7 @@ export function TaskGrid({
         registeredSshServers={registeredSshServers}
         onOpenWorkspaceSettings={onOpenWorkspaceSettings}
         onDeleteWorkspace={onDeleteWorkspace}
+        showPrivateItems={showPrivateItems}
       />
     </div>
   );
