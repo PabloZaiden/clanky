@@ -53,7 +53,8 @@ export function SshServerView({
                 <button
                   key={session.config.id}
                   type="button"
-                  onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
+                  disabled={privateHidden}
+                  onClick={() => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
                   className={`flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
                 >
                   <span className="min-w-0">

@@ -6,6 +6,18 @@ import { join } from "path";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { getSchemaVersion, migrations } from "../../src/persistence/migrations";
 
+const PRIVATE_FLAG_TABLE_NAMES = [
+  "workspaces",
+  "tasks",
+  "chats",
+  "agents",
+  "ssh_servers",
+  "ssh_sessions",
+  "ssh_server_sessions",
+] as const;
+
+type PrivateFlagTableName = typeof PRIVATE_FLAG_TABLE_NAMES[number];
+
 async function withTempDataDir(run: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-schema-"));
   closeDatabase();
@@ -27,12 +39,32 @@ function tableNames(): string[] {
   ).map((row) => row.name);
 }
 
-function columnNames(tableName: string): string[] {
+function assertPrivateFlagTableName(tableName: string): asserts tableName is PrivateFlagTableName {
+  if (!(PRIVATE_FLAG_TABLE_NAMES as readonly string[]).includes(tableName)) {
+    throw new Error(`Unexpected schema table name: ${tableName}`);
+  }
+}
+
+function columnNames(tableName: PrivateFlagTableName): string[] {
+  assertPrivateFlagTableName(tableName);
   return (
     getDatabase()
       .query(`PRAGMA table_info(${tableName})`)
       .all() as Array<{ name: string }>
   ).map((row) => row.name);
+}
+
+function privateFlagColumnInfo(db: Database, tableName: PrivateFlagTableName): Array<{
+  name: string;
+  notnull: number;
+  dflt_value: string | null;
+}> {
+  assertPrivateFlagTableName(tableName);
+  return db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
+    name: string;
+    notnull: number;
+    dflt_value: string | null;
+  }>;
 }
 
 describe("database schema", () => {
@@ -50,7 +82,7 @@ describe("database schema", () => {
       expect(tableNames()).not.toContain("auth_refresh_sessions");
       expect(tableNames()).not.toContain("forwarded_ports");
       expect(tableNames()).toContain("preview_sessions");
-      for (const tableName of ["workspaces", "tasks", "chats", "agents", "ssh_servers", "ssh_sessions", "ssh_server_sessions"]) {
+      for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
         expect(columnNames(tableName)).toContain("is_private");
       }
 
@@ -87,29 +119,16 @@ describe("database schema", () => {
       throw new Error("Migration v6 was not found");
     }
     const db = new Database(":memory:");
-    const tableNamesToMigrate = [
-      "workspaces",
-      "tasks",
-      "chats",
-      "agents",
-      "ssh_servers",
-      "ssh_sessions",
-      "ssh_server_sessions",
-    ];
     try {
-      for (const tableName of tableNamesToMigrate) {
+      for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
         db.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY)`);
       }
 
       migration.up(db);
       migration.up(db);
 
-      for (const tableName of tableNamesToMigrate) {
-        const columns = db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
-          name: string;
-          notnull: number;
-          dflt_value: string | null;
-        }>;
+      for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
+        const columns = privateFlagColumnInfo(db, tableName);
         const privateColumn = columns.find((column) => column.name === "is_private");
         expect(privateColumn?.notnull).toBe(1);
         expect(privateColumn?.dflt_value).toBe("0");

@@ -68,7 +68,8 @@ export function WorkspaceView({
       <button
         key={task.config.id}
         type="button"
-        onClick={privateHidden ? undefined : () => onNavigate(route)}
+        disabled={privateHidden}
+        onClick={() => onNavigate(route)}
         className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
       >
         <span className="flex min-w-0 flex-1 flex-col">
@@ -111,7 +112,8 @@ export function WorkspaceView({
                   <button
                     key={chat.config.id}
                     type="button"
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "chat", chatId: chat.config.id })}
+                    disabled={privateHidden}
+                    onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
                     className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
@@ -134,7 +136,8 @@ export function WorkspaceView({
                   <button
                     key={session.config.id}
                     type="button"
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
+                    disabled={privateHidden}
+                    onClick={() => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
                     className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">

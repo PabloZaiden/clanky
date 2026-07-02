@@ -144,7 +144,8 @@ export function OverviewView({
                   <button
                     key={item.key}
                     type="button"
-                    onClick={privateHidden ? undefined : () => onNavigate(getActiveWorkRoute(item))}
+                    disabled={privateHidden}
+                    onClick={() => onNavigate(getActiveWorkRoute(item))}
                     className={`flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
@@ -192,7 +193,8 @@ export function OverviewView({
                   <button
                     key={group.workspace.id}
                     type="button"
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
+                    disabled={privateHidden}
+                    onClick={() => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
                     className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
@@ -227,7 +229,8 @@ export function OverviewView({
                   <button
                     key={server.config.id}
                     type="button"
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh-server", serverId: server.config.id })}
+                    disabled={privateHidden}
+                    onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}
                     className={`flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">

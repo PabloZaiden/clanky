@@ -27,7 +27,12 @@ function loadShowPrivateItems(): boolean {
   if (!storage) {
     return false;
   }
-  return storage.getItem(PRIVATE_ITEMS_STORAGE_KEY) === "true";
+  try {
+    return storage.getItem(PRIVATE_ITEMS_STORAGE_KEY) === "true";
+  } catch (error) {
+    log.warn("Failed to load private items preference", { error: String(error) });
+    return false;
+  }
 }
 
 function saveShowPrivateItems(showPrivateItems: boolean): void {
