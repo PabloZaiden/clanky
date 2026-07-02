@@ -161,9 +161,9 @@ export function OverviewView({
                   key={group.workspace.id}
                   type="button"
                   onClick={() => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
-                  className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
+                  className="flex w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
                 >
-                  <span className="min-w-0">
+                  <span className="flex min-w-0 flex-1 flex-col">
                     <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                       {group.workspace.name}
                     </span>
@@ -171,7 +171,7 @@ export function OverviewView({
                       {group.workspace.directory}
                     </span>
                   </span>
-                  <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-gray-200 px-2 py-0.5 text-right text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
                     {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
                   </span>
                 </button>
@@ -203,7 +203,7 @@ export function OverviewView({
                       {server.config.username}@{server.config.address}
                     </span>
                   </span>
-                  <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-right text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-gray-200 px-2 py-0.5 text-right text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
                     {sessionCount} session{sessionCount === 1 ? "" : "s"}
                   </span>
                 </button>
