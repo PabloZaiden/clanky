@@ -42,7 +42,7 @@ export function WorkspaceHeader({
         >
           {getServerLabel(workspace.serverSettings, registeredSshServers)}
         </span>
-        <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0">
+        <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">
           ({taskCount} {taskCount === 1 ? "task" : "tasks"})
         </span>
       </div>
