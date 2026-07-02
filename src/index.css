@@ -149,6 +149,20 @@
   animation: slide-in 0.2s ease-out;
 }
 
+.clanky-private-obscured,
+.wapp-sidebar-item:has(.wapp-sidebar-badge[title="Private"]) {
+  filter: blur(4px);
+}
+
+.clanky-private-obscured {
+  pointer-events: none;
+  user-select: none;
+}
+
+.wapp-sidebar-item:has(.wapp-sidebar-badge[title="Private"]) {
+  cursor: default;
+}
+
 .tool-json-highlight .hljs {
   color: inherit;
 }

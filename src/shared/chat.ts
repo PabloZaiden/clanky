@@ -55,6 +55,7 @@ export interface ChatConfig {
   baseBranch?: string;
   createdAt: string;
   updatedAt: string;
+  isPrivate?: boolean;
   mode: "chat";
 }
 

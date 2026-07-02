@@ -21,6 +21,7 @@ export {
 } from "./useFileExplorerFullTreePreference";
 export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuickChatSettings";
 export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
+export { usePrivateItemsPreference, type PrivateItemsPreference } from "./usePrivateItemsPreference";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
 export { useToast, type ToastContextValue, type Toast, type ToastOptions } from "./useToast";

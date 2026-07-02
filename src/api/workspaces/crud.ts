@@ -165,18 +165,22 @@ export const crudRoutes = {
         const nameChanged = body.name !== undefined && body.name !== currentWorkspace.name;
         const serverSettingsChanged = body.serverSettings !== undefined
           && !areServerSettingsEqual(currentWorkspace.serverSettings, body.serverSettings);
+        const privateChanged = body.isPrivate !== undefined && body.isPrivate !== (currentWorkspace.isPrivate === true);
 
-        if (!nameChanged && !serverSettingsChanged) {
+        if (!nameChanged && !serverSettingsChanged && !privateChanged) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
           return Response.json(includeSensitive ? currentWorkspace : sanitizeWorkspace(currentWorkspace));
         }
 
-        const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings">> = {};
+        const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings" | "isPrivate">> = {};
         if (nameChanged) {
           workspaceUpdates.name = body.name;
         }
         if (serverSettingsChanged && body.serverSettings) {
           workspaceUpdates.serverSettings = body.serverSettings;
+        }
+        if (privateChanged) {
+          workspaceUpdates.isPrivate = body.isPrivate;
         }
 
         const workspace = await updateWorkspace(id, workspaceUpdates);

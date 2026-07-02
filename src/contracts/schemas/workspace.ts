@@ -80,6 +80,7 @@ export const CreateWorkspaceRequestSchema = z.object({
 export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 /**

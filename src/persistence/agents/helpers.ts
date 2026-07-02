@@ -31,6 +31,7 @@ export const ALLOWED_AGENT_COLUMNS = new Set([
   "mode",
   "created_at",
   "updated_at",
+  "is_private",
   "status",
   "last_run_at",
   "next_run_at",
@@ -126,6 +127,7 @@ export function agentToRow(agent: Agent): Record<string, unknown> {
     mode: config.mode,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
+    is_private: config.isPrivate ? 1 : 0,
     status: state.status,
     last_run_at: state.lastRunAt ?? null,
     next_run_at: state.nextRunAt ?? null,
@@ -164,6 +166,7 @@ export function rowToAgent(row: Record<string, unknown>): Agent {
     enabled: row["enabled"] === 1,
     createdAt: requireString(row, "created_at", rowId),
     updatedAt: requireString(row, "updated_at", rowId),
+    isPrivate: row["is_private"] === 1,
     mode: "agent",
   };
 

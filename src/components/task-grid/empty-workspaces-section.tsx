@@ -7,12 +7,14 @@ import { useToast } from "../../hooks";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 import { WorkspaceGearIcon } from "./workspace-gear-icon";
+import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
   registeredSshServers: readonly SshServer[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+  showPrivateItems?: boolean;
 }
 
 /** Renders the "Empty Workspaces" section with delete confirmation */
@@ -21,6 +23,7 @@ export function EmptyWorkspacesSection({
   registeredSshServers,
   onOpenWorkspaceSettings,
   onDeleteWorkspace,
+  showPrivateItems = false,
 }: EmptyWorkspacesSectionProps) {
   const toast = useToast();
   const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
@@ -38,39 +41,42 @@ export function EmptyWorkspacesSection({
         </h2>
       </div>
       <div className="flex flex-wrap gap-2">
-        {emptyGroups.map(({ workspace }) => (
-          <div key={workspace.id} className="flex min-w-0 items-start gap-2 rounded-md bg-gray-100 px-3 py-2 dark:bg-neutral-800">
-            <div className="min-w-0">
-              <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">{workspace.name}</div>
-              <div
-                className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
-                title={getServerLabel(workspace.serverSettings, registeredSshServers)}
-              >
-                {getServerLabel(workspace.serverSettings, registeredSshServers)}
+        {emptyGroups.map(({ workspace }) => {
+          const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
+          return (
+            <div key={workspace.id} className={`flex min-w-0 items-start gap-2 rounded-md bg-gray-100 px-3 py-2 dark:bg-neutral-800 ${getPrivateContainerClassName(privateHidden)}`}>
+              <div className="min-w-0">
+                <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">{workspace.name}</div>
+                <div
+                  className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
+                  title={getServerLabel(workspace.serverSettings, registeredSshServers)}
+                >
+                  {getServerLabel(workspace.serverSettings, registeredSshServers)}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => onOpenWorkspaceSettings(workspace.id)}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+                title="Workspace Settings"
+              >
+                <WorkspaceGearIcon />
+              </button>
+              <button
+                onClick={() => {
+                  setDeleteWorkspace(workspace);
+                  setDeleteServerDirectory(true);
+                }}
+                className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                title="Delete empty workspace"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenWorkspaceSettings(workspace.id)}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-              title="Workspace Settings"
-            >
-              <WorkspaceGearIcon />
-            </button>
-            <button
-              onClick={() => {
-                setDeleteWorkspace(workspace);
-                setDeleteServerDirectory(true);
-              }}
-              className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
-              title="Delete empty workspace"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <ConfirmModal

@@ -69,6 +69,7 @@ export interface SidebarWorkspaceGroupNode {
 }
 
 export interface SidebarServerSessionNode {
+  session: SshServerSession;
   id: string;
   title: string;
   subtitle: string;
@@ -88,24 +89,35 @@ export type SidebarActiveWorkItem =
   | {
       kind: "task";
       key: string;
+      workspace: Workspace;
       workspaceName: string;
       taskNode: SidebarTaskNode;
     }
   | {
       kind: "chat";
       key: string;
+      workspace: Workspace;
       workspaceName: string;
+      chatNode: SidebarChatNode;
+    }
+  | {
+      kind: "ssh-server-chat";
+      key: string;
+      server: SshServer;
+      serverName: string;
       chatNode: SidebarChatNode;
     }
   | {
       kind: "ssh-session";
       key: string;
+      workspace: Workspace;
       workspaceName: string;
       sessionNode: SidebarWorkspaceSessionNode;
     }
   | {
       kind: "ssh-server-session";
       key: string;
+      server: SshServer;
       serverName: string;
       sessionNode: SidebarServerSessionNode;
     };
@@ -398,6 +410,7 @@ export function buildActiveWorkSidebarItems(
         taskItems.push({
           kind: "task",
           key: `task:${taskNode.task.config.id}`,
+          workspace: workspaceNode.workspace,
           workspaceName,
           taskNode,
         });
@@ -407,6 +420,7 @@ export function buildActiveWorkSidebarItems(
         chatItems.push({
           kind: "chat",
           key: `chat:${chatNode.chat.config.id}`,
+          workspace: workspaceNode.workspace,
           workspaceName,
           chatNode,
         });
@@ -417,6 +431,7 @@ export function buildActiveWorkSidebarItems(
         sessionItems.push({
           kind: "ssh-session",
           key: `ssh-session:${sessionNode.session.config.id}`,
+          workspace: workspaceNode.workspace,
           workspaceName,
           sessionNode,
         });
@@ -427,9 +442,10 @@ export function buildActiveWorkSidebarItems(
   for (const serverNode of options.serverNodes ?? []) {
     for (const chatNode of serverNode.chats) {
       chatItems.push({
-        kind: "chat",
+        kind: "ssh-server-chat",
         key: `ssh-server-chat:${chatNode.chat.config.id}`,
-        workspaceName: serverNode.server.config.name,
+        server: serverNode.server,
+        serverName: serverNode.server.config.name,
         chatNode,
       });
     }
@@ -442,6 +458,7 @@ export function buildActiveWorkSidebarItems(
       sessionItems.push({
         kind: "ssh-server-session",
         key: `ssh-server-session:${sessionNode.id}`,
+        server: serverNode.server,
         serverName: serverNode.server.config.name,
         sessionNode,
       });
@@ -457,6 +474,7 @@ export function buildActiveWorkSidebarItems(
 
 function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
   return {
+    session,
     id: session.config.id,
     title: session.config.name,
     subtitle: getSshConnectionModeLabel(session.config.connectionMode),

@@ -11,6 +11,7 @@ import {
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
+import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 function getWorkspaceHeaderServerLabel(
   workspace: Workspace,
@@ -39,6 +40,7 @@ export function WorkspaceView({
   registeredSshServers,
   headerOffsetClassName,
   onNavigate,
+  showPrivateItems = false,
 }: {
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
@@ -50,6 +52,7 @@ export function WorkspaceView({
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
+  showPrivateItems?: boolean;
 }) {
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
@@ -60,12 +63,13 @@ export function WorkspaceView({
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: ShellRoute = { view: "task", taskId: task.config.id };
     const statusPill = getTaskStatusPill(task);
+    const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
     return (
       <button
         key={task.config.id}
         type="button"
-        onClick={() => onNavigate(route)}
-        className={activityRowClassName}
+        onClick={privateHidden ? undefined : () => onNavigate(route)}
+        className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
       >
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -101,49 +105,55 @@ export function WorkspaceView({
           {hasActivity ? (
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
-              {relatedChats.map((chat: Chat) => (
-                <button
-                  key={chat.config.id}
-                  type="button"
-                  onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
-                  className={activityRowClassName}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {chat.config.name}
-                    </span>
-                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      Chat
-                    </span>
-                  </span>
-                  <StatusBadge className="ml-auto shrink-0" variant={getChatStatusBadgeVariant(chat.state.status)}>
-                    {chat.state.status}
-                  </StatusBadge>
-                </button>
-              ))}
-              {relatedSessions.map((session) => (
-                <button
-                  key={session.config.id}
-                  type="button"
-                  onClick={() => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
-                  className={activityRowClassName}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {session.config.name}
-                    </span>
-                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      {session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
-                    </span>
-                  </span>
-                  <StatusBadge
-                    className="ml-auto shrink-0"
-                    variant={getSshSessionStatusBadgeVariant(session.state.status)}
+              {relatedChats.map((chat: Chat) => {
+                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
+                return (
+                  <button
+                    key={chat.config.id}
+                    type="button"
+                    onClick={privateHidden ? undefined : () => onNavigate({ view: "chat", chatId: chat.config.id })}
+                    className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
                   >
-                    {getSshSessionStatusLabel(session.state.status)}
-                  </StatusBadge>
-                </button>
-              ))}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {chat.config.name}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        Chat
+                      </span>
+                    </span>
+                    <StatusBadge className="ml-auto shrink-0" variant={getChatStatusBadgeVariant(chat.state.status)}>
+                      {chat.state.status}
+                    </StatusBadge>
+                  </button>
+                );
+              })}
+              {relatedSessions.map((session) => {
+                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
+                return (
+                  <button
+                    key={session.config.id}
+                    type="button"
+                    onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
+                    className={`${activityRowClassName} ${getPrivateContainerClassName(privateHidden)}`}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {session.config.name}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                        {session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
+                      </span>
+                    </span>
+                    <StatusBadge
+                      className="ml-auto shrink-0"
+                      variant={getSshSessionStatusBadgeVariant(session.state.status)}
+                    >
+                      {getSshSessionStatusLabel(session.state.status)}
+                    </StatusBadge>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-gray-600 dark:text-gray-400">No active items in this workspace right now.</p>
@@ -156,6 +166,7 @@ export function WorkspaceView({
           error={agentsError}
           title="Configured Agents"
           onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
+          isAgentPrivateHidden={(agent) => shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems)}
         />
 
         {historyTasks.length > 0 ? (

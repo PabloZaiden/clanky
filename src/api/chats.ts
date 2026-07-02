@@ -72,6 +72,9 @@ function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id
   if (body.useWorktree !== undefined) {
     updates.useWorktree = body.useWorktree;
   }
+  if (body.isPrivate !== undefined) {
+    updates.isPrivate = body.isPrivate;
+  }
 
   return updates;
 }

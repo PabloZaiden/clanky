@@ -47,6 +47,7 @@ export const UpdateAgentRequestSchema = z.object({
   useWorktree: z.boolean().optional(),
   schedule: AgentScheduleSchema.optional(),
   enabled: z.boolean().optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 export const RunAgentRequestSchema = z.object({

@@ -15,6 +15,7 @@ import {
 export function TaskRow({
   task,
   onClick,
+  privateHidden = false,
 }: TaskSummaryProps) {
   const { config, state } = task;
   const isActive = isTaskActive(state.status);
@@ -36,9 +37,10 @@ export function TaskRow({
   return (
     <div
       className={`relative rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800 ${borderClass} ${
-        onClick ? "cursor-pointer hover:border-gray-300 hover:shadow-md dark:hover:border-gray-600" : ""
+        onClick && !privateHidden ? "cursor-pointer hover:border-gray-300 hover:shadow-md dark:hover:border-gray-600" : ""
+      } ${privateHidden ? "clanky-private-obscured" : ""
       }`}
-      onClick={onClick}
+      onClick={privateHidden ? undefined : onClick}
     >
       <div className="px-4 py-3">
         {/* Responsive layout: stack on small screens and wrap across rows on wider layouts as needed */}

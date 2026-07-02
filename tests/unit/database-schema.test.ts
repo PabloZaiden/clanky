@@ -27,6 +27,14 @@ function tableNames(): string[] {
   ).map((row) => row.name);
 }
 
+function columnNames(tableName: string): string[] {
+  return (
+    getDatabase()
+      .query(`PRAGMA table_info(${tableName})`)
+      .all() as Array<{ name: string }>
+  ).map((row) => row.name);
+}
+
 describe("database schema", () => {
   afterEach(() => {
     closeDatabase();
@@ -42,6 +50,9 @@ describe("database schema", () => {
       expect(tableNames()).not.toContain("auth_refresh_sessions");
       expect(tableNames()).not.toContain("forwarded_ports");
       expect(tableNames()).toContain("preview_sessions");
+      for (const tableName of ["workspaces", "tasks", "chats", "agents", "ssh_servers", "ssh_sessions", "ssh_server_sessions"]) {
+        expect(columnNames(tableName)).toContain("is_private");
+      }
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
@@ -65,6 +76,44 @@ describe("database schema", () => {
       }>;
       const statusColumn = columns.find((column) => column.name === "status");
       expect(statusColumn?.dflt_value).toBe("'active'");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v6 adds private flags idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 6);
+    if (!migration) {
+      throw new Error("Migration v6 was not found");
+    }
+    const db = new Database(":memory:");
+    const tableNamesToMigrate = [
+      "workspaces",
+      "tasks",
+      "chats",
+      "agents",
+      "ssh_servers",
+      "ssh_sessions",
+      "ssh_server_sessions",
+    ];
+    try {
+      for (const tableName of tableNamesToMigrate) {
+        db.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY)`);
+      }
+
+      migration.up(db);
+      migration.up(db);
+
+      for (const tableName of tableNamesToMigrate) {
+        const columns = db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
+          name: string;
+          notnull: number;
+          dflt_value: string | null;
+        }>;
+        const privateColumn = columns.find((column) => column.name === "is_private");
+        expect(privateColumn?.notnull).toBe(1);
+        expect(privateColumn?.dflt_value).toBe("0");
+      }
     } finally {
       db.close();
     }

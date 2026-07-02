@@ -46,6 +46,7 @@ export interface UpdateAgentOptions {
   useWorktree?: boolean;
   schedule?: Omit<AgentConfig["schedule"], "nextRunAt"> & { nextRunAt?: string };
   enabled?: boolean;
+  isPrivate?: boolean;
 }
 
 export interface ListAgentRunsOptions {
@@ -157,6 +158,7 @@ export class AgentManager {
         useWorktree: updates.useWorktree ?? agent.config.useWorktree,
         schedule: nextSchedule,
         enabled,
+        isPrivate: updates.isPrivate ?? agent.config.isPrivate,
         updatedAt: createTimestamp(),
       },
       state: {

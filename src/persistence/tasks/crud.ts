@@ -17,6 +17,7 @@ const TASK_LIST_COLUMNS = [
   "prompt",
   "created_at",
   "updated_at",
+  "is_private",
   "workspace_id",
   "model_provider_id",
   "model_model_id",

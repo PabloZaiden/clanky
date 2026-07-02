@@ -21,6 +21,7 @@ export interface SshServerConfig {
   repositoriesBasePath: string | null;
   createdAt: string;
   updatedAt: string;
+  isPrivate?: boolean;
 }
 
 /**
@@ -78,6 +79,7 @@ export interface SshCredentialExchangeResponse {
  */
 export interface SshServerSessionConfig extends SshSessionBaseConfig {
   sshServerId: string;
+  isPrivate?: boolean;
 }
 
 /**

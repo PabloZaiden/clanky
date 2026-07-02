@@ -57,13 +57,14 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
  */
 export async function updateWorkspace(
   id: string,
-  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath">>
+  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath" | "isPrivate">>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
     hasNameUpdate: updates.name !== undefined,
     hasSettingsUpdate: updates.serverSettings !== undefined,
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
+    hasPrivateUpdate: updates.isPrivate !== undefined,
   });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
@@ -86,6 +87,11 @@ export async function updateWorkspace(
   if (updates.devcontainerSubpath !== undefined) {
     setClauses.push("devcontainer_subpath = ?");
     values.push(updates.devcontainerSubpath || null);
+  }
+
+  if (updates.isPrivate !== undefined) {
+    setClauses.push("is_private = ?");
+    values.push(updates.isPrivate ? 1 : 0);
   }
 
   if (setClauses.length === 0) {
