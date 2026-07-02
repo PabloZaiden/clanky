@@ -26,6 +26,7 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "prompt",
   "created_at",
   "updated_at",
+  "is_private",
   "workspace_id",
   "model_provider_id",
   "model_model_id",
@@ -109,6 +110,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     prompt: config.prompt,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
+    is_private: config.isPrivate ? 1 : 0,
     workspace_id: config.workspaceId || null,
     model_provider_id: config.model?.providerID ?? null,
     model_model_id: config.model?.modelID ?? null,
@@ -219,6 +221,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
     prompt: row["prompt"] as string,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
+    isPrivate: row["is_private"] === 1,
     workspaceId: (row["workspace_id"] as string | null) ?? "",
     stopPattern: row["stop_pattern"] as string,
     git: {

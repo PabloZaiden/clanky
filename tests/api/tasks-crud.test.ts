@@ -703,6 +703,41 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.git.branchPrefix).toBe("team-platform/");
     });
 
+    test("updates and returns the visual private flag without blocking direct reads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Private flag prompt",
+          name: "Private Flag Task",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const createBody = await createResponse.json();
+      const taskId = createBody.config.id;
+
+      const updateResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPrivate: true }),
+      });
+      expect(updateResponse.status).toBe(200);
+      const updateBody = await updateResponse.json();
+      expect(updateBody.config.isPrivate).toBe(true);
+
+      const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+      expect(getResponse.status).toBe(200);
+      const getBody = await getResponse.json();
+      expect(getBody.config.name).toBe("Private Flag Task");
+      expect(getBody.config.isPrivate).toBe(true);
+    });
+
     test("clears fully autonomous settings when plan mode is disabled", async () => {
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",

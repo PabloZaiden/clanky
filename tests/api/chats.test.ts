@@ -1526,6 +1526,47 @@ describe("Chats API Integration", () => {
     expect(persisted.config.name).toBe("Renamed Chat");
   });
 
+  test("updates a chat private flag and persists it when re-fetched", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Private Chat Flag",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const updateResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        isPrivate: true,
+      }),
+    });
+
+    expect(updateResponse.status).toBe(200);
+    const updated = await updateResponse.json();
+    expect(updated.config.isPrivate).toBe(true);
+
+    const getResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
+    expect(getResponse.status).toBe(200);
+    const fetched = await getResponse.json();
+    expect(fetched.config.isPrivate).toBe(true);
+
+    const listResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(listResponse.status).toBe(200);
+    const listedChats = await listResponse.json();
+    const listed = listedChats.find((chat: { config: { id: string } }) => chat.config.id === chatId);
+    expect(listed?.config.isPrivate).toBe(true);
+  });
+
   test("updates a chat model and uses it for the next turn", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

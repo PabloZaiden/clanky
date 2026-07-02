@@ -21,8 +21,13 @@ export const UpdateSshServerRequestSchema = z.object({
   address: RequiredTrimmedStringSchema.optional(),
   username: RequiredTrimmedStringSchema.optional(),
   repositoriesBasePath: z.string().trim().nullish(),
+  isPrivate: z.boolean().optional(),
 }).refine((value) => {
-  return value.name !== undefined || value.address !== undefined || value.username !== undefined || value.repositoriesBasePath !== undefined;
+  return value.name !== undefined
+    || value.address !== undefined
+    || value.username !== undefined
+    || value.repositoriesBasePath !== undefined
+    || value.isPrivate !== undefined;
 }, {
   message: "at least one field must be provided",
 });

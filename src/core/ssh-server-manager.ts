@@ -96,6 +96,7 @@ export class SshServerManager {
       ...(request.repositoriesBasePath !== undefined
         ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || null }
         : {}),
+      ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
       updatedAt: new Date().toISOString(),
     });
     const updated = await getSshServer(id);
@@ -207,7 +208,8 @@ export class SshServerManager {
     const updated: SshServerSession = {
       config: {
         ...session.config,
-        name: request.name.trim(),
+        ...(request.name !== undefined ? { name: request.name.trim() } : {}),
+        ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
         updatedAt: new Date().toISOString(),
       },
       state: session.state,

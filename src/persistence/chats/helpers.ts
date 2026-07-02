@@ -23,6 +23,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "directory",
   "created_at",
   "updated_at",
+  "is_private",
   "model_provider_id",
   "model_model_id",
   "model_variant",
@@ -130,6 +131,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     directory: config.directory,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
+    is_private: config.isPrivate ? 1 : 0,
     model_provider_id: config.model.providerID,
     model_model_id: config.model.modelID,
     model_variant: config.model.variant ?? null,
@@ -186,6 +188,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     baseBranch: (row["base_branch"] as string | null) ?? undefined,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
+    isPrivate: row["is_private"] === 1,
     mode: ((row["mode"] as ChatConfig["mode"] | null) ?? DEFAULT_CHAT_CONFIG.mode),
   };
 

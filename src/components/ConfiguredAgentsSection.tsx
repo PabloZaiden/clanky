@@ -1,4 +1,5 @@
 import type { Agent } from "../types";
+import { getPrivateContainerClassName } from "../lib/private-items";
 
 function formatDate(value?: string): string {
   if (!value) {
@@ -48,6 +49,7 @@ export interface ConfiguredAgentsSectionProps {
   description?: string;
   workspaceNamesById?: Record<string, string>;
   onSelectAgent?: (agentId: string) => void;
+  isAgentPrivateHidden?: (agent: Agent) => boolean;
 }
 
 export function ConfiguredAgentsSection({
@@ -58,6 +60,7 @@ export function ConfiguredAgentsSection({
   description,
   workspaceNamesById = {},
   onSelectAgent,
+  isAgentPrivateHidden = () => false,
 }: ConfiguredAgentsSectionProps) {
   if (!loading && !error && agents.length === 0) {
     return null;
@@ -92,6 +95,7 @@ export function ConfiguredAgentsSection({
         <div className="space-y-2">
           {agents.map((agent) => {
             const workspaceName = workspaceNamesById[agent.config.workspaceId];
+            const privateHidden = isAgentPrivateHidden(agent);
             const body = (
               <>
                 <span className="flex min-w-0 flex-1 flex-col">
@@ -109,7 +113,7 @@ export function ConfiguredAgentsSection({
               </>
             );
 
-            if (onSelectAgent) {
+            if (onSelectAgent && !privateHidden) {
               return (
                 <button
                   key={agent.config.id}
@@ -123,7 +127,7 @@ export function ConfiguredAgentsSection({
             }
 
             return (
-              <div key={agent.config.id} className={itemClassName}>
+              <div key={agent.config.id} className={`${itemClassName} ${getPrivateContainerClassName(privateHidden)}`}>
                 {body}
               </div>
             );

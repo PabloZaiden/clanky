@@ -8,14 +8,16 @@ export function WorkspaceHeader({
   taskCount,
   registeredSshServers,
   onOpenSettings,
+  privateHidden = false,
 }: {
   workspace: Workspace;
   taskCount: number;
   registeredSshServers: readonly SshServer[];
   onOpenSettings: () => void;
+  privateHidden?: boolean;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+    <div className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 ${privateHidden ? "clanky-private-obscured" : ""}`}>
       <div className="flex min-w-0 items-start gap-2">
         <svg className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />

@@ -116,6 +116,9 @@ interface ShellMainContentProps {
 
   // Toast
   toast: import("../../hooks/useToast").ToastContextValue;
+
+  // Privacy preference
+  showPrivateItems: boolean;
 }
 
 function renderMainContent(props: ShellMainContentProps) {
@@ -154,6 +157,7 @@ function renderMainContent(props: ShellMainContentProps) {
     workspaceSettings,
     workspacesSaving,
     agents,
+    showPrivateItems,
   } = props;
 
   if (shellLoading && route.view === "home") {
@@ -339,6 +343,7 @@ function renderMainContent(props: ShellMainContentProps) {
         registeredSshServers={servers}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
+        showPrivateItems={showPrivateItems}
       />
     );
   }
@@ -432,6 +437,7 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
+        showPrivateItems={showPrivateItems}
       />
     );
   }
@@ -635,6 +641,7 @@ function renderMainContent(props: ShellMainContentProps) {
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       headerOffsetClassName={shellHeaderOffsetClassName}
       onNavigate={navigateWithinShell}
+      showPrivateItems={showPrivateItems}
     />
   );
 }

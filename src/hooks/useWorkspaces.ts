@@ -8,6 +8,7 @@ import type {
   PublicWorkspace,
   Workspace,
   CreateWorkspaceRequest,
+  UpdateWorkspaceRequest,
   DeleteWorkspaceRequest,
   WorkspaceImportResult,
   WorkspaceExportData,
@@ -29,7 +30,7 @@ export interface UseWorkspacesResult {
   /** Create a new workspace */
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace | null>;
   /** Update a workspace */
-  updateWorkspace: (id: string, name: string) => Promise<Workspace | null>;
+  updateWorkspace: (id: string, request: string | UpdateWorkspaceRequest) => Promise<Workspace | null>;
   /** Delete a workspace (only if it has no tasks) */
   deleteWorkspace: (id: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Pull latest changes for the workspace default branch */
@@ -114,14 +115,15 @@ export function useWorkspaces(): UseWorkspacesResult {
   }, [fetchWorkspaces]);
 
   // Update a workspace
-  const updateWorkspace = useCallback(async (id: string, name: string): Promise<Workspace | null> => {
+  const updateWorkspace = useCallback(async (id: string, request: string | UpdateWorkspaceRequest): Promise<Workspace | null> => {
     try {
       setSaving(true);
       setError(null);
+      const body = typeof request === "string" ? { name: request } : request;
       const response = await appFetch(`/api/workspaces/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
