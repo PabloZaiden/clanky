@@ -4,7 +4,13 @@
 
 import type { Server } from "bun";
 import index from "./index.html";
-import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+// @ts-expect-error Bun supports importing static assets as file paths with this import attribute.
+import webAppIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
+// @ts-expect-error Bun supports importing static assets as file paths with this import attribute.
+import webAppIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
+// @ts-expect-error Bun supports importing static assets as file paths with this import attribute.
+import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
+import { createWebAppServer, defineRoutes, sqliteWebAppStore, type PublicRouteDefinition, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
@@ -34,9 +40,22 @@ type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
 type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
+const WEB_APP_ICON_192_PATH = "/web-app-manifest-192x192.png";
+const WEB_APP_ICON_512_PATH = "/web-app-manifest-512x512.png";
+const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
+const PWA_ICON_PATHS = new Map([
+  [WEB_APP_ICON_192_PATH, webAppIcon192Path],
+  [WEB_APP_ICON_512_PATH, webAppIcon512Path],
+  [APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
+]);
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeRegistered = false;
+
+function pwaIconResponse(pathname: string): Response | undefined {
+  const iconPath = PWA_ICON_PATHS.get(pathname);
+  return iconPath ? new Response(Bun.file(iconPath), { headers: { "content-type": "image/png" } }) : undefined;
+}
 
 function legacyRequest(req: Request, params: Record<string, string>): Request {
   const wrapped = new Request(req);
@@ -172,6 +191,12 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
   ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
 });
 
+const publicRoutes: Record<string, PublicRouteDefinition> = {
+  [WEB_APP_ICON_192_PATH]: { GET: () => pwaIconResponse(WEB_APP_ICON_192_PATH) },
+  [WEB_APP_ICON_512_PATH]: { GET: () => pwaIconResponse(WEB_APP_ICON_512_PATH) },
+  [APPLE_TOUCH_ICON_PATH]: { GET: () => pwaIconResponse(APPLE_TOUCH_ICON_PATH) },
+};
+
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) return app;
   await ensureDataDirectories();
@@ -187,7 +212,22 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
+    pwa: {
+      manifestPath: "/site.webmanifest",
+      shortName: "Clanky",
+      themeColor: "#242424",
+      backgroundColor: "#242424",
+      display: "standalone",
+      icons: [
+        { src: WEB_APP_ICON_192_PATH, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: WEB_APP_ICON_512_PATH, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+      appleTouchIcon: { href: APPLE_TOUCH_ICON_PATH, sizes: "180x180" },
+      startUrl: "/",
+      scope: "/",
+    },
     routes,
+    publicRoutes,
     websockets: {
       clanky: websocketHandlers as never,
     },

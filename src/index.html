@@ -16,11 +16,13 @@
     <link rel="apple-touch-icon" sizes="152x152" href="./apple-touch-icon-152x152.png" />
     <link rel="apple-touch-icon" sizes="167x167" href="./apple-touch-icon-167x167.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon-180x180.png" />
-    <link rel="manifest" href="./site.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Clanky" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#242424" />
+    <script>
+      document.head.insertAdjacentHTML("beforeend", '<link rel="manifest" href="/site.webmanifest" />');
+    </script>
     <script>
       (() => {
         const storageKey = "clanky.themePreference";
