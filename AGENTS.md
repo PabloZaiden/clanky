@@ -214,8 +214,8 @@ export function MyComponent() {
  * This file handles the main application logic.
  */
 
-// Serve index.html for all unmatched routes.
-"/*": index,
+// App-specific API routes live here; the framework owns the web document route.
+"/api/example": route,
 ```
 
 ### Formatting

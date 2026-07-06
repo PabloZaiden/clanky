@@ -3,7 +3,6 @@
  */
 
 const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
-const INDEX_HTML_SUFFIX = "/index.html";
 
 export function normalizePublicBasePath(rawBasePath?: string | null): string {
   const trimmedBasePath = rawBasePath?.trim();
@@ -28,12 +27,7 @@ export function getPublicBasePathFromPathname(pathname: string): string {
     return "";
   }
 
-  let normalizedPathname = pathname;
-  if (normalizedPathname.endsWith(INDEX_HTML_SUFFIX)) {
-    normalizedPathname = normalizedPathname.slice(0, -INDEX_HTML_SUFFIX.length) || "/";
-  }
-
-  return normalizePublicBasePath(normalizedPathname);
+  return normalizePublicBasePath(pathname);
 }
 
 export function applyPublicBasePath(basePath: string, path: string): string {
