@@ -67,8 +67,8 @@ jobs:
 
           HTML=$(curl -fsS -D /tmp/clanky-pr-dev-root-headers http://127.0.0.1:3017/)
           grep -qi '^content-type: text/html' /tmp/clanky-pr-dev-root-headers
-          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//')
-          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//')
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
           test -n "$SCRIPTS"
           test -n "$CSS"
           : > /tmp/clanky-pr-dev-js-headers
@@ -129,8 +129,8 @@ jobs:
 
           HTML=$(curl -fsS -D /tmp/clanky-pr-root-headers http://127.0.0.1:3018/)
           grep -qi '^content-type: text/html' /tmp/clanky-pr-root-headers
-          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//')
-          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//')
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
           test -n "$SCRIPTS"
           test -n "$CSS"
           : > /tmp/clanky-pr-js-headers
@@ -188,8 +188,8 @@ jobs:
 
           HTML=$(curl -fsS -D /tmp/clanky-pr-docker-root-headers http://127.0.0.1:3019/)
           grep -qi '^content-type: text/html' /tmp/clanky-pr-docker-root-headers
-          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//')
-          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//')
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
           test -n "$SCRIPTS"
           test -n "$CSS"
           : > /tmp/clanky-pr-docker-js-headers
