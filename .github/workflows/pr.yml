@@ -41,13 +41,63 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Smoke test dev server
+        run: |
+          set -e
+          CLANKY_DISABLE_PASSKEY=1 CLANKY_HOST=127.0.0.1 CLANKY_PORT=3017 CLANKY_DATA_DIR="$(mktemp -d)" bun run dev > /tmp/clanky-pr-dev-smoke.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "Clanky dev server exited during startup"
+              cat /tmp/clanky-pr-dev-smoke.log
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:3017/api/health; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Clanky dev server did not become ready"
+              cat /tmp/clanky-pr-dev-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          HTML=$(curl -fsS -D /tmp/clanky-pr-dev-root-headers http://127.0.0.1:3017/)
+          grep -qi '^content-type: text/html' /tmp/clanky-pr-dev-root-headers
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
+          test -n "$SCRIPTS"
+          test -n "$CSS"
+          : > /tmp/clanky-pr-dev-js-headers
+          for JS in $SCRIPTS; do
+            JS="${JS#./}"
+            JS="${JS#/}"
+            curl -fsS -D /tmp/clanky-pr-dev-js-headers "http://127.0.0.1:3017/$JS" >/dev/null
+            grep -qi '^content-type: .*javascript' /tmp/clanky-pr-dev-js-headers
+          done
+          for CSS_PATH in $CSS; do
+            CSS_PATH="${CSS_PATH#./}"
+            CSS_PATH="${CSS_PATH#/}"
+            curl -fsS -D /tmp/clanky-pr-dev-css-headers "http://127.0.0.1:3017/$CSS_PATH" >/dev/null
+            grep -qi '^content-type: text/css' /tmp/clanky-pr-dev-css-headers
+          done
+          curl -fsS -D /tmp/clanky-pr-dev-manifest-headers http://127.0.0.1:3017/site.webmanifest >/dev/null
+          curl -fsS -D /tmp/clanky-pr-dev-icon-headers http://127.0.0.1:3017/webapp-icon-1.png >/dev/null
+          curl -fsS -D /tmp/clanky-pr-dev-apple-icon-headers http://127.0.0.1:3017/webapp-apple-touch-icon.png >/dev/null
+          grep -qi '^content-type: application/manifest+json' /tmp/clanky-pr-dev-manifest-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-dev-icon-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-dev-apple-icon-headers
+
       - name: Build binary
         run: bun run build
 
       - name: Smoke test binary startup
         run: |
           set -e
-          rm -f /tmp/clanky-pr-binary-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
+          rm -f /tmp/clanky-pr-binary-smoke.log
           ./dist/clanky --help > /tmp/clanky-pr-help.log
           grep -q "Usage:" /tmp/clanky-pr-help.log
           if ./dist/clanky > /tmp/clanky-pr-empty.log 2>&1; then
@@ -77,10 +127,36 @@ jobs:
             sleep 1
           done
 
-          curl -v --fail http://127.0.0.1:3018/ -o /tmp/clanky-pr-index.html
-          css_path=$(grep -oE '/[^" ]+\.css' /tmp/clanky-pr-index.html | head -n1)
-          test -n "$css_path"
-          curl -v --fail "http://127.0.0.1:3018$css_path" -o /tmp/clanky-pr-app.css
+          HTML=$(curl -fsS -D /tmp/clanky-pr-root-headers http://127.0.0.1:3018/)
+          grep -qi '^content-type: text/html' /tmp/clanky-pr-root-headers
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
+          test -n "$SCRIPTS"
+          test -n "$CSS"
+          : > /tmp/clanky-pr-js-headers
+          for JS in $SCRIPTS; do
+            JS="${JS#./}"
+            JS="${JS#/}"
+            curl -fsS -D /tmp/clanky-pr-js-headers "http://127.0.0.1:3018/$JS" >/dev/null
+            grep -qi '^content-type: .*javascript' /tmp/clanky-pr-js-headers
+          done
+          for CSS_PATH in $CSS; do
+            CSS_PATH="${CSS_PATH#./}"
+            CSS_PATH="${CSS_PATH#/}"
+            curl -fsS -D /tmp/clanky-pr-css-headers "http://127.0.0.1:3018/$CSS_PATH" >/dev/null
+            grep -qi '^content-type: text/css' /tmp/clanky-pr-css-headers
+          done
+          curl -fsS -D /tmp/clanky-pr-manifest-headers http://127.0.0.1:3018/site.webmanifest >/dev/null
+          curl -fsS -D /tmp/clanky-pr-icon-headers http://127.0.0.1:3018/webapp-icon-1.png >/dev/null
+          curl -fsS -D /tmp/clanky-pr-apple-icon-headers http://127.0.0.1:3018/webapp-apple-touch-icon.png >/dev/null
+          grep -qi '^content-type: application/manifest+json' /tmp/clanky-pr-manifest-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-icon-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-apple-icon-headers
+
+          FIRST_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '1p')
+          SECOND_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '2p')
+          test "$FIRST_SCRIPT" = "/webapp-compiled/webapp-renderer-prelude.js"
+          test "$SECOND_SCRIPT" = "/webapp-compiled/webapp-client-entry.js"
 
       - name: Smoke test Docker image
         run: |
@@ -110,4 +186,33 @@ jobs:
             sleep 2
           done
 
-          curl --fail --silent --show-error http://127.0.0.1:3019/api/health
+          HTML=$(curl -fsS -D /tmp/clanky-pr-docker-root-headers http://127.0.0.1:3019/)
+          grep -qi '^content-type: text/html' /tmp/clanky-pr-docker-root-headers
+          SCRIPTS=$(printf '%s' "$HTML" | grep -oE 'src="[^"]+\.js"' | sed 's/^src="//; s/"$//' || true)
+          CSS=$(printf '%s' "$HTML" | grep -oE 'href="[^"]+\.css"' | sed 's/^href="//; s/"$//' || true)
+          test -n "$SCRIPTS"
+          test -n "$CSS"
+          : > /tmp/clanky-pr-docker-js-headers
+          for JS in $SCRIPTS; do
+            JS="${JS#./}"
+            JS="${JS#/}"
+            curl -fsS -D /tmp/clanky-pr-docker-js-headers "http://127.0.0.1:3019/$JS" >/dev/null
+            grep -qi '^content-type: .*javascript' /tmp/clanky-pr-docker-js-headers
+          done
+          for CSS_PATH in $CSS; do
+            CSS_PATH="${CSS_PATH#./}"
+            CSS_PATH="${CSS_PATH#/}"
+            curl -fsS -D /tmp/clanky-pr-docker-css-headers "http://127.0.0.1:3019/$CSS_PATH" >/dev/null
+            grep -qi '^content-type: text/css' /tmp/clanky-pr-docker-css-headers
+          done
+          curl -fsS -D /tmp/clanky-pr-docker-manifest-headers http://127.0.0.1:3019/site.webmanifest >/dev/null
+          curl -fsS -D /tmp/clanky-pr-docker-icon-headers http://127.0.0.1:3019/webapp-icon-1.png >/dev/null
+          curl -fsS -D /tmp/clanky-pr-docker-apple-icon-headers http://127.0.0.1:3019/webapp-apple-touch-icon.png >/dev/null
+          grep -qi '^content-type: application/manifest+json' /tmp/clanky-pr-docker-manifest-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-docker-icon-headers
+          grep -qi '^content-type: image/png' /tmp/clanky-pr-docker-apple-icon-headers
+
+          FIRST_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '1p')
+          SECOND_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '2p')
+          test "$FIRST_SCRIPT" = "/webapp-compiled/webapp-renderer-prelude.js"
+          test "$SECOND_SCRIPT" = "/webapp-compiled/webapp-client-entry.js"

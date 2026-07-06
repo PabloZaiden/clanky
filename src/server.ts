@@ -3,7 +3,10 @@
  */
 
 import type { Server } from "bun";
-import index from "./index.html";
+import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
+import faviconPath from "./favicon.svg" with { type: "file" };
+import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
+import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
@@ -181,7 +184,17 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",
-    index,
+    web: {
+      entry: "./frontend.tsx",
+      icons: {
+        favicon: { src: faviconPath, sizes: "any", type: "image/svg+xml" },
+        appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
+        manifest: [
+          { src: manifestIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: manifestIcon512Path, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ],
+      },
+    },
     version: CLANKY_VERSION,
     store,
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
@@ -220,7 +233,7 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
   }
 
-  const server = appServer.start();
+  const server = await appServer.start();
   pushedTaskMonitor.start();
   agentScheduler.start();
 

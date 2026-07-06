@@ -49,13 +49,25 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 ## Minimum server shape
 
 ```ts
-import webIndex from "./index.html";
+import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
+import faviconPath from "./favicon.svg" with { type: "file" };
+import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
+import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
 import { createWebAppServer, defineRoutes } from "@pablozaiden/webapp/server";
 
 const app = createWebAppServer({
   appName: "Example",
   envPrefix: "EXAMPLE",
-  index: webIndex,
+  web: {
+    icons: {
+      favicon: { src: faviconPath, sizes: "any", type: "image/svg+xml" },
+      appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
+      manifest: [
+        { src: manifestIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: manifestIcon512Path, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+    },
+  },
   auth: { passkeys: true, apiKeys: true, deviceAuth: true },
   routes: defineRoutes({}),
 });
