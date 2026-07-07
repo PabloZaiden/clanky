@@ -108,6 +108,7 @@ export const WorkspaceConfigSchema = z.object({
   name: z.string().min(1, "name is required"),
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
+  archived: z.boolean().optional(),
 });
 
 /**

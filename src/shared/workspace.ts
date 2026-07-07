@@ -67,6 +67,7 @@ export interface PublicWorkspaceConfig {
   name: string;
   directory: string;
   serverSettings: PublicServerSettings;
+  archived?: boolean;
 }
 
 export interface PublicWorkspaceExportData {

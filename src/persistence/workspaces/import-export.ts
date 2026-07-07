@@ -33,6 +33,7 @@ export async function exportWorkspaces(): Promise<WorkspaceExportData> {
       name: workspace.name,
       directory: workspace.directory,
       serverSettings: workspace.serverSettings,
+      archived: workspace.archived === true,
     };
   });
 
@@ -71,7 +72,7 @@ export async function importWorkspaces(data: WorkspaceExportData): Promise<Works
       serverSettings: config.serverSettings,
       createdAt: now,
       updatedAt: now,
-      archived: false,
+      archived: config.archived === true,
     };
 
     await createWorkspace(workspace);
