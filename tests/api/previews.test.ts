@@ -219,7 +219,8 @@ describe("workspace previews", () => {
   });
 
   test("preserves browser Host and Origin for WebSocket preview streams", async () => {
-    const previewHost = "127.0.0.1:43123";
+    const previewHost = "preview.example.test";
+    const previewOrigin = `https://${previewHost}`;
     let capturedHeaders: Headers | undefined;
     const upstreamServer = Bun.serve({
       port: 0,
@@ -228,7 +229,7 @@ describe("workspace previews", () => {
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const host = req.headers.get("host");
           const origin = req.headers.get("origin");
-          if (!host || origin !== `http://${host}`) {
+          if (!host || origin !== previewOrigin) {
             return new Response("Request origin is not allowed", { status: 403 });
           }
           if (server.upgrade(req)) {
@@ -266,7 +267,7 @@ describe("workspace previews", () => {
           remotePort: upstreamServer.port,
           localHost: "127.0.0.1",
           localPort: 43123,
-          localUrl: `http://${previewHost}/`,
+          localUrl: `${previewOrigin}/`,
           initialPath: "/",
           cliHostname: "devbox",
         }));
@@ -279,7 +280,7 @@ describe("workspace previews", () => {
           path: "/api/ws",
           headers: [
             ["host", previewHost],
-            ["origin", `http://${previewHost}`],
+            ["origin", previewOrigin],
           ],
         }));
         await previewSessionManager.handleBridgeMessage(bridgeSocket, JSON.stringify({
@@ -298,10 +299,10 @@ describe("workspace previews", () => {
         }
         expect(decodeBase64(echoed.body)).toBe("hello");
         expect(capturedHeaders?.get("host")).toBe(previewHost);
-        expect(capturedHeaders?.get("origin")).toBe(`http://${previewHost}`);
+        expect(capturedHeaders?.get("origin")).toBe(previewOrigin);
         expect(capturedHeaders?.get("x-forwarded-host")).toBe(previewHost);
-        expect(capturedHeaders?.get("x-forwarded-proto")).toBe("http");
-        expect(capturedHeaders?.get("x-forwarded-port")).toBe("43123");
+        expect(capturedHeaders?.get("x-forwarded-proto")).toBe("https");
+        expect(capturedHeaders?.get("x-forwarded-port")).toBe("443");
 
         await previewSessionManager.closeBridgeSession(bridgeSocket, "test done");
       });

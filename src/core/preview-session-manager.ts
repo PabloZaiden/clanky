@@ -98,6 +98,19 @@ function getForwardedOriginParts(headers: Array<[string, string]>, runtime: Prev
   return new URL(runtime.localOrigin);
 }
 
+function getForwardedPort(origin: URL): string | undefined {
+  if (origin.port) {
+    return origin.port;
+  }
+  if (origin.protocol === "https:") {
+    return "443";
+  }
+  if (origin.protocol === "http:") {
+    return "80";
+  }
+  return undefined;
+}
+
 function applyWebSocketForwardedHeaders(
   result: Record<string, string>,
   headers: Array<[string, string]>,
@@ -105,10 +118,11 @@ function applyWebSocketForwardedHeaders(
 ): void {
   const host = getHeaderValue(headers, "host");
   const origin = getForwardedOriginParts(headers, runtime);
+  const port = getForwardedPort(origin);
   result["x-forwarded-host"] = host || origin.host;
   result["x-forwarded-proto"] = origin.protocol.replace(":", "");
-  if (origin.port) {
-    result["x-forwarded-port"] = origin.port;
+  if (port) {
+    result["x-forwarded-port"] = port;
   }
 }
 
