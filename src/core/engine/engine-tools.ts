@@ -15,6 +15,7 @@ export interface ToolProcessingContext {
   backend: TaskBackend;
   sessionId: string | null;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>, id?: string, consoleLevel?: "trace" | "debug" | "info" | "warn" | "error") => string;
+  emitLogDelta: (level: LogLevel, message: string, delta: string, fullContent: string, logKind: "response" | "reasoning", id: string) => void;
   emit: (event: TaskEvent) => void;
   updateState: (update: Partial<TaskState>) => void;
   persistMessage: (message: MessageData) => void;
@@ -100,7 +101,7 @@ function handleStreamingDelta(
     ctx.currentResponseLogContent += content;
     const logMsg = "AI generating response...";
     if (ctx.currentResponseLogId) {
-      toolCtx.emitLog("agent", logMsg, { logKind: "response", responseContent: ctx.currentResponseLogContent }, ctx.currentResponseLogId, "trace");
+      toolCtx.emitLogDelta("agent", logMsg, content, ctx.currentResponseLogContent, "response", ctx.currentResponseLogId);
     } else {
       ctx.currentResponseLogId = toolCtx.emitLog("agent", logMsg, { logKind: "response", responseContent: ctx.currentResponseLogContent }, undefined, "trace");
     }
@@ -108,7 +109,7 @@ function handleStreamingDelta(
     ctx.currentReasoningLogContent += content;
     const logMsg = "AI reasoning...";
     if (ctx.currentReasoningLogId) {
-      toolCtx.emitLog("agent", logMsg, { logKind: "reasoning", responseContent: ctx.currentReasoningLogContent }, ctx.currentReasoningLogId, "trace");
+      toolCtx.emitLogDelta("agent", logMsg, content, ctx.currentReasoningLogContent, "reasoning", ctx.currentReasoningLogId);
     } else {
       ctx.currentReasoningLogId = toolCtx.emitLog("agent", logMsg, { logKind: "reasoning", responseContent: ctx.currentReasoningLogContent }, undefined, "trace");
     }

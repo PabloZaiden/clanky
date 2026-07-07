@@ -201,6 +201,45 @@ export function ChatDetails({
               messages: upsertById(current.state.messages as MessageData[], event.message),
             },
           };
+        case "chat.message.delta": {
+          const messages = current.state.messages as MessageData[];
+          const existingIndex = messages.findIndex((messageEntry) => messageEntry.id === event.messageId);
+          if (existingIndex < 0 && event.baseLength !== 0) {
+            void refreshChat();
+            return current;
+          }
+          if (existingIndex >= 0 && messages[existingIndex]!.content.length !== event.baseLength) {
+            void refreshChat();
+            return current;
+          }
+          const nextMessage: MessageData = existingIndex >= 0
+            ? {
+                ...messages[existingIndex]!,
+                content: `${messages[existingIndex]!.content}${event.delta}`,
+                timestamp: messages[existingIndex]!.timestamp,
+              }
+            : {
+                id: event.messageId,
+                role: event.role,
+                content: event.delta,
+                timestamp: event.messageTimestamp,
+              };
+          const nextMessages = existingIndex >= 0
+            ? messages.map((messageEntry, index) => index === existingIndex ? nextMessage : messageEntry)
+            : [...messages, nextMessage];
+          return {
+            ...current,
+            state: {
+              ...current.state,
+              status: event.role === "assistant"
+                ? getStreamingActivityStatus(current.state.status)
+                : current.state.status,
+              activeMessageId: event.messageId,
+              lastActivityAt: event.timestamp,
+              messages: nextMessages,
+            },
+          };
+        }
         case "chat.tool_call":
           return {
             ...current,
@@ -241,6 +280,55 @@ export function ChatDetails({
               logs: upsertById(current.state.logs as TaskLogEntry[], event.log),
             },
           };
+        case "chat.log.delta": {
+          const logs = current.state.logs as TaskLogEntry[];
+          const existingIndex = logs.findIndex((logEntry) => logEntry.id === event.logId);
+          if (existingIndex < 0 && event.baseLength !== 0) {
+            void refreshChat();
+            return current;
+          }
+          const existingContent = existingIndex >= 0
+            ? logs[existingIndex]!.details?.["responseContent"]
+            : "";
+          if (typeof existingContent !== "string" || existingContent.length !== event.baseLength) {
+            void refreshChat();
+            return current;
+          }
+          const nextLog: TaskLogEntry = existingIndex >= 0
+            ? {
+                ...logs[existingIndex]!,
+                level: event.level,
+                message: event.message,
+                details: {
+                  ...logs[existingIndex]!.details,
+                  logKind: event.logKind,
+                  responseContent: `${existingContent}${event.delta}`,
+                },
+                timestamp: event.logTimestamp,
+              }
+            : {
+                id: event.logId,
+                level: event.level,
+                message: event.message,
+                details: {
+                  logKind: event.logKind,
+                  responseContent: event.delta,
+                },
+                timestamp: event.logTimestamp,
+              };
+          const nextLogs = existingIndex >= 0
+            ? logs.map((logEntry, index) => index === existingIndex ? nextLog : logEntry)
+            : [...logs, nextLog];
+          return {
+            ...current,
+            state: {
+              ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
+              lastActivityAt: event.timestamp,
+              logs: nextLogs,
+            },
+          };
+        }
         case "chat.interrupted":
           if (isStaleTerminalEvent(current, event.timestamp)) {
             return current;
@@ -278,7 +366,7 @@ export function ChatDetails({
           return current;
       }
     });
-  }, [chatId]);
+  }, [chatId, refreshChat]);
 
   const { status: chatSocketStatus } = useAppEvents<ChatEvent>(handleEvent, isChatEvent);
 
@@ -587,6 +675,7 @@ export function ChatDetails({
       toolCalls={chat.state.toolCalls}
       logs={chat.state.logs}
       isActive={isActive}
+      activeMessageId={chat.state.activeMessageId}
       markdownEnabled={markdownEnabled}
       showAssistantMessages
       showResponseLogs={false}

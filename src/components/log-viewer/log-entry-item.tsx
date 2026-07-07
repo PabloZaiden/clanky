@@ -13,6 +13,7 @@ interface LogEntryItemProps {
   spacingClass: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
+  deferMarkdown?: boolean;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -39,6 +40,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   spacingClass,
   markdownEnabled,
   fileLinkContext,
+  deferMarkdown = false,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -106,6 +108,7 @@ export const LogEntryItem = memo(function LogEntryItem({
               markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
               plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
               fileLinkContext={fileLinkContext}
+              deferMarkdown={deferMarkdown}
             />
           </div>
         )}

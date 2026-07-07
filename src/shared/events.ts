@@ -99,6 +99,7 @@ export type TaskEvent =
   | TaskToolCallExtraEvent
   | TaskProgressEvent
   | TaskLogEvent
+  | TaskLogDeltaEvent
   | TaskGitCommitEvent
   | TaskCompletedEvent
   | TaskSshHandoffEvent
@@ -129,9 +130,11 @@ export type ChatEvent =
   | ChatUpdatedEvent
   | ChatStatusEvent
   | ChatMessageEvent
+  | ChatMessageDeltaEvent
   | ChatToolCallEvent
   | ChatToolCallExtraEvent
   | ChatLogEvent
+  | ChatLogDeltaEvent
   | ChatInterruptedEvent
   | ChatErrorEvent
   | ChatDeletedEvent;
@@ -186,6 +189,19 @@ export interface ChatMessageEvent {
   timestamp: string;
 }
 
+export interface ChatMessageDeltaEvent {
+  type: "chat.message.delta";
+  chatId: string;
+  scope: ChatConfig["scope"];
+  messageId: string;
+  role: MessageData["role"];
+  delta: string;
+  baseLength: number;
+  contentLength: number;
+  messageTimestamp: string;
+  timestamp: string;
+}
+
 export interface ChatToolCallEvent {
   type: "chat.tool_call";
   chatId: string;
@@ -208,6 +224,21 @@ export interface ChatLogEvent {
   chatId: string;
   scope: ChatConfig["scope"];
   log: TaskLogEntry;
+  timestamp: string;
+}
+
+export interface ChatLogDeltaEvent {
+  type: "chat.log.delta";
+  chatId: string;
+  scope: ChatConfig["scope"];
+  logId: string;
+  level: TaskLogEntry["level"];
+  message: string;
+  logKind: string;
+  delta: string;
+  baseLength: number;
+  contentLength: number;
+  logTimestamp: string;
   timestamp: string;
 }
 
@@ -508,6 +539,20 @@ export interface TaskLogEvent {
   message: string;
   /** Optional additional details */
   details?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface TaskLogDeltaEvent {
+  type: "task.log.delta";
+  taskId: string;
+  id: string;
+  level: LogLevel;
+  message: string;
+  logKind: string;
+  delta: string;
+  baseLength: number;
+  contentLength: number;
+  logTimestamp: string;
   timestamp: string;
 }
 

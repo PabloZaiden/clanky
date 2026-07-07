@@ -81,6 +81,8 @@ export interface LogViewerProps {
   markdownEnabled?: boolean;
   /** Whether the task is actively working (shows a spinner at the bottom). Default: false */
   isActive?: boolean;
+  /** Message currently receiving streaming deltas; markdown can be deferred for this row. */
+  activeMessageId?: string;
   /** ID for the root element (for accessibility) */
   id?: string;
   /** Root directory used to display tool file paths relative to the active chat/task context. */

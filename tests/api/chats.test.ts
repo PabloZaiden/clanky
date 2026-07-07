@@ -713,6 +713,70 @@ describe("Chats API Integration", () => {
     }
   });
 
+  test("streams chat assistant text as deltas while preserving reload recovery", async () => {
+    const chunks = ["Hello", " from", " a", " streamed", " response"];
+    mockBackend = new MockAcpBackend({
+      responses: ["Generated Streaming Name"],
+      streamingResponseChunks: [chunks],
+      models: [defaultTestModel],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+    const events: ChatEvent[] = [];
+    const unsubscribe = chatEventEmitter.subscribe((event) => {
+      events.push(event);
+    });
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: "main",
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Stream this response" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      const settled = await waitForChatIdle(created.config.id) as Chat;
+      const expectedContent = chunks.join("");
+      expect(settled.state.messages.at(-1)?.content).toBe(expectedContent);
+
+      const deltaEvents = events.filter(
+        (event): event is Extract<ChatEvent, { type: "chat.message.delta" }> =>
+          event.type === "chat.message.delta" && event.chatId === created.config.id,
+      );
+      expect(deltaEvents.map((event) => event.delta)).toEqual(chunks);
+      expect(deltaEvents.map((event) => event.baseLength)).toEqual([0, 5, 10, 12, 21]);
+
+      const finalAssistantEvent = events.find(
+        (event): event is Extract<ChatEvent, { type: "chat.message" }> =>
+          event.type === "chat.message"
+          && event.chatId === created.config.id
+          && event.message.role === "assistant",
+      );
+      expect(finalAssistantEvent?.message.content).toBe(expectedContent);
+
+      const reloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+      expect(reloadResponse.status).toBe(200);
+      const reloaded = await reloadResponse.json() as Chat;
+      expect(reloaded.state.messages.at(-1)?.content).toBe(expectedContent);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   test("rejects concurrent sends while first-message rename is generating", async () => {
     installMockBackend(["Generated Busy Name", "Assistant response"]);
     let releaseNameGeneration!: () => void;

@@ -26,6 +26,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   showTools = true,
   markdownEnabled = false,
   isActive = false,
+  activeMessageId,
   id,
   showAssistantMessages = false,
   showResponseLogs = true,
@@ -158,6 +159,7 @@ export const ConversationViewer = memo(function ConversationViewer({
           )}
           {visibleEntries.map((entry, index) => {
             const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
+            const isLastVisibleEntry = index === visibleEntries.length - 1;
             if (entry.type === "message") {
               return (
                 <MessageEntry
@@ -168,6 +170,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     markdownEnabled={markdownEnabled}
                     showRoleLabel={showMessageRoles}
                     fileLinkContext={fileLinkContext}
+                    deferMarkdown={isActive && entry.data.id === activeMessageId}
                   />
                 );
             } else if (entry.type === "tool") {
@@ -200,6 +203,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={fileLinkContext}
+                    deferMarkdown={isActive && isLastVisibleEntry}
                   />
                 );
             }

@@ -13,6 +13,7 @@ interface MessageEntryProps {
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
+  deferMarkdown?: boolean;
 }
 
 export function MessageEntry({
@@ -22,6 +23,7 @@ export function MessageEntry({
   markdownEnabled,
   showRoleLabel,
   fileLinkContext,
+  deferMarkdown = false,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
@@ -64,6 +66,7 @@ export function MessageEntry({
                 markdownEnabled={false}
                 plainTextClassName="whitespace-pre-wrap break-words text-white"
                 fileLinkContext={fileLinkContext}
+                deferMarkdown={deferMarkdown}
               />
             </div>
           ) : shouldRenderMarkdown ? (
@@ -73,6 +76,7 @@ export function MessageEntry({
               markdownClassName="text-sm leading-7 text-gray-900 dark:text-white"
               plainTextClassName="text-sm leading-7 whitespace-pre-wrap break-words text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
+              deferMarkdown={deferMarkdown}
             />
           ) : (
             <StreamingTextContent
@@ -80,6 +84,7 @@ export function MessageEntry({
               markdownEnabled={false}
               plainTextClassName="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
+              deferMarkdown={deferMarkdown}
             />
           )}
           {msg.attachments && msg.attachments.length > 0 && (

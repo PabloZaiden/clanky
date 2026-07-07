@@ -40,6 +40,8 @@ export interface MockModelInfo {
 export interface MockBackendOptions {
   /** Responses to return for prompts (cycled through in order) */
   responses?: string[];
+  /** Streaming response chunks to emit for async prompts, cycled independently from `responses`. */
+  streamingResponseChunks?: string[][];
   /** Models to return from getModels() */
   models?: MockModelInfo[];
   /** Match real ACP provider-scoped model discovery for tests that need it. */
@@ -70,6 +72,8 @@ export class MockAcpBackend implements Backend {
   private responseIndex = 0;
   private pendingPrompt = false;
   private readonly responses: string[];
+  private readonly streamingResponseChunks: string[][];
+  private streamingResponseIndex = 0;
   private readonly models: MockModelInfo[];
   private readonly filterModelsByConnectionProvider: boolean;
   private readonly sessions = new Map<string, AgentSession>();
@@ -84,6 +88,7 @@ export class MockAcpBackend implements Backend {
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
+    this.streamingResponseChunks = options.streamingResponseChunks ?? [];
     this.models = options.models ?? [];
     this.filterModelsByConnectionProvider = options.filterModelsByConnectionProvider ?? false;
   }
@@ -173,9 +178,15 @@ export class MockAcpBackend implements Backend {
       }
       this.pendingPrompt = false;
 
-      // Get the next response
-      const response = this.responses[this.responseIndex % this.responses.length] ?? "<promise>COMPLETE</promise>";
-      this.responseIndex++;
+      const chunks = this.streamingResponseChunks.length > 0
+        ? this.streamingResponseChunks[this.streamingResponseIndex++ % this.streamingResponseChunks.length]
+        : null;
+      const response = chunks
+        ? chunks.join("")
+        : this.responses[this.responseIndex % this.responses.length] ?? "<promise>COMPLETE</promise>";
+      if (!chunks) {
+        this.responseIndex++;
+      }
 
       // Check if this is an error response
       if (response.startsWith("ERROR:")) {
@@ -186,7 +197,9 @@ export class MockAcpBackend implements Backend {
 
       // Emit normal message events
       push({ type: "message.start", messageId: `msg-${Date.now()}` });
-      push({ type: "message.delta", content: response });
+      for (const chunk of chunks ?? [response]) {
+        push({ type: "message.delta", content: chunk });
+      }
       push({ type: "message.complete", content: response });
       end();
     })();

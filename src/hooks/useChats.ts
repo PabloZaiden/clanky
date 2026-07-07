@@ -354,7 +354,13 @@ export function useChats(): UseChatsResult {
           setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
         }
         break;
+      case "chat.message.delta":
+        if (event.role === "assistant") {
+          setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+        }
+        break;
       case "chat.log":
+      case "chat.log.delta":
       case "chat.tool_call":
       case "chat.tool_call.extra":
         setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));

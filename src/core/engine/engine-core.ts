@@ -870,6 +870,44 @@ export class TaskEngine {
     return logId;
   }
 
+  private emitLogDelta(
+    level: LogLevel,
+    message: string,
+    delta: string,
+    fullContent: string,
+    logKind: "response" | "reasoning",
+    id: string,
+  ): void {
+    const timestamp = createTimestamp();
+    const logs = this.task.state.logs ?? [];
+    const existing = logs.find((logEntry) => logEntry.id === id);
+    const logTimestamp = existing?.timestamp ?? timestamp;
+    const entry: TaskLogEntry = {
+      id,
+      level,
+      message,
+      details: {
+        logKind,
+        responseContent: fullContent,
+      },
+      timestamp: logTimestamp,
+    };
+    this.persistLog(entry, true);
+    this.emit({
+      type: "task.log.delta",
+      taskId: this.config.id,
+      id,
+      level,
+      message,
+      logKind,
+      delta,
+      baseLength: Math.max(0, fullContent.length - delta.length),
+      contentLength: fullContent.length,
+      logTimestamp,
+      timestamp,
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Context factory methods
   // ---------------------------------------------------------------------------
@@ -942,6 +980,7 @@ export class TaskEngine {
       backend: this.backend,
       sessionId: this.sessionId,
       emitLog: this.emitLog.bind(this),
+      emitLogDelta: this.emitLogDelta.bind(this),
       emit: this.emit.bind(this),
       updateState: this.updateState.bind(this),
       persistMessage: this.persistMessage.bind(this),
