@@ -85,6 +85,7 @@ describe("database schema", () => {
       for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
         expect(columnNames(tableName)).toContain("is_private");
       }
+      expect(columnNames("chats")).toContain("queued_messages");
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
@@ -133,6 +134,29 @@ describe("database schema", () => {
         expect(privateColumn?.notnull).toBe(1);
         expect(privateColumn?.dflt_value).toBe("0");
       }
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v7 adds queued chat messages idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 7);
+    if (!migration) {
+      throw new Error("Migration v7 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE chats (id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      const columns = db.query("PRAGMA table_info(chats)").all() as Array<{
+        name: string;
+        type: string;
+      }>;
+      const queuedMessagesColumn = columns.find((column) => column.name === "queued_messages");
+      expect(queuedMessagesColumn?.type).toBe("TEXT");
     } finally {
       db.close();
     }

@@ -777,8 +777,8 @@ describe("Chats API Integration", () => {
     }
   });
 
-  test("rejects concurrent sends while first-message rename is generating", async () => {
-    installMockBackend(["Generated Busy Name", "Assistant response"]);
+  test("queues concurrent sends while first-message rename is generating", async () => {
+    installMockBackend(["Generated Busy Name", "Assistant response", "Queued response"]);
     let releaseNameGeneration!: () => void;
     const nameGenerationStarted = new Promise<void>((resolve) => {
       const originalSendPrompt = mockBackend.sendPrompt.bind(mockBackend);
@@ -818,22 +818,93 @@ describe("Chats API Integration", () => {
     });
     await nameGenerationStarted;
 
-    const concurrentSendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+    const removableQueuedResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "This concurrent message should be rejected" }),
+      body: JSON.stringify({ message: "Remove this queued message" }),
     });
-    expect(concurrentSendResponse.status).toBe(409);
+    expect(removableQueuedResponse.status).toBe(200);
+    await removableQueuedResponse.json();
+    let queuedChat = await loadChat(created.config.id);
+    if (!queuedChat?.state.queuedMessages?.[0]) {
+      throw new Error("Expected removable queued message to be persisted");
+    }
+    const removableQueuedId = queuedChat.state.queuedMessages[0].id;
+
+    const keptQueuedResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Send this queued message",
+        attachments: [
+          {
+            id: "queued-attachment-1",
+            filename: "queued.png",
+            mimeType: "image/png",
+            data: "queued-image-data",
+            size: 42,
+          },
+        ],
+      }),
+    });
+    expect(keptQueuedResponse.status).toBe(200);
+    await keptQueuedResponse.json();
+    queuedChat = await loadChat(created.config.id);
+    expect(queuedChat?.state.queuedMessages).toHaveLength(2);
+
+    const secondKeptQueuedResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Also send this queued message" }),
+    });
+    expect(secondKeptQueuedResponse.status).toBe(200);
+    await secondKeptQueuedResponse.json();
+    queuedChat = await loadChat(created.config.id);
+    expect(queuedChat?.state.queuedMessages).toHaveLength(3);
+
+    const removeResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/queued-messages/${removableQueuedId}`, {
+      method: "DELETE",
+    });
+    expect(removeResponse.status).toBe(200);
+    const afterRemove = await removeResponse.json() as Chat;
+    expect(afterRemove.state.queuedMessages?.map((queuedMessage) => queuedMessage.content)).toEqual([
+      "Send this queued message",
+      "Also send this queued message",
+    ]);
 
     releaseNameGeneration();
     const firstSendResponse = await firstSendPromise;
     expect(firstSendResponse.status).toBe(200);
 
-    const settled = await waitForChatIdle(created.config.id) as Awaited<ReturnType<typeof loadChat>>;
+    let settled: Awaited<ReturnType<typeof loadChat>> = null;
+    let lastObserved: Awaited<ReturnType<typeof loadChat>> = null;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 15000) {
+      const latest = await loadChat(created.config.id);
+      lastObserved = latest;
+      const userMessages = latest?.state.messages.filter((message) => message.role === "user") ?? [];
+      if (latest?.state.status === "idle" && latest.state.queuedMessages?.length === 0 && userMessages.length === 2) {
+        settled = latest;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!settled) {
+      throw new Error(`Timed out waiting for queued chat message to drain: ${JSON.stringify({
+        status: lastObserved?.state.status,
+        queuedMessages: lastObserved?.state.queuedMessages,
+        userMessages: lastObserved?.state.messages.filter((message) => message.role === "user").map((message) => message.content),
+        assistantMessages: lastObserved?.state.messages.filter((message) => message.role === "assistant").map((message) => message.content),
+        error: lastObserved?.state.error,
+      })}`);
+    }
     expect(settled?.config.name).toBe("Generated Busy Name");
     expect(settled?.state.messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual([
       "Name this chat while busy",
+      "Send this queued message\nAlso send this queued message",
     ]);
+    const drainedQueuedMessage = settled?.state.messages.find((message) => message.role === "user" && message.content === "Send this queued message\nAlso send this queued message");
+    expect(drainedQueuedMessage?.attachments?.map((attachment) => attachment.id)).toEqual(["queued-attachment-1"]);
   });
 
   test("continues first send if temporary chat-name session creation fails", async () => {

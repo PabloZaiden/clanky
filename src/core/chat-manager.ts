@@ -16,7 +16,7 @@ import type {
   ImportableSession,
   SessionReplayEvent,
 } from "../backends/types";
-import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
+import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, QueuedChatMessage, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
@@ -98,6 +98,11 @@ interface ResolvedChatDirectory {
   directory: string;
 }
 
+interface NormalizedChatMessageInput {
+  message: string;
+  attachments: MessageImageAttachment[];
+}
+
 function isDatabaseNotInitializedError(error: unknown): boolean {
   return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
 }
@@ -175,6 +180,7 @@ function isGeneratedChatName(name: string, workspaceName: string): boolean {
 export class ChatManager {
   private readonly activeStreams = new Map<string, ActiveChatStream>();
   private readonly activeStreamGenerations = new Map<string, number>();
+  private readonly queuedMessageDrains = new Set<string>();
   private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
   private readonly sshChatBackends = new Map<string, Backend>();
 
@@ -640,6 +646,40 @@ export class ChatManager {
       throw new Error(`Chat not found: ${chatId}`);
     }
 
+    const input = this.normalizeMessageInput(options);
+    if (this.shouldQueueMessage(chat)) {
+      return this.enqueueMessage(chat, input);
+    }
+
+    return this.dispatchMessage(chat, input);
+  }
+
+  async removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {
+    const chat = await loadChat(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const queuedMessages = chat.state.queuedMessages ?? [];
+    const nextQueuedMessages = queuedMessages.filter((queuedMessage) => queuedMessage.id !== queuedMessageId);
+    if (nextQueuedMessages.length === queuedMessages.length) {
+      return chat;
+    }
+
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      queuedMessages: nextQueuedMessages,
+      lastActivityAt: createTimestamp(),
+    });
+    this.emitChatUpdated(updated);
+    return updated;
+  }
+
+  private async dispatchMessage(
+    chat: Chat,
+    input: NormalizedChatMessageInput,
+    options: { clearQueuedMessages?: boolean } = {},
+  ): Promise<Chat> {
     this.assertChatIsAvailable(chat);
 
     const backend = await this.ensureBackendConnected(chat);
@@ -650,11 +690,8 @@ export class ChatManager {
 
     await this.configureSessionModel(backend, sessionChat.state.session.id, sessionChat.config.model.modelID);
 
-    const message = options.message?.trim() ?? "";
-    const attachments = options.attachments ?? [];
-    if (!message && attachments.length === 0) {
-      throw new Error("Message or attachments are required");
-    }
+    const message = input.message;
+    const attachments = input.attachments;
 
     const userMessage: MessageData = {
       id: `chat-user-${crypto.randomUUID()}`,
@@ -664,7 +701,12 @@ export class ChatManager {
       timestamp: createTimestamp(),
     };
 
-    let current = await this.appendMessage(sessionChat, userMessage);
+    let current = await this.appendMessage(sessionChat, userMessage, {
+      queuedMessages: options.clearQueuedMessages ? [] : sessionChat.state.queuedMessages,
+    });
+    if (options.clearQueuedMessages) {
+      this.emitChatUpdated(current);
+    }
     current = await this.updateChatStateAndReturn(current, {
       ...current.state,
       status: "starting",
@@ -845,7 +887,9 @@ export class ChatManager {
           }
         : updating.state.error,
     });
-    return this.completeInterruptedChat(interrupted);
+        const completed = await this.completeInterruptedChat(interrupted);
+        this.scheduleQueuedMessageDrain(chatId);
+        return completed;
   }
 
   async replyToPermission(chatId: string, requestId: string, decision: ChatPermissionDecision): Promise<Chat | null> {
@@ -1092,6 +1136,39 @@ export class ChatManager {
     if (isChatBusyStatus(chat.state.status)) {
       throw new ChatBusyError();
     }
+  }
+
+  private normalizeMessageInput(options: {
+    message?: string;
+    attachments?: MessageImageAttachment[];
+  }): NormalizedChatMessageInput {
+    const message = options.message?.trim() ?? "";
+    const attachments = options.attachments ?? [];
+    if (!message && attachments.length === 0) {
+      throw new Error("Message or attachments are required");
+    }
+    return { message, attachments };
+  }
+
+  private shouldQueueMessage(chat: Chat): boolean {
+    return isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
+  }
+
+  private async enqueueMessage(chat: Chat, input: NormalizedChatMessageInput): Promise<Chat> {
+    const now = createTimestamp();
+    const queuedMessage: QueuedChatMessage = {
+      id: `chat-queued-${crypto.randomUUID()}`,
+      content: input.message,
+      attachments: input.attachments.length > 0 ? input.attachments : undefined,
+      createdAt: now,
+    };
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      queuedMessages: [...(chat.state.queuedMessages ?? []), queuedMessage],
+      lastActivityAt: now,
+    });
+    this.emitChatUpdated(updated);
+    return updated;
   }
 
   private hasEstablishedWorkspaceContext(chat: Chat): boolean {
@@ -1585,13 +1662,17 @@ export class ChatManager {
   }
 
   private async finishReconnect(chat: Chat, chatId: string): Promise<Chat> {
-    return this.updateChatStateAndReturn(chat, {
+    const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: this.activeStreams.has(chatId) ? "streaming" : "idle",
       error: undefined,
       connectionStatus: isSshServerChat(chat) ? "connected" : chat.state.connectionStatus,
       lastActivityAt: createTimestamp(),
     });
+    if (updated.state.status === "idle") {
+      this.scheduleQueuedMessageDrain(chatId);
+    }
+    return updated;
   }
 
   private async startActivePrompt(
@@ -2021,6 +2102,64 @@ export class ChatManager {
     } finally {
       eventStream.close();
       this.clearActiveStream(chatId, generation);
+      this.scheduleQueuedMessageDrain(chatId);
+    }
+  }
+
+  private scheduleQueuedMessageDrain(chatId: string): void {
+    if (this.queuedMessageDrains.has(chatId)) {
+      return;
+    }
+
+    this.queuedMessageDrains.add(chatId);
+    void (async () => {
+      try {
+        await this.drainQueuedMessages(chatId);
+      } catch (error) {
+        log.error("Failed to drain queued chat messages", { chatId, error: String(error) });
+      } finally {
+        this.queuedMessageDrains.delete(chatId);
+      }
+    })();
+  }
+
+  private async drainQueuedMessages(chatId: string): Promise<void> {
+    if (this.activeStreams.has(chatId)) {
+      return;
+    }
+
+    const chat = await loadChat(chatId);
+    if (!chat || this.shouldQueueMessage(chat)) {
+      return;
+    }
+
+    const queuedMessages = chat.state.queuedMessages ?? [];
+    if (queuedMessages.length === 0) {
+      return;
+    }
+
+    const message = queuedMessages
+      .map((queuedMessage) => queuedMessage.content.trim())
+      .filter((content) => content.length > 0)
+      .join("\n");
+    const attachments = queuedMessages.flatMap((queuedMessage) => queuedMessage.attachments ?? []);
+    if (!message && attachments.length === 0) {
+      const updated = await this.updateChatStateAndReturn(chat, {
+        ...chat.state,
+        queuedMessages: [],
+        lastActivityAt: createTimestamp(),
+      });
+      this.emitChatUpdated(updated);
+      return;
+    }
+
+    try {
+      await this.dispatchMessage(chat, { message, attachments }, { clearQueuedMessages: true });
+    } catch (error) {
+      const latestChat = await loadChat(chatId);
+      if (latestChat) {
+        await this.emitChatError(latestChat, `Failed to send queued chat messages: ${String(error)}`);
+      }
     }
   }
 
@@ -2194,12 +2333,17 @@ export class ChatManager {
     };
   }
 
-  private async appendMessage(chat: Chat, message: MessageData): Promise<Chat> {
+  private async appendMessage(
+    chat: Chat,
+    message: MessageData,
+    updates: Pick<Chat["state"], "queuedMessages"> = { queuedMessages: chat.state.queuedMessages },
+  ): Promise<Chat> {
     const nextMessages = chat.state.messages.some((existing) => existing.id === message.id)
       ? chat.state.messages.map((existing) => existing.id === message.id ? message : existing)
       : [...chat.state.messages, message];
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
+      ...updates,
       messages: nextMessages,
       lastActivityAt: message.timestamp,
     });
@@ -2713,7 +2857,8 @@ export class ChatManager {
   }
 
   private async updateChatStateAndReturn(chat: Chat, state: Chat["state"]): Promise<Chat> {
-    const saved = await updateChatState(chat.config.id, state);
+    const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
+    const saved = await updateChatState(chat.config.id, state, { preserveQueuedMessages });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }

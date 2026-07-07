@@ -10,7 +10,11 @@ import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");
 
-export async function updateChatState(chatId: string, state: ChatState): Promise<boolean> {
+interface UpdateChatStateOptions {
+  preserveQueuedMessages?: boolean;
+}
+
+export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const selectStmt = db.prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?");
@@ -24,7 +28,12 @@ export async function updateChatState(chatId: string, state: ChatState): Promise
     const chat = rowToChat(row);
     chat.state = state;
     const newRow = chatToRow(chat);
-    const columns = Object.keys(newRow).filter((column) => column !== "id");
+    const columns = Object.keys(newRow).filter((column) => {
+      if (column === "id") {
+        return false;
+      }
+      return !(options.preserveQueuedMessages && column === "queued_messages");
+    });
     validateChatColumnNames(columns);
     const setClause = columns.map((column) => `${column} = ?`).join(", ");
     const values = columns.map((column) => newRow[column as keyof typeof newRow]) as (string | number | null | Uint8Array)[];

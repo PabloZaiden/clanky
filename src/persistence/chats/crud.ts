@@ -43,6 +43,7 @@ const CHAT_LIST_COLUMNS = [
   "worktree_working_branch",
   "worktree_path",
   "pending_permission_requests",
+  "queued_messages",
   "active_message_id",
   "interrupt_requested",
   "connection_status",

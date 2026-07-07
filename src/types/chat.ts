@@ -15,6 +15,7 @@ import type {
   PersistedToolCall,
   SessionInfo,
 } from "./task";
+import type { MessageImageAttachment } from "./message-attachments";
 
 export type { ModelConfig };
 
@@ -88,6 +89,13 @@ export interface ChatPermissionRequest {
   error?: string;
 }
 
+export interface QueuedChatMessage {
+  id: string;
+  content: string;
+  attachments?: MessageImageAttachment[];
+  createdAt: string;
+}
+
 export type ChatStatus =
   | "idle"
   | "starting"
@@ -112,6 +120,7 @@ export interface ChatState {
   hasMessages?: boolean;
   hasTranscript?: boolean;
   pendingPermissionRequests?: ChatPermissionRequest[];
+  queuedMessages?: QueuedChatMessage[];
   activeMessageId?: string;
   interruptRequested?: boolean;
   connectionStatus?: ChatConnectionStatus;
@@ -139,6 +148,7 @@ export function createInitialChatState(id: string): ChatState {
     logs: [],
     toolCalls: [],
     pendingPermissionRequests: [],
+    queuedMessages: [],
   };
 }
 
