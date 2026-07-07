@@ -89,7 +89,7 @@ export function useWorkspaceMutations(
     }
   }, [workspaceId, fetchWorkspace, setError]);
 
-  const updateWorkspace = useCallback(async (name: string, settings: ServerSettings): Promise<boolean> => {
+  const updateWorkspace = useCallback(async (name: string, settings: ServerSettings, archived: boolean): Promise<boolean> => {
     if (!workspaceId) {
       setError("No workspace selected");
       return false;
@@ -102,7 +102,7 @@ export function useWorkspaceMutations(
       const response = await appFetch(`/api/workspaces/${workspaceId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, serverSettings: settings }),
+        body: JSON.stringify({ name, serverSettings: settings, archived }),
       });
 
       if (!response.ok) {

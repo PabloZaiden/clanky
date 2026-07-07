@@ -119,6 +119,14 @@ export function OverviewView({
       workspaceGroups.map((group) => [group.workspace.id, group.workspace.name]),
     );
   }, [workspaceGroups]);
+  const visibleWorkspaceIds = useMemo(
+    () => new Set(workspaceGroups.map((group) => group.workspace.id)),
+    [workspaceGroups],
+  );
+  const visibleAgents = useMemo(
+    () => agents.filter((agent) => visibleWorkspaceIds.has(agent.config.workspaceId)),
+    [agents, visibleWorkspaceIds],
+  );
 
   return (
     <ShellPanel
@@ -167,7 +175,7 @@ export function OverviewView({
         )}
 
         <ConfiguredAgentsSection
-          agents={agents}
+          agents={visibleAgents}
           loading={agentsLoading}
           error={agentsError}
           description="Scheduled automations configured across your workspaces."

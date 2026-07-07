@@ -71,6 +71,7 @@ export async function importWorkspaces(data: WorkspaceExportData): Promise<Works
       serverSettings: config.serverSettings,
       createdAt: now,
       updatedAt: now,
+      archived: false,
     };
 
     await createWorkspace(workspace);

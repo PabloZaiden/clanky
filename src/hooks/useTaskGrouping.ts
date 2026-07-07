@@ -94,11 +94,13 @@ export function useTaskGrouping(
   tasks: Task[],
   workspaces: Workspace[],
   workspacesLoaded = true,
+  options: { includeArchivedWorkspaces?: boolean } = {},
 ): UseTaskGroupingResult {
   const workspaceIds = useMemo(() => new Set(workspaces.map((workspace) => workspace.id)), [workspaces]);
 
   const workspaceGroups = useMemo(() => {
     return workspaces
+      .filter((workspace) => options.includeArchivedWorkspaces === true || workspace.archived !== true)
       .map((workspace, index) => {
         const workspaceTasks = tasks.filter((task) => task.config.workspaceId === workspace.id);
         return {
@@ -121,7 +123,7 @@ export function useTaskGrouping(
         tasks: workspaceTasks,
         statusGroups,
       }));
-  }, [tasks, workspaces]);
+  }, [options.includeArchivedWorkspaces, tasks, workspaces]);
 
   const unassignedTasks = useMemo(() => {
     return tasks.filter((task) => {

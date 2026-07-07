@@ -34,6 +34,7 @@ export function WorkspaceSettingsForm({
   onValidityChange,
 }: WorkspaceSettingsFormProps) {
   const [name, setName] = useState("");
+  const [archived, setArchived] = useState(false);
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
   const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
 
@@ -41,12 +42,14 @@ export function WorkspaceSettingsForm({
   useEffect(() => {
     if (workspace) {
       setName(workspace.name);
+      setArchived(workspace.archived === true);
       setServerSettings(workspace.serverSettings);
       setIsServerSettingsValid(true);
       return;
     }
 
     setName("");
+    setArchived(false);
     setServerSettings(null);
     setIsServerSettingsValid(true);
   }, [workspace]);
@@ -57,7 +60,7 @@ export function WorkspaceSettingsForm({
     if (!serverSettings) return;
 
     log.debug("Saving workspace settings", { workspaceName: name.trim() });
-    const success = await onSave(name.trim(), serverSettings);
+    const success = await onSave(name.trim(), serverSettings, archived);
     if (success) {
       log.debug("Workspace settings saved successfully");
       onSaved?.();
@@ -133,6 +136,23 @@ export function WorkspaceSettingsForm({
               </span>
             )}
           </div>
+        )}
+
+        {workspace && (
+          <label className="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={archived}
+              onChange={(event) => setArchived(event.currentTarget.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-medium text-gray-900 dark:text-gray-100">Archived workspace</span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                Hide this workspace's activity from Active Work and the main dashboard.
+              </span>
+            </span>
+          </label>
         )}
 
         {status?.error && (

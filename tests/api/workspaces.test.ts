@@ -527,6 +527,49 @@ describe("Workspace API Integration", () => {
       expect(data.directory).toBe(testWorkDir);
     });
 
+    test("updates and persists archived workspace state", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Archivable Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createResponse.ok).toBe(true);
+      const workspace = await createResponse.json() as { id: string; archived?: boolean };
+      expect(workspace.archived).toBe(false);
+
+      const archiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archived: true,
+        }),
+      });
+      expect(archiveResponse.ok).toBe(true);
+      const archivedWorkspace = await archiveResponse.json() as { archived?: boolean };
+      expect(archivedWorkspace.archived).toBe(true);
+
+      const persistedArchivedWorkspace = await getWorkspace(workspace.id);
+      expect(persistedArchivedWorkspace?.archived).toBe(true);
+
+      const unarchiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archived: false,
+        }),
+      });
+      expect(unarchiveResponse.ok).toBe(true);
+      const unarchivedWorkspace = await unarchiveResponse.json() as { archived?: boolean };
+      expect(unarchivedWorkspace.archived).toBe(false);
+
+      const persistedUnarchivedWorkspace = await getWorkspace(workspace.id);
+      expect(persistedUnarchivedWorkspace?.archived).toBe(false);
+    });
+
     test("redacts workspace secrets by default and includes them with sensitive=true", async () => {
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
