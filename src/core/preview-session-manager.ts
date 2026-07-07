@@ -81,6 +81,37 @@ function createUpstreamWebSocket(url: URL, headers: Record<string, string>): Web
   return new BunWebSocket(url, { headers });
 }
 
+function getHeaderValue(headers: Array<[string, string]>, name: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  return headers.find(([candidateName]) => candidateName.toLowerCase() === lowerName)?.[1];
+}
+
+function getForwardedOriginParts(headers: Array<[string, string]>, runtime: PreviewRuntime): URL {
+  const origin = getHeaderValue(headers, "origin");
+  if (origin) {
+    try {
+      return new URL(origin);
+    } catch {
+      // Fall back to the registered preview URL if a non-browser client sent an invalid Origin.
+    }
+  }
+  return new URL(runtime.localOrigin);
+}
+
+function applyWebSocketForwardedHeaders(
+  result: Record<string, string>,
+  headers: Array<[string, string]>,
+  runtime: PreviewRuntime,
+): void {
+  const host = getHeaderValue(headers, "host");
+  const origin = getForwardedOriginParts(headers, runtime);
+  result["x-forwarded-host"] = host || origin.host;
+  result["x-forwarded-proto"] = origin.protocol.replace(":", "");
+  if (origin.port) {
+    result["x-forwarded-port"] = origin.port;
+  }
+}
+
 function rewritePreviewLocationHeader(value: string, runtime: PreviewRuntime): string {
   const trimmed = value.trim();
   if (!trimmed || (!trimmed.startsWith("//") && !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed))) {
@@ -427,7 +458,7 @@ export class PreviewSessionManager {
 
     const targetUrl = new URL(message.path, runtime.targetBaseUrl);
     targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
-    const upstream = createUpstreamWebSocket(targetUrl, this.buildUpstreamWebSocketHeaders(message.headers, targetUrl));
+    const upstream = createUpstreamWebSocket(targetUrl, this.buildUpstreamWebSocketHeaders(message.headers, runtime));
     const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [] };
     const sockets = this.getUpstreamSocketMap(previewId);
     sockets.set(message.streamId, upstreamState);
@@ -543,11 +574,10 @@ export class PreviewSessionManager {
     this.upstreamSockets.delete(previewId);
   }
 
-  private buildUpstreamWebSocketHeaders(headers: Array<[string, string]>, targetUrl: URL): Record<string, string> {
+  private buildUpstreamWebSocketHeaders(headers: Array<[string, string]>, runtime: PreviewRuntime): Record<string, string> {
     const result: Record<string, string> = {};
     const excluded = new Set([
       "connection",
-      "host",
       "sec-websocket-accept",
       "sec-websocket-extensions",
       "sec-websocket-key",
@@ -559,8 +589,9 @@ export class PreviewSessionManager {
       if (excluded.has(lowerName)) {
         continue;
       }
-      result[name] = lowerName === "origin" ? targetUrl.origin : value;
+      result[name] = value;
     }
+    applyWebSocketForwardedHeaders(result, headers, runtime);
     return result;
   }
 
