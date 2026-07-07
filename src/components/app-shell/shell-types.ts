@@ -404,6 +404,10 @@ export function buildActiveWorkSidebarItems(
 
   for (const group of workspaceGroups) {
     for (const workspaceNode of group.workspaces) {
+      if (workspaceNode.workspace.archived === true) {
+        continue;
+      }
+
       const workspaceName = workspaceNode.workspace.name;
 
       for (const taskNode of workspaceNode.tasks) {

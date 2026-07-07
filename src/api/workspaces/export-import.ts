@@ -120,6 +120,7 @@ async function importWorkspacesWithValidation(
       serverSettings,
       createdAt: now,
       updatedAt: now,
+      archived: config.archived === true,
     };
 
     await createWorkspace(workspace);

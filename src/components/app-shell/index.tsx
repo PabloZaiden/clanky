@@ -289,6 +289,12 @@ export function AppShell() {
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
+  const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
+    tasks,
+    workspaces,
+    !workspacesLoading,
+    { includeArchivedWorkspaces: true },
+  );
 
   const sidebar = useSidebar(route, onNavigate);
   const { navigateWithinShell, showSidebar } = sidebar;
@@ -357,7 +363,7 @@ export function AppShell() {
 
   const workspaceSettings = useWorkspaceSettingsShell({
     route,
-    workspaceGroups,
+    workspaceGroups: allWorkspaceGroups,
     purgeArchivedWorkspaceTasks,
   });
 

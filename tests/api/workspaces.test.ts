@@ -527,6 +527,49 @@ describe("Workspace API Integration", () => {
       expect(data.directory).toBe(testWorkDir);
     });
 
+    test("updates and persists archived workspace state", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Archivable Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createResponse.ok).toBe(true);
+      const workspace = await createResponse.json() as { id: string; archived?: boolean };
+      expect(workspace.archived).toBe(false);
+
+      const archiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archived: true,
+        }),
+      });
+      expect(archiveResponse.ok).toBe(true);
+      const archivedWorkspace = await archiveResponse.json() as { archived?: boolean };
+      expect(archivedWorkspace.archived).toBe(true);
+
+      const persistedArchivedWorkspace = await getWorkspace(workspace.id);
+      expect(persistedArchivedWorkspace?.archived).toBe(true);
+
+      const unarchiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archived: false,
+        }),
+      });
+      expect(unarchiveResponse.ok).toBe(true);
+      const unarchivedWorkspace = await unarchiveResponse.json() as { archived?: boolean };
+      expect(unarchivedWorkspace.archived).toBe(false);
+
+      const persistedUnarchivedWorkspace = await getWorkspace(workspace.id);
+      expect(persistedUnarchivedWorkspace?.archived).toBe(false);
+    });
+
     test("redacts workspace secrets by default and includes them with sensitive=true", async () => {
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -2207,6 +2250,36 @@ describe("Workspace API Integration", () => {
           await rm(testWorkDir2, { recursive: true, force: true });
         }
       });
+
+      test("exports archived workspace state", async () => {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Archived Export WS",
+            directory: testWorkDir,
+            serverSettings: makeServerSettings(),
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json() as { id: string };
+
+        const archiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        expect(archiveResponse.ok).toBe(true);
+
+        const exportResponse = await fetch(`${baseUrl}/api/workspaces/export`);
+        expect(exportResponse.ok).toBe(true);
+        const exported = await exportResponse.json() as {
+          workspaces: Array<{ name: string; archived?: boolean }>;
+        };
+        expect(exported.workspaces).toHaveLength(1);
+        expect(exported.workspaces[0]!.name).toBe("Archived Export WS");
+        expect(exported.workspaces[0]!.archived).toBe(true);
+      });
     });
 
     describe("POST /api/workspaces/import", () => {
@@ -2271,6 +2344,63 @@ describe("Workspace API Integration", () => {
         } finally {
           await rm(importDir1, { recursive: true, force: true });
           await rm(importDir2, { recursive: true, force: true });
+        }
+      });
+
+      test("imports archived workspace state and defaults legacy exports to unarchived", async () => {
+        const archivedDir = await mkdtemp(join(tmpdir(), "clanky-api-import-archived-"));
+        const legacyDir = await mkdtemp(join(tmpdir(), "clanky-api-import-legacy-"));
+        await Bun.$`git init ${archivedDir}`.quiet();
+        await Bun.$`git -C ${archivedDir} config user.email "test@test.com"`.quiet();
+        await Bun.$`git -C ${archivedDir} config user.name "Test User"`.quiet();
+        await Bun.$`touch ${archivedDir}/README.md`.quiet();
+        await Bun.$`git -C ${archivedDir} add .`.quiet();
+        await Bun.$`git -C ${archivedDir} commit -m "Init"`.quiet();
+        await Bun.$`git init ${legacyDir}`.quiet();
+        await Bun.$`git -C ${legacyDir} config user.email "test@test.com"`.quiet();
+        await Bun.$`git -C ${legacyDir} config user.name "Test User"`.quiet();
+        await Bun.$`touch ${legacyDir}/README.md`.quiet();
+        await Bun.$`git -C ${legacyDir} add .`.quiet();
+        await Bun.$`git -C ${legacyDir} commit -m "Init"`.quiet();
+
+        try {
+          const importPayload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            workspaces: [
+              {
+                name: "Imported Archived WS",
+                directory: archivedDir,
+                serverSettings: makeServerSettings({ mode: "spawn" }),
+                archived: true,
+              },
+              {
+                name: "Imported Legacy WS",
+                directory: legacyDir,
+                serverSettings: makeServerSettings({ mode: "spawn" }),
+              },
+            ],
+          };
+
+          const response = await fetch(`${baseUrl}/api/workspaces/import`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(importPayload),
+          });
+          expect(response.ok).toBe(true);
+          const result = await response.json();
+          expect(result.created).toBe(2);
+          expect(result.failed).toBe(0);
+
+          const listResponse = await fetch(`${baseUrl}/api/workspaces`);
+          const workspaces = await listResponse.json() as Array<{ name: string; archived?: boolean }>;
+          const archivedWorkspace = workspaces.find((workspace) => workspace.name === "Imported Archived WS");
+          const legacyWorkspace = workspaces.find((workspace) => workspace.name === "Imported Legacy WS");
+          expect(archivedWorkspace?.archived).toBe(true);
+          expect(legacyWorkspace?.archived).toBe(false);
+        } finally {
+          await rm(archivedDir, { recursive: true, force: true });
+          await rm(legacyDir, { recursive: true, force: true });
         }
       });
 

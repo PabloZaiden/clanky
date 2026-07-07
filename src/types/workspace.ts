@@ -44,6 +44,8 @@ export interface Workspace {
   updatedAt: string;
   /** Whether the item should be visually hidden when private items are hidden in the browser */
   isPrivate?: boolean;
+  /** Whether activity from this workspace should be hidden from active-work surfaces */
+  archived?: boolean;
   /** Directory on the remote host where the repo was cloned (for auto-provisioned workspaces) */
   sourceDirectory?: string;
   /** ID of the SSH server used for provisioning */
@@ -74,6 +76,7 @@ export interface PublicWorkspaceConfig {
   name: string;
   directory: string;
   serverSettings: PublicServerSettings;
+  archived?: boolean;
 }
 
 export interface PublicWorkspaceExportData {

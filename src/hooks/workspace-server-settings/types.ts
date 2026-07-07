@@ -23,8 +23,8 @@ export interface UseWorkspaceServerSettingsResult {
   updateSettings: (settings: ServerSettings) => Promise<boolean>;
   /** Update workspace name */
   updateName: (name: string) => Promise<boolean>;
-  /** Update both name and server settings */
-  updateWorkspace: (name: string, settings: ServerSettings) => Promise<boolean>;
+  /** Update workspace settings fields */
+  updateWorkspace: (name: string, settings: ServerSettings, archived: boolean) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
   testConnection: (settings?: ServerSettings) => Promise<{ success: boolean; error?: string }>;
 }

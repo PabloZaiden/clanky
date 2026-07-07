@@ -110,6 +110,7 @@ export const crudRoutes = {
           serverSettings,
           createdAt: now,
           updatedAt: now,
+          archived: false,
         };
 
         await createWorkspace(workspace);
@@ -166,13 +167,14 @@ export const crudRoutes = {
         const serverSettingsChanged = body.serverSettings !== undefined
           && !areServerSettingsEqual(currentWorkspace.serverSettings, body.serverSettings);
         const privateChanged = body.isPrivate !== undefined && body.isPrivate !== (currentWorkspace.isPrivate === true);
+        const archivedChanged = body.archived !== undefined && body.archived !== (currentWorkspace.archived === true);
 
-        if (!nameChanged && !serverSettingsChanged && !privateChanged) {
+        if (!nameChanged && !serverSettingsChanged && !privateChanged && !archivedChanged) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
           return Response.json(includeSensitive ? currentWorkspace : sanitizeWorkspace(currentWorkspace));
         }
 
-        const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings" | "isPrivate">> = {};
+        const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings" | "isPrivate" | "archived">> = {};
         if (nameChanged) {
           workspaceUpdates.name = body.name;
         }
@@ -181,6 +183,9 @@ export const crudRoutes = {
         }
         if (privateChanged) {
           workspaceUpdates.isPrivate = body.isPrivate;
+        }
+        if (archivedChanged) {
+          workspaceUpdates.archived = body.archived;
         }
 
         const workspace = await updateWorkspace(id, workspaceUpdates);

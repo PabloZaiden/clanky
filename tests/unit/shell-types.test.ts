@@ -158,4 +158,19 @@ describe("sidebar node builders", () => {
       "chat:chat-1",
     ]);
   });
+
+  test("excludes archived workspace activity from active work", () => {
+    const archivedWorkspace = {
+      ...createWorkspace(),
+      archived: true,
+    };
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [archivedWorkspace],
+      tasks: [],
+      chats: [createChat()],
+      sessions: [createWorkspaceSession()],
+    });
+
+    expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([]);
+  });
 });

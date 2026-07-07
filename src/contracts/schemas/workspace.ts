@@ -81,6 +81,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
   isPrivate: z.boolean().optional(),
+  archived: z.boolean().optional(),
 });
 
 /**
@@ -107,6 +108,7 @@ export const WorkspaceConfigSchema = z.object({
   name: z.string().min(1, "name is required"),
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
+  archived: z.boolean().optional(),
 });
 
 /**

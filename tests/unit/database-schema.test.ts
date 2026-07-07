@@ -67,6 +67,18 @@ function privateFlagColumnInfo(db: Database, tableName: PrivateFlagTableName): A
   }>;
 }
 
+function workspaceColumnInfo(db: Database): Array<{
+  name: string;
+  notnull: number;
+  dflt_value: string | null;
+}> {
+  return db.query("PRAGMA table_info(workspaces)").all() as Array<{
+    name: string;
+    notnull: number;
+    dflt_value: string | null;
+  }>;
+}
+
 describe("database schema", () => {
   afterEach(() => {
     closeDatabase();
@@ -85,6 +97,7 @@ describe("database schema", () => {
       for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
         expect(columnNames(tableName)).toContain("is_private");
       }
+      expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("chats")).toContain("queued_messages");
 
       const users = getDatabase()
@@ -157,6 +170,27 @@ describe("database schema", () => {
       }>;
       const queuedMessagesColumn = columns.find((column) => column.name === "queued_messages");
       expect(queuedMessagesColumn?.type).toBe("TEXT");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v8 adds archived workspace flag idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 8);
+    if (!migration) {
+      throw new Error("Migration v8 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      const columns = workspaceColumnInfo(db);
+      const archivedColumn = columns.find((column) => column.name === "archived");
+      expect(archivedColumn?.notnull).toBe(1);
+      expect(archivedColumn?.dflt_value).toBe("0");
     } finally {
       db.close();
     }

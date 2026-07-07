@@ -182,6 +182,16 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 8,
+    name: "add_archived_workspaces",
+    up: (db) => {
+      const columns = getTableColumns(db, "workspaces");
+      if (!columns.includes("archived")) {
+        db.run("ALTER TABLE workspaces ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
 /**
