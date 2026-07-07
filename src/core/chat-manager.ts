@@ -2857,41 +2857,25 @@ export class ChatManager {
   }
 
   private async updateChatStateAndReturn(chat: Chat, state: Chat["state"]): Promise<Chat> {
-    const nextState = await this.preserveLatestQueuedMessages(chat, state);
-    const saved = await updateChatState(chat.config.id, nextState);
+    const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
+    const saved = await updateChatState(chat.config.id, state, { preserveQueuedMessages });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }
     const updated = {
       config: chat.config,
-      state: nextState,
+      state,
     };
-    if (chat.state.status !== nextState.status) {
+    if (chat.state.status !== state.status) {
       this.emitter.emit({
         type: "chat.status",
         chatId: chat.config.id,
         scope: chat.config.scope,
-        status: nextState.status,
-        timestamp: nextState.lastActivityAt ?? createTimestamp(),
+        status: state.status,
+        timestamp: state.lastActivityAt ?? createTimestamp(),
       });
     }
     return updated;
-  }
-
-  private async preserveLatestQueuedMessages(chat: Chat, state: Chat["state"]): Promise<Chat["state"]> {
-    if (state.queuedMessages !== chat.state.queuedMessages) {
-      return state;
-    }
-
-    const latest = await loadChat(chat.config.id);
-    if (!latest) {
-      return state;
-    }
-
-    return {
-      ...state,
-      queuedMessages: latest.state.queuedMessages ?? [],
-    };
   }
 
   private async loadChatIfAvailable(chatId: string): Promise<Chat | null> {

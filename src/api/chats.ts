@@ -331,11 +331,21 @@ export const chatsRoutes = {
 
   "/api/chats/:id/queued-messages/:messageId": {
     async DELETE(req: Request & { params: { id: string; messageId: string } }): Promise<Response> {
-      const updated = await chatManager.removeQueuedMessage(req.params.id, req.params.messageId);
-      if (!updated) {
-        return errorResponse("not_found", "Chat not found", 404);
+      try {
+        const updated = await chatManager.removeQueuedMessage(req.params.id, req.params.messageId);
+        if (!updated) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+        return Response.json(updated);
+      } catch (error) {
+        const message = String(error);
+        log.error("Failed to remove queued chat message", {
+          chatId: req.params.id,
+          messageId: req.params.messageId,
+          error: message,
+        });
+        return errorResponse("remove_queued_message_failed", message, 500);
       }
-      return Response.json(updated);
     },
   },
 
