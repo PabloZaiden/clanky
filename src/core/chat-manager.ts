@@ -1822,6 +1822,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            const isFirstReasoningDelta = currentStreamBlockKind !== "reasoning";
             if (currentStreamBlockKind !== "reasoning") {
               currentReasoningLogId = `chat-log-${crypto.randomUUID()}`;
               currentReasoningLogContent = "";
@@ -1835,7 +1836,7 @@ export class ChatManager {
             }, currentReasoningLogId ?? undefined, now, {
               delta: event.content,
               persist: persistReasoningProgress,
-              emitFull: currentReasoningLogId === null,
+              emitFull: isFirstReasoningDelta,
             });
             if (persistReasoningProgress) {
               markStreamingProgressPersisted(currentReasoningLogContent.length);
@@ -2259,7 +2260,7 @@ export class ChatManager {
     const shouldEmitFullMessage = emitFullMessage ?? true;
     const shouldUpdateResponseLog = updateResponseLog ?? true;
     const existingMessage = this.findMessage(chat, messageId ?? undefined);
-    const existingLog = responseLogId
+    const existingLog = shouldUpdateResponseLog && responseLogId
       ? chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
       : undefined;
     const nextMessageId = existingMessage?.id
@@ -2284,10 +2285,9 @@ export class ChatManager {
     const nextMessages = chat.state.messages.some((existing) => existing.id === assistantMessage.id)
       ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
       : [...chat.state.messages, assistantMessage];
-    const existingLogIndex = chat.state.logs.findIndex((logEntry) => logEntry.id === responseLog.id);
     const nextLogs = shouldUpdateResponseLog
-      ? existingLogIndex >= 0
-        ? chat.state.logs.map((logEntry, index) => index === existingLogIndex ? responseLog : logEntry)
+      ? existingLog
+        ? chat.state.logs.map((logEntry) => logEntry.id === responseLog.id ? responseLog : logEntry)
         : [...chat.state.logs, responseLog]
       : chat.state.logs;
     const nextState = {
