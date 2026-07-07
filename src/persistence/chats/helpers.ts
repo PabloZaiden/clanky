@@ -48,6 +48,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "logs",
   "tool_calls",
   "pending_permission_requests",
+  "queued_messages",
   "active_message_id",
   "interrupt_requested",
   "connection_status",
@@ -156,6 +157,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     logs: JSON.stringify(state.logs),
     tool_calls: JSON.stringify(state.toolCalls),
     pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
+    queued_messages: JSON.stringify(state.queuedMessages ?? []),
     active_message_id: state.activeMessageId ?? null,
     interrupt_requested: state.interruptRequested ? 1 : 0,
     connection_status: state.connectionStatus ?? "disconnected",
@@ -211,6 +213,9 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     hasTranscript,
     pendingPermissionRequests: row["pending_permission_requests"]
       ? safeJsonParse(row["pending_permission_requests"] as string, [], "pending_permission_requests", rowId)
+      : [],
+    queuedMessages: row["queued_messages"]
+      ? safeJsonParse(row["queued_messages"] as string, [], "queued_messages", rowId)
       : [],
     activeMessageId: (row["active_message_id"] as string | null) ?? undefined,
     interruptRequested: row["interrupt_requested"] === 1 ? true : undefined,

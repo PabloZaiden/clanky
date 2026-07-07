@@ -316,6 +316,7 @@ function createTables(database: Database): void {
         logs TEXT,
         tool_calls TEXT,
         pending_permission_requests TEXT,
+        queued_messages TEXT,
         active_message_id TEXT,
         interrupt_requested INTEGER NOT NULL DEFAULT 0,
         connection_status TEXT NOT NULL DEFAULT 'disconnected',

@@ -172,6 +172,16 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    name: "add_chat_queued_messages",
+    up: (db) => {
+      const columns = getTableColumns(db, "chats");
+      if (!columns.includes("queued_messages")) {
+        db.run("ALTER TABLE chats ADD COLUMN queued_messages TEXT");
+      }
+    },
+  },
 ];
 
 /**

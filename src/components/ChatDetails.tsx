@@ -128,6 +128,7 @@ export function ChatDetails({
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [removingQueuedMessageIds, setRemovingQueuedMessageIds] = useState<string[]>([]);
   const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
   const permissionReplyPendingIdsRef = useRef(new Set<string>());
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
@@ -424,12 +425,16 @@ export function ChatDetails({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!chat || isActive || isSubmitting) {
+    if (!chat || isSubmitting) {
       return;
     }
 
     const trimmedMessage = message.trim();
-    const hasPendingModelChange = !isEmbedded && selectedModel.length > 0;
+    const queueableInputPresent = trimmedMessage.length > 0 || attachments.length > 0;
+    const hasPendingModelChange = !isEmbedded && !isActive && selectedModel.length > 0;
+    if (isActive && !queueableInputPresent) {
+      return;
+    }
     if (trimmedMessage.length === 0 && attachments.length === 0 && !hasPendingModelChange) {
       return;
     }
@@ -481,18 +486,25 @@ export function ChatDetails({
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to send chat message"));
       }
-      setChat((current) => current
-        ? {
-            ...current,
-            state: {
-              ...current.state,
-              status: "starting",
-              error: undefined,
-              activeMessageId: undefined,
-              interruptRequested: false,
-            },
-          }
-        : current);
+      const data = (await response.json()) as { chat?: Chat };
+      if (data.chat) {
+        setChat(data.chat);
+      } else if (isActive) {
+        await refreshChat();
+      } else if (!isActive) {
+        setChat((current) => current
+          ? {
+              ...current,
+              state: {
+                ...current.state,
+                status: "starting",
+                error: undefined,
+                activeMessageId: undefined,
+                interruptRequested: false,
+              },
+            }
+          : current);
+      }
       setMessage("");
       setSelectedTemplate("");
       setAttachments([]);
@@ -501,6 +513,28 @@ export function ChatDetails({
       toast.error(String(submitError));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRemoveQueuedMessage(queuedMessageId: string): Promise<void> {
+    if (removingQueuedMessageIds.includes(queuedMessageId)) {
+      return;
+    }
+
+    setRemovingQueuedMessageIds((current) => [...current, queuedMessageId]);
+    try {
+      const response = await appFetch(`/api/chats/${chatId}/queued-messages/${encodeURIComponent(queuedMessageId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to remove queued message"));
+      }
+      const nextChat = (await response.json()) as Chat;
+      setChat(nextChat);
+    } catch (removeError) {
+      toast.error(getErrorMessage(removeError));
+    } finally {
+      setRemovingQueuedMessageIds((current) => current.filter((id) => id !== queuedMessageId));
     }
   }
 
@@ -658,16 +692,18 @@ export function ChatDetails({
     );
   }
 
-  const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || (!isEmbedded && selectedModel.length > 0);
+  const hasQueueableInput = message.trim().length > 0 || attachments.length > 0;
+  const hasPendingInput = hasQueueableInput || (!isEmbedded && selectedModel.length > 0);
   const toolPathDisplayRoot = chatWorkingDirectory;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
-  const secondaryActionsDisabled = isActive || isSubmitting || needsSshCredentials;
+  const secondaryActionsDisabled = isSubmitting || needsSshCredentials;
   const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
   const hasPendingComposerActions = attachments.length > 0 || selectedTemplate.length > 0 || (!isEmbedded && selectedModel.length > 0);
+  const queuedMessages = chat.state.queuedMessages ?? [];
   const conversation = (
     <ConversationViewer
       id="chat-transcript"
@@ -741,6 +777,44 @@ export function ChatDetails({
       </div>
     </div>
   );
+  const queuedMessagesPanel = queuedMessages.length > 0 && (
+    <div className="px-4 py-3">
+      <div className="mx-auto max-w-4xl space-y-2">
+        {queuedMessages.map((queuedMessage, index) => {
+          const isRemoving = removingQueuedMessageIds.includes(queuedMessage.id);
+          const attachmentCount = queuedMessage.attachments?.length ?? 0;
+          return (
+            <div
+              key={queuedMessage.id}
+              className="relative rounded-md border border-dashed border-amber-300 bg-white px-3 py-2 pr-10 text-sm shadow-sm dark:border-amber-800/80 dark:bg-neutral-900"
+            >
+              <div className="mb-1 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                <span>Queue #{index + 1}</span>
+                {attachmentCount > 0 && (
+                  <span>{attachmentCount} image{attachmentCount === 1 ? "" : "s"}</span>
+                )}
+              </div>
+              {queuedMessage.content.trim().length > 0 && (
+                <p className="whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100">
+                  {queuedMessage.content}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleRemoveQueuedMessage(queuedMessage.id)}
+                disabled={isRemoving}
+                className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+                aria-label="Remove queued message"
+                title="Remove queued message"
+              >
+                <span className="text-base leading-none">×</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const composer = (
     <form
@@ -782,7 +856,7 @@ export function ChatDetails({
                     onChange={setSelectedModel}
                     models={models}
                     loading={modelsLoading}
-                    disabled={secondaryActionsDisabled}
+                    disabled={secondaryActionsDisabled || isActive}
                     showDisconnected
                     currentModelKey={currentModelKey}
                     variantDiscovery={chat ? {
@@ -817,7 +891,7 @@ export function ChatDetails({
               rows={composerRows}
               className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
             />
-            {isActive ? (
+            {isActive && !hasQueueableInput ? (
               <button
                 type="button"
                 onClick={() => void handleInterrupt()}
@@ -835,10 +909,10 @@ export function ChatDetails({
             ) : (
               <FocusPreservingButton
                 type="submit"
-                disabled={isSubmitting || needsSshCredentials || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
+                disabled={isSubmitting || needsSshCredentials || (isActive ? !hasQueueableInput : !hasPendingInput) || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
                 className={sendButtonClassName}
-                aria-label="Send"
-                title="Send"
+                aria-label={isActive ? "Queue message" : "Send"}
+                title={isActive ? "Queue message" : "Send"}
               >
                 {isSubmitting ? (
                   <span className="animate-spin text-sm">⏳</span>
@@ -867,7 +941,7 @@ export function ChatDetails({
                   setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
                   setAttachmentError(null);
                 }}
-                disabled={isActive || isSubmitting}
+                disabled={isSubmitting}
               />
             </div>
           )}
@@ -910,6 +984,7 @@ export function ChatDetails({
 
       {conversation}
       {permissionApprovalPanel}
+      {queuedMessagesPanel}
       {composer}
     </div>
   );
