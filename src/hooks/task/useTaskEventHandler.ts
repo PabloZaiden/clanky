@@ -52,7 +52,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
         setLogs((prev) => {
           const existingIndex = prev.findIndex((logEntry) => logEntry.id === event.id);
           if (existingIndex >= 0) {
-            const existingLog = prev[existingIndex];
+            const existingLog = prev[existingIndex]!;
             const updated = [...prev];
             updated[existingIndex] = {
               id: event.id,
@@ -79,6 +79,54 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
             return newLogs.slice(-MAX_FRONTEND_LOGS);
           }
           return newLogs;
+        });
+        break;
+
+      case "task.log.delta":
+        setLogs((prev) => {
+          const existingIndex = prev.findIndex((logEntry) => logEntry.id === event.id);
+          if (existingIndex < 0) {
+            if (event.baseLength !== 0) {
+              void refresh();
+              return prev;
+            }
+            const newLogs = [
+              ...prev,
+              {
+                id: event.id,
+                level: event.level,
+                message: event.message,
+                details: {
+                  logKind: event.logKind,
+                  responseContent: event.delta,
+                },
+                timestamp: event.logTimestamp,
+              },
+            ];
+            return newLogs.length > MAX_FRONTEND_LOGS ? newLogs.slice(-MAX_FRONTEND_LOGS) : newLogs;
+          }
+
+          const existingLog = prev[existingIndex]!;
+          const currentContent = existingLog?.details?.["responseContent"];
+          if (typeof currentContent !== "string" || currentContent.length !== event.baseLength) {
+            void refresh();
+            return prev;
+          }
+
+          const updated = [...prev];
+          updated[existingIndex] = {
+            id: event.id,
+            level: event.level,
+            message: event.message,
+            details: {
+              ...existingLog.details,
+              logKind: event.logKind,
+              responseContent: `${currentContent}${event.delta}`,
+            },
+            finalizedResponse: existingLog.finalizedResponse,
+            timestamp: event.logTimestamp,
+          };
+          return updated;
         });
         break;
 

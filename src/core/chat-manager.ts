@@ -83,6 +83,9 @@ import { generateChatName } from "../utils/name-generator";
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
+const CHAT_STREAM_PERSIST_INTERVAL_MS = 1000;
+const CHAT_STREAM_PERSIST_MIN_CHARS = 4096;
+const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 
 interface ActiveChatStream {
   stream: EventStream<AgentEvent>;
@@ -1623,11 +1626,12 @@ export class ChatManager {
     promptPromise: Promise<void>,
     generation: number,
   ): Promise<void> {
-    let chat = await loadChat(chatId);
-    if (!chat) {
+    const initialChat = await loadChat(chatId);
+    if (!initialChat) {
       eventStream.close();
       return;
     }
+    let chat: Chat = initialChat;
 
     let currentTurnMessageId: string | null = null;
     let currentResponseMessageId: string | null = null;
@@ -1640,7 +1644,90 @@ export class ChatManager {
     let currentReasoningLogId: string | null = null;
     let currentReasoningLogContent = "";
     let currentStreamBlockKind: "response" | "reasoning" | null = null;
+    let lastStatusReloadAt = 0;
+    let lastStreamPersistAt = 0;
+    let lastStreamPersistLength = 0;
     const toolInputs = new Map<string, unknown>();
+    const shouldPersistStreamingProgress = (contentLength: number): boolean => {
+      const nowMs = Date.now();
+      return (
+        lastStreamPersistAt === 0
+        || nowMs - lastStreamPersistAt >= CHAT_STREAM_PERSIST_INTERVAL_MS
+        || contentLength - lastStreamPersistLength >= CHAT_STREAM_PERSIST_MIN_CHARS
+      );
+    };
+    const markStreamingProgressPersisted = (contentLength: number): void => {
+      lastStreamPersistAt = Date.now();
+      lastStreamPersistLength = contentLength;
+    };
+    const reloadInterruptStateIfNeeded = async (force = false): Promise<boolean> => {
+      const nowMs = Date.now();
+      if (!force && nowMs - lastStatusReloadAt < CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS) {
+        return true;
+      }
+      const latestChat = await loadChat(chatId);
+      lastStatusReloadAt = nowMs;
+      if (!latestChat) {
+        return false;
+      }
+      chat = {
+        ...latestChat,
+        state: {
+          ...latestChat.state,
+          messages: chat.state.messages,
+          logs: chat.state.logs,
+          toolCalls: chat.state.toolCalls,
+          activeMessageId: chat.state.activeMessageId,
+          lastActivityAt: chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
+        },
+      };
+      if (latestChat.state.status === "interrupting" || latestChat.state.interruptRequested) {
+        chat = {
+          ...chat,
+          state: {
+            ...chat.state,
+            status: latestChat.state.status,
+            interruptRequested: latestChat.state.interruptRequested,
+          },
+        };
+      }
+      return true;
+    };
+    const flushActiveStreamBlock = async (activityTimestamp = createTimestamp()): Promise<void> => {
+      if (
+        currentStreamBlockKind === "response"
+        && currentResponseMessageId
+        && currentResponseTimestamp
+      ) {
+        ({
+          chat,
+          messageId: currentResponseMessageId,
+          responseLogId: currentResponseLogId,
+        } = await this.updateStreamingAssistantProgress(chat, {
+          messageId: currentResponseMessageId,
+          content: currentResponseContent,
+          responseLogId: currentResponseLogId,
+          responseLogContent: currentResponseLogContent,
+          timestamp: currentResponseTimestamp,
+          activityTimestamp,
+          delta: "",
+          persist: true,
+          emitDelta: false,
+          emitFullMessage: true,
+          updateResponseLog: false,
+        }));
+        markStreamingProgressPersisted(currentResponseContent.length);
+      } else if (currentStreamBlockKind === "reasoning" && currentReasoningLogId) {
+        chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
+          logKind: "reasoning",
+          responseContent: currentReasoningLogContent,
+        }, currentReasoningLogId, activityTimestamp, {
+          persist: true,
+          emitFull: true,
+        });
+        markStreamingProgressPersisted(currentReasoningLogContent.length);
+      }
+    };
     const resetActiveStreamBlock = (): void => {
       currentResponseMessageId = null;
       currentResponseContent = "";
@@ -1650,6 +1737,8 @@ export class ChatManager {
       currentReasoningLogId = null;
       currentReasoningLogContent = "";
       currentStreamBlockKind = null;
+      lastStreamPersistAt = 0;
+      lastStreamPersistLength = 0;
     };
     const resetCurrentTurnStreamState = (): void => {
       currentTurnMessageId = null;
@@ -1665,8 +1754,7 @@ export class ChatManager {
         if (!this.isActiveStreamGeneration(chatId, generation)) {
           return;
         }
-        chat = await loadChat(chatId);
-        if (!chat) {
+        if (!await reloadInterruptStateIfNeeded(event.type !== "message.delta" && event.type !== "reasoning.delta")) {
           break;
         }
 
@@ -1707,6 +1795,7 @@ export class ChatManager {
             currentResponseContent += event.content;
             currentResponseLogContent += event.content;
             totalResponseLength += event.content.length;
+            const persistResponseProgress = shouldPersistStreamingProgress(currentResponseContent.length);
             ({
               chat,
               messageId: currentResponseMessageId,
@@ -1718,29 +1807,47 @@ export class ChatManager {
               responseLogContent: currentResponseLogContent,
               timestamp: currentResponseTimestamp ?? now,
               activityTimestamp: now,
+              delta: event.content,
+              persist: persistResponseProgress,
+              emitDelta: true,
+              emitFullMessage: false,
+              updateResponseLog: false,
             }));
+            if (persistResponseProgress) {
+              markStreamingProgressPersisted(currentResponseContent.length);
+            }
             break;
 
           case "reasoning.delta":
             if (isInterrupted) {
               break;
             }
+            const isFirstReasoningDelta = currentStreamBlockKind !== "reasoning";
             if (currentStreamBlockKind !== "reasoning") {
               currentReasoningLogId = `chat-log-${crypto.randomUUID()}`;
               currentReasoningLogContent = "";
               currentStreamBlockKind = "reasoning";
             }
             currentReasoningLogContent += event.content;
+            const persistReasoningProgress = shouldPersistStreamingProgress(currentReasoningLogContent.length);
             chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
               logKind: "reasoning",
               responseContent: currentReasoningLogContent,
-            }, currentReasoningLogId ?? undefined, now);
+            }, currentReasoningLogId ?? undefined, now, {
+              delta: event.content,
+              persist: persistReasoningProgress,
+              emitFull: isFirstReasoningDelta,
+            });
+            if (persistReasoningProgress) {
+              markStreamingProgressPersisted(currentReasoningLogContent.length);
+            }
             break;
 
           case "tool.start": {
             if (isInterrupted) {
               break;
             }
+            await flushActiveStreamBlock(now);
             resetActiveStreamBlock();
             const toolId = event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`;
             const toolKey = event.toolCallId ?? event.toolName;
@@ -1759,6 +1866,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            await flushActiveStreamBlock(now);
             resetActiveStreamBlock();
             const toolName = event.toolName;
             const toolCallId = event.toolCallId;
@@ -1809,6 +1917,7 @@ export class ChatManager {
               this.clearActiveStream(chatId, generation);
               return;
             }
+            await flushActiveStreamBlock(now);
             const completedResponseLength = event.content.length > 0
               ? event.content.length
               : totalResponseLength;
@@ -1836,7 +1945,13 @@ export class ChatManager {
                 responseLogContent: currentResponseLogContent,
                 timestamp: currentResponseTimestamp,
                 activityTimestamp: now,
+                delta: event.content,
+                persist: true,
+                emitDelta: false,
+                emitFullMessage: true,
+                updateResponseLog: false,
               }));
+              markStreamingProgressPersisted(currentResponseContent.length);
             }
             if (chat.state.interruptRequested || chat.state.status === "interrupting") {
               chat = await this.completeInterruptedChat(chat);
@@ -1899,9 +2014,9 @@ export class ChatManager {
         }
         return;
       }
-      chat = await this.loadChatIfAvailable(chatId);
-      if (chat && this.isActiveStreamGeneration(chatId, generation)) {
-        await this.emitChatError(chat, message);
+      const errorChat = await this.loadChatIfAvailable(chatId);
+      if (errorChat && this.isActiveStreamGeneration(chatId, generation)) {
+        await this.emitChatError(errorChat, message);
       }
     } finally {
       eventStream.close();
@@ -2121,6 +2236,11 @@ export class ChatManager {
       responseLogContent,
       timestamp,
       activityTimestamp,
+      delta,
+      persist,
+      emitDelta,
+      emitFullMessage,
+      updateResponseLog,
     }: {
       messageId: string | null;
       content: string;
@@ -2128,10 +2248,19 @@ export class ChatManager {
       responseLogContent: string;
       timestamp: string;
       activityTimestamp: string;
+      delta?: string;
+      persist?: boolean;
+      emitDelta?: boolean;
+      emitFullMessage?: boolean;
+      updateResponseLog?: boolean;
     },
   ): Promise<{ chat: Chat; messageId: string; responseLogId: string }> {
+    const shouldPersist = persist ?? true;
+    const shouldEmitDelta = emitDelta ?? false;
+    const shouldEmitFullMessage = emitFullMessage ?? true;
+    const shouldUpdateResponseLog = updateResponseLog ?? true;
     const existingMessage = this.findMessage(chat, messageId ?? undefined);
-    const existingLog = responseLogId
+    const existingLog = shouldUpdateResponseLog && responseLogId
       ? chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
       : undefined;
     const nextMessageId = existingMessage?.id
@@ -2156,31 +2285,53 @@ export class ChatManager {
     const nextMessages = chat.state.messages.some((existing) => existing.id === assistantMessage.id)
       ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
       : [...chat.state.messages, assistantMessage];
-    const existingLogIndex = chat.state.logs.findIndex((logEntry) => logEntry.id === responseLog.id);
-    const nextLogs = existingLogIndex >= 0
-      ? chat.state.logs.map((logEntry, index) => index === existingLogIndex ? responseLog : logEntry)
-      : [...chat.state.logs, responseLog];
-    const updated = await this.updateChatStateAndReturn(chat, {
+    const nextLogs = shouldUpdateResponseLog
+      ? existingLog
+        ? chat.state.logs.map((logEntry) => logEntry.id === responseLog.id ? responseLog : logEntry)
+        : [...chat.state.logs, responseLog]
+      : chat.state.logs;
+    const nextState = {
       ...chat.state,
       activeMessageId: nextMessageId,
       messages: nextMessages,
       logs: nextLogs,
       lastActivityAt: activityTimestamp,
-    });
-    this.emitter.emit({
-      type: "chat.message",
-      chatId: chat.config.id,
-      scope: chat.config.scope,
-      message: assistantMessage,
-      timestamp: activityTimestamp,
-    });
-    this.emitter.emit({
-      type: "chat.log",
-      chatId: chat.config.id,
-      scope: chat.config.scope,
-      log: responseLog,
-      timestamp: activityTimestamp,
-    });
+    };
+    const updated = shouldPersist
+      ? await this.updateChatStateAndReturn(chat, nextState)
+      : { config: chat.config, state: nextState };
+    if (shouldEmitDelta && delta !== undefined) {
+      this.emitter.emit({
+        type: "chat.message.delta",
+        chatId: chat.config.id,
+        scope: chat.config.scope,
+        messageId: nextMessageId,
+        role: "assistant",
+        delta,
+        baseLength: Math.max(0, content.length - delta.length),
+        contentLength: content.length,
+        messageTimestamp: assistantMessage.timestamp,
+        timestamp: activityTimestamp,
+      });
+    }
+    if (shouldEmitFullMessage) {
+      this.emitter.emit({
+        type: "chat.message",
+        chatId: chat.config.id,
+        scope: chat.config.scope,
+        message: assistantMessage,
+        timestamp: activityTimestamp,
+      });
+    }
+    if (shouldUpdateResponseLog) {
+      this.emitter.emit({
+        type: "chat.log",
+        chatId: chat.config.id,
+        scope: chat.config.scope,
+        log: responseLog,
+        timestamp: activityTimestamp,
+      });
+    }
     return {
       chat: updated,
       messageId: nextMessageId,
@@ -2195,7 +2346,14 @@ export class ChatManager {
     details?: Record<string, unknown>,
     id?: string,
     timestamp?: string,
+    options: {
+      delta?: string;
+      persist?: boolean;
+      emitFull?: boolean;
+    } = {},
   ): Promise<Chat> {
+    const shouldPersist = options.persist ?? true;
+    const shouldEmitFull = options.emitFull ?? true;
     const existing = id
       ? chat.state.logs.find((logEntry) => logEntry.id === id)
       : undefined;
@@ -2211,18 +2369,42 @@ export class ChatManager {
     const logs = existingIndex >= 0
       ? chat.state.logs.map((logEntry, index) => index === existingIndex ? entry : logEntry)
       : [...chat.state.logs, entry];
-    const updated = await this.updateChatStateAndReturn(chat, {
+    const nextState = {
       ...chat.state,
       logs,
       lastActivityAt: activityTimestamp,
-    });
-    this.emitter.emit({
-      type: "chat.log",
-      chatId: chat.config.id,
-      scope: chat.config.scope,
-      log: entry,
-      timestamp: activityTimestamp,
-    });
+    };
+    const updated = shouldPersist
+      ? await this.updateChatStateAndReturn(chat, nextState)
+      : { config: chat.config, state: nextState };
+    if (options.delta !== undefined && id) {
+      const responseContent = details?.["responseContent"];
+      if (typeof responseContent === "string") {
+        this.emitter.emit({
+          type: "chat.log.delta",
+          chatId: chat.config.id,
+          scope: chat.config.scope,
+          logId: id,
+          level,
+          message,
+          logKind: typeof details?.["logKind"] === "string" ? details["logKind"] : "response",
+          delta: options.delta,
+          baseLength: Math.max(0, responseContent.length - options.delta.length),
+          contentLength: responseContent.length,
+          logTimestamp: entry.timestamp,
+          timestamp: activityTimestamp,
+        });
+      }
+    }
+    if (shouldEmitFull) {
+      this.emitter.emit({
+        type: "chat.log",
+        chatId: chat.config.id,
+        scope: chat.config.scope,
+        log: entry,
+        timestamp: activityTimestamp,
+      });
+    }
     return updated;
   }
 
