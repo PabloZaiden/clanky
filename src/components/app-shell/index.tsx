@@ -211,7 +211,8 @@ function filterSidebarNodes(nodes: PrivateSidebarNode[], search: string): Sideba
   };
   return nodes.flatMap((node) => {
     const children = node.children ? filterSidebarNodes(node.children as PrivateSidebarNode[], search) : undefined;
-    if (matches(node) || (children && children.length > 0)) {
+    const childMatches = children !== undefined && children.length > 0;
+    if (childMatches || (node.type !== "section" && matches(node))) {
       return [{ ...node, children, defaultCollapsed: false }];
     }
     return [];
@@ -1098,7 +1099,7 @@ export function AppShell() {
       agentNodesByWorkspace.set(agent.config.workspaceId, workspaceAgents);
     }
 
-    const workspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces.map((workspaceNode): SidebarNode => {
+    const buildWorkspaceNode = (workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): SidebarNode => {
       const workspaceId = workspaceNode.workspace.id;
       const workspacePrivateHidden = getPrivateHidden(workspaceNode.workspace);
       const children: SidebarNode[] = [
@@ -1237,7 +1238,14 @@ export function AppShell() {
         pinId: `workspace:${workspaceId}`,
         children,
       }, workspacePrivateHidden);
-    }));
+    };
+
+    const workspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces
+      .filter((workspaceNode) => workspaceNode.workspace.archived !== true)
+      .map(buildWorkspaceNode));
+    const archivedWorkspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces
+      .filter((workspaceNode) => workspaceNode.workspace.archived === true)
+      .map(buildWorkspaceNode));
 
     const sshServerNodes = serverNodes.map((serverNode): SidebarNode => {
       const serverId = serverNode.server.config.id;
@@ -1332,6 +1340,12 @@ export function AppShell() {
         },
         children: workspaceNodes,
       },
+      ...(archivedWorkspaceNodes.length > 0 ? [{
+        type: "section" as const,
+        id: "archived-workspaces",
+        title: "Archived",
+        children: archivedWorkspaceNodes,
+      }] : []),
       {
         type: "section",
         id: "ssh-servers",
