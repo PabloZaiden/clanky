@@ -14,8 +14,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
 
     // Best practices
     "strict": true,
@@ -25,6 +23,7 @@
     "noImplicitOverride": true,
 
     "paths": {
+      "*": ["./*"],
       "@/*": ["./src/*"],
       "@clanky/shared": ["./packages/shared/src/index.ts"],
       "@clanky/shared/*": ["./packages/shared/src/*"],
