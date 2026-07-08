@@ -80,6 +80,14 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
 
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
+    const questionsInstruction = ctx.config.autoAcceptPlan === true
+      ? ""
+      : "- Near the end of your plan, include all questions you need answered before implementation, if any.";
+    const finalInstructions = [
+      "- Do NOT start implementing yet. Only create the plan.",
+      questionsInstruction,
+      "- When the plan is ready, end your response with:\n\n<promise>PLAN_READY</promise>",
+    ].filter((instruction) => instruction.length > 0).join("\n\n");
     const text = `- Goal: ${ctx.config.prompt}
 ${errorContext}
 - Create a detailed plan to achieve this goal. Write the plan to \`./.clanky-planning/plan.md\`.
@@ -92,11 +100,7 @@ ${errorContext}
 
 - Create a \`./.clanky-planning/status.md\` file to track progress.
 
-- Do NOT start implementing yet. Only create the plan.
-
-- When the plan is ready, end your response with:
-
-<promise>PLAN_READY</promise>`;
+${finalInstructions}`;
 
     return {
       parts: buildPromptParts(text, attachments),
