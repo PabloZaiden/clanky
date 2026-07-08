@@ -877,19 +877,12 @@ export class ChatManager {
       }
     }
 
-    const interrupted = await this.updateChatStateAndReturn(updating, {
-      ...updating.state,
-      error: reason
-        ? {
-            message: reason,
-            timestamp: createTimestamp(),
-            code: "interrupted",
-          }
-        : updating.state.error,
-    });
-        const completed = await this.completeInterruptedChat(interrupted);
-        this.scheduleQueuedMessageDrain(chatId);
-        return completed;
+    if (reason) {
+      log.info("Chat interrupted by user request", { chatId, reason });
+    }
+    const completed = await this.completeInterruptedChat(updating);
+    this.scheduleQueuedMessageDrain(chatId);
+    return completed;
   }
 
   async replyToPermission(chatId: string, requestId: string, decision: ChatPermissionDecision): Promise<Chat | null> {
@@ -2766,23 +2759,14 @@ export class ChatManager {
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "idle",
+      error: undefined,
       interruptRequested: false,
       completedAt: undefined,
       activeMessageId: undefined,
       pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
         status: "cancelled",
         resolvedAt: now,
-        error: "Interrupted",
       }),
-      toolCalls: chat.state.toolCalls.map((toolCall) =>
-        toolCall.status === "running" || toolCall.status === "pending"
-          ? {
-              ...toolCall,
-              status: "failed",
-              output: toolCall.output ?? "Interrupted",
-            }
-          : toolCall
-      ),
       lastActivityAt: now,
     });
     this.emitter.emit({
