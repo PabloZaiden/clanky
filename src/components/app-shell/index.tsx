@@ -59,6 +59,10 @@ type SshSessionActionTarget =
   | { kind: "workspace"; id: string; name: string }
   | { kind: "standalone"; id: string; name: string; serverId: string };
 
+type SearchableSidebarNode = PrivateSidebarNode & {
+  searchText?: string;
+};
+
 const ROUTE_VIEWS = [
   "home",
   "agents",
@@ -197,20 +201,20 @@ function privateActions(
   return items.filter((item) => item.id === "unmark-private");
 }
 
-function filterSidebarNodes(nodes: PrivateSidebarNode[], search: string): SidebarNode[] {
+function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): SidebarNode[] {
   const normalized = search.trim().toLowerCase();
   if (!normalized) {
     return nodes;
   }
 
-  const matches = (node: PrivateSidebarNode) => {
+  const matches = (node: SearchableSidebarNode) => {
     if (node.privateHidden) {
       return false;
     }
-    return `${node.title} ${node.subtitle ?? ""}`.toLowerCase().includes(normalized);
+    return `${node.title} ${node.subtitle ?? ""} ${node.searchText ?? ""}`.toLowerCase().includes(normalized);
   };
   return nodes.flatMap((node) => {
-    const children = node.children ? filterSidebarNodes(node.children as PrivateSidebarNode[], search) : undefined;
+    const children = node.children ? filterSidebarNodes(node.children as SearchableSidebarNode[], search) : undefined;
     const childMatches = children !== undefined && children.length > 0;
     if (childMatches || (node.type !== "section" && matches(node))) {
       return [{ ...node, children, defaultCollapsed: false }];
@@ -1138,7 +1142,7 @@ export function AppShell() {
       agentNodesByWorkspace.set(agent.config.workspaceId, workspaceAgents);
     }
 
-    const buildWorkspaceNode = (workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): SidebarNode => {
+    const buildWorkspaceNode = (workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): SearchableSidebarNode => {
       const workspaceId = workspaceNode.workspace.id;
       const workspacePrivateHidden = getPrivateHidden(workspaceNode.workspace);
       const children: SidebarNode[] = [
@@ -1266,6 +1270,7 @@ export function AppShell() {
         type: "item",
         id: `workspace:${workspaceId}`,
         title: workspaceNode.workspace.name,
+        searchText: workspaceNode.workspace.directory,
         route: routeNode({ view: "workspace", workspaceId }),
         actions: privateActions(
           getWorkspaceSidebarActions(workspaceNode),
