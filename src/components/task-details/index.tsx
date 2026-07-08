@@ -123,7 +123,7 @@ export function TaskDetails({
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
-  const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
+  const showActionBar = activeTab === "log" && (isActive || isPlanning || canTerminalFollowUp);
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
