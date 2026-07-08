@@ -1266,7 +1266,6 @@ export function AppShell() {
         type: "item",
         id: `workspace:${workspaceId}`,
         title: workspaceNode.workspace.name,
-        subtitle: workspaceNode.workspace.directory,
         route: routeNode({ view: "workspace", workspaceId }),
         actions: privateActions(
           getWorkspaceSidebarActions(workspaceNode),
