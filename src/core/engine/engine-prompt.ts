@@ -80,6 +80,9 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
 
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
+    const questionsInstruction = ctx.config.autoAcceptPlan === true
+      ? ""
+      : "\n- Since auto accept plan is disabled, near the end of your plan include all questions you need answered before implementation, if any.\n";
     const text = `- Goal: ${ctx.config.prompt}
 ${errorContext}
 - Create a detailed plan to achieve this goal. Write the plan to \`./.clanky-planning/plan.md\`.
@@ -93,6 +96,7 @@ ${errorContext}
 - Create a \`./.clanky-planning/status.md\` file to track progress.
 
 - Do NOT start implementing yet. Only create the plan.
+${questionsInstruction}
 
 - When the plan is ready, end your response with:
 
