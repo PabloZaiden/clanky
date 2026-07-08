@@ -82,7 +82,7 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
     const questionsInstruction = ctx.config.autoAcceptPlan === true
       ? ""
-      : "- Since auto accept plan is disabled, near the end of your plan include all questions you need answered before implementation, if any.";
+      : "- Near the end of your plan, include all questions you need answered before implementation, if any.";
     const finalInstructions = [
       "- Do NOT start implementing yet. Only create the plan.",
       questionsInstruction,
