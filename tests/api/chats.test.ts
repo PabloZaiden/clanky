@@ -286,6 +286,11 @@ describe("Chats API Integration", () => {
   test("preserves the active assistant message when interrupting a chat", async () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],
+      runningToolCall: {
+        id: "tool-interrupted",
+        name: "read_file",
+        input: { path: "README.md" },
+      },
     }));
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
@@ -330,7 +335,7 @@ describe("Chats API Integration", () => {
           body: JSON.stringify({ reason: "test interrupt" }),
         });
         expect(interruptResponse.status).toBe(200);
-        interrupted = await interruptResponse.json() as Chat;
+        interrupted = (await interruptResponse.json()) as Chat;
       } finally {
         unsubscribe();
       }
@@ -345,11 +350,21 @@ describe("Chats API Integration", () => {
         ["user", "Start a long response"],
         ["assistant", "Still working..."],
       ]);
+      expect(interrupted.state.toolCalls).toContainEqual(expect.objectContaining({
+        id: "tool-interrupted",
+        status: "failed",
+        output: "Cancelled by user.",
+      }));
       expect(observedEvents.some((event) => event.type === "chat.interrupted")).toBe(true);
       expect(observedEvents.some((event) => event.type === "chat.error")).toBe(false);
 
       const persistedInterrupted = await loadChat(created.config.id);
       expect(persistedInterrupted?.state.error).toBeUndefined();
+      expect(persistedInterrupted?.state.toolCalls).toContainEqual(expect.objectContaining({
+        id: "tool-interrupted",
+        status: "failed",
+        output: "Cancelled by user.",
+      }));
     } finally {
       installMockBackend(["Hello from chat API", "Second response"]);
     }

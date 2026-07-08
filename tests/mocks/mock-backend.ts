@@ -394,6 +394,8 @@ export function createMockBackend(responses: string[] = ["<promise>COMPLETE</pro
 export interface NeverCompletingMockBackendOptions {
   /** Models to return from getModels() */
   models?: MockModelInfo[];
+  /** Optional running tool call to emit before hanging forever. */
+  runningToolCall?: { id: string; name: string; input: unknown };
 }
 
 /**
@@ -407,9 +409,11 @@ export class NeverCompletingMockBackend implements Backend {
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
+  private readonly runningToolCall: { id: string; name: string; input: unknown } | undefined;
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
+    this.runningToolCall = options.runningToolCall;
   }
 
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
@@ -458,6 +462,14 @@ export class NeverCompletingMockBackend implements Backend {
     (async () => {
       push({ type: "message.start", messageId: `msg-${Date.now()}` });
       push({ type: "message.delta", content: "Still working..." });
+      if (this.runningToolCall) {
+        push({
+          type: "tool.start",
+          toolCallId: this.runningToolCall.id,
+          toolName: this.runningToolCall.name,
+          input: this.runningToolCall.input,
+        });
+      }
       // Never end the stream - keep task running forever
       await new Promise((resolve) => setTimeout(resolve, 100000));
     })();

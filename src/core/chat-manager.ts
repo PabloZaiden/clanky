@@ -2767,6 +2767,7 @@ export class ChatManager {
         status: "cancelled",
         resolvedAt: now,
       }),
+      toolCalls: this.cancelInFlightToolCalls(chat.state.toolCalls, now),
       lastActivityAt: now,
     });
     this.emitter.emit({
@@ -2807,6 +2808,21 @@ export class ChatManager {
     return requests.map((request) =>
       request.status === "pending" ? { ...request, ...updates } : request
     );
+  }
+
+  private cancelInFlightToolCalls(toolCalls: PersistedToolCall[], timestamp: string): PersistedToolCall[] {
+    return toolCalls.map((toolCall) => {
+      if (toolCall.status !== "pending" && toolCall.status !== "running") {
+        return toolCall;
+      }
+
+      return {
+        ...toolCall,
+        status: "failed",
+        output: toolCall.output ?? "Cancelled by user.",
+        timestamp,
+      };
+    });
   }
 
   private nextActiveStreamGeneration(chatId: string): number {
