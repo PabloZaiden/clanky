@@ -2,6 +2,7 @@
  * TaskDetails component showing full task information with tabs.
  */
 
+import { useState } from "react";
 import { useTask, useMarkdownPreference, useToast } from "../../hooks";
 import { Button, StatusBadge } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
@@ -89,6 +90,7 @@ export function TaskDetails({
     workspaceId: task?.config.workspaceId,
   });
   const frameworkHeader = useFrameworkMainHeaderSlots();
+  const [headerStopSubmitting, setHeaderStopSubmitting] = useState(false);
 
   if (loading && !task) {
     return (
@@ -123,8 +125,23 @@ export function TaskDetails({
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
-  const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
+  const showActionBar = activeTab === "log" && (isActive || isPlanning || canTerminalFollowUp);
+  const showHeaderStopButton = activeTab !== "log" && activeTab !== "chat" && isGenerating && (isActive || isPlanning);
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
+
+  async function handleHeaderStop() {
+    if (headerStopSubmitting) {
+      return;
+    }
+
+    setHeaderStopSubmitting(true);
+    try {
+      await stopTask();
+    } finally {
+      setHeaderStopSubmitting(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
       {frameworkHeader.available ? (
@@ -135,6 +152,19 @@ export function TaskDetails({
               {statusPill.label}
             </StatusBadge>
           )}
+          actions={showHeaderStopButton ? (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              loading={headerStopSubmitting}
+              onClick={handleHeaderStop}
+              aria-label="Stop task"
+              title="Stop task"
+            >
+              Stop
+            </Button>
+          ) : null}
         />
       ) : null}
       <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
