@@ -50,6 +50,9 @@ export function useTaskContent({
   const [planContent, setPlanContent] = useState<FileContentResponse | null>(null);
   const [statusContent, setStatusContent] = useState<FileContentResponse | null>(null);
   const [diffContent, setDiffContent] = useState<FileDiff[]>([]);
+  const [planContentTaskId, setPlanContentTaskId] = useState<string | null>(null);
+  const [statusContentTaskId, setStatusContentTaskId] = useState<string | null>(null);
+  const [diffContentTaskId, setDiffContentTaskId] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [reviewComments, setReviewComments] = useState<ReviewComment[]>([]);
@@ -62,6 +65,11 @@ export function useTaskContent({
   const prevGitChangeCounter = useRef(0);
   const prevDiffFileCount = useRef(0);
   const pullRequestDestinationRequestId = useRef(0);
+  const contentAvailability = useRef({ diff: false, plan: false });
+  contentAvailability.current = {
+    diff: diffContentTaskId === taskId,
+    plan: planContentTaskId === taskId || statusContentTaskId === taskId,
+  };
 
   const fetchReviewComments = useCallback(async () => {
     setLoadingComments(true);
@@ -82,36 +90,54 @@ export function useTaskContent({
 
   // Load content when tab changes
   useEffect(() => {
+    let isCancelled = false;
+
     async function loadContent() {
-      setLoadingContent(true);
+      if (activeTab !== "plan" && activeTab !== "diff") {
+        return;
+      }
+
+      const hasVisibleContent = (
+        (activeTab === "plan" && contentAvailability.current.plan)
+        || (activeTab === "diff" && contentAvailability.current.diff)
+      );
+
+      if (!hasVisibleContent) {
+        setLoadingContent(true);
+      }
+
       try {
         if (activeTab === "plan") {
           // Load both plan and status content together since status is embedded in the plan tab
           const [planResult, statusResult] = await Promise.all([getPlan(), getStatusFile()]);
+          if (isCancelled) {
+            return;
+          }
           setPlanContent(planResult);
+          setPlanContentTaskId(taskId);
           setStatusContent(statusResult);
+          setStatusContentTaskId(taskId);
         } else if (activeTab === "diff") {
           const content = await getDiff();
+          if (isCancelled) {
+            return;
+          }
           setDiffContent(content);
-        } else {
-          // No file content to load for other tabs
-          setLoadingContent(false);
-          return;
+          setDiffContentTaskId(taskId);
         }
       } finally {
-        setLoadingContent(false);
+        if (!isCancelled && !hasVisibleContent) {
+          setLoadingContent(false);
+        }
       }
     }
 
-    if (activeTab !== "log") {
-      loadContent();
-    }
+    loadContent();
 
-    // Fetch review comments separately so loadingComments (not loadingContent) reflects the state
-    if (activeTab === "actions" && task?.state.reviewMode) {
-      fetchReviewComments();
-    }
-  }, [activeTab, getPlan, getStatusFile, getDiff, fetchReviewComments, task?.state.reviewMode]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeTab, getPlan, getStatusFile, getDiff, taskId]);
 
   // Load plan content when in planning mode to keep it fresh regardless of active tab
   useEffect(() => {
@@ -120,13 +146,14 @@ export function useTaskContent({
         try {
           const content = await getPlan();
           setPlanContent(content);
+          setPlanContentTaskId(taskId);
         } catch {
           // Ignore errors — plan might not exist yet
         }
       }
     }
     loadPlanForPlanningMode();
-  }, [task?.state.status, getPlan, gitChangeCounter]);
+  }, [task?.state.status, getPlan, gitChangeCounter, taskId]);
 
   useEffect(() => {
     const fallbackPlanContent = task?.state.planMode?.planContent?.trim();
@@ -139,8 +166,9 @@ export function useTaskContent({
         content: fallbackPlanContent,
         exists: true,
       });
+      setPlanContentTaskId(taskId);
     }
-  }, [task?.state.status, task?.state.planMode?.planContent, planContent]);
+  }, [taskId, task?.state.status, task?.state.planMode?.planContent, planContent]);
 
   // Detect changes in diff content by fetching when git events occur
   useEffect(() => {
@@ -153,13 +181,14 @@ export function useTaskContent({
         }
 
         setDiffContent(newDiff);
+        setDiffContentTaskId(taskId);
         prevDiffFileCount.current = newDiff.length;
       }
       prevGitChangeCounter.current = gitChangeCounter;
     }
 
     checkDiffChanges();
-  }, [gitChangeCounter, activeTab, getDiff, setTabsWithUpdates]);
+  }, [gitChangeCounter, activeTab, getDiff, setTabsWithUpdates, taskId]);
 
   // Detect changes in plan content
   useEffect(() => {
@@ -184,7 +213,14 @@ export function useTaskContent({
     if (task?.state.reviewMode && activeTab === "actions") {
       fetchReviewComments();
     }
-  }, [task?.state.reviewMode?.reviewCycles, task?.state.status, activeTab, fetchReviewComments]);
+  }, [
+    task?.state.reviewMode?.addressable,
+    task?.state.reviewMode?.completionAction,
+    task?.state.reviewMode?.reviewCycles,
+    task?.state.status,
+    activeTab,
+    fetchReviewComments,
+  ]);
 
   // Load pull-request destination when the task is pushed and addressable
   useEffect(() => {
@@ -228,9 +264,9 @@ export function useTaskContent({
   ]);
 
   return {
-    planContent,
-    statusContent,
-    diffContent,
+    planContent: planContentTaskId === taskId ? planContent : null,
+    statusContent: statusContentTaskId === taskId ? statusContent : null,
+    diffContent: diffContentTaskId === taskId ? diffContent : [],
     reviewComments,
     pullRequestDestination,
     loadingContent,
