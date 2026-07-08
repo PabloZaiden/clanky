@@ -29,6 +29,8 @@ export interface UseTaskContentResult {
   reviewComments: ReviewComment[];
   pullRequestDestination: PullRequestDestinationResponse | null;
   loadingContent: boolean;
+  loadingPlanContent: boolean;
+  loadingStatusContent: boolean;
   loadingComments: boolean;
   loadingPullRequestDestination: boolean;
   expandedFiles: Set<string>;
@@ -54,6 +56,8 @@ export function useTaskContent({
   const [statusContentTaskId, setStatusContentTaskId] = useState<string | null>(null);
   const [diffContentTaskId, setDiffContentTaskId] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
+  const [loadingPlanContent, setLoadingPlanContent] = useState(false);
+  const [loadingStatusContent, setLoadingStatusContent] = useState(false);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [reviewComments, setReviewComments] = useState<ReviewComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -65,10 +69,11 @@ export function useTaskContent({
   const prevGitChangeCounter = useRef(0);
   const prevDiffFileCount = useRef(0);
   const pullRequestDestinationRequestId = useRef(0);
-  const contentAvailability = useRef({ diff: false, plan: false });
+  const contentAvailability = useRef({ diff: false, plan: false, status: false });
   contentAvailability.current = {
     diff: diffContentTaskId === taskId,
-    plan: planContentTaskId === taskId || statusContentTaskId === taskId,
+    plan: planContentTaskId === taskId,
+    status: statusContentTaskId === taskId,
   };
 
   const fetchReviewComments = useCallback(async () => {
@@ -94,15 +99,19 @@ export function useTaskContent({
 
     async function loadContent() {
       if (activeTab !== "plan" && activeTab !== "diff") {
+        setLoadingContent(false);
+        setLoadingPlanContent(false);
+        setLoadingStatusContent(false);
         return;
       }
 
-      const hasVisibleContent = (
-        (activeTab === "plan" && contentAvailability.current.plan)
-        || (activeTab === "diff" && contentAvailability.current.diff)
-      );
+      const shouldShowPlanLoading = activeTab === "plan" && !contentAvailability.current.plan;
+      const shouldShowStatusLoading = activeTab === "plan" && !contentAvailability.current.status;
+      const shouldShowDiffLoading = activeTab === "diff" && !contentAvailability.current.diff;
 
-      if (!hasVisibleContent) {
+      setLoadingPlanContent(shouldShowPlanLoading);
+      setLoadingStatusContent(shouldShowStatusLoading);
+      if (shouldShowDiffLoading) {
         setLoadingContent(true);
       }
 
@@ -126,8 +135,16 @@ export function useTaskContent({
           setDiffContentTaskId(taskId);
         }
       } finally {
-        if (!isCancelled && !hasVisibleContent) {
-          setLoadingContent(false);
+        if (!isCancelled) {
+          if (shouldShowPlanLoading) {
+            setLoadingPlanContent(false);
+          }
+          if (shouldShowStatusLoading) {
+            setLoadingStatusContent(false);
+          }
+          if (shouldShowDiffLoading) {
+            setLoadingContent(false);
+          }
         }
       }
     }
@@ -270,6 +287,8 @@ export function useTaskContent({
     reviewComments,
     pullRequestDestination,
     loadingContent,
+    loadingPlanContent,
+    loadingStatusContent,
     loadingComments,
     loadingPullRequestDestination,
     expandedFiles,

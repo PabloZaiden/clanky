@@ -9,7 +9,8 @@ interface PlanTabProps {
   feedbackRounds: number;
   planContent: FileContentResponse | null;
   statusContent: FileContentResponse | null;
-  loadingContent: boolean;
+  loadingPlanContent: boolean;
+  loadingStatusContent: boolean;
   markdownEnabled: boolean;
 }
 
@@ -19,7 +20,8 @@ export function PlanTab({
   feedbackRounds,
   planContent,
   statusContent,
-  loadingContent,
+  loadingPlanContent,
+  loadingStatusContent,
   markdownEnabled,
 }: PlanTabProps) {
   return (
@@ -33,7 +35,7 @@ export function PlanTab({
             </div>
           )}
 
-          {loadingContent && !isPlanning ? (
+          {loadingPlanContent && !isPlanning ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-transparent" />
             </div>
@@ -72,7 +74,7 @@ export function PlanTab({
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Status</h3>
           <StatusTab
             statusContent={statusContent}
-            loadingContent={loadingContent}
+            loadingStatusContent={loadingStatusContent}
             markdownEnabled={markdownEnabled}
             embedded
           />
