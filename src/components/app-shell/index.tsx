@@ -403,14 +403,15 @@ export function AppShell() {
     archivingWorkspaceIdsRef.current.add(workspace.id);
     setArchivingWorkspaceIds(new Set(archivingWorkspaceIdsRef.current));
 
-    const archived = workspace.archived !== true;
+    const nextArchivedState = workspace.archived !== true;
+    const archiveUpdateRequest = { archived: nextArchivedState };
     try {
-      const updated = await updateWorkspace(workspace.id, { archived });
+      const updated = await updateWorkspace(workspace.id, archiveUpdateRequest);
       if (!updated) {
-        toast.error(archived ? "Failed to archive workspace" : "Failed to unarchive workspace");
+        toast.error(nextArchivedState ? "Failed to archive workspace" : "Failed to unarchive workspace");
         return;
       }
-      toast.success(archived ? "Workspace archived." : "Workspace unarchived.");
+      toast.success(nextArchivedState ? "Workspace archived." : "Workspace unarchived.");
     } catch (error) {
       toast.error(String(error));
     } finally {
