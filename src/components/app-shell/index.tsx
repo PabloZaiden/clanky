@@ -300,7 +300,9 @@ export function AppShell() {
   const sidebar = useSidebar(route, onNavigate);
   const { navigateWithinShell, showSidebar } = sidebar;
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
+  const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [archivingWorkspaceIds, setArchivingWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
   const [renameSshSessionTarget, setRenameSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
   const [deleteSshSessionTarget, setDeleteSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
@@ -392,6 +394,30 @@ export function AppShell() {
       setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
     }
   }, [pullLatestChanges, toast]);
+
+  const toggleWorkspaceArchived = useCallback(async (workspace: Workspace): Promise<void> => {
+    if (archivingWorkspaceIdsRef.current.has(workspace.id)) {
+      return;
+    }
+
+    archivingWorkspaceIdsRef.current.add(workspace.id);
+    setArchivingWorkspaceIds(new Set(archivingWorkspaceIdsRef.current));
+
+    const archived = workspace.archived !== true;
+    try {
+      const updated = await updateWorkspace(workspace.id, { archived });
+      if (!updated) {
+        toast.error(archived ? "Failed to archive workspace" : "Failed to unarchive workspace");
+        return;
+      }
+      toast.success(archived ? "Workspace archived." : "Workspace unarchived.");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      archivingWorkspaceIdsRef.current.delete(workspace.id);
+      setArchivingWorkspaceIds(new Set(archivingWorkspaceIdsRef.current));
+    }
+  }, [toast, updateWorkspace]);
 
   const composeState = useComposeState({
     route,
@@ -585,6 +611,8 @@ export function AppShell() {
 
   const getWorkspaceSidebarActions = useCallback((workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): ActionMenuItem[] => {
     const workspaceId = workspaceNode.workspace.id;
+    const workspaceArchived = workspaceNode.workspace.archived === true;
+    const workspaceArchiving = archivingWorkspaceIds.has(workspaceId);
     return withPrivateToggleAction(sidebarActionItems([
       { id: "new-task", label: "New Task", onClick: () => navigateWithinShell({ view: "compose", kind: "task", scopeId: workspaceId }) },
       { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "chat", scopeId: workspaceId }) },
@@ -605,13 +633,23 @@ export function AppShell() {
       ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
         ? [{ id: "new-ssh-session", label: "New SSH Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", workspaceId }) }]
         : []),
+      {
+        id: workspaceArchived ? "unarchive-workspace" : "archive-workspace",
+        label: workspaceArchiving
+          ? (workspaceArchived ? "Unarchiving Workspace..." : "Archiving Workspace...")
+          : (workspaceArchived ? "Unarchive Workspace" : "Archive Workspace"),
+        disabled: workspaceArchiving,
+        onClick: () => void toggleWorkspaceArchived(workspaceNode.workspace),
+      },
       { id: "workspace-settings", label: "Workspace Settings", onClick: () => navigateWithinShell({ view: "workspace-settings", workspaceId }) },
     ]), workspaceNode.workspace, () => void toggleWorkspacePrivate(workspaceNode.workspace));
   }, [
+    archivingWorkspaceIds,
     navigateWithinShell,
     pullLatestWorkspaceChanges,
     pullingLatestWorkspaceIds,
     toast,
+    toggleWorkspaceArchived,
     toggleWorkspacePrivate,
   ]);
 
