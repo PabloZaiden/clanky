@@ -137,7 +137,8 @@ export function TaskDetailsTabContent({
           feedbackRounds={feedbackRounds}
           planContent={content.planContent}
           statusContent={content.statusContent}
-          loadingContent={content.loadingContent}
+          loadingPlanContent={content.loadingPlanContent}
+          loadingStatusContent={content.loadingStatusContent}
           markdownEnabled={markdownEnabled}
         />
       )}

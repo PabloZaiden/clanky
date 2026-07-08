@@ -4,16 +4,16 @@ import { taskDetailsTabContentClassName, taskDetailsTabScrollContainerClassName 
 
 interface StatusTabProps {
   statusContent: FileContentResponse | null;
-  loadingContent: boolean;
+  loadingStatusContent: boolean;
   markdownEnabled: boolean;
   /** When true, renders without the outer scroll container (for embedding inside another tab). */
   embedded?: boolean;
 }
 
-export function StatusTab({ statusContent, loadingContent, markdownEnabled, embedded = false }: StatusTabProps) {
+export function StatusTab({ statusContent, loadingStatusContent, markdownEnabled, embedded = false }: StatusTabProps) {
   const content = (
     <div className="min-w-0 flex-1">
-      {loadingContent ? (
+      {loadingStatusContent ? (
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-transparent" />
         </div>
