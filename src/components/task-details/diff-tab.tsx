@@ -11,14 +11,16 @@ interface DiffTabProps {
 }
 
 export function DiffTab({ diffContent, loadingContent, expandedFiles, onExpandedFilesChange }: DiffTabProps) {
+  const hasDiffContent = diffContent.length > 0;
+
   return (
     <div className={taskDetailsTabScrollContainerClassName}>
       <div className={taskDetailsTabContentClassName}>
-        {loadingContent ? (
+        {loadingContent && !hasDiffContent ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-transparent" />
           </div>
-        ) : diffContent.length > 0 ? (
+        ) : hasDiffContent ? (
           <div className="space-y-2">
             {diffContent.map((file) => {
               const isExpanded = expandedFiles.has(file.path);
