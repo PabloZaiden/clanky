@@ -55,6 +55,16 @@ Clanky is typically deployed behind a reverse proxy that enforces authentication
 - Destructive endpoints (server kill, database reset) should still be protected by the reverse proxy or by the application auth layer
 - WebSocket connections can be protected either at the proxy layer or by the application auth layer
 
+### Testing without passkeys
+
+For unattended local browser validation, start Clanky with `CLANKY_DISABLE_PASSKEY=true` so the framework bypasses interactive passkey setup while preserving the normal browser/API surface:
+
+```bash
+CLANKY_DISABLE_PASSKEY=true CLANKY_DATA_DIR=/tmp/clanky-passkey-disabled bun src/index.ts serve
+```
+
+Use an isolated `CLANKY_DATA_DIR` when creating validation data so local user data is not modified. Keep passkey enforcement enabled for tests that explicitly verify passkey registration, login, deletion, or auth boundaries.
+
 ## Remote Command Execution Architecture
 
 **CRITICAL: All operations on workspace repositories MUST be executed through `CommandExecutor` on the workspace host (local for `stdio`, remote for `ssh`), NEVER through direct filesystem assumptions in the Clanky process.**
