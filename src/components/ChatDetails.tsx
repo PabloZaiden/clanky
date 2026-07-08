@@ -339,6 +339,7 @@ export function ChatDetails({
             state: {
               ...current.state,
               status: "idle",
+              error: undefined,
               activeMessageId: undefined,
               lastActivityAt: event.timestamp,
             },

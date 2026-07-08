@@ -368,6 +368,7 @@ export function useChats(): UseChatsResult {
       case "chat.interrupted":
         setChats((prev) => updateChatState(prev, event.chatId, {
           status: "idle",
+          error: undefined,
           activeMessageId: undefined,
           lastActivityAt: event.timestamp,
         }));

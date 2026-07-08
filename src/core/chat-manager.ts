@@ -877,19 +877,12 @@ export class ChatManager {
       }
     }
 
-    const interrupted = await this.updateChatStateAndReturn(updating, {
-      ...updating.state,
-      error: reason
-        ? {
-            message: reason,
-            timestamp: createTimestamp(),
-            code: "interrupted",
-          }
-        : updating.state.error,
-    });
-        const completed = await this.completeInterruptedChat(interrupted);
-        this.scheduleQueuedMessageDrain(chatId);
-        return completed;
+    if (reason) {
+      log.info("Chat interrupted by user request", { chatId, reason });
+    }
+    const completed = await this.completeInterruptedChat(updating);
+    this.scheduleQueuedMessageDrain(chatId);
+    return completed;
   }
 
   async replyToPermission(chatId: string, requestId: string, decision: ChatPermissionDecision): Promise<Chat | null> {
@@ -2766,23 +2759,15 @@ export class ChatManager {
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "idle",
+      error: undefined,
       interruptRequested: false,
       completedAt: undefined,
       activeMessageId: undefined,
       pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
         status: "cancelled",
         resolvedAt: now,
-        error: "Interrupted",
       }),
-      toolCalls: chat.state.toolCalls.map((toolCall) =>
-        toolCall.status === "running" || toolCall.status === "pending"
-          ? {
-              ...toolCall,
-              status: "failed",
-              output: toolCall.output ?? "Interrupted",
-            }
-          : toolCall
-      ),
+      toolCalls: this.cancelInFlightToolCalls(chat.state.toolCalls, now),
       lastActivityAt: now,
     });
     this.emitter.emit({
@@ -2823,6 +2808,21 @@ export class ChatManager {
     return requests.map((request) =>
       request.status === "pending" ? { ...request, ...updates } : request
     );
+  }
+
+  private cancelInFlightToolCalls(toolCalls: PersistedToolCall[], timestamp: string): PersistedToolCall[] {
+    return toolCalls.map((toolCall) => {
+      if (toolCall.status !== "pending" && toolCall.status !== "running") {
+        return toolCall;
+      }
+
+      return {
+        ...toolCall,
+        status: "failed",
+        output: toolCall.output ?? "Cancelled by user.",
+        timestamp,
+      };
+    });
   }
 
   private nextActiveStreamGeneration(chatId: string): number {

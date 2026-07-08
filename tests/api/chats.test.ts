@@ -286,6 +286,11 @@ describe("Chats API Integration", () => {
   test("preserves the active assistant message when interrupting a chat", async () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],
+      runningToolCall: {
+        id: "tool-interrupted",
+        name: "read_file",
+        input: { path: "README.md" },
+      },
     }));
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
@@ -316,20 +321,50 @@ describe("Chats API Integration", () => {
       expect(activeMessageId).toBeString();
       expect(streaming?.state.messages.find((message) => message.id === activeMessageId)?.content).toBe("Still working...");
 
-      const interruptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/interrupt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "test interrupt" }),
+      const observedEvents: ChatEvent[] = [];
+      const unsubscribe = chatEventEmitter.subscribe((event) => {
+        if (event.chatId === created.config.id) {
+          observedEvents.push(event);
+        }
       });
-      expect(interruptResponse.status).toBe(200);
-      const interrupted = await interruptResponse.json();
+      let interrupted: Chat | null = null;
+      try {
+        const interruptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/interrupt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "test interrupt" }),
+        });
+        expect(interruptResponse.status).toBe(200);
+        interrupted = (await interruptResponse.json()) as Chat;
+      } finally {
+        unsubscribe();
+      }
+      if (!interrupted) {
+        throw new Error("Expected interrupt response body");
+      }
 
       expect(interrupted.state.status).toBe("idle");
+      expect(interrupted.state.error).toBeUndefined();
       expect(interrupted.state.activeMessageId).toBeUndefined();
       expect(interrupted.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
         ["user", "Start a long response"],
         ["assistant", "Still working..."],
       ]);
+      expect(interrupted.state.toolCalls).toContainEqual(expect.objectContaining({
+        id: "tool-interrupted",
+        status: "failed",
+        output: "Cancelled by user.",
+      }));
+      expect(observedEvents.some((event) => event.type === "chat.interrupted")).toBe(true);
+      expect(observedEvents.some((event) => event.type === "chat.error")).toBe(false);
+
+      const persistedInterrupted = await loadChat(created.config.id);
+      expect(persistedInterrupted?.state.error).toBeUndefined();
+      expect(persistedInterrupted?.state.toolCalls).toContainEqual(expect.objectContaining({
+        id: "tool-interrupted",
+        status: "failed",
+        output: "Cancelled by user.",
+      }));
     } finally {
       installMockBackend(["Hello from chat API", "Second response"]);
     }
