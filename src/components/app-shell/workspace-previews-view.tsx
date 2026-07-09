@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Workspace } from "../../types";
 import { useToast, useWorkspacePreviews } from "../../hooks";
-import { writeTextToClipboard } from "../../utils";
+import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";
 import { ShellPanel } from "./shell-panel";
 
@@ -14,17 +14,19 @@ function formatDateTime(value?: string): string {
 
 export function WorkspacePreviewsView({
   workspace,
+  workspaces,
   headerOffsetClassName,
 }: {
   workspace: Workspace;
+  workspaces: Workspace[];
   headerOffsetClassName?: string;
 }) {
   const [port, setPort] = useState("3000");
   const toast = useToast();
   const { previews, loading, error, closePreview } = useWorkspacePreviews(workspace.id);
   const command = useMemo(
-    () => `clanky preview --workspace ${workspace.id} --port ${port.trim() || "3000"}`,
-    [port, workspace.id],
+    () => buildPreviewCliCommand({ workspace, workspaces, port }),
+    [port, workspace, workspaces],
   );
 
   async function copyCommand() {
