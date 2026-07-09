@@ -112,23 +112,39 @@ function scheduleIdleUnload(): void {
     const transcriber = transcriberInstance;
     transcriberInstance = null;
     transcriberPromise = null;
-    void transcriber?.dispose?.().catch((error: unknown) => {
-      console.warn("Failed to unload dictation model", error);
-    });
+    disposeTranscriber(transcriber);
   }, DICTATION_MODEL_IDLE_UNLOAD_MS);
+}
+
+function disposeTranscriber(transcriber: Transcriber | null): void {
+  void transcriber?.dispose?.().catch((error: unknown) => {
+    console.warn("Failed to unload dictation model", error);
+  });
 }
 
 function getTranscriber(onProgress?: (progress: ProgressInfo) => void, forceWasm = false): Promise<Transcriber> {
   clearIdleUnloadTimer();
   if (forceWasm) {
+    const previousTranscriber = transcriberInstance;
+    transcriberInstance = null;
     transcriberPromise = createTranscriber(onProgress, true).then((transcriber) => {
       transcriberInstance = transcriber;
+      if (previousTranscriber && previousTranscriber !== transcriber) {
+        disposeTranscriber(previousTranscriber);
+      }
       return transcriber;
+    }).catch((error: unknown) => {
+      transcriberPromise = null;
+      disposeTranscriber(previousTranscriber);
+      throw error;
     });
   } else {
     transcriberPromise ??= createTranscriber(onProgress).then((transcriber) => {
       transcriberInstance = transcriber;
       return transcriber;
+    }).catch((error: unknown) => {
+      transcriberPromise = null;
+      throw error;
     });
   }
   return transcriberPromise;

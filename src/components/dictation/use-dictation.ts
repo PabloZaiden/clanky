@@ -35,6 +35,7 @@ interface UseDictationResult {
 
 type WindowWithWebkitAudioContext = Window & {
   webkitAudioContext?: typeof AudioContext;
+  webkitOfflineAudioContext?: typeof OfflineAudioContext;
 };
 
 let transcriptionQueue: Promise<void> = Promise.resolve();
@@ -55,12 +56,24 @@ function getAudioContextConstructor(): typeof AudioContext | null {
   return window.AudioContext ?? (window as WindowWithWebkitAudioContext).webkitAudioContext ?? null;
 }
 
+function getOfflineAudioContextConstructor(): typeof OfflineAudioContext | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.OfflineAudioContext
+    ?? (window as WindowWithWebkitAudioContext).webkitOfflineAudioContext
+    ?? null;
+}
+
 function getFileUnsupportedReason(): string | null {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     return "Dictation is only available in a browser.";
   }
   if (!getAudioContextConstructor()) {
     return "This browser does not support audio decoding.";
+  }
+  if (!getOfflineAudioContextConstructor()) {
+    return "This browser does not support audio resampling.";
   }
   return null;
 }
@@ -94,12 +107,16 @@ async function decodeBlob(blob: Blob): Promise<AudioBuffer> {
 }
 
 async function resampleToMono16k(audioBuffer: AudioBuffer): Promise<Float32Array> {
+  const OfflineAudioContextConstructor = getOfflineAudioContextConstructor();
+  if (!OfflineAudioContextConstructor) {
+    throw new Error("This browser does not support audio resampling.");
+  }
   if (audioBuffer.duration > MAX_AUDIO_DURATION_SECONDS) {
     throw new Error("Audio must be 3 minutes or shorter.");
   }
   const targetSampleRate = 16000;
   const length = Math.ceil(audioBuffer.duration * targetSampleRate);
-  const offlineContext = new OfflineAudioContext(1, length, targetSampleRate);
+  const offlineContext = new OfflineAudioContextConstructor(1, length, targetSampleRate);
   const source = offlineContext.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(offlineContext.destination);
