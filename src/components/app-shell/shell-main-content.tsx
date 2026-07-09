@@ -384,6 +384,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <WorkspacePreviewsView
         workspace={selectedWorkspace}
+        workspaces={workspaces}
         headerOffsetClassName={shellHeaderOffsetClassName}
       />
     );

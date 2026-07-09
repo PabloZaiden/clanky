@@ -39,6 +39,8 @@ export { buildDefaultSshSessionName, buildTaskSshSessionName } from "./ssh-sessi
 
 export { writeTextToClipboard } from "./clipboard";
 
+export { buildPreviewCliCommand, getPreviewWorkspaceReference } from "./preview-command";
+
 export {
   getEffectiveSshConnectionMode,
   getSshConnectionModeLabel,
