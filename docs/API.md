@@ -1717,7 +1717,7 @@ Settings use a single contract:
 ```json
 {
   "agent": {
-    "provider": "opencode | copilot | codex | claude",
+    "provider": "opencode | copilot | codex | claude | pi | grok",
     "transport": "stdio | ssh",
     "hostname": "required for ssh",
     "port": 22,
@@ -1737,6 +1737,8 @@ Provider runtime command is derived from `agent.provider`:
 - `copilot` → `copilot --yolo --acp`
 - `codex` → resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive ACP execution
 - `claude` → resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`
+- `pi` → resolves `pi-acp`, or runs `pi-acp` through `npx`/`bunx`
+- `grok` → resolves `grok`, or runs `@xai-official/grok` through `npx`/`bunx`, using `grok agent --always-approve stdio`
 
 If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
@@ -1769,7 +1771,7 @@ Update server settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
+| `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 | `agent.transport` | string | Yes | `stdio` or `ssh` |
 | `agent.hostname` | string | For `ssh` | SSH hostname |
 | `agent.port` | number | No | SSH port (default `22`) |
@@ -1833,7 +1835,7 @@ Test connection with provided settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
+| `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 | `agent.transport` | string | Yes | `stdio` or `ssh` |
 | `agent.hostname` | string | For `ssh` | SSH hostname |
 | `agent.port` | number | No | SSH port (default `22`) |
@@ -1869,7 +1871,7 @@ Test a server connection without requiring a workspace. Useful for validating co
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `settings` | object | Yes | Server settings to test |
-| `settings.agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
+| `settings.agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 | `settings.agent.transport` | string | Yes | `stdio` or `ssh` |
 | `settings.agent.hostname` | string | For `ssh` | SSH hostname |
 | `settings.agent.port` | number | No | SSH port (default `22`) |
@@ -2187,7 +2189,7 @@ Create a provisioning job.
 }
 ```
 
-`provider` accepts `"copilot"`, `"opencode"`, or `"codex"` and defaults to `"copilot"` when omitted. `credentialToken` is optional and is used when the target SSH server requires an exchanged credential.
+`provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or `"grok"` and defaults to `"copilot"` when omitted. `credentialToken` is optional and is used when the target SSH server requires an exchanged credential.
 
 **Response**
 

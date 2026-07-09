@@ -17,6 +17,7 @@ const COPILOT_PACKAGE = "@github/copilot";
 const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
+const GROK_PACKAGE = "@xai-official/grok";
 const CODEX_ACP_CONFIG_ARGS = [
   "-c",
   "approval_policy=\"never\"",
@@ -118,6 +119,12 @@ const PI_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   errorLabel: "Pi ACP adapter",
 };
 
+const GROK_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
+  executable: "grok",
+  packageName: GROK_PACKAGE,
+  errorLabel: "Grok Build CLI",
+};
+
 const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   opencode: {
     getAcpCommand: () => buildAcpResolverCommand(
@@ -149,6 +156,12 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
       [],
     ),
   },
+  grok: {
+    getAcpCommand: () => buildAcpResolverCommand(
+      GROK_ACP_RESOLVER_OPTIONS,
+      ["agent", "--always-approve", "stdio"],
+    ),
+  },
 };
 
 const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
@@ -157,6 +170,7 @@ const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> =
   codex: CODEX_ACP_RESOLVER_OPTIONS,
   claude: CLAUDE_ACP_RESOLVER_OPTIONS,
   pi: PI_ACP_RESOLVER_OPTIONS,
+  grok: GROK_ACP_RESOLVER_OPTIONS,
 };
 
 /**
