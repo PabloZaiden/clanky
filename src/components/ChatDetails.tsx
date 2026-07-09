@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { ConversationViewer, type TranscriptFileLinkTarget } from "./LogViewer";
 import {
   ImageAttachmentControl,
@@ -34,6 +34,7 @@ import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
+import { DictationControls, insertDictationText } from "./dictation";
 import type {
   Chat,
   ChatEvent,
@@ -128,11 +129,16 @@ export function ChatDetails({
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDictationPopover, setShowDictationPopover] = useState(false);
   const [removingQueuedMessageIds, setRemovingQueuedMessageIds] = useState<string[]>([]);
   const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
   const permissionReplyPendingIdsRef = useRef(new Set<string>());
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dictationPopoverRef = useRef<HTMLDivElement | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressActivatedRef = useRef(false);
   const reconnectAttemptedRef = useRef(false);
   const frameworkHeader = useFrameworkMainHeaderSlots();
   const { models, modelsLoading } = useAvailableModels({
@@ -424,6 +430,29 @@ export function ChatDetails({
     void handleReconnect();
   }, [chat, chatSocketStatus, handleReconnect]);
 
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showDictationPopover) {
+      return;
+    }
+    function handleDocumentPointerDown(event: globalThis.PointerEvent): void {
+      const target = event.target;
+      if (!(target instanceof Node) || dictationPopoverRef.current?.contains(target)) {
+        return;
+      }
+      setShowDictationPopover(false);
+    }
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown);
+  }, [showDictationPopover]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!chat || isSubmitting) {
@@ -705,6 +734,59 @@ export function ChatDetails({
   const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
   const hasPendingComposerActions = attachments.length > 0 || selectedTemplate.length > 0 || (!isEmbedded && selectedModel.length > 0);
   const queuedMessages = chat.state.queuedMessages ?? [];
+
+  function handleDictationTranscript(transcript: string): void {
+    const insertion = insertDictationText(
+      message,
+      transcript,
+      composerTextareaRef.current?.selectionStart,
+      composerTextareaRef.current?.selectionEnd,
+    );
+    setMessage(insertion.value);
+    setShowDictationPopover(false);
+    requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus();
+      composerTextareaRef.current?.setSelectionRange(insertion.caretPosition, insertion.caretPosition);
+    });
+  }
+
+  function clearLongPressTimer(): void {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleSendPointerDown(event: PointerEvent<HTMLButtonElement>): void {
+    if (event.button !== 0 || isSubmitting || needsSshCredentials) {
+      return;
+    }
+    longPressActivatedRef.current = false;
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressActivatedRef.current = true;
+      setShowDictationPopover(true);
+    }, 450);
+  }
+
+  function handleSendPointerEnd(): void {
+    clearLongPressTimer();
+  }
+
+  function handleSendClick(event: MouseEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+    if (longPressActivatedRef.current) {
+      event.stopPropagation();
+      longPressActivatedRef.current = false;
+      return;
+    }
+    if ((isActive ? hasQueueableInput : hasPendingInput) && (!isActive || selectedModel.length === 0 || selectedModelEnabled)) {
+      composerFormRef.current?.requestSubmit();
+      return;
+    }
+    setShowDictationPopover(true);
+  }
+
   const conversation = (
     <ConversationViewer
       id="chat-transcript"
@@ -882,7 +964,10 @@ export function ChatDetails({
               </ComposerActionsMenuSection>
             </ComposerActionsMenu>
             <textarea
-              ref={composerRef}
+              ref={(node) => {
+                composerTextareaRef.current = node;
+                composerRef(node);
+              }}
               id={messageInputId}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
@@ -908,19 +993,35 @@ export function ChatDetails({
                 )}
               </button>
             ) : (
-              <FocusPreservingButton
-                type="submit"
-                disabled={isSubmitting || needsSshCredentials || (isActive ? !hasQueueableInput : !hasPendingInput) || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
-                className={sendButtonClassName}
-                aria-label={isActive ? "Queue message" : "Send"}
-                title={isActive ? "Queue message" : "Send"}
-              >
-                {isSubmitting ? (
-                  <span className="animate-spin text-sm">⏳</span>
-                ) : (
-                  <span className="text-lg leading-none">↑</span>
+              <div ref={dictationPopoverRef} className="relative flex-shrink-0">
+                {showDictationPopover && (
+                  <div className="absolute bottom-full right-0 z-20 mb-2 w-max max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-neutral-900">
+                    <DictationControls
+                      onTranscript={handleDictationTranscript}
+                      onError={(dictationError) => toast.error(dictationError)}
+                      disabled={isSubmitting || needsSshCredentials}
+                    />
+                  </div>
                 )}
-              </FocusPreservingButton>
+                <FocusPreservingButton
+                  type="button"
+                  disabled={isSubmitting || needsSshCredentials || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
+                  className={sendButtonClassName}
+                  aria-label={isActive ? "Queue message" : "Send"}
+                  title={`${isActive ? "Queue message" : "Send"} (hold for dictation)`}
+                  onPointerDown={handleSendPointerDown}
+                  onPointerUp={handleSendPointerEnd}
+                  onPointerCancel={handleSendPointerEnd}
+                  onPointerLeave={handleSendPointerEnd}
+                  onClick={handleSendClick}
+                >
+                  {isSubmitting ? (
+                    <span className="animate-spin text-sm">⏳</span>
+                  ) : (
+                    <span className="text-lg leading-none">↑</span>
+                  )}
+                </FocusPreservingButton>
+              </div>
             )}
           </div>
           <ImageAttachmentControl

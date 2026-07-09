@@ -5,6 +5,7 @@ import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "../ImageAttachmentControl";
+import { DictationControls, insertDictationText } from "../dictation";
 
 interface PromptFieldProps {
   prompt: string;
@@ -28,32 +29,57 @@ export function PromptField({
   onTemplateClear,
 }: PromptFieldProps) {
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
   }
 
+  function handlePromptChange(newValue: string) {
+    onChange(newValue);
+    // Reset template selection if user edits the prompt away from the template text
+    if (selectedTemplate) {
+      const template = getTemplateById(selectedTemplate);
+      if (template && newValue !== template.prompt) {
+        onTemplateClear();
+      }
+    }
+  }
+
+  function handleDictationTranscript(transcript: string) {
+    const insertion = insertDictationText(
+      prompt,
+      transcript,
+      textareaRef.current?.selectionStart,
+      textareaRef.current?.selectionEnd,
+    );
+    handlePromptChange(insertion.value);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(insertion.caretPosition, insertion.caretPosition);
+    });
+  }
+
   return (
     <div>
-      <label
-        htmlFor="prompt"
-        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-      >
-        Prompt <span className="text-red-500">*</span>
-      </label>
+      <div className="flex items-center justify-between gap-3">
+        <label
+          htmlFor="prompt"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          Prompt <span className="text-red-500">*</span>
+        </label>
+        <DictationControls
+          compact
+          onTranscript={handleDictationTranscript}
+        />
+      </div>
       <textarea
+        ref={textareaRef}
         id="prompt"
         value={prompt}
         onChange={(e) => {
-          const newValue = e.target.value;
-          onChange(newValue);
-          // Reset template selection if user edits the prompt away from the template text
-          if (selectedTemplate) {
-            const template = getTemplateById(selectedTemplate);
-            if (template && newValue !== template.prompt) {
-              onTemplateClear();
-            }
-          }
+          handlePromptChange(e.target.value);
         }}
         onPaste={handlePaste}
         placeholder={planMode ? "Describe what you want to achieve. The AI will create a detailed plan based on this." : "Do everything that's pending in the plan"}
