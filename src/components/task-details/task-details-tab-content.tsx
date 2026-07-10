@@ -29,6 +29,7 @@ interface TaskDetailsTabContentProps {
   isPlanReady: boolean;
   isLogActive: boolean;
   applyLogBottomSafeAreaPadding: boolean;
+  hasBottomActionBar: boolean;
   feedbackRounds: number;
   markdownEnabled: boolean;
 
@@ -53,6 +54,7 @@ export function TaskDetailsTabContent({
   isPlanReady,
   isLogActive,
   applyLogBottomSafeAreaPadding,
+  hasBottomActionBar,
   feedbackRounds,
   markdownEnabled,
   messages,
@@ -140,6 +142,7 @@ export function TaskDetailsTabContent({
           loadingPlanContent={content.loadingPlanContent}
           loadingStatusContent={content.loadingStatusContent}
           markdownEnabled={markdownEnabled}
+          hasBottomActionBar={hasBottomActionBar}
         />
       )}
       {activeTab === "diff" && (

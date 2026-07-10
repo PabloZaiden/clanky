@@ -125,8 +125,10 @@ export function TaskDetails({
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
-  const showActionBar = activeTab === "log" && (isActive || isPlanning || canTerminalFollowUp);
-  const showHeaderStopButton = activeTab !== "log" && activeTab !== "chat" && isGenerating && (isActive || isPlanning);
+  const showLogActionBar = activeTab === "log" && (isActive || isPlanning || canTerminalFollowUp);
+  const showPlanActionBar = activeTab === "plan" && isPlanning;
+  const showActionBar = showLogActionBar || showPlanActionBar;
+  const showHeaderStopButton = !showActionBar && activeTab !== "chat" && isGenerating && (isActive || isPlanning);
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
 
   async function handleHeaderStop() {
@@ -231,6 +233,7 @@ export function TaskDetails({
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}
             isPlanning={isPlanning} isPlanReady={isPlanReady}
             isLogActive={isLogActive} applyLogBottomSafeAreaPadding={!showActionBar}
+            hasBottomActionBar={showActionBar}
             feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             logDisplay={logDisplay}
