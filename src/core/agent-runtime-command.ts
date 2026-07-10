@@ -12,7 +12,7 @@ interface AgentProviderRuntime {
   getAcpCommand(): AgentRuntimeCommand;
 }
 
-const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
+const CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp";
 const COPILOT_PACKAGE = "@github/copilot";
 const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
