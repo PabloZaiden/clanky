@@ -12,6 +12,7 @@ interface PlanTabProps {
   loadingPlanContent: boolean;
   loadingStatusContent: boolean;
   markdownEnabled: boolean;
+  hasBottomActionBar: boolean;
 }
 
 export function PlanTab({
@@ -23,9 +24,10 @@ export function PlanTab({
   loadingPlanContent,
   loadingStatusContent,
   markdownEnabled,
+  hasBottomActionBar,
 }: PlanTabProps) {
   return (
-    <div className={taskDetailsTabScrollContainerClassName}>
+    <div className={`${taskDetailsTabScrollContainerClassName} ${hasBottomActionBar ? "" : "safe-area-bottom"}`}>
       <div className={`${taskDetailsTabContentClassName} space-y-4`}>
         <div>
           {/* Feedback rounds counter (planning mode only) */}
