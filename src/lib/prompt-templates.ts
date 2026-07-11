@@ -81,64 +81,12 @@ Be thorough and concrete. Reference specific files and directories where they cl
     id: "thorough-code-review",
     name: "Thorough Code Review",
     description:
-      "Performs a comprehensive multi-layer code review and writes results to the code_review/ folder.",
-    prompt: `Perform a thorough, multi-perspective code review of this codebase. Write your findings into the \`code_review/\` folder with the following structure:
+      "Analyzes code quality and maintainability and produces one consolidated list of findings.",
+    prompt: `Run a detailed analysis with the goal of improving the code quality and maintainability of this solution.
+Focus on hacky parts, repeated code hardcoded or fragile implementations.
+Regarding automated tests, less is more. Flag any test that just checks for the exact implementation, the absence of old behavior already changed, specific strings or ui things. We want to test proper behavior, not small tests for regressions already fixed or ui details that will fail if the ui changes.
 
-1. **\`code_review/README.md\`** — Summary & guide
-   - Overall codebase health score (A through F)
-   - Finding summary tables by severity (Critical, Major, Minor, Suggestion) and by dimension
-   - Top 10 architectural recommendations
-   - How-to-read guide pointing readers to the other documents
-
-2. **\`code_review/layers.md\`** — Architectural layer analysis
-   - Identify the architectural layers (e.g., API, Core, Persistence, Frontend, etc.)
-   - Analyze each layer: responsibilities, health, dependency violations, error propagation
-   - Cross-layer analysis: coupling, bypasses, data flow issues
-
-3. **\`code_review/functionalities.md\`** — End-to-end functionality analysis
-   - Trace key features across all layers from UI to database
-   - Identify cross-cutting concerns (code duplication, error handling patterns, etc.)
-   - Analyze data flow, state management, and integration points
-
-4. **\`code_review/modules.md\`** — Module-level analysis
-   - Review each source directory as a cohesive module
-   - Assess cohesion, coupling, API surface quality, test coverage
-   - Identify dead code, missing abstractions, and refactoring opportunities
-
-5. **\`code_review/files.md\`** — File-by-file analysis
-   - Detailed findings for each file with exact line numbers
-   - Categorize by dimensions: correctness, error handling, type safety, complexity, naming, duplication, performance, security
-   - Each finding should include severity, description, and suggested fix
-
-**Guidelines:**
-- Be thorough and specific — reference exact file paths and line numbers
-- Prioritize actionable findings over style nitpicks
-- Use severity levels consistently: Critical (data loss, security), Major (correctness, maintainability), Minor (style, convention), Suggestion (improvements)
-- Cross-reference findings across documents where they overlap
-- Consider the project's existing conventions and architecture when evaluating code`,
-    taskDefaults: {
-      planMode: true,
-    },
-  },
-  {
-    id: "fix-code-review-issues",
-    name: "Fix Code Review Issues",
-    description:
-      "Reads the code_review/ folder and systematically fixes identified issues by priority.",
-    prompt: `Read all files in the \`code_review/\` folder (README.md, layers.md, functionalities.md, modules.md, files.md) and fix the issues identified in the review.
-
-**Approach:**
-1. Start by reading \`code_review/README.md\` to understand the overall findings and top recommendations
-2. Read \`code_review/files.md\` for specific file-level issues with line numbers
-3. Prioritize fixes by severity: Critical first, then Major, then Minor
-4. Skip Suggestion-level items unless they are quick wins
-
-**Rules:**
-- Fix the code, not the review — do not modify files in \`code_review/\`
-- Ensure each fix doesn't break existing tests — run the test suite after each batch of related fixes
-- Follow the project's existing coding conventions
-- If a fix requires a larger refactor, note it in the plan but implement it incrementally
-- Track which issues you've fixed in your status updates`,
+After finishing the whole analysis and reviewing the findings, make a single clean, complete and detailed list with all the findings.`,
     taskDefaults: {
       planMode: true,
     },
