@@ -37,6 +37,11 @@ type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
 type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
+const PURGE_REQUEST_IDLE_TIMEOUT_SECONDS = 0;
+const PURGE_ROUTES_WITHOUT_IDLE_TIMEOUT = new Set([
+  "/api/settings/purge-terminal-tasks",
+  "/api/workspaces/:id/archived-tasks/purge",
+]);
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeRegistered = false;
@@ -50,11 +55,23 @@ function legacyRequest(req: Request, params: Record<string, string>): Request {
   return wrapped;
 }
 
+export function configureLegacyRouteRequestTimeout(
+  path: string,
+  req: Request,
+  server?: Pick<Server<WebAppWebSocketData>, "timeout">,
+): void {
+  if (PURGE_ROUTES_WITHOUT_IDLE_TIMEOUT.has(path)) {
+    server?.timeout(req, PURGE_REQUEST_IDLE_TIMEOUT_SECONDS);
+  }
+}
+
 function adaptHandler(
+  path: string,
   handler: (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>,
 ) {
   return async (req: Request, ctx: Parameters<NonNullable<RouteDefinition<ClankyRealtimeEvent>["GET"]>>[1]) => {
     const user = ctx.requireUser();
+    configureLegacyRouteRequestTimeout(path, req, ctx.server);
     return await runWithCurrentUser(user, () => handler(legacyRequest(req, ctx.params), ctx.server as Server<WebAppWebSocketData> | undefined));
   };
 }
@@ -68,7 +85,7 @@ function adaptLegacyRoutes(routes: Record<string, LegacyRouteValue>): RouteTable
       converted[path] = {
         auth,
         sameOrigin: path.startsWith("/task/") ? "always" : "mutations",
-        ...Object.fromEntries(methods.map((method) => [method, adaptHandler(route as LegacyRouteHandler)])),
+        ...Object.fromEntries(methods.map((method) => [method, adaptHandler(path, route as LegacyRouteHandler)])),
       };
       continue;
     }
@@ -80,7 +97,7 @@ function adaptLegacyRoutes(routes: Record<string, LegacyRouteValue>): RouteTable
     for (const method of methods) {
       const handler = route[method];
       if (handler) {
-        converted[path]![method] = adaptHandler(handler);
+        converted[path]![method] = adaptHandler(path, handler);
       }
     }
   }
