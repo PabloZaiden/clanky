@@ -225,6 +225,33 @@ export function CopyPathIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
+ * Clipboard paste icon for inserting clipboard content.
+ */
+export function ClipboardPasteIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 5h6a2 2 0 012 2v12H7a2 2 0 01-2-2V7a2 2 0 012-2h2"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 3h6v4H9V3zM11 12h4M11 15h4"
+      />
+    </svg>
+  );
+}
+
+/**
  * Text wrap icon for editor wrap controls.
  */
 export function WrapTextIcon({ className = "", size = "h-4 w-4" }: IconProps) {

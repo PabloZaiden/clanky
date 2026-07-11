@@ -229,6 +229,7 @@ export function CreateTaskForm({
           onAttachmentsChange={setAttachments}
           planMode={planMode}
           isEditingDraft={isEditingDraft}
+          showClipboardPaste={!isEditing && !isEditingDraft}
           selectedTemplate={selectedTemplate}
           onTemplateClear={() => setSelectedTemplate("")}
         />
