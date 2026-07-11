@@ -1,6 +1,7 @@
 ---
 name: webapp
-description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating framework apps, adding routes, auth, settings, realtime, sidebar actions, Docker, GitHub Actions, screenshots, or Playwright validation.'
+version: 0.5.8
+description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating framework apps, adding routes, auth, settings, realtime, sidebar actions, Docker, GitHub Actions, screenshots, Playwright validation, or explaining how to test applications that use webapp with Playwright.'
 ---
 
 # Webapp framework skill
@@ -12,7 +13,8 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Treat the app as one Bun server that serves React, API routes and websockets together.
 - Do not add Vite or a standalone client dev server.
 - Use `bun --hot src/index.ts serve` for dev.
-- Do not create app-owned `index.html` or `site.webmanifest`; the framework generates the HTML document, PWA manifest, default SVG icons, viewport metadata and theme prepaint script from `createWebAppServer({ web })`.
+- Do not create app-owned `index.html` or `site.webmanifest`; the framework generates the HTML document, PWA manifest, default SVG icons, fixed-scale viewport metadata and theme prepaint script from `createWebAppServer({ web })`.
+- The generated viewport uses fixed-scale tokens. On iPhone/iPad and other mobile browsers that honor those tokens, it prevents pinch-to-zoom while preserving scrolling; clients that ignore them are unaffected. Do not add global touch handlers, `preventDefault()` calls, or `touch-action: none` to solve zoom.
 - PWA is enabled by default. Lightweight examples may use generated initials icons, but production apps should set `web.icons` with favicon, Apple-touch, and 192x192/512x512 manifest PNGs. Icon paths are relative to the app package root.
 - Keep the product as one app and one binary with subcommands (`serve`, `version`, app-specific commands, and optional framework-backed `auth`/`api`/`schema` commands). Do not split web/server/CLI into separate apps or binaries unless there is a real package boundary.
 - Keep generated apps and tooling cross-platform across macOS and Linux on arm64 and x86-64.
@@ -47,6 +49,86 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
 - When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
+
+## Visual validation with Playwright CLI
+
+This workflow is for the coding agent when validating an application that depends on `@pablozaiden/webapp`, not for the application itself. Do not add Playwright dependencies, scripts, configuration, or test files to the application.
+
+Use the Node-based `playwright-cli` for interactive browser validation. Do not run Playwright through Bun, use the `playwright` library or test runner, use system Chrome, or hard-code browser executable paths.
+
+The environment must provide Node.js 18+ and:
+
+```bash
+playwright-cli --help
+```
+
+If it is missing, install it once at the environment level, never in the app:
+
+```bash
+npm install -g @playwright/cli@latest
+playwright-cli install-browser chromium
+playwright-cli install --skills=agents
+```
+
+On Linux environments with missing browser system dependencies:
+
+```bash
+playwright-cli install-browser chromium --with-deps
+```
+
+For authenticated visual flows, `{PREFIX}_DISABLE_PASSKEY=true` may be used only with disposable local data. Never use production data or disable same-origin checks for browser validation.
+
+Use the URL of the already-running application. Run `playwright-cli` from a temporary working directory rather than the application repository:
+
+```bash
+playwright_workdir="$(mktemp -d)"
+cd "$playwright_workdir"
+```
+
+Use a named, non-persistent browser session:
+
+```bash
+playwright-cli -s=webapp-visual open http://127.0.0.1:<port> --browser=chromium
+playwright-cli -s=webapp-visual snapshot
+```
+
+Use the element references returned by the accessibility snapshot:
+
+```bash
+playwright-cli -s=webapp-visual click e12
+playwright-cli -s=webapp-visual fill e19 "text"
+playwright-cli -s=webapp-visual press Enter
+```
+
+Take a new snapshot after navigation or state changes. Prefer accessible element references and visible user-facing behavior over CSS selectors or implementation details.
+
+Use the CLI for visual inspection:
+
+```bash
+playwright-cli -s=webapp-visual screenshot
+playwright-cli -s=webapp-visual resize 390 844
+playwright-cli -s=webapp-visual screenshot
+```
+
+The default headless mode is preferred for agents. Use `--headed` only when a graphical display is available. Review every screenshot against the requested visual behavior; capturing a screenshot without inspecting it is not validation.
+
+Playwright-generated files are temporary artifacts, not application changes. Ignore and never commit paths such as:
+
+- `.playwright/`
+- `.playwright-cli/`
+- `playwright-report/`
+- `test-results/`
+- `playwright/.auth/`
+
+If any of these paths appear in the repository, ensure they are ignored and remove only artifacts created during the current task. Do not delete pre-existing tracked files.
+
+At the end of the task:
+
+```bash
+playwright-cli -s=webapp-visual close
+playwright-cli -s=webapp-visual delete-data
+rm -rf "$playwright_workdir"
+```
 
 ## Minimum server shape
 
