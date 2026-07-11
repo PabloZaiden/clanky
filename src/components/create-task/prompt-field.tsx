@@ -13,8 +13,6 @@ interface PromptFieldProps {
   attachments: ComposerImageAttachment[];
   onAttachmentsChange: (attachments: ComposerImageAttachment[]) => void;
   planMode: boolean;
-  isEditingDraft?: boolean;
-  showClipboardPaste?: boolean;
   selectedTemplate: string;
   onTemplateClear: () => void;
 }
@@ -25,8 +23,6 @@ export function PromptField({
   attachments,
   onAttachmentsChange,
   planMode,
-  isEditingDraft: _isEditingDraft = false,
-  showClipboardPaste = false,
   selectedTemplate,
   onTemplateClear,
 }: PromptFieldProps) {
@@ -115,8 +111,8 @@ export function PromptField({
           attachments={attachments}
           onChange={onAttachmentsChange}
           iconOnly
-          showClipboardTrigger={showClipboardPaste}
-          onClipboardText={showClipboardPaste ? handleClipboardText : undefined}
+          showClipboardTrigger
+          onClipboardText={handleClipboardText}
         />
       </div>
     </div>
