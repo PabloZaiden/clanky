@@ -22,7 +22,21 @@ export {
   type BadgeVariant,
 } from "./Badge";
 export { StatusBadge } from "./StatusBadge";
-export { ChatIcon, CodeIcon, CopyPathIcon, EditIcon, GearIcon, GridIcon, HamburgerIcon, ListIcon, RefreshIcon, SidebarIcon, WrapTextIcon, type IconProps } from "./Icons";
+export {
+  ChatIcon,
+  ClipboardPasteIcon,
+  CodeIcon,
+  CopyPathIcon,
+  EditIcon,
+  GearIcon,
+  GridIcon,
+  HamburgerIcon,
+  ListIcon,
+  RefreshIcon,
+  SidebarIcon,
+  WrapTextIcon,
+  type IconProps,
+} from "./Icons";
 export { CollapsibleSection, type CollapsibleSectionProps } from "./CollapsibleSection";
 export { ToastProvider } from "./Toast";
 export { PASSWORD_INPUT_PROPS } from "./passwordInputProps";

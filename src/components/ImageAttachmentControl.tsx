@@ -18,6 +18,8 @@ import {
   getClipboardImageFiles,
   revokeComposerImageAttachments,
 } from "../lib/image-attachments";
+import { readClipboardContent } from "../utils";
+import { ClipboardPasteIcon } from "./common";
 import { ImageViewerModal } from "./ImageViewerModal";
 
 interface ImageAttachmentControlProps {
@@ -36,6 +38,10 @@ interface ImageAttachmentControlProps {
   onErrorChange?: (error: string | null) => void;
   /** When false, keep the input/ref mounted without rendering a visible picker button. */
   showTrigger?: boolean;
+  /** When true, render a clipboard paste button beside the image picker. */
+  showClipboardTrigger?: boolean;
+  /** Receives text from the clipboard when no image is present. */
+  onClipboardText?: (text: string) => void;
 }
 
 export interface ImageAttachmentControlHandle {
@@ -133,11 +139,15 @@ function ImageAttachmentControlInner({
   showErrorText = true,
   onErrorChange,
   showTrigger = true,
+  showClipboardTrigger = false,
+  onClipboardText,
 }: ImageAttachmentControlProps, ref: ForwardedRef<ImageAttachmentControlHandle>) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef(attachments);
+  const clipboardReadInProgressRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [isReadingClipboard, setIsReadingClipboard] = useState(false);
 
   useEffect(() => {
     const previous = attachmentsRef.current;
@@ -205,6 +215,34 @@ function ImageAttachmentControlInner({
     [addFiles, disabled],
   );
 
+  const handleClipboardPaste = useCallback(async () => {
+    if (
+      disabled
+      || attachmentsRef.current.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT
+      || clipboardReadInProgressRef.current
+    ) {
+      return;
+    }
+
+    clipboardReadInProgressRef.current = true;
+    setIsReadingClipboard(true);
+    setError(null);
+
+    try {
+      const clipboardContent = await readClipboardContent();
+      if (clipboardContent.imageFiles.length > 0) {
+        await addFiles(clipboardContent.imageFiles);
+      } else if (clipboardContent.text !== null && clipboardContent.text.length > 0) {
+        onClipboardText?.(clipboardContent.text);
+      }
+    } catch (clipboardError) {
+      setError(String(clipboardError));
+    } finally {
+      clipboardReadInProgressRef.current = false;
+      setIsReadingClipboard(false);
+    }
+  }, [addFiles, disabled, onClipboardText]);
+
   const openFilePicker = useCallback(() => {
     if (disabled || attachmentsRef.current.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT) {
       return;
@@ -227,6 +265,9 @@ function ImageAttachmentControlInner({
   const buttonLabel = attachments.length > 0
     ? `Add image (${attachments.length}/${MESSAGE_IMAGE_ATTACHMENT_LIMIT})`
     : "Add image";
+  const clipboardButtonLabel = isReadingClipboard
+    ? "Pasting from clipboard..."
+    : "Paste from clipboard";
   const errorText = error ? error.replace(/^Error:\s*/, "") : null;
 
   return (
@@ -271,6 +312,26 @@ function ImageAttachmentControlInner({
             )}
           </>
         ) : null}
+        {showClipboardTrigger && (
+          <button
+            type="button"
+            onClick={() => void handleClipboardPaste()}
+            disabled={
+              disabled
+              || isReadingClipboard
+              || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT
+            }
+            className={iconOnly
+              ? "inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:hover:border-gray-500"
+              : `inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:hover:border-gray-500 ${compact ? "" : "text-sm"}`}
+            aria-label={clipboardButtonLabel}
+            title={clipboardButtonLabel}
+            aria-busy={isReadingClipboard}
+          >
+            <ClipboardPasteIcon />
+            {!iconOnly && <span>{clipboardButtonLabel}</span>}
+          </button>
+        )}
       </div>
 
       {showErrorText && errorText && (

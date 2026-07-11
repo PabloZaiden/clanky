@@ -37,7 +37,7 @@ export { formatFileSize, formatRelativeTime } from "./format";
 
 export { buildDefaultSshSessionName, buildTaskSshSessionName } from "./ssh-session-name";
 
-export { writeTextToClipboard } from "./clipboard";
+export { readClipboardContent, writeTextToClipboard, type ClipboardReadResult } from "./clipboard";
 
 export { buildPreviewCliCommand, getPreviewWorkspaceReference } from "./preview-command";
 

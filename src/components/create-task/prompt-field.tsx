@@ -14,6 +14,7 @@ interface PromptFieldProps {
   onAttachmentsChange: (attachments: ComposerImageAttachment[]) => void;
   planMode: boolean;
   isEditingDraft?: boolean;
+  showClipboardPaste?: boolean;
   selectedTemplate: string;
   onTemplateClear: () => void;
 }
@@ -25,6 +26,7 @@ export function PromptField({
   onAttachmentsChange,
   planMode,
   isEditingDraft: _isEditingDraft = false,
+  showClipboardPaste = false,
   selectedTemplate,
   onTemplateClear,
 }: PromptFieldProps) {
@@ -57,6 +59,23 @@ export function PromptField({
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(insertion.caretPosition, insertion.caretPosition);
+    });
+  }
+
+  function handleClipboardText(text: string) {
+    const textarea = textareaRef.current;
+    const selectionStart = textarea?.selectionStart ?? prompt.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const start = Math.min(Math.max(selectionStart, 0), prompt.length);
+    const end = Math.min(Math.max(selectionEnd, start), prompt.length);
+    const nextPrompt = `${prompt.slice(0, start)}${text}${prompt.slice(end)}`;
+    const caretPosition = start + text.length;
+
+    handlePromptChange(nextPrompt);
+    requestAnimationFrame(() => {
+      const currentTextarea = textareaRef.current;
+      currentTextarea?.focus();
+      currentTextarea?.setSelectionRange(caretPosition, caretPosition);
     });
   }
 
@@ -96,6 +115,8 @@ export function PromptField({
           attachments={attachments}
           onChange={onAttachmentsChange}
           iconOnly
+          showClipboardTrigger={showClipboardPaste}
+          onClipboardText={showClipboardPaste ? handleClipboardText : undefined}
         />
       </div>
     </div>
