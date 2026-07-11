@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Resolve release version
-        uses: pablozaiden/installer/.github/actions/resolve-version@3c54a204d9285a824c4905fd4a46886f2a2e9763 # installer #7
+        uses: pablozaiden/installer/.github/actions/resolve-version@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # installer #7
         with:
           mode: release
           update_package_version: true
