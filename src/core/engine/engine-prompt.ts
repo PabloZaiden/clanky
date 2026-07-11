@@ -82,7 +82,7 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
     const questionsInstruction = ctx.config.autoAcceptPlan === true
       ? ""
-      : "- Near the end of your plan, include all questions you need answered before implementation, if any.";
+      : "- Near the end of your plan, include all questions you need answered before implementation, if any. Ask only about genuine gray areas or ambiguities in the original requirements; do not ask about extra ideas, enhancements, preferences, or work beyond those requirements.";
     const finalInstructions = [
       "- Do NOT start implementing yet. Only create the plan.",
       questionsInstruction,
