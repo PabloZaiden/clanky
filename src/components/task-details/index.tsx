@@ -125,7 +125,7 @@ export function TaskDetails({
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
-  const showLogActionBar = activeTab === "log" && (isActive || isPlanning || canTerminalFollowUp);
+  const showLogActionBar = activeTab === "log" && (isActive || canTerminalFollowUp);
   const showPlanActionBar = activeTab === "plan" && isPlanning;
   const showActionBar = showLogActionBar || showPlanActionBar;
   const showHeaderStopButton = !showActionBar && activeTab !== "chat" && isGenerating && (isActive || isPlanning);
