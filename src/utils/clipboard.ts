@@ -31,6 +31,17 @@ function getClipboardImageExtension(mimeType: string): string {
   return subtype || "bin";
 }
 
+function getClipboardMimeTypeWithoutParameters(mimeType: string): string {
+  return mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function findClipboardType(
+  types: readonly string[],
+  predicate: (mimeType: string) => boolean,
+): string | undefined {
+  return types.find((type) => predicate(getClipboardMimeTypeWithoutParameters(type)));
+}
+
 async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadResult> {
   let items: ClipboardItems;
   try {
@@ -40,7 +51,7 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
   }
 
   const imageItems = items.flatMap((item) => {
-    const imageType = item.types.find((type) => type.toLowerCase().startsWith("image/"));
+    const imageType = findClipboardType(item.types, (type) => type.startsWith("image/"));
     return imageType ? [{ item, imageType }] : [];
   });
 
@@ -64,13 +75,22 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
     return { imageFiles, text: null };
   }
 
-  const textItem = items.find((item) => item.types.includes("text/plain"));
-  if (!textItem) {
+  let textItem: ClipboardItem | undefined;
+  let textType: string | undefined;
+  for (const item of items) {
+    const matchedType = findClipboardType(item.types, (type) => type === "text/plain");
+    if (matchedType !== undefined) {
+      textItem = item;
+      textType = matchedType;
+      break;
+    }
+  }
+  if (textItem === undefined || textType === undefined) {
     return { imageFiles: [], text: null };
   }
 
   try {
-    const textBlob = await textItem.getType("text/plain");
+    const textBlob = await textItem.getType(textType);
     return { imageFiles: [], text: await textBlob.text() };
   } catch (error) {
     throw getClipboardReadError(error);
