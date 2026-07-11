@@ -324,6 +324,35 @@ describe("Plan Mode API Integration", () => {
       expect(task.state.planMode?.active).toBe(true);
     });
 
+    test("limits planning questions to ambiguities in the original requirements", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          prompt: "Create a plan with manual review",
+          name: "Manual Review Prompt Task",
+          workspaceId: currentWorkspaceId,
+          maxIterations: 1,
+          planMode: true,
+          autoAcceptPlan: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      const planningPrompt = await waitForSentPromptContaining(
+        "Ask only about genuine gray areas or ambiguities in the original requirements",
+      );
+
+      expect(planningPrompt).toContain(
+        "do not ask about extra ideas, enhancements, preferences, or work beyond those requirements.",
+      );
+      expect(data.state.status).toBe("planning");
+    });
+
     test("returns 400 if required fields missing", async () => {
       const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
