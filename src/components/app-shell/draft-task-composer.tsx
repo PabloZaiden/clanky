@@ -211,6 +211,7 @@ export function DraftTaskComposer({
            name: task.config.name,
            directory: task.config.directory,
            prompt: task.config.prompt,
+           issueNumber: task.config.issueNumber,
            model: task.config.model,
            cheapModel: task.config.cheapModel,
            maxIterations: Number.isFinite(task.config.maxIterations) ? task.config.maxIterations : undefined,

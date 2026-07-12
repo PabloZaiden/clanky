@@ -38,6 +38,8 @@ export interface UseCreateTaskFormReturn {
   setName: (v: string) => void;
   prompt: string;
   setPrompt: (v: string) => void;
+  issueNumber: string;
+  setIssueNumber: (v: string) => void;
   selectedModel: string;
   setSelectedModel: (v: string) => void;
   selectedCheapModel: string;
@@ -152,9 +154,10 @@ export function useCreateTaskForm({
     selectedModel,
     selectedCheapModel,
     selectedModelEnabled,
-      planMode: fields.planMode,
-      autoAcceptPlan: fields.autoAcceptPlan,
-      fullyAutonomous: fields.fullyAutonomous,
+    planMode: fields.planMode,
+    autoAcceptPlan: fields.autoAcceptPlan,
+    fullyAutonomous: fields.fullyAutonomous,
+    issueNumber: fields.issueNumber,
     maxIterations: fields.maxIterations,
     maxConsecutiveErrors: fields.maxConsecutiveErrors,
     activityTimeoutSeconds: fields.activityTimeoutSeconds,
@@ -195,6 +198,8 @@ export function useCreateTaskForm({
     setName: fields.setName,
     prompt: fields.prompt,
     setPrompt: fields.setPrompt,
+    issueNumber: fields.issueNumber,
+    setIssueNumber: fields.setIssueNumber,
     selectedModel,
     setSelectedModel,
     selectedCheapModel,

@@ -12,6 +12,8 @@ export interface CreateTaskOptions {
   directory: string;
   /** The task prompt/PRD */
   prompt: string;
+  /** Optional GitHub issue number linked to this task */
+  issueNumber?: number;
   /** Transient image attachments for the initial prompt */
   attachments?: MessageImageAttachment[];
   /** Workspace ID this task belongs to */

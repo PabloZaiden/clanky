@@ -79,10 +79,11 @@ export interface CreateTaskFormProps {
   initialTaskData?: {
     name?: string;
     directory: string;
-     prompt: string;
-     model?: { providerID: string; modelID: string; variant?: string };
-     cheapModel?: CheapModelSelection;
-     maxIterations?: number;
+    prompt: string;
+    issueNumber?: number;
+    model?: { providerID: string; modelID: string; variant?: string };
+    cheapModel?: CheapModelSelection;
+    maxIterations?: number;
     maxConsecutiveErrors?: number;
     activityTimeoutSeconds?: number | null;
     baseBranch?: string;

@@ -192,6 +192,16 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 9,
+    name: "add_task_issue_number",
+    up: (db) => {
+      const columns = getTableColumns(db, "tasks");
+      if (!columns.includes("issue_number")) {
+        db.run("ALTER TABLE tasks ADD COLUMN issue_number INTEGER");
+      }
+    },
+  },
 ];
 
 /**

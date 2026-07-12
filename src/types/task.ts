@@ -31,6 +31,8 @@ export interface TaskConfig {
   directory: string;
   /** The task prompt/PRD describing what the task should accomplish */
   prompt: string;
+  /** Optional GitHub issue number linked to this task */
+  issueNumber?: number;
   /** ISO 8601 timestamp of when the task was created */
   createdAt: string;
   /** ISO 8601 timestamp of the last configuration update */

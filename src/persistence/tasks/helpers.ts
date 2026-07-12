@@ -24,6 +24,7 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "name",
   "directory",
   "prompt",
+  "issue_number",
   "created_at",
   "updated_at",
   "is_private",
@@ -108,6 +109,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     name: config.name,
     directory: config.directory,
     prompt: config.prompt,
+    issue_number: config.issueNumber ?? null,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
     is_private: config.isPrivate ? 1 : 0,
@@ -247,6 +249,10 @@ export function rowToTask(row: Record<string, unknown>): Task {
   };
 
   // Optional config fields
+  const issueNumber = row["issue_number"];
+  if (typeof issueNumber === "number" && Number.isInteger(issueNumber) && issueNumber > 0) {
+    config.issueNumber = issueNumber;
+  }
   if (row["base_branch"] !== null) {
     config.baseBranch = row["base_branch"] as string;
   }

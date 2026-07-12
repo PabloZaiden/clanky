@@ -23,6 +23,8 @@ export interface UseFormFieldsReturn {
   setName: (v: string) => void;
   prompt: string;
   setPrompt: (v: string) => void;
+  issueNumber: string;
+  setIssueNumber: (v: string) => void;
   planMode: boolean;
   setPlanMode: (v: boolean) => void;
   autoAcceptPlan: boolean;
@@ -66,6 +68,9 @@ export function useFormFields({
 
   const [name, setName] = useState(initialTaskData?.name ?? "");
   const [prompt, setPrompt] = useState(initialTaskData?.prompt ?? "");
+  const [issueNumber, setIssueNumber] = useState(
+    initialTaskData?.issueNumber?.toString() ?? "",
+  );
   const [maxIterations, setMaxIterations] = useState<string>(
     initialTaskData?.maxIterations?.toString() ?? ""
   );
@@ -132,6 +137,8 @@ export function useFormFields({
     setName,
     prompt,
     setPrompt,
+    issueNumber,
+    setIssueNumber,
     planMode,
     setPlanMode,
     autoAcceptPlan,

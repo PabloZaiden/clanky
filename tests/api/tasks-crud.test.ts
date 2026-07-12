@@ -221,6 +221,7 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Custom task",
           name: "Test Task",
           maxIterations: 10,
+          issueNumber: 42,
           stopPattern: "<done>FINISHED</done>$",
           git: { branchPrefix: "custom", commitScope: "" },
           planMode: false,
@@ -232,6 +233,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(response.status).toBe(201);
       const body = await response.json();
       expect(body.config.maxIterations).toBe(10);
+      expect(body.config.issueNumber).toBe(42);
       expect(body.config.stopPattern).toBe("<done>FINISHED</done>$");
       expect(body.config.git.branchPrefix).toBe("custom/");
     });
@@ -690,6 +692,7 @@ describe("Tasks CRUD API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: "Updated prompt",
+          issueNumber: 43,
           git: {
             branchPrefix: "team platform",
             commitScope: "",
@@ -700,6 +703,7 @@ describe("Tasks CRUD API Integration", () => {
 
       const body = await response.json();
       expect(body.config.prompt).toBe("Updated prompt");
+      expect(body.config.issueNumber).toBe(43);
       expect(body.config.git.branchPrefix).toBe("team-platform/");
     });
 

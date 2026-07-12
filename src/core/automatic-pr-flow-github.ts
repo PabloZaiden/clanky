@@ -304,6 +304,7 @@ async function buildPullRequestMetadataInput(
   return {
     taskName: task.config.name,
     originalPrompt: task.config.prompt,
+    issueNumber: task.config.issueNumber,
     baseBranch,
     workingBranch: task.state.git?.workingBranch ?? "",
     commitMessages: task.state.git?.commits.map((commit) => commit.message) ?? [],

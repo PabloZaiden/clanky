@@ -99,6 +99,7 @@ describe("database schema", () => {
       }
       expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("chats")).toContain("queued_messages");
+      expect(columnNames("tasks")).toContain("issue_number");
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
@@ -191,6 +192,29 @@ describe("database schema", () => {
       const archivedColumn = columns.find((column) => column.name === "archived");
       expect(archivedColumn?.notnull).toBe(1);
       expect(archivedColumn?.dflt_value).toBe("0");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v9 adds task issue numbers idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 9);
+    if (!migration) {
+      throw new Error("Migration v9 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE tasks (id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      const columns = db.query("PRAGMA table_info(tasks)").all() as Array<{
+        name: string;
+        type: string;
+      }>;
+      const issueNumberColumn = columns.find((column) => column.name === "issue_number");
+      expect(issueNumberColumn?.type).toBe("INTEGER");
     } finally {
       db.close();
     }
