@@ -110,6 +110,12 @@ export function InfoTab({
 
           {/* Git and Model info */}
           <div className="space-y-2">
+            {config.issueNumber !== undefined && (
+              <div className="text-sm">
+                <span className="text-gray-500 dark:text-gray-400">GitHub Issue: </span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">#{config.issueNumber}</span>
+              </div>
+            )}
             {state.git && (
               <>
                 <div className="text-sm">
