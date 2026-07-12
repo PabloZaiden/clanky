@@ -9,7 +9,6 @@ import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {
   buildProviderShellInvocation,
-  buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "../agent-runtime-command";
 
@@ -20,11 +19,7 @@ function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): 
   const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
 
   if (settings.agent.transport === "stdio") {
-    return {
-      command: providerCommand.command,
-      args: providerCommand.args,
-      env: buildProviderSpawnEnvironment(providerCommand),
-    };
+    return providerCommand;
   }
 
   const sshTarget = getSshConnectionTargetFromSettings(settings);
