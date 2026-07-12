@@ -7,7 +7,11 @@ import type { BackendConnectionConfig } from "../../backends/types";
 import type { ServerSettings } from "../../types/settings";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
-import { buildProviderShellInvocation, getProviderAcpCommand } from "../agent-runtime-command";
+import {
+  buildProviderShellInvocation,
+  buildProviderSpawnEnvironment,
+  getProviderAcpCommand,
+} from "../agent-runtime-command";
 
 function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
   const provider = settings.agent.provider;
@@ -16,7 +20,11 @@ function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): 
   const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
 
   if (settings.agent.transport === "stdio") {
-    return providerCommand;
+    return {
+      command: providerCommand.command,
+      args: providerCommand.args,
+      env: buildProviderSpawnEnvironment(providerCommand),
+    };
   }
 
   const sshTarget = getSshConnectionTargetFromSettings(settings);

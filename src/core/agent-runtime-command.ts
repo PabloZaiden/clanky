@@ -1,11 +1,12 @@
 import type { AgentProvider, AgentTransport } from "../types/settings";
 import { getMockAcpCommand } from "../backends/acp/mock-acp-command";
 import { isMockAcpEnabled } from "./config";
-import { quoteShell } from "./remote-executor/utils";
+import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";
 
 export interface AgentRuntimeCommand {
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 interface AgentProviderRuntime {
@@ -18,12 +19,13 @@ const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
 const GROK_PACKAGE = "@xai-official/grok";
-const CODEX_ACP_CONFIG_ARGS = [
-  "-c",
-  "approval_policy=\"never\"",
-  "-c",
-  "sandbox_mode=\"danger-full-access\"",
-];
+const CODEX_ACP_ENV = {
+  INITIAL_AGENT_MODE: "agent-full-access",
+  CODEX_CONFIG: JSON.stringify({
+    approval_policy: "never",
+    sandbox_mode: "danger-full-access",
+  }),
+};
 
 interface AcpResolverOptions {
   executable?: string;
@@ -78,10 +80,12 @@ function buildResolverErrorHint(options: AcpResolverOptions): string {
 function buildAcpResolverCommand(
   options: AcpResolverOptions,
   args: string[],
+  env?: Record<string, string>,
 ): AgentRuntimeCommand {
   return {
     command: "sh",
     args: ["-c", buildAcpResolverScript(options), options.executable ?? options.packageName, ...args],
+    ...(env ? { env } : {}),
   };
 }
 
@@ -141,7 +145,8 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   codex: {
     getAcpCommand: () => buildAcpResolverCommand(
       CODEX_ACP_RESOLVER_OPTIONS,
-      CODEX_ACP_CONFIG_ARGS,
+      [],
+      CODEX_ACP_ENV,
     ),
   },
   claude: {
@@ -187,9 +192,27 @@ export function getProviderAcpCommand(
 }
 
 export function buildProviderShellInvocation(providerCommand: AgentRuntimeCommand): string {
-  return [providerCommand.command, ...providerCommand.args]
-    .map((value) => quoteShell(value))
-    .join(" ");
+  return [
+    ...buildEnvAssignments(providerCommand.env),
+    quoteShell(providerCommand.command),
+    ...providerCommand.args.map((value) => quoteShell(value)),
+  ].join(" ");
+}
+
+export function buildProviderSpawnEnvironment(
+  providerCommand: AgentRuntimeCommand,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+  overrides?: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv | undefined {
+  if (!providerCommand.env && !overrides) {
+    return undefined;
+  }
+
+  return {
+    ...baseEnv,
+    ...(providerCommand.env ?? {}),
+    ...(overrides ?? {}),
+  };
 }
 
 export function buildProviderAvailabilityShellCheck(provider: AgentProvider): string {
