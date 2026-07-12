@@ -37,7 +37,7 @@ export function useTaskRemoteStatus({
     async function fetchRemoteStatus() {
       try {
         const response = await appFetch(
-          `/api/git/remote-status?directory=${encodeURIComponent(targetDirectory)}&workspaceId=${encodeURIComponent(targetWorkspaceId)}`,
+          `/api/git/remote-status?workspaceId=${encodeURIComponent(targetWorkspaceId)}`,
           { signal: controller.signal },
         );
         if (controller.signal.aborted) {

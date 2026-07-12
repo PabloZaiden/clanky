@@ -44,7 +44,6 @@ export interface TaskActionBarProps {
   modelsLoading: boolean;
   /** Workspace context for lazy per-model variant discovery */
   variantDiscovery?: {
-    directory: string;
     workspaceId: string;
   };
   /** Callback when user submits a message and/or model change */

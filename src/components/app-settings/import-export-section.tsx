@@ -123,14 +123,14 @@ export function ImportExportSection({ onExportConfig, onImportConfig, configSavi
         {importResult && (
           <div className={`text-sm rounded px-3 py-2 ${importResult.failed > 0 ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300" : "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300"}`}>
             <p className="font-medium mb-1">
-              Import complete: {importResult.created} created, {importResult.skipped} skipped{importResult.failed > 0 ? `, ${importResult.failed} failed` : ""}.
+              Import complete: {importResult.created} created{importResult.failed > 0 ? `, ${importResult.failed} failed` : ""}.
             </p>
             {importResult.details.length > 0 && (
               <ul className="text-xs space-y-0.5">
                 {importResult.details.map((d, i) => (
                   <li key={i}>
-                    <span className={`break-all ${d.status === "created" ? "text-green-700 dark:text-green-400" : d.status === "failed" ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-gray-400"}`}>
-                      {d.status === "created" ? "+" : d.status === "failed" ? "✕" : "-"} {d.name} ({d.directory})
+                    <span className={`break-all ${d.status === "created" ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {d.status === "created" ? "+" : "✕"} {d.name} ({d.directory})
                       {d.reason ? ` — ${d.reason}` : ""}
                     </span>
                   </li>

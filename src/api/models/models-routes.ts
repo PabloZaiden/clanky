@@ -6,9 +6,8 @@
  * @module api/models/models-routes
  */
 
-import { getWorkspace } from "../../persistence/workspaces";
 import { createLogger } from "../../core/logger";
-import { errorResponse } from "../helpers";
+import { errorResponse, requireWorkspace } from "../helpers";
 import { getModelVariantsForWorkspace, getModelsForWorkspace } from "./model-discovery";
 
 const log = createLogger("api:models");
@@ -22,8 +21,7 @@ export const modelsRoutes = {
      * GET /api/models/variants - Get lazily discovered variants for one model.
      *
      * Query Parameters:
-     * - directory (required): Working directory path for model context
-     * - workspaceId (required): Workspace ID to use for server settings
+     * - workspaceId (required): Workspace containing the model
      * - modelID (required): Model ID selected by the client
      * - providerID (optional, ignored): Provider comes from workspace settings
      *
@@ -31,13 +29,8 @@ export const modelsRoutes = {
      */
     async GET(req: Request): Promise<Response> {
       const url = new URL(req.url);
-      const directory = url.searchParams.get("directory");
       const workspaceId = url.searchParams.get("workspaceId");
       const modelID = url.searchParams.get("modelID");
-
-      if (!directory) {
-        return errorResponse("missing_directory", "directory query parameter is required");
-      }
 
       if (!workspaceId) {
         return errorResponse("missing_workspace_id", "workspaceId query parameter is required");
@@ -47,15 +40,14 @@ export const modelsRoutes = {
         return errorResponse("missing_model_id", "modelID query parameter is required");
       }
 
-      const workspace = await getWorkspace(workspaceId);
-      if (!workspace) {
-        return errorResponse("workspace_not_found", `Workspace not found: ${workspaceId}`, 404);
+      const workspace = await requireWorkspace(workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
       }
 
       try {
         const variants = await getModelVariantsForWorkspace(
           workspaceId,
-          directory,
           modelID,
           workspace,
         );
@@ -63,7 +55,6 @@ export const modelsRoutes = {
       } catch (error) {
         log.error("Failed to discover model variants", {
           workspaceId,
-          directory,
           modelID,
           error: String(error),
         });
@@ -79,37 +70,30 @@ export const modelsRoutes = {
      * Fetches the list of available AI models using provider-aware discovery.
      *
      * Query Parameters:
-     * - directory (required): Working directory path for model context
-     * - workspaceId (required): Workspace ID to use for server settings
+     * - workspaceId (required): Workspace to query
      *
      * @returns Array of ModelInfo objects with provider and model details
      */
     async GET(req: Request): Promise<Response> {
       const url = new URL(req.url);
-      const directory = url.searchParams.get("directory");
       const workspaceId = url.searchParams.get("workspaceId");
-
-      if (!directory) {
-        return errorResponse("missing_directory", "directory query parameter is required");
-      }
 
       if (!workspaceId) {
         return errorResponse("missing_workspace_id", "workspaceId query parameter is required");
       }
 
       // Get workspace-specific server settings
-      const workspace = await getWorkspace(workspaceId);
-      if (!workspace) {
-        return errorResponse("workspace_not_found", `Workspace not found: ${workspaceId}`, 404);
+      const workspace = await requireWorkspace(workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
       }
 
       try {
-        const models = await getModelsForWorkspace(workspaceId, directory, workspace);
+        const models = await getModelsForWorkspace(workspaceId, workspace);
         return Response.json(models);
       } catch (error) {
         log.error("Failed to discover models", {
           workspaceId,
-          directory,
           error: String(error),
         });
         return errorResponse("models_failed", String(error), 500);

@@ -78,22 +78,18 @@ describe("Models API", () => {
   });
 
   test("validates required query parameters for model variants", async () => {
-    const missingDirectory = await fetch(`${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`);
-    expect(missingDirectory.status).toBe(400);
-    expect(await missingDirectory.json()).toMatchObject({ error: "missing_directory" });
-
-    const missingWorkspace = await fetch(`${baseUrl}/api/models/variants?directory=${encodeURIComponent(ctx.workDir)}&modelID=test-model`);
+    const missingWorkspace = await fetch(`${baseUrl}/api/models/variants?modelID=test-model`);
     expect(missingWorkspace.status).toBe(400);
     expect(await missingWorkspace.json()).toMatchObject({ error: "missing_workspace_id" });
 
-    const missingModel = await fetch(`${baseUrl}/api/models/variants?directory=${encodeURIComponent(ctx.workDir)}&workspaceId=test-workspace-id`);
+    const missingModel = await fetch(`${baseUrl}/api/models/variants?workspaceId=test-workspace-id`);
     expect(missingModel.status).toBe(400);
     expect(await missingModel.json()).toMatchObject({ error: "missing_model_id" });
   });
 
   test("derives variant backend routing from workspace settings and ignores providerID", async () => {
     const response = await fetch(
-      `${baseUrl}/api/models/variants?directory=${encodeURIComponent(ctx.workDir)}&workspaceId=test-workspace-id&providerID=copilot&modelID=test-model`,
+      `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&providerID=copilot&modelID=test-model`,
     );
 
     expect(response.status).toBe(200);
@@ -111,7 +107,7 @@ describe("Models API", () => {
     ));
 
     const first = await fetch(
-      `${baseUrl}/api/models/variants?directory=${encodeURIComponent(ctx.workDir)}&workspaceId=test-workspace-id&modelID=test-model`,
+      `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
     );
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({
@@ -119,7 +115,7 @@ describe("Models API", () => {
     });
 
     const second = await fetch(
-      `${baseUrl}/api/models/variants?directory=${encodeURIComponent(extraWorkDir)}&workspaceId=copilot-workspace-id&modelID=test-model`,
+      `${baseUrl}/api/models/variants?workspaceId=copilot-workspace-id&modelID=test-model`,
     );
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({
@@ -127,7 +123,7 @@ describe("Models API", () => {
     });
 
     const repeatedFirst = await fetch(
-      `${baseUrl}/api/models/variants?directory=${encodeURIComponent(ctx.workDir)}&workspaceId=test-workspace-id&modelID=test-model`,
+      `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
     );
     expect(repeatedFirst.status).toBe(200);
     expect(await repeatedFirst.json()).toEqual({

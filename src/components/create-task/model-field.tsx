@@ -7,7 +7,6 @@ interface ModelFieldProps {
   models: ModelInfo[];
   modelsLoading: boolean;
   variantDiscovery?: {
-    directory: string;
     workspaceId: string;
   };
 }

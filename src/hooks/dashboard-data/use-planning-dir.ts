@@ -26,7 +26,7 @@ export function usePlanningDir(): UsePlanningDirResult {
 
     try {
       const response = await appFetch(
-        `/api/check-planning-dir?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/check-planning-dir?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== planningRequestIdRef.current) {
         return;

@@ -156,7 +156,7 @@ async function openWorkspaceGitHubUrl(workspace: Workspace, onError: (message: s
   }
 
   const response = await appFetch(
-    `/api/git/github-repository-url?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
+    `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
   );
   if (!response.ok) {
     onError("GitHub repository URL is not available for this workspace");

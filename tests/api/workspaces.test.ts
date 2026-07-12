@@ -2331,7 +2331,6 @@ describe("Workspace API Integration", () => {
           const result = await response.json();
 
           expect(result.created).toBe(2);
-          expect(result.skipped).toBe(0);
           expect(result.failed).toBe(0);
           expect(result.details).toHaveLength(2);
           expect(result.details[0].status).toBe("created");
@@ -2467,8 +2466,8 @@ describe("Workspace API Integration", () => {
         }
       });
 
-      test("reports mix of created, skipped, and failed entries", async () => {
-        // Create a workspace first (for skip detection)
+      test("reports mix of created and failed entries without directory deduplication", async () => {
+        // Create a workspace first to verify that matching directories are still imported.
         await fetch(`${baseUrl}/api/workspaces`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2520,7 +2519,6 @@ describe("Workspace API Integration", () => {
           const result = await response.json();
 
           expect(result.created).toBe(2);
-          expect(result.skipped).toBe(0);
           expect(result.failed).toBe(1);
           expect(result.details).toHaveLength(3);
 

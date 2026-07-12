@@ -75,8 +75,8 @@ describe("Git API Integration", () => {
   // ==========================================================================
 
   describe("GET /api/git/branches", () => {
-    test("returns branches for a valid git directory", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches?directory=${encodeURIComponent(testWorkDir)}`);
+    test("returns branches for a valid workspace", async () => {
+      const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=git-test-workspace`);
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -90,7 +90,7 @@ describe("Git API Integration", () => {
     });
 
     test("returns the current branch correctly", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches?directory=${encodeURIComponent(testWorkDir)}`);
+      const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=git-test-workspace`);
       const body = await res.json();
 
       // Current branch should match what's checked out
@@ -99,51 +99,29 @@ describe("Git API Integration", () => {
       expect(body.currentBranch).toBe(currentBranch.name);
     });
 
-    test("returns 400 when directory parameter is missing", async () => {
+    test("returns 400 when workspaceId parameter is missing", async () => {
       const res = await fetch(`${baseUrl}/api/git/branches`);
       expect(res.status).toBe(400);
 
       const body = await res.json();
-      expect(body.error).toBe("missing_parameter");
+      expect(body.error).toBe("missing_workspace_id");
     });
 
-    test("returns 500 for non-existent directory", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches?directory=${encodeURIComponent("/tmp/nonexistent-dir-xyz")}`);
-      // Should return an error (500 for git error or 400 for workspace not found)
-      expect(res.status).toBeGreaterThanOrEqual(400);
+    test("returns 404 for an unknown workspace", async () => {
+      const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=unknown-workspace`);
+      expect(res.status).toBe(404);
     });
 
-    test("returns 409 for ambiguous directories without workspaceId", async () => {
-      await createWorkspace({
-        id: "git-test-workspace-ssh",
-        name: "Git Test SSH",
-        directory: testWorkDir,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: {
-          agent: {
-            provider: "opencode",
-            transport: "ssh",
-            hostname: "git-host.test",
-            port: 22,
-          },
-        },
-      });
-
-      const res = await fetch(`${baseUrl}/api/git/branches?directory=${encodeURIComponent(testWorkDir)}`);
-      expect(res.status).toBe(409);
-    });
-
-    test("uses workspaceId to disambiguate directories", async () => {
+    test("uses workspaceId as the only workspace identity", async () => {
       const res = await fetch(
-        `${baseUrl}/api/git/branches?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        `${baseUrl}/api/git/branches?workspaceId=git-test-workspace`
       );
       expect(res.status).toBe(200);
     });
 
-    test("trims incidental whitespace from directory queries", async () => {
+    test("ignores a supplied directory query", async () => {
       const res = await fetch(
-        `${baseUrl}/api/git/branches?directory=${encodeURIComponent(`  ${testWorkDir}  `)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        `${baseUrl}/api/git/branches?directory=${encodeURIComponent("/tmp/another-directory")}&workspaceId=git-test-workspace`
       );
       expect(res.status).toBe(200);
 
@@ -158,9 +136,9 @@ describe("Git API Integration", () => {
   // ==========================================================================
 
   describe("GET /api/git/default-branch", () => {
-    test("returns a default branch for a valid git directory", async () => {
+    test("returns a default branch for a valid workspace", async () => {
       const res = await fetch(
-        `${baseUrl}/api/git/default-branch?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        `${baseUrl}/api/git/default-branch?workspaceId=git-test-workspace`
       );
       expect(res.status).toBe(200);
 
@@ -169,24 +147,24 @@ describe("Git API Integration", () => {
       expect(typeof body.defaultBranch).toBe("string");
     });
 
-    test("returns 400 when directory parameter is missing", async () => {
+    test("returns 400 when workspaceId parameter is missing", async () => {
       const res = await fetch(`${baseUrl}/api/git/default-branch`);
       expect(res.status).toBe(400);
 
       const body = await res.json();
-      expect(body.error).toBe("missing_parameter");
+      expect(body.error).toBe("missing_workspace_id");
     });
 
-    test("returns 500 for non-existent directory", async () => {
-      const res = await fetch(`${baseUrl}/api/git/default-branch?directory=${encodeURIComponent("/tmp/nonexistent-dir-xyz")}`);
-      expect(res.status).toBeGreaterThanOrEqual(400);
+    test("returns 404 for an unknown workspace", async () => {
+      const res = await fetch(`${baseUrl}/api/git/default-branch?workspaceId=unknown-workspace`);
+      expect(res.status).toBe(404);
     });
   });
 
   describe("GET /api/git/remote-status", () => {
     test("returns true when origin is configured", async () => {
       const res = await fetch(
-        `${baseUrl}/api/git/remote-status?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        `${baseUrl}/api/git/remote-status?workspaceId=git-test-workspace`
       );
       expect(res.status).toBe(200);
 
@@ -202,7 +180,7 @@ describe("Git API Integration", () => {
 
       try {
         const res = await fetch(
-          `${baseUrl}/api/git/remote-status?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+          `${baseUrl}/api/git/remote-status?workspaceId=git-test-workspace`
         );
         expect(res.status).toBe(200);
 
@@ -216,19 +194,19 @@ describe("Git API Integration", () => {
       }
     });
 
-    test("returns 400 when directory parameter is missing", async () => {
+    test("returns 400 when workspaceId parameter is missing", async () => {
       const res = await fetch(`${baseUrl}/api/git/remote-status`);
       expect(res.status).toBe(400);
 
       const body = await res.json();
-      expect(body.error).toBe("missing_parameter");
+      expect(body.error).toBe("missing_workspace_id");
     });
   });
 
   describe("GET /api/git/github-repository-url", () => {
     test("returns a normalized GitHub URL from origin when workspace repoUrl is not set", async () => {
       const res = await fetch(
-        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        `${baseUrl}/api/git/github-repository-url?workspaceId=git-test-workspace`
       );
       expect(res.status).toBe(200);
 
@@ -257,7 +235,7 @@ describe("Git API Integration", () => {
       });
 
       const res = await fetch(
-        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace-persisted")}`
+        `${baseUrl}/api/git/github-repository-url?workspaceId=git-test-workspace-persisted`
       );
       expect(res.status).toBe(200);
 
@@ -286,7 +264,7 @@ describe("Git API Integration", () => {
       });
 
       const res = await fetch(
-        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace-non-github-persisted")}`
+        `${baseUrl}/api/git/github-repository-url?workspaceId=git-test-workspace-non-github-persisted`
       );
       expect(res.status).toBe(200);
 
@@ -301,7 +279,7 @@ describe("Git API Integration", () => {
 
       try {
         const res = await fetch(
-          `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+          `${baseUrl}/api/git/github-repository-url?workspaceId=git-test-workspace`
         );
         expect(res.status).toBe(200);
 
@@ -314,12 +292,12 @@ describe("Git API Integration", () => {
       }
     });
 
-    test("returns 400 when directory parameter is missing", async () => {
+    test("returns 400 when workspaceId parameter is missing", async () => {
       const res = await fetch(`${baseUrl}/api/git/github-repository-url`);
       expect(res.status).toBe(400);
 
       const body = await res.json();
-      expect(body.error).toBe("missing_parameter");
+      expect(body.error).toBe("missing_workspace_id");
     });
   });
 });

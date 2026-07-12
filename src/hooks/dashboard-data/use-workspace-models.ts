@@ -104,7 +104,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     setModelsLoading(true);
     try {
       const response = await appFetch(
-        `/api/models?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`,
+        `/api/models?workspaceId=${encodeURIComponent(workspaceId)}`,
         { signal: controller.signal },
       );
       if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {

@@ -55,7 +55,6 @@ export async function importWorkspaces(data: WorkspaceExportData): Promise<Works
 
   const result: WorkspaceImportResult = {
     created: 0,
-    skipped: 0,
     failed: 0,
     details: [],
   };
@@ -84,6 +83,6 @@ export async function importWorkspaces(data: WorkspaceExportData): Promise<Works
     });
   }
 
-  log.info("Workspaces imported", { created: result.created, skipped: result.skipped });
+  log.info("Workspaces imported", { created: result.created, failed: result.failed });
   return result;
 }

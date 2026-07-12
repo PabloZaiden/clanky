@@ -1,5 +1,5 @@
 /**
- * Shared hook for fetching available models for a workspace directory.
+ * Shared hook for fetching available models for a workspace.
  */
 
 import { useEffect, useState } from "react";
@@ -32,14 +32,13 @@ export function useAvailableModels({
     }
 
     const controller = new AbortController();
-    const resolvedDirectory = directory;
     const resolvedWorkspaceId = workspaceId;
 
     async function fetchModels() {
       setModelsLoading(true);
       try {
         const response = await appFetch(
-          `/api/models?directory=${encodeURIComponent(resolvedDirectory)}&workspaceId=${encodeURIComponent(resolvedWorkspaceId)}`,
+          `/api/models?workspaceId=${encodeURIComponent(resolvedWorkspaceId)}`,
           { signal: controller.signal },
         );
         if (controller.signal.aborted) {

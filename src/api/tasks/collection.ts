@@ -142,7 +142,6 @@ export const tasksCollectionRoutes = {
       if (body.model?.providerID && body.model?.modelID) {
         const modelValidation = await isModelEnabled(
           workspaceId,
-          directory,
           body.model.providerID,
           body.model.modelID,
         );
@@ -156,7 +155,6 @@ export const tasksCollectionRoutes = {
       if (body.cheapModel?.mode === "custom") {
         const cheapModelValidation = await isModelEnabled(
           workspaceId,
-          directory,
           body.cheapModel.model.providerID,
           body.cheapModel.model.modelID,
         );

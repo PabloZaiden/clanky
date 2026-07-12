@@ -14,7 +14,7 @@ function mapPreviewError(error: unknown): Response {
     return errorResponse("not_found", message, 404);
   }
   if (message.includes("ambiguous")) {
-    return errorResponse("ambiguous_workspace", message, 409);
+    return errorResponse("workspace_name_ambiguous", message, 409);
   }
   return errorResponse("preview_error", message, 500);
 }

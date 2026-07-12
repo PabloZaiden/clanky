@@ -185,7 +185,6 @@ export function CreateTaskForm({
         models={models}
         modelsLoading={modelsLoading}
         variantDiscovery={selectedWorkspace ? {
-          directory: selectedWorkspace.directory,
           workspaceId: selectedWorkspace.id,
         } : undefined}
       />
@@ -293,7 +292,6 @@ export function CreateTaskForm({
         models={models}
         modelsLoading={modelsLoading}
         variantDiscovery={selectedWorkspace ? {
-          directory: selectedWorkspace.directory,
           workspaceId: selectedWorkspace.id,
         } : undefined}
       />

@@ -250,7 +250,6 @@ export function TaskDetails({
           currentModel={config.model}
           models={models} modelsLoading={modelsLoading}
           variantDiscovery={{
-            directory: config.directory,
             workspaceId: config.workspaceId,
           }}
           requireMessage={canTerminalFollowUp}

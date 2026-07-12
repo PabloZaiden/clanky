@@ -183,7 +183,7 @@ function createTables(database: Database): void {
   const createAllTables = database.transaction(() => {
     createFrameworkAuthTables(database);
 
-    // Workspaces table - groups tasks by workspace/directory
+    // Workspaces table - stores workspace identity and execution context
     database.run(`
       CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,

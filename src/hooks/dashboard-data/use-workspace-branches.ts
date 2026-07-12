@@ -39,7 +39,7 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     setBranchesLoading(true);
     try {
       const response = await appFetch(
-        `/api/git/branches?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/git/branches?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== branchesRequestIdRef.current) {
         return;
@@ -81,7 +81,7 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
 
     try {
       const response = await appFetch(
-        `/api/git/default-branch?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/git/default-branch?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== defaultBranchRequestIdRef.current) {
         return;

@@ -329,7 +329,6 @@ function AgentForm({
             loading={modelsLoading}
             showDisconnected
             variantDiscovery={selectedWorkspace ? {
-              directory: selectedWorkspace.directory,
               workspaceId: selectedWorkspace.id,
             } : undefined}
             className={inputClassName}

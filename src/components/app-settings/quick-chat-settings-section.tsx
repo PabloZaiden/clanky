@@ -183,7 +183,6 @@ export function QuickChatSettingsSection({
             disabled={loading || saving || !selectedWorkspace}
             showDisconnected
             variantDiscovery={selectedWorkspace ? {
-              directory: selectedWorkspace.directory,
               workspaceId: selectedWorkspace.id,
             } : undefined}
             placeholder="Select a quick chat model..."

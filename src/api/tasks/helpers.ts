@@ -28,7 +28,6 @@ export async function validateEnabledModelForTask(
 
   const modelValidation = await isModelEnabled(
     task.config.workspaceId,
-    task.config.directory,
     model.providerID,
     model.modelID,
   );

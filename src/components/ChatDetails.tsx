@@ -943,7 +943,6 @@ export function ChatDetails({
                     showDisconnected
                     currentModelKey={currentModelKey}
                     variantDiscovery={chat ? {
-                      directory: chat.config.directory,
                       workspaceId: chat.config.workspaceId,
                     } : undefined}
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
