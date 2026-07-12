@@ -2,7 +2,7 @@
  * Background monitor for pushed tasks waiting on external pull request merges.
  */
 
-import type { Task } from "../types/task";
+import type { AutomaticPrFlowHandledItem, Task } from "../types/task";
 import type { CommandExecutor } from "./command-executor";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import type { TaskEvent } from "../types/events";
@@ -33,6 +33,18 @@ const log = createLogger("core:pushed-task-monitor");
 
 const DEFAULT_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
 const MINIMUM_MONITOR_INTERVAL_MS = 60 * 1000;
+const MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS = 200;
+
+function mergeHandledItems(
+  existingItems: AutomaticPrFlowHandledItem[],
+  newItems: AutomaticPrFlowHandledItem[],
+): AutomaticPrFlowHandledItem[] {
+  const itemsById = new Map(existingItems.map((item) => [item.id, item]));
+  for (const item of newItems) {
+    itemsById.set(item.id, item);
+  }
+  return [...itemsById.values()].slice(-MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS);
+}
 
 function getMonitorIntervalMs(): number {
   const rawValue = process.env["CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS"];
@@ -282,7 +294,9 @@ export class PushedTaskMonitor {
     }
 
     const now = new Date().toISOString();
-    const handledItems = Array.isArray(previousState.handledItems) ? previousState.handledItems : [];
+    const handledItems = Array.isArray(previousState.handledItems)
+      ? previousState.handledItems.slice(-MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS)
+      : [];
     const pullRequest = await this.deps.ensureAutomaticPrFlowPullRequest(task, workingDirectory, executor, git);
     const activeBatchStatus = previousState.activeBatch ? this.getAutomaticPrFlowBatchStatus(task) : undefined;
     const baseState: NonNullable<Task["state"]["automaticPrFlow"]> = {
@@ -417,7 +431,7 @@ export class PushedTaskMonitor {
           outcome: "ignored" as const,
           handledAt: now,
         }));
-      const nextHandledItems = [...handledItems, ...ignoredHandledItems];
+      const nextHandledItems = mergeHandledItems(handledItems, ignoredHandledItems);
 
       if (sourceItems.length === 0 || extractedFeedback.feedbackItems.length === 0) {
         return {
@@ -504,7 +518,7 @@ export class PushedTaskMonitor {
       lastCheckedAt: now,
       lastError: undefined,
       activeBatch: undefined,
-      handledItems: [...handledItems, ...newlyHandledItems],
+      handledItems: mergeHandledItems(handledItems, newlyHandledItems),
     };
   }
 
