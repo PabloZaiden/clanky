@@ -1,5 +1,5 @@
 /**
- * Shared hook for fetching available models for a workspace directory.
+ * Shared hook for fetching available models for a workspace.
  */
 
 import { useEffect, useState } from "react";
@@ -8,7 +8,6 @@ import { log } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 
 export interface UseAvailableModelsOptions {
-  directory: string | undefined;
   workspaceId: string | undefined;
 }
 
@@ -18,28 +17,26 @@ export interface UseAvailableModelsResult {
 }
 
 export function useAvailableModels({
-  directory,
   workspaceId,
 }: UseAvailableModelsOptions): UseAvailableModelsResult {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setModels([]);
       setModelsLoading(false);
       return;
     }
 
     const controller = new AbortController();
-    const resolvedDirectory = directory;
     const resolvedWorkspaceId = workspaceId;
 
     async function fetchModels() {
       setModelsLoading(true);
       try {
         const response = await appFetch(
-          `/api/models?directory=${encodeURIComponent(resolvedDirectory)}&workspaceId=${encodeURIComponent(resolvedWorkspaceId)}`,
+          `/api/models?workspaceId=${encodeURIComponent(resolvedWorkspaceId)}`,
           { signal: controller.signal },
         );
         if (controller.signal.aborted) {
@@ -72,7 +69,7 @@ export function useAvailableModels({
     return () => {
       controller.abort();
     };
-  }, [directory, workspaceId]);
+  }, [workspaceId]);
 
   return { models, modelsLoading };
 }

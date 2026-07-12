@@ -29,7 +29,6 @@ async function validateAgentModel(workspaceId: string, model: {
   }
   const modelValidation = await isModelEnabled(
     workspace.id,
-    workspace.directory,
     model.providerID,
     model.modelID,
   );

@@ -60,17 +60,16 @@ export function useDashboardData(): UseDashboardDataResult {
   const workspaceBranches = useWorkspaceBranches();
   const planningDir = usePlanningDir();
 
-  const handleWorkspaceChange = useCallback((workspaceId: string | null, directory: string) => {
+  const handleWorkspaceChange = useCallback((workspaceId: string | null, _directory: string) => {
     log.debug("handleWorkspaceChange called", {
       workspaceId,
-      directory,
     });
     workspaceModels.setModelsWorkspaceId(workspaceId);
-    log.debug("Fetching workspace data with directory:", directory);
-    workspaceModels.fetchModels(directory, workspaceId);
-    workspaceBranches.fetchBranches(directory, workspaceId);
-    workspaceBranches.fetchDefaultBranch(directory, workspaceId);
-    planningDir.checkPlanningDir(directory, workspaceId);
+    log.debug("Fetching workspace data", { workspaceId });
+    workspaceModels.fetchModels(workspaceId);
+    workspaceBranches.fetchBranches(workspaceId);
+    workspaceBranches.fetchDefaultBranch(workspaceId);
+    planningDir.checkPlanningDir(workspaceId);
   }, [
     planningDir.checkPlanningDir,
     workspaceBranches.fetchBranches,

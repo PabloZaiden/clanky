@@ -8,7 +8,7 @@ import { appFetch } from "../../lib/public-path";
 
 export interface UsePlanningDirResult {
   planningWarning: string | null;
-  checkPlanningDir: (directory: string, workspaceId: string | null) => Promise<void>;
+  checkPlanningDir: (workspaceId: string | null) => Promise<void>;
   resetPlanningWarning: () => void;
 }
 
@@ -17,16 +17,16 @@ export function usePlanningDir(): UsePlanningDirResult {
   const [planningWarning, setPlanningWarning] = useState<string | null>(null);
   const planningRequestIdRef = useRef(0);
 
-  const checkPlanningDir = useCallback(async (directory: string, workspaceId: string | null) => {
+  const checkPlanningDir = useCallback(async (workspaceId: string | null) => {
     const requestId = ++planningRequestIdRef.current;
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setPlanningWarning(null);
       return;
     }
 
     try {
       const response = await appFetch(
-        `/api/check-planning-dir?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/check-planning-dir?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== planningRequestIdRef.current) {
         return;
@@ -43,7 +43,6 @@ export function usePlanningDir(): UsePlanningDirResult {
     } catch (error) {
       log.warn("Failed to check planning directory status", {
         workspaceId,
-        directory,
         error: String(error),
       });
       if (requestId === planningRequestIdRef.current) {

@@ -16,25 +16,6 @@ import { requirePersistenceUserId } from "../ownership";
 const log = createLogger("persistence:workspaces");
 
 /**
- * List workspaces by directory path.
- *
- * @deprecated Prefer looking up workspaces by ID. This function exists for
- * backward-compatible API endpoints that accept a directory path.
- */
-export async function listWorkspacesByDirectory(directory: string): Promise<Workspace[]> {
-  log.debug("Listing workspaces by directory", { directory });
-  const db = getDatabase();
-  const userId = requirePersistenceUserId();
-  const stmt = db.prepare(`
-    SELECT * FROM workspaces
-    WHERE directory = ? AND user_id = ?
-    ORDER BY name COLLATE NOCASE ASC, created_at ASC
-  `);
-  const rows = stmt.all(directory, userId) as Array<Record<string, unknown>>;
-  return rows.map(rowToWorkspace);
-}
-
-/**
  * List all workspaces sorted by name alphabetically.
  */
 export async function listWorkspaces(): Promise<Workspace[]> {

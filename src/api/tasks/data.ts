@@ -14,7 +14,7 @@ import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git-service";
 import { createLogger } from "../../core/logger";
 import type { FileContentResponse, PullRequestDestinationResponse } from "../../types/api";
-import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "../helpers";
+import { errorResponse, requireWorkspace } from "../helpers";
 import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";
 
 const log = createLogger("api:tasks");
@@ -160,43 +160,38 @@ export const tasksDataRoutes = {
     /**
      * GET /api/check-planning-dir - Check if .clanky-planning directory exists.
      *
-     * Checks if a directory has a .clanky-planning folder and lists its contents.
-     * Useful for validating a project before creating a task. When multiple
-     * workspaces share the same directory path across different server targets,
-     * callers should pass `workspaceId` to disambiguate the lookup.
+     * Checks a workspace's directory for a .clanky-planning folder and lists its contents.
+     * Useful for validating a project before creating a task.
      *
      * Query Parameters:
-     * - directory (required): Absolute path to check
-     * - workspaceId (optional): Workspace ID used to disambiguate shared directories
+     * - workspaceId (required): Workspace ID
      *
      * Errors:
-     * - 400: Missing directory parameter or workspaceId/directory mismatch
+     * - 400: Missing workspaceId
      * - 404: Workspace not found
-     * - 409: Multiple workspaces use this directory and workspaceId was not provided
      * - 500: Failed to inspect the planning directory
      *
      * @returns Object with exists, hasFiles, files array, and optional warning
      */
     async GET(req: Request): Promise<Response> {
       const url = new URL(req.url);
-      const directory = url.searchParams.get("directory");
       const workspaceId = url.searchParams.get("workspaceId");
 
-      if (!directory) {
-        return errorResponse("invalid_request", "directory query parameter is required", 400);
+      if (!workspaceId) {
+        return errorResponse("missing_workspace_id", "workspaceId query parameter is required", 400);
       }
 
-      const normalizedDirectory = normalizeDirectoryPath(directory);
-      const workspace = await resolveWorkspaceForDirectory(normalizedDirectory, workspaceId);
+      const workspace = await requireWorkspace(workspaceId);
       if (workspace instanceof Response) {
         return workspace;
       }
+      const directory = workspace.directory;
 
-      const planningDir = getPlanningDirectoryPath(normalizedDirectory);
+      const planningDir = getPlanningDirectoryPath(directory);
 
       try {
         // Get mode-appropriate command executor
-        const executor = await backendManager.getCommandExecutorAsync(workspace.id, normalizedDirectory);
+        const executor = await backendManager.getCommandExecutorAsync(workspace.id, directory);
 
         // Check if directory exists
         const exists = await executor.directoryExists(planningDir);
@@ -229,7 +224,7 @@ export const tasksDataRoutes = {
         });
       } catch (error) {
         log.error("Failed to inspect planning directory", {
-          directory: normalizedDirectory,
+          directory,
           workspaceId: workspace.id,
           error: String(error),
         });

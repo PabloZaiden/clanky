@@ -243,7 +243,6 @@ export interface ModelSelectorProps {
   compactLabel?: string;
   /** Workspace context for lazy per-model variant discovery. */
   variantDiscovery?: {
-    directory: string;
     workspaceId: string;
   };
 }
@@ -272,11 +271,10 @@ export function ModelSelector({
   const selectedVariantKey = parsedValue
     ? `${parsedValue.providerID}:${parsedValue.modelID}`
     : null;
-  const variantDirectory = variantDiscovery?.directory;
   const variantWorkspaceId = variantDiscovery?.workspaceId;
 
   useEffect(() => {
-    if (!variantDirectory || !variantWorkspaceId || !parsedValue || !selectedVariantKey) {
+    if (!variantWorkspaceId || !parsedValue || !selectedVariantKey) {
       return;
     }
 
@@ -298,7 +296,6 @@ export function ModelSelector({
     void (async () => {
       try {
         const params = new URLSearchParams({
-          directory: variantDirectory,
           workspaceId: variantWorkspaceId,
           modelID: parsedValue.modelID,
         });
@@ -344,7 +341,6 @@ export function ModelSelector({
     onChange,
     parsedValue,
     selectedVariantKey,
-    variantDirectory,
     variantOverrides,
     variantWorkspaceId,
   ]);

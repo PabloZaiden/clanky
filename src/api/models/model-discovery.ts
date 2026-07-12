@@ -185,7 +185,6 @@ async function getAgentBackendModelVariants(
  */
 export async function getModelsForWorkspace(
   workspaceId: string,
-  directory: string,
   workspaceOverride?: Awaited<ReturnType<typeof getWorkspace>>,
 ): Promise<ModelInfo[]> {
   const workspace = workspaceOverride ?? await getWorkspace(workspaceId);
@@ -193,6 +192,7 @@ export async function getModelsForWorkspace(
     throw new Error(`Workspace not found: ${workspaceId}`);
   }
 
+  const directory = workspace.directory;
   const settings = workspace.serverSettings;
   const cacheKey = getModelListCacheKey(workspaceId, settings.agent.provider, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
@@ -233,7 +233,6 @@ export async function getModelsForSettings(
 
 export async function getModelVariantsForWorkspace(
   workspaceId: string,
-  directory: string,
   modelID: string,
   workspaceOverride?: Awaited<ReturnType<typeof getWorkspace>>,
 ): Promise<string[]> {
@@ -242,6 +241,7 @@ export async function getModelVariantsForWorkspace(
     throw new Error(`Workspace not found: ${workspaceId}`);
   }
 
+  const directory = workspace.directory;
   const settings = workspace.serverSettings;
   const cacheKey = getModelVariantCacheKey(workspaceId, settings.agent.provider, directory, modelID);
   const cached = getCacheValue(modelVariantCache, cacheKey);
@@ -264,19 +264,17 @@ export async function getModelVariantsForWorkspace(
  * Discovery is provider-aware through the configured ACP backend.
  *
  * @param workspaceId - The workspace ID to check models for
- * @param directory - The working directory path
  * @param providerID - The provider ID (e.g., "anthropic")
  * @param modelID - The model ID (e.g., "claude-sonnet-4-20250514")
  * @returns Promise with validation result
  */
 export async function isModelEnabled(
   workspaceId: string,
-  directory: string,
   providerID: string,
   modelID: string,
 ): Promise<ModelValidationResult> {
   try {
-    const models = await getModelsForWorkspace(workspaceId, directory);
+    const models = await getModelsForWorkspace(workspaceId);
 
     // Check if the provider exists
     const providerModels = models.filter((m) => m.providerID === providerID);

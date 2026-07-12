@@ -6,7 +6,6 @@ import type { GitRemoteStatusResponse } from "../../types";
 const log = createLogger("useTaskRemoteStatus");
 
 interface UseTaskRemoteStatusOptions {
-  directory?: string;
   workspaceId?: string;
 }
 
@@ -16,20 +15,18 @@ export interface UseTaskRemoteStatusResult {
 }
 
 export function useTaskRemoteStatus({
-  directory,
   workspaceId,
 }: UseTaskRemoteStatusOptions): UseTaskRemoteStatusResult {
   const [hasOriginRemote, setHasOriginRemote] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setHasOriginRemote(null);
       setLoading(false);
       return;
     }
 
-    const targetDirectory = directory;
     const targetWorkspaceId = workspaceId;
     const controller = new AbortController();
     setLoading(true);
@@ -37,7 +34,7 @@ export function useTaskRemoteStatus({
     async function fetchRemoteStatus() {
       try {
         const response = await appFetch(
-          `/api/git/remote-status?directory=${encodeURIComponent(targetDirectory)}&workspaceId=${encodeURIComponent(targetWorkspaceId)}`,
+          `/api/git/remote-status?workspaceId=${encodeURIComponent(targetWorkspaceId)}`,
           { signal: controller.signal },
         );
         if (controller.signal.aborted) {
@@ -58,7 +55,6 @@ export function useTaskRemoteStatus({
         }
         log.warn("Failed to fetch task remote status", {
           workspaceId: targetWorkspaceId,
-          directory: targetDirectory,
           error: String(error),
         });
         setHasOriginRemote(null);
@@ -74,7 +70,7 @@ export function useTaskRemoteStatus({
     return () => {
       controller.abort();
     };
-  }, [directory, workspaceId]);
+  }, [workspaceId]);
 
   return { hasOriginRemote, loading };
 }

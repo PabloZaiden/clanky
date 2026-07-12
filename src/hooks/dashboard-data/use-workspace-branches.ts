@@ -12,8 +12,8 @@ export interface UseWorkspaceBranchesResult {
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;
-  fetchBranches: (directory: string, workspaceId: string | null) => Promise<void>;
-  fetchDefaultBranch: (directory: string, workspaceId: string | null) => Promise<void>;
+  fetchBranches: (workspaceId: string | null) => Promise<void>;
+  fetchDefaultBranch: (workspaceId: string | null) => Promise<void>;
   resetBranches: () => void;
 }
 
@@ -27,9 +27,9 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
   const branchesRequestIdRef = useRef(0);
   const defaultBranchRequestIdRef = useRef(0);
 
-  const fetchBranches = useCallback(async (directory: string, workspaceId: string | null) => {
+  const fetchBranches = useCallback(async (workspaceId: string | null) => {
     const requestId = ++branchesRequestIdRef.current;
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setBranches([]);
       setCurrentBranch("");
       setBranchesLoading(false);
@@ -39,7 +39,7 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     setBranchesLoading(true);
     try {
       const response = await appFetch(
-        `/api/git/branches?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/git/branches?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== branchesRequestIdRef.current) {
         return;
@@ -58,7 +58,6 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     } catch (error) {
       log.error("Failed to fetch workspace branches", {
         workspaceId,
-        directory,
         error: String(error),
       });
       if (requestId === branchesRequestIdRef.current) {
@@ -72,16 +71,16 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     }
   }, []);
 
-  const fetchDefaultBranch = useCallback(async (directory: string, workspaceId: string | null) => {
+  const fetchDefaultBranch = useCallback(async (workspaceId: string | null) => {
     const requestId = ++defaultBranchRequestIdRef.current;
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setDefaultBranch("");
       return;
     }
 
     try {
       const response = await appFetch(
-        `/api/git/default-branch?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`
+        `/api/git/default-branch?workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (requestId !== defaultBranchRequestIdRef.current) {
         return;
@@ -98,7 +97,6 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     } catch (error) {
       log.warn("Failed to fetch workspace default branch", {
         workspaceId,
-        directory,
         error: String(error),
       });
       if (requestId === defaultBranchRequestIdRef.current) {

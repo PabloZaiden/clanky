@@ -18,7 +18,6 @@ interface AdvancedOptionsProps {
   models: ModelInfo[];
   modelsLoading: boolean;
   variantDiscovery?: {
-    directory: string;
     workspaceId: string;
   };
 }

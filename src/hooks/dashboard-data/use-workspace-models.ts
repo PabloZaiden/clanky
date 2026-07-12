@@ -17,7 +17,7 @@ export interface UseWorkspaceModelsResult {
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
   setModelsWorkspaceId: (id: string | null) => void;
-  fetchModels: (directory: string, workspaceId: string | null) => Promise<void>;
+  fetchModels: (workspaceId: string | null) => Promise<void>;
   resetModels: () => void;
 }
 
@@ -88,11 +88,11 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     void fetchLastCheapModel();
   }, []);
 
-  const fetchModels = useCallback(async (directory: string, workspaceId: string | null) => {
+  const fetchModels = useCallback(async (workspaceId: string | null) => {
     const requestId = ++modelsRequestIdRef.current;
     modelsAbortControllerRef.current?.abort();
 
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setModels([]);
       setModelsLoading(false);
       return;
@@ -104,7 +104,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     setModelsLoading(true);
     try {
       const response = await appFetch(
-        `/api/models?directory=${encodeURIComponent(directory)}&workspaceId=${encodeURIComponent(workspaceId)}`,
+        `/api/models?workspaceId=${encodeURIComponent(workspaceId)}`,
         { signal: controller.signal },
       );
       if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
@@ -125,7 +125,6 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       }
       log.error("Failed to fetch workspace models", {
         workspaceId,
-        directory,
         error: String(error),
       });
       if (requestId === modelsRequestIdRef.current) {

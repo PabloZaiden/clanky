@@ -23,7 +23,7 @@ export async function fetchQuickChatModels(
   options?: { signal?: AbortSignal },
 ): Promise<ModelInfo[]> {
   const response = await appFetch(
-    `/api/models?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
+    `/api/models?workspaceId=${encodeURIComponent(workspace.id)}`,
     { signal: options?.signal },
   );
   if (!response.ok) {
@@ -33,7 +33,7 @@ export async function fetchQuickChatModels(
 }
 
 export async function fetchQuickChatBaseBranch(workspace: PublicWorkspace): Promise<string> {
-  const query = `directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`;
+  const query = `workspaceId=${encodeURIComponent(workspace.id)}`;
   const [defaultBranchResponse, branchesResponse] = await Promise.all([
     appFetch(`/api/git/default-branch?${query}`),
     appFetch(`/api/git/branches?${query}`),

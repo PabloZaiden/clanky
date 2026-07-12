@@ -196,7 +196,6 @@ export const chatsRoutes = {
 
       const modelValidation = await isModelEnabled(
         workspace.id,
-        workspace.directory,
         body.model.providerID,
         body.model.modelID,
       );
@@ -256,7 +255,6 @@ export const chatsRoutes = {
       if (validation.data.model) {
         const modelValidation = await isModelEnabled(
           existing.config.workspaceId,
-          existing.config.directory,
           validation.data.model.providerID,
           validation.data.model.modelID,
         );
@@ -479,7 +477,6 @@ export const chatsRoutes = {
 
       const modelValidation = await isModelEnabled(
         workspace.id,
-        workspace.directory,
         chat.config.model.providerID,
         chat.config.model.modelID,
       );
@@ -526,7 +523,6 @@ export const chatsRoutes = {
 
       const modelValidation = await isModelEnabled(
         workspace.id,
-        workspace.directory,
         chat.config.model.providerID,
         chat.config.model.modelID,
       );

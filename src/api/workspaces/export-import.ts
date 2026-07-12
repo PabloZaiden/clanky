@@ -22,7 +22,9 @@ const log = createLogger("api:workspaces");
  * Import workspaces with directory validation.
  * Each workspace's directory is validated on the remote server (via backendManager)
  * before being created. Workspaces that fail validation are reported as "failed"
- * in the result details, rather than silently creating invalid entries.
+ * in the result details, rather than silently creating invalid entries. Every
+ * valid entry receives a new workspace ID, even when its directory matches
+ * another workspace.
  *
  * This mirrors the validation enforced by POST /api/workspaces.
  */
@@ -33,7 +35,6 @@ async function importWorkspacesWithValidation(
 
   const result: WorkspaceImportResult = {
     created: 0,
-    skipped: 0,
     failed: 0,
     details: [],
   };
@@ -134,7 +135,6 @@ async function importWorkspacesWithValidation(
 
   log.info("Workspaces imported with validation", {
     created: result.created,
-    skipped: result.skipped,
     failed: result.failed,
   });
   return result;
@@ -170,7 +170,7 @@ export const exportImportRoutes = {
   /**
    * POST /api/workspaces/import - Import workspace configs from JSON.
    * Validates each workspace's directory on the remote server before creating it.
-   * Reports per-entry results (created, skipped, failed).
+   * Reports per-entry results (created, failed).
    */
   "/api/workspaces/import": {
     async POST(req: Request) {
@@ -200,7 +200,6 @@ export const exportImportRoutes = {
         const importResult = await importWorkspacesWithValidation(normalizedData);
         log.info("Workspace import complete", {
           created: importResult.created,
-          skipped: importResult.skipped,
           failed: importResult.failed,
         });
         return Response.json(importResult);

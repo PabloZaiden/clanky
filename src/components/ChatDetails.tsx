@@ -142,7 +142,6 @@ export function ChatDetails({
   const reconnectAttemptedRef = useRef(false);
   const frameworkHeader = useFrameworkMainHeaderSlots();
   const { models, modelsLoading } = useAvailableModels({
-    directory: isEmbedded ? undefined : chat?.config.directory,
     workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
   });
 
@@ -943,7 +942,6 @@ export function ChatDetails({
                     showDisconnected
                     currentModelKey={currentModelKey}
                     variantDiscovery={chat ? {
-                      directory: chat.config.directory,
                       workspaceId: chat.config.workspaceId,
                     } : undefined}
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}

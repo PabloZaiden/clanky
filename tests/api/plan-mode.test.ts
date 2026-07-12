@@ -277,7 +277,7 @@ describe("Plan Mode API Integration", () => {
       await writeFile(join(planningDir, ".gitkeep"), "");
 
       const response = await fetch(
-        `${baseUrl}/api/check-planning-dir?directory=${encodeURIComponent(currentTestWorkDir)}&workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
+        `${baseUrl}/api/check-planning-dir?workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
       );
 
       expect(response.ok).toBe(true);

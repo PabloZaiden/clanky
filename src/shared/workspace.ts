@@ -1,8 +1,8 @@
 /**
  * Workspace type definitions for Clanky Tasks Management System.
  * 
- * Workspaces represent directories that contain Clanky Tasks.
- * Each workspace has a unique directory path and can contain multiple tasks.
+ * Workspaces are identified by UUID and provide the execution context for
+ * Clanky Tasks. Their directory is the location where workspace operations run.
  * 
  * Request types for validated endpoints are derived from Zod schemas,
  * making the schemas the single source of truth for both runtime validation
@@ -14,10 +14,10 @@
 import type { AgentProvider, ServerSettings } from "./settings";
 
 /**
- * A workspace represents a directory that contains Clanky Tasks.
- * 
- * Workspaces provide a way to group tasks by directory and allow
- * for simplified task creation via workspace selection.
+ * A workspace represents a user-selected execution context for Clanky Tasks.
+ *
+ * Workspaces are selected by ID; the directory is an execution location and
+ * does not identify the workspace.
  * Each workspace has its own server settings for independent operation.
  */
 export interface Workspace {
@@ -78,13 +78,11 @@ export interface PublicWorkspaceExportData {
 
 /**
  * Result of a workspace import operation.
- * Reports what was created, skipped, and failed.
+ * Reports what was created and failed validation.
  */
 export interface WorkspaceImportResult {
   /** Number of workspaces successfully created */
   created: number;
-  /** Number of workspaces skipped (directory already exists) */
-  skipped: number;
   /** Number of workspaces that failed validation */
   failed: number;
   /** Details of each workspace in the import */
@@ -93,9 +91,9 @@ export interface WorkspaceImportResult {
     name: string;
     /** Workspace directory from the import file */
     directory: string;
-    /** Whether this workspace was created, skipped, or failed validation */
-    status: "created" | "skipped" | "failed";
-    /** Reason for skipping or failure */
+    /** Whether this workspace was created or failed validation */
+    status: "created" | "failed";
+    /** Reason for failure */
     reason?: string;
   }>;
 }

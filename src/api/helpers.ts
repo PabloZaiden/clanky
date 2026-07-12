@@ -9,10 +9,7 @@
 
 import type { ErrorResponse } from "../types/api";
 import type { Workspace } from "../types/workspace";
-import { getWorkspace, listWorkspacesByDirectory } from "../persistence/workspaces";
-import { createLogger } from "../core/logger";
-
-const log = createLogger("api:helpers");
+import { getWorkspace } from "../persistence/workspaces";
 
 /**
  * Create a standardized error response.
@@ -38,13 +35,6 @@ export function successResponse(data: Record<string, unknown> = {}): Response {
 }
 
 /**
- * Normalize a directory string received through API inputs.
- */
-export function normalizeDirectoryPath(directory: string): string {
-  return directory.trim();
-}
-
-/**
  * Look up a workspace by ID and return it, or return a 404 error response.
  *
  * This helper eliminates the repeated pattern of:
@@ -62,55 +52,4 @@ export async function requireWorkspace(
     return errorResponse("workspace_not_found", "Workspace not found", 404);
   }
   return workspace;
-}
-
-/**
- * Resolve a workspace for a request that includes a directory and optional workspaceId.
- * Uses workspaceId when provided, otherwise requires the directory lookup to be unambiguous.
- */
-export async function resolveWorkspaceForDirectory(
-  directory: string,
-  workspaceId?: string | null,
-): Promise<Workspace | Response> {
-  const normalizedDirectory = normalizeDirectoryPath(directory);
-
-  if (workspaceId) {
-    const workspace = await getWorkspace(workspaceId);
-    if (!workspace) {
-      return errorResponse("workspace_not_found", "Workspace not found", 404);
-    }
-    if (normalizeDirectoryPath(workspace.directory) !== normalizedDirectory) {
-      return errorResponse(
-        "workspace_directory_mismatch",
-        "workspaceId does not match the requested directory",
-        400,
-      );
-    }
-    return workspace;
-  }
-
-  // Fallback: directory-only lookup. This path is deprecated and should be
-  // removed once all callers pass workspaceId.  Log a warning so we can
-  // track remaining call-sites.
-  log.warn("resolveWorkspaceForDirectory called without workspaceId — directory-only lookup is deprecated", {
-    directory: normalizedDirectory,
-  });
-
-  const matches = await listWorkspacesByDirectory(normalizedDirectory);
-  if (matches.length === 0) {
-    return errorResponse(
-      "workspace_not_found",
-      `No workspace found for directory: ${normalizedDirectory}`,
-      404,
-    );
-  }
-  if (matches.length > 1) {
-    return errorResponse(
-      "ambiguous_workspace",
-      "Multiple workspaces use this directory. Provide workspaceId to disambiguate.",
-      409,
-    );
-  }
-
-  return matches[0]!;
 }

@@ -213,22 +213,25 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "Create a task from the current plan discussed in a chat.",
   },
   "/api/check-planning-dir": {
-    description: "Inspect a directory for .clanky-planning files.",
+    description: "Inspect a workspace's .clanky-planning files.",
   },
   "/api/git/branches": {
-    description: "List local git branches for a workspace directory.",
+    description: "List local git branches for a workspace.",
   },
   "/api/git/default-branch": {
-    description: "Detect the default git branch for a workspace directory.",
+    description: "Detect the default git branch for a workspace.",
   },
   "/api/git/remote-status": {
-    description: "Check whether a git remote exists for a workspace directory.",
+    description: "Check whether a git remote exists for a workspace.",
   },
   "/api/git/github-repository-url": {
-    description: "Resolve the GitHub repository URL for a workspace directory.",
+    description: "Resolve the GitHub repository URL for a workspace.",
   },
   "/api/models": {
-    description: "List available AI models for a workspace directory.",
+    description: "List available AI models for a workspace.",
+  },
+  "/api/models/variants": {
+    description: "List available model variants for a workspace.",
   },
   "/api/workspaces": {
     description: "List workspaces or create a workspace.",

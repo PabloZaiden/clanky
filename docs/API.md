@@ -1120,14 +1120,13 @@ The `model` override is optional and applies to the restarted follow-up work.
 
 #### GET /api/models
 
-Get available AI models for a workspace directory.
+Get available AI models for a workspace.
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `directory` | Yes | Working directory path |
-| `workspaceId` | Yes | Workspace ID for server connection |
+| `workspaceId` | Yes | Workspace ID |
 
 **Response**
 
@@ -1157,10 +1156,38 @@ The `variants` field is optional and only present when the model supports multip
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `missing_directory` | directory query parameter is required |
 | 400 | `missing_workspace_id` | workspaceId query parameter is required |
 | 404 | `workspace_not_found` | Workspace not found |
 | 500 | `models_failed` | Failed to retrieve models |
+
+#### GET /api/models/variants
+
+Get lazily discovered variants for a model in a workspace.
+
+**Query Parameters**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `workspaceId` | Yes | Workspace ID |
+| `modelID` | Yes | Model ID |
+| `providerID` | No | Ignored; the provider comes from workspace settings |
+
+**Response**
+
+```json
+{
+  "variants": ["", "thinking"]
+}
+```
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `missing_workspace_id` | workspaceId query parameter is required |
+| 400 | `missing_model_id` | modelID query parameter is required |
+| 404 | `workspace_not_found` | Workspace not found |
+| 500 | `model_variants_failed` | Failed to retrieve model variants |
 
 ---
 
@@ -1347,14 +1374,13 @@ Get application configuration based on environment.
 
 #### GET /api/check-planning-dir
 
-Check if a directory has a `.clanky-planning` folder with files.
+Check if a workspace has a `.clanky-planning` folder with files.
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `directory` | Yes | Directory path to check |
-| `workspaceId` | No | Workspace ID used to disambiguate identical directory paths across different server targets |
+| `workspaceId` | Yes | Workspace ID |
 
 **Response** (directory exists with files)
 
@@ -1380,16 +1406,15 @@ Check if a directory has a `.clanky-planning` folder with files.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `invalid_request` | Missing `directory` query parameter |
-| 404 | `workspace_not_found` | No workspace found for the given directory |
-| 409 | `ambiguous_workspace` | Multiple workspaces use this directory and `workspaceId` was not provided |
+| 400 | `missing_workspace_id` | `workspaceId` query parameter is required |
+| 404 | `workspace_not_found` | Workspace not found |
 | 500 | `check_failed` | Failed to check the planning directory |
 
 ---
 
 ### Workspaces
 
-Workspaces represent project directories managed by Clanky. Each workspace has its own server connection settings and can have multiple tasks.
+Workspaces represent projects managed by Clanky. Each workspace is identified by its ID, has its own server connection settings, and can have multiple tasks. The configured directory is used only as the workspace execution location.
 
 #### GET /api/workspaces
 
@@ -1417,7 +1442,7 @@ List all workspaces.
 
 #### POST /api/workspaces
 
-Create a new workspace. Validates that the directory exists on the remote server and is a git repository.
+Create a new workspace. Validates that its execution directory exists on the remote server and is a git repository.
 
 **Request Body**
 
@@ -1437,9 +1462,8 @@ Returns the created workspace with status `201 Created`.
 |--------|-------|-------------|
 | 400 | `validation_error` | Missing or invalid fields |
 | 400 | `validation_failed` | Failed to validate directory on remote server |
-| 400 | `not_git_repo` | Directory is not a git repository |
+| 400 | `not_git_repo` | Workspace directory is not a git repository |
 | 404 | `directory_not_found` | Directory does not exist on the remote server |
-| 409 | `duplicate_workspace` | A workspace already exists for this directory |
 | 500 | `create_failed` | Workspace creation failed |
 
 #### GET /api/workspaces/:id
@@ -1555,7 +1579,7 @@ Export all workspace configurations as JSON for backup or migration.
 
 #### POST /api/workspaces/import
 
-Import workspace configurations from JSON. Each workspace's directory is validated on the remote server before creation. Workspaces with existing directories are skipped.
+Import workspace configurations from JSON. Each workspace's execution directory is validated on the remote server before creation. Every valid entry creates a new workspace, even when its directory matches another workspace.
 
 **Request Body**
 
@@ -1582,11 +1606,9 @@ Import workspace configurations from JSON. Each workspace's directory is validat
 ```json
 {
   "created": 2,
-  "skipped": 1,
   "failed": 0,
   "details": [
     { "name": "Project A", "directory": "/path/a", "status": "created" },
-    { "name": "Project B", "directory": "/path/b", "status": "skipped", "reason": "A workspace already exists for directory: /path/b" },
     { "name": "Project C", "directory": "/path/c", "status": "created" }
   ]
 }
@@ -2315,14 +2337,13 @@ Get the collected log entries for a provisioning job.
 
 #### GET /api/git/branches
 
-Get all local branches for a directory.
+Get all local branches for a workspace.
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `directory` | Yes | Directory path to check |
-| `workspaceId` | No | Workspace ID used to disambiguate identical directory paths across different server targets |
+| `workspaceId` | Yes | Workspace ID |
 
 **Response**
 
@@ -2341,20 +2362,20 @@ Get all local branches for a directory.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `missing_parameter` | directory query parameter is required |
-| 400 | `not_git_repo` | Directory is not a git repository |
-| 409 | `ambiguous_workspace` | Multiple workspaces use this directory and `workspaceId` was not provided |
+| 400 | `missing_workspace_id` | workspaceId query parameter is required |
+| 400 | `not_git_repo` | Workspace directory is not a git repository |
+| 404 | `workspace_not_found` | Workspace not found |
+| 500 | `git_error` | Failed to retrieve branches |
 
 #### GET /api/git/default-branch
 
-Get the default branch for a git repository (e.g., "main" or "master").
+Get the default branch for a workspace's git repository (e.g., "main" or "master").
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `directory` | Yes | Directory path to check |
-| `workspaceId` | No | Workspace ID used to disambiguate identical directory paths across different server targets |
+| `workspaceId` | Yes | Workspace ID |
 
 **Response**
 
@@ -2368,9 +2389,9 @@ Get the default branch for a git repository (e.g., "main" or "master").
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `missing_parameter` | directory query parameter is required |
-| 400 | `not_git_repo` | Directory is not a git repository |
-| 409 | `ambiguous_workspace` | Multiple workspaces use this directory and `workspaceId` was not provided |
+| 400 | `missing_workspace_id` | workspaceId query parameter is required |
+| 400 | `not_git_repo` | Workspace directory is not a git repository |
+| 404 | `workspace_not_found` | Workspace not found |
 | 500 | `git_error` | Failed to retrieve default branch |
 
 ---
