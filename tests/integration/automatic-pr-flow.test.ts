@@ -278,10 +278,10 @@ describe("Automatic PR flow feedback sources", () => {
     );
 
     const query = executor.graphqlQueries[0] ?? "";
+    const normalizedQuery = query.replace(/\s+/g, " ");
     expect(query).toContain("statusCheckRollup");
     expect(query).toContain("headRefOid");
-    expect(query).toContain("checkSuite");
-    expect(query).toContain("workflowRun");
+    expect(normalizedQuery).toContain("checkSuite { workflowRun { workflow { name } } }");
     expect(query).not.toContain("workflowName");
     expect(getGraphQlSelectionDepth(query, "reviewThreads(first:100)")).toBe(3);
     expect(getGraphQlSelectionDepth(query, "comments(first:100)")).toBe(3);
