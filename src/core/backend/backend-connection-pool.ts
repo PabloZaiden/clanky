@@ -7,7 +7,10 @@ import type { BackendConnectionConfig } from "../../backends/types";
 import type { ServerSettings } from "../../types/settings";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
-import { buildProviderShellInvocation, getProviderAcpCommand } from "../agent-runtime-command";
+import {
+  buildProviderShellInvocation,
+  getProviderAcpCommand,
+} from "../agent-runtime-command";
 
 function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
   const provider = settings.agent.provider;

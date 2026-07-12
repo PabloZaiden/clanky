@@ -84,7 +84,7 @@ Clanky runs agent interactions through ACP JSON-RPC and supports the following p
 
 - `opencode` (CLI command: `opencode acp`)
 - `copilot` (CLI command: `copilot --yolo --acp`)
-- `codex` (CLI command: resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`)
+- `codex` (CLI command: resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`, with full-access runtime settings)
 - `claude` (CLI command: resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`)
 
 Agent transport is configured per workspace:
@@ -1760,10 +1760,21 @@ Execution behavior is derived automatically from `agent.transport`:
 Provider runtime command is derived from `agent.provider`:
 - `opencode` → `opencode acp`
 - `copilot` → `copilot --yolo --acp`
-- `codex` → resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive ACP execution
+- `codex` → resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive full-access ACP execution
 - `claude` → resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`
 - `pi` → resolves `pi-acp`, or runs `pi-acp` through `npx`/`bunx`
 - `grok` → resolves `grok`, or runs `@xai-official/grok` through `npx`/`bunx`, using `grok agent --always-approve stdio`
+
+For `codex`, Clanky passes the following runtime environment to the provider on
+both `stdio` and `ssh` transports:
+
+```sh
+INITIAL_AGENT_MODE=agent-full-access
+CODEX_CONFIG='{"approval_policy":"never","sandbox_mode":"danger-full-access"}'
+```
+
+`CODEX_CONFIG` is parsed by `codex-acp` as a JSON object and merged into each
+Codex session configuration.
 
 If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
