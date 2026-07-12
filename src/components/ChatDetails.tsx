@@ -142,7 +142,6 @@ export function ChatDetails({
   const reconnectAttemptedRef = useRef(false);
   const frameworkHeader = useFrameworkMainHeaderSlots();
   const { models, modelsLoading } = useAvailableModels({
-    directory: isEmbedded ? undefined : chat?.config.directory,
     workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
   });
 

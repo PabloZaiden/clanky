@@ -35,9 +35,6 @@ export function successResponse(data: Record<string, unknown> = {}): Response {
 }
 
 /**
- * Normalize a directory string received through API inputs.
- */
-/**
  * Look up a workspace by ID and return it, or return a 404 error response.
  *
  * This helper eliminates the repeated pattern of:

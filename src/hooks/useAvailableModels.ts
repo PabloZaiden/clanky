@@ -8,7 +8,6 @@ import { log } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 
 export interface UseAvailableModelsOptions {
-  directory: string | undefined;
   workspaceId: string | undefined;
 }
 
@@ -18,14 +17,13 @@ export interface UseAvailableModelsResult {
 }
 
 export function useAvailableModels({
-  directory,
   workspaceId,
 }: UseAvailableModelsOptions): UseAvailableModelsResult {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
 
   useEffect(() => {
-    if (!directory || !workspaceId) {
+    if (!workspaceId) {
       setModels([]);
       setModelsLoading(false);
       return;
@@ -71,7 +69,7 @@ export function useAvailableModels({
     return () => {
       controller.abort();
     };
-  }, [directory, workspaceId]);
+  }, [workspaceId]);
 
   return { models, modelsLoading };
 }

@@ -2353,6 +2353,8 @@ Get all local branches for a workspace.
 |--------|-------|-------------|
 | 400 | `missing_workspace_id` | workspaceId query parameter is required |
 | 400 | `not_git_repo` | Workspace directory is not a git repository |
+| 404 | `workspace_not_found` | Workspace not found |
+| 500 | `git_error` | Failed to retrieve branches |
 
 #### GET /api/git/default-branch
 
@@ -2378,6 +2380,7 @@ Get the default branch for a workspace's git repository (e.g., "main" or "master
 |--------|-------|-------------|
 | 400 | `missing_workspace_id` | workspaceId query parameter is required |
 | 400 | `not_git_repo` | Workspace directory is not a git repository |
+| 404 | `workspace_not_found` | Workspace not found |
 | 500 | `git_error` | Failed to retrieve default branch |
 
 ---

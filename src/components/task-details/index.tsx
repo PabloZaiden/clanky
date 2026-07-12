@@ -84,9 +84,8 @@ export function TaskDetails({
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
       fetchReviewComments: content.fetchReviewComments,
     });
-  const { models, modelsLoading } = useModels({ directory: task?.config.directory, workspaceId: task?.config.workspaceId });
+  const { models, modelsLoading } = useModels({ workspaceId: task?.config.workspaceId });
   const remoteStatus = useTaskRemoteStatus({
-    directory: task?.config.directory,
     workspaceId: task?.config.workspaceId,
   });
   const frameworkHeader = useFrameworkMainHeaderSlots();

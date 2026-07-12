@@ -87,7 +87,7 @@ async function createGitServiceForWorkspace(workspace: Workspace): Promise<GitSe
  * Uses deterministic command execution (local/SSH), independent of agent transport.
  *
  * @param workspace - Workspace containing the repository
- * @returns Configured GitService instance on success, or an error Response
+ * @returns Configured GitService instance
  */
 async function getGitService(workspace: Workspace): Promise<GitService> {
   log.debug("Getting GitService for workspace", { workspaceId: workspace.id, directory: workspace.directory });
