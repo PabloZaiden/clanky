@@ -3,7 +3,11 @@
  */
 
 import type { CommandExecutor } from "./command-executor";
-import type { AutomaticPrFlowMergeStateStatus, Task } from "../types/task";
+import type {
+  AutomaticPrFlowFeedbackSource,
+  AutomaticPrFlowMergeStateStatus,
+  Task,
+} from "../types/task";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
@@ -24,6 +28,16 @@ const log = createLogger("core:automatic-pr-flow-github");
 
 const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the task environment.";
 const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this task.";
+const MAX_WORKFLOW_FAILURE_TEXT_LENGTH = 4_000;
+const WORKFLOW_FAILURE_CONCLUSIONS = new Set([
+  "ACTION_REQUIRED",
+  "CANCELLED",
+  "FAILURE",
+  "STALE",
+  "STARTUP_FAILURE",
+  "TIMED_OUT",
+]);
+const STATUS_FAILURE_STATES = new Set(["ERROR", "FAILURE"]);
 
 interface PullRequestView {
   number?: unknown;
@@ -73,6 +87,36 @@ interface GraphQlReviewNode {
   author?: GraphQlUser | null;
 }
 
+interface GraphQlStatusCheckContextNode {
+  __typename?: unknown;
+  id?: unknown;
+  databaseId?: unknown;
+  name?: unknown;
+  context?: unknown;
+  workflowName?: unknown;
+  status?: unknown;
+  state?: unknown;
+  conclusion?: unknown;
+  detailsUrl?: unknown;
+  targetUrl?: unknown;
+  summary?: unknown;
+  text?: unknown;
+  description?: unknown;
+  startedAt?: unknown;
+  completedAt?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+interface GraphQlCommitNode {
+  oid?: unknown;
+  statusCheckRollup?: {
+    contexts?: {
+      nodes?: GraphQlStatusCheckContextNode[] | null;
+    } | null;
+  } | null;
+}
+
 interface GraphQlIssueCommentNode {
   id?: unknown;
   body?: unknown;
@@ -91,6 +135,12 @@ interface PullRequestDetailsQueryResponse {
         reviewDecision?: unknown;
         mergeStateStatus?: unknown;
         viewerCanUpdateBranch?: unknown;
+        headRefOid?: unknown;
+        commits?: {
+          nodes?: Array<{
+            commit?: GraphQlCommitNode | null;
+          } | null> | null;
+        } | null;
         reviewThreads?: { nodes?: GraphQlThreadNode[] | null } | null;
         comments?: { nodes?: GraphQlIssueCommentNode[] | null } | null;
         reviews?: { nodes?: GraphQlReviewNode[] | null } | null;
@@ -98,6 +148,100 @@ interface PullRequestDetailsQueryResponse {
     } | null;
   } | null;
 }
+
+const PULL_REQUEST_DETAILS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name) {
+    pullRequest(number:$number) {
+      number
+      url
+      state
+      reviewDecision
+      mergeStateStatus
+      viewerCanUpdateBranch
+      headRefOid
+      commits(last:1) {
+        nodes {
+          commit {
+            oid
+            statusCheckRollup {
+              contexts(first:100) {
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    id
+                    databaseId
+                    name
+                    workflowName
+                    status
+                    conclusion
+                    detailsUrl
+                    summary
+                    text
+                    startedAt
+                    completedAt
+                  }
+                  ... on StatusContext {
+                    id
+                    context
+                    state
+                    description
+                    targetUrl
+                    createdAt
+                    updatedAt
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      reviewThreads(first:100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          isCollapsed
+          comments(first:20) {
+            nodes {
+              id
+              body
+              createdAt
+              url
+              author {
+                login
+              }
+              path
+              originalLine
+            }
+          }
+        }
+      }
+      comments(first:100) {
+        nodes {
+          id
+          body
+          createdAt
+          url
+          author {
+            login
+          }
+        }
+      }
+      reviews(first:100) {
+        nodes {
+          id
+          body
+          state
+          submittedAt
+          url
+          author {
+            login
+          }
+        }
+      }
+    }
+  }
+}`;
 
 export interface AutomaticPrFlowPullRequest {
   number: number;
@@ -107,11 +251,12 @@ export interface AutomaticPrFlowPullRequest {
   mergeStateStatus?: AutomaticPrFlowMergeStateStatus;
   viewerCanUpdateBranch?: boolean;
   mergedAt?: string;
+  headSha?: string;
 }
 
 export interface AutomaticPrFlowFeedbackItem {
   id: string;
-  source: "review_thread" | "review_comment" | "review";
+  source: AutomaticPrFlowFeedbackSource;
   body: string;
   authorLogin?: string;
   createdAt?: string;
@@ -119,6 +264,10 @@ export interface AutomaticPrFlowFeedbackItem {
   threadId?: string;
   path?: string;
   line?: number;
+  headSha?: string;
+  workflowName?: string;
+  checkName?: string;
+  checkConclusion?: string;
 }
 
 export interface AutomaticPrFlowSnapshot {
@@ -126,6 +275,7 @@ export interface AutomaticPrFlowSnapshot {
   reviewThreads: AutomaticPrFlowFeedbackItem[];
   reviewComments: AutomaticPrFlowFeedbackItem[];
   reviews: AutomaticPrFlowFeedbackItem[];
+  workflowFailures: AutomaticPrFlowFeedbackItem[];
   actionableItems: AutomaticPrFlowFeedbackItem[];
 }
 
@@ -262,6 +412,123 @@ function toNumberValue(value: unknown): number | undefined {
 
 function toBooleanValue(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function toUpperString(value: unknown): string | undefined {
+  const stringValue = toStringValue(value);
+  return stringValue?.toUpperCase();
+}
+
+function truncateExternalText(value: unknown, maxLength: number): string | undefined {
+  const stringValue = toStringValue(value);
+  if (!stringValue) {
+    return undefined;
+  }
+
+  return stringValue
+    .replace(/\r\n/g, "\n")
+    .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "")
+    .trim()
+    .slice(0, maxLength)
+    .trim();
+}
+
+function buildWorkflowFailureId(
+  sourceId: string,
+  headSha: string,
+  conclusion: string,
+  completedAt?: string,
+): string {
+  return ["workflow", sourceId, headSha, conclusion, completedAt ?? ""].join(":");
+}
+
+function normalizeCheckRunFailure(
+  checkRun: GraphQlStatusCheckContextNode,
+  headSha: string,
+): AutomaticPrFlowFeedbackItem | null {
+  const sourceId = toStringValue(checkRun.id) ?? toStringValue(checkRun.databaseId);
+  const status = toUpperString(checkRun.status);
+  const conclusion = toUpperString(checkRun.conclusion);
+  if (
+    !sourceId
+    || !headSha
+    || status !== "COMPLETED"
+    || !conclusion
+    || !WORKFLOW_FAILURE_CONCLUSIONS.has(conclusion)
+  ) {
+    return null;
+  }
+
+  const checkName = truncateExternalText(checkRun.name, 200) ?? "Unnamed workflow check";
+  const workflowName = truncateExternalText(checkRun.workflowName, 200);
+  const completedAt = toStringValue(checkRun.completedAt);
+  const details = [
+    truncateExternalText(checkRun.summary, 2_000),
+    truncateExternalText(checkRun.text, 2_000),
+  ].filter((value): value is string => value !== undefined);
+  const body = [
+    `Workflow check "${checkName}" failed with conclusion ${conclusion}.`,
+    workflowName ? `Workflow: ${workflowName}` : undefined,
+    `Head commit: ${headSha}`,
+    details.length > 0 ? `Reported details:\n${details.join("\n")}` : undefined,
+  ].filter((value): value is string => value !== undefined).join("\n");
+
+  return {
+    id: buildWorkflowFailureId(sourceId, headSha, conclusion, completedAt),
+    source: "workflow",
+    body: truncateExternalText(body, MAX_WORKFLOW_FAILURE_TEXT_LENGTH) ?? body,
+    createdAt: toStringValue(checkRun.startedAt) ?? completedAt,
+    url: truncateExternalText(checkRun.detailsUrl, 500),
+    headSha,
+    workflowName,
+    checkName,
+    checkConclusion: conclusion,
+  };
+}
+
+function normalizeStatusContextFailure(
+  statusContext: GraphQlStatusCheckContextNode,
+  headSha: string,
+): AutomaticPrFlowFeedbackItem | null {
+  const sourceId = toStringValue(statusContext.id) ?? toStringValue(statusContext.context);
+  const context = truncateExternalText(statusContext.context, 200) ?? "Unnamed status check";
+  const state = toUpperString(statusContext.state);
+  if (!sourceId || !headSha || !state || !STATUS_FAILURE_STATES.has(state)) {
+    return null;
+  }
+
+  const details = truncateExternalText(statusContext.description, 2_000);
+  const body = [
+    `Workflow status check "${context}" failed with state ${state}.`,
+    `Head commit: ${headSha}`,
+    details ? `Reported details:\n${details}` : undefined,
+  ].filter((value): value is string => value !== undefined).join("\n");
+  const completedAt = toStringValue(statusContext.updatedAt) ?? toStringValue(statusContext.createdAt);
+
+  return {
+    id: buildWorkflowFailureId(sourceId, headSha, state, completedAt),
+    source: "workflow",
+    body: truncateExternalText(body, MAX_WORKFLOW_FAILURE_TEXT_LENGTH) ?? body,
+    createdAt: toStringValue(statusContext.createdAt),
+    url: truncateExternalText(statusContext.targetUrl, 500),
+    headSha,
+    checkName: context,
+    checkConclusion: state,
+  };
+}
+
+function normalizeWorkflowFailure(
+  check: GraphQlStatusCheckContextNode,
+  headSha: string,
+): AutomaticPrFlowFeedbackItem | null {
+  switch (check.__typename) {
+    case "CheckRun":
+      return normalizeCheckRunFailure(check, headSha);
+    case "StatusContext":
+      return normalizeStatusContextFailure(check, headSha);
+    default:
+      return null;
+  }
 }
 
 function isNoPullRequestError(stderr: string): boolean {
@@ -615,7 +882,7 @@ export async function fetchAutomaticPrFlowSnapshot(
       "api",
       "graphql",
       "-f",
-      "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision mergeStateStatus viewerCanUpdateBranch reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
+    `query=${PULL_REQUEST_DETAILS_QUERY}`,
       "-F",
       `owner=${coordinates.owner}`,
       "-F",
@@ -635,6 +902,14 @@ export async function fetchAutomaticPrFlowSnapshot(
     throw new Error("GitHub CLI returned pull request details without a pull request payload.");
   }
 
+  const latestCommit = [...(responsePullRequest.commits?.nodes ?? [])]
+    .reverse()
+    .map((node) => node?.commit)
+    .find((commit): commit is GraphQlCommitNode => commit !== undefined && commit !== null);
+  const headSha = toStringValue(responsePullRequest.headRefOid)
+    ?? toStringValue(latestCommit?.oid)
+    ?? pullRequest.headSha;
+
   const reviewThreads = dedupeFeedbackItems(
     (responsePullRequest.reviewThreads?.nodes ?? [])
       .map((thread) => normalizeReviewThread(thread))
@@ -650,6 +925,14 @@ export async function fetchAutomaticPrFlowSnapshot(
       .map((review) => normalizeReview(review))
       .filter((item): item is AutomaticPrFlowFeedbackItem => item !== null),
   );
+  const workflowFailures = headSha
+    ? dedupeFeedbackItems(
+        (latestCommit?.statusCheckRollup?.contexts?.nodes ?? [])
+          .filter((check): check is GraphQlStatusCheckContextNode => check !== null)
+          .map((check) => normalizeWorkflowFailure(check, headSha))
+          .filter((item): item is AutomaticPrFlowFeedbackItem => item !== null),
+      )
+    : [];
 
   return {
     pullRequest: {
@@ -660,11 +943,13 @@ export async function fetchAutomaticPrFlowSnapshot(
       mergeStateStatus: normalizeMergeStateStatus(responsePullRequest.mergeStateStatus) ?? pullRequest.mergeStateStatus,
       viewerCanUpdateBranch: toBooleanValue(responsePullRequest.viewerCanUpdateBranch) ?? pullRequest.viewerCanUpdateBranch,
       mergedAt: pullRequest.mergedAt,
+      headSha,
     },
     reviewThreads,
     reviewComments,
     reviews,
-    actionableItems: dedupeFeedbackItems([...reviewThreads, ...reviewComments, ...reviews]),
+    workflowFailures,
+    actionableItems: dedupeFeedbackItems([...reviewThreads, ...reviewComments, ...reviews, ...workflowFailures]),
   };
 }
 

@@ -404,11 +404,13 @@ export interface PullRequestMonitoringState {
 /**
  * Persisted reference to a single PR feedback item handled by automation.
  */
+export type AutomaticPrFlowFeedbackSource = "review_thread" | "review_comment" | "review" | "workflow";
+
 export interface AutomaticPrFlowHandledItem {
   /** Stable GitHub identifier for the feedback item */
   id: string;
   /** Source of the feedback item */
-  source: "review_thread" | "review_comment" | "review";
+  source: AutomaticPrFlowFeedbackSource;
   /** How automation concluded the item */
   outcome: "resolved" | "ignored" | "manual";
   /** ISO 8601 timestamp when the item was recorded as handled */
@@ -426,7 +428,7 @@ export interface AutomaticPrFlowActiveBatch {
   /** Feedback items included in this batch */
   items: Array<{
     id: string;
-    source: "review_thread" | "review_comment" | "review";
+    source: AutomaticPrFlowFeedbackSource;
     threadId?: string;
   }>;
   /** ISO 8601 timestamp when the batch started */

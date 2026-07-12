@@ -11,7 +11,12 @@ export type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, Acc
 export { getTaskWorkingDirectory } from "./task-types";
 
 import type { TaskCtx } from "./context";
-import type { Task, TaskConfig, TaskState } from "../../types/task";
+import type {
+  AutomaticPrFlowFeedbackSource,
+  Task,
+  TaskConfig,
+  TaskState,
+} from "../../types/task";
 import type { TaskEvent } from "../../types/events";
 import type { ModelConfig } from "../../types/task";
 import type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult } from "./task-types";
@@ -231,7 +236,7 @@ export class TaskManager {
       batchId: string;
       sourceItems: Array<{
         id: string;
-        source: "review_thread" | "review_comment" | "review";
+        source: AutomaticPrFlowFeedbackSource;
         body: string;
         authorLogin?: string;
         createdAt?: string;

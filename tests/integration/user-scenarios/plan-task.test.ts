@@ -102,6 +102,17 @@ class GitHubMockExecutor extends TestCommandExecutor {
                 url: "https://github.com/test-owner/test-repo/pull/123",
                 state: "OPEN",
                 reviewDecision: "REVIEW_REQUIRED",
+                headRefOid: "test-head-sha",
+                commits: {
+                  nodes: [{
+                    commit: {
+                      oid: "test-head-sha",
+                      statusCheckRollup: {
+                        contexts: { nodes: [] },
+                      },
+                    },
+                  }],
+                },
                 reviewThreads: { nodes: [] },
                 comments: { nodes: [] },
                 reviews: { nodes: [] },
