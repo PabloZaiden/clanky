@@ -9,7 +9,7 @@ export function toDraftTaskUpdateRequest(request: CreateTaskFormSubmitRequest): 
   return {
     name: request.name,
     prompt: request.prompt,
-    issueNumber: request.issueNumber,
+    issueNumber: request.issueNumber ?? null,
     cheapModel: request.cheapModel,
     maxIterations: request.maxIterations,
     maxConsecutiveErrors: request.maxConsecutiveErrors,

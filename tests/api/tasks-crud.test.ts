@@ -705,6 +705,16 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.prompt).toBe("Updated prompt");
       expect(body.config.issueNumber).toBe(43);
       expect(body.config.git.branchPrefix).toBe("team-platform/");
+
+      const clearResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issueNumber: null }),
+      });
+      expect(clearResponse.status).toBe(200);
+
+      const clearBody = await clearResponse.json();
+      expect(clearBody.config.issueNumber).toBeUndefined();
     });
 
     test("updates and returns the visual private flag without blocking direct reads", async () => {

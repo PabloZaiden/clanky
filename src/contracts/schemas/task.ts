@@ -134,7 +134,7 @@ export const UpdateTaskRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   directory: z.string().optional(),
   prompt: z.string().optional(),
-  issueNumber: IssueNumberSchema.optional(),
+  issueNumber: IssueNumberSchema.nullable().optional(),
   model: ModelConfigSchema.optional(),
   cheapModel: CheapModelSelectionSchema.optional(),
   maxIterations: z.number().positive().nullable().optional(),
