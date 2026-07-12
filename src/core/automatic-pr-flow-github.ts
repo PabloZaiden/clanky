@@ -149,6 +149,100 @@ interface PullRequestDetailsQueryResponse {
   } | null;
 }
 
+const PULL_REQUEST_DETAILS_QUERY = `query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name) {
+    pullRequest(number:$number) {
+      number
+      url
+      state
+      reviewDecision
+      mergeStateStatus
+      viewerCanUpdateBranch
+      headRefOid
+      commits(last:1) {
+        nodes {
+          commit {
+            oid
+            statusCheckRollup {
+              contexts(first:100) {
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    id
+                    databaseId
+                    name
+                    workflowName
+                    status
+                    conclusion
+                    detailsUrl
+                    summary
+                    text
+                    startedAt
+                    completedAt
+                  }
+                  ... on StatusContext {
+                    id
+                    context
+                    state
+                    description
+                    targetUrl
+                    createdAt
+                    updatedAt
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      reviewThreads(first:100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          isCollapsed
+          comments(first:20) {
+            nodes {
+              id
+              body
+              createdAt
+              url
+              author {
+                login
+              }
+              path
+              originalLine
+            }
+          }
+        }
+      }
+      comments(first:100) {
+        nodes {
+          id
+          body
+          createdAt
+          url
+          author {
+            login
+          }
+        }
+      }
+      reviews(first:100) {
+        nodes {
+          id
+          body
+          state
+          submittedAt
+          url
+          author {
+            login
+          }
+        }
+      }
+    }
+  }
+}`;
+
 export interface AutomaticPrFlowPullRequest {
   number: number;
   url: string;
@@ -788,7 +882,7 @@ export async function fetchAutomaticPrFlowSnapshot(
       "api",
       "graphql",
       "-f",
-      "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision mergeStateStatus viewerCanUpdateBranch headRefOid commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){nodes{__typename ... on CheckRun{id databaseId name workflowName status conclusion detailsUrl summary text startedAt completedAt}} ... on StatusContext{id context state description targetUrl createdAt updatedAt}}}}}}} reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
+    `query=${PULL_REQUEST_DETAILS_QUERY}`,
       "-F",
       `owner=${coordinates.owner}`,
       "-F",

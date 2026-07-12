@@ -41,6 +41,7 @@ function mergeHandledItems(
 ): AutomaticPrFlowHandledItem[] {
   const itemsById = new Map(existingItems.map((item) => [item.id, item]));
   for (const item of newItems) {
+    itemsById.delete(item.id);
     itemsById.set(item.id, item);
   }
   return [...itemsById.values()].slice(-MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS);

@@ -76,6 +76,18 @@ const navigationGit: PullRequestNavigationGitService = {
   hasRemote: async () => true,
 };
 
+function getGraphQlSelectionDepth(query: string, selection: string): number {
+  const selectionIndex = query.indexOf(selection);
+  if (selectionIndex === -1) {
+    throw new Error(`GraphQL selection not found: ${selection}`);
+  }
+
+  return [...query.slice(0, selectionIndex)].reduce(
+    (depth, character) => depth + (character === "{" ? 1 : character === "}" ? -1 : 0),
+    0,
+  );
+}
+
 function createSnapshotPullRequest(headSha = "head-sha-1"): AutomaticPrFlowPullRequest {
   return {
     number: 42,
@@ -247,8 +259,12 @@ describe("Automatic PR flow feedback sources", () => {
       navigationGit,
     );
 
-    expect(executor.graphqlQueries[0]).toContain("statusCheckRollup");
-    expect(executor.graphqlQueries[0]).toContain("headRefOid");
+    const query = executor.graphqlQueries[0] ?? "";
+    expect(query).toContain("statusCheckRollup");
+    expect(query).toContain("headRefOid");
+    expect(getGraphQlSelectionDepth(query, "reviewThreads(first:100)")).toBe(3);
+    expect(getGraphQlSelectionDepth(query, "comments(first:100)")).toBe(3);
+    expect(getGraphQlSelectionDepth(query, "reviews(first:100)")).toBe(3);
     expect(snapshot.workflowFailures).toHaveLength(2);
     expect(snapshot.actionableItems).toHaveLength(2);
     expect(snapshot.workflowFailures.map((item) => item.checkName)).toEqual([
@@ -399,6 +415,90 @@ describe("Automatic PR flow feedback sources", () => {
     await monitor.runNow();
 
     expect(startedBatches).toHaveLength(2);
+  });
+
+  test("moves re-recorded handled items to the newest position before applying the cap", async () => {
+    const task = createTaskForMonitor(context.workDir);
+    const now = new Date().toISOString();
+    const handledItems: NonNullable<Task["state"]["automaticPrFlow"]>["handledItems"] = Array.from(
+      { length: 200 },
+      (_, index) => ({
+        id: `workflow-${index}`,
+        source: "workflow" as const,
+        outcome: "ignored" as const,
+        handledAt: now,
+      }),
+    );
+    const reRecordedItemId = handledItems[0]?.id;
+    if (!reRecordedItemId) {
+      throw new Error("Expected a handled item to re-record.");
+    }
+
+    let currentTask: Task = {
+      ...task,
+      state: {
+        ...task.state,
+        automaticPrFlow: {
+          ...task.state.automaticPrFlow!,
+          handledItems,
+          activeBatch: {
+            batchId: "batch-1",
+            itemIds: [reRecordedItemId],
+            items: [{
+              id: reRecordedItemId,
+              source: "workflow",
+            }],
+            startedAt: now,
+            reviewCycle: 1,
+          },
+        },
+      },
+    };
+
+    const monitor = new PushedTaskMonitor({
+      listTasks: async () => [currentTask],
+      loadTask: async () => currentTask,
+      updateTaskState: async (_taskId, state) => {
+        currentTask = { ...currentTask, state };
+        return true;
+      },
+      emitter: new SimpleEventEmitter<TaskEvent>(),
+      getCommandExecutor: async () => new TestCommandExecutor(),
+      createGitService: () => navigationGit,
+      markMerged: async () => ({ success: true }),
+      pushTask: async () => ({ success: true, syncStatus: "clean" }),
+      updateBranch: async () => ({ success: true }),
+      isTaskRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: now,
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/test-owner/test-repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => createSnapshotPullRequest(),
+      fetchAutomaticPrFlowSnapshot: async () => createSnapshot(createSnapshotPullRequest(), []),
+      extractAutomaticPrFeedback: async () => ({
+        feedbackItems: [],
+        ignoredItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({
+        success: true,
+        reviewCycle: 1,
+        branch: "feature/automatic-pr-flow",
+      }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    const updatedHandledItems = currentTask.state.automaticPrFlow?.handledItems ?? [];
+    expect(updatedHandledItems).toHaveLength(200);
+    expect(updatedHandledItems[0]?.id).toBe("workflow-1");
+    expect(updatedHandledItems[199]).toMatchObject({
+      id: "workflow-0",
+      outcome: "manual",
+    });
   });
 
   test("includes workflow context in the automatic review prompt", () => {
