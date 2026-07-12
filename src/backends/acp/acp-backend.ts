@@ -26,7 +26,10 @@ import type {
   SessionReplayEvent,
 } from "../types";
 import { createEventStream, type EventStream } from "../../utils/event-stream";
-import { getProviderAcpCommand } from "../../core/agent-runtime-command";
+import {
+  buildProviderSpawnEnvironment,
+  getProviderAcpCommand,
+} from "../../core/agent-runtime-command";
 
 import type {
   AcpSession,
@@ -172,6 +175,9 @@ export class AcpBackend implements Backend {
     const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
     const command = config.command ?? providerCommand.command;
     const args = config.args ?? providerCommand.args;
+    const spawnEnv = config.transport === "ssh"
+      ? config.env
+      : buildProviderSpawnEnvironment(providerCommand, process.env, config.env);
     const logArgs = sanitizeSpawnArgsForLogging(command, args);
     const spawnCwd = config.transport === "ssh" ? "/" : config.directory;
     this.recentProcessLines = [];
@@ -191,7 +197,7 @@ export class AcpBackend implements Backend {
       try {
         process = Bun.spawn([command, ...args], {
           cwd: spawnCwd,
-          env: config.env,
+          env: spawnEnv,
           stdin: "pipe",
           stdout: "pipe",
           stderr: "pipe",
