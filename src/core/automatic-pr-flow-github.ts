@@ -29,6 +29,7 @@ const log = createLogger("core:automatic-pr-flow-github");
 const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the task environment.";
 const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this task.";
 const MAX_WORKFLOW_FAILURE_TEXT_LENGTH = 4_000;
+export const AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE = "One or more PR workflows are failing";
 const WORKFLOW_FAILURE_CONCLUSIONS = new Set([
   "ACTION_REQUIRED",
   "CANCELLED",

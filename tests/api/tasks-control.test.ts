@@ -14,6 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { saveTask } from "../../src/persistence/tasks";
 import { closeDatabase } from "../../src/persistence/database";
+import { AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE } from "../../src/core/automatic-pr-flow-github";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 
@@ -966,7 +967,7 @@ describe("Tasks Control API Integration", () => {
       }
     });
 
-    test("GET /api/tasks/:id/comments includes automatic PR review cycle entries", async () => {
+    test("GET /api/tasks/:id/comments includes the deterministic workflow failure comment", async () => {
       const uniqueWorkDir = await createTrackedTempDir("clanky-auto-pr-comments-test-");
       const uniqueBareRepo = await createTrackedTempDir("clanky-auto-pr-comments-bare-");
       await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
@@ -1025,19 +1026,15 @@ describe("Tasks Control API Integration", () => {
           batchId: "batch-1",
           sourceItems: [
             {
-              id: "thread-1",
-              source: "review_thread",
-              body: "Please add a missing edge-case test.",
-              authorLogin: "reviewer",
-              path: "src/index.ts",
-              line: 12,
-              url: "https://github.com/owner/repo/pull/42#discussion_r1",
+              id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+              source: "workflow",
+              body: "Untrusted workflow output must not become the task comment.",
             },
           ],
           feedbackItems: [
             {
-              text: "Add a missing edge-case test.",
-              sourceItemIds: ["thread-1"],
+              text: "Another untrusted model-shaped value.",
+              sourceItemIds: ["workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z"],
             },
           ],
         });
@@ -1053,8 +1050,7 @@ describe("Tasks Control API Integration", () => {
         expect(commentsBody.comments.length).toBeGreaterThan(0);
         expect(commentsBody.comments[0].reviewCycle).toBe(1);
         expect(commentsBody.comments[0].status).toBe("pending");
-        expect(commentsBody.comments[0].commentText).toContain("Automatic PR feedback batch:");
-        expect(commentsBody.comments[0].commentText).toContain("Add a missing edge-case test.");
+        expect(commentsBody.comments[0].commentText).toBe(AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE);
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
         await rm(uniqueBareRepo, { recursive: true, force: true });

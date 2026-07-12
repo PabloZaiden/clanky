@@ -22,6 +22,7 @@ import { getTaskWorkingDirectory, taskManager } from "./task-manager";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task/task-automatic-pr-flow-events";
 import { probePullRequestMonitoring } from "./pull-request-navigation";
 import {
+  AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
   ensureAutomaticPrFlowPullRequest,
   fetchAutomaticPrFlowSnapshot,
   resolveAutomaticPrFlowReviewThread,
@@ -415,16 +416,65 @@ export class PushedTaskMonitor {
     const pendingFeedbackItems = snapshot.actionableItems.filter(
       (item) => !handledItems.some((handledItem) => handledItem.id === item.id),
     );
+    const startAutomaticPrFeedbackBatch = async (
+      sourceItems: AutomaticPrFlowFeedbackItem[],
+      feedbackItems: AutomaticPrFlowExtractedFeedbackItem[],
+      batchHandledItems: AutomaticPrFlowHandledItem[],
+    ): Promise<NonNullable<Task["state"]["automaticPrFlow"]>> => {
+      const batchId = crypto.randomUUID();
+      const result = await this.deps.startAutomaticPrReviewCycle(task.config.id, {
+        batchId,
+        sourceItems,
+        feedbackItems,
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? "Automatic PR review cycle failed to start.");
+      }
+
+      return {
+        ...baseState,
+        status: "processing_feedback",
+        handledItems: batchHandledItems,
+        activeBatch: {
+          batchId,
+          itemIds: sourceItems.map((item) => item.id),
+          items: sourceItems.map((item) => ({
+            id: item.id,
+            source: item.source,
+            threadId: item.threadId,
+          })),
+          startedAt: now,
+          reviewCycle: result.reviewCycle,
+        },
+      };
+    };
+
     if (pendingFeedbackItems.length > 0) {
-      const extractedFeedback = await this.deps.extractAutomaticPrFeedback(task, workingDirectory, pendingFeedbackItems);
+      const pendingWorkflowItems = pendingFeedbackItems.filter((item) => item.source === "workflow");
+      if (pendingWorkflowItems.length > 0) {
+        return {
+          automaticPrFlowState: await startAutomaticPrFeedbackBatch(
+            pendingWorkflowItems,
+            [{
+              text: AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
+              sourceItemIds: pendingWorkflowItems.map((item) => item.id),
+            }],
+            handledItems,
+          ),
+          monitoringState,
+        };
+      }
+
+      const pendingReviewItems = pendingFeedbackItems.filter((item) => item.source !== "workflow");
+      const extractedFeedback = await this.deps.extractAutomaticPrFeedback(task, workingDirectory, pendingReviewItems);
       const sourceItemIds = new Set(
         extractedFeedback.feedbackItems.flatMap((item) => item.sourceItemIds),
       );
-      const sourceItems = pendingFeedbackItems.filter((item) => sourceItemIds.has(item.id));
+      const sourceItems = pendingReviewItems.filter((item) => sourceItemIds.has(item.id));
       const ignoredItemIds = new Set(
         extractedFeedback.ignoredItems.map((ignoredItem) => ignoredItem.itemId),
       );
-      const ignoredHandledItems = pendingFeedbackItems
+      const ignoredHandledItems = pendingReviewItems
         .filter((item) => ignoredItemIds.has(item.id))
         .map((item) => ({
           id: item.id,
@@ -445,33 +495,12 @@ export class PushedTaskMonitor {
         };
       }
 
-      const batchId = crypto.randomUUID();
-      const result = await this.deps.startAutomaticPrReviewCycle(task.config.id, {
-        batchId,
-        sourceItems,
-        feedbackItems: extractedFeedback.feedbackItems,
-      });
-      if (!result.success) {
-        throw new Error(result.error ?? "Automatic PR review cycle failed to start.");
-      }
-
       return {
-        automaticPrFlowState: {
-          ...baseState,
-          status: "processing_feedback",
-          handledItems: nextHandledItems,
-          activeBatch: {
-            batchId,
-            itemIds: sourceItems.map((item) => item.id),
-            items: sourceItems.map((item) => ({
-              id: item.id,
-              source: item.source,
-              threadId: item.threadId,
-            })),
-            startedAt: now,
-            reviewCycle: result.reviewCycle,
-          },
-        },
+        automaticPrFlowState: await startAutomaticPrFeedbackBatch(
+          sourceItems,
+          extractedFeedback.feedbackItems,
+          nextHandledItems,
+        ),
         monitoringState,
       };
     }

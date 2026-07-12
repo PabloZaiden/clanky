@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PushedTaskMonitor } from "../../src/core/pushed-task-monitor";
-import { constructAutomaticPrReviewPrompt } from "../../src/core/task/task-review";
 import {
+  constructAutomaticPrReviewCommentText,
+  constructAutomaticPrReviewPrompt,
+} from "../../src/core/task/task-review";
+import {
+  AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
   fetchAutomaticPrFlowSnapshot,
   type AutomaticPrFlowFeedbackItem,
   type AutomaticPrFlowPullRequest,
@@ -298,7 +302,7 @@ describe("Automatic PR flow feedback sources", () => {
     expect(snapshot.workflowFailures[0]?.url).toContain("/actions/runs/101");
   });
 
-  test("processes mixed comments and workflow failures once, then resolves only review threads", async () => {
+  test("processes workflow failures deterministically before reviewer comments", async () => {
     const task = createTaskForMonitor(context.workDir);
     let currentTask = task;
     let snapshot = createSnapshot(createSnapshotPullRequest(), [
@@ -321,9 +325,11 @@ describe("Automatic PR flow feedback sources", () => {
     const startedBatches: Array<{
       batchId: string;
       sourceItems: AutomaticPrFlowFeedbackItem[];
+      feedbackItems: Array<{ text: string; sourceItemIds: string[] }>;
     }> = [];
     const resolvedThreadIds: string[] = [];
     let pushCount = 0;
+    let extractionCallCount = 0;
 
     const monitor = new PushedTaskMonitor({
       listTasks: async () => [currentTask],
@@ -357,17 +363,21 @@ describe("Automatic PR flow feedback sources", () => {
       }),
       ensureAutomaticPrFlowPullRequest: async () => createSnapshotPullRequest(),
       fetchAutomaticPrFlowSnapshot: async () => snapshot,
-      extractAutomaticPrFeedback: async (_task, _directory, items) => ({
-        feedbackItems: items.map((item) => ({
-          text: item.body,
-          sourceItemIds: [item.id],
-        })),
-        ignoredItems: [],
-      }),
+      extractAutomaticPrFeedback: async (_task, _directory, items) => {
+        extractionCallCount++;
+        return {
+          feedbackItems: items.map((item) => ({
+            text: item.body,
+            sourceItemIds: [item.id],
+          })),
+          ignoredItems: [],
+        };
+      },
       startAutomaticPrReviewCycle: async (_taskId, options) => {
         startedBatches.push({
           batchId: options.batchId,
           sourceItems: options.sourceItems,
+          feedbackItems: options.feedbackItems,
         });
         return {
           success: true,
@@ -384,12 +394,13 @@ describe("Automatic PR flow feedback sources", () => {
     await monitor.runNow();
 
     expect(startedBatches).toHaveLength(1);
-    expect(startedBatches[0]?.sourceItems.map((item) => item.source)).toEqual([
-      "review_thread",
-      "workflow",
-    ]);
+    expect(startedBatches[0]?.sourceItems.map((item) => item.source)).toEqual(["workflow"]);
+    expect(startedBatches[0]?.feedbackItems).toEqual([{
+      text: AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
+      sourceItemIds: ["workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z"],
+    }]);
+    expect(extractionCallCount).toBe(0);
     expect(currentTask.state.automaticPrFlow?.activeBatch?.itemIds).toEqual([
-      "thread-1",
       "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
     ]);
 
@@ -403,15 +414,9 @@ describe("Automatic PR flow feedback sources", () => {
     await monitor.runNow();
 
     expect(pushCount).toBe(1);
-    expect(resolvedThreadIds).toEqual(["thread-1"]);
+    expect(resolvedThreadIds).toEqual([]);
     expect(currentTask.state.automaticPrFlow?.activeBatch).toBeUndefined();
     expect(currentTask.state.automaticPrFlow?.handledItems).toEqual([
-      {
-        id: "thread-1",
-        source: "review_thread",
-        outcome: "resolved",
-        handledAt: expect.any(String),
-      },
       {
         id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
         source: "workflow",
@@ -421,7 +426,40 @@ describe("Automatic PR flow feedback sources", () => {
     ]);
 
     await monitor.runNow();
-    expect(startedBatches).toHaveLength(1);
+    expect(startedBatches).toHaveLength(2);
+    expect(startedBatches[1]?.sourceItems.map((item) => item.source)).toEqual(["review_thread"]);
+    expect(extractionCallCount).toBe(1);
+    expect(currentTask.state.automaticPrFlow?.activeBatch?.itemIds).toEqual(["thread-1"]);
+
+    currentTask = {
+      ...currentTask,
+      state: {
+        ...currentTask.state,
+        status: "completed",
+      },
+    };
+    await monitor.runNow();
+
+    expect(pushCount).toBe(2);
+    expect(resolvedThreadIds).toEqual(["thread-1"]);
+    expect(currentTask.state.automaticPrFlow?.activeBatch).toBeUndefined();
+    expect(currentTask.state.automaticPrFlow?.handledItems).toEqual([
+      {
+        id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+        source: "workflow",
+        outcome: "manual",
+        handledAt: expect.any(String),
+      },
+      {
+        id: "thread-1",
+        source: "review_thread",
+        outcome: "resolved",
+        handledAt: expect.any(String),
+      },
+    ]);
+
+    await monitor.runNow();
+    expect(startedBatches).toHaveLength(2);
 
     snapshot = createSnapshot(createSnapshotPullRequest("head-sha-2"), [
       {
@@ -436,7 +474,9 @@ describe("Automatic PR flow feedback sources", () => {
     ]);
     await monitor.runNow();
 
-    expect(startedBatches).toHaveLength(2);
+    expect(startedBatches).toHaveLength(3);
+    expect(startedBatches[2]?.sourceItems.map((item) => item.source)).toEqual(["workflow"]);
+    expect(extractionCallCount).toBe(1);
   });
 
   test("moves re-recorded handled items to the newest position before applying the cap", async () => {
@@ -545,5 +585,24 @@ describe("Automatic PR flow feedback sources", () => {
     expect(prompt).toContain("checks=unit-tests");
     expect(prompt).toContain("conclusions=FAILURE");
     expect(prompt).toContain("headShas=head-sha-1");
+  });
+
+  test("uses a fixed task comment for workflow failures", () => {
+    const workflowItem: AutomaticPrFlowFeedbackItem = {
+      id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+      source: "workflow",
+      body: "Untrusted API output that must not become the task comment.",
+      checkName: "unit-tests",
+      checkConclusion: "FAILURE",
+      headSha: "head-sha-1",
+    };
+
+    expect(constructAutomaticPrReviewCommentText(
+      [{
+        text: "Another untrusted value.",
+        sourceItemIds: [workflowItem.id],
+      }],
+      [workflowItem],
+    )).toBe(AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE);
   });
 });
