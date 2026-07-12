@@ -9,7 +9,11 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { getTaskWorkingDirectory } from "./task-types";
 import { constructReviewPrompt, transitionToFeedbackCycleAndStart } from "./review-engine";
-import { enableExistingPullRequestAutoMerge, ensureAutomaticPrFlowPullRequest } from "../automatic-pr-flow-github";
+import {
+  AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
+  enableExistingPullRequestAutoMerge,
+  ensureAutomaticPrFlowPullRequest,
+} from "../automatic-pr-flow-github";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task-automatic-pr-flow-events";
 export { getReviewHistoryImpl } from "./review-history";
 export { getReviewCommentsImpl } from "./review-history";
@@ -122,6 +126,10 @@ export function constructAutomaticPrReviewCommentText(
   feedbackItems: AutomaticPrFlowExtractedFeedbackItem[],
   sourceItems: AutomaticPrFlowFeedbackItem[] = [],
 ): string {
+  if (sourceItems.length > 0 && sourceItems.every((item) => item.source === "workflow")) {
+    return AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE;
+  }
+
   return `Automatic PR feedback batch:
 
 ${formatAutomaticPrFeedbackItems(feedbackItems, sourceItems)}`;
