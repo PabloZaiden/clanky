@@ -15,6 +15,7 @@ const TASK_LIST_COLUMNS = [
   "name",
   "directory",
   "prompt",
+  "issue_number",
   "created_at",
   "updated_at",
   "is_private",

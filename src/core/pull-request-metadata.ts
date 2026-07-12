@@ -32,6 +32,7 @@ export interface PullRequestMetadataChangedFile {
 export interface PullRequestMetadataInput {
   taskName: string;
   originalPrompt: string;
+  issueNumber?: number;
   baseBranch: string;
   workingBranch: string;
   commitMessages: string[];
@@ -203,6 +204,29 @@ function sanitizeBody(body: string): string {
   return sanitized;
 }
 
+function normalizeIssueNumber(issueNumber: number | undefined): number | undefined {
+  return issueNumber !== undefined && Number.isInteger(issueNumber) && issueNumber > 0
+    ? issueNumber
+    : undefined;
+}
+
+function appendIssueClosingDirective(body: string, issueNumber: number | undefined): string {
+  const normalizedIssueNumber = normalizeIssueNumber(issueNumber);
+  if (normalizedIssueNumber === undefined) {
+    return body;
+  }
+
+  const directive = `Closes #${normalizedIssueNumber}`;
+  if (new RegExp(`\\bCloses\\s+#${normalizedIssueNumber}\\b`, "i").test(body)) {
+    return body;
+  }
+
+  const separator = body.length > 0 ? "\n\n" : "";
+  const availableBodyLength = MAX_PULL_REQUEST_BODY_LENGTH - separator.length - directive.length;
+  const truncatedBody = body.slice(0, Math.max(0, availableBodyLength)).trimEnd();
+  return `${truncatedBody}${separator}${directive}`;
+}
+
 function sanitizeFallbackTitle(title: string): string {
   try {
     return sanitizeTitle(stripBannedMetadata(title));
@@ -257,6 +281,10 @@ function buildMetadataPrompt(input: PullRequestMetadataInput): PromptInput {
   const commitSummaries = extractCommitSummaries(input.commitMessages).slice(0, 10);
   const changedFilesText = buildChangedFileLines(input.changedFiles);
   const originalPrompt = truncate(collapseWhitespace(input.originalPrompt), 1_000);
+  const issueNumber = normalizeIssueNumber(input.issueNumber);
+  const issueInstruction = issueNumber === undefined
+    ? ""
+    : `- The body MUST include the exact GitHub closing keyword \`Closes #${issueNumber}\` on its own line.`;
 
   return {
     parts: [{
@@ -271,12 +299,14 @@ Requirements:
 - Body: plain Markdown, concise but informative
 - Do NOT mention Clanky, autopr, automation, or that the pull request was generated automatically
 - Do NOT simply restate the original request; describe the implemented changes
+${issueInstruction}
 
 Task name:
 ${input.taskName.trim() || "(not provided)"}
 
 Base branch: ${input.baseBranch}
 Head branch: ${input.workingBranch}
+${issueNumber === undefined ? "Linked GitHub issue: none" : `Linked GitHub issue: #${issueNumber}`}
 
 Diff summary:
 - ${input.diffSummary.files} files changed
@@ -345,7 +375,10 @@ export function buildFallbackPullRequestMetadata(input: PullRequestMetadataInput
 
   return {
     title: sanitizeFallbackTitle(title),
-    body: sanitizeFallbackBody(bodySections.join("\n")),
+    body: appendIssueClosingDirective(
+      sanitizeFallbackBody(bodySections.join("\n")),
+      input.issueNumber,
+    ),
   };
 }
 
@@ -394,7 +427,7 @@ export async function generatePullRequestMetadata(
 
     return {
       title: sanitizeTitle(title),
-      body: sanitizeBody(body),
+      body: appendIssueClosingDirective(sanitizeBody(body), metadata.issueNumber),
     };
   } catch (error) {
     throw new Error(`Failed to generate pull request metadata: ${String(error)}`, { cause: error });

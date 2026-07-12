@@ -37,6 +37,7 @@ export function useFormActions({
   planMode,
   autoAcceptPlan,
   fullyAutonomous,
+  issueNumber,
   maxIterations,
   maxConsecutiveErrors,
   activityTimeoutSeconds,
@@ -67,6 +68,7 @@ export function useFormActions({
   planMode: boolean;
   autoAcceptPlan: boolean;
   fullyAutonomous: boolean;
+  issueNumber: string;
   maxIterations: string;
   maxConsecutiveErrors: string;
   activityTimeoutSeconds: string;
@@ -166,11 +168,17 @@ export function useFormActions({
 
         const parsedModel = selectedModel ? parseModelKey(selectedModel) : null;
         if (!asDraft && !parsedModel) return;
+        const parsedIssueNumber = issueNumber.trim() ? Number(issueNumber) : undefined;
 
         const request: CreateTaskFormSubmitRequest = {
           name: finalName,
           workspaceId: selectedWorkspaceId,
           prompt: effectivePrompt,
+          issueNumber: parsedIssueNumber !== undefined
+            && Number.isInteger(parsedIssueNumber)
+            && parsedIssueNumber > 0
+            ? parsedIssueNumber
+            : undefined,
           attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageImageAttachments(attachments) : [],
           planMode: currentUploadedPlan ? true : planMode,
           autoAcceptPlan: currentUploadedPlan ? true : planMode ? autoAcceptPlan : false,
@@ -227,6 +235,7 @@ export function useFormActions({
       planMode,
       autoAcceptPlan,
       fullyAutonomous,
+      issueNumber,
       maxIterations,
       maxConsecutiveErrors,
       activityTimeoutSeconds,

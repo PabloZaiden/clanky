@@ -40,6 +40,7 @@ async function applyTaskUpdates(
     }
     if (body.directory !== undefined) updates.directory = body.directory;
     if (body.prompt !== undefined) updates.prompt = body.prompt;
+    if (body.issueNumber !== undefined) updates.issueNumber = body.issueNumber ?? undefined;
     if (body.maxIterations !== undefined) {
       updates.maxIterations = body.maxIterations ?? Infinity;
     }

@@ -50,85 +50,96 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
 - When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
 
-## Visual validation with Playwright CLI
+## Visual validation with Playwright
 
 This workflow is for the coding agent when validating an application that depends on `@pablozaiden/webapp`, not for the application itself. Do not add Playwright dependencies, scripts, configuration, or test files to the application.
 
-Use the Node-based `playwright-cli` for interactive browser validation. Do not run Playwright through Bun, use the `playwright` library or test runner, use system Chrome, or hard-code browser executable paths.
+Use the official Node package `playwright` for browser automation and screenshots. Use its CLI only for version checks and browser installation; use the Node API for navigation, accessible interactions, snapshots, viewport changes and cleanup. Do not use system Chrome or hard-code browser executable paths.
 
-The environment must provide Node.js 18+ and:
+The environment must provide Node.js 18+ and npm. Confirm the official package and browser installation with:
 
 ```bash
-playwright-cli --help
+npx playwright --version
+npx playwright install chromium
 ```
 
-If it is missing, install it once at the environment level, never in the app:
+If the package is not already available in the validation environment, create an isolated temporary harness rather than installing it in the application:
 
 ```bash
-npm install -g @playwright/cli@latest
-playwright-cli install-browser chromium
-playwright-cli install --skills=agents
+playwright_workdir="$(mktemp -d)"
+trap 'rm -rf "$playwright_workdir"' EXIT
+cd "$playwright_workdir"
+npm init -y >/dev/null
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
 ```
 
-On Linux environments with missing browser system dependencies:
+On Linux environments with missing browser system dependencies, run the official command from the environment that owns Playwright:
 
 ```bash
-playwright-cli install-browser chromium --with-deps
+npx playwright install-deps
 ```
 
 For authenticated visual flows, `{PREFIX}_DISABLE_PASSKEY=true` may be used only with disposable local data. Never use production data or disable same-origin checks for browser validation.
 
-Use the URL of the already-running application. Run `playwright-cli` from a temporary working directory rather than the application repository:
+Use the URL of the already-running application and keep all browser state and output inside the temporary harness. The following example uses the Playwright Node API; replace the accessible labels and URL with those exposed by the application:
 
 ```bash
-playwright_workdir="$(mktemp -d)"
-cd "$playwright_workdir"
+export APP_URL="http://127.0.0.1:<port>"
+export PLAYWRIGHT_OUT_DIR="$playwright_workdir/screenshots"
+mkdir -p "$PLAYWRIGHT_OUT_DIR"
+
+node --input-type=module <<'EOF'
+import { chromium } from "playwright";
+
+const appUrl = process.env.APP_URL;
+const outputDir = process.env.PLAYWRIGHT_OUT_DIR;
+if (!appUrl || !outputDir) {
+  throw new Error("APP_URL and PLAYWRIGHT_OUT_DIR are required");
+}
+
+const browser = await chromium.launch({ headless: true });
+try {
+  const desktop = await browser.newContext({
+    viewport: { width: 1440, height: 920 },
+    colorScheme: "light",
+  });
+  const page = await desktop.newPage();
+  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("main").waitFor();
+  console.log(await page.locator("body").ariaSnapshot());
+
+  // Replace these labels with controls exposed by the application.
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("textbox", { name: "Search" }).fill("text");
+  await page.getByRole("textbox", { name: "Search" }).press("Enter");
+  await page.screenshot({ path: `${outputDir}/desktop.png`, fullPage: true });
+  await desktop.close();
+
+  const mobile = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    colorScheme: "light",
+  });
+  const mobilePage = await mobile.newPage();
+  await mobilePage.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await mobilePage.screenshot({ path: `${outputDir}/mobile.png`, fullPage: true });
+  await mobile.close();
+} finally {
+  await browser.close();
+}
+EOF
 ```
 
-Use a named, non-persistent browser session:
+Prefer `getByRole`, `getByLabel`, accessible names and other stable user-facing locators over CSS selectors, internal class names or generated element references. Take a new accessibility snapshot after navigation or state changes. The default headless mode is preferred for agents; use headed mode only when a graphical display is available. Review every screenshot against the requested visual behavior; capturing a screenshot without inspecting it is not validation.
 
-```bash
-playwright-cli -s=webapp-visual open http://127.0.0.1:<port> --browser=chromium
-playwright-cli -s=webapp-visual snapshot
-```
-
-Use the element references returned by the accessibility snapshot:
-
-```bash
-playwright-cli -s=webapp-visual click e12
-playwright-cli -s=webapp-visual fill e19 "text"
-playwright-cli -s=webapp-visual press Enter
-```
-
-Take a new snapshot after navigation or state changes. Prefer accessible element references and visible user-facing behavior over CSS selectors or implementation details.
-
-Use the CLI for visual inspection:
-
-```bash
-playwright-cli -s=webapp-visual screenshot
-playwright-cli -s=webapp-visual resize 390 844
-playwright-cli -s=webapp-visual screenshot
-```
-
-The default headless mode is preferred for agents. Use `--headed` only when a graphical display is available. Review every screenshot against the requested visual behavior; capturing a screenshot without inspecting it is not validation.
-
-Playwright-generated files are temporary artifacts, not application changes. Ignore and never commit paths such as:
+Playwright-generated files are temporary artifacts, not application changes. Keep them outside the application repository and never commit paths such as:
 
 - `.playwright/`
-- `.playwright-cli/`
 - `playwright-report/`
 - `test-results/`
 - `playwright/.auth/`
 
-If any of these paths appear in the repository, ensure they are ignored and remove only artifacts created during the current task. Do not delete pre-existing tracked files.
-
-At the end of the task:
-
-```bash
-playwright-cli -s=webapp-visual close
-playwright-cli -s=webapp-visual delete-data
-rm -rf "$playwright_workdir"
-```
+If any of these paths appear in the repository, ensure they are ignored and remove only artifacts created during the current task. Do not delete pre-existing tracked files. Closing the browser and removing the temporary harness via the `trap` above replaces the separate session close and data-delete commands.
 
 ## Minimum server shape
 

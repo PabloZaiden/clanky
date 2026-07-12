@@ -70,6 +70,8 @@ export function CreateTaskForm({
     setName,
     prompt,
     setPrompt,
+    issueNumber,
+    setIssueNumber,
     selectedModel,
     setSelectedModel,
     selectedCheapModel,
@@ -232,6 +234,28 @@ export function CreateTaskForm({
           onTemplateClear={() => setSelectedTemplate("")}
         />
       )}
+
+      <div>
+        <label
+          htmlFor="issueNumber"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          GitHub Issue Number
+        </label>
+        <input
+          type="number"
+          id="issueNumber"
+          value={issueNumber}
+          onChange={(e) => setIssueNumber(e.target.value)}
+          min="1"
+          step="1"
+          placeholder="Optional"
+          className="mt-1 block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Adds <code>Closes #number</code> to an automatically created PR.
+        </p>
+      </div>
 
       <UploadedPlanField
         uploadedPlan={uploadedPlan}

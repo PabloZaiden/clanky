@@ -52,6 +52,7 @@ export const tasksCollectionRoutes = {
      * - name (required): Human-readable task name
      * - workspaceId (required): Workspace to create the task in
      * - prompt (required): Task prompt/PRD
+     * - issueNumber (optional): GitHub issue number linked to the task
      * - model: { providerID, modelID } for AI model selection
      * - useWorktree (required): Whether to use a dedicated git worktree
      * - maxIterations: Maximum iterations (unlimited if not set)
@@ -185,6 +186,7 @@ export const tasksCollectionRoutes = {
           name: body.name,
           directory,
           prompt: body.prompt,
+          issueNumber: body.issueNumber,
           attachments: body.attachments,
           workspaceId,
           modelProviderID: body.model.providerID,

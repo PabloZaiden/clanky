@@ -75,6 +75,8 @@ export const TaskNameSchema = z
   .min(1, "name is required")
   .max(100, "name cannot exceed 100 characters");
 
+export const IssueNumberSchema = z.number().int().positive();
+
 const ActivityTimeoutSecondsSchema = z
   .number()
   .min(60, "activityTimeoutSeconds must be at least 60 seconds")
@@ -95,6 +97,7 @@ export const CreateTaskRequestSchema = z.object({
   name: TaskNameSchema,
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().min(1, "prompt is required and must be a non-empty string"),
+  issueNumber: IssueNumberSchema.optional(),
   attachments: MessageImageAttachmentsSchema,
   model: ModelConfigSchema,
   cheapModel: CheapModelSelectionSchema,
@@ -131,6 +134,7 @@ export const UpdateTaskRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   directory: z.string().optional(),
   prompt: z.string().optional(),
+  issueNumber: IssueNumberSchema.nullable().optional(),
   model: ModelConfigSchema.optional(),
   cheapModel: CheapModelSelectionSchema.optional(),
   maxIterations: z.number().positive().nullable().optional(),

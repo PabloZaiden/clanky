@@ -163,6 +163,7 @@ Create a new task.
 | `name` | string | Yes | Task name shown in the UI. The dashboard can generate a suggested name with `POST /api/tasks/title`, but the final value is submitted by the client. |
 | `workspaceId` | string | Yes | ID of the workspace to create the task in |
 | `prompt` | string | Yes | Task prompt/PRD (non-empty) |
+| `issueNumber` | positive integer | No | GitHub issue number linked to the task; automatic PR descriptions include `Closes #<issueNumber>` |
 | `model` | object | Yes | Model selection |
 | `model.providerID` | string | Yes | Provider ID (e.g., "anthropic") |
 | `model.modelID` | string | Yes | Model ID (e.g., "claude-sonnet-4-20250514") |
@@ -188,6 +189,7 @@ Create a new task.
   "name": "implement-dark-mode-toggle",
   "workspaceId": "ws-abc123",
   "prompt": "Implement a dark mode toggle in the settings page. Use CSS variables for theming.",
+  "issueNumber": 123,
   "model": {
     "providerID": "anthropic",
     "modelID": "claude-sonnet-4-20250514"
@@ -277,6 +279,7 @@ Update a task's configuration. Cannot be used on running or starting tasks — s
 | `name` | string | Update the task name |
 | `directory` | string | Update working directory |
 | `prompt` | string | Update prompt |
+| `issueNumber` | positive integer \| null | Update the linked GitHub issue number; send `null` to clear the existing issue link |
 | `model` | object | Update model |
 | `maxIterations` | number | Update max iterations |
 | `maxConsecutiveErrors` | number | Update max consecutive errors |

@@ -53,6 +53,7 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
     name,
     directory: options.directory,
     prompt: options.prompt,
+    issueNumber: options.issueNumber,
     createdAt: now,
     updatedAt: now,
     workspaceId: options.workspaceId,
@@ -305,6 +306,7 @@ export async function updateTaskImpl(
     hasPromptUpdate: updates.prompt !== undefined,
     promptLength: updates.prompt?.length,
     promptPreview: updates.prompt?.slice(0, 50),
+    issueNumber: updates.issueNumber,
   });
 
   const task = await loadTask(taskId);
