@@ -203,7 +203,13 @@ describe("Automatic PR flow feedback sources", () => {
                           id: "check-failed",
                           databaseId: 101,
                           name: "unit-tests",
-                          workflowName: "CI",
+                          checkSuite: {
+                            workflowRun: {
+                              workflow: {
+                                name: "CI",
+                              },
+                            },
+                          },
                           status: "COMPLETED",
                           conclusion: "FAILURE",
                           detailsUrl: "https://github.com/test-owner/test-repo/actions/runs/101",
@@ -216,7 +222,13 @@ describe("Automatic PR flow feedback sources", () => {
                           __typename: "CheckRun",
                           id: "check-success",
                           name: "lint",
-                          workflowName: "CI",
+                          checkSuite: {
+                            workflowRun: {
+                              workflow: {
+                                name: "CI",
+                              },
+                            },
+                          },
                           status: "COMPLETED",
                           conclusion: "SUCCESS",
                         },
@@ -224,7 +236,13 @@ describe("Automatic PR flow feedback sources", () => {
                           __typename: "CheckRun",
                           id: "check-pending",
                           name: "integration-tests",
-                          workflowName: "CI",
+                          checkSuite: {
+                            workflowRun: {
+                              workflow: {
+                                name: "CI",
+                              },
+                            },
+                          },
                           status: "IN_PROGRESS",
                           conclusion: null,
                         },
@@ -262,6 +280,9 @@ describe("Automatic PR flow feedback sources", () => {
     const query = executor.graphqlQueries[0] ?? "";
     expect(query).toContain("statusCheckRollup");
     expect(query).toContain("headRefOid");
+    expect(query).toContain("checkSuite");
+    expect(query).toContain("workflowRun");
+    expect(query).not.toContain("workflowName");
     expect(getGraphQlSelectionDepth(query, "reviewThreads(first:100)")).toBe(3);
     expect(getGraphQlSelectionDepth(query, "comments(first:100)")).toBe(3);
     expect(getGraphQlSelectionDepth(query, "reviews(first:100)")).toBe(3);
@@ -272,6 +293,7 @@ describe("Automatic PR flow feedback sources", () => {
       "external-gate",
     ]);
     expect(snapshot.workflowFailures[0]?.id).toContain(headSha);
+    expect(snapshot.workflowFailures[0]?.workflowName).toBe("CI");
     expect(snapshot.workflowFailures[0]?.body).toContain("Expected true to be false");
     expect(snapshot.workflowFailures[0]?.url).toContain("/actions/runs/101");
   });

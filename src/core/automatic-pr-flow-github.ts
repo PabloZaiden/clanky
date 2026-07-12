@@ -93,7 +93,13 @@ interface GraphQlStatusCheckContextNode {
   databaseId?: unknown;
   name?: unknown;
   context?: unknown;
-  workflowName?: unknown;
+  checkSuite?: {
+    workflowRun?: {
+      workflow?: {
+        name?: unknown;
+      } | null;
+    } | null;
+  } | null;
   status?: unknown;
   state?: unknown;
   conclusion?: unknown;
@@ -171,7 +177,13 @@ const PULL_REQUEST_DETAILS_QUERY = `query($owner:String!,$name:String!,$number:I
                     id
                     databaseId
                     name
-                    workflowName
+                    checkSuite {
+                      workflowRun {
+                        workflow {
+                          name
+                        }
+                      }
+                    }
                     status
                     conclusion
                     detailsUrl
@@ -460,7 +472,10 @@ function normalizeCheckRunFailure(
   }
 
   const checkName = truncateExternalText(checkRun.name, 200) ?? "Unnamed workflow check";
-  const workflowName = truncateExternalText(checkRun.workflowName, 200);
+  const workflowName = truncateExternalText(
+    checkRun.checkSuite?.workflowRun?.workflow?.name,
+    200,
+  );
   const completedAt = toStringValue(checkRun.completedAt);
   const details = [
     truncateExternalText(checkRun.summary, 2_000),
