@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
-import { configureLegacyRouteRequestTimeout } from "../../src/server";
+import { settingsRoutes } from "../../src/api/settings";
+import { archivedTasksRoutes } from "../../src/api/workspaces/archived-tasks";
 
 const PURGE_ROUTES = [
-  "/api/settings/purge-terminal-tasks",
-  "/api/workspaces/:id/archived-tasks/purge",
+  settingsRoutes["/api/settings/purge-terminal-tasks"]!.POST!,
+  archivedTasksRoutes["/api/workspaces/:id/archived-tasks/purge"]!.POST!,
 ];
 
-test("disables Bun request idle timeout for both purge routes", () => {
-  for (const path of PURGE_ROUTES) {
-    const request = new Request(`http://localhost${path}`);
+test("disables Bun request idle timeout for both purge routes", async () => {
+  for (const handler of PURGE_ROUTES) {
+    const request = new Request("http://localhost/api/purge");
     const calls: Array<{ request: Request; seconds: number }> = [];
     const server = {
       timeout(request: Request, seconds: number) {
@@ -16,21 +17,8 @@ test("disables Bun request idle timeout for both purge routes", () => {
       },
     };
 
-    configureLegacyRouteRequestTimeout(path, request, server);
+    await handler(request, { server, params: { id: "test-workspace" } } as never);
 
     expect(calls).toEqual([{ request, seconds: 0 }]);
   }
-});
-
-test("does not change request timeout for unrelated routes", () => {
-  const calls: Array<{ request: Request; seconds: number }> = [];
-  const server = {
-    timeout(request: Request, seconds: number) {
-      calls.push({ request, seconds });
-    },
-  };
-
-  configureLegacyRouteRequestTimeout("/api/tasks", new Request("http://localhost/api/tasks"), server);
-
-  expect(calls).toEqual([]);
 });

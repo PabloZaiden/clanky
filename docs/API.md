@@ -531,65 +531,6 @@ Returns the SSH session object.
 | 400 | `invalid_session_configuration` | Task cannot open an SSH session with its current transport/setup |
 | 500 | `ssh_session_error` | Failed to create the SSH session |
 
-#### GET /api/tasks/:id/port-forwards
-
-List all port forwards associated with a task.
-
-**Response**
-
-Returns an array of port-forward objects.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 500 | `port_forward_error` | Failed to list port forwards |
-
-#### POST /api/tasks/:id/port-forwards
-
-Create a new port forward for a task's SSH-backed workspace.
-
-**Request Body**
-
-```json
-{
-  "remotePort": 3000
-}
-```
-
-**Response**
-
-Returns the created port-forward object with status `201 Created`.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 409 | `duplicate_port_forward` | The same remote port is already being forwarded for this workspace |
-| 400 | `invalid_port_forward_configuration` | The task cannot create a port forward with its current transport/setup |
-| 500 | `port_forward_error` | Failed to create the port forward |
-
-#### DELETE /api/tasks/:id/port-forwards/:forwardId
-
-Delete a task port forward.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Port forward not found |
-| 500 | `port_forward_error` | Failed to delete the port forward |
-
 #### POST /api/tasks/:id/mark-merged
 
 Mark a task as externally merged and transition it to `deleted`.
@@ -2484,11 +2425,6 @@ Each event is a JSON object with a `type` field:
 | `ssh_session.updated` | SSH session metadata was updated |
 | `ssh_session.deleted` | SSH session was deleted |
 | `ssh_session.status` | SSH session connection state changed |
-| `ssh_session.port_forward.created` | Port forward was created |
-| `ssh_session.port_forward.updated` | Port forward metadata was updated |
-| `ssh_session.port_forward.deleted` | Port forward was deleted |
-| `ssh_session.port_forward.status` | Port forward lifecycle state changed |
-
 **Keep-Alive**
 
 Send a ping message to receive a pong response:
@@ -2560,16 +2496,6 @@ Standalone SSH server sessions require an initial auth message after the socket 
 ```
 
 The terminal socket emits events such as `terminal.connected`, `terminal.output`, `terminal.clipboard`, `terminal.error`, and `terminal.closed`.
-
-#### Forwarded Port Proxy Routes
-
-Active task port forwards are exposed through browser-facing proxy routes:
-
-- `GET /task/:taskId/port/:forwardId`
-- `GET /task/:taskId/port/:forwardId/*`
-- WebSocket upgrades on the same paths
-
-These routes proxy HTTP and WebSocket traffic to the task's forwarded remote service and rewrite absolute paths/redirects so browser apps can run under the task-scoped prefix.
 
 ---
 

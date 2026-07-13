@@ -7,8 +7,8 @@ import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } fr
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { serve, type Server } from "bun";
-import { apiRoutes } from "../../src/api";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
@@ -111,12 +111,7 @@ describe("POST /api/tasks/:id/pending", () => {
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
     // Start test server on random port
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

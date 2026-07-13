@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * API endpoints for persistent SSH sessions.
  */
@@ -25,9 +26,11 @@ function mapSessionError(error: unknown): Response {
   return errorResponse("ssh_session_error", message, 500);
 }
 
-export const sshSessionsRoutes = {
+export const sshSessionsRoutes = defineRoutes({
   "/api/ssh-sessions": {
-    async GET(req: Request): Promise<Response> {
+    description: "Create a workspace-backed SSH session.",
+    requestSchema: CreateSshSessionRequestSchema,
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
       try {
@@ -39,7 +42,7 @@ export const sshSessionsRoutes = {
       }
     },
 
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateSshSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -56,45 +59,47 @@ export const sshSessionsRoutes = {
   },
 
   "/api/ssh-sessions/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Update or delete a workspace-backed SSH session.",
+    requestSchema: UpdateSshSessionRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const session = await sshSessionManager.getSession(req.params.id);
+        const session = await sshSessionManager.getSession(ctx.params["id"]!);
         if (!session) {
           return errorResponse("not_found", "SSH session not found", 404);
         }
         return Response.json(session);
       } catch (error) {
-        log.error("Failed to fetch SSH session", { error: String(error), id: req.params.id });
+        log.error("Failed to fetch SSH session", { error: String(error), id: ctx.params["id"]! });
         return mapSessionError(error);
       }
     },
 
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
+    async PATCH(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(UpdateSshSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const session = await sshSessionManager.updateSession(req.params.id, validation.data);
+        const session = await sshSessionManager.updateSession(ctx.params["id"]!, validation.data);
         return Response.json(session);
       } catch (error) {
-        log.error("Failed to update SSH session", { error: String(error), id: req.params.id });
+        log.error("Failed to update SSH session", { error: String(error), id: ctx.params["id"]! });
         return mapSessionError(error);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const deleted = await sshSessionManager.deleteSession(req.params.id);
+        const deleted = await sshSessionManager.deleteSession(ctx.params["id"]!);
         if (!deleted) {
           return errorResponse("not_found", "SSH session not found", 404);
         }
         return Response.json({ success: true });
       } catch (error) {
-        log.error("Failed to delete SSH session", { error: String(error), id: req.params.id });
+        log.error("Failed to delete SSH session", { error: String(error), id: ctx.params["id"]! });
         return mapSessionError(error);
       }
     },
   },
-};
+});

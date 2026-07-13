@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * CRUD route handlers for workspace entities.
  * Covers list, create, get, update, and delete operations.
@@ -24,6 +25,7 @@ import {
   DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
 } from "../../types/schemas";
+import { SensitiveQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:workspaces");
 
@@ -35,13 +37,16 @@ function mapDeleteWorkspaceError(error: unknown): Response {
   return errorResponse("delete_failed", `Failed to delete workspace: ${message}`, 500);
 }
 
-export const crudRoutes = {
+export const crudRoutes = defineRoutes({
   /**
    * GET /api/workspaces - List all workspaces
    * POST /api/workspaces - Create a new workspace
    */
   "/api/workspaces": {
-    async GET(req: Request) {
+    description: "List workspaces or create a workspace.",
+    requestSchema: CreateWorkspaceRequestSchema,
+    querySchema: SensitiveQuerySchema,
+    async GET(req: Request, _ctx) {
       log.debug("GET /api/workspaces - Listing all workspaces");
       try {
         const includeSensitive = shouldIncludeSensitiveData(req);
@@ -54,7 +59,7 @@ export const crudRoutes = {
       }
     },
 
-    async POST(req: Request) {
+    async POST(req: Request, _ctx) {
       log.debug("POST /api/workspaces - Creating new workspace");
       const result = await parseAndValidate(CreateWorkspaceRequestSchema, req);
 
@@ -128,8 +133,11 @@ export const crudRoutes = {
    * GET /PUT /DELETE /api/workspaces/:id - Single workspace operations
    */
   "/api/workspaces/:id": {
-    async GET(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    description: "Read, update, or delete a workspace.",
+    requestSchema: UpdateWorkspaceRequestSchema,
+    querySchema: SensitiveQuerySchema,
+    async GET(req: Request, ctx) {
+      const id = ctx.params["id"]!;
       log.debug("GET /api/workspaces/:id", { workspaceId: id });
       try {
         const result = await requireWorkspace(id);
@@ -144,8 +152,8 @@ export const crudRoutes = {
       }
     },
 
-    async PUT(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    async PUT(req: Request, ctx) {
+      const id = ctx.params["id"]!;
       log.debug("PUT /api/workspaces/:id", { workspaceId: id });
       const includeSensitive = shouldIncludeSensitiveData(req);
       const result = await parseAndValidate(UpdateWorkspaceRequestSchema, req);
@@ -207,8 +215,8 @@ export const crudRoutes = {
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    async DELETE(req: Request, ctx) {
+      const id = ctx.params["id"]!;
       log.debug("DELETE /api/workspaces/:id", { workspaceId: id });
       const validation = await parseAndValidate(DeleteWorkspaceRequestSchema, req, {
         allowEmptyBody: true,
@@ -237,4 +245,4 @@ export const crudRoutes = {
       }
     },
   },
-};
+});

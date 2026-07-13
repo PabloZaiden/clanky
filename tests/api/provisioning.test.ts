@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
@@ -78,12 +78,7 @@ describe("Provisioning API integration", () => {
 
     backendManager.setBackendForTesting(createMockBackend());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

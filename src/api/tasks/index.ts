@@ -6,7 +6,7 @@
  * - Control: Accept, push, discard, and purge completed tasks
  * - Plan Mode: Create, review, and accept plans before execution
  * - SSH: Task-linked SSH session management
- * - Port Forwards: Task-scoped remote service exposure
+ * - SSH: Task-linked persistent SSH sessions
  * - Review: Address reviewer comments on pushed/merged tasks
  * - Data: Access task diffs, plans, status files, and PR navigation metadata
  *
@@ -17,14 +17,15 @@
  * @module api/tasks
  */
 
+import { defineRoutes } from "@pablozaiden/webapp/server";
+
 export { tasksCrudRoutes } from "./crud";
-export { tasksControlRoutes } from "./lifecycle";
 export { tasksDataRoutes } from "./data";
 export { tasksReviewRoutes } from "./review";
 export { tasksDraftRoutes } from "./draft";
 export { tasksAcceptPushRoutes } from "./accept-push";
 export { tasksDiscardPurgeRoutes } from "./discard-purge";
-export { tasksSshPortsRoutes } from "./ssh-ports";
+export { tasksSshSessionRoutes } from "./ssh-session";
 export { tasksPendingRoutes } from "./pending";
 export { tasksPlanRoutes } from "./plan";
 export { tasksStopRoutes } from "./stop";
@@ -34,7 +35,7 @@ import { tasksCrudRoutes } from "./crud";
 import { tasksDraftRoutes } from "./draft";
 import { tasksAcceptPushRoutes } from "./accept-push";
 import { tasksDiscardPurgeRoutes } from "./discard-purge";
-import { tasksSshPortsRoutes } from "./ssh-ports";
+import { tasksSshSessionRoutes } from "./ssh-session";
 import { tasksPendingRoutes } from "./pending";
 import { tasksPlanRoutes } from "./plan";
 import { tasksDataRoutes } from "./data";
@@ -45,16 +46,16 @@ import { tasksChatRoutes } from "./chat";
 /**
  * All tasks routes combined.
  */
-export const tasksRoutes = {
+export const tasksRoutes = defineRoutes({
   ...tasksCrudRoutes,
   ...tasksDraftRoutes,
   ...tasksAcceptPushRoutes,
   ...tasksDiscardPurgeRoutes,
-  ...tasksSshPortsRoutes,
+  ...tasksSshSessionRoutes,
   ...tasksPendingRoutes,
   ...tasksPlanRoutes,
   ...tasksDataRoutes,
   ...tasksReviewRoutes,
   ...tasksStopRoutes,
   ...tasksChatRoutes,
-};
+});

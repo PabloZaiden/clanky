@@ -14,6 +14,7 @@ export {
 } from "./update";
 
 export {
+  createCliCredentialsStore,
   getAuthorizedHeaders,
   getCliRequestAuthContext,
   getTokenErrorMessage,
@@ -34,6 +35,7 @@ export {
 export {
   findApiEndpoint,
   formatSchema,
+  getCliRouteCatalog,
   listApiEndpoints,
   normalizeApiEndpointPath,
   type ApiEndpointCatalogEntry,

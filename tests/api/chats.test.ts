@@ -3,11 +3,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { saveTask } from "../../src/persistence/tasks";
@@ -202,12 +202,7 @@ describe("Chats API Integration", () => {
 
     installMockBackend(["Hello from chat API", "Second response"]);
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
     testWorkspaceId = await getOrCreateWorkspace(testWorkDir, "Chat Test Workspace");
   });

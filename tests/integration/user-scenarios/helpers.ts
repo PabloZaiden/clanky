@@ -6,8 +6,8 @@
 import { mkdtemp, rm, writeFile, mkdir, realpath } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { serve, type Server } from "bun";
-import { apiRoutes } from "../../../src/api";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../../native-api-server";
 import { ensureDataDirectories } from "../../../src/persistence/database";
 import { backendManager } from "../../../src/core/backend-manager";
 import { taskManager } from "../../../src/core/task-manager";
@@ -373,12 +373,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
   // Start test server
-  const server = serve({
-    port: 0, // Random available port
-    routes: {
-      ...apiRoutes,
-    },
-  });
+  const server = serveNativeApiRoutes();
 
   const baseUrl = server.url.toString().replace(/\/$/, "");
 

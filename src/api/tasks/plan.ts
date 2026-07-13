@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task plan management routes.
  *
@@ -18,8 +19,10 @@ import {
 
 const log = createLogger("api:tasks");
 
-export const tasksPlanRoutes = {
+export const tasksPlanRoutes = defineRoutes({
   "/api/tasks/:id/plan/feedback": {
+    description: "Submit feedback on a generated task plan.",
+    requestSchema: PlanFeedbackRequestSchema,
     /**
      * POST /api/tasks/:id/plan/feedback - Send feedback to refine the plan.
      *
@@ -37,7 +40,7 @@ export const tasksPlanRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       // Parse and validate request body using Zod schema
       const validation = await parseAndValidate(PlanFeedbackRequestSchema, req);
       if (!validation.success) {
@@ -46,7 +49,7 @@ export const tasksPlanRoutes = {
       const body = validation.data;
 
       try {
-        await taskManager.sendPlanFeedback(req.params.id, body.feedback, body.attachments);
+        await taskManager.sendPlanFeedback(ctx.params["id"]!, body.feedback, body.attachments);
         return successResponse();
       } catch (error) {
         const errorMsg = String(error);
@@ -57,7 +60,7 @@ export const tasksPlanRoutes = {
           return errorResponse("not_planning", errorMsg, 400);
         }
         log.error("Failed to send plan feedback", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: errorMsg,
         });
         return errorResponse("feedback_failed", errorMsg, 500);
@@ -66,6 +69,8 @@ export const tasksPlanRoutes = {
   },
 
   "/api/tasks/:id/plan/accept": {
+    description: "Accept a generated task plan.",
+    requestSchema: PlanAcceptRequestSchema,
     /**
      * POST /api/tasks/:id/plan/accept - Accept the plan and either start execution or open SSH.
      *
@@ -75,14 +80,14 @@ export const tasksPlanRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       try {
         const validation = await parseAndValidate(PlanAcceptRequestSchema, req);
         if (!validation.success) {
           return validation.response;
         }
 
-        const result = await taskManager.acceptPlan(req.params.id, {
+        const result = await taskManager.acceptPlan(ctx.params["id"]!, {
           mode: validation.data.mode,
         });
         const response: PlanAcceptResponse = result.mode === "open_ssh"
@@ -101,7 +106,7 @@ export const tasksPlanRoutes = {
           return errorResponse("plan_not_ready", errorMsg, 400);
         }
         log.error("Failed to accept plan", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: errorMsg,
         });
         return errorResponse("accept_failed", errorMsg, 500);
@@ -110,6 +115,7 @@ export const tasksPlanRoutes = {
   },
 
   "/api/tasks/:id/plan/discard": {
+    description: "Discard a generated task plan and delete the task.",
     /**
      * POST /api/tasks/:id/plan/discard - Discard the plan and delete the task.
      *
@@ -118,20 +124,20 @@ export const tasksPlanRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const deleted = await taskManager.discardPlan(req.params.id);
+        const deleted = await taskManager.discardPlan(ctx.params["id"]!);
         if (!deleted) {
           return errorResponse("not_found", "Task not found", 404);
         }
         return successResponse();
       } catch (error) {
         log.error("Failed to discard plan", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("discard_failed", String(error), 500);
       }
     },
   },
-};
+});

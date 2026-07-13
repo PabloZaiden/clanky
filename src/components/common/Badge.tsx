@@ -3,24 +3,10 @@
  */
 
 import type { HTMLAttributes } from "react";
+import { Badge as FrameworkBadge } from "@pablozaiden/webapp/web";
 import type { ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
 
-export type BadgeVariant = 
-  | "default" 
-  | "success" 
-  | "warning" 
-  | "error" 
-  | "info"
-  | "idle"
-  | "planning"
-  | "running"
-  | "completed"
-  | "stopped"
-  | "failed"
-  | "merged"
-  | "pushed"
-  | "deleted"
-  | "plan_ready";
+export type BadgeVariant = import("@pablozaiden/webapp/web").BadgeVariant;
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   /** Visual variant */
@@ -31,32 +17,6 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   children: React.ReactNode;
 }
 
-const variantClasses: Record<BadgeVariant, string> = {
-  default: "bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-gray-300",
-  success: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  warning: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-  error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-  info: "bg-blue-100 text-blue-800 dark:bg-neutral-800 dark:text-blue-300",
-  // Task status variants
-  idle: "bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-gray-300",
-  planning: "bg-cyan-100 text-cyan-800 dark:bg-neutral-800 dark:text-cyan-300",
-  running: "bg-blue-100 text-blue-800 dark:bg-neutral-800 dark:text-blue-300",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  stopped: "bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-gray-300",
-  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-  // Final states
-  merged: "bg-purple-100 text-purple-800 dark:bg-neutral-800 dark:text-purple-300",
-  pushed: "bg-indigo-100 text-indigo-800 dark:bg-neutral-800 dark:text-indigo-300",
-  deleted: "bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-gray-500",
-  // Plan sub-state
-  plan_ready: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
-};
-
-const sizeClasses = {
-  sm: "px-2 py-0.5 text-xs",
-  md: "px-2.5 py-1 text-sm",
-};
-
 export function Badge({
   variant = "default",
   size = "sm",
@@ -65,13 +25,14 @@ export function Badge({
   ...props
 }: BadgeProps) {
   return (
-    <span
+    <FrameworkBadge
       data-badge-variant={variant}
-      className={`inline-flex items-center font-medium rounded-full ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      variant={variant}
+      className={size === "md" ? `clanky-badge-md ${className}`.trim() : className}
       {...props}
     >
       {children}
-    </span>
+    </FrameworkBadge>
   );
 }
 

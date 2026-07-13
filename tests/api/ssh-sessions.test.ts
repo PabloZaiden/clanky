@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
-import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -81,12 +81,7 @@ describe("SSH sessions API integration", () => {
     backendManager.setBackendForTesting(createMockBackend());
     backendManager.setExecutorFactoryForTesting(() => new SshSessionTestExecutor());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

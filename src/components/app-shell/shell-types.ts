@@ -1,5 +1,4 @@
 import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
-import { createLogger } from "../../lib/logger";
 import type { Agent, Chat, Task, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import {
@@ -9,18 +8,7 @@ import {
   type BadgeVariant,
 } from "../common";
 
-const log = createLogger("AppShell");
-
-export const SIDEBAR_SECTION_STORAGE_KEY = "clanky.sidebarSectionCollapseState";
-
-export type SidebarSectionId = "pinned" | "quick-chats" | "active-work" | "workspaces" | "ssh-servers";
 export type SidebarWorkspaceGroupId = "all";
-export type SidebarCollapseState = Record<string, boolean>;
-
-export interface SidebarCollapseStateLoadResult {
-  state: SidebarCollapseState;
-  invalidReason: string | null;
-}
 
 export interface SidebarWorkspaceSessionNode {
   session: SshSession;
@@ -189,82 +177,6 @@ export type ShellRoute =
     };
 
 export type ComposeKind = Extract<ShellRoute, { view: "compose" }>["kind"];
-
-function buildSidebarCollapseKey(...parts: string[]): string {
-  return parts.join(":");
-}
-
-function isRecognizedSidebarCollapseKey(key: string): boolean {
-  return key === "pinned"
-    || key === "quick-chats"
-    || key === "active-work"
-    || key === "workspaces"
-    || key.startsWith("workspaces:")
-    || key === "ssh-servers"
-    || key.startsWith("ssh-servers:");
-}
-
-function migrateSidebarCollapseKey(key: string): string {
-  return key.replace(
-    /^workspaces:group:(active|inactive)(?=:|$)/,
-    "workspaces:group:all",
-  );
-}
-
-function normalizeSidebarCollapseState(state: Record<string, unknown>): SidebarCollapseState {
-  return Object.entries(state).reduce<SidebarCollapseState>((normalizedState, [key, value]) => {
-    if (value === true && isRecognizedSidebarCollapseKey(key)) {
-      normalizedState[migrateSidebarCollapseKey(key)] = true;
-    }
-    return normalizedState;
-  }, {});
-}
-
-export function getSidebarSectionCollapseKey(sectionId: SidebarSectionId): string {
-  return buildSidebarCollapseKey(sectionId);
-}
-
-export function getSidebarGroupCollapseKey(sectionId: SidebarSectionId, groupId: SidebarWorkspaceGroupId): string {
-  return buildSidebarCollapseKey(sectionId, "group", groupId);
-}
-
-export function getSidebarWorkspaceCollapseKey(
-  sectionId: SidebarSectionId,
-  groupId: SidebarWorkspaceGroupId,
-  workspaceId: string,
-): string {
-  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId);
-}
-
-export function getSidebarWorkspaceSectionCollapseKey(
-  sectionId: SidebarSectionId,
-  groupId: SidebarWorkspaceGroupId,
-  workspaceId: string,
-  childSectionId: "tasks" | "history" | "chats" | "agents" | "ssh-sessions",
-): string {
-  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, childSectionId);
-}
-
-export function getSidebarTaskCollapseKey(
-  sectionId: SidebarSectionId,
-  groupId: SidebarWorkspaceGroupId,
-  workspaceId: string,
-  taskId: string,
-): string {
-  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, "task", taskId);
-}
-
-export function getSidebarServerCollapseKey(sectionId: SidebarSectionId, serverId: string): string {
-  return buildSidebarCollapseKey(sectionId, "server", serverId);
-}
-
-export function getSidebarServerSectionCollapseKey(
-  sectionId: SidebarSectionId,
-  serverId: string,
-  childSectionId: "sessions" | "chats",
-): string {
-  return buildSidebarCollapseKey(sectionId, "server", serverId, childSectionId);
-}
 
 export function getSshConnectionModeLabel(mode: "direct" | "dtach" | string): string {
   return mode === "direct" ? "Direct SSH" : "Persistent SSH";
@@ -524,80 +436,4 @@ export function buildServerSidebarNodes({
         })),
     };
   });
-}
-
-export function isDesktopShellViewport(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return false;
-  }
-
-  return window.matchMedia("(min-width: 1024px)").matches;
-}
-
-function getSidebarSectionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.localStorage;
-  } catch (error) {
-    log.warn("Sidebar section storage is unavailable", { error: String(error) });
-    return null;
-  }
-}
-
-export function loadSidebarSectionCollapseState(): SidebarCollapseStateLoadResult {
-  const storage = getSidebarSectionStorage();
-  if (!storage) {
-    return {
-      state: {},
-      invalidReason: null,
-    };
-  }
-
-  const raw = storage.getItem(SIDEBAR_SECTION_STORAGE_KEY);
-  if (!raw) {
-    return {
-      state: {},
-      invalidReason: null,
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Invalid sidebar section state payload");
-    }
-
-    const parsedState = parsed as Record<string, unknown>;
-    const sanitizedState = normalizeSidebarCollapseState(parsedState);
-    return {
-      state: sanitizedState,
-      invalidReason: null,
-    };
-  } catch (error) {
-    return {
-      state: {},
-      invalidReason: String(error),
-    };
-  }
-}
-
-export function saveSidebarSectionCollapseState(state: SidebarCollapseState): void {
-  const storage = getSidebarSectionStorage();
-  if (!storage) {
-    return;
-  }
-
-  try {
-    const normalizedState = normalizeSidebarCollapseState(state);
-    if (Object.keys(normalizedState).length === 0) {
-      storage.removeItem(SIDEBAR_SECTION_STORAGE_KEY);
-      return;
-    }
-    storage.setItem(SIDEBAR_SECTION_STORAGE_KEY, JSON.stringify(normalizedState));
-  } catch (error) {
-    log.warn("Failed to persist sidebar section state", { error: String(error) });
-  }
 }

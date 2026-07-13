@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { constants, publicEncrypt } from "node:crypto";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
@@ -170,12 +170,7 @@ describe("Standalone SSH servers API integration", () => {
     executorFactory = () => new SshServerApiExecutor();
     sshServerManager.setExecutorFactoryForTesting(() => executorFactory());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

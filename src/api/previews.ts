@@ -1,3 +1,4 @@
+import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 /**
  * Workspace live preview API routes.
  */
@@ -19,15 +20,15 @@ function mapPreviewError(error: unknown): Response {
   return errorResponse("preview_error", message, 500);
 }
 
-export const previewRoutes = {
+export const previewRoutes = defineRoutes({
   "/api/workspaces/:workspaceId/previews": {
-    async GET(req: Request & { params: { workspaceId: string } }): Promise<Response> {
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const previews = await previewSessionManager.listWorkspacePreviews(req.params.workspaceId);
+        const previews = await previewSessionManager.listWorkspacePreviews(ctx.params["workspaceId"]!);
         return Response.json(previews);
       } catch (error) {
         log.error("GET /api/workspaces/:workspaceId/previews - Failed", {
-          workspaceId: req.params.workspaceId,
+          workspaceId: ctx.params["workspaceId"]!,
           error: String(error),
         });
         return mapPreviewError(error);
@@ -36,7 +37,7 @@ export const previewRoutes = {
   },
 
   "/api/previews": {
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         const previews = await previewSessionManager.listActivePreviews();
         return Response.json(previews);
@@ -48,20 +49,20 @@ export const previewRoutes = {
   },
 
   "/api/previews/:previewId": {
-    async DELETE(req: Request & { params: { previewId: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const closed = await previewSessionManager.closePreview(req.params.previewId, "Closed from web UI");
+        const closed = await previewSessionManager.closePreview(ctx.params["previewId"]!, "Closed from web UI");
         if (!closed) {
           return errorResponse("not_found", "Preview not found", 404);
         }
         return successResponse();
       } catch (error) {
         log.error("DELETE /api/previews/:previewId - Failed", {
-          previewId: req.params.previewId,
+          previewId: ctx.params["previewId"]!,
           error: String(error),
         });
         return mapPreviewError(error);
       }
     },
   },
-};
+});

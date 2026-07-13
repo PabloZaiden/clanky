@@ -64,6 +64,14 @@ jobs:
           # Run the container in the background
           docker run -d --name clanky-test -p 8080:8080 ${{ steps.meta.outputs.tags }}
 
+          # The production image is intended for reverse-proxy deployments.
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-test \
+            | grep -Fx 'CLANKY_TRUST_PROXY=true'
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-test \
+            | grep -Fx 'CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix'
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-test \
+            | grep -Fx 'CLANKY_TRUST_PROXY_CHAIN=first'
+
           # Wait for the container to be ready and healthy
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 30); do

@@ -31,7 +31,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Use scopes for API keys and device bearer tokens.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
 - Use `WebAppRoot`, `SidebarNode` and framework UI primitives before custom shell/layout code.
-- Route components rendered inside `WebAppRoot.routes` must use `Page` as the top-level main-content wrapper. Do not render raw panels/lists directly into `WebAppRoot`, and do not use or recreate `wapp-main-content`; `Page` provides the standard content margins/padding on desktop and mobile.
+- Route components rendered inside `WebAppRoot.routes` must use `Page` as the top-level main-content wrapper. Do not render raw panels/lists directly into `WebAppRoot`, and do not use or recreate `wapp-main-content`; `Page` provides the standard content margins/padding on desktop and mobile by default. Use `<Page layout="full">` for viewport-sized child content that owns its own spacing or scrolling instead of overriding framework CSS.
 - Set `sidebar.search: false` when the app has a small fixed navigation tree and should not show the framework sidebar search box.
 - For entity actions, define one `ActionMenuItem[]` builder and attach it to the route-backed `SidebarNode.actions`; the framework reuses those actions for sidebar right-click and the active route title-bar three-line menu. Use `WebAppRoot.header.getActions` only for extra route-level actions not owned by an active sidebar node.
 - When a main-content view has multiple available actions, put them in framework-owned shell actions rather than app-local header/menu implementations. Keep discrete buttons for form submission and truly primary inline controls.
@@ -42,7 +42,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Do not add app-local shell/header action menus for active entities. If the action belongs to a task/chat/agent/session/workspace/server sidebar entity, put it on that node's `actions`.
 - Framework header actions and icon/sidebar buttons must remain visible and non-deforming; let titles/subtitles truncate instead of clipping actions.
 - For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useRealtimeRefresh({ resources, refresh })` over custom websocket wiring. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
-- Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or port-forward proxies; keep normal app state on framework realtime.
+- Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or preview bridges; keep normal app state on framework realtime.
 - Prefer `Page`, `Panel`, `DataList`, `DataListRow`, `DangerZone`, `LoadingState`, `ErrorState`, `FormGroup`, `FormActions`, and `CodeValue` for main content before custom CSS. Use `EntityHeader` only when the content needs an entity-specific heading that is not already provided by the fixed framework title bar.
 - Prefer structured `settings.sections[].rows` for settings; keep `render` only as an escape hatch.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
@@ -231,13 +231,14 @@ PATCH: (_req, ctx) => {
 
 ## Validation checklist
 
-Run targeted tests, `bun run tsc`, example binary builds, app health checks, and `bun run screenshots`. Use `docs/auth-validation.md` for manual passkey/API-key/device-auth validation. If Docker base images can be pulled, build and run the example containers and check `/api/health`.
+Run targeted tests, `bun run tsc`, example binary builds, and app health checks. Use the temporary Playwright harness above for visual validation, and use `docs/auth-validation.md` for manual passkey/API-key/device-auth validation. If Docker base images can be pulled, build and run the example containers and check `/api/health`.
 
 ## CI/CD checklist for generated apps
 
 Use `docs/github-actions.md` as the source of truth. At minimum, generated apps should include:
 
 - A root `Dockerfile` that builds with `oven/bun`, copies the standalone binary into a slim runtime image, runs as a non-root user, and healthchecks `/api/health`.
+- For proxy-only public Docker deployments, set the app's trust-proxy defaults in the image, require a deployment-specific public base URL, sanitize all trusted forwarded headers at the proxy, forward WebSocket upgrades, keep the app port private, and persist the complete data directory.
 - `.github/workflows/pr.yml` with install, build, test, Bun dev-server smoke checks, and Docker image smoke checks.
 - `.github/workflows/docker-main.yml` to publish `ghcr.io/<owner>/<repo>:main` after merges to `main` and smoke-test the container.
 - `.github/workflows/binary-release.yml` using `pablozaiden/installer/.github/workflows/reusable-binary-release.yml`.

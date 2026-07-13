@@ -53,6 +53,11 @@ ENV CLANKY_PORT=8080
 # Override the default 127.0.0.1 so the container is reachable from outside
 ENV CLANKY_HOST=0.0.0.0
 ENV CLANKY_DATA_DIR=/app/data
+# The production image is intended to run behind a reverse proxy that
+# sanitizes and overwrites the configured X-Forwarded-* headers.
+ENV CLANKY_TRUST_PROXY=true
+ENV CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix
+ENV CLANKY_TRUST_PROXY_CHAIN=first
 ENV TERM=xterm-256color
 
 # Expose port 8080 (non-root user cannot bind to privileged ports)

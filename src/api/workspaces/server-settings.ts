@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Route handlers for workspace server settings: CRUD, status, and test connection.
  */
@@ -16,17 +17,21 @@ import {
   ServerSettingsSchema,
   TestConnectionRequestSchema,
 } from "../../types/schemas";
+import { SensitiveQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:workspaces");
 
-export const serverSettingsRoutes = {
+export const serverSettingsRoutes = defineRoutes({
   /**
    * GET /api/workspaces/:id/server-settings - Get workspace server settings
    * PUT /api/workspaces/:id/server-settings - Update workspace server settings
    */
   "/api/workspaces/:id/server-settings": {
-    async GET(req: Request & { params: { id: string } }) {
-        const { id } = req.params;
+    description: "Read or update workspace server settings.",
+    requestSchema: ServerSettingsSchema,
+    querySchema: SensitiveQuerySchema,
+    async GET(req: Request, ctx) {
+        const id = ctx.params["id"]!;
         try {
           const result = await requireWorkspace(id);
           if (result instanceof Response) return result;
@@ -41,8 +46,8 @@ export const serverSettingsRoutes = {
       }
     },
 
-    async PUT(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    async PUT(req: Request, ctx) {
+      const id = ctx.params["id"]!;
       const includeSensitive = shouldIncludeSensitiveData(req);
       const result = await parseAndValidate(ServerSettingsSchema, req);
 
@@ -94,8 +99,9 @@ export const serverSettingsRoutes = {
    * GET /api/workspaces/:id/server-settings/status - Get connection status for workspace
    */
   "/api/workspaces/:id/server-settings/status": {
-    async GET(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    description: "Read the current workspace connection status.",
+    async GET(_req: Request, ctx) {
+      const id = ctx.params["id"]!;
       try {
         const result = await requireWorkspace(id);
         if (result instanceof Response) return result;
@@ -115,8 +121,10 @@ export const serverSettingsRoutes = {
    * If no body, uses the workspace's current settings.
    */
   "/api/workspaces/:id/server-settings/test": {
-    async POST(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    description: "Test the configured workspace connection using workspace settings.",
+    requestSchema: TestConnectionRequestSchema,
+    async POST(req: Request, ctx) {
+      const id = ctx.params["id"]!;
       try {
         const workspace = await requireWorkspace(id);
         if (workspace instanceof Response) return workspace;
@@ -167,7 +175,9 @@ export const serverSettingsRoutes = {
    * Expects { settings: ServerSettings, directory: string } in the body.
    */
   "/api/server-settings/test": {
-    async POST(req: Request) {
+    description: "Test a server connection without creating a workspace.",
+    requestSchema: TestConnectionRequestSchema,
+    async POST(req: Request, _ctx) {
       const result = await parseAndValidate(TestConnectionRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -187,4 +197,4 @@ export const serverSettingsRoutes = {
       }
     },
   },
-};
+});

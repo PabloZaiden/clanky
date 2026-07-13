@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task pending prompt and follow-up routes.
  *
@@ -16,8 +17,10 @@ import {
 } from "../../types/schemas";
 import { validateEnabledModelForTask } from "./helpers";
 
-export const tasksPendingRoutes = {
+export const tasksPendingRoutes = defineRoutes({
   "/api/tasks/:id/pending-prompt": {
+    description: "Set the pending prompt used for the next task iteration.",
+    requestSchema: PendingPromptRequestSchema,
     /**
      * PUT /api/tasks/:id/pending-prompt - Set the pending prompt for next iteration.
      *
@@ -30,7 +33,7 @@ export const tasksPendingRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request & { params: { id: string } }): Promise<Response> {
+    async PUT(req: Request, ctx): Promise<Response> {
       // Parse and validate request body using Zod schema
       const validation = await parseAndValidate(PendingPromptRequestSchema, req);
       if (!validation.success) {
@@ -38,7 +41,7 @@ export const tasksPendingRoutes = {
       }
       const body = validation.data;
 
-      const result = await taskManager.setPendingPrompt(req.params.id, body.prompt, body.attachments);
+      const result = await taskManager.setPendingPrompt(ctx.params["id"]!, body.prompt, body.attachments);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -61,8 +64,8 @@ export const tasksPendingRoutes = {
      *
      * @returns Success response
      */
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      const result = await taskManager.clearPendingPrompt(req.params.id);
+    async DELETE(_req: Request, ctx): Promise<Response> {
+      const result = await taskManager.clearPendingPrompt(ctx.params["id"]!);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -79,6 +82,8 @@ export const tasksPendingRoutes = {
   },
 
   "/api/tasks/:id/pending": {
+    description: "Apply a pending message or model override for the next task iteration.",
+    requestSchema: SetPendingRequestSchema,
     /**
      * POST /api/tasks/:id/pending - Apply a message and/or model override for the next iteration.
      *
@@ -99,7 +104,7 @@ export const tasksPendingRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       // Parse and validate request body using Zod schema
       const validation = await parseAndValidate(SetPendingRequestSchema, req);
       if (!validation.success) {
@@ -123,7 +128,7 @@ export const tasksPendingRoutes = {
 
       // Validate model is enabled before allowing the change
       if (body.model !== null) {
-        const modelError = await validateEnabledModelForTask(req.params.id, body.model);
+        const modelError = await validateEnabledModelForTask(ctx.params["id"]!, body.model);
         if (modelError) {
           return modelError;
         }
@@ -139,7 +144,7 @@ export const tasksPendingRoutes = {
          );
        }
 
-        const result = await taskManager.injectPending(req.params.id, {
+        const result = await taskManager.injectPending(ctx.params["id"]!, {
           message: trimmedMessage,
           model: body.model ?? undefined,
           attachments: body.attachments,
@@ -165,8 +170,8 @@ export const tasksPendingRoutes = {
      *
      * @returns Success response
      */
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      const result = await taskManager.clearPending(req.params.id);
+    async DELETE(_req: Request, ctx): Promise<Response> {
+      const result = await taskManager.clearPending(ctx.params["id"]!);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -183,10 +188,12 @@ export const tasksPendingRoutes = {
   },
 
   "/api/tasks/:id/follow-up": {
+    description: "Send a follow-up message to a task.",
+    requestSchema: FollowUpRequestSchema,
     /**
      * POST /api/tasks/:id/follow-up - Start a new feedback cycle from a restartable terminal state.
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(FollowUpRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -194,13 +201,13 @@ export const tasksPendingRoutes = {
       const body = validation.data;
 
       if (body.model !== null) {
-        const modelError = await validateEnabledModelForTask(req.params.id, body.model);
+        const modelError = await validateEnabledModelForTask(ctx.params["id"]!, body.model);
         if (modelError) {
           return modelError;
         }
       }
 
-      const result = await taskManager.sendFollowUp(req.params.id, {
+      const result = await taskManager.sendFollowUp(ctx.params["id"]!, {
         message: body.message.trim(),
         model: body.model ?? undefined,
         attachments: body.attachments,
@@ -216,4 +223,4 @@ export const tasksPendingRoutes = {
       return successResponse();
     },
   },
-};
+});

@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Models listing API route.
  *
@@ -15,8 +16,9 @@ const log = createLogger("api:models");
 /**
  * Models API routes.
  */
-export const modelsRoutes = {
+export const modelsRoutes = defineRoutes({
   "/api/models/variants": {
+    description: "List available model variants for a workspace.",
     /**
      * GET /api/models/variants - Get lazily discovered variants for one model.
      *
@@ -27,7 +29,7 @@ export const modelsRoutes = {
      *
      * @returns Object with variants array
      */
-    async GET(req: Request): Promise<Response> {
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
       const modelID = url.searchParams.get("modelID");
@@ -64,6 +66,7 @@ export const modelsRoutes = {
   },
 
   "/api/models": {
+    description: "List available AI models for a workspace.",
     /**
      * GET /api/models - Get available AI models.
      *
@@ -74,7 +77,7 @@ export const modelsRoutes = {
      *
      * @returns Array of ModelInfo objects with provider and model details
      */
-    async GET(req: Request): Promise<Response> {
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
 
@@ -100,4 +103,4 @@ export const modelsRoutes = {
       }
     },
   },
-};
+});

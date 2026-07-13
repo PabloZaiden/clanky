@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Route handler for purging archived tasks within a workspace.
  */
@@ -12,13 +13,15 @@ import {
 
 const log = createLogger("api:workspaces");
 
-export const archivedTasksRoutes = {
+export const archivedTasksRoutes = defineRoutes({
   /**
    * POST /api/workspaces/:id/archived-tasks/purge - Purge all archived tasks for a workspace.
    */
   "/api/workspaces/:id/archived-tasks/purge": {
-    async POST(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
+    description: "Purge archived tasks for a workspace.",
+    async POST(req: Request, ctx) {
+      ctx.server?.timeout(req, 0);
+      const id = ctx.params["id"]!;
       log.debug("POST /api/workspaces/:id/archived-tasks/purge", { workspaceId: id });
 
       try {
@@ -50,4 +53,4 @@ export const archivedTasksRoutes = {
       }
     },
   },
-};
+});

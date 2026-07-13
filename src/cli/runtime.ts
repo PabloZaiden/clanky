@@ -1,24 +1,18 @@
+import { runApiCliCommand } from "@pablozaiden/webapp/cli";
 import { hostname } from "os";
 import { startServer } from "../server";
 import { formatClankyVersion, CLANKY_VERSION } from "../version";
 import {
-  getCliRequestAuthContext,
-  getAuthorizedHeaders,
+  createCliCredentialsStore,
+  loadStoredCliCredentials,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
-  refreshStoredCredentials,
   runAuthCommand,
   runStatusCommand,
   type AuthCommandOptions,
   type StatusCommandOptions,
-  type CliRequestAuthContext,
 } from "./auth";
-import {
-  findApiEndpoint,
-  formatSchema,
-  listApiEndpoints,
-  normalizeApiEndpointPath,
-} from "./api-catalog";
+import { getCliRouteCatalog, normalizeApiEndpointPath } from "./api-catalog";
 import { runUpdateCommand, type CliUpdateDependencies, type UpdateCommandOptions } from "./update";
 import { runWsCommand, type CliWsDependencies, type WsCommandOptions } from "./ws";
 import { runPreviewCommand, type CliPreviewDependencies, type PreviewCommandOptions } from "./preview";
@@ -244,59 +238,32 @@ function parseCommandArguments(
   return { positionals, options, flags };
 }
 
-type ParsedApiResponse = {
-  body?: unknown;
-  text?: string;
-};
-
-type ApiCommandOutput = {
-  status: {
-    code: number;
-    text: string;
-    ok: boolean;
+function createClankyApiFetch(fetchFn: typeof fetch): typeof fetch {
+  const wrapped = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const requestUrl = new URL(input instanceof Request ? input.url : String(input));
+    const headers = new Headers(init?.headers);
+    headers.set("origin", requestUrl.origin);
+    const credentials = await loadStoredCliCredentials();
+    if (credentials?.cookies) {
+      headers.set("cookie", credentials.cookies);
+    }
+    return await fetchFn(input, { ...init, headers });
   };
-  response: unknown;
-};
-
-function getResponseStatusText(response: Response): string {
-  return response.statusText || (response.ok ? "OK" : "");
+  return Object.assign(wrapped, {
+    preconnect: (url: string | URL, options?: Parameters<typeof fetch.preconnect>[1]) =>
+      fetchFn.preconnect(url, options),
+  });
 }
 
-function formatApiCommandOutput(response: Response, parsed: ParsedApiResponse): string {
-  const output: ApiCommandOutput = {
-    status: {
-      code: response.status,
-      text: getResponseStatusText(response),
-      ok: response.ok,
-    },
-    response: parsed.body ?? parsed.text ?? null,
-  };
-  return JSON.stringify(output, null, 2);
-}
-
-function printApiEndpoints(out: (message: string) => void): void {
-  const entries = listApiEndpoints();
-  for (const entry of entries) {
-    const description = entry.description ? ` - ${entry.description}` : "";
-    const cliPath = entry.cliPath ?? entry.path.replace(/^\/api\//, "");
-    out(`${entry.methods.join(", ")} ${cliPath}${description}`);
+function printCliCommandResult(
+  result: { output?: string; error?: string },
+  dependencies: CliOutputDependencies,
+): void {
+  if (result.output) {
+    (dependencies.out ?? console.log)(result.output);
   }
-}
-
-async function readApiResponse(response: Response): Promise<ParsedApiResponse> {
-  const rawBody = await response.text();
-  if (!rawBody) {
-    return {};
-  }
-
-  try {
-    return {
-      body: JSON.parse(rawBody) as unknown,
-    };
-  } catch {
-    return {
-      text: rawBody,
-    };
+  if (result.error) {
+    (dependencies.err ?? console.error)(result.error);
   }
 }
 
@@ -304,99 +271,37 @@ async function runApiCommand(
   command: Extract<CliCommand, { action: "api" }>,
   dependencies: Required<Pick<CliRuntimeDependencies, "fetchFn" | "now">> & CliOutputDependencies,
 ): Promise<number> {
-  const out = dependencies.out ?? console.log;
-  if (!command.endpoint) {
-    printApiEndpoints(out);
-    return 0;
-  }
-
-  const endpointPath = normalizeApiEndpointPath(command.endpoint);
-  if (!findApiEndpoint(endpointPath)) {
-    out(`Unknown API endpoint: ${endpointPath}`);
-    return 1;
-  }
-
-  let authContext = await getCliRequestAuthContext({}, dependencies);
-  if (!authContext) {
-    out("Not logged in.");
-    return 1;
-  }
-
-  const requestHeaders = authContext.kind === "bearer"
-    ? getAuthorizedHeaders(authContext.credentials)
-    : new Headers();
-  let requestBody: string | undefined;
-  if (command.payload !== undefined) {
-    try {
-      requestBody = JSON.stringify(JSON.parse(command.payload) as unknown);
-    } catch {
-      throw createUsageError("Invalid JSON for --payload");
-    }
-    requestHeaders.set("content-type", "application/json");
-  }
-  requestHeaders.set("accept", "application/json");
-
-  const sendRequest = async (activeAuthContext: CliRequestAuthContext): Promise<Response> => {
-    const requestUrl = `${activeAuthContext.baseUrl}${endpointPath}`;
-    const headers = activeAuthContext.kind === "bearer"
-      ? getAuthorizedHeaders(activeAuthContext.credentials, requestHeaders)
-      : new Headers(requestHeaders);
-    headers.set("origin", activeAuthContext.baseUrl);
-    return await dependencies.fetchFn(requestUrl, {
-      method: command.method,
-      headers,
-      body: requestBody,
-    });
-  };
-
-  let response = await sendRequest(authContext);
-  if (response.status === 401 && authContext.kind === "bearer") {
-    const refreshedCredentials = await refreshStoredCredentials(authContext.credentials, dependencies);
-    if (!refreshedCredentials) {
-      out("Stored credentials are invalid.");
-      return 1;
-    }
-    authContext = {
-      kind: "bearer",
-      credentials: refreshedCredentials,
-      baseUrl: refreshedCredentials.baseUrl,
-    };
-    response = await sendRequest(authContext);
-  }
-
-  const parsed = await readApiResponse(response);
-  out(formatApiCommandOutput(response, parsed));
-  return response.ok ? 0 : 1;
+  const args = command.endpoint
+    ? [
+      command.endpoint,
+      "--method",
+      command.method,
+      ...(command.payload === undefined ? [] : ["--payload", command.payload]),
+    ]
+    : [];
+  const result = await runApiCliCommand({
+    args,
+    catalog: getCliRouteCatalog(),
+    credentials: createCliCredentialsStore(),
+    envPrefix: "CLANKY",
+    fetchFn: createClankyApiFetch(dependencies.fetchFn),
+    now: dependencies.now,
+  });
+  printCliCommandResult(result, dependencies);
+  return result.exitCode;
 }
 
-function runSchemaCommand(
+async function runSchemaCommand(
   command: Extract<CliCommand, { action: "schema" }>,
   dependencies: CliOutputDependencies,
-): number {
-  const out = dependencies.out ?? console.log;
-  const entry = findApiEndpoint(command.endpoint);
-  if (!entry) {
-    out(`Unknown API endpoint: ${normalizeApiEndpointPath(command.endpoint)}`);
-    return 1;
-  }
-
-  out(`Endpoint: ${entry.path}`);
-  out(`Methods: ${entry.methods.join(", ")}`);
-  if (entry.description) {
-    out(`Description: ${entry.description}`);
-  }
-  if (entry.querySchema) {
-    out("Query schema:");
-    out(formatSchema(entry.querySchema));
-  }
-  if (entry.requestSchema) {
-    out("Request body schema:");
-    out(formatSchema(entry.requestSchema));
-  }
-  if (!entry.querySchema && !entry.requestSchema) {
-    out("No request or query schema metadata is currently available for this endpoint.");
-  }
-  return 0;
+): Promise<number> {
+  const result = await runApiCliCommand({
+    args: [command.endpoint],
+    catalog: getCliRouteCatalog(),
+    mode: "schema",
+  });
+  printCliCommandResult(result, dependencies);
+  return result.exitCode;
 }
 
 export function parseCliCommand(args: string[], dependencies: CliParseDependencies = {}): CliCommand {
@@ -648,7 +553,7 @@ export async function runCli(
           out,
         });
       case "schema":
-        return runSchemaCommand(command, {
+        return await runSchemaCommand(command, {
           out,
         });
       case "ws":

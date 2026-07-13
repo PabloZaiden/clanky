@@ -3,11 +3,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { apiRoutes } from "../../src/api";
 import { agentScheduler } from "../../src/core/agent-scheduler";
 import { backendManager } from "../../src/core/backend-manager";
 import { closeDatabase, ensureDataDirectories } from "../../src/persistence/database";
@@ -111,12 +111,7 @@ describe("Agents API Integration", () => {
     }));
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
     workspaceId = await getOrCreateWorkspace(testWorkDir);
   });

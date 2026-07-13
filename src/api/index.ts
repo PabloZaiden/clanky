@@ -1,8 +1,8 @@
 /**
  * Central export for the API module.
  * 
- * Combines all API routes from individual modules into a single object
- * that can be spread into Bun's serve() routes option.
+ * Combines all API routes from individual modules into the webapp server's
+ * native route table.
  * 
  * Route Modules:
  * - tasks: Task CRUD, control, data, and review operations
@@ -19,6 +19,8 @@
  * @module api
  */
 
+import { defineRoutes, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
+import { runWithCurrentUser } from "../core/user-context";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
@@ -37,28 +39,17 @@ import { previewRoutes } from "./previews";
 /**
  * All API routes combined.
  * 
- * Spread this object into Bun's serve() routes option to register all endpoints.
  * The WebSocket endpoint is handled separately in src/index.ts.
- * 
- * @example
- * ```typescript
- * Bun.serve({
- *   routes: {
- *     ...apiRoutes,
- *     // ... other routes
- *   },
- * });
- * ```
  */
-export const apiRoutes = {
+const nativeApiRoutes = {
   ...tasksRoutes,
   ...modelsAndPreferencesRoutes,
   ...settingsRoutes,
   ...gitRoutes,
   ...workspacesRoutes,
   ...agentsMdRoutes,
-  ...sshServersRoutes,
   ...sshServerFilesRoutes,
+  ...sshServersRoutes,
   ...sshSessionsRoutes,
   ...provisioningRoutes,
   ...chatsRoutes,
@@ -66,6 +57,35 @@ export const apiRoutes = {
   ...vncSessionRoutes,
   ...previewRoutes,
 };
+
+const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+/**
+ * Apply the common API security policy and establish Clanky's user context
+ * around native webapp route handlers. The handlers themselves remain native
+ * `(req, ctx)` functions; this middleware does not alter the request or route
+ * shape.
+ */
+function withApiRouteMiddleware(routes: Record<string, RouteDefinition>): RouteTable {
+  return Object.fromEntries(Object.entries(routes).map(([path, route]) => {
+    const routeWithPolicy: RouteDefinition = {
+      ...route,
+      auth: path === "/api/settings/reset-all" || path === "/api/settings/purge-terminal-tasks" ? "owner" : "user",
+      sameOrigin: "mutations",
+    };
+    for (const method of API_METHODS) {
+      const handler = route[method];
+      if (!handler) continue;
+      routeWithPolicy[method] = async (req, ctx) => {
+        const user = ctx.requireUser();
+        return await runWithCurrentUser(user, () => handler(req, ctx));
+      };
+    }
+    return [path, routeWithPolicy];
+  }));
+}
+
+export const apiRoutes = defineRoutes(withApiRouteMiddleware(nativeApiRoutes));
 
 // Re-export individual route modules
 export * from "./helpers";

@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Workspace file explorer API routes.
  */
@@ -19,7 +20,7 @@ import {
 } from "../../types/schemas";
 import { errorResponse, requireWorkspace } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
-import { createFileDownloadHeadResponse, createFileDownloadResponse } from "../file-download-response";
+import { createFileDownloadResponse } from "../file-download-response";
 
 const log = createLogger("api:workspace-files");
 
@@ -100,10 +101,12 @@ function parseSearchParams<T extends Record<string, unknown>>(
   );
 }
 
-export const workspaceFilesRoutes = {
+export const workspaceFilesRoutes = defineRoutes({
   "/api/workspaces/:id/files": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "List workspace files in the active explorer root.",
+    querySchema: ListWorkspaceFilesRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -124,7 +127,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to list workspace files", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -134,8 +137,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/content": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Read a workspace file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -151,7 +156,7 @@ export const workspaceFilesRoutes = {
         }));
       } catch (error) {
         log.error("Failed to read workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -161,8 +166,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/preview": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Preview a browser-renderable workspace image file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -179,7 +186,7 @@ export const workspaceFilesRoutes = {
         return createInlineImageResponse(response.data, response.contentType, response.file.name);
       } catch (error) {
         log.error("Failed to preview workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -189,36 +196,11 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/download": {
-    async HEAD(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
-      if (workspaceResult instanceof Response) {
-        return workspaceResult;
-      }
+    description: "Download a workspace file from the active explorer root.",
+    querySchema: GetWorkspaceFileRequestSchema,
 
-      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
-      if (!validation.success) {
-        return validation.response;
-      }
-
-      try {
-        const response = await workspaceFileService.getDownloadMetadata(workspaceResult, validation.data.path, {
-          startDirectory: validation.data.startDirectory,
-        });
-        return createFileDownloadHeadResponse(response.contentType, response.file, {
-          contentLength: response.file.size,
-        });
-      } catch (error) {
-        log.error("Failed to fetch workspace file download metadata", {
-          workspaceId: req.params.id,
-          path: validation.data.path,
-          error: String(error),
-        });
-        return mapFileError(error);
-      }
-    },
-
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -238,7 +220,7 @@ export const workspaceFilesRoutes = {
         });
       } catch (error) {
         log.error("Failed to download workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -248,8 +230,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/tree": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Load the full workspace file tree.",
+    querySchema: GetWorkspaceFileTreeRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -265,7 +249,7 @@ export const workspaceFilesRoutes = {
         }));
       } catch (error) {
         log.error("Failed to load workspace file tree", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           error: String(error),
         });
         return mapFileError(error);
@@ -274,8 +258,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/metadata": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Read workspace file metadata.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -298,7 +284,7 @@ export const workspaceFilesRoutes = {
         });
       } catch (error) {
         log.error("Failed to fetch workspace file metadata", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -308,8 +294,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/write": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Write a workspace file with optional conflict checks.",
+    requestSchema: WriteWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -332,7 +320,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to write workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -342,8 +330,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/rename": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Rename a workspace file or directory in the active explorer root.",
+    requestSchema: RenameWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -366,7 +356,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to rename workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -376,8 +366,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/delete": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Delete a workspace file or directory in the active explorer root.",
+    requestSchema: DeleteWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -399,7 +391,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to delete workspace file", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -409,8 +401,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/upload": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Create a workspace file upload session.",
+    requestSchema: CreateWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -433,7 +427,7 @@ export const workspaceFilesRoutes = {
         ), { status: 201 });
       } catch (error) {
         log.error("Failed to create workspace file upload", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           directory: validation.data.directory,
           error: String(error),
         });
@@ -443,8 +437,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/upload/chunk": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Upload a raw chunk for a workspace file upload session.",
+    querySchema: UploadWorkspaceFileChunkRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -470,7 +466,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to write workspace file upload chunk", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -480,8 +476,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/upload/complete": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Complete a workspace file upload session.",
+    requestSchema: CompleteWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -501,7 +499,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to complete workspace file upload", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -511,8 +509,10 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/upload/cancel": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Cancel a workspace file upload session.",
+    requestSchema: CancelWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -532,7 +532,7 @@ export const workspaceFilesRoutes = {
         ));
       } catch (error) {
         log.error("Failed to cancel workspace file upload", {
-          workspaceId: req.params.id,
+          workspaceId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -540,4 +540,4 @@ export const workspaceFilesRoutes = {
       }
     },
   },
-};
+});

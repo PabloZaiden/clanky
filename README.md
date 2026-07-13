@@ -161,7 +161,7 @@ clanky ws --task-id my-task
 ### Auth notes
 
 - Passkey authentication protects the browser session and device-approval flow.
-- Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
+- Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
 - `clanky auth` stores bearer credentials in per-user CLI state under the home directory, `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
@@ -173,18 +173,49 @@ clanky ws --task-id my-task
 services:
   clanky:
     image: ghcr.io/pablozaiden/clanky:latest
-    ports:
-      - "8080:8080"
+    # Use expose when the reverse proxy is another container on the same network.
+    expose:
+      - "8080"
+    # If the proxy runs on the host, replace expose with:
+    # ports:
+    #   - "127.0.0.1:8080:8080"
     volumes:
       - clanky-data:/app/data
     environment:
       CLANKY_DATA_DIR: /app/data
+      CLANKY_PUBLIC_BASE_URL: https://clanky.example.com
 
 volumes:
   clanky-data:
 ```
 
 The container listens on port `8080` by default and starts the same embedded server product that the `clanky` binary runs locally. Docker overrides the bind host to `0.0.0.0`; local/native runs default to `127.0.0.1` unless you override `CLANKY_HOST`.
+
+The production image assumes it is reachable only through a reverse proxy and
+enables these defaults:
+
+```text
+CLANKY_TRUST_PROXY=true
+CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix
+CLANKY_TRUST_PROXY_CHAIN=first
+```
+
+For a public deployment, configure the reverse proxy to:
+
+- terminate TLS and serve Clanky at a stable HTTPS URL;
+- remove client-supplied `X-Forwarded-Proto`, `X-Forwarded-Host`, and
+  `X-Forwarded-Prefix` headers, then write sanitized values;
+- forward WebSocket upgrades for `/api/ws` and the raw terminal, preview, and
+  VNC transports;
+- keep the application port private, either with `expose` on a shared Docker
+  network or a loopback-only host binding;
+- set `CLANKY_PUBLIC_BASE_URL` to the external origin, as shown above;
+- mount a durable volume for all of `/app/data` and back it up.
+
+Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
+public deployments. The image's trust-proxy defaults are intentionally unsafe
+for direct, unproxied exposure because forwarded headers are then
+client-controlled.
 
 ## Documentation
 
