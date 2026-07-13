@@ -238,7 +238,7 @@ Run targeted tests, `bun run tsc`, example binary builds, and app health checks.
 Use `docs/github-actions.md` as the source of truth. At minimum, generated apps should include:
 
 - A root `Dockerfile` that builds with `oven/bun`, copies the standalone binary into a slim runtime image, runs as a non-root user, and healthchecks `/api/health`.
-- For proxy-only public Docker deployments, set the app's trust-proxy defaults in the image, require a deployment-specific public base URL, sanitize all trusted forwarded headers at the proxy, forward WebSocket upgrades, keep the app port private, and persist the complete data directory.
+- For proxy-only public Docker deployments, set the app's trust-proxy defaults in the image, require a deployment-specific absolute HTTPS public base origin without a path, query, or fragment, sanitize all trusted forwarded headers at the proxy, forward WebSocket upgrades, keep the app port private, and persist the complete data directory.
 - `.github/workflows/pr.yml` with install, build, test, Bun dev-server smoke checks, and Docker image smoke checks.
 - `.github/workflows/docker-main.yml` to publish `ghcr.io/<owner>/<repo>:main` after merges to `main` and smoke-test the container.
 - `.github/workflows/binary-release.yml` using `pablozaiden/installer/.github/workflows/reusable-binary-release.yml`.

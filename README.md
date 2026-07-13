@@ -209,7 +209,8 @@ For a public deployment, configure the reverse proxy to:
   VNC transports;
 - keep the application port private, either with `expose` on a shared Docker
   network or a loopback-only host binding;
-- set `CLANKY_PUBLIC_BASE_URL` to the external origin, as shown above;
+- set `CLANKY_PUBLIC_BASE_URL` to the external absolute HTTPS origin, without
+  a path, query, or fragment, as shown above;
 - mount a durable volume for all of `/app/data` and back it up.
 
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in

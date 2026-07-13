@@ -58,8 +58,9 @@ Clanky is typically deployed behind a reverse proxy that enforces authentication
 The production Docker image assumes a reverse proxy and enables
 `CLANKY_TRUST_PROXY=true` with `proto,host,prefix` forwarding headers and the
 `first` chain policy. Public deployments must sanitize those headers at the
-proxy, set `CLANKY_PUBLIC_BASE_URL` to the external HTTPS origin, forward
-WebSocket upgrades, keep port `8080` private, and persist `/app/data`.
+proxy, set `CLANKY_PUBLIC_BASE_URL` to the external absolute HTTPS origin
+without a path, query, or fragment, forward WebSocket upgrades, keep port
+`8080` private, and persist `/app/data`.
 
 ### Testing without passkeys
 

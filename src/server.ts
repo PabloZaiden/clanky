@@ -7,7 +7,7 @@ import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, getRequestOriginInfo, sqliteWebAppStore, type ResourceRealtimeEvent, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
@@ -27,7 +27,6 @@ import {
   taskEventEmitter,
   previewEventEmitter,
 } from "./core/event-emitter";
-import { getPublicBasePathFromForwardedPrefix } from "./shared";
 import { getCurrentUserId } from "./core/user-context";
 import { CLANKY_VERSION } from "./version";
 
@@ -167,13 +166,10 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       clanky: websocketHandlers as never,
     },
     configResponse: (req) => {
-      const trustProxy = app?.config.trustProxy;
-      const publicBasePath = trustProxy?.enabled && trustProxy.headers.includes("prefix")
-        ? getPublicBasePathFromForwardedPrefix(req.headers.get("x-forwarded-prefix"))
-        : "";
+      const publicBasePath = app ? getRequestOriginInfo(req, app.config).pathPrefix : "/";
       return {
         ...getAppConfig(),
-        publicBasePath: publicBasePath || null,
+        publicBasePath: publicBasePath === "/" ? null : publicBasePath,
       };
     },
   });
