@@ -72,6 +72,14 @@ export function getShellShortcutForKeyboardEvent(event: KeyboardEvent): ShellSho
   return Object.values(SHELL_SHORTCUTS).find((shortcut) => shortcut.key === eventKey) ?? null;
 }
 
+export function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
+}
+
 function buildRouteHash(view: string, params: Record<string, string | undefined> = {}): string {
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

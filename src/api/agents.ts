@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Scheduled agents API routes.
  */
@@ -67,16 +68,16 @@ function mapPurgeStatuses(body: {
   return statuses;
 }
 
-export const agentsRoutes = {
+export const agentsRoutes = defineRoutes({
   "/api/agents": {
-    async GET(req: Request): Promise<Response> {
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
       const agents = await agentManager.getAgents(workspaceId);
       return Response.json(agents);
     },
 
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateAgentRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -102,21 +103,21 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const agent = await agentManager.getAgent(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
         return errorResponse("agent_not_found", "Agent not found", 404);
       }
       return Response.json(agent);
     },
 
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
+    async PATCH(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(UpdateAgentRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
-      const existing = await agentManager.getAgent(req.params.id);
+      const existing = await agentManager.getAgent(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("agent_not_found", "Agent not found", 404);
       }
@@ -129,30 +130,30 @@ export const agentsRoutes = {
       }
 
       try {
-        const agent = await agentManager.updateAgent(req.params.id, body);
+        const agent = await agentManager.updateAgent(ctx.params["id"]!, body);
         if (!agent) {
           return errorResponse("agent_not_found", "Agent not found", 404);
         }
         return Response.json(agent);
       } catch (error) {
         log.error("Failed to update agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("update_agent_failed", String(error), 500);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const deleted = await agentManager.deleteAgent(req.params.id);
+        const deleted = await agentManager.deleteAgent(ctx.params["id"]!);
         if (!deleted) {
           return errorResponse("agent_not_found", "Agent not found", 404);
         }
         return successResponse();
       } catch (error) {
         log.error("Failed to delete agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("delete_agent_failed", String(error), 500);
@@ -161,14 +162,14 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id/run": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(RunAgentRequestSchema, req, { allowEmptyBody: true });
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const run = await agentManager.runNow(req.params.id, validation.data.attachments);
+        const run = await agentManager.runNow(ctx.params["id"]!, validation.data.attachments);
         return Response.json(run, { status: 202 });
       } catch (error) {
         const message = String(error);
@@ -179,7 +180,7 @@ export const agentsRoutes = {
           return errorResponse("agent_already_running", message, 409);
         }
         log.error("Failed to run agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: message,
         });
         return errorResponse("run_agent_failed", message, 500);
@@ -188,9 +189,9 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id/interrupt": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const run = await agentManager.interruptAgent(req.params.id, "Agent run interrupted by user");
+        const run = await agentManager.interruptAgent(ctx.params["id"]!, "Agent run interrupted by user");
         if (!run) {
           return errorResponse("no_active_agent_run", "Agent does not have an active run", 409);
         }
@@ -201,7 +202,7 @@ export const agentsRoutes = {
           return errorResponse("agent_run_not_ready", message, 409);
         }
         log.error("Failed to interrupt agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: message,
         });
         return errorResponse("interrupt_agent_failed", message, 500);
@@ -210,16 +211,16 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id/pause": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const agent = await agentManager.pauseAgent(req.params.id);
+        const agent = await agentManager.pauseAgent(ctx.params["id"]!);
         if (!agent) {
           return errorResponse("agent_not_found", "Agent not found", 404);
         }
         return Response.json(agent);
       } catch (error) {
         log.error("Failed to pause agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("pause_agent_failed", String(error), 500);
@@ -228,16 +229,16 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id/resume": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const agent = await agentManager.resumeAgent(req.params.id);
+        const agent = await agentManager.resumeAgent(ctx.params["id"]!);
         if (!agent) {
           return errorResponse("agent_not_found", "Agent not found", 404);
         }
         return Response.json(agent);
       } catch (error) {
         log.error("Failed to resume agent", {
-          agentId: req.params.id,
+          agentId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("resume_agent_failed", String(error), 500);
@@ -246,7 +247,7 @@ export const agentsRoutes = {
   },
 
   "/api/agents/:id/runs": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    async GET(req: Request, ctx): Promise<Response> {
       const parsedQuery = validateRequest(
         AgentRunsQuerySchema,
         Object.fromEntries(new URL(req.url).searchParams),
@@ -254,15 +255,15 @@ export const agentsRoutes = {
       if (!parsedQuery.success) {
         return parsedQuery.response;
       }
-      const agent = await agentManager.getAgent(req.params.id);
+      const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
         return errorResponse("agent_not_found", "Agent not found", 404);
       }
-      const runs = await agentManager.listRuns(req.params.id, parsedQuery.data);
+      const runs = await agentManager.listRuns(ctx.params["id"]!, parsedQuery.data);
       return Response.json(runs);
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(DeleteAgentRunsRequestSchema, req, { allowEmptyBody: true });
       if (!validation.success) {
         return validation.response;
@@ -271,7 +272,7 @@ export const agentsRoutes = {
       if (statuses.length === 0) {
         return successResponse({ deletedRunIds: [] });
       }
-      const deletedRunIds = await agentManager.purgeRuns(req.params.id, {
+      const deletedRunIds = await agentManager.purgeRuns(ctx.params["id"]!, {
         before: validation.data.before,
         statuses,
       });
@@ -280,20 +281,20 @@ export const agentsRoutes = {
   },
 
   "/api/agent-runs/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const run = await agentManager.getRun(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const run = await agentManager.getRun(ctx.params["id"]!);
       if (!run) {
         return errorResponse("agent_run_not_found", "Agent run not found", 404);
       }
       return Response.json(run);
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      const deleted = await agentManager.deleteRun(req.params.id);
+    async DELETE(_req: Request, ctx): Promise<Response> {
+      const deleted = await agentManager.deleteRun(ctx.params["id"]!);
       if (!deleted) {
         return errorResponse("agent_run_not_found", "Agent run not found", 404);
       }
       return successResponse();
     },
   },
-};
+});

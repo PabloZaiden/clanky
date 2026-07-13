@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Tasks data routes (diff, plan, status-file, check-planning-dir).
  *
@@ -19,8 +20,9 @@ import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "..
 
 const log = createLogger("api:tasks");
 
-export const tasksDataRoutes = {
+export const tasksDataRoutes = defineRoutes({
   "/api/tasks/:id/diff": {
+    description: "Read the git diff produced by a task.",
     /**
      * GET /api/tasks/:id/diff - Get git diff for a task's changes.
      *
@@ -29,8 +31,8 @@ export const tasksDataRoutes = {
      *
      * @returns Array of FileDiff objects
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const task = await taskManager.getTask(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -54,7 +56,7 @@ export const tasksDataRoutes = {
         return Response.json(diffs);
       } catch (error) {
         log.error("Failed to get task diff", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("diff_failed", String(error), 500);
@@ -63,6 +65,7 @@ export const tasksDataRoutes = {
   },
 
   "/api/tasks/:id/plan": {
+    description: "Read a task's planning document.",
     /**
      * GET /api/tasks/:id/plan - Get .clanky-planning/plan.md content.
      *
@@ -71,8 +74,8 @@ export const tasksDataRoutes = {
      *
      * @returns FileContentResponse with content and exists flag
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const task = await taskManager.getTask(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -101,6 +104,7 @@ export const tasksDataRoutes = {
   },
 
   "/api/tasks/:id/status-file": {
+    description: "Read a task's status tracking document.",
     /**
      * GET /api/tasks/:id/status-file - Get .clanky-planning/status.md content.
      *
@@ -109,8 +113,8 @@ export const tasksDataRoutes = {
      *
      * @returns FileContentResponse with content and exists flag
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const task = await taskManager.getTask(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -139,14 +143,15 @@ export const tasksDataRoutes = {
   },
 
   "/api/tasks/:id/pull-request": {
+    description: "Read pull request navigation details for a task.",
     /**
      * GET /api/tasks/:id/pull-request - Get PR navigation metadata for a task.
      *
      * Returns an existing PR URL, a PR creation URL, or a disabled state when
      * the workspace host cannot resolve a safe destination.
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const destination = await taskManager.getPullRequestDestination(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      const destination = await taskManager.getPullRequestDestination(ctx.params["id"]!);
       if (!destination) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -157,6 +162,7 @@ export const tasksDataRoutes = {
   },
 
   "/api/check-planning-dir": {
+    description: "Inspect a workspace's .clanky-planning files.",
     /**
      * GET /api/check-planning-dir - Check if .clanky-planning directory exists.
      *
@@ -173,7 +179,7 @@ export const tasksDataRoutes = {
      *
      * @returns Object with exists, hasFiles, files array, and optional warning
      */
-    async GET(req: Request): Promise<Response> {
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
 
@@ -232,4 +238,4 @@ export const tasksDataRoutes = {
       }
     },
   },
-};
+});

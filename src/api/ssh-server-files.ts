@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Standalone SSH server file explorer API routes.
  */
@@ -25,7 +26,7 @@ import {
 } from "../types/schemas";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
-import { createFileDownloadHeadResponse, createFileDownloadResponse } from "./file-download-response";
+import { createFileDownloadResponse } from "./file-download-response";
 
 const log = createLogger("api:ssh-server-files");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
@@ -115,7 +116,8 @@ function parseSearchParams<T extends Record<string, unknown>>(
 }
 
 async function getServerFileTarget(
-  req: Request & { params: { id: string } },
+  req: Request,
+  serverId: string,
   startDirectory?: string,
   options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
@@ -127,9 +129,9 @@ async function getServerFileTarget(
     throw new Error("SSH credential token is required for standalone server file access");
   }
 
-  const server = await sshServerManager.getServer(req.params.id);
+  const server = await sshServerManager.getServer(serverId);
   if (!server) {
-    throw new Error(`SSH server not found: ${req.params.id}`);
+    throw new Error(`SSH server not found: ${serverId}`);
   }
 
   const password = sshCredentialManager.getPasswordForToken(server.config.id, credentialToken);
@@ -148,29 +150,31 @@ async function getServerFileTarget(
   };
 }
 
-export const sshServerFilesRoutes = {
+export const sshServerFilesRoutes = defineRoutes({
   "/api/ssh-servers/:id/files": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "List standalone SSH server files in the active explorer root.",
+    querySchema: ListWorkspaceFilesRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(ListWorkspaceFilesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.listDirectory(
           target,
           validation.data.path,
           { includeHidden: true },
         );
         return Response.json({
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           directory: response.directory,
           entries: response.entries,
         });
       } catch (error) {
         log.error("Failed to list standalone SSH server files", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -180,23 +184,25 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/content": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read a standalone SSH server file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.readFile(target, validation.data.path);
         return Response.json({
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           file: response.file,
           content: response.content,
         });
       } catch (error) {
         log.error("Failed to read standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -206,19 +212,21 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/preview": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Preview a browser-renderable standalone SSH server image file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.readImageFile(target, validation.data.path);
         return createInlineImageResponse(response.data, response.contentType, response.file.name);
       } catch (error) {
         log.error("Failed to preview standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -228,38 +236,17 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/download": {
-    async HEAD(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Download a standalone SSH server file from the active explorer root.",
+    querySchema: GetWorkspaceFileRequestSchema,
+
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
-          allowCredentialTokenQuery: true,
-        });
-        const response = await fileExplorerService.getDownloadMetadata(target, validation.data.path);
-        return createFileDownloadHeadResponse(response.contentType, response.file, {
-          contentLength: response.file.size,
-        });
-      } catch (error) {
-        log.error("Failed to fetch standalone SSH server file download metadata", {
-          serverId: req.params.id,
-          path: validation.data.path,
-          error: String(error),
-        });
-        return mapFileError(error);
-      }
-    },
-
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
-      if (!validation.success) {
-        return validation.response;
-      }
-
-      try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined, {
           allowCredentialTokenQuery: true,
         });
         const response = await fileExplorerService.readDownloadFile(target, validation.data.path, {
@@ -270,7 +257,7 @@ export const sshServerFilesRoutes = {
         });
       } catch (error) {
         log.error("Failed to download standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -280,22 +267,24 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/tree": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Load the full standalone SSH server file tree.",
+    querySchema: GetWorkspaceFileTreeRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileTreeRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.loadTree(target);
         return Response.json({
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           entriesByDirectory: response.entriesByDirectory,
         });
       } catch (error) {
         log.error("Failed to load standalone SSH server file tree", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapFileError(error);
@@ -304,25 +293,27 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/metadata": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read standalone SSH server file metadata.",
+    querySchema: GetWorkspaceFileRequestSchema,
+    async GET(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const file = await fileExplorerService.getMetadata(target, validation.data.path);
         if (!file) {
           return errorResponse("file_not_found", "Requested file does not exist", 404);
         }
         return Response.json({
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           file,
         });
       } catch (error) {
         log.error("Failed to fetch standalone SSH server file metadata", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -332,14 +323,16 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/write": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Write a standalone SSH server file.",
+    requestSchema: WriteWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(WriteWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.writeFile(
           target,
           validation.data.path,
@@ -351,13 +344,13 @@ export const sshServerFilesRoutes = {
         );
         return Response.json({
           success: response.success,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           file: response.file,
           overwritten: response.overwritten,
         });
       } catch (error) {
         log.error("Failed to write standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -367,14 +360,16 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/rename": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Rename a standalone SSH server file or directory in the active explorer root.",
+    requestSchema: RenameWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(RenameWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.renameNode(
           target,
           validation.data.path,
@@ -386,14 +381,14 @@ export const sshServerFilesRoutes = {
         );
         return Response.json({
           success: true,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           file: response.file,
           previousPath: response.previousPath,
           overwritten: response.overwritten,
         });
       } catch (error) {
         log.error("Failed to rename standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -403,27 +398,29 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/delete": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Delete a standalone SSH server file or directory in the active explorer root.",
+    requestSchema: DeleteWorkspaceFileRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(DeleteWorkspaceFileRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.deleteNode(target, validation.data.path, {
           expectedVersionToken: validation.data.expectedVersionToken ?? undefined,
           kind: validation.data.kind,
         });
         return Response.json({
           success: true,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           deletedPath: response.deletedPath,
           kind: response.kind,
         });
       } catch (error) {
         log.error("Failed to delete standalone SSH server file", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           path: validation.data.path,
           error: String(error),
         });
@@ -433,14 +430,16 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/upload": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Create a standalone SSH server file upload session.",
+    requestSchema: CreateWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateWorkspaceFileUploadRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.createUploadSession(
           target,
           validation.data.directory,
@@ -451,12 +450,12 @@ export const sshServerFilesRoutes = {
           },
         );
         return Response.json({
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           ...response,
         }, { status: 201 });
       } catch (error) {
         log.error("Failed to create standalone SSH server file upload", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           directory: validation.data.directory,
           error: String(error),
         });
@@ -466,7 +465,9 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/upload/chunk": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Upload a raw chunk for a standalone SSH server file upload session.",
+    querySchema: UploadWorkspaceFileChunkRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = parseSearchParams(UploadWorkspaceFileChunkRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -476,7 +477,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.writeUploadChunk(
           target,
           validation.data.uploadId,
@@ -488,14 +489,14 @@ export const sshServerFilesRoutes = {
         );
         return Response.json({
           success: true,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           uploadId: response.uploadId,
           bytesWritten: response.bytesWritten,
           nextOffset: response.nextOffset,
         });
       } catch (error) {
         log.error("Failed to write standalone SSH server file upload chunk", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -505,24 +506,26 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/upload/complete": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Complete a standalone SSH server file upload session.",
+    requestSchema: CompleteWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CompleteWorkspaceFileUploadRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.completeUpload(target, validation.data.uploadId);
         return Response.json({
           success: true,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           file: response.file,
           overwritten: response.overwritten,
         });
       } catch (error) {
         log.error("Failed to complete standalone SSH server file upload", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -532,23 +535,25 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/upload/cancel": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Cancel a standalone SSH server file upload session.",
+    requestSchema: CancelWorkspaceFileUploadRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CancelWorkspaceFileUploadRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const target = await getServerFileTarget(req, ctx.params["id"]!, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.cancelUpload(target, validation.data.uploadId);
         return Response.json({
           success: true,
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           uploadId: response.uploadId,
         });
       } catch (error) {
         log.error("Failed to cancel standalone SSH server file upload", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           uploadId: validation.data.uploadId,
           error: String(error),
         });
@@ -556,4 +561,4 @@ export const sshServerFilesRoutes = {
       }
     },
   },
-};
+});

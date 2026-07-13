@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task accept and push routes.
  *
@@ -16,8 +17,9 @@ import type { AcceptResponse, PushResponse } from "../../types/api";
 
 const log = createLogger("api:tasks");
 
-export const tasksAcceptPushRoutes = {
+export const tasksAcceptPushRoutes = defineRoutes({
   "/api/tasks/:id/accept": {
+    description: "Accept a completed task locally without pushing.",
     /**
      * POST /api/tasks/:id/accept - Accept a completed task locally.
      *
@@ -27,19 +29,19 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns AcceptResponse with success
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("POST /api/tasks/:id/accept", { taskId: req.params.id });
-      const result = await taskManager.acceptTask(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      log.debug("POST /api/tasks/:id/accept", { taskId: ctx.params["id"]! });
+      const result = await taskManager.acceptTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/accept - Failed", { taskId: req.params.id, error: result.error });
+        log.warn("POST /api/tasks/:id/accept - Failed", { taskId: ctx.params["id"]!, error: result.error });
         if (result.error?.includes("not found")) {
           return errorResponse("not_found", "Task not found", 404);
         }
         return errorResponse("accept_failed", result.error ?? "Unknown error", 400);
       }
 
-      log.info("POST /api/tasks/:id/accept - Task accepted locally", { taskId: req.params.id });
+      log.info("POST /api/tasks/:id/accept - Task accepted locally", { taskId: ctx.params["id"]! });
       const response: AcceptResponse = {
         success: true,
       };
@@ -48,6 +50,7 @@ export const tasksAcceptPushRoutes = {
   },
 
   "/api/tasks/:id/push": {
+    description: "Push a completed task branch to the remote repository.",
     /**
      * POST /api/tasks/:id/push - Push a completed task's branch to remote.
      *
@@ -57,19 +60,19 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns PushResponse with success and remoteBranch name
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("POST /api/tasks/:id/push", { taskId: req.params.id });
-      const result = await taskManager.pushTask(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      log.debug("POST /api/tasks/:id/push", { taskId: ctx.params["id"]! });
+      const result = await taskManager.pushTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/push - Failed", { taskId: req.params.id, error: result.error });
+        log.warn("POST /api/tasks/:id/push - Failed", { taskId: ctx.params["id"]!, error: result.error });
         if (result.error?.includes("not found")) {
           return errorResponse("not_found", "Task not found", 404);
         }
         return errorResponse("push_failed", result.error ?? "Unknown error", 400);
       }
 
-      log.info("POST /api/tasks/:id/push - Task pushed", { taskId: req.params.id, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
+      log.info("POST /api/tasks/:id/push - Task pushed", { taskId: ctx.params["id"]!, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
       const syncStatus = result.syncStatus ?? "already_up_to_date";
       let response: PushResponse;
       if (syncStatus === "conflicts_being_resolved") {
@@ -82,6 +85,7 @@ export const tasksAcceptPushRoutes = {
   },
 
   "/api/tasks/:id/update-branch": {
+    description: "Sync a pushed task branch with its base branch.",
     /**
      * POST /api/tasks/:id/update-branch - Update a pushed task's branch by syncing with the base branch.
      *
@@ -92,19 +96,19 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns PushResponse with success and sync status
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("POST /api/tasks/:id/update-branch", { taskId: req.params.id });
-      const result = await taskManager.updateBranch(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      log.debug("POST /api/tasks/:id/update-branch", { taskId: ctx.params["id"]! });
+      const result = await taskManager.updateBranch(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/update-branch - Failed", { taskId: req.params.id, error: result.error });
+        log.warn("POST /api/tasks/:id/update-branch - Failed", { taskId: ctx.params["id"]!, error: result.error });
         if (result.error?.includes("not found")) {
           return errorResponse("not_found", "Task not found", 404);
         }
         return errorResponse("update_branch_failed", result.error ?? "Unknown error", 400);
       }
 
-      log.info("POST /api/tasks/:id/update-branch - Branch updated", { taskId: req.params.id, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
+      log.info("POST /api/tasks/:id/update-branch - Branch updated", { taskId: ctx.params["id"]!, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
       const syncStatus = result.syncStatus ?? "already_up_to_date";
       let response: PushResponse;
       if (syncStatus === "conflicts_being_resolved") {
@@ -117,6 +121,7 @@ export const tasksAcceptPushRoutes = {
   },
 
   "/api/tasks/:id/mark-merged": {
+    description: "Mark a task as merged after an external merge.",
     /**
      * POST /api/tasks/:id/mark-merged - Mark an externally merged task as merged.
      *
@@ -132,8 +137,8 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const result = await taskManager.markMerged(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      const result = await taskManager.markMerged(ctx.params["id"]!);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -147,6 +152,7 @@ export const tasksAcceptPushRoutes = {
   },
 
   "/api/tasks/:id/close-local": {
+    description: "Close a locally accepted task without PR actions.",
     /**
      * POST /api/tasks/:id/close-local - Stop accepting follow-up comments locally.
      *
@@ -156,8 +162,8 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const result = await taskManager.closeLocalTask(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      const result = await taskManager.closeLocalTask(ctx.params["id"]!);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -171,6 +177,7 @@ export const tasksAcceptPushRoutes = {
   },
 
   "/api/tasks/:id/manual-complete": {
+    description: "Promote a stopped or failed task to completed.",
     /**
      * POST /api/tasks/:id/manual-complete - Manually finalize a halted task.
      *
@@ -179,8 +186,8 @@ export const tasksAcceptPushRoutes = {
      *
      * @returns Success response
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const result = await taskManager.manualCompleteTask(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      const result = await taskManager.manualCompleteTask(ctx.params["id"]!);
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -192,4 +199,4 @@ export const tasksAcceptPushRoutes = {
       return successResponse();
     },
   },
-};
+});

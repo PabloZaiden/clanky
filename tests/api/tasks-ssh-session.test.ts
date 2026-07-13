@@ -2,8 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { serve, type Server } from "bun";
-import { apiRoutes } from "../../src/api";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { closeDatabase, ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
@@ -52,12 +52,7 @@ describe("Task SSH session API integration", () => {
     executor = new TaskSshExecutor();
     backendManager.setExecutorFactoryForTesting(() => executor);
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

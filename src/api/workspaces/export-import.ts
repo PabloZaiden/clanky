@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Route handlers for exporting and importing workspace configurations.
  */
@@ -12,6 +13,7 @@ import { getDefaultServerSettings } from "../../types/settings";
 import type { Workspace, WorkspaceImportResult } from "../../types/workspace";
 import type { WorkspaceExportData } from "../../types/schemas";
 import { parseAndValidate } from "../validation";
+import { SensitiveQuerySchema } from "../route-schemas";
 import { errorResponse } from "../helpers";
 import { WorkspaceImportRequestSchema } from "../../types/schemas";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
@@ -140,12 +142,14 @@ async function importWorkspacesWithValidation(
   return result;
 }
 
-export const exportImportRoutes = {
+export const exportImportRoutes = defineRoutes({
   /**
    * GET /api/workspaces/export - Export all workspace configs as JSON
    */
   "/api/workspaces/export": {
-    async GET(req: Request) {
+    description: "Export workspace configuration data.",
+    querySchema: SensitiveQuerySchema,
+    async GET(req: Request, _ctx) {
       log.debug("GET /api/workspaces/export - Exporting workspace configs");
       try {
         const includeSensitive = shouldIncludeSensitiveData(req);
@@ -173,7 +177,9 @@ export const exportImportRoutes = {
    * Reports per-entry results (created, failed).
    */
   "/api/workspaces/import": {
-    async POST(req: Request) {
+    description: "Import workspaces from an export bundle.",
+    requestSchema: WorkspaceImportRequestSchema,
+    async POST(req: Request, _ctx) {
       log.debug("POST /api/workspaces/import - Importing workspace configs");
       const result = await parseAndValidate(WorkspaceImportRequestSchema, req);
 
@@ -209,4 +215,4 @@ export const exportImportRoutes = {
       }
     },
   },
-};
+});

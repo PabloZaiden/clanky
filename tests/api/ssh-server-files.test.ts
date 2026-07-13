@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { constants, publicEncrypt } from "node:crypto";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -33,12 +33,7 @@ describe("Standalone SSH server files API integration", () => {
 
     sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

@@ -37,7 +37,7 @@ For more project information, see the [README.md](README.md).
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
 - Treat app data as private per user. New users start with empty Clanky app data.
-- Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and forwarded-port proxying. Normal app state updates should use framework realtime.
+- Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and preview bridges. Normal app state updates should use framework realtime.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
@@ -54,6 +54,13 @@ Clanky is typically deployed behind a reverse proxy that enforces authentication
 - API endpoints do not require session management inside Clanky itself
 - Destructive endpoints (server kill, database reset) should still be protected by the reverse proxy or by the application auth layer
 - WebSocket connections can be protected either at the proxy layer or by the application auth layer
+
+The production Docker image assumes a reverse proxy and enables
+`CLANKY_TRUST_PROXY=true` with `proto,host,prefix` forwarding headers and the
+`first` chain policy. Public deployments must sanitize those headers at the
+proxy, set `CLANKY_PUBLIC_BASE_URL` to the external absolute HTTPS origin
+without a path, query, or fragment, forward WebSocket upgrades, keep port
+`8080` private, and persist `/app/data`.
 
 ### Testing without passkeys
 

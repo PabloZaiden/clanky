@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * AGENTS.md optimization API endpoints.
  *
@@ -35,18 +36,16 @@ function getAgentsMdPath(directory: string): string {
 /**
  * AGENTS.md optimization API routes.
  */
-export const agentsMdRoutes = {
+export const agentsMdRoutes = defineRoutes({
   /**
    * GET/POST dispatcher for /api/workspaces/:id/agents-md
    *
    * GET: Read the current AGENTS.md content and its optimization status.
    */
-  "/api/workspaces/:id/agents-md": async (req: Request & { params: { id: string } }) => {
-    const { id } = req.params;
-
-    if (req.method !== "GET") {
-      return errorResponse("method_not_allowed", "Method not allowed", 405);
-    }
+  "/api/workspaces/:id/agents-md": {
+    description: "Read the AGENTS.md file and optimization status for a workspace.",
+    GET: async (_req: Request, ctx) => {
+    const id = ctx.params["id"]!;
 
     log.debug("GET /api/workspaces/:id/agents-md", { workspaceId: id });
 
@@ -78,6 +77,7 @@ export const agentsMdRoutes = {
       log.error("Failed to read AGENTS.md", { workspaceId: id, error: String(error) });
       return errorResponse("read_failed", `Failed to read AGENTS.md: ${String(error)}`, 500);
     }
+    },
   },
 
   /**
@@ -85,12 +85,10 @@ export const agentsMdRoutes = {
    *
    * Returns a preview of what the optimized AGENTS.md would look like.
    */
-  "/api/workspaces/:id/agents-md/preview": async (req: Request & { params: { id: string } }) => {
-    const { id } = req.params;
-
-    if (req.method !== "POST") {
-      return errorResponse("method_not_allowed", "Method not allowed", 405);
-    }
+  "/api/workspaces/:id/agents-md/preview": {
+    description: "Preview AGENTS.md optimization changes for a workspace.",
+    POST: async (_req: Request, ctx) => {
+    const id = ctx.params["id"]!;
 
     log.debug("POST /api/workspaces/:id/agents-md/preview", { workspaceId: id });
 
@@ -118,6 +116,7 @@ export const agentsMdRoutes = {
       log.error("Failed to preview AGENTS.md optimization", { workspaceId: id, error: String(error) });
       return errorResponse("preview_failed", `Failed to preview optimization: ${String(error)}`, 500);
     }
+    },
   },
 
   /**
@@ -127,12 +126,10 @@ export const agentsMdRoutes = {
    * Creates the file if it doesn't exist, appends section if missing,
    * or updates the section if an older version is present.
    */
-  "/api/workspaces/:id/agents-md/optimize": async (req: Request & { params: { id: string } }) => {
-    const { id } = req.params;
-
-    if (req.method !== "POST") {
-      return errorResponse("method_not_allowed", "Method not allowed", 405);
-    }
+  "/api/workspaces/:id/agents-md/optimize": {
+    description: "Apply AGENTS.md optimization changes to a workspace.",
+    POST: async (_req: Request, ctx) => {
+    const id = ctx.params["id"]!;
 
     log.debug("POST /api/workspaces/:id/agents-md/optimize", { workspaceId: id });
 
@@ -192,5 +189,6 @@ export const agentsMdRoutes = {
       log.error("Failed to optimize AGENTS.md", { workspaceId: id, error: String(error) });
       return errorResponse("optimize_failed", `Failed to optimize AGENTS.md: ${String(error)}`, 500);
     }
+    },
   },
-};
+});

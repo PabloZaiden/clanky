@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task item routes.
  *
@@ -112,8 +113,10 @@ async function applyTaskUpdates(
   }
 }
 
-export const tasksItemRoutes = {
+export const tasksItemRoutes = defineRoutes({
   "/api/tasks/:id": {
+    description: "Read, update, or delete a task.",
+    requestSchema: UpdateTaskRequestSchema,
     /**
      * GET /api/tasks/:id - Get a specific task by ID.
      *
@@ -121,11 +124,11 @@ export const tasksItemRoutes = {
      *
      * @returns Task object or 404 if not found
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("GET /api/tasks/:id", { taskId: req.params.id });
-      const task = await taskManager.getTask(req.params.id);
+    async GET(_req: Request, ctx): Promise<Response> {
+      log.debug("GET /api/tasks/:id", { taskId: ctx.params["id"]! });
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
-        log.debug("GET /api/tasks/:id - Task not found", { taskId: req.params.id });
+        log.debug("GET /api/tasks/:id - Task not found", { taskId: ctx.params["id"]! });
         return errorResponse("not_found", "Task not found", 404);
       }
       return Response.json(task);
@@ -145,11 +148,11 @@ export const tasksItemRoutes = {
      *
      * @returns Updated Task object or 404 if not found
      */
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("PATCH /api/tasks/:id", { taskId: req.params.id });
-      const task = await taskManager.getTask(req.params.id);
+    async PATCH(req: Request, ctx): Promise<Response> {
+      log.debug("PATCH /api/tasks/:id", { taskId: ctx.params["id"]! });
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
-        log.debug("PATCH /api/tasks/:id - Task not found", { taskId: req.params.id });
+        log.debug("PATCH /api/tasks/:id - Task not found", { taskId: ctx.params["id"]! });
         return errorResponse("not_found", "Task not found", 404);
       }
 
@@ -159,7 +162,7 @@ export const tasksItemRoutes = {
         return validation.response;
       }
 
-      return applyTaskUpdates(req.params.id, validation.data, task);
+      return applyTaskUpdates(ctx.params["id"]!, validation.data, task);
     },
 
     /**
@@ -171,8 +174,8 @@ export const tasksItemRoutes = {
      *
      * @returns Updated Task object, 404 if not found, or 400 if not a draft
      */
-    async PUT(req: Request & { params: { id: string } }): Promise<Response> {
-      const task = await taskManager.getTask(req.params.id);
+    async PUT(req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -189,13 +192,13 @@ export const tasksItemRoutes = {
       }
 
       log.debug("PUT /api/tasks/:id - Request body", {
-        taskId: req.params.id,
+        taskId: ctx.params["id"]!,
         hasPrompt: validation.data.prompt !== undefined,
         promptLength: typeof validation.data.prompt === "string" ? validation.data.prompt.length : 0,
         promptPreview: typeof validation.data.prompt === "string" ? validation.data.prompt.slice(0, 50) : null,
       });
 
-      return applyTaskUpdates(req.params.id, validation.data, task);
+      return applyTaskUpdates(ctx.params["id"]!, validation.data, task);
     },
 
     /**
@@ -206,22 +209,22 @@ export const tasksItemRoutes = {
      *
      * @returns Success response or 404 if not found
      */
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      log.debug("DELETE /api/tasks/:id", { taskId: req.params.id });
-      const task = await taskManager.getTask(req.params.id);
+    async DELETE(_req: Request, ctx): Promise<Response> {
+      log.debug("DELETE /api/tasks/:id", { taskId: ctx.params["id"]! });
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
-        log.debug("DELETE /api/tasks/:id - Task not found", { taskId: req.params.id });
+        log.debug("DELETE /api/tasks/:id - Task not found", { taskId: ctx.params["id"]! });
         return errorResponse("not_found", "Task not found", 404);
       }
 
       try {
-        await taskManager.deleteTask(req.params.id);
-        log.info("DELETE /api/tasks/:id - Task deleted", { taskId: req.params.id });
+        await taskManager.deleteTask(ctx.params["id"]!);
+        log.info("DELETE /api/tasks/:id - Task deleted", { taskId: ctx.params["id"]! });
         return successResponse();
       } catch (error) {
-        log.error("DELETE /api/tasks/:id - Delete failed", { taskId: req.params.id, error: String(error) });
+        log.error("DELETE /api/tasks/:id - Delete failed", { taskId: ctx.params["id"]!, error: String(error) });
         return errorResponse("delete_failed", String(error), 500);
       }
     },
   },
-};
+});

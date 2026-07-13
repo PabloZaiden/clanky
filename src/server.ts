@@ -7,7 +7,7 @@ import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, getRequestOriginInfo, sqliteWebAppStore, type ResourceRealtimeEvent, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
@@ -27,105 +27,49 @@ import {
   taskEventEmitter,
   previewEventEmitter,
 } from "./core/event-emitter";
-import { getPublicBasePathFromForwardedPrefix } from "./utils/public-base-path";
-import { runWithCurrentUser } from "./core/user-context";
+import { getCurrentUserId } from "./core/user-context";
 import { CLANKY_VERSION } from "./version";
 
 type ClankyRealtimeEvent = ResourceRealtimeEvent | Record<string, unknown>;
-type LegacyRouteHandler = (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>;
-type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
-type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
-
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
-const PURGE_REQUEST_IDLE_TIMEOUT_SECONDS = 0;
-const PURGE_ROUTES_WITHOUT_IDLE_TIMEOUT = new Set([
-  "/api/settings/purge-terminal-tasks",
-  "/api/workspaces/:id/archived-tasks/purge",
-]);
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeRegistered = false;
 
-function legacyRequest(req: Request, params: Record<string, string>): Request {
-  const wrapped = new Request(req);
-  Object.defineProperty(wrapped, "params", {
-    value: params,
-    enumerable: true,
-  });
-  return wrapped;
-}
-
-export function configureLegacyRouteRequestTimeout(
-  path: string,
-  req: Request,
-  server?: Pick<Server<WebAppWebSocketData>, "timeout">,
-): void {
-  if (PURGE_ROUTES_WITHOUT_IDLE_TIMEOUT.has(path)) {
-    server?.timeout(req, PURGE_REQUEST_IDLE_TIMEOUT_SECONDS);
-  }
-}
-
-function adaptHandler(
-  path: string,
-  handler: (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>,
-) {
-  return async (req: Request, ctx: Parameters<NonNullable<RouteDefinition<ClankyRealtimeEvent>["GET"]>>[1]) => {
-    const user = ctx.requireUser();
-    configureLegacyRouteRequestTimeout(path, req, ctx.server);
-    return await runWithCurrentUser(user, () => handler(legacyRequest(req, ctx.params), ctx.server as Server<WebAppWebSocketData> | undefined));
-  };
-}
-
-function adaptLegacyRoutes(routes: Record<string, LegacyRouteValue>): RouteTable<ClankyRealtimeEvent> {
-  const converted: RouteTable<ClankyRealtimeEvent> = {};
-  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
-  for (const [path, route] of Object.entries(routes)) {
-    const auth = path === "/api/settings/reset-all" || path === "/api/settings/purge-terminal-tasks" ? "owner" : "user";
-    if (typeof route === "function") {
-      converted[path] = {
-        auth,
-        sameOrigin: path.startsWith("/task/") ? "always" : "mutations",
-        ...Object.fromEntries(methods.map((method) => [method, adaptHandler(path, route as LegacyRouteHandler)])),
-      };
-      continue;
-    }
-
-    converted[path] = {
-      auth,
-      sameOrigin: path.startsWith("/task/") ? "always" : "mutations",
-    };
-    for (const method of methods) {
-      const handler = route[method];
-      if (handler) {
-        converted[path]![method] = adaptHandler(path, handler);
-      }
-    }
-  }
-  return converted;
-}
-
-function publishLegacyEvent(
+function publishClankyRealtimeEvent(
   appServer: WebAppServer<ClankyRealtimeEvent>,
   event: object,
   target: Record<string, string | undefined>,
 ): void {
-  appServer.realtime.publish(event as ClankyRealtimeEvent, { target });
+  const userId = getCurrentUserId();
+  if (!userId) {
+    log.warn("Skipping user realtime event without an active user context", {
+      eventType: typeof event === "object" && event !== null && "type" in event ? String(event.type) : "unknown",
+    });
+    return;
+  }
+  appServer.realtime.publish(event as ClankyRealtimeEvent, {
+    target: {
+      ...target,
+      userId,
+    },
+  });
 }
 
-function registerRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): void {
+function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): void {
   if (realtimeBridgeRegistered) {
     return;
   }
   realtimeBridgeRegistered = true;
-  taskEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { taskId: event.taskId }));
-  chatEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { chatId: event.chatId }));
-  agentEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { agentId: event.agentId }));
-  sshSessionEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { sshSessionId: event.sshSessionId }));
-  provisioningEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { provisioningJobId: event.provisioningJobId }));
-  previewEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { workspaceId: event.workspaceId }));
+  taskEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { taskId: event.taskId }));
+  chatEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { chatId: event.chatId }));
+  agentEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { agentId: event.agentId }));
+  sshSessionEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { sshSessionId: event.sshSessionId }));
+  provisioningEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { provisioningJobId: event.provisioningJobId }));
+  previewEventEmitter.subscribe((event) => publishClankyRealtimeEvent(appServer, event, { workspaceId: event.workspaceId }));
 }
 
-const routes = defineRoutes<ClankyRealtimeEvent>({
+export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
     sameOrigin: "always",
@@ -189,7 +133,7 @@ const routes = defineRoutes<ClankyRealtimeEvent>({
       return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
     },
   },
-  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
+  ...apiRoutes,
 });
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
@@ -222,14 +166,14 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       clanky: websocketHandlers as never,
     },
     configResponse: (req) => {
-      const publicBasePath = getPublicBasePathFromForwardedPrefix(req.headers.get("x-forwarded-prefix"));
+      const publicBasePath = app ? getRequestOriginInfo(req, app.config).pathPrefix : "/";
       return {
         ...getAppConfig(),
-        publicBasePath: publicBasePath || null,
+        publicBasePath: publicBasePath === "/" ? null : publicBasePath,
       };
     },
   });
-  registerRealtimeBridge(app);
+  registerClankyRealtimeBridge(app);
   return app;
 }
 

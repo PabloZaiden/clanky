@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task comments routes.
  *
@@ -11,8 +12,9 @@ import type { GetCommentsResponse } from "../../types/api";
 
 const log = createLogger("api:tasks");
 
-export const tasksCommentsRoutes = {
+export const tasksCommentsRoutes = defineRoutes({
   "/api/tasks/:id/comments": {
+    description: "List review comments for a task.",
     /**
      * GET /api/tasks/:id/comments - Get all review comments for a task.
      *
@@ -21,16 +23,16 @@ export const tasksCommentsRoutes = {
      *
      * @returns GetCommentsResponse with array of ReviewComment objects
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
         // Check if task exists
-        const task = await taskManager.getTask(req.params.id);
+        const task = await taskManager.getTask(ctx.params["id"]!);
         if (!task) {
           return errorResponse("not_found", "Task not found", 404);
         }
 
         // Get comments from database via TaskManager
-        const comments = taskManager.getReviewComments(req.params.id);
+        const comments = taskManager.getReviewComments(ctx.params["id"]!);
 
         const responseBody: GetCommentsResponse = {
           success: true,
@@ -39,11 +41,11 @@ export const tasksCommentsRoutes = {
         return Response.json(responseBody);
       } catch (error) {
         log.error("Failed to get task comments", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("get_comments_failed", String(error), 500);
       }
     },
   },
-};
+});

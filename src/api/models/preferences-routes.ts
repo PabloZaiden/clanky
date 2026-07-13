@@ -1,3 +1,4 @@
+import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 /**
  * User preferences API routes.
  *
@@ -56,14 +57,16 @@ function logPreferenceSaveFailure(preference: string, error: unknown): void {
 /**
  * Preferences API routes.
  */
-export const preferencesRoutes = {
+export const preferencesRoutes = defineRoutes({
   "/api/preferences/last-model": {
+    description: "Persist the user's most recently used model.",
+    requestSchema: SetLastModelRequestSchema,
     /**
      * GET /api/preferences/last-model - Get the last used model.
      *
      * @returns ModelConfig object or null if none set
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const lastModel = await getLastModel();
       return Response.json(lastModel ?? null);
     },
@@ -78,7 +81,7 @@ export const preferencesRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetLastModelRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -100,10 +103,12 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/last-cheap-model": {
+    description: "Persist the user's most recently used cheap model.",
+    requestSchema: SetLastCheapModelRequestSchema,
     /**
      * GET /api/preferences/last-cheap-model - Get the last used cheap helper-model selection.
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const lastCheapModel = await getLastCheapModel();
       return Response.json(lastCheapModel ?? null);
     },
@@ -111,7 +116,7 @@ export const preferencesRoutes = {
     /**
      * PUT /api/preferences/last-cheap-model - Set the last used cheap helper-model selection.
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetLastCheapModelRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -128,12 +133,14 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/last-directory": {
+    description: "Persist the user's last selected directory.",
+    requestSchema: SetLastDirectoryRequestSchema,
     /**
      * GET /api/preferences/last-directory - Get the last used working directory.
      *
      * @returns Directory path string or null if none set
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const lastDirectory = await getLastDirectory();
       return Response.json(lastDirectory ?? null);
     },
@@ -146,7 +153,7 @@ export const preferencesRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetLastDirectoryRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -164,12 +171,14 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/markdown-rendering": {
+    description: "Persist markdown rendering preferences.",
+    requestSchema: SetMarkdownRenderingRequestSchema,
     /**
      * GET /api/preferences/markdown-rendering - Get markdown rendering preference.
      *
      * @returns Boolean indicating if markdown rendering is enabled
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const enabled = await getMarkdownRenderingEnabled();
       return Response.json({ enabled });
     },
@@ -182,7 +191,7 @@ export const preferencesRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetMarkdownRenderingRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -200,12 +209,14 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/file-explorer-full-tree": {
+    description: "Persist file explorer tree loading preferences.",
+    requestSchema: SetFileExplorerFullTreeRequestSchema,
     /**
      * GET /api/preferences/file-explorer-full-tree - Get file explorer loading preference.
      *
      * @returns Boolean indicating if the explorer should load the full tree at once
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const enabled = await getFileExplorerFullTreeEnabled();
       return Response.json({ enabled });
     },
@@ -218,7 +229,7 @@ export const preferencesRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetFileExplorerFullTreeRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -236,12 +247,14 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/dashboard-view-mode": {
+    description: "Persist the preferred dashboard layout.",
+    requestSchema: SetDashboardViewModeRequestSchema,
     /**
      * GET /api/preferences/dashboard-view-mode - Get dashboard view mode preference.
      *
      * @returns Object with mode property
      */
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const mode = await getDashboardViewMode();
       return Response.json({ mode });
     },
@@ -254,7 +267,7 @@ export const preferencesRoutes = {
      *
      * @returns Success response
      */
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetDashboardViewModeRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -271,12 +284,14 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/quick-chat": {
-    async GET(): Promise<Response> {
+    description: "Persist quick chat workspace and model preferences.",
+    requestSchema: SetQuickChatSettingsRequestSchema,
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const settings = await getQuickChatSettings();
       return Response.json(settings);
     },
 
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetQuickChatSettingsRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -308,12 +323,12 @@ export const preferencesRoutes = {
   },
 
   "/api/preferences/scheduler-timezone": {
-    async GET(): Promise<Response> {
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const timezone = await getSchedulerTimezone();
       return Response.json({ timezone });
     },
 
-    async PUT(req: Request): Promise<Response> {
+    async PUT(req: Request, _ctx): Promise<Response> {
       const result = await parseAndValidate(SetSchedulerTimezoneRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -328,4 +343,4 @@ export const preferencesRoutes = {
       }
     },
   },
-};
+});

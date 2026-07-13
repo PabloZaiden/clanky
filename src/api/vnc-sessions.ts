@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 import { vncSessionManager } from "../core/vnc-session-manager";
 import { createLogger } from "../core/logger";
 import { CreateVncSessionRequestSchema } from "../types/schemas";
@@ -17,18 +18,20 @@ function mapVncError(error: unknown): Response {
   return errorResponse("vnc_session_error", message, 500);
 }
 
-export const vncSessionRoutes = {
+export const vncSessionRoutes = defineRoutes({
   "/api/ssh-servers/:id/vnc-sessions": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "List or create VNC sessions for a standalone SSH server.",
+    requestSchema: CreateVncSessionRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        return Response.json(await vncSessionManager.listServerSessions(req.params.id));
+        return Response.json(await vncSessionManager.listServerSessions(ctx.params["id"]!));
       } catch (error) {
-        log.error("Failed to list VNC sessions", { serverId: req.params.id, error: String(error) });
+        log.error("Failed to list VNC sessions", { serverId: ctx.params["id"]!, error: String(error) });
         return mapVncError(error);
       }
     },
 
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateVncSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -36,43 +39,44 @@ export const vncSessionRoutes = {
 
       try {
         const session = await vncSessionManager.createOrResumeSession({
-          sshServerId: req.params.id,
+          sshServerId: ctx.params["id"]!,
           remotePort: validation.data.remotePort,
           credentialToken: validation.data.credentialToken,
         });
         return Response.json(session, { status: session.state.status === "active" ? 201 : 200 });
       } catch (error) {
-        log.error("Failed to create VNC session", { serverId: req.params.id, error: String(error) });
+        log.error("Failed to create VNC session", { serverId: ctx.params["id"]!, error: String(error) });
         return mapVncError(error);
       }
     },
   },
 
   "/api/vnc-sessions/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read or close a VNC session.",
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const session = await vncSessionManager.getSession(req.params.id);
+        const session = await vncSessionManager.getSession(ctx.params["id"]!);
         if (!session) {
           return errorResponse("not_found", "VNC session not found", 404);
         }
         return Response.json(session);
       } catch (error) {
-        log.error("Failed to get VNC session", { vncSessionId: req.params.id, error: String(error) });
+        log.error("Failed to get VNC session", { vncSessionId: ctx.params["id"]!, error: String(error) });
         return mapVncError(error);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const deleted = await vncSessionManager.closeSession(req.params.id);
+        const deleted = await vncSessionManager.closeSession(ctx.params["id"]!);
         if (!deleted) {
           return errorResponse("not_found", "VNC session not found", 404);
         }
         return successResponse();
       } catch (error) {
-        log.error("Failed to close VNC session", { vncSessionId: req.params.id, error: String(error) });
+        log.error("Failed to close VNC session", { vncSessionId: ctx.params["id"]!, error: String(error) });
         return mapVncError(error);
       }
     },
   },
-};
+});

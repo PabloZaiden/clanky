@@ -3,11 +3,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import { createWorkspace } from "../../src/persistence/workspaces";
@@ -62,12 +62,7 @@ describe("Models API", () => {
     backendManager.setBackendForTesting(backend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

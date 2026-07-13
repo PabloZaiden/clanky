@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Non-destructive stop route for active tasks.
  *
@@ -10,8 +11,9 @@ import { errorResponse, successResponse } from "../helpers";
 
 const log = createLogger("api:tasks");
 
-export const tasksStopRoutes = {
+export const tasksStopRoutes = defineRoutes({
   "/api/tasks/:id/stop": {
+    description: "Stop an active task run.",
     /**
      * POST /api/tasks/:id/stop - Stop an active task without deleting it.
      *
@@ -24,10 +26,10 @@ export const tasksStopRoutes = {
      * - 409: Task exists but is not currently running
      * - 500: Internal error while stopping
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const task = await taskManager.getTask(req.params.id);
+    async POST(_req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
-        return errorResponse("not_found", `Task not found: ${req.params.id}`, 404);
+        return errorResponse("not_found", `Task not found: ${ctx.params["id"]!}`, 404);
       }
 
       const activeStatuses = new Set(["starting", "running", "planning", "waiting"]);
@@ -36,19 +38,19 @@ export const tasksStopRoutes = {
       }
 
       try {
-        await taskManager.stopTask(req.params.id);
-        return successResponse({ taskId: req.params.id });
+        await taskManager.stopTask(ctx.params["id"]!);
+        return successResponse({ taskId: ctx.params["id"]! });
       } catch (error) {
         const errorMsg = String(error);
         if (errorMsg.includes("not running")) {
           return errorResponse("not_running", errorMsg, 409);
         }
         log.error("Failed to stop task", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: errorMsg,
         });
         return errorResponse("stop_task_failed", errorMsg, 500);
       }
     },
   },
-};
+});

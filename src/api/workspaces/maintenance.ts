@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Workspace maintenance routes for actions like pulling the default branch.
  */
@@ -9,10 +10,11 @@ import { errorResponse, requireWorkspace, successResponse } from "../helpers";
 
 const log = createLogger("api:workspace-maintenance");
 
-export const workspaceMaintenanceRoutes = {
+export const workspaceMaintenanceRoutes = defineRoutes({
   "/api/workspaces/:id/pull-latest-changes": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const workspaceResult = await requireWorkspace(req.params.id);
+    description: "Pull the latest changes for a workspace's default branch.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
@@ -94,4 +96,4 @@ export const workspaceMaintenanceRoutes = {
       }
     },
   },
-};
+});

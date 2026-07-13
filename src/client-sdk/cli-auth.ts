@@ -1,6 +1,14 @@
-import { mkdir, rename, rm } from "fs/promises";
+import {
+  createJsonFileStore,
+  getAuthorizedHeaders as getWebAppAuthorizedHeaders,
+  normalizeBaseUrl,
+  parseStoredDeviceCredentials,
+  refreshDeviceCredentials,
+  runDeviceAuthCommand,
+  type JsonFileStore,
+  type StoredDeviceCredentials,
+} from "@pablozaiden/webapp/cli";
 import { homedir } from "os";
-import { basename, dirname, join } from "path";
 import { z } from "zod";
 import { formatCookieHeader, parseCookieHeader } from "./http-cookies";
 
@@ -8,37 +16,22 @@ const DEFAULT_SCOPE = "";
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
 const CLI_STATE_DIRECTORY = ".clanky";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
-const inFlightRefreshes = new Map<string, Promise<StoredCliCredentials | null>>();
-
-const DeviceStartResponseSchema = z.object({
-  device_code: z.string().min(1),
-  user_code: z.string().min(1),
-  verification_uri: z.string().url(),
-  verification_uri_complete: z.string().url(),
-  expires_in: z.number().int().positive(),
-  interval: z.number().int().positive(),
-});
-
-const TokenSuccessResponseSchema = z.object({
-  access_token: z.string().min(1),
-  refresh_token: z.string().min(1),
-  token_type: z.literal("Bearer"),
-  expires_in: z.number().int().positive(),
-  scope: z.string(),
-});
-
-const TokenErrorResponseSchema = z.object({
-  error: z.string().min(1),
-  error_description: z.string().min(1).optional(),
-});
 
 const AuthStatusResponseSchema = z.object({
-  authenticated: z.literal(true),
+  authenticated: z.boolean(),
   authKind: z.string().min(1),
   subject: z.string().nullable(),
   clientId: z.string().nullable(),
   scope: z.string().nullable(),
 });
+
+type FrameworkCredentials = StoredDeviceCredentials;
+
+export type StoredCliCredentials = FrameworkCredentials & {
+  cookies: string;
+};
+
+type CredentialWriteValue = FrameworkCredentials | StoredCliCredentials;
 
 export interface AuthCommandOptions {
   baseUrl: string;
@@ -49,21 +42,6 @@ export interface AuthCommandOptions {
 export interface StatusCommandOptions {
   baseUrl?: string;
 }
-
-const StoredCliCredentialsSchema = z.object({
-  baseUrl: z.string().url(),
-  clientId: z.string().min(1),
-  accessToken: z.string().min(1),
-  refreshToken: z.string().min(1),
-  tokenType: z.literal("Bearer"),
-  scope: z.string(),
-  cookies: z.string().default(""),
-  accessTokenExpiresAt: z.string().datetime(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export type StoredCliCredentials = z.infer<typeof StoredCliCredentialsSchema>;
 
 export type CliRequestAuthContext =
   | {
@@ -89,6 +67,11 @@ export interface CliStatusDependencies {
   now: () => Date;
 }
 
+export interface CliCredentialsStore extends JsonFileStore<FrameworkCredentials> {
+  read(): Promise<StoredCliCredentials | undefined>;
+  write(value: CredentialWriteValue): Promise<void>;
+}
+
 function getRequestUrl(input: string | URL | Request): string {
   if (input instanceof Request) {
     return input.url;
@@ -96,23 +79,34 @@ function getRequestUrl(input: string | URL | Request): string {
   return String(input);
 }
 
+export function mergeRequestHeaders(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Headers {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+  }
+  return headers;
+}
+
 function isLocalhostBaseUrl(baseUrl: string): boolean {
   const { hostname } = new URL(baseUrl);
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+  return hostname === "localhost"
+    || hostname === "127.0.0.1"
+    || hostname === "[::1]"
+    || hostname === "::1";
 }
 
 export function normalizeBaseUrlValue(rawValue: string): string {
-  const trimmed = rawValue.trim();
-  let parsed: URL;
   try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new Error(`Invalid base URL: ${trimmed}`);
+    return normalizeBaseUrl(rawValue);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Invalid base URL")) {
+      throw error;
+    }
+    throw new Error(`Invalid base URL: ${rawValue}`);
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`Invalid base URL protocol: ${parsed.protocol}`);
-  }
-  return parsed.toString().replace(/\/+$/, "");
 }
 
 export function normalizeCookieHeaderValue(rawValue?: string): string | undefined {
@@ -130,292 +124,125 @@ export function normalizeCookieHeaderValue(rawValue?: string): string | undefine
   return normalized;
 }
 
-function getCliStateDir(): string {
-  const explicitCliHome = process.env["CLANKY_CLI_HOME"]?.trim();
-  if (explicitCliHome) {
-    return explicitCliHome;
-  }
-
-  const resolvedHome = process.env["HOME"]?.trim() || homedir().trim();
-  if (!resolvedHome) {
-    throw new Error("Could not determine the CLI state directory. Set HOME or CLANKY_CLI_HOME.");
-  }
-
-  return join(resolvedHome, CLI_STATE_DIRECTORY);
-}
-
-function getCliCredentialsPath(): string {
-  return join(getCliStateDir(), CLI_CREDENTIALS_FILE);
-}
-
-function getCliCredentialsTempPath(credentialsPath: string): string {
-  return join(
-    dirname(credentialsPath),
-    `.${basename(credentialsPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
-  );
-}
-
-function getRefreshBaseUrl(credentials: StoredCliCredentials, baseUrlOverride?: string): string {
-  return baseUrlOverride ?? credentials.baseUrl;
-}
-
-function getRefreshCacheKey(credentials: StoredCliCredentials, baseUrlOverride?: string): string {
-  return JSON.stringify({
-    baseUrl: getRefreshBaseUrl(credentials, baseUrlOverride),
-    clientId: credentials.clientId,
-    cookies: credentials.cookies,
-    refreshToken: credentials.refreshToken,
-  });
-}
-
-function hasCredentialStateChanged(current: StoredCliCredentials, previous: StoredCliCredentials): boolean {
-  return current.baseUrl !== previous.baseUrl
-    || current.clientId !== previous.clientId
-    || current.accessToken !== previous.accessToken
-    || current.refreshToken !== previous.refreshToken
-    || current.tokenType !== previous.tokenType
-    || current.scope !== previous.scope
-    || current.cookies !== previous.cookies
-    || current.accessTokenExpiresAt !== previous.accessTokenExpiresAt
-    || current.updatedAt !== previous.updatedAt;
-}
-
-function isSameRefreshScope(
-  current: StoredCliCredentials,
-  previous: StoredCliCredentials,
-  baseUrlOverride?: string,
-): boolean {
-  return current.baseUrl === getRefreshBaseUrl(previous, baseUrlOverride)
-    && current.clientId === previous.clientId
-    && current.cookies === previous.cookies;
-}
-
-async function getLatestStoredCredentialsForRefresh(
-  credentials: StoredCliCredentials,
-  baseUrlOverride?: string,
-): Promise<{
-  credentials: StoredCliCredentials;
-  reusedStoredCredentials: boolean;
-}> {
-  const storedCredentials = await loadStoredCliCredentials();
-  if (!storedCredentials || !isSameRefreshScope(storedCredentials, credentials, baseUrlOverride)) {
-    return {
-      credentials,
-      reusedStoredCredentials: false,
-    };
-  }
-  if (!hasCredentialStateChanged(storedCredentials, credentials)) {
-    return {
-      credentials,
-      reusedStoredCredentials: false,
-    };
-  }
+function parseStoredCliCredentials(value: unknown): StoredCliCredentials {
+  const credentials = parseStoredDeviceCredentials(value);
+  const record = value as Record<string, unknown>;
+  const cookies = record["cookies"];
   return {
-    credentials: storedCredentials,
-    reusedStoredCredentials: true,
+    ...credentials,
+    cookies: typeof cookies === "string" ? cookies : "",
   };
 }
 
-async function requestJson(
-  fetchFn: typeof fetch,
-  input: string | URL | Request,
-  init?: RequestInit,
-): Promise<{ response: Response; body: unknown }> {
-  const headers = new Headers(init?.headers);
-  headers.set("accept", "application/json");
-  headers.set("origin", new URL(getRequestUrl(input)).origin);
-
-  const response = await fetchFn(input, {
-    ...init,
-    headers,
+export function createCliCredentialsStore(defaultCookies?: string): CliCredentialsStore {
+  const store = createJsonFileStore<StoredCliCredentials>({
+    appDirectoryName: CLI_STATE_DIRECTORY,
+    envHome: "CLANKY_CLI_HOME",
+    fileName: CLI_CREDENTIALS_FILE,
+    parse: parseStoredCliCredentials,
+    home: process.env["HOME"]?.trim() || homedir().trim(),
   });
-  const rawBody = await response.text();
-  if (!rawBody) {
-    return {
-      response,
-      body: undefined,
-    };
-  }
 
-  try {
-    return {
-      response,
-      body: JSON.parse(rawBody) as unknown,
-    };
-  } catch {
-    throw new Error(`Expected a JSON response from ${input}`);
-  }
-}
-
-export function getTokenErrorMessage(body: unknown, fallbackStatus: number): string {
-  const parsed = TokenErrorResponseSchema.safeParse(body);
-  if (parsed.success) {
-    return parsed.data.error_description ?? parsed.data.error;
-  }
-  return `Request failed with status ${String(fallbackStatus)}`;
-}
-
-function createStoredCredentials(
-  command: AuthCommandOptions,
-  tokenSet: z.infer<typeof TokenSuccessResponseSchema>,
-  now: Date,
-): StoredCliCredentials {
   return {
-    baseUrl: command.baseUrl,
-    clientId: command.clientId,
-    accessToken: tokenSet.access_token,
-    refreshToken: tokenSet.refresh_token,
-    tokenType: tokenSet.token_type,
-    scope: tokenSet.scope || DEFAULT_SCOPE,
-    cookies: command.cookies ?? "",
-    accessTokenExpiresAt: new Date(now.getTime() + tokenSet.expires_in * 1000).toISOString(),
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+    path: store.path,
+    read: store.read,
+    async write(value: CredentialWriteValue) {
+      const previous = await store.read();
+      await store.write({
+        ...value,
+        cookies: "cookies" in value
+          ? value.cookies
+          : previous?.cookies ?? defaultCookies ?? "",
+      });
+    },
+    clear: store.clear,
+    withLock: store.withLock,
   };
 }
 
 export async function loadStoredCliCredentials(): Promise<StoredCliCredentials | null> {
-  const credentialsFile = Bun.file(getCliCredentialsPath());
-  if (!await credentialsFile.exists()) {
-    return null;
-  }
-
-  const rawCredentials = await credentialsFile.text();
-  try {
-    return StoredCliCredentialsSchema.parse(JSON.parse(rawCredentials) as unknown);
-  } catch (error) {
-    throw new Error(`Failed to read stored CLI credentials: ${String(error)}`);
-  }
+  return await createCliCredentialsStore().read() ?? null;
 }
 
 export async function saveStoredCliCredentials(credentials: StoredCliCredentials): Promise<void> {
-  const credentialsPath = getCliCredentialsPath();
-  const stateDir = dirname(credentialsPath);
-  const tempPath = getCliCredentialsTempPath(credentialsPath);
-  const serializedCredentials = `${JSON.stringify(StoredCliCredentialsSchema.parse(credentials), null, 2)}\n`;
-
-  await mkdir(stateDir, { recursive: true });
-  try {
-    await Bun.write(tempPath, serializedCredentials);
-    await rename(tempPath, credentialsPath);
-  } catch (error) {
-    try {
-      await rm(tempPath, { force: true });
-    } catch {
-      // Ignore cleanup failures so the original write/rename failure surfaces.
-    }
-    throw error;
-  }
+  await createCliCredentialsStore().write(credentials);
 }
 
 export function getAuthorizedHeaders(
   credentials: StoredCliCredentials,
   headers?: HeadersInit,
 ): Headers {
-  const authorizedHeaders = new Headers(headers);
-  authorizedHeaders.set("authorization", `${credentials.tokenType} ${credentials.accessToken}`);
+  const authorizedHeaders = getWebAppAuthorizedHeaders(credentials, headers);
   if (credentials.cookies) {
     authorizedHeaders.set("cookie", credentials.cookies);
   }
   return authorizedHeaders;
 }
 
+function withRequestHeaders(
+  fetchFn: typeof fetch,
+  cookies?: string,
+): typeof fetch {
+  const wrapped = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const headers = mergeRequestHeaders(input, init);
+    headers.set("origin", new URL(getRequestUrl(input)).origin);
+    if (cookies) {
+      headers.set("cookie", cookies);
+    }
+    return await fetchFn(input, { ...init, headers });
+  };
+  return Object.assign(wrapped, {
+    preconnect: (url: string | URL, options?: Parameters<typeof fetch.preconnect>[1]) =>
+      fetchFn.preconnect(url, options),
+  });
+}
+
 export async function runAuthCommand(
   command: AuthCommandOptions,
   dependencies: CliAuthDependencies,
 ): Promise<number> {
-  const cookieHeader = command.cookies;
-  const { response, body } = await requestJson(
-    dependencies.fetchFn,
-    `${command.baseUrl}/api/auth/device`,
-    {
-      method: "POST",
-      headers: {
-        ...(cookieHeader ? { cookie: cookieHeader } : {}),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        clientId: command.clientId,
-        scope: DEFAULT_SCOPE,
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(getTokenErrorMessage(body, response.status));
-  }
-
-  const start = DeviceStartResponseSchema.parse(body);
-  dependencies.out(`Open: ${start.verification_uri_complete}`);
-  dependencies.out(`Code: ${start.user_code}`);
+  const baseUrl = normalizeBaseUrlValue(command.baseUrl);
   dependencies.out("Waiting for approval...");
+  return await runDeviceAuthCommand({
+    baseUrl,
+    clientId: command.clientId,
+    scope: DEFAULT_SCOPE,
+    store: createCliCredentialsStore(command.cookies),
+    fetchFn: withRequestHeaders(dependencies.fetchFn, command.cookies),
+    sleep: dependencies.sleep,
+    now: dependencies.now,
+    out: dependencies.out,
+  });
+}
 
-  let pollIntervalMs = start.interval * 1000;
-  while (true) {
-    await dependencies.sleep(pollIntervalMs);
-
-    const tokenResult = await requestJson(
-      dependencies.fetchFn,
-      `${command.baseUrl}/api/auth/token`,
-      {
-        method: "POST",
-        headers: {
-          ...(cookieHeader ? { cookie: cookieHeader } : {}),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-          device_code: start.device_code,
-          client_id: command.clientId,
-        }),
-      },
-    );
-
-    if (tokenResult.response.ok) {
-      const tokenSet = TokenSuccessResponseSchema.parse(tokenResult.body);
-      await saveStoredCliCredentials(createStoredCredentials(command, tokenSet, dependencies.now()));
-      dependencies.out(`Authenticated with ${command.baseUrl}`);
-      return 0;
+function getTokenErrorMessage(body: unknown, fallbackStatus: number): string {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const record = body as Record<string, unknown>;
+    const message = record["error_description"] ?? record["message"] ?? record["error"];
+    if (typeof message === "string" && message.trim()) {
+      return message;
     }
-
-    const tokenError = TokenErrorResponseSchema.safeParse(tokenResult.body);
-    if (!tokenError.success) {
-      throw new Error(`Unexpected token response status ${String(tokenResult.response.status)}`);
-    }
-
-    if (tokenError.data.error === "authorization_pending") {
-      continue;
-    }
-    if (tokenError.data.error === "slow_down") {
-      pollIntervalMs += 5000;
-      continue;
-    }
-
-    throw new Error(tokenError.data.error_description ?? tokenError.data.error);
   }
+  return `Request failed with status ${String(fallbackStatus)}`;
 }
 
-function createUpdatedStoredCredentials(
-  existing: StoredCliCredentials,
-  tokenSet: z.infer<typeof TokenSuccessResponseSchema>,
-  now: Date,
-  baseUrlOverride?: string,
-): StoredCliCredentials {
-  return {
-    ...existing,
-    baseUrl: baseUrlOverride ?? existing.baseUrl,
-    accessToken: tokenSet.access_token,
-    refreshToken: tokenSet.refresh_token,
-    tokenType: tokenSet.token_type,
-    scope: tokenSet.scope,
-    cookies: existing.cookies,
-    accessTokenExpiresAt: new Date(now.getTime() + tokenSet.expires_in * 1000).toISOString(),
-    updatedAt: now.toISOString(),
-  };
-}
+async function requestJson(
+  fetchFn: typeof fetch,
+  input: string | URL | Request,
+  init?: RequestInit,
+  cookies?: string,
+): Promise<{ response: Response; body: unknown }> {
+  const response = await withRequestHeaders(fetchFn, cookies)(input, init);
+  const rawBody = await response.text();
+  if (!rawBody) {
+    return { response, body: undefined };
+  }
 
-function isAccessTokenExpired(credentials: StoredCliCredentials, now: Date): boolean {
-  return new Date(credentials.accessTokenExpiresAt).getTime() <= now.getTime();
+  try {
+    return { response, body: JSON.parse(rawBody) as unknown };
+  } catch {
+    return { response, body: rawBody };
+  }
 }
 
 export async function refreshStoredCredentials(
@@ -426,68 +253,24 @@ export async function refreshStoredCredentials(
   },
   baseUrlOverride?: string,
 ): Promise<StoredCliCredentials | null> {
-  const now = dependencies.now();
-  const {
-    credentials: activeCredentials,
-    reusedStoredCredentials,
-  } = await getLatestStoredCredentialsForRefresh(credentials, baseUrlOverride);
-  if (reusedStoredCredentials && !isAccessTokenExpired(activeCredentials, now)) {
-    return activeCredentials;
-  }
-
-  const refreshKey = getRefreshCacheKey(activeCredentials, baseUrlOverride);
-  const existingRefresh = inFlightRefreshes.get(refreshKey);
-  if (existingRefresh) {
-    return await existingRefresh;
-  }
-
-  const refreshPromise = (async (): Promise<StoredCliCredentials | null> => {
-    const baseUrl = getRefreshBaseUrl(activeCredentials, baseUrlOverride);
-    const cookieHeader = activeCredentials.cookies || undefined;
-    const { response, body } = await requestJson(
-      dependencies.fetchFn,
-      `${baseUrl}/api/auth/token`,
-      {
-        method: "POST",
-        headers: {
-          ...(cookieHeader ? { cookie: cookieHeader } : {}),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          grant_type: "refresh_token",
-          refresh_token: activeCredentials.refreshToken,
-          client_id: activeCredentials.clientId,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const tokenError = TokenErrorResponseSchema.safeParse(body);
-      if (tokenError.success && (tokenError.data.error === "invalid_grant" || tokenError.data.error === "invalid_client")) {
-        return null;
-      }
-      throw new Error(getTokenErrorMessage(body, response.status));
+  const effectiveCredentials = baseUrlOverride
+    ? { ...credentials, baseUrl: normalizeBaseUrlValue(baseUrlOverride) }
+    : credentials;
+  const store = createCliCredentialsStore(credentials.cookies);
+  const refreshStore = baseUrlOverride
+    ? {
+      write: store.write,
     }
-
-    const tokenSet = TokenSuccessResponseSchema.parse(body);
-    const refreshedCredentials = createUpdatedStoredCredentials(
-      activeCredentials,
-      tokenSet,
-      now,
-      baseUrlOverride,
-    );
-    await saveStoredCliCredentials(refreshedCredentials);
-    return refreshedCredentials;
-  })();
-
-  inFlightRefreshes.set(refreshKey, refreshPromise);
-  try {
-    return await refreshPromise;
-  } finally {
-    if (inFlightRefreshes.get(refreshKey) === refreshPromise) {
-      inFlightRefreshes.delete(refreshKey);
-    }
-  }
+    : store;
+  const refreshed = await refreshDeviceCredentials({
+    credentials: effectiveCredentials,
+    store: refreshStore,
+    fetchFn: withRequestHeaders(dependencies.fetchFn, credentials.cookies),
+    now: dependencies.now,
+  });
+  return refreshed
+    ? { ...refreshed, cookies: credentials.cookies }
+    : null;
 }
 
 export async function getValidatedCredentials(
@@ -502,7 +285,7 @@ export async function getValidatedCredentials(
     return null;
   }
 
-  if (!isAccessTokenExpired(storedCredentials, dependencies.now()) && !command.baseUrl) {
+  if (!command.baseUrl && new Date(storedCredentials.accessTokenExpiresAt).getTime() > dependencies.now().getTime()) {
     return storedCredentials;
   }
 
@@ -570,6 +353,7 @@ async function probeAuthStatus(
     {
       headers: getAuthorizedHeaders(credentials),
     },
+    credentials.cookies,
   );
 }
 
@@ -603,3 +387,6 @@ export async function runStatusCommand(
   dependencies.out(`Logged in to ${credentials.baseUrl} as ${clientId}.`);
   return 0;
 }
+
+export { getTokenErrorMessage };
+export type { FrameworkCredentials as StoredDeviceCredentials };

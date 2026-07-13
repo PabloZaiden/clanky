@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 import { provisioningManager } from "../core/provisioning-manager";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
@@ -6,6 +7,7 @@ import { CreateProvisioningJobRequestSchema } from "../types/schemas";
 import { errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { sanitizeProvisioningSnapshot, shouldIncludeSensitiveData } from "../lib/sensitive-data";
+import { SensitiveQuerySchema } from "./route-schemas";
 
 const log = createLogger("api:provisioning");
 
@@ -22,9 +24,12 @@ function mapProvisioningError(error: unknown): Response {
   return errorResponse("provisioning_error", message, 500);
 }
 
-export const provisioningRoutes = {
+export const provisioningRoutes = defineRoutes({
   "/api/provisioning-jobs": {
-    async POST(req: Request): Promise<Response> {
+    description: "Start a remote provisioning job.",
+    requestSchema: CreateProvisioningJobRequestSchema,
+    querySchema: SensitiveQuerySchema,
+    async POST(req: Request, _ctx): Promise<Response> {
       const includeSensitive = shouldIncludeSensitiveData(req);
       const validation = await parseAndValidate(CreateProvisioningJobRequestSchema, req);
       if (!validation.success) {
@@ -69,9 +74,11 @@ export const provisioningRoutes = {
   },
 
   "/api/provisioning-jobs/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read or cancel a remote provisioning job.",
+    querySchema: SensitiveQuerySchema,
+    async GET(req: Request, ctx): Promise<Response> {
       try {
-        const snapshot = await provisioningManager.getJobSnapshot(req.params.id);
+        const snapshot = await provisioningManager.getJobSnapshot(ctx.params["id"]!);
         if (!snapshot) {
           return errorResponse("not_found", "Provisioning job not found", 404);
         }
@@ -80,16 +87,16 @@ export const provisioningRoutes = {
         );
       } catch (error) {
         log.error("Failed to fetch provisioning job", {
-          provisioningJobId: req.params.id,
+          provisioningJobId: ctx.params["id"]!,
           error: String(error),
         });
         return mapProvisioningError(error);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const snapshot = await provisioningManager.cancelJob(req.params.id);
+        const snapshot = await provisioningManager.cancelJob(ctx.params["id"]!);
         if (!snapshot) {
           return errorResponse("not_found", "Provisioning job not found", 404);
         }
@@ -98,7 +105,7 @@ export const provisioningRoutes = {
         });
       } catch (error) {
         log.error("Failed to cancel provisioning job", {
-          provisioningJobId: req.params.id,
+          provisioningJobId: ctx.params["id"]!,
           error: String(error),
         });
         return mapProvisioningError(error);
@@ -107,20 +114,21 @@ export const provisioningRoutes = {
   },
 
   "/api/provisioning-jobs/:id/logs": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read logs for a remote provisioning job.",
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const logs = provisioningManager.getJobLogs(req.params.id);
+        const logs = provisioningManager.getJobLogs(ctx.params["id"]!);
         if (!logs) {
           return errorResponse("not_found", "Provisioning job not found", 404);
         }
         return successResponse({ logs });
       } catch (error) {
         log.error("Failed to fetch provisioning logs", {
-          provisioningJobId: req.params.id,
+          provisioningJobId: ctx.params["id"]!,
           error: String(error),
         });
         return mapProvisioningError(error);
       }
     },
   },
-};
+});

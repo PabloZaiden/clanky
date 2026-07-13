@@ -8,7 +8,6 @@ export * from "./message-attachments";
 export * from "./model";
 export * from "./preferences";
 export * from "./provisioning";
-export * from "./public-base-path";
 export * from "./settings";
 export * from "./ssh-server";
 export * from "./ssh-session";

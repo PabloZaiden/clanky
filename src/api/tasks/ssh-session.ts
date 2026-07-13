@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * SSH session routes for tasks.
  *
@@ -26,16 +27,17 @@ function mapTaskSshSessionError(error: unknown): Response {
   return errorResponse("ssh_session_error", message, 500);
 }
 
-export const tasksSshPortsRoutes = {
+export const tasksSshSessionRoutes = defineRoutes({
   "/api/tasks/:id/ssh-session": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read or create a task-backed SSH session.",
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const task = await taskManager.getTask(req.params.id);
+        const task = await taskManager.getTask(ctx.params["id"]!);
         if (!task) {
           return errorResponse("not_found", "Task not found", 404);
         }
 
-        const session = await sshSessionManager.getSessionByTaskId(req.params.id);
+        const session = await sshSessionManager.getSessionByTaskId(ctx.params["id"]!);
         if (!session) {
           return errorResponse("not_found", "SSH session not found for task", 404);
         }
@@ -43,24 +45,24 @@ export const tasksSshPortsRoutes = {
         return Response.json(session);
       } catch (error) {
         log.error("GET /api/tasks/:id/ssh-session - Failed", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return mapTaskSshSessionError(error);
       }
     },
 
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const session = await sshSessionManager.getOrCreateTaskSession(req.params.id);
+        const session = await sshSessionManager.getOrCreateTaskSession(ctx.params["id"]!);
         return Response.json(session);
       } catch (error) {
         log.error("POST /api/tasks/:id/ssh-session - Failed", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return mapTaskSshSessionError(error);
       }
     },
   },
-};
+});

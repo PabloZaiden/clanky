@@ -1,3 +1,4 @@
+import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 /**
  * Settings API endpoints for Clanky Tasks Management System.
  * 
@@ -30,8 +31,9 @@ const log = createLogger("api:settings");
  * Note: Global server settings and connection reset endpoints have been removed.
  * Server settings and connection management are now per-workspace via the workspace API.
  */
-export const settingsRoutes = {
+export const settingsRoutes = defineRoutes({
   "/api/settings/reset-all": {
+    description: "Reset all persisted settings and recreate the database.",
     /**
      * POST /api/settings/reset-all - Delete database and reinitialize.
      * 
@@ -44,8 +46,8 @@ export const settingsRoutes = {
      * 
      * @returns Success response with message
      */
-    async POST(): Promise<Response> {
-      log.warn("POST /api/settings/reset-all - Resetting all settings");
+    async POST(_req: Request, _ctx: RouteContext): Promise<Response> {
+       log.warn("POST /api/settings/reset-all - Resetting all settings");
       try {
         // Reset all backend connections first
         log.debug("Resetting all backend connections");
@@ -68,14 +70,16 @@ export const settingsRoutes = {
   },
 
   "/api/settings/purge-terminal-tasks": {
+    description: "Purge terminal-state tasks across all workspaces.",
     /**
      * POST /api/settings/purge-terminal-tasks - Purge terminal-state tasks across all workspaces.
      *
      * This is a DESTRUCTIVE operation that permanently deletes tasks in terminal states
      * while leaving workspaces, sessions, and preferences intact.
      */
-    async POST(): Promise<Response> {
-      log.warn("POST /api/settings/purge-terminal-tasks - Purging terminal-state tasks across all workspaces");
+    async POST(_req: Request, ctx: RouteContext): Promise<Response> {
+       ctx.server?.timeout(_req, 0);
+       log.warn("POST /api/settings/purge-terminal-tasks - Purging terminal-state tasks across all workspaces");
 
       try {
         const [workspaces, tasks] = await Promise.all([
@@ -123,4 +127,4 @@ export const settingsRoutes = {
       }
     },
   },
-};
+});

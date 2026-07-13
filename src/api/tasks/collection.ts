@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Tasks collection routes.
  *
@@ -22,8 +23,10 @@ import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 
 const log = createLogger("api:tasks");
 
-export const tasksCollectionRoutes = {
+export const tasksCollectionRoutes = defineRoutes({
   "/api/tasks": {
+    description: "List tasks or create a new task.",
+    requestSchema: CreateTaskRequestSchema,
     /**
      * GET /api/tasks - List all tasks.
      *
@@ -72,7 +75,7 @@ export const tasksCollectionRoutes = {
      *
      * @returns Created Task object with 201 status
      */
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       log.debug("POST /api/tasks - Creating new task");
 
       // Parse and validate request body using Zod schema
@@ -300,7 +303,9 @@ export const tasksCollectionRoutes = {
   },
 
   "/api/tasks/title": {
-    async POST(req: Request): Promise<Response> {
+    description: "Generate a task title from a prompt.",
+    requestSchema: GenerateTaskTitleRequestSchema,
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(GenerateTaskTitleRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -331,4 +336,4 @@ export const tasksCollectionRoutes = {
       }
     },
   },
-};
+});

@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
-import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
 import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { serve, type Server } from "bun";
+import { type Server } from "bun";
+import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
 import { mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
@@ -42,12 +42,7 @@ describe("workspace files API integration", () => {
     backendManager.setBackendForTesting(createMockBackend());
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
-    server = serve({
-      port: 0,
-      routes: {
-        ...apiRoutes,
-      },
-    });
+    server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
   });
 

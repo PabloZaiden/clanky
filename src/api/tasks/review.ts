@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Tasks review routes - handle review comments after push/merge.
  *
@@ -15,8 +16,10 @@ import { AddressCommentsRequestSchema } from "../../types/schemas";
 
 const log = createLogger("api:tasks");
 
-export const tasksReviewRoutes = {
+export const tasksReviewRoutes = defineRoutes({
   "/api/tasks/:id/address-comments": {
+    description: "Address review comments for a task.",
+    requestSchema: AddressCommentsRequestSchema,
     /**
      * POST /api/tasks/:id/address-comments - Start addressing reviewer comments.
      *
@@ -29,7 +32,7 @@ export const tasksReviewRoutes = {
      *
      * @returns AddressCommentsResponse with reviewCycle, branch, and commentIds
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       // Parse and validate request body using Zod schema
       const validation = await parseAndValidate(AddressCommentsRequestSchema, req);
       if (!validation.success) {
@@ -38,7 +41,7 @@ export const tasksReviewRoutes = {
       const body = validation.data;
 
       try {
-        const result = await taskManager.addressReviewComments(req.params.id, body.comments, body.attachments);
+        const result = await taskManager.addressReviewComments(ctx.params["id"]!, body.comments, body.attachments);
 
         if (!result.success) {
           // Map error messages to status codes
@@ -67,7 +70,7 @@ export const tasksReviewRoutes = {
         return Response.json(responseBody);
       } catch (error) {
         log.error("Failed to address review comments", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         const responseBody: AddressCommentsResponse = {
@@ -80,6 +83,7 @@ export const tasksReviewRoutes = {
   },
 
   "/api/tasks/:id/review-history": {
+    description: "Read review history for a task.",
     /**
      * GET /api/tasks/:id/review-history - Get review history for a task.
      *
@@ -88,9 +92,9 @@ export const tasksReviewRoutes = {
      *
      * @returns ReviewHistoryResponse with history object
      */
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const result = await taskManager.getReviewHistory(req.params.id);
+        const result = await taskManager.getReviewHistory(ctx.params["id"]!);
 
         if (!result.success) {
           const responseBody: ReviewHistoryResponse = {
@@ -107,7 +111,7 @@ export const tasksReviewRoutes = {
         return Response.json(responseBody);
       } catch (error) {
         log.error("Failed to get task review history", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("get_review_history_failed", String(error), 500);
@@ -116,9 +120,10 @@ export const tasksReviewRoutes = {
   },
 
   "/api/tasks/:id/automatic-pr-flow/start": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Enable automatic pull request monitoring for a task.",
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const result = await taskManager.startAutomaticPrFlow(req.params.id);
+        const result = await taskManager.startAutomaticPrFlow(ctx.params["id"]!);
         if (!result.success) {
           if (result.error === "Task not found") {
             return errorResponse("not_found", result.error, 404);
@@ -128,7 +133,7 @@ export const tasksReviewRoutes = {
         return successResponse({ automaticPrFlow: result.automaticPrFlow });
       } catch (error) {
         log.error("Failed to start automatic PR flow", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("automatic_pr_flow_start_failed", String(error), 500);
@@ -137,9 +142,10 @@ export const tasksReviewRoutes = {
   },
 
   "/api/tasks/:id/automatic-pr-flow/stop": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Disable automatic pull request monitoring for a task.",
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const result = await taskManager.stopAutomaticPrFlow(req.params.id);
+        const result = await taskManager.stopAutomaticPrFlow(ctx.params["id"]!);
         if (!result.success) {
           if (result.error === "Task not found") {
             return errorResponse("not_found", result.error, 404);
@@ -149,7 +155,7 @@ export const tasksReviewRoutes = {
         return successResponse({ automaticPrFlow: result.automaticPrFlow });
       } catch (error) {
         log.error("Failed to stop automatic PR flow", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("automatic_pr_flow_stop_failed", String(error), 500);
@@ -158,9 +164,10 @@ export const tasksReviewRoutes = {
   },
 
   "/api/tasks/:id/pull-request/auto-merge": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Enable pull request auto-merge for a task.",
+    async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const result = await taskManager.enablePullRequestAutoMerge(req.params.id);
+        const result = await taskManager.enablePullRequestAutoMerge(ctx.params["id"]!);
         if (!result.success) {
           if (result.error === "Task not found") {
             return errorResponse("not_found", result.error, 404);
@@ -170,11 +177,11 @@ export const tasksReviewRoutes = {
         return successResponse({ pullRequest: result.pullRequest });
       } catch (error) {
         log.error("Failed to enable pull request auto-merge", {
-          taskId: req.params.id,
+          taskId: ctx.params["id"]!,
           error: String(error),
         });
         return errorResponse("pull_request_auto_merge_enable_failed", String(error), 500);
       }
     },
   },
-};
+});

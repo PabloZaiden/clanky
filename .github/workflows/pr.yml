@@ -168,6 +168,13 @@ jobs:
             clanky-pr-smoke
           trap 'docker rm -f clanky-pr-smoke 2>/dev/null || true' EXIT
 
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+            | grep -Fx 'CLANKY_TRUST_PROXY=true'
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+            | grep -Fx 'CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix'
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+            | grep -Fx 'CLANKY_TRUST_PROXY_CHAIN=first'
+
           for attempt in $(seq 1 45); do
             status=$(docker inspect --format='{{.State.Health.Status}}' clanky-pr-smoke 2>/dev/null || echo "starting")
             if [ "$status" = "healthy" ]; then

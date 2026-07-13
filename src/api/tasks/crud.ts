@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Tasks CRUD routes — thin barrel re-exporting focused sub-modules.
  *
@@ -19,8 +20,8 @@ export { tasksCollectionRoutes } from "./collection";
 export { tasksItemRoutes } from "./item";
 export { tasksCommentsRoutes } from "./comments";
 
-export const tasksCrudRoutes = {
+export const tasksCrudRoutes = defineRoutes({
   ...tasksCollectionRoutes,
   ...tasksItemRoutes,
   ...tasksCommentsRoutes,
-};
+});

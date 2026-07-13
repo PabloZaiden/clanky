@@ -1,3 +1,4 @@
+import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 /**
  * API endpoints for standalone SSH server key and credential handoff flows.
  */
@@ -50,9 +51,11 @@ function mapSshServerError(error: unknown): Response {
   return errorResponse("ssh_server_error", message, 500);
 }
 
-export const sshServersRoutes = {
+export const sshServersRoutes = defineRoutes({
   "/api/ssh-servers": {
-    async GET(): Promise<Response> {
+    description: "List or create standalone SSH servers.",
+    requestSchema: CreateSshServerRequestSchema,
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         return Response.json(await sshServerManager.listServers());
       } catch (error) {
@@ -61,7 +64,7 @@ export const sshServersRoutes = {
       }
     },
 
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateSshServerRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -78,49 +81,51 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Update or delete a standalone SSH server.",
+    requestSchema: UpdateSshServerRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const server = await sshServerManager.getServer(req.params.id);
+        const server = await sshServerManager.getServer(ctx.params["id"]!);
         if (!server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
         return Response.json(server);
       } catch (error) {
         log.error("Failed to fetch standalone SSH server", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
+    async PATCH(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(UpdateSshServerRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        return Response.json(await sshServerManager.updateServer(req.params.id, validation.data));
+        return Response.json(await sshServerManager.updateServer(ctx.params["id"]!, validation.data));
       } catch (error) {
         log.error("Failed to update standalone SSH server", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const deleted = await sshServerManager.deleteServer(req.params.id);
+        const deleted = await sshServerManager.deleteServer(ctx.params["id"]!);
         if (!deleted) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
         return Response.json({ success: true });
       } catch (error) {
         log.error("Failed to delete standalone SSH server", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -129,13 +134,14 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/public-key": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read the public key for a standalone SSH server.",
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const publicKey = await sshServerKeyManager.ensurePublicKey(req.params.id);
+        const publicKey = await sshServerKeyManager.ensurePublicKey(ctx.params["id"]!);
         return Response.json(publicKey);
       } catch (error) {
         log.error("Failed to fetch standalone SSH server public key", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -144,7 +150,9 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/credentials": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Exchange an encrypted SSH credential for a temporary token.",
+    requestSchema: SshCredentialExchangeRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(SshCredentialExchangeRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -152,13 +160,13 @@ export const sshServersRoutes = {
 
       try {
         const exchange = await sshCredentialManager.issueToken(
-          req.params.id,
+          ctx.params["id"]!,
           validation.data.encryptedCredential,
         );
         return Response.json(exchange, { status: 201 });
       } catch (error) {
         log.error("Failed to exchange standalone SSH credential", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -167,30 +175,32 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/sessions": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "List or create standalone SSH server sessions.",
+    requestSchema: CreateSshServerSessionRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        return Response.json(await sshServerManager.listSessions(req.params.id));
+        return Response.json(await sshServerManager.listSessions(ctx.params["id"]!));
       } catch (error) {
         log.error("Failed to list standalone SSH server sessions", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateSshServerSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const session = await sshServerManager.createSession(req.params.id, validation.data);
+        const session = await sshServerManager.createSession(ctx.params["id"]!, validation.data);
         return Response.json(session, { status: 201 });
       } catch (error) {
         log.error("Failed to create standalone SSH server session", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -199,23 +209,25 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/chats": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "List or create chats owned by a standalone SSH server.",
+    requestSchema: CreateSshServerChatRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const server = await sshServerManager.getServer(req.params.id);
+        const server = await sshServerManager.getServer(ctx.params["id"]!);
         if (!server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
-        return Response.json(await chatManager.getChatSummariesBySshServer(req.params.id));
+        return Response.json(await chatManager.getChatSummariesBySshServer(ctx.params["id"]!));
       } catch (error) {
         log.error("Failed to list SSH-server chats", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateSshServerChatRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -223,7 +235,7 @@ export const sshServersRoutes = {
 
       try {
         const chat = await chatManager.createSshServerChat({
-          sshServerId: req.params.id,
+          sshServerId: ctx.params["id"]!,
           name: validation.data.name,
           directory: validation.data.directory,
           modelProviderID: validation.data.model.providerID,
@@ -235,7 +247,7 @@ export const sshServersRoutes = {
         return Response.json(chat, { status: 201 });
       } catch (error) {
         log.error("Failed to create SSH-server chat", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -244,19 +256,21 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/chat-providers": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Discover ACP chat providers available on a standalone SSH server.",
+    requestSchema: DiscoverSshServerChatProvidersRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(DiscoverSshServerChatProvidersRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const server = await sshServerManager.getServer(req.params.id);
+        const server = await sshServerManager.getServer(ctx.params["id"]!);
         if (!server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
-        const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
-        const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
+        const password = sshCredentialManager.getPasswordForToken(ctx.params["id"]!, validation.data.credentialToken);
+        const { executor } = await sshServerManager.getCommandExecutor(ctx.params["id"]!, password);
         const availabilityResults = await Promise.all(
           AGENT_PROVIDER_IDS.map((providerID) => (
             executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck(providerID)])
@@ -270,7 +284,7 @@ export const sshServersRoutes = {
         });
       } catch (error) {
         log.error("Failed to discover SSH-server chat providers", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -279,18 +293,20 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/chat-models": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Discover ACP chat models for a selected provider on a standalone SSH server.",
+    requestSchema: DiscoverSshServerChatModelsRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(DiscoverSshServerChatModelsRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const server = await sshServerManager.getServer(req.params.id);
+        const server = await sshServerManager.getServer(ctx.params["id"]!);
         if (!server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
-        const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
+        const password = sshCredentialManager.getPasswordForToken(ctx.params["id"]!, validation.data.credentialToken);
         const settings: ServerSettings = {
           agent: {
             provider: validation.data.providerID,
@@ -302,14 +318,14 @@ export const sshServersRoutes = {
           },
         };
         const models = await getModelsForSettings(
-          `ssh-server:${req.params.id}:${validation.data.providerID}`,
+          `ssh-server:${ctx.params["id"]!}:${validation.data.providerID}`,
           validation.data.directory,
           settings,
         );
         return Response.json(models.filter((model) => model.providerID === validation.data.providerID));
       } catch (error) {
         log.error("Failed to discover SSH-server chat models", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           providerID: validation.success ? validation.data.providerID : undefined,
           error: String(error),
         });
@@ -319,17 +335,19 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/prerequisites/check": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Run prerequisite checks for a standalone SSH server.",
+    requestSchema: CheckSshServerPrerequisitesRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        return Response.json(await sshServerManager.checkPrerequisites(req.params.id, validation.data));
+        return Response.json(await sshServerManager.checkPrerequisites(ctx.params["id"]!, validation.data));
       } catch (error) {
         log.error("Failed to check standalone SSH server prerequisites", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -338,17 +356,18 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-servers/:id/devbox/templates": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "List available devbox templates for a standalone SSH server.",
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(GetDevboxTemplatesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        return Response.json(await sshServerManager.listDevboxTemplates(req.params.id, validation.data));
+        return Response.json(await sshServerManager.listDevboxTemplates(ctx.params["id"]!, validation.data));
       } catch (error) {
         log.error("Failed to list standalone SSH server devbox templates", {
-          serverId: req.params.id,
+          serverId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
@@ -357,58 +376,60 @@ export const sshServersRoutes = {
   },
 
   "/api/ssh-server-sessions/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Read, update, or delete a standalone SSH server session.",
+    requestSchema: UpdateSshSessionRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
       try {
-        const session = await sshServerManager.getSession(req.params.id);
+        const session = await sshServerManager.getSession(ctx.params["id"]!);
         if (!session) {
           return errorResponse("not_found", "SSH server session not found", 404);
         }
         return Response.json(session);
       } catch (error) {
         log.error("Failed to fetch standalone SSH server session", {
-          sshServerSessionId: req.params.id,
+          sshServerSessionId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
+    async PATCH(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(UpdateSshSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        return Response.json(await sshServerManager.updateSession(req.params.id, validation.data));
+        return Response.json(await sshServerManager.updateSession(ctx.params["id"]!, validation.data));
       } catch (error) {
         log.error("Failed to update standalone SSH server session", {
-          sshServerSessionId: req.params.id,
+          sshServerSessionId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+    async DELETE(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(DeleteSshServerSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        const deleted = await sshServerManager.deleteSession(req.params.id, validation.data);
+        const deleted = await sshServerManager.deleteSession(ctx.params["id"]!, validation.data);
         if (!deleted) {
           return errorResponse("not_found", "SSH server session not found", 404);
         }
         return Response.json({ success: true });
       } catch (error) {
         log.error("Failed to delete standalone SSH server session", {
-          sshServerSessionId: req.params.id,
+          sshServerSessionId: ctx.params["id"]!,
           error: String(error),
         });
         return mapSshServerError(error);
       }
     },
   },
-};
+});

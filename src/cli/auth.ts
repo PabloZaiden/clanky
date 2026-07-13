@@ -1,9 +1,11 @@
 export {
+  createCliCredentialsStore,
   getAuthorizedHeaders,
   getCliRequestAuthContext,
   getTokenErrorMessage,
   getValidatedCredentials,
   loadStoredCliCredentials,
+  mergeRequestHeaders,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
   refreshStoredCredentials,

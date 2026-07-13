@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Draft task start routes.
  *
@@ -10,8 +11,10 @@ import { errorResponse } from "../helpers";
 import { StartDraftRequestSchema } from "../../types/schemas";
 import { startErrorResponse } from "./helpers";
 
-export const tasksDraftRoutes = {
+export const tasksDraftRoutes = defineRoutes({
   "/api/tasks/:id/draft/start": {
+    description: "Start draft generation for a task.",
+    requestSchema: StartDraftRequestSchema,
     /**
      * POST /api/tasks/:id/draft/start - Start a draft task.
      *
@@ -27,7 +30,7 @@ export const tasksDraftRoutes = {
      *
      * @returns Updated Task object
      */
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
       // Parse and validate request body using Zod schema
       const validation = await parseAndValidate(StartDraftRequestSchema, req);
       if (!validation.success) {
@@ -36,7 +39,7 @@ export const tasksDraftRoutes = {
       const body = validation.data;
 
       // Load the task
-      const task = await taskManager.getTask(req.params.id);
+      const task = await taskManager.getTask(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -51,7 +54,7 @@ export const tasksDraftRoutes = {
 
       // Delegate the draft → start transition to TaskManager
       try {
-        const updatedTask = await taskManager.startDraft(req.params.id, {
+        const updatedTask = await taskManager.startDraft(ctx.params["id"]!, {
           planMode: body.planMode,
           attachments: body.attachments,
         });
@@ -62,11 +65,11 @@ export const tasksDraftRoutes = {
           body.planMode ? "start_plan_failed" : "start_failed",
           body.planMode ? "Failed to start plan mode" : "Failed to start task",
           {
-            taskId: req.params.id,
+            taskId: ctx.params["id"]!,
             planMode: body.planMode,
           },
         );
       }
     },
   },
-};
+});

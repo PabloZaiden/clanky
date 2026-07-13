@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Git API endpoints for Clanky Tasks Management System.
  * 
@@ -132,7 +133,7 @@ async function validateGitRequest(req: Request): Promise<
  * Provides endpoints for git repository information:
  * - GET /api/git/branches - List all local branches
  */
-export const gitRoutes = {
+export const gitRoutes = defineRoutes({
   /**
    * GET /api/git/branches - Get all local branches for a workspace.
    * 
@@ -150,7 +151,8 @@ export const gitRoutes = {
    * @returns BranchesResponse with currentBranch and branches array
    */
   "/api/git/branches": {
-    async GET(req: Request): Promise<Response> {
+    description: "List local git branches for a workspace.",
+    async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/branches");
 
       try {
@@ -192,7 +194,8 @@ export const gitRoutes = {
    * @returns DefaultBranchResponse with defaultBranch
    */
   "/api/git/default-branch": {
-    async GET(req: Request): Promise<Response> {
+    description: "Detect the default git branch for a workspace.",
+    async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/default-branch");
 
       try {
@@ -216,7 +219,8 @@ export const gitRoutes = {
   },
 
   "/api/git/remote-status": {
-    async GET(req: Request): Promise<Response> {
+    description: "Check whether a git remote exists for a workspace.",
+    async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/remote-status");
 
       try {
@@ -241,7 +245,8 @@ export const gitRoutes = {
   },
 
   "/api/git/github-repository-url": {
-    async GET(req: Request): Promise<Response> {
+    description: "Resolve the GitHub repository URL for a workspace.",
+    async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-repository-url");
 
       try {
@@ -268,4 +273,4 @@ export const gitRoutes = {
       }
     },
   },
-};
+});

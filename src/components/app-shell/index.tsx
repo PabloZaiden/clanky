@@ -24,9 +24,7 @@ import {
   buildWorkspaceSidebarGroups,
 } from "./shell-types";
 import { ShellRouteContent } from "./shell-main-content";
-import { useSidebar } from "./use-sidebar";
-import { getHashForShellRoute, getShellShortcutForKeyboardEvent, replaceShellRoute } from "./shell-navigation";
-import { isEditableShortcutTarget } from "./use-sidebar";
+import { getHashForShellRoute, getShellShortcutForKeyboardEvent, isEditableShortcutTarget, replaceShellRoute } from "./shell-navigation";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
@@ -226,7 +224,6 @@ function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): Sid
 export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<ShellRoute>(() => parseCurrentShellRoute());
-  const onNavigate = useCallback((nextRoute: ShellRoute) => replaceShellRoute(nextRoute), []);
   const handleWebRouteChange = useCallback((nextRoute: WebAppRoute) => {
     setRoute(toShellRoute(nextRoute));
   }, []);
@@ -301,8 +298,7 @@ export function AppShell() {
     { includeArchivedWorkspaces: true },
   );
 
-  const sidebar = useSidebar(route, onNavigate);
-  const { navigateWithinShell, showSidebar } = sidebar;
+  const navigateWithinShell = useCallback((nextRoute: ShellRoute) => replaceShellRoute(nextRoute), []);
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -316,8 +312,11 @@ export function AppShell() {
   const [purgeAgentPending, setPurgeAgentPending] = useState(false);
 
   const focusSidebarSearch = useCallback(() => {
-    showSidebar();
-  }, [showSidebar]);
+    document.querySelector<HTMLButtonElement>('button[aria-label="Show sidebar"]')?.click();
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>("#wapp-sidebar input")?.focus();
+    });
+  }, []);
 
   const openRenameSshSession = useCallback((target: SshSessionActionTarget) => {
     setRenameSshSessionTarget(target);
@@ -846,9 +845,7 @@ export function AppShell() {
         route={contentRoute}
         shellLoading={shellLoading}
         shellErrors={shellErrors}
-        sidebarCollapsed={false}
         shellHeaderOffsetClassName=""
-        openSidebar={() => {}}
         navigateWithinShell={navigateWithinShell}
         tasks={tasks}
         chats={chats}

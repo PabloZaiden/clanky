@@ -75,7 +75,7 @@ export function WorkspacePreviewsView({
                 className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100"
               />
             </label>
-            <code className="min-w-0 flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 dark:bg-neutral-900 dark:text-gray-100">
+            <code className="min-w-0 basis-full flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 sm:basis-0 dark:bg-neutral-900 dark:text-gray-100">
               {command}
             </code>
             <Button size="sm" onClick={copyCommand}>Copy</Button>

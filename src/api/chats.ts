@@ -1,3 +1,4 @@
+import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Chat API routes.
  *
@@ -101,9 +102,11 @@ async function validateQuickChatRequestModel(body: {
   return null;
 }
 
-export const chatsRoutes = {
+export const chatsRoutes = defineRoutes({
   "/api/chats": {
-    async GET(req: Request): Promise<Response> {
+    description: "List chats or create a chat session.",
+    requestSchema: CreateChatRequestSchema,
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
       const chats = workspaceId
@@ -112,7 +115,7 @@ export const chatsRoutes = {
       return Response.json(chats);
     },
 
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateChatRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -157,7 +160,7 @@ export const chatsRoutes = {
   },
 
   "/api/chats/importable-sessions": {
-    async GET(req: Request): Promise<Response> {
+    async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId")?.trim();
       if (!workspaceId) {
@@ -182,7 +185,7 @@ export const chatsRoutes = {
   },
 
   "/api/chats/import": {
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(ImportExistingChatRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -230,16 +233,18 @@ export const chatsRoutes = {
   },
 
   "/api/chats/:id": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const chat = await chatManager.getChat(req.params.id);
+    description: "Read, update, or delete a chat session.",
+    requestSchema: UpdateChatRequestSchema,
+    async GET(_req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
       return Response.json(chat);
     },
 
-    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
-      const existing = await chatManager.getChat(req.params.id);
+    async PATCH(req: Request, ctx): Promise<Response> {
+      const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -267,19 +272,19 @@ export const chatsRoutes = {
       }
 
       try {
-        const updated = await chatManager.updateChat(req.params.id, mapChatUpdates(validation.data));
+        const updated = await chatManager.updateChat(ctx.params["id"]!, mapChatUpdates(validation.data));
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
         return Response.json(updated);
       } catch (error) {
-        log.error("Failed to update chat", { chatId: req.params.id, error: String(error) });
+        log.error("Failed to update chat", { chatId: ctx.params["id"]!, error: String(error) });
         return errorResponse("update_failed", String(error), 500);
       }
     },
 
-    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      const chat = await chatManager.getChat(req.params.id);
+    async DELETE(_req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -288,18 +293,20 @@ export const chatsRoutes = {
       }
 
       try {
-        await chatManager.deleteChat(req.params.id);
+        await chatManager.deleteChat(ctx.params["id"]!);
         return successResponse();
       } catch (error) {
-        log.error("Failed to delete chat", { chatId: req.params.id, error: String(error) });
+        log.error("Failed to delete chat", { chatId: ctx.params["id"]!, error: String(error) });
         return errorResponse("delete_failed", String(error), 500);
       }
     },
   },
 
   "/api/chats/:id/messages": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const existing = await chatManager.getChat(req.params.id);
+    description: "Send a message to a chat session.",
+    requestSchema: SendChatMessageRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -310,27 +317,27 @@ export const chatsRoutes = {
       }
 
       try {
-        await chatManager.sendMessage(req.params.id, {
+        await chatManager.sendMessage(ctx.params["id"]!, {
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
         });
-        return successResponse({ chatId: req.params.id });
+        return successResponse({ chatId: ctx.params["id"]! });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
           return knownErrorResponse;
         }
         const message = String(error);
-        log.error("Failed to send chat message", { chatId: req.params.id, error: message });
+        log.error("Failed to send chat message", { chatId: ctx.params["id"]!, error: message });
         return errorResponse("send_failed", message, 500);
       }
     },
   },
 
   "/api/chats/:id/queued-messages/:messageId": {
-    async DELETE(req: Request & { params: { id: string; messageId: string } }): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       try {
-        const updated = await chatManager.removeQueuedMessage(req.params.id, req.params.messageId);
+        const updated = await chatManager.removeQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
@@ -338,8 +345,8 @@ export const chatsRoutes = {
       } catch (error) {
         const message = String(error);
         log.error("Failed to remove queued chat message", {
-          chatId: req.params.id,
-          messageId: req.params.messageId,
+          chatId: ctx.params["id"]!,
+          messageId: ctx.params["messageId"]!,
           error: message,
         });
         return errorResponse("remove_queued_message_failed", message, 500);
@@ -348,8 +355,8 @@ export const chatsRoutes = {
   },
 
   "/api/chats/:id/transcript.md": {
-    async GET(req: Request & { params: { id: string } }): Promise<Response> {
-      const chat = await chatManager.getChat(req.params.id);
+    async GET(req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -372,8 +379,10 @@ export const chatsRoutes = {
   },
 
   "/api/chats/:id/interrupt": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const existing = await chatManager.getChat(req.params.id);
+    description: "Interrupt an active chat run.",
+    requestSchema: InterruptChatRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -384,21 +393,23 @@ export const chatsRoutes = {
       }
 
       try {
-        const updated = await chatManager.interruptChat(req.params.id, validation.data.reason);
+        const updated = await chatManager.interruptChat(ctx.params["id"]!, validation.data.reason);
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
         return Response.json(updated);
       } catch (error) {
-        log.error("Failed to interrupt chat", { chatId: req.params.id, error: String(error) });
+        log.error("Failed to interrupt chat", { chatId: ctx.params["id"]!, error: String(error) });
         return errorResponse("interrupt_failed", String(error), 500);
       }
     },
   },
 
   "/api/chats/:id/permissions/:requestId": {
-    async POST(req: Request & { params: { id: string; requestId: string } }): Promise<Response> {
-      const existing = await chatManager.getChat(req.params.id);
+    description: "Approve or deny a pending chat permission request.",
+    requestSchema: ReplyToChatPermissionRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -410,8 +421,8 @@ export const chatsRoutes = {
 
       try {
         const updated = await chatManager.replyToPermission(
-          req.params.id,
-          req.params.requestId,
+          ctx.params["id"]!,
+          ctx.params["requestId"]!,
           validation.data.decision,
         );
         if (!updated) {
@@ -424,8 +435,8 @@ export const chatsRoutes = {
           return knownErrorResponse;
         }
         log.error("Failed to reply to chat permission request", {
-          chatId: req.params.id,
-          requestId: req.params.requestId,
+          chatId: ctx.params["id"]!,
+          requestId: ctx.params["requestId"]!,
           error: String(error),
         });
         return errorResponse("permission_reply_failed", String(error), 500);
@@ -434,8 +445,10 @@ export const chatsRoutes = {
   },
 
   "/api/chats/:id/reconnect": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const chat = await chatManager.getChat(req.params.id);
+    description: "Reconnect a chat session to its backend runtime.",
+    requestSchema: ReconnectChatRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -445,7 +458,7 @@ export const chatsRoutes = {
         if (!validation.success) {
           return validation.response;
         }
-        const reconnected = await chatManager.reconnectSession(req.params.id, {
+        const reconnected = await chatManager.reconnectSession(ctx.params["id"]!, {
           credentialToken: validation.data.credentialToken,
         });
         if (!reconnected) {
@@ -457,15 +470,16 @@ export const chatsRoutes = {
         if (knownErrorResponse) {
           return knownErrorResponse;
         }
-        log.error("Failed to reconnect chat", { chatId: req.params.id, error: String(error) });
+        log.error("Failed to reconnect chat", { chatId: ctx.params["id"]!, error: String(error) });
         return errorResponse("reconnect_failed", String(error), 500);
       }
     },
   },
 
   "/api/chats/:id/spawn-task": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const chat = await chatManager.getChat(req.params.id);
+    description: "Create a task from an existing chat transcript.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -488,7 +502,7 @@ export const chatsRoutes = {
       }
 
       try {
-        const task = await chatManager.spawnTaskFromChat(req.params.id);
+        const task = await chatManager.spawnTaskFromChat(ctx.params["id"]!);
         return Response.json(task, { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
@@ -496,14 +510,15 @@ export const chatsRoutes = {
           return knownErrorResponse;
         }
         const message = error instanceof Error ? error.message : String(error);
-        log.error("Failed to spawn task from chat", { chatId: req.params.id, error: message });
+        log.error("Failed to spawn task from chat", { chatId: ctx.params["id"]!, error: message });
         return errorResponse("spawn_failed", message, 500);
       }
     },
   },
 
   "/api/chats/:id/spawn-task-from-current-plan": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+    description: "Create a task from the current plan discussed in a chat.",
+    async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(SpawnCurrentPlanTaskRequestSchema, req, {
         allowEmptyBody: true,
       });
@@ -511,7 +526,7 @@ export const chatsRoutes = {
         return validation.response;
       }
 
-      const chat = await chatManager.getChat(req.params.id);
+      const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -534,7 +549,7 @@ export const chatsRoutes = {
       }
 
       try {
-        const task = await chatManager.spawnTaskFromCurrentPlan(req.params.id, validation.data.planFilePath);
+        const task = await chatManager.spawnTaskFromCurrentPlan(ctx.params["id"]!, validation.data.planFilePath);
         return Response.json(task, { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
@@ -542,9 +557,9 @@ export const chatsRoutes = {
           return knownErrorResponse;
         }
         const message = error instanceof Error ? error.message : String(error);
-        log.error("Failed to spawn task from current plan", { chatId: req.params.id, error: message });
+        log.error("Failed to spawn task from current plan", { chatId: ctx.params["id"]!, error: message });
         return errorResponse("spawn_failed", message, 500);
       }
     },
   },
-};
+});

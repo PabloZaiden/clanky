@@ -168,7 +168,7 @@ export function TaskDetails({
           ) : null}
         />
       ) : null}
-      <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>
             <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
@@ -241,7 +241,7 @@ export function TaskDetails({
             onFileOpenError={toast.error}
           />
         </div>
-      </main>
+      </div>
 
       {showActionBar && (
         <TaskActionBar

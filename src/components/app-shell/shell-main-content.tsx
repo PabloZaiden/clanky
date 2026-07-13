@@ -1,3 +1,4 @@
+import { Page } from "@pablozaiden/webapp/web";
 import type { Chat, Task, SshSession, Workspace } from "../../types";
 import type { CreateSshSessionRequest } from "../../types/api";
 import type { SshServer } from "../../types/ssh-server";
@@ -8,7 +9,6 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
 import { SshSessionDetails } from "../SshSessionDetails";
-import { SidebarIcon } from "../common";
 import { ShellPanel } from "./shell-panel";
 import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
 import { DraftTaskComposer } from "./shell-composers";
@@ -34,9 +34,7 @@ interface ShellMainContentProps {
   route: ShellRoute;
   shellLoading: boolean;
   shellErrors: string[];
-  sidebarCollapsed: boolean;
   shellHeaderOffsetClassName: string;
-  openSidebar: () => void;
   navigateWithinShell: (route: ShellRoute) => void;
 
   // Data
@@ -647,44 +645,17 @@ function renderMainContent(props: ShellMainContentProps) {
   );
 }
 
-export function ShellMainContent(props: ShellMainContentProps) {
-  const { shellErrors, sidebarCollapsed, openSidebar } = props;
-
+export function ShellRouteContent(props: ShellMainContentProps) {
   return (
-    <div className="relative flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
-      {shellErrors.length > 0 && (
+    <Page layout="full">
+      {props.shellErrors.length > 0 && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200 sm:px-6">
-          {shellErrors.join(" · ")}
+          {props.shellErrors.join(" · ")}
         </div>
       )}
-
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-none absolute left-4 top-4 z-20 flex gap-3 sm:left-6 lg:left-8">
-          <button
-            type="button"
-            onClick={openSidebar}
-            aria-label="Open navigation"
-            className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 dark:border-gray-800 dark:bg-neutral-900/95 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:text-gray-100 lg:hidden"
-          >
-            <SidebarIcon size="h-5 w-5" />
-          </button>
-          {sidebarCollapsed && (
-            <button
-              type="button"
-              onClick={openSidebar}
-              aria-label="Open sidebar"
-              className="pointer-events-auto hidden h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition hover:border-gray-300 hover:text-gray-900 dark:border-gray-800 dark:bg-neutral-900/95 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:text-gray-100 lg:inline-flex"
-            >
-              <SidebarIcon size="h-5 w-5" />
-            </button>
-          )}
-        </div>
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{renderMainContent(props)}</main>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {renderMainContent(props)}
       </div>
-    </div>
+    </Page>
   );
-}
-
-export function ShellRouteContent(props: ShellMainContentProps) {
-  return renderMainContent(props);
 }
