@@ -5,6 +5,7 @@ import { formatClankyVersion, CLANKY_VERSION } from "../version";
 import {
   createCliCredentialsStore,
   loadStoredCliCredentials,
+  mergeRequestHeaders,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
   runAuthCommand,
@@ -241,7 +242,7 @@ function parseCommandArguments(
 function createClankyApiFetch(fetchFn: typeof fetch): typeof fetch {
   const wrapped = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const requestUrl = new URL(input instanceof Request ? input.url : String(input));
-    const headers = new Headers(init?.headers);
+    const headers = mergeRequestHeaders(input, init);
     headers.set("origin", requestUrl.origin);
     const credentials = await loadStoredCliCredentials();
     if (credentials?.cookies) {

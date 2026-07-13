@@ -79,6 +79,17 @@ function getRequestUrl(input: string | URL | Request): string {
   return String(input);
 }
 
+export function mergeRequestHeaders(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Headers {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+  }
+  return headers;
+}
+
 function isLocalhostBaseUrl(baseUrl: string): boolean {
   const { hostname } = new URL(baseUrl);
   return hostname === "localhost"
@@ -173,7 +184,7 @@ function withRequestHeaders(
   cookies?: string,
 ): typeof fetch {
   const wrapped = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    const headers = new Headers(init?.headers);
+    const headers = mergeRequestHeaders(input, init);
     headers.set("origin", new URL(getRequestUrl(input)).origin);
     if (cookies) {
       headers.set("cookie", cookies);

@@ -5,6 +5,7 @@ export {
   getTokenErrorMessage,
   getValidatedCredentials,
   loadStoredCliCredentials,
+  mergeRequestHeaders,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
   refreshStoredCredentials,

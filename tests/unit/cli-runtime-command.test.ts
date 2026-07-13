@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mergeRequestHeaders } from "../../src/client-sdk/cli-auth";
 import { parseCliCommand, runCli, runMain } from "../../src/cli/runtime";
 
 function createOutputCapture(): {
@@ -61,6 +62,26 @@ describe("clanky CLI runtime", () => {
 
     expect(exitCode).toBe(42);
     expect(forwardedArgs).toEqual(["serve"]);
+  });
+
+  test("preserves Request headers while applying fetch init headers", () => {
+    const request = new Request("https://example.test/api/tasks", {
+      headers: {
+        accept: "application/json",
+        authorization: "Bearer token",
+      },
+    });
+
+    const headers = mergeRequestHeaders(request, {
+      headers: {
+        accept: "text/plain",
+        "x-request-id": "request-1",
+      },
+    });
+
+    expect(headers.get("authorization")).toBe("Bearer token");
+    expect(headers.get("accept")).toBe("text/plain");
+    expect(headers.get("x-request-id")).toBe("request-1");
   });
 
   test("parses representative existing subcommands", () => {
