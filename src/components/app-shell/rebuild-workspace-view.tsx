@@ -15,7 +15,6 @@ interface RebuildWorkspaceViewProps {
   workspace: Workspace;
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
   refreshWorkspaces: () => Promise<void>;
 }
@@ -25,7 +24,6 @@ export function RebuildWorkspaceView({
   workspace,
   servers,
   provisioning,
-  shellHeaderOffsetClassName,
   navigateWithinShell,
   refreshWorkspaces,
 }: RebuildWorkspaceViewProps) {
@@ -79,7 +77,6 @@ export function RebuildWorkspaceView({
       eyebrow="Workspace"
       title={`${actionLabel} ${workspace.name}`}
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
         <>
           <Badge variant="info" size="sm">{actionLabel}</Badge>

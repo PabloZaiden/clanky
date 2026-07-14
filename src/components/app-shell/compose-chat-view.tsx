@@ -75,7 +75,6 @@ export function ComposeChatView({
   workspacesLoading,
   workspaceError,
   dashboardData,
-  shellHeaderOffsetClassName,
   navigateWithinShell,
   createChat,
   importExistingChat,
@@ -87,7 +86,6 @@ export function ComposeChatView({
   workspacesLoading: boolean;
   workspaceError: string | null;
   dashboardData: UseDashboardDataResult;
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
@@ -504,7 +502,6 @@ export function ComposeChatView({
       description={composeServer ? `${composeServer.config.username}@${composeServer.config.address}` : composeWorkspace?.directory}
       descriptionClassName="hidden font-mono sm:inline"
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>

@@ -20,7 +20,6 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 
 interface ComposeWorkspaceViewProps {
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
   servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
@@ -33,7 +32,6 @@ const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advance
 
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
-    shellHeaderOffsetClassName,
     navigateWithinShell,
     servers,
     workspaceCreate,
@@ -210,7 +208,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       eyebrow="Workspace"
       title="Create a workspace"
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
         provisioningStatus ? (
           <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">

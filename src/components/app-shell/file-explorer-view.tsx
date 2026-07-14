@@ -62,7 +62,6 @@ interface FileExplorerViewProps {
   defaultRootDirectory: string;
   backLabel: string;
   backRoute: WebAppRoute;
-  headerOffsetClassName?: string;
   onNavigate: (route: WebAppRoute) => void;
   target: { type: "workspace" | "server"; id: string; startDirectory?: string };
   sessions: ExplorerSession[];
@@ -85,7 +84,6 @@ export function FileExplorerView({
   defaultRootDirectory,
   backLabel,
   backRoute,
-  headerOffsetClassName,
   onNavigate,
   target,
   sessions,
@@ -572,7 +570,6 @@ export function FileExplorerView({
       description={description}
       descriptionClassName="hidden font-mono sm:inline"
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       actions={(
         <>
           {headerActions}

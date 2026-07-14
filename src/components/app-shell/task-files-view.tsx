@@ -10,7 +10,6 @@ interface TaskFilesViewProps {
   task: Task;
   workspace: Workspace | null;
   sessions: SshSession[];
-  headerOffsetClassName?: string;
   startDirectory?: string;
   createSession?: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession?: (
@@ -25,7 +24,6 @@ export function TaskFilesView({
   task,
   workspace,
   sessions,
-  headerOffsetClassName,
   startDirectory,
   createSession = async () => {
     throw new Error("Workspace SSH sessions are unavailable in task code explorer context.");
@@ -45,7 +43,6 @@ export function TaskFilesView({
       sessions={sessions}
       servers={[]}
       sessionsByServerId={{}}
-      headerOffsetClassName={headerOffsetClassName}
       createSession={createSession}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}

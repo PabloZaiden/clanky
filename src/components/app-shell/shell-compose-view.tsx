@@ -32,7 +32,6 @@ interface ComposeViewProps {
   kind: ComposeKind;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
@@ -74,7 +73,6 @@ export function ComposeView(props: ComposeViewProps) {
     kind,
     composeWorkspace,
     composeServer,
-    shellHeaderOffsetClassName,
     navigateWithinShell,
     composeActionState,
     setComposeActionState,
@@ -108,7 +106,6 @@ export function ComposeView(props: ComposeViewProps) {
     return (
       <ComposeTaskView
         composeWorkspace={composeWorkspace}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         composeActionState={composeActionState}
         setComposeActionState={setComposeActionState}
@@ -124,7 +121,6 @@ export function ComposeView(props: ComposeViewProps) {
   if (kind === "workspace") {
     return (
       <ComposeWorkspaceView
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         servers={servers}
         workspaceCreate={workspaceCreate}
@@ -150,7 +146,6 @@ export function ComposeView(props: ComposeViewProps) {
         branchesLoading={dashboardData.branchesLoading}
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onCreateAgent={agents.createAgent}
         navigateWithinShell={navigateWithinShell}
@@ -167,7 +162,6 @@ export function ComposeView(props: ComposeViewProps) {
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
         dashboardData={dashboardData}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
         importExistingChat={importExistingChat}
@@ -183,7 +177,6 @@ export function ComposeView(props: ComposeViewProps) {
         servers={servers}
         initialWorkspaceId={composeWorkspace?.id}
         initialServerId={composeServer?.config.id}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         onCancel={() =>
           navigateWithinShell(
             composeWorkspace
@@ -202,7 +195,6 @@ export function ComposeView(props: ComposeViewProps) {
 
   return (
     <SshServerComposer
-      headerOffsetClassName={shellHeaderOffsetClassName}
       initialServer={composeServer}
       relatedSessionCount={composeServerSessionCount}
       onCancel={() =>

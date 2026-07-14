@@ -88,7 +88,6 @@ export function OverviewView({
   serverNodes,
   workspaceGroups,
   sidebarWorkspaceGroups,
-  headerOffsetClassName,
   onNavigate,
   showPrivateItems = false,
 }: {
@@ -100,7 +99,6 @@ export function OverviewView({
   serverNodes: SidebarServerNode[];
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
-  headerOffsetClassName?: string;
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
@@ -133,7 +131,6 @@ export function OverviewView({
       eyebrow="Overview"
       title="Clanky"
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
     >
       <div className="space-y-6">
         {activeWorkItems.length > 0 && (

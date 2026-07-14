@@ -7,7 +7,6 @@ import { CodeExplorerView } from "./code-explorer-view";
 interface ServerFilesViewProps {
   server: SshServer;
   sessions: SshServerSession[];
-  headerOffsetClassName?: string;
   startDirectory?: string;
   createSession?: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
@@ -20,7 +19,6 @@ interface ServerFilesViewProps {
 export function ServerFilesView({
   server,
   sessions,
-  headerOffsetClassName,
   startDirectory,
   createSession = async () => {
     throw new Error("Workspace SSH sessions are unavailable in server code explorer context.");
@@ -37,7 +35,6 @@ export function ServerFilesView({
       sessions={[]}
       servers={[server]}
       sessionsByServerId={{ [server.config.id]: sessions }}
-      headerOffsetClassName={headerOffsetClassName}
       createSession={createSession}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}

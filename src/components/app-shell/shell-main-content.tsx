@@ -34,7 +34,6 @@ interface ShellMainContentProps {
   route: WebAppRoute;
   shellLoading: boolean;
   shellErrors: string[];
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
 
   // Data
@@ -171,7 +170,6 @@ function renderMainContent(props: ShellMainContentProps) {
   const {
     route,
     shellLoading,
-    shellHeaderOffsetClassName,
     navigateWithinShell,
     tasks,
     chats,
@@ -230,7 +228,6 @@ function renderMainContent(props: ShellMainContentProps) {
         runsByAgentId={agents.runsByAgentId}
         route={route}
         navigateWithinShell={navigateWithinShell}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
         currentBranch={dashboardData.currentBranch}
@@ -277,7 +274,6 @@ function renderMainContent(props: ShellMainContentProps) {
           defaultBranch={dashboardData.defaultBranch}
           workspaceError={workspaceError}
           workspacesLoading={workspacesLoading}
-          headerOffsetClassName={shellHeaderOffsetClassName}
           onRefresh={refreshTasks}
           onDeleteDraft={purgeTask}
           onNavigate={navigateWithinShell}
@@ -322,7 +318,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
@@ -408,7 +403,6 @@ function renderMainContent(props: ShellMainContentProps) {
         agentsLoading={agents.loading}
         agentsError={agents.error}
         registeredSshServers={servers}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
         showPrivateItems={showPrivateItems}
       />
@@ -433,7 +427,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
@@ -460,7 +453,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <WorkspacePreviewsView
         workspace={selectedWorkspace}
         workspaces={workspaces}
-        headerOffsetClassName={shellHeaderOffsetClassName}
       />
     );
   }
@@ -488,7 +480,6 @@ function renderMainContent(props: ShellMainContentProps) {
         refreshWorkspaces={refreshWorkspaces}
         deleteWorkspace={deleteWorkspace}
         navigateWithinShell={navigateWithinShell}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
       />
     );
   }
@@ -515,7 +506,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <SshServerView
         server={selectedServer}
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
         showPrivateItems={showPrivateItems}
       />
@@ -545,7 +535,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <SshServerSettingsView
         server={selectedServer}
         relatedSessionCount={sessionsByServerId[selectedServer.config.id]?.length ?? 0}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         updateServer={props.updateServer}
         deleteServer={async () => await deleteServer(selectedServer.config.id)}
         navigateWithinShell={navigateWithinShell}
@@ -575,7 +564,6 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <VncSessionView
         server={selectedServer}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
       />
     );
@@ -599,7 +587,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
@@ -617,7 +604,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
@@ -662,7 +648,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <ServerAriseView
         server={selectedServer}
         provisioning={props.provisioning}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
       />
     );
@@ -688,7 +673,6 @@ function renderMainContent(props: ShellMainContentProps) {
         workspace={selectedWorkspace}
         servers={servers}
         provisioning={props.provisioning}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         refreshWorkspaces={refreshWorkspaces}
       />
@@ -705,7 +689,6 @@ function renderMainContent(props: ShellMainContentProps) {
         kind={kind}
         composeWorkspace={props.composeWorkspace}
         composeServer={props.composeServer}
-        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         composeActionState={props.composeActionState}
         setComposeActionState={props.setComposeActionState}
@@ -743,7 +726,6 @@ function renderMainContent(props: ShellMainContentProps) {
       serverNodes={serverNodes}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
-      headerOffsetClassName={shellHeaderOffsetClassName}
       onNavigate={navigateWithinShell}
       showPrivateItems={showPrivateItems}
     />

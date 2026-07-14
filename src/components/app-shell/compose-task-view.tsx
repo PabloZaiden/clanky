@@ -13,7 +13,6 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
@@ -27,7 +26,6 @@ interface ComposeTaskViewProps {
 export function ComposeTaskView(props: ComposeTaskViewProps) {
   const {
     composeWorkspace,
-    shellHeaderOffsetClassName,
     navigateWithinShell,
     composeActionState,
     setComposeActionState,
@@ -54,7 +52,6 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
       description={composeWorkspace?.directory}
       descriptionClassName="hidden sm:inline font-mono"
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       actions={
         <>
           <Button

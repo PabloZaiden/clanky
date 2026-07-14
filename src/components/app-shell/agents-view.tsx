@@ -13,7 +13,6 @@ import { ConfirmModal, useRealtimeRefresh, type WebAppRoute } from "@pablozaiden
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import { getRouteString } from "./route-fields";
-import { FrameworkMainHeaderPortal } from "./main-header-portal";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
 const compactInputClassName = "mt-1 block rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -105,7 +104,6 @@ function AgentForm({
   branchesLoading,
   currentBranch,
   defaultBranch,
-  headerOffsetClassName,
   onWorkspaceChange,
   onCreateAgent,
   onUpdateAgent,
@@ -126,7 +124,6 @@ function AgentForm({
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;
-  headerOffsetClassName: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   onUpdateAgent: UseAgentsResult["updateAgent"];
@@ -253,7 +250,6 @@ function AgentForm({
       description={selectedWorkspace?.directory}
       descriptionClassName="hidden font-mono sm:inline"
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSubmitting}>
@@ -509,14 +505,12 @@ function AgentWorkspaceList({
   agents,
   loading,
   error,
-  headerOffsetClassName,
   onNavigate,
 }: {
   workspace: Workspace | null;
   agents: Agent[];
   loading: boolean;
   error: string | null;
-  headerOffsetClassName: string;
   onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
@@ -525,7 +519,6 @@ function AgentWorkspaceList({
       description={workspace?.directory}
       descriptionClassName="hidden font-mono sm:inline"
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
     >
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
       {loading && <p className="text-sm text-gray-500 dark:text-gray-400">Loading agents...</p>}
@@ -571,7 +564,6 @@ function AgentDetail({
   branchesLoading,
   currentBranch,
   defaultBranch,
-  headerOffsetClassName,
   editing,
   onWorkspaceChange,
   onUpdateAgent,
@@ -594,7 +586,6 @@ function AgentDetail({
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;
-  headerOffsetClassName: string;
   editing: boolean;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
@@ -627,7 +618,6 @@ function AgentDetail({
         branchesLoading={branchesLoading}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
-        headerOffsetClassName={headerOffsetClassName}
         onWorkspaceChange={onWorkspaceChange}
         onCreateAgent={async () => null}
         onUpdateAgent={onUpdateAgent}
@@ -646,7 +636,6 @@ function AgentDetail({
         description={workspace?.directory}
         descriptionClassName="hidden font-mono sm:inline"
         variant="compact"
-        headerOffsetClassName={headerOffsetClassName}
         badges={<AgentStatusPill status={agent.state.status} />}
       >
         <div className="space-y-6">
@@ -678,14 +667,10 @@ function AgentRunDetail({
   agent,
   runId,
   initialRun,
-  headerOffsetClassName,
-  onNavigate,
 }: {
   agent: Agent | null;
   runId: string;
   initialRun: AgentRun | null;
-  headerOffsetClassName: string;
-  onNavigate: (route: WebAppRoute) => void;
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const [run, setRun] = useState<AgentRun | null>(initialRun);
@@ -790,7 +775,6 @@ function AgentRunDetail({
       <ShellPanel
         title="Agent run not found"
         variant="compact"
-        headerOffsetClassName={headerOffsetClassName}
       >
         <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "The selected agent run no longer exists."}</p>
       </ShellPanel>
@@ -798,25 +782,8 @@ function AgentRunDetail({
   }
 
   const isActive = run.status === "scheduled" || run.status === "starting" || run.status === "running";
-  const backRoute = agent ? { view: "agent", agentId: agent.config.id } as const : { view: "home" } as const;
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
-      <FrameworkMainHeaderPortal
-        title={agent?.config.name ?? run.configSnapshot.name}
-        description={formatDate(run.scheduledFor)}
-        badges={<AgentStatusPill status={run.status} />}
-        actions={(
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onNavigate(backRoute)}
-          >
-            ← Back
-          </Button>
-        )}
-      />
       {run.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {run.error.message}
@@ -851,7 +818,6 @@ export function AgentComposer({
   branchesLoading,
   currentBranch,
   defaultBranch,
-  shellHeaderOffsetClassName,
   onWorkspaceChange,
   onCreateAgent,
   navigateWithinShell,
@@ -868,7 +834,6 @@ export function AgentComposer({
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;
-  shellHeaderOffsetClassName: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -888,7 +853,6 @@ export function AgentComposer({
       branchesLoading={branchesLoading}
       currentBranch={currentBranch}
       defaultBranch={defaultBranch}
-      headerOffsetClassName={shellHeaderOffsetClassName}
       onWorkspaceChange={onWorkspaceChange}
       onCreateAgent={onCreateAgent}
       onUpdateAgent={async () => null}
@@ -913,7 +877,6 @@ export function AgentsView({
   runsByAgentId,
   route,
   navigateWithinShell,
-  headerOffsetClassName,
   branches,
   branchesLoading,
   currentBranch,
@@ -938,7 +901,6 @@ export function AgentsView({
   runsByAgentId: Record<string, AgentRun[]>;
   route: WebAppRoute;
   navigateWithinShell: (route: WebAppRoute) => void;
-  headerOffsetClassName: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
   currentBranch: string;
@@ -963,7 +925,7 @@ export function AgentsView({
       return loading ? (
         <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading agent...</div>
       ) : (
-        <ShellPanel title="Agent not found" variant="compact" headerOffsetClassName={headerOffsetClassName}>
+        <ShellPanel title="Agent not found" variant="compact">
           <p className="text-sm text-gray-500 dark:text-gray-400">The selected agent no longer exists.</p>
         </ShellPanel>
       );
@@ -983,7 +945,6 @@ export function AgentsView({
         branchesLoading={branchesLoading}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
-        headerOffsetClassName={headerOffsetClassName}
         editing={editingAgentId === agent.config.id}
         onWorkspaceChange={onWorkspaceChange}
         onUpdateAgent={onUpdateAgent}
@@ -1013,8 +974,6 @@ export function AgentsView({
         agent={agent}
         runId={runId}
         initialRun={initialRun}
-        headerOffsetClassName={headerOffsetClassName}
-        onNavigate={navigateWithinShell}
       />
     );
   }
@@ -1031,7 +990,6 @@ export function AgentsView({
       agents={visibleAgents}
       loading={loading}
       error={error}
-      headerOffsetClassName={headerOffsetClassName}
       onNavigate={navigateWithinShell}
     />
   );

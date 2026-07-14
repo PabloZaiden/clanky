@@ -2,13 +2,11 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { useState } from "react";
 import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
 import { useTask, useMarkdownPreference, useToast } from "../../hooks";
-import { Button, StatusBadge } from "../common";
+import { Button } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
-  getTaskStatusPill,
   isTaskActive,
   isTaskGenerating,
   canSendTerminalFollowUp,
@@ -24,7 +22,6 @@ import { useLogDisplayState } from "./use-log-display-state";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
-import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -89,9 +86,6 @@ export function TaskDetails({
   const remoteStatus = useTaskRemoteStatus({
     workspaceId: task?.config.workspaceId,
   });
-  const frameworkHeader = useFrameworkMainHeaderSlots();
-  const [headerStopSubmitting, setHeaderStopSubmitting] = useState(false);
-
   if (loading && !task) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -121,54 +115,16 @@ export function TaskDetails({
   const canTerminalFollowUp = canSendTerminalFollowUp(state.status, state.reviewMode?.addressable);
   const isPlanReady = task.state.planMode?.isPlanReady ?? false;
   const isGenerating = isTaskGenerating(task);
-  const statusPill = getTaskStatusPill(task);
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
   const showLogActionBar = activeTab === "log" && (isActive || canTerminalFollowUp);
   const showPlanActionBar = activeTab === "plan" && isPlanning;
   const showActionBar = showLogActionBar || showPlanActionBar;
-  const showHeaderStopButton = !showActionBar && activeTab !== "chat" && isGenerating && (isActive || isPlanning);
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
-
-  async function handleHeaderStop() {
-    if (headerStopSubmitting) {
-      return;
-    }
-
-    setHeaderStopSubmitting(true);
-    try {
-      await stopTask();
-    } finally {
-      setHeaderStopSubmitting(false);
-    }
-  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
-      {frameworkHeader.available ? (
-        <FrameworkMainHeaderPortal
-          title={config.name}
-          badges={(
-            <StatusBadge variant={statusPill.variant} size="sm" className="shrink-0">
-              {statusPill.label}
-            </StatusBadge>
-          )}
-          actions={showHeaderStopButton ? (
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              loading={headerStopSubmitting}
-              onClick={handleHeaderStop}
-              aria-label="Stop task"
-              title="Stop task"
-            >
-              Stop
-            </Button>
-          ) : null}
-        />
-      ) : null}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>

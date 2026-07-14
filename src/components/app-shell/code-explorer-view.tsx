@@ -21,7 +21,6 @@ interface CodeExplorerViewProps {
   sessions: SshSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
-  headerOffsetClassName?: string;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
@@ -39,7 +38,6 @@ export function CodeExplorerView({
   sessions,
   servers,
   sessionsByServerId,
-  headerOffsetClassName,
   createSession,
   createStandaloneSession,
   onNavigate,
@@ -70,7 +68,6 @@ export function CodeExplorerView({
         title="Code explorer"
         description="Choose the content you want to explore."
         variant="compact"
-        headerOffsetClassName={headerOffsetClassName}
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -121,7 +118,6 @@ export function CodeExplorerView({
       title={resolvedTarget.title}
       description={resolvedTarget.description}
       defaultRootDirectory={resolvedTarget.defaultRootDirectory}
-      headerOffsetClassName={headerOffsetClassName}
       backLabel={resolvedTarget.backLabel}
       backRoute={resolvedTarget.backRoute}
       onNavigate={onNavigate}

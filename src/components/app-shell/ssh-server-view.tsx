@@ -8,13 +8,11 @@ import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivat
 export function SshServerView({
   server,
   sessions,
-  headerOffsetClassName,
   onNavigate,
   showPrivateItems = false,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
-  headerOffsetClassName?: string;
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
@@ -25,7 +23,6 @@ export function SshServerView({
       title={server.config.name}
       description={`${server.config.username}@${server.config.address}`}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       badges={(
         <Badge variant="default" size="sm">
           {sessions.length} session{sessions.length === 1 ? "" : "s"}

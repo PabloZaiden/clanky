@@ -30,7 +30,6 @@ export function DraftTaskComposer({
   defaultBranch,
   workspaceError,
   workspacesLoading,
-  headerOffsetClassName,
   onRefresh,
   onDeleteDraft,
   onNavigate,
@@ -51,7 +50,6 @@ export function DraftTaskComposer({
   defaultBranch: string;
   workspaceError: string | null;
   workspacesLoading: boolean;
-  headerOffsetClassName?: string;
   onRefresh: () => Promise<void>;
   onDeleteDraft: (id: string) => Promise<boolean>;
   onNavigate: (route: WebAppRoute) => void;
@@ -146,7 +144,6 @@ export function DraftTaskComposer({
       eyebrow="Draft task"
       title={`Edit ${task.config.name}`}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       actions={(
         <>
           <Button

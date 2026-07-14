@@ -8,7 +8,6 @@ import { SshServerSettingsForm } from "./ssh-server-settings-form";
 interface SshServerSettingsViewProps {
   server: SshServer;
   relatedSessionCount: number;
-  shellHeaderOffsetClassName: string;
   updateServer: (
     id: string,
     request?: import("@/contracts").UpdateSshServerRequest,
@@ -21,7 +20,6 @@ interface SshServerSettingsViewProps {
 export function SshServerSettingsView({
   server,
   relatedSessionCount,
-  shellHeaderOffsetClassName,
   updateServer,
   deleteServer,
   navigateWithinShell,
@@ -35,7 +33,6 @@ export function SshServerSettingsView({
       title="SSH Server Settings"
       description={`${server.config.username}@${server.config.address}`}
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       actions={(
         <>
           {server.config.repositoriesBasePath && (
