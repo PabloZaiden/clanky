@@ -105,7 +105,23 @@ export {
   UpdateSshSessionRequestSchema,
 } from "./ssh-session";
 
-// Workspace file explorer schemas
+// Shared file explorer schemas
+export {
+  FileExplorerRelativePathSchema,
+  FileExplorerStartDirectorySchema,
+  ListFileExplorerRequestSchema,
+  GetFileExplorerTreeRequestSchema,
+  GetFileExplorerFileRequestSchema,
+  WriteFileExplorerRequestSchema,
+  RenameFileExplorerRequestSchema,
+  DeleteFileExplorerRequestSchema,
+  CreateFileExplorerUploadRequestSchema,
+  UploadFileExplorerChunkRequestSchema,
+  CompleteFileExplorerUploadRequestSchema,
+  CancelFileExplorerUploadRequestSchema,
+} from "./file-explorer";
+
+// Backward-compatible workspace file explorer schema names
 export {
   WorkspaceRelativePathSchema,
   WorkspaceStartDirectorySchema,

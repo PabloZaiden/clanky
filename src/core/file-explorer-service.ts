@@ -7,7 +7,14 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import type { WorkspaceFileKind, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import type { CommandExecutor } from "./command-executor";
+import {
+  FileExplorerConflictError,
+  FileExplorerError,
+  fileExplorerOperationError,
+} from "./file-explorer-errors";
 import { getBrowserImageMimeType } from "../utils/workspace-file-images";
+
+export { FileExplorerConflictError } from "./file-explorer-errors";
 
 const LIST_SEPARATOR = "\t";
 const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
@@ -125,16 +132,6 @@ export interface FileExplorerUploadCancelResult {
   uploadId: string;
 }
 
-export class FileExplorerConflictError extends Error {
-  readonly currentFile: WorkspaceFileEntry | null;
-
-  constructor(message: string, currentFile: WorkspaceFileEntry | null) {
-    super(message);
-    this.name = "FileExplorerConflictError";
-    this.currentFile = currentFile;
-  }
-}
-
 interface FileExplorerUploadSession {
   id: string;
   targetId: string;
@@ -154,6 +151,17 @@ interface FileExplorerUploadSession {
 const UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_UPLOAD_SESSIONS = 100;
 const uploadSessions = new Map<string, FileExplorerUploadSession>();
+
+function commandFailure(
+  result: { stderr: string },
+  fallbackMessage: string,
+): FileExplorerError<"operation_failed"> {
+  const stderr = result.stderr.trim();
+  return fileExplorerOperationError(
+    fallbackMessage,
+    stderr ? new Error(stderr) : undefined,
+  );
+}
 
 interface FileExplorerMetadataOptions {
   includeContentHash?: boolean;
@@ -193,7 +201,7 @@ export async function resolveFileExplorerRootDirectory(
     },
   );
   if (!result.success) {
-    throw new Error(result.stderr.trim() || "Failed to resolve start directory");
+    throw commandFailure(result, "Failed to resolve start directory");
   }
 
   const pathType = result.stdout.trim();
@@ -201,9 +209,15 @@ export async function resolveFileExplorerRootDirectory(
     return normalizedRootDirectory;
   }
   if (pathType === "file") {
-    throw new Error("Requested start directory is not a directory");
+    throw new FileExplorerError(
+      "invalid_start_directory_type",
+      "Requested start directory is not a directory",
+    );
   }
-  throw new Error("Requested start directory does not exist");
+  throw new FileExplorerError(
+    "start_directory_not_found",
+    "Requested start directory does not exist",
+  );
 }
 
 function toRelativePath(rootDirectory: string, absolutePath: string): string {
@@ -241,7 +255,15 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
   const relativePath = pathPosix.relative(root, normalizedPath);
 
   if (relativePath && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))) {
-    throw new Error(`Requested path must stay within the ${target.pathScopeLabel} directory`);
+    throw new FileExplorerError(
+      "path_outside_root",
+      `Requested path must stay within the ${target.pathScopeLabel} directory`,
+      {
+        details: {
+          pathScopeLabel: target.pathScopeLabel,
+        },
+      },
+    );
   }
 
   return normalizedPath;
@@ -250,7 +272,7 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
 function assertSafeBaseName(name: string): string {
   const trimmedName = name.trim();
   if (!trimmedName) {
-    throw new Error("File name is required");
+    throw new FileExplorerError("invalid_file_name", "File name is required");
   }
   if (
     trimmedName === "."
@@ -259,27 +281,36 @@ function assertSafeBaseName(name: string): string {
     || trimmedName.includes("\\")
     || trimmedName.includes("\0")
   ) {
-    throw new Error("File name must not contain path separators");
+    throw new FileExplorerError(
+      "invalid_file_name",
+      "File name must not contain path separators",
+    );
   }
   return trimmedName;
 }
 
 function assertMutablePath(requestedPath: string): void {
   if (!requestedPath.trim() || requestedPath.trim() === ".") {
-    throw new Error("Cannot modify the active explorer root");
+    throw new FileExplorerError(
+      "root_not_mutable",
+      "Cannot modify the active explorer root",
+    );
   }
 }
 
 function assertSameUploadTarget(target: FileExplorerTarget, session: FileExplorerUploadSession): void {
   if (session.targetId !== target.id || session.rootDirectory !== normalizeRootDirectory(target.rootDirectory)) {
-    throw new Error("Upload session does not belong to the active explorer target");
+    throw new FileExplorerError(
+      "upload_session_target_mismatch",
+      "Upload session does not belong to the active explorer target",
+    );
   }
 }
 
 function parseModifiedAt(timestampSeconds: string): string {
   const timestamp = Number.parseFloat(timestampSeconds);
   if (!Number.isFinite(timestamp)) {
-    throw new Error(`Invalid file timestamp: ${timestampSeconds}`);
+    throw fileExplorerOperationError("Invalid file timestamp");
   }
   return new Date(timestamp * 1000).toISOString();
 }
@@ -313,17 +344,17 @@ async function runMetadataCommand(
     if (result.exitCode === 2) {
       return null;
     }
-    throw new Error(result.stderr.trim() || "Failed to read file metadata");
+    throw commandFailure(result, "Failed to read file metadata");
   }
 
   const [typeFlag, sizeText, timestampSeconds, contentHash] = result.stdout.trim().split(LIST_SEPARATOR);
   if (!typeFlag || !sizeText || !timestampSeconds) {
-    throw new Error("Failed to parse file metadata");
+    throw fileExplorerOperationError("Failed to parse file metadata");
   }
 
   const size = Number.parseInt(sizeText, 10);
   if (!Number.isFinite(size)) {
-    throw new Error(`Invalid metadata size: ${sizeText}`);
+    throw fileExplorerOperationError("Invalid metadata size");
   }
 
   return {
@@ -359,7 +390,7 @@ async function runNodeTypeCommand(
     if (result.exitCode === 2) {
       return null;
     }
-    throw new Error(result.stderr.trim() || "Failed to inspect path");
+    throw commandFailure(result, "Failed to inspect path");
   }
 
   const output = result.stdout.trim();
@@ -369,7 +400,7 @@ async function runNodeTypeCommand(
   if (output === "f") {
     return "file";
   }
-  throw new Error("Failed to parse path inspection result");
+  throw fileExplorerOperationError("Failed to parse path inspection result");
 }
 
 async function runNodeBatchCommand(
@@ -394,14 +425,14 @@ async function runNodeBatchCommand(
   );
 
   if (!result.success) {
-    throw new Error(result.stderr.trim() || "Failed to inspect directory entries");
+    throw commandFailure(result, "Failed to inspect directory entries");
   }
 
   const lines = result.stdout.endsWith("\n")
     ? result.stdout.slice(0, -1).split("\n")
     : result.stdout.split("\n");
   if (lines.length !== absolutePaths.length) {
-    throw new Error("Failed to parse directory entries");
+    throw fileExplorerOperationError("Failed to parse directory entries");
   }
 
   return lines.map((line) => {
@@ -409,7 +440,7 @@ async function runNodeBatchCommand(
       return null;
     }
     if (line !== "d" && line !== "f") {
-      throw new Error("Failed to parse directory entries");
+      throw fileExplorerOperationError("Failed to parse directory entries");
     }
 
     return {
@@ -464,10 +495,10 @@ async function getFileEntry(
 
 function assertDownloadableFile(file: WorkspaceFileEntry | null): WorkspaceFileEntry {
   if (!file) {
-    throw new Error("Requested file does not exist");
+    throw new FileExplorerError("file_not_found", "Requested file does not exist");
   }
   if (file.kind !== "file") {
-    throw new Error("Requested path is not a file");
+    throw new FileExplorerError("invalid_path_type", "Requested path is not a file");
   }
   return file;
 }
@@ -520,7 +551,7 @@ function parseModeText(modeText: string): { mode: number; base: 8 | 16 } {
       base: 16,
     };
   }
-  throw new Error(`Invalid file mode: ${modeText}`);
+  throw fileExplorerOperationError("Invalid file mode");
 }
 
 function parseModeKind(modeText: string): "directory" | "file" | "symlink" {
@@ -542,7 +573,7 @@ function parseFullTreeLine(line: string): {
 } {
   const normalizedLine = normalizeFullTreeLine(line);
   if (!normalizedLine) {
-    throw new Error("Failed to parse file tree");
+    throw fileExplorerOperationError("Failed to parse file tree");
   }
 
   const firstSeparatorIndex = normalizedLine.indexOf(LIST_SEPARATOR);
@@ -552,21 +583,21 @@ function parseFullTreeLine(line: string): {
     || lastSeparatorIndex <= firstSeparatorIndex
     || lastSeparatorIndex === normalizedLine.length - 1
   ) {
-    throw new Error("Failed to parse file tree");
+    throw fileExplorerOperationError("Failed to parse file tree");
   }
 
   const source = normalizedLine.slice(0, firstSeparatorIndex);
   if (source !== "base" && source !== "link") {
-    throw new Error("Failed to parse file tree");
+    throw fileExplorerOperationError("Failed to parse file tree");
   }
 
   const absolutePath = normalizedLine.slice(firstSeparatorIndex + LIST_SEPARATOR.length, lastSeparatorIndex);
   const modeText = normalizedLine.slice(lastSeparatorIndex + LIST_SEPARATOR.length).trim();
   if (!absolutePath) {
-    throw new Error("Failed to parse file tree");
+    throw fileExplorerOperationError("Failed to parse file tree");
   }
   if (!modeText) {
-    throw new Error("Failed to parse file tree");
+    throw fileExplorerOperationError("Failed to parse file tree");
   }
 
   return {
@@ -598,9 +629,9 @@ async function runFullTreeCommand(
 
   if (!result.success) {
     if (result.exitCode === 2) {
-      throw new Error("Requested path does not exist");
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
-    throw new Error(result.stderr.trim() || "Failed to load file tree");
+    throw commandFailure(result, "Failed to load file tree");
   }
 
   if (!result.stdout.trim()) {
@@ -657,7 +688,7 @@ async function readFileBytes(
     timeout: 30 * 60 * 1000,
   });
   if (!result.success) {
-    throw new Error(result.stderr.trim() || "Failed to read file");
+    throw commandFailure(result, "Failed to read file");
   }
 
   return Uint8Array.from(Buffer.from(result.stdout, "base64"));
@@ -673,10 +704,10 @@ export class FileExplorerService {
     const pathKind = await runNodeTypeCommand(target.executor, absolutePath);
 
     if (!pathKind) {
-      throw new Error("Requested path does not exist");
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
     if (pathKind !== "directory") {
-      throw new Error("Requested path is not a directory");
+      throw new FileExplorerError("invalid_path_type", "Requested path is not a directory");
     }
 
     const includeHidden = options?.includeHidden ?? true;
@@ -715,15 +746,15 @@ export class FileExplorerService {
     const metadata = await runMetadataCommand(target.executor, absolutePath);
 
     if (!metadata) {
-      throw new Error("Requested file does not exist");
+      throw new FileExplorerError("file_not_found", "Requested file does not exist");
     }
     if (metadata.kind !== "file") {
-      throw new Error("Requested path is not a file");
+      throw new FileExplorerError("invalid_path_type", "Requested path is not a file");
     }
 
     const content = await target.executor.readFile(absolutePath);
     if (content === null) {
-      throw new Error("Requested file does not exist");
+      throw new FileExplorerError("file_not_found", "Requested file does not exist");
     }
 
     return {
@@ -737,15 +768,18 @@ export class FileExplorerService {
     const metadata = await runMetadataCommand(target.executor, absolutePath);
 
     if (!metadata) {
-      throw new Error("Requested file does not exist");
+      throw new FileExplorerError("file_not_found", "Requested file does not exist");
     }
     if (metadata.kind !== "file") {
-      throw new Error("Requested path is not a file");
+      throw new FileExplorerError("invalid_path_type", "Requested path is not a file");
     }
 
     const file = toFileEntry(target, absolutePath, metadata);
     if (!file.isImage || !file.mimeType) {
-      throw new Error("Requested file is not a browser-renderable image");
+      throw new FileExplorerError(
+        "invalid_preview_type",
+        "Requested file is not a browser-renderable image",
+      );
     }
 
     return {
@@ -765,7 +799,7 @@ export class FileExplorerService {
       signal: options?.signal,
     });
     if (!stream) {
-      throw new Error("Requested file does not exist");
+      throw new FileExplorerError("file_not_found", "Requested file does not exist");
     }
 
     return {
@@ -805,7 +839,7 @@ export class FileExplorerService {
     const currentFile = await this.getMetadata(target, requestedPath);
 
     if (currentFile && currentFile.kind !== "file") {
-      throw new Error("Requested path is not a file");
+      throw new FileExplorerError("invalid_path_type", "Requested path is not a file");
     }
 
     if (
@@ -817,12 +851,12 @@ export class FileExplorerService {
 
     const wroteFile = await target.executor.writeFile(absolutePath, content);
     if (!wroteFile) {
-      throw new Error("Failed to write file");
+      throw fileExplorerOperationError("Failed to write file");
     }
 
     const updatedFile = await this.getMetadata(target, requestedPath);
     if (!updatedFile) {
-      throw new Error("File was written but metadata could not be read");
+      throw fileExplorerOperationError("File was written but metadata could not be read");
     }
 
     return {
@@ -846,7 +880,7 @@ export class FileExplorerService {
     const sourceAbsolutePath = resolveTargetPath(target, requestedPath);
     const sourceFile = await this.getMetadata(target, requestedPath);
     if (!sourceFile) {
-      throw new Error("Requested path does not exist");
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
     if (
       sourceFile.kind === "file"
@@ -895,7 +929,7 @@ export class FileExplorerService {
     });
     if (!result.success) {
       if (result.exitCode === 2) {
-        throw new Error("Requested path does not exist");
+        throw new FileExplorerError("file_not_found", "Requested path does not exist");
       }
       if (result.exitCode === 3) {
         throw new FileExplorerConflictError("Destination already exists", null);
@@ -903,12 +937,12 @@ export class FileExplorerService {
       if (result.exitCode === 4) {
         throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
       }
-      throw new Error(result.stderr.trim() || "Failed to rename file");
+      throw commandFailure(result, "Failed to rename file");
     }
 
     const updatedFile = await this.getMetadata(target, toRelativePath(target.rootDirectory, destinationAbsolutePath));
     if (!updatedFile) {
-      throw new Error("File was renamed but metadata could not be read");
+      throw fileExplorerOperationError("File was renamed but metadata could not be read");
     }
 
     return {
@@ -931,10 +965,10 @@ export class FileExplorerService {
     const absolutePath = resolveTargetPath(target, requestedPath);
     const file = await this.getMetadata(target, requestedPath);
     if (!file) {
-      throw new Error("Requested path does not exist");
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
     if (options?.kind && file.kind !== options.kind) {
-      throw new Error(`Requested path is not a ${options.kind}`);
+      throw new FileExplorerError("invalid_path_type", `Requested path is not a ${options.kind}`);
     }
     if (
       file.kind === "file"
@@ -955,12 +989,12 @@ export class FileExplorerService {
     });
     if (!result.success) {
       if (result.exitCode === 2) {
-        throw new Error("Requested path does not exist");
+        throw new FileExplorerError("file_not_found", "Requested path does not exist");
       }
       if (result.exitCode === 4) {
-        throw new Error("Requested path type changed before delete");
+        throw new FileExplorerError("invalid_path_type", "Requested path type changed before delete");
       }
-      throw new Error(result.stderr.trim() || "Failed to delete file");
+      throw commandFailure(result, "Failed to delete file");
     }
 
     return {
@@ -982,13 +1016,13 @@ export class FileExplorerService {
     await this.cleanupExpiredUploadSessions(target);
     await this.cleanupAbandonedUploadTempFiles(target);
     if (!Number.isSafeInteger(size) || size < 0) {
-      throw new Error("Invalid upload size");
+      throw new FileExplorerError("invalid_upload_state", "Invalid upload size");
     }
     const activeSessionsForTarget = Array.from(uploadSessions.values()).filter(
       (session) => session.targetId === target.id && session.rootDirectory === normalizeRootDirectory(target.rootDirectory),
     ).length;
     if (activeSessionsForTarget >= MAX_UPLOAD_SESSIONS) {
-      throw new Error("Too many active upload sessions");
+      throw fileExplorerOperationError("Too many active upload sessions");
     }
 
     const safeName = assertSafeBaseName(fileName);
@@ -996,10 +1030,10 @@ export class FileExplorerService {
     const directoryAbsolutePath = resolveTargetPath(target, normalizedDirectory);
     const directoryKind = await runNodeTypeCommand(target.executor, directoryAbsolutePath);
     if (!directoryKind) {
-      throw new Error("Requested path does not exist");
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
     if (directoryKind !== "directory") {
-      throw new Error("Requested path is not a directory");
+      throw new FileExplorerError("invalid_path_type", "Requested path is not a directory");
     }
 
     const finalAbsolutePath = resolveTargetPath(target, pathPosix.join(normalizedDirectory, safeName));
@@ -1056,11 +1090,14 @@ export class FileExplorerService {
   ): Promise<FileExplorerUploadChunkResult> {
     const session = await this.getActiveUploadSession(target, uploadId);
     if (offset !== session.bytesWritten) {
-      throw new Error(`Expected upload offset ${session.bytesWritten}, received ${offset}`);
+      throw new FileExplorerError(
+        "invalid_upload_state",
+        `Expected upload offset ${session.bytesWritten}, received ${offset}`,
+      );
     }
 
     if (!target.executor.writeFileStream) {
-      throw new Error("Workspace host does not support streamed file uploads");
+      throw fileExplorerOperationError("Workspace host does not support streamed file uploads");
     }
     const result = await target.executor.writeFileStream(session.tempAbsolutePath, stream, {
       append: true,
@@ -1068,7 +1105,10 @@ export class FileExplorerService {
       signal: options?.signal,
     });
     if (!result.success) {
-      throw new Error(result.error ?? "Failed to write upload chunk");
+      throw new FileExplorerError(
+        "invalid_upload_state",
+        result.error ?? "Failed to write upload chunk",
+      );
     }
     session.bytesWritten += result.bytesWritten;
     session.lastTouchedAt = Date.now();
@@ -1087,7 +1127,10 @@ export class FileExplorerService {
   ): Promise<FileExplorerUploadCompleteResult> {
     const session = await this.getActiveUploadSession(target, uploadId);
     if (session.bytesWritten !== session.size) {
-      throw new Error(`Upload is incomplete: expected ${session.size} bytes, received ${session.bytesWritten}`);
+      throw new FileExplorerError(
+        "invalid_upload_state",
+        `Upload is incomplete: expected ${session.size} bytes, received ${session.bytesWritten}`,
+      );
     }
 
     const existingFinalFile = await runMetadataCommand(target.executor, session.finalAbsolutePath, {
@@ -1113,7 +1156,10 @@ export class FileExplorerService {
     });
     if (!result.success) {
       if (result.exitCode === 2) {
-        throw new Error("Upload temporary file does not exist");
+        throw new FileExplorerError(
+          "upload_session_not_found",
+          "Upload temporary file does not exist",
+        );
       }
       if (result.exitCode === 3) {
         throw new FileExplorerConflictError("Destination already exists", null);
@@ -1121,14 +1167,14 @@ export class FileExplorerService {
       if (result.exitCode === 4) {
         throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
       }
-      throw new Error(result.stderr.trim() || "Failed to complete upload");
+      throw commandFailure(result, "Failed to complete upload");
     }
 
     const uploadedFile = await this.getMetadata(target, session.relativePath);
     uploadSessions.delete(uploadId);
     await this.cleanupUploadTempDirectory(target, session);
     if (!uploadedFile) {
-      throw new Error("Upload completed but metadata could not be read");
+      throw fileExplorerOperationError("Upload completed but metadata could not be read");
     }
 
     return {
@@ -1166,14 +1212,20 @@ export class FileExplorerService {
     await this.cleanupExpiredUploadSessions(target);
     const session = uploadSessions.get(uploadId);
     if (!session) {
-      throw new Error("Upload session does not exist");
+      throw new FileExplorerError(
+        "upload_session_not_found",
+        "Upload session does not exist",
+      );
     }
     assertSameUploadTarget(target, session);
     if (Date.now() - session.lastTouchedAt > UPLOAD_SESSION_TTL_MS) {
       uploadSessions.delete(uploadId);
       await this.deleteUploadTempFile(target, session);
       await this.cleanupUploadTempDirectory(target, session);
-      throw new Error("Upload session does not exist");
+      throw new FileExplorerError(
+        "upload_session_not_found",
+        "Upload session does not exist",
+      );
     }
     return session;
   }

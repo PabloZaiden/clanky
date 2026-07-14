@@ -129,6 +129,10 @@ const content = await executor.readFile(path);
 - `writeFile(path, content)` - Write content to a file (uses base64 encoding for safe transfer)
 - `listDirectory(path)` - List files in a directory
 
+### Shared transport-neutral operations
+
+When workspace and standalone SSH-server routes expose the same domain operation, implement that operation once against a transport-neutral interface such as `CommandExecutor`. Route adapters should resolve their own authorization, target, credentials, executor, and root, then delegate the common operation to the shared core service. Do not duplicate file-operation logic or bypass the selected host with local filesystem access; preserve each adapter's ownership, credential, and response-identifier rules at the route boundary.
+
 ### TypeScript
 
 - **Strict mode is enabled** - respect all strict checks
