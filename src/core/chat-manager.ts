@@ -1427,12 +1427,17 @@ export class ChatManager {
       if (!directory) {
         throw new Error(`Task ${taskId} does not currently have a working directory for chat ${chat.config.id}`);
       }
+      if (chat.config.workspaceId !== task.config.workspaceId) {
+        throw new Error(
+          `Task chat ${chat.config.id} belongs to workspace ${chat.config.workspaceId}, but task ${task.config.id} belongs to workspace ${task.config.workspaceId}`,
+        );
+      }
       if (task.config.useWorktree) {
-        const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, task.config.directory);
+        const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
         const git = GitService.withExecutor(executor);
         return {
           chat,
-          directory: git.assertManagedWorktreePath(task.config.directory, directory),
+          directory: git.assertCanonicalManagedWorktreePath(task.config.directory, task.config.id, directory),
         };
       }
       return { chat, directory };
@@ -1459,7 +1464,7 @@ export class ChatManager {
       const git = GitService.withExecutor(executor);
       return {
         chat,
-        directory: git.assertManagedWorktreePath(chat.config.directory, worktreePath),
+        directory: git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, worktreePath),
       };
     }
 
@@ -1596,7 +1601,7 @@ export class ChatManager {
       ?? this.buildWorkingBranchName(chat);
     const persistedWorktreePath = chat.state.worktree?.worktreePath;
     const worktreePath = persistedWorktreePath
-      ? git.assertManagedWorktreePath(chat.config.directory, persistedWorktreePath)
+      ? git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, persistedWorktreePath)
       : git.getManagedWorktreePath(chat.config.directory, chat.config.id);
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
@@ -1642,7 +1647,7 @@ export class ChatManager {
 
     const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
-    const managedWorktreePath = git.assertManagedWorktreePath(chat.config.directory, worktreePath);
+    const managedWorktreePath = git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, worktreePath);
     await git.ensureWorktreeRemoved(chat.config.directory, managedWorktreePath, {
       force: true,
     });

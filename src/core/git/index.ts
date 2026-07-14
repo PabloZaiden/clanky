@@ -40,6 +40,7 @@ import { resetHard, mergeBranch, mergeWithConflictDetection, abortMerge, ensureM
 import { getDiff, getDiffSummary, getFileDiffContent, getDiffWithContent } from "./git-diff";
 import {
   assertManagedWorktreePath,
+  assertCanonicalManagedWorktreePath,
   createWorktree,
   getManagedWorktreePath,
   getManagedWorktreeRoot,
@@ -58,6 +59,7 @@ import {
 export {
   MANAGED_WORKTREE_DIRECTORY_NAME,
   assertManagedWorktreePath,
+  assertCanonicalManagedWorktreePath,
   getManagedWorktreePath,
   getManagedWorktreeRoot,
   isManagedWorktreePath,
@@ -352,6 +354,14 @@ export class GitService {
 
   assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
     return assertManagedWorktreePath(repoDirectory, worktreePath);
+  }
+
+  assertCanonicalManagedWorktreePath(
+    repoDirectory: string,
+    identifier: string,
+    worktreePath: string,
+  ): string {
+    return assertCanonicalManagedWorktreePath(repoDirectory, identifier, worktreePath);
   }
 
   async createWorktree(

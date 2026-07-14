@@ -3,6 +3,7 @@ import {
   GitService,
   InvalidManagedWorktreePathError,
   assertManagedWorktreePath,
+  assertCanonicalManagedWorktreePath,
   getManagedWorktreePath,
   getManagedWorktreeRoot,
   isManagedWorktreePath,
@@ -46,6 +47,21 @@ describe("Managed worktree paths", () => {
     expect(() => assertManagedWorktreePath(repoDirectory, `${repoDirectory}/outside`)).toThrow(
       InvalidManagedWorktreePathError,
     );
+  });
+
+  test("requires persisted paths to match their identifier-specific canonical path", () => {
+    const repoDirectory = "/remote/workspaces/repository";
+    const canonicalPath = getManagedWorktreePath(repoDirectory, "task-123");
+
+    expect(assertCanonicalManagedWorktreePath(repoDirectory, "task-123", canonicalPath)).toBe(canonicalPath);
+    expect(() => assertCanonicalManagedWorktreePath(repoDirectory, "task-123", `${canonicalPath}/`)).toThrow(
+      InvalidManagedWorktreePathError,
+    );
+    expect(() => assertCanonicalManagedWorktreePath(
+      repoDirectory,
+      "task-123",
+      getManagedWorktreePath(repoDirectory, "task-456"),
+    )).toThrow(InvalidManagedWorktreePathError);
   });
 
   test("rejects unsafe lookup and cleanup paths before executor operations", async () => {

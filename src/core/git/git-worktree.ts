@@ -98,6 +98,22 @@ export function assertManagedWorktreePath(repoDirectory: string, worktreePath: s
   return normalizeManagedPath(worktreePath);
 }
 
+export function assertCanonicalManagedWorktreePath(
+  repoDirectory: string,
+  identifier: string,
+  worktreePath: string,
+): string {
+  const canonicalPath = getManagedWorktreePath(repoDirectory, identifier);
+  if (worktreePath !== canonicalPath) {
+    throw new InvalidManagedWorktreePathError(
+      worktreePath,
+      `Managed worktree path must equal the canonical path '${canonicalPath}'`,
+    );
+  }
+
+  return canonicalPath;
+}
+
 export async function createWorktree(
   executor: CommandExecutor,
   repoDirectory: string,
