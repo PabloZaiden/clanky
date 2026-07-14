@@ -4,7 +4,7 @@ import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/sha
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
-import { ShellPanel } from "./shell-panel";
+import { Panel } from "@pablozaiden/webapp/web";
 import { FileExplorerView } from "./file-explorer-view";
 import {
   getCodeExplorerOptionGroups,
@@ -64,10 +64,8 @@ export function CodeExplorerView({
 
   if (!routeTarget || !resolvedTarget) {
     return (
-      <ShellPanel
-        title="Code explorer"
+      <Panel
         description="Choose the content you want to explore."
-        variant="compact"
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -109,7 +107,7 @@ export function CodeExplorerView({
             ))}
           </div>
         </div>
-      </ShellPanel>
+      </Panel>
     );
   }
 

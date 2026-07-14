@@ -3,8 +3,7 @@ import { useToast } from "../../hooks";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { Badge, Button } from "../common";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { ShellPanel } from "./shell-panel";
+import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerFields } from "./ssh-server-fields";
 import {
   buildSshServerUpdateRequest,
@@ -102,16 +101,10 @@ export function SshServerComposer({
   }
 
   return (
-    <ShellPanel
-      eyebrow="SSH server"
-      title={isEditing ? `Edit ${initialServer?.config.name ?? "SSH server"}` : "Register a standalone SSH server"}
-      description={isEditing ? "Update the saved host metadata and optional client-only password." : undefined}
-      variant="compact"
-      badges={(
-        <Badge variant="info" size="sm">Standalone SSH</Badge>
-      )}
+    <Panel
       actions={(
         <>
+          <Badge variant="info" size="sm">Standalone SSH</Badge>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
             Cancel
           </Button>
@@ -130,6 +123,6 @@ export function SshServerComposer({
           disabled={submitting}
         />
       </form>
-    </ShellPanel>
+    </Panel>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfirmModal,
+  ErrorState,
   Modal,
   Page,
   replaceWebAppRoute,
@@ -61,7 +62,6 @@ import {
   type PrivateSidebarNode,
 } from "../../lib/private-items";
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
-import { ShellPanel } from "./shell-panel";
 import { StatusBadge } from "../common";
 import { isTaskActive, isTaskGenerating } from "../../utils";
 
@@ -967,15 +967,10 @@ export function AppShell() {
           {transcriptChatId
             ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} />
             : (
-              <ShellPanel
+              <ErrorState
                 title="Chat transcript not found"
                 description="The transcript route is missing a chat identifier."
-                variant="compact"
-              >
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Use the sidebar or home button to continue.
-                </p>
-              </ShellPanel>
+              />
             )}
         </Page>
       );

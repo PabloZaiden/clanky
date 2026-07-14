@@ -8,9 +8,8 @@ import {
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { ConfirmModal, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
-import { ShellPanel } from "./shell-panel";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";
 
 export function DraftTaskComposer({
@@ -140,10 +139,7 @@ export function DraftTaskComposer({
   }
 
   return (
-    <ShellPanel
-      eyebrow="Draft task"
-      title={`Edit ${task.config.name}`}
-      variant="compact"
+    <Panel
       actions={(
         <>
           <Button
@@ -237,6 +233,6 @@ export function DraftTaskComposer({
         loading={deleteSubmitting}
         variant="danger"
       />
-    </ShellPanel>
+    </Panel>
   );
 }

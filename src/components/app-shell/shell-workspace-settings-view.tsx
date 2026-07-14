@@ -3,8 +3,7 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
 import { ProvisioningActionsSection } from "../workspace-settings";
-import { ShellPanel } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 
 interface WorkspaceSettingsViewProps {
@@ -43,12 +42,7 @@ export function WorkspaceSettingsView({
   } = workspaceSettings;
 
   return (
-    <ShellPanel
-      eyebrow="Workspace settings"
-      title="Workspace Settings"
-      description={workspaceFromHook?.directory ?? selectedWorkspace.directory}
-      descriptionClassName="hidden sm:inline font-mono"
-      variant="compact"
+    <Panel
       actions={
         <Button
           type="submit"
@@ -62,14 +56,12 @@ export function WorkspaceSettingsView({
         </Button>
       }
     >
-      {workspaceSettingsError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
-          {workspaceSettingsError}
-        </div>
-      )}
+      {workspaceSettingsError ? (
+        <ErrorState title="Unable to load workspace settings" description={workspaceSettingsError} />
+      ) : null}
 
       {workspaceSettingsLoading && !workspaceFromHook ? (
-        <div className="text-sm text-gray-500 dark:text-gray-400">Loading workspace settings…</div>
+        <LoadingState title="Loading workspace settings" />
       ) : workspaceFromHook ? (
         <div className="space-y-6">
           <WorkspaceSettingsForm
@@ -115,10 +107,8 @@ export function WorkspaceSettingsView({
           )}
         </div>
       ) : (
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          Workspace settings are unavailable right now.
-        </div>
+        <ErrorState title="Workspace settings unavailable" description="Workspace settings are unavailable right now." />
       )}
-    </ShellPanel>
+    </Panel>
   );
 }

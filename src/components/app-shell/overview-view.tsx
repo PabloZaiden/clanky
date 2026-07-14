@@ -9,9 +9,7 @@ import {
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { ShellPanel } from "./shell-panel";
-import { EmptySection } from "./shell-sidebar";
+import { DataList, DataListRow, EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
@@ -127,47 +125,27 @@ export function OverviewView({
   );
 
   return (
-    <ShellPanel
-      eyebrow="Overview"
-      title="Clanky"
-      variant="compact"
-    >
-      <div className="space-y-6">
+    <div className="space-y-6">
         {activeWorkItems.length > 0 && (
-          <div
-            data-testid="active-work-card"
-            className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
-          >
-            <div>
-              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
-            </div>
-            <div className="space-y-2">
+          <div data-testid="active-work-card">
+            <Panel title="Active Work">
+              <DataList>
               {activeWorkItems.map((item) => {
                 const badge = getActiveWorkBadge(item);
                 const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
                 return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    disabled={privateHidden}
-                    onClick={() => onNavigate(getActiveWorkRoute(item))}
-                    className={`flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="block break-words text-sm font-medium text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-                        {getActiveWorkTitle(item)}
-                      </span>
-                      <span className="mt-1 block break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                        {getActiveWorkSubtitle(item)}
-                      </span>
-                    </span>
-                    <StatusBadge variant={badge.variant} className="shrink-0">
-                      {badge.label}
-                    </StatusBadge>
-                  </button>
+                  <div key={item.key} className={getPrivateContainerClassName(privateHidden)}>
+                    <DataListRow
+                      title={getActiveWorkTitle(item)}
+                      description={getActiveWorkSubtitle(item)}
+                      badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
+                      onClick={privateHidden ? undefined : () => onNavigate(getActiveWorkRoute(item))}
+                    />
+                  </div>
                 );
               })}
-            </div>
+              </DataList>
+            </Panel>
           </div>
         )}
 
@@ -184,78 +162,45 @@ export function OverviewView({
           }}
         />
 
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces</h2>
-          </div>
-          <div className="space-y-2">
+        <Panel title="Workspaces">
+          <DataList>
             {workspaceGroups.length === 0 ? (
-              <EmptySection message="No workspaces yet. Start by creating one." />
-            ) : (
-              workspaceGroups.map((group) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
-                return (
-                  <button
-                    key={group.workspace.id}
-                    type="button"
-                    disabled={privateHidden}
-                    onClick={() => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
-                    className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {group.workspace.name}
-                      </span>
-                      <span className="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">
-                        {group.workspace.directory}
-                      </span>
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap rounded-full bg-gray-200 px-2 py-0.5 text-right text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-                      {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
+              <EmptyState title="No workspaces yet" description="Start by creating one." />
+            ) : workspaceGroups.map((group) => {
+              const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
+              return (
+                <div key={group.workspace.id} className={getPrivateContainerClassName(privateHidden)}>
+                  <DataListRow
+                    title={group.workspace.name}
+                    description={group.workspace.directory}
+                    meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
+                    onClick={privateHidden ? undefined : () => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
+                  />
+                </div>
+              );
+            })}
+          </DataList>
+        </Panel>
 
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Servers</h2>
-          </div>
-          <div className="space-y-2">
+        <Panel title="Servers">
+          <DataList>
             {serverMapItems.length === 0 ? (
-              <EmptySection message="No SSH servers yet. Register one to see it here." />
-            ) : (
-              serverMapItems.map(({ server, sessionCount }) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
-                return (
-                  <button
-                    key={server.config.id}
-                    type="button"
-                    disabled={privateHidden}
-                    onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}
-                    className={`flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition ${privateHidden ? "" : "hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800"} dark:border-gray-800 dark:bg-neutral-900 ${getPrivateContainerClassName(privateHidden)}`}
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="block break-words text-sm font-medium text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-                        {server.config.name}
-                      </span>
-                      <span className="mt-1 block break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                        {server.config.username}@{server.config.address}
-                      </span>
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap rounded-full bg-gray-200 px-2 py-0.5 text-right text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-                      {sessionCount} session{sessionCount === 1 ? "" : "s"}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
+              <EmptyState title="No SSH servers yet" description="Register one to see it here." />
+            ) : serverMapItems.map(({ server, sessionCount }) => {
+              const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
+              return (
+                <div key={server.config.id} className={getPrivateContainerClassName(privateHidden)}>
+                  <DataListRow
+                    title={server.config.name}
+                    description={`${server.config.username}@${server.config.address}`}
+                    meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+                    onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh-server", serverId: server.config.id })}
+                  />
+                </div>
+              );
+            })}
+          </DataList>
+        </Panel>
       </div>
-    </ShellPanel>
   );
 }

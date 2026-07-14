@@ -6,11 +6,10 @@ import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "..
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
-import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Modal, Panel } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
-import { ShellPanel } from "./shell-panel";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
@@ -565,11 +564,9 @@ export function FileExplorerView({
   ]);
 
   return (
-    <ShellPanel
-      title={title}
+    <Panel
+      className="flex h-full min-h-0 flex-col overflow-hidden !border-0 !bg-transparent !p-0"
       description={description}
-      descriptionClassName="hidden font-mono sm:inline"
-      variant="compact"
       actions={(
         <>
           {headerActions}
@@ -585,10 +582,11 @@ export function FileExplorerView({
           </div>
         </>
       )}
-      bodyClassName="flex h-full min-h-0 flex-col"
-      bodyContainerClassName="flex-1 min-h-0 overflow-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
-      bodyContainerTestId={`${testIdPrefix}-shell-body`}
     >
+      <div
+        data-testid={`${testIdPrefix}-shell-body`}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
+      >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
         <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
         <div
@@ -748,6 +746,7 @@ export function FileExplorerView({
           )}
         </div>
         </div>
+      </div>
       </div>
 
       <input
@@ -953,6 +952,6 @@ export function FileExplorerView({
         onClose={handleCloseServerPasswordModal}
         onSubmit={handleSubmitServerPassword}
       />
-    </ShellPanel>
+    </Panel>
   );
 }

@@ -8,8 +8,7 @@ import {
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { Button } from "../common";
-import { ShellPanel } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
@@ -42,16 +41,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     );
 
   return (
-    <ShellPanel
-      eyebrow="Task"
-      title={
-        composeWorkspace
-          ? `Start a new task in ${composeWorkspace.name}`
-          : "Start a new task"
-      }
-      description={composeWorkspace?.directory}
-      descriptionClassName="hidden sm:inline font-mono"
-      variant="compact"
+    <Panel
       actions={
         <>
           <Button
@@ -122,6 +112,6 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
         workspaceError={workspaceError}
         renderActions={setComposeActionState}
       />
-    </ShellPanel>
+    </Panel>
   );
 }
