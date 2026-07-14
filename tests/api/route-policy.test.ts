@@ -5,7 +5,7 @@ import { findApiEndpoint, getCliRouteCatalog } from "../../src/cli/api-catalog";
 import { routes } from "../../src/server";
 
 describe("API route policy metadata", () => {
-  test("declares authorization, same-origin policy, and descriptions on every Clanky route", () => {
+  test("declares authorization, same-origin policy, and route descriptions on every Clanky route", () => {
     const entries = createRouteCatalog(routes).filter((entry) => entry.path.startsWith("/api/"));
 
     expect(entries.length).toBeGreaterThan(0);
@@ -16,7 +16,8 @@ describe("API route policy metadata", () => {
       }
       expect(entry.auth).toBe(route.auth);
       expect(entry.sameOrigin).toBe(route.sameOrigin);
-      expect(entry.description).toBeTruthy();
+      expect(route.description).toBeTruthy();
+      expect(entry.description).toBe(route.description);
     }
   });
 
