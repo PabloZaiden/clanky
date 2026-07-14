@@ -129,7 +129,11 @@ export const crudRoutes = defineRoutes({
           return errorResponse("workspace_not_found", "Workspace not found", 404);
         }
 
-        log.info(`Updated workspace: ${workspace.name}`);
+        if (workspace.updatedAt === currentWorkspace.updatedAt) {
+          log.info(`Workspace unchanged: ${currentWorkspace.name}`);
+        } else {
+          log.info(`Updated workspace: ${workspace.name}`);
+        }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
         log.error("Failed to update workspace:", String(error));

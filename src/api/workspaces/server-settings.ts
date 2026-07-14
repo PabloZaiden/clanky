@@ -68,7 +68,11 @@ export const serverSettingsRoutes = defineRoutes({
           return errorResponse("workspace_not_found", "Workspace not found", 404);
         }
 
-        log.info(`Updated server settings for workspace: ${workspace.name}`);
+        if (workspace.updatedAt === currentWorkspace.updatedAt) {
+          log.info(`Server settings unchanged for workspace: ${currentWorkspace.name}`);
+        } else {
+          log.info(`Updated server settings for workspace: ${workspace.name}`);
+        }
         return Response.json(
           includeSensitive
             ? workspace.serverSettings
