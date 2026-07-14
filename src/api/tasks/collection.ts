@@ -25,6 +25,8 @@ const log = createLogger("api:tasks");
 
 export const tasksCollectionRoutes = defineRoutes({
   "/api/tasks": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List tasks or create a new task.",
     requestSchema: CreateTaskRequestSchema,
     /**
@@ -303,6 +305,8 @@ export const tasksCollectionRoutes = defineRoutes({
   },
 
   "/api/tasks/title": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Generate a task title from a prompt.",
     requestSchema: GenerateTaskTitleRequestSchema,
     async POST(req: Request, _ctx): Promise<Response> {

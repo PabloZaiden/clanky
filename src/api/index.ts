@@ -61,31 +61,25 @@ const nativeApiRoutes = {
 const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 /**
- * Apply the common API security policy and establish Clanky's user context
- * around native webapp route handlers. The handlers themselves remain native
- * `(req, ctx)` functions; this middleware does not alter the request or route
- * shape.
+ * Establish Clanky's compatibility user context around native webapp route
+ * handlers. Authorization and same-origin policy remain on each route.
  */
-function withApiRouteMiddleware(routes: Record<string, RouteDefinition>): RouteTable {
+function withApiUserContext(routes: Record<string, RouteDefinition>): RouteTable {
   return Object.fromEntries(Object.entries(routes).map(([path, route]) => {
-    const routeWithPolicy: RouteDefinition = {
-      ...route,
-      auth: path === "/api/settings/reset-all" || path === "/api/settings/purge-terminal-tasks" ? "owner" : "user",
-      sameOrigin: "mutations",
-    };
+    const routeWithContext: RouteDefinition = { ...route };
     for (const method of API_METHODS) {
       const handler = route[method];
       if (!handler) continue;
-      routeWithPolicy[method] = async (req, ctx) => {
+      routeWithContext[method] = async (req, ctx) => {
         const user = ctx.requireUser();
         return await runWithCurrentUser(user, () => handler(req, ctx));
       };
     }
-    return [path, routeWithPolicy];
+    return [path, routeWithContext];
   }));
 }
 
-export const apiRoutes = defineRoutes(withApiRouteMiddleware(nativeApiRoutes));
+export const apiRoutes = defineRoutes(withApiUserContext(nativeApiRoutes));
 
 // Re-export individual route modules
 export * from "./helpers";

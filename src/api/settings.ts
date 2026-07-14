@@ -33,6 +33,8 @@ const log = createLogger("api:settings");
  */
 export const settingsRoutes = defineRoutes({
   "/api/settings/reset-all": {
+    auth: "owner",
+    sameOrigin: "mutations",
     description: "Reset all persisted settings and recreate the database.",
     /**
      * POST /api/settings/reset-all - Delete database and reinitialize.
@@ -70,6 +72,8 @@ export const settingsRoutes = defineRoutes({
   },
 
   "/api/settings/purge-terminal-tasks": {
+    auth: "owner",
+    sameOrigin: "mutations",
     description: "Purge terminal-state tasks across all workspaces.",
     /**
      * POST /api/settings/purge-terminal-tasks - Purge terminal-state tasks across all workspaces.

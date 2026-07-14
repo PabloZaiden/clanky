@@ -43,6 +43,8 @@ export const crudRoutes = defineRoutes({
    * POST /api/workspaces - Create a new workspace
    */
   "/api/workspaces": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List workspaces or create a workspace.",
     requestSchema: CreateWorkspaceRequestSchema,
     querySchema: SensitiveQuerySchema,
@@ -133,6 +135,8 @@ export const crudRoutes = defineRoutes({
    * GET /PUT /DELETE /api/workspaces/:id - Single workspace operations
    */
   "/api/workspaces/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read, update, or delete a workspace.",
     requestSchema: UpdateWorkspaceRequestSchema,
     querySchema: SensitiveQuerySchema,

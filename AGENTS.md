@@ -244,11 +244,29 @@ export function MyComponent() {
 
 ## API Routes
 
-Define routes in `src/api/` modules using Bun's route-based API:
+Define routes in `src/api/` modules using Bun's route-based API. Every
+`defineRoutes` entry must declare its intentional authorization and same-origin
+policy directly on the route. Normal private Clanky routes use
+`auth: "user"` with `sameOrigin: "mutations"`; owner-only operations use
+`auth: "owner"`. Raw websocket upgrades should use `sameOrigin: "always"`.
+Public routes are exceptional and must explicitly use
+`auth: "public", sameOrigin: "never"` with a documented product rationale.
+Keep scopes, schemas, descriptions, tags, and `cliPath` on the same route
+definition so the framework catalog and CLI discover the complete contract.
+
+Do not apply authorization or same-origin policy through a global path
+allowlist, blanket route rewrite, or method-based adapter. Handlers should use
+`ctx.requireUser()`, `ctx.requireOwner()`, `ctx.assertUser()`,
+`ctx.filterOwned()`, and `ctx.requireOwned()` when an additional ownership
+check is needed; route policy remains the framework's declarative boundary.
 
 ```typescript
-export const myRoutes = {
+import { defineRoutes } from "@pablozaiden/webapp/server";
+
+export const myRoutes = defineRoutes({
   "/api/endpoint": {
+    auth: "user",
+    sameOrigin: "mutations",
     async GET(req) {
       return Response.json({ data: "value" });
     },
@@ -257,10 +275,14 @@ export const myRoutes = {
       return Response.json({ received: body }, { status: 201 });
     },
   },
-  "/api/endpoint/:param": async (req: Request & { params: { param: string } }) => {
-    return Response.json({ param: req.params.param });
+  "/api/endpoint/:param": {
+    auth: "user",
+    sameOrigin: "mutations",
+    async GET(_req, ctx) {
+      return Response.json({ param: ctx.params["param"] });
+    },
   },
-};
+});
 ```
 
 Routes are aggregated in `src/api/index.ts` and spread into the server.

@@ -59,6 +59,8 @@ function logPreferenceSaveFailure(preference: string, error: unknown): void {
  */
 export const preferencesRoutes = defineRoutes({
   "/api/preferences/last-model": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist the user's most recently used model.",
     requestSchema: SetLastModelRequestSchema,
     /**
@@ -103,6 +105,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/last-cheap-model": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist the user's most recently used cheap model.",
     requestSchema: SetLastCheapModelRequestSchema,
     /**
@@ -133,6 +137,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/last-directory": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist the user's last selected directory.",
     requestSchema: SetLastDirectoryRequestSchema,
     /**
@@ -171,6 +177,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/markdown-rendering": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist markdown rendering preferences.",
     requestSchema: SetMarkdownRenderingRequestSchema,
     /**
@@ -209,6 +217,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/file-explorer-full-tree": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist file explorer tree loading preferences.",
     requestSchema: SetFileExplorerFullTreeRequestSchema,
     /**
@@ -247,6 +257,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/dashboard-view-mode": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist the preferred dashboard layout.",
     requestSchema: SetDashboardViewModeRequestSchema,
     /**
@@ -284,6 +296,8 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/quick-chat": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Persist quick chat workspace and model preferences.",
     requestSchema: SetQuickChatSettingsRequestSchema,
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
@@ -323,6 +337,9 @@ export const preferencesRoutes = defineRoutes({
   },
 
   "/api/preferences/scheduler-timezone": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Persist the scheduler timezone preference.",
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const timezone = await getSchedulerTimezone();
       return Response.json({ timezone });

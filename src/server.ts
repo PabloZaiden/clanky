@@ -73,6 +73,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
     sameOrigin: "always",
+    description: "Open the raw websocket bridge for a workspace preview.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
@@ -89,6 +90,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/ssh-terminal": {
     auth: "user",
     sameOrigin: "always",
+    description: "Open the raw websocket bridge for an SSH terminal.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       const url = new URL(req.url);
@@ -115,6 +117,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/vnc": {
     auth: "user",
     sameOrigin: "always",
+    description: "Open the raw websocket bridge for a VNC session.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       const url = new URL(req.url);

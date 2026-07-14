@@ -13,6 +13,8 @@ import { startErrorResponse } from "./helpers";
 
 export const tasksDraftRoutes = defineRoutes({
   "/api/tasks/:id/draft/start": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Start draft generation for a task.",
     requestSchema: StartDraftRequestSchema,
     /**

@@ -22,6 +22,8 @@ const log = createLogger("api:tasks");
 
 export const tasksDataRoutes = defineRoutes({
   "/api/tasks/:id/diff": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read the git diff produced by a task.",
     /**
      * GET /api/tasks/:id/diff - Get git diff for a task's changes.
@@ -65,6 +67,8 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read a task's planning document.",
     /**
      * GET /api/tasks/:id/plan - Get .clanky-planning/plan.md content.
@@ -104,6 +108,8 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/status-file": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read a task's status tracking document.",
     /**
      * GET /api/tasks/:id/status-file - Get .clanky-planning/status.md content.
@@ -143,6 +149,8 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pull-request": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read pull request navigation details for a task.",
     /**
      * GET /api/tasks/:id/pull-request - Get PR navigation metadata for a task.
@@ -162,6 +170,8 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/check-planning-dir": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Inspect a workspace's .clanky-planning files.",
     /**
      * GET /api/check-planning-dir - Check if .clanky-planning directory exists.

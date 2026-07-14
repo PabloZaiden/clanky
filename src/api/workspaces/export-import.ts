@@ -147,6 +147,8 @@ export const exportImportRoutes = defineRoutes({
    * GET /api/workspaces/export - Export all workspace configs as JSON
    */
   "/api/workspaces/export": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Export workspace configuration data.",
     querySchema: SensitiveQuerySchema,
     async GET(req: Request, _ctx) {
@@ -177,6 +179,8 @@ export const exportImportRoutes = defineRoutes({
    * Reports per-entry results (created, failed).
    */
   "/api/workspaces/import": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Import workspaces from an export bundle.",
     requestSchema: WorkspaceImportRequestSchema,
     async POST(req: Request, _ctx) {

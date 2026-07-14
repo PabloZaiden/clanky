@@ -104,6 +104,8 @@ async function validateQuickChatRequestModel(body: {
 
 export const chatsRoutes = defineRoutes({
   "/api/chats": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List chats or create a chat session.",
     requestSchema: CreateChatRequestSchema,
     async GET(req: Request, _ctx): Promise<Response> {
@@ -160,6 +162,9 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/importable-sessions": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List chat sessions available for import.",
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId")?.trim();
@@ -185,6 +190,9 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/import": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Import an existing chat session.",
     async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(ImportExistingChatRequestSchema, req);
       if (!validation.success) {
@@ -233,6 +241,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read, update, or delete a chat session.",
     requestSchema: UpdateChatRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
@@ -303,6 +313,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/messages": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Send a message to a chat session.",
     requestSchema: SendChatMessageRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -335,6 +347,9 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/queued-messages/:messageId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Delete a queued chat message.",
     async DELETE(_req: Request, ctx): Promise<Response> {
       try {
         const updated = await chatManager.removeQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
@@ -355,6 +370,9 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/transcript.md": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Download a chat transcript as Markdown.",
     async GET(req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
@@ -379,6 +397,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/interrupt": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Interrupt an active chat run.",
     requestSchema: InterruptChatRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -406,6 +426,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/permissions/:requestId": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Approve or deny a pending chat permission request.",
     requestSchema: ReplyToChatPermissionRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -445,6 +467,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/reconnect": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Reconnect a chat session to its backend runtime.",
     requestSchema: ReconnectChatRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -477,6 +501,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/spawn-task": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Create a task from an existing chat transcript.",
     async POST(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
@@ -517,6 +543,8 @@ export const chatsRoutes = defineRoutes({
   },
 
   "/api/chats/:id/spawn-task-from-current-plan": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Create a task from the current plan discussed in a chat.",
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(SpawnCurrentPlanTaskRequestSchema, req, {

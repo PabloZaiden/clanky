@@ -18,6 +18,8 @@ export const archivedTasksRoutes = defineRoutes({
    * POST /api/workspaces/:id/archived-tasks/purge - Purge all archived tasks for a workspace.
    */
   "/api/workspaces/:id/archived-tasks/purge": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Purge archived tasks for a workspace.",
     async POST(req: Request, ctx) {
       ctx.server?.timeout(req, 0);

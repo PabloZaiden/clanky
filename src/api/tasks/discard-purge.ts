@@ -14,6 +14,8 @@ const log = createLogger("api:tasks");
 
 export const tasksDiscardPurgeRoutes = defineRoutes({
   "/api/tasks/:id/discard": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Discard a task and remove its working branch.",
     /**
      * POST /api/tasks/:id/discard - Discard a task and delete its git branch.
@@ -41,6 +43,8 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/purge": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Permanently delete a task from storage.",
     /**
      * POST /api/tasks/:id/purge - Permanently delete a task from storage.

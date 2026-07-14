@@ -53,6 +53,8 @@ function mapSshServerError(error: unknown): Response {
 
 export const sshServersRoutes = defineRoutes({
   "/api/ssh-servers": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List or create standalone SSH servers.",
     requestSchema: CreateSshServerRequestSchema,
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
@@ -81,6 +83,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Update or delete a standalone SSH server.",
     requestSchema: UpdateSshServerRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
@@ -134,6 +138,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/public-key": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read the public key for a standalone SSH server.",
     async GET(_req: Request, ctx): Promise<Response> {
       try {
@@ -150,6 +156,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/credentials": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Exchange an encrypted SSH credential for a temporary token.",
     requestSchema: SshCredentialExchangeRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -175,6 +183,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/sessions": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List or create standalone SSH server sessions.",
     requestSchema: CreateSshServerSessionRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
@@ -209,6 +219,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/chats": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List or create chats owned by a standalone SSH server.",
     requestSchema: CreateSshServerChatRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
@@ -256,6 +268,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/chat-providers": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Discover ACP chat providers available on a standalone SSH server.",
     requestSchema: DiscoverSshServerChatProvidersRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -293,6 +307,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/chat-models": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Discover ACP chat models for a selected provider on a standalone SSH server.",
     requestSchema: DiscoverSshServerChatModelsRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -335,6 +351,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/prerequisites/check": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Run prerequisite checks for a standalone SSH server.",
     requestSchema: CheckSshServerPrerequisitesRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -356,6 +374,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/devbox/templates": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List available devbox templates for a standalone SSH server.",
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(GetDevboxTemplatesRequestSchema, req);
@@ -376,6 +396,8 @@ export const sshServersRoutes = defineRoutes({
   },
 
   "/api/ssh-server-sessions/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read, update, or delete a standalone SSH server session.",
     requestSchema: UpdateSshSessionRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {

@@ -18,6 +18,8 @@ const log = createLogger("api:tasks");
 
 export const tasksReviewRoutes = defineRoutes({
   "/api/tasks/:id/address-comments": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Address review comments for a task.",
     requestSchema: AddressCommentsRequestSchema,
     /**
@@ -83,6 +85,8 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/review-history": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read review history for a task.",
     /**
      * GET /api/tasks/:id/review-history - Get review history for a task.
@@ -120,6 +124,8 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/automatic-pr-flow/start": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Enable automatic pull request monitoring for a task.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {
@@ -142,6 +148,8 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/automatic-pr-flow/stop": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Disable automatic pull request monitoring for a task.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {
@@ -164,6 +172,8 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pull-request/auto-merge": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Enable pull request auto-merge for a task.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {

@@ -19,6 +19,8 @@ import { validateEnabledModelForTask } from "./helpers";
 
 export const tasksPendingRoutes = defineRoutes({
   "/api/tasks/:id/pending-prompt": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Set the pending prompt used for the next task iteration.",
     requestSchema: PendingPromptRequestSchema,
     /**
@@ -82,6 +84,8 @@ export const tasksPendingRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pending": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Apply a pending message or model override for the next task iteration.",
     requestSchema: SetPendingRequestSchema,
     /**
@@ -188,6 +192,8 @@ export const tasksPendingRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/follow-up": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Send a follow-up message to a task.",
     requestSchema: FollowUpRequestSchema,
     /**

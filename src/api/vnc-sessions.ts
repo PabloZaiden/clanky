@@ -20,6 +20,8 @@ function mapVncError(error: unknown): Response {
 
 export const vncSessionRoutes = defineRoutes({
   "/api/ssh-servers/:id/vnc-sessions": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List or create VNC sessions for a standalone SSH server.",
     requestSchema: CreateVncSessionRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
@@ -52,6 +54,8 @@ export const vncSessionRoutes = defineRoutes({
   },
 
   "/api/vnc-sessions/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read or close a VNC session.",
     async GET(_req: Request, ctx): Promise<Response> {
       try {
