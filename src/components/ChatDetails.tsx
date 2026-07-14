@@ -682,7 +682,7 @@ export function ChatDetails({
   } = useComposerSizing(message);
   const composerInstanceId = useId();
 
-  if (loading) {
+  if (loading && !chat) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
   }
 
