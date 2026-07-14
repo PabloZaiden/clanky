@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { AcpBackend } from "../../src/backends/acp/acp-backend";
 
@@ -27,6 +27,86 @@ function buildPromptRuntimeScript(): string {
     "  if (message.method === 'session/prompt') process.exit(17);",
     "});",
   ].join("\n");
+}
+
+type ControlledProcess = {
+  subprocess: Bun.Subprocess;
+  sendRaw: (value: string) => void;
+  sendJson: (message: Record<string, unknown>) => void;
+  closeStreams: () => void;
+};
+
+function createControlledProcess(): ControlledProcess {
+  let stdoutController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let stderrController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let resolveExited: ((exitCode: number) => void) | undefined;
+  let exitCode: number | null = null;
+  let streamsClosed = false;
+  const encoder = new TextEncoder();
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      stdoutController = controller;
+    },
+  });
+  const stderr = new ReadableStream<Uint8Array>({
+    start(controller) {
+      stderrController = controller;
+    },
+  });
+  const sendRaw = (value: string): void => {
+    if (!stdoutController) {
+      throw new Error("Controlled stdout is not ready");
+    }
+    stdoutController.enqueue(encoder.encode(value));
+  };
+  const sendJson = (message: Record<string, unknown>): void => {
+    sendRaw(`${JSON.stringify(message)}\n`);
+  };
+  const exited = new Promise<number>((resolve) => {
+    resolveExited = resolve;
+  });
+  const stdin = {
+    write(value: string): void {
+      const message = JSON.parse(value) as { id?: number; method?: string };
+      if (message.method === "initialize" && message.id !== undefined) {
+        sendJson({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {},
+        });
+      }
+    },
+  };
+  const subprocess = {
+    stdin,
+    stdout,
+    stderr,
+    exited,
+    get exitCode(): number | null {
+      return exitCode;
+    },
+    kill(): void {
+      if (exitCode !== null) {
+        return;
+      }
+      exitCode = 0;
+      resolveExited?.(0);
+    },
+  } as unknown as Bun.Subprocess;
+
+  return {
+    subprocess,
+    sendRaw,
+    sendJson,
+    closeStreams: (): void => {
+      if (streamsClosed) {
+        return;
+      }
+      streamsClosed = true;
+      stdoutController?.close();
+      stderrController?.close();
+    },
+  };
 }
 
 describe("AcpBackend lifecycle", () => {
@@ -65,5 +145,46 @@ describe("AcpBackend lifecycle", () => {
     expect(backend.getDirectory()).toBe("");
     expect(backend.getConnectionInfo()).toBeNull();
     expect(backend.getSdkClient()).toBeNull();
+  });
+
+  test("ignores buffered output from a replaced process", async () => {
+    const firstProcess = createControlledProcess();
+    const secondProcess = createControlledProcess();
+    const processes = [firstProcess, secondProcess];
+    const spawnSpy = spyOn(Bun, "spawn").mockImplementation(() => {
+      const nextProcess = processes.shift();
+      if (!nextProcess) {
+        throw new Error("Unexpected extra ACP process");
+      }
+      return nextProcess.subprocess;
+    });
+
+    try {
+      backend = new AcpBackend();
+      await backend.connect(buildConnectionConfig("controlled"));
+      await backend.disconnect();
+      await backend.connect(buildConnectionConfig("controlled"));
+
+      const sessionPromise = backend.createSession({ directory });
+      firstProcess.sendRaw(JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        result: { sessionId: "stale-session", cwd: directory },
+      }));
+      firstProcess.closeStreams();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      secondProcess.sendJson({
+        jsonrpc: "2.0",
+        id: 3,
+        result: { sessionId: "fresh-session", cwd: directory },
+      });
+
+      await expect(sessionPromise).resolves.toMatchObject({ id: "fresh-session" });
+    } finally {
+      spawnSpy.mockRestore();
+      firstProcess.closeStreams();
+      secondProcess.closeStreams();
+    }
   });
 });

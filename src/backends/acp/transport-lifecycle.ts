@@ -260,8 +260,8 @@ export class AcpTransportLifecycle {
       return;
     }
 
-    void this.readRpcStream(process.stdout, "stdout");
-    void this.readRpcStream(process.stderr, "stderr");
+    void this.readRpcStream(process, process.stdout, "stdout");
+    void this.readRpcStream(process, process.stderr, "stderr");
     void process.exited.then((exitCode) => {
       if (this.process !== process || !this.connected) {
         return;
@@ -346,6 +346,7 @@ export class AcpTransportLifecycle {
   }
 
   private async readRpcStream(
+    process: Bun.Subprocess,
     stream: ReadableStream<Uint8Array>,
     source: "stdout" | "stderr",
   ): Promise<void> {
@@ -366,7 +367,7 @@ export class AcpTransportLifecycle {
           const line = buffer.slice(0, newlineIndex).trim();
           buffer = buffer.slice(newlineIndex + 1);
           if (line.length > 0) {
-            this.handleRpcLine(line, source);
+            this.handleRpcLine(process, line, source);
           }
           newlineIndex = buffer.indexOf("\n");
         }
@@ -374,7 +375,7 @@ export class AcpTransportLifecycle {
 
       const rest = buffer.trim();
       if (rest.length > 0) {
-        this.handleRpcLine(rest, source);
+        this.handleRpcLine(process, rest, source);
       }
     } catch (error) {
       log.warn(`[AcpBackend] ACP ${source} stream ended with error`, {
@@ -385,7 +386,11 @@ export class AcpTransportLifecycle {
     }
   }
 
-  private handleRpcLine(line: string, source: "stdout" | "stderr"): void {
+  private handleRpcLine(process: Bun.Subprocess, line: string, source: "stdout" | "stderr"): void {
+    if (this.process !== process || !this.connected) {
+      return;
+    }
+
     let message: JsonRpcMessage;
     try {
       message = JSON.parse(line) as JsonRpcMessage;
