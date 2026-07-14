@@ -5,7 +5,7 @@
  * Aggregates sub-hooks:
  * - useTaskStaleGuard  – stale-request guard utilities
  * - useTaskData        – state management, data fetching, hydration
- * - useTaskEventHandler – WebSocket event processing
+ * - useTaskEventHandler – incremental realtime stream processing
  * - useTaskActions     – mutating action callbacks
  * - useTaskFileQueries – read-only file/diff queries
  */
@@ -16,7 +16,7 @@ import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDesti
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { FollowUpPromptMode } from "@/shared/task";
 import type { LogEntry } from "../../components/LogViewer";
-import { isTaskEvent, useAppEvents } from "../useAppEvents";
+import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../useRealtimeStream";
 import { createLogger } from "../../lib/logger";
 import type {
   AcceptTaskResult,
@@ -32,7 +32,6 @@ import { useTaskData } from "./useTaskData";
 import { createTaskEventHandler } from "./useTaskEventHandler";
 import { useTaskActions } from "./useTaskActions";
 import { useTaskFileQueries } from "./useTaskFileQueries";
-import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 
 const log = createLogger("useTask");
 
@@ -45,8 +44,6 @@ export interface UseTaskResult {
   error: string | null;
   /** WebSocket connection status */
   connectionStatus: "connecting" | "open" | "closed" | "error";
-  /** Recent events for this task */
-  events: TaskEvent[];
   /** Messages from the current/recent iterations */
   messages: MessageData[];
   /** Tool calls from the current/recent iterations */
@@ -163,14 +160,25 @@ export function useTask(taskId: string): UseTaskResult {
     isActiveTask,
     refresh,
     setLogs,
-      setMessages,
-      setToolCalls,
-      setProgressContent,
-      setGitChangeCounter,
-    });
+    setMessages,
+    setToolCalls,
+    setProgressContent,
+    setGitChangeCounter,
+  });
 
-  // WebSocket subscription for real-time updates
-  const { events, status: connectionStatus, clearEvents } = useAppEvents<TaskEvent>(handleEvent, isTaskEvent);
+  const { status: connectionStatus } = useRealtimeStream<TaskEvent>({
+    filters: { taskId },
+    predicate: (event) => event.type.startsWith("task."),
+    onEvent: handleEvent,
+  });
+
+  useRealtimeRefreshWithRecovery({
+    resources: ["tasks"],
+    ids: [taskId],
+    filters: { resource: "tasks", id: taskId },
+    refresh: () => refresh({ hydrateFromSnapshot: true }),
+    onReconnect: () => refresh({ hydrateFromSnapshot: true }),
+  });
 
   // Action callbacks
   const actions = useTaskActions({
@@ -211,12 +219,10 @@ export function useTask(taskId: string): UseTaskResult {
     setProgressContent("");
     setLogs([]);
     setGitChangeCounter(0);
-    clearEvents();
     // Reset initial load tracking so the new task hydrates from API
     initialLoadDoneRef.current = false;
   }, [
     abortControllerRef,
-    clearEvents,
     initialLoadDoneRef,
     taskId,
     refreshRequestIdRef,
@@ -233,12 +239,6 @@ export function useTask(taskId: string): UseTaskResult {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  useRefreshOnReconnect({
-    status: connectionStatus,
-    resetKey: taskId,
-    onReconnect: () => refresh({ hydrateFromSnapshot: true }),
-  });
 
   // Cleanup: Release memory and cancel in-flight requests when component unmounts
   // Critical for preventing memory leaks when closing TaskDetails
@@ -259,8 +259,6 @@ export function useTask(taskId: string): UseTaskResult {
       setLogs([]);
       setGitChangeCounter(0);
       refreshRequestIdRef.current += 1;
-      clearEvents();
-      // WebSocket cleanup is automatically handled by useTaskEvents hook
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -270,7 +268,6 @@ export function useTask(taskId: string): UseTaskResult {
     loading,
     error,
     connectionStatus,
-    events,
     messages,
     toolCalls,
     progressContent,

@@ -6,8 +6,13 @@
 
 import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
 import { log } from "./logger";
+import { getCurrentUserId } from "./user-context";
 
-type EventHandler<T> = (event: T) => void;
+export interface EventContext {
+  readonly userId?: string;
+}
+
+type EventHandler<T> = (event: T, context: EventContext) => void;
 type Unsubscribe = () => void;
 
 /**
@@ -31,7 +36,7 @@ export class SimpleEventEmitter<T = TaskEvent> {
   /**
    * Emit an event to all subscribers.
    */
-  emit(event: T): void {
+  emit(event: T, context: EventContext = { userId: getCurrentUserId() }): void {
     // Only log subscriber count for task.log events to avoid spam
     const eventType = (event as { type?: string }).type;
     if (this.handlers.size > 1 && eventType === "task.log") {
@@ -42,7 +47,7 @@ export class SimpleEventEmitter<T = TaskEvent> {
     }
     for (const handler of this.handlers) {
       try {
-        handler(event);
+        handler(event, context);
       } catch (error) {
         // Don't let one handler's error break others
         log.error("Event handler error:", String(error));

@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
-import type { Chat, ChatError, ChatEvent } from "@/shared";
+import type { Chat, ChatEvent } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
-import { isChatEvent, useAppEvents } from "./useAppEvents";
+import { useRealtimeStream } from "./useRealtimeStream";
+import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
 
 const log = createLogger("useChats");
-const TERMINAL_CHAT_STATUSES = new Set(["idle", "stopped", "failed"]);
-
 function sortChats(chats: Chat[]): Chat[] {
   return [...chats].sort((left, right) => {
     return right.config.updatedAt.localeCompare(left.config.updatedAt);
@@ -22,22 +21,6 @@ function upsertChat(chats: Chat[], chat: Chat): Chat[] {
   const current = chats.find((item) => item.config.id === chat.config.id);
   next.push(current ? mergeChatSnapshot(current, chat) : chat);
   return sortChats(next);
-}
-
-function updateChatState(chats: Chat[], id: string, updates: Partial<Chat["state"]>): Chat[] {
-  return sortChats(chats.map((chat) => {
-    if (chat.config.id !== id) {
-      return chat;
-    }
-
-    return {
-      ...chat,
-      state: {
-        ...chat.state,
-        ...updates,
-      },
-    };
-  }));
 }
 
 function isActivityTimestampIncrease(currentTimestamp: string | undefined, nextTimestamp: string): boolean {
@@ -105,13 +88,16 @@ export function useChats(): UseChatsResult {
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch("/api/chats", { signal: controller.signal });
       if (controller.signal.aborted) {
@@ -128,7 +114,9 @@ export function useChats(): UseChatsResult {
       }
       setError(String(refreshError));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -320,64 +308,37 @@ export function useChats(): UseChatsResult {
     }
   }, []);
 
-  useAppEvents<ChatEvent>((event) => {
-    switch (event.type) {
-      case "chat.updated":
-        setChats((prev) => upsertChat(prev, event.chat));
-        break;
-      case "chat.created":
-        void refresh();
-        break;
-      case "chat.deleted":
-        setChats((prev) => prev.filter((chat) => chat.config.id !== event.chatId));
-        void refresh();
-        break;
-      case "chat.status":
-        setChats((prev) => updateChatState(prev, event.chatId, {
-          status: event.status,
-          ...(TERMINAL_CHAT_STATUSES.has(event.status) ? { activeMessageId: undefined } : {}),
-          ...(event.status === "failed" ? {} : { error: undefined }),
-          lastActivityAt: event.timestamp,
-        }));
-        break;
-      case "chat.message":
-        if (event.message.role === "assistant") {
+  useRealtimeRefresh({
+    resources: ["chats"],
+    filters: { resource: "chats" },
+    refresh: () => refresh({ showLoading: false }),
+  });
+
+  useRealtimeStream<ChatEvent>({
+    filters: {},
+    predicate: (event) => event.type.startsWith("chat."),
+    onEvent: (event) => {
+      switch (event.type) {
+        case "chat.message":
+          if (event.message.role === "assistant") {
+            setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+          }
+          break;
+        case "chat.message.delta":
+          if (event.role === "assistant") {
+            setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+          }
+          break;
+        case "chat.log":
+        case "chat.log.delta":
+        case "chat.tool_call":
+        case "chat.tool_call.extra":
           setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
-        }
-        break;
-      case "chat.message.delta":
-        if (event.role === "assistant") {
-          setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
-        }
-        break;
-      case "chat.log":
-      case "chat.log.delta":
-      case "chat.tool_call":
-      case "chat.tool_call.extra":
-        setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
-        break;
-      case "chat.interrupted":
-        setChats((prev) => updateChatState(prev, event.chatId, {
-          status: "idle",
-          error: undefined,
-          activeMessageId: undefined,
-          lastActivityAt: event.timestamp,
-        }));
-        break;
-      case "chat.error": {
-        const chatError: ChatError = {
-          message: event.message,
-          timestamp: event.timestamp,
-        };
-        setChats((prev) => updateChatState(prev, event.chatId, {
-          status: "failed",
-          error: chatError,
-          lastActivityAt: event.timestamp,
-        }));
-        break;
+          break;
       }
-    }
-  }, isChatEvent);
+    },
+    onReconnect: () => refresh({ showLoading: false }),
+  });
 
   useEffect(() => {
     void refresh();

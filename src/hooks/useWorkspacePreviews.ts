@@ -3,9 +3,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PreviewEvent, PreviewSession } from "@/shared";
+import type { PreviewSession } from "@/shared";
 import { appFetch } from "../lib/public-path";
-import { isPreviewEvent, useAppEvents } from "./useAppEvents";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 export interface UseWorkspacePreviewsResult {
   previews: PreviewSession[];
@@ -29,12 +29,13 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
-      if (isMountedRef.current) {
+      if (showLoading && isMountedRef.current) {
         setLoading(true);
         setError(null);
       }
@@ -57,7 +58,7 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
-      if (!controller.signal.aborted && isMountedRef.current) {
+      if (showLoading && !controller.signal.aborted && isMountedRef.current) {
         setLoading(false);
       }
     }
@@ -82,13 +83,18 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
     }
   }, [refresh]);
 
-  const handleEvent = useCallback((event: PreviewEvent) => {
-    if (event.workspaceId === workspaceId) {
-      void refresh();
-    }
-  }, [refresh, workspaceId]);
-
-  useAppEvents<PreviewEvent>(handleEvent, isPreviewEvent);
+  useRealtimeRefreshWithRecovery({
+    resources: ["previews"],
+    filters: { resource: "previews", scope: workspaceId },
+    refresh: (event) => {
+      if (event.action === "deleted") {
+        setPreviews((current) => current.filter((preview) => preview.config.id !== event.id));
+        return;
+      }
+      return refresh({ showLoading: false });
+    },
+    onReconnect: () => refresh({ showLoading: false }),
+  });
 
   useEffect(() => {
     isMountedRef.current = true;

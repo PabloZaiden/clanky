@@ -4,12 +4,12 @@ import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { appFetch } from "../../lib/public-path";
-import { isAgentEvent, useAppEvents, useMarkdownPreference, useToast } from "../../hooks";
+import { useMarkdownPreference, useRealtimeStream, useToast } from "../../hooks";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { ConfirmModal, useRealtimeRefresh } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
@@ -79,7 +79,7 @@ function upsertById<T extends { id: string; timestamp?: string }>(items: T[], it
   return [...items.filter((entry) => entry.id !== item.id), item].sort((left, right) => {
     const byTimestamp = (left.timestamp ?? "").localeCompare(right.timestamp ?? "");
     return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  });
+  }).slice(-1000);
 }
 
 function AgentStatusPill({ status }: { status: string }) {
@@ -692,9 +692,12 @@ function AgentRunDetail({
   const [loading, setLoading] = useState(!initialRun);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshRun = useCallback(async () => {
+  const refreshRun = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch(`/api/agent-runs/${runId}`);
       if (!response.ok) {
@@ -704,9 +707,25 @@ function AgentRunDetail({
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [runId]);
+
+  useRealtimeRefresh({
+    resources: ["agent-runs"],
+    ids: [runId],
+    filters: { resource: "agent-runs", id: runId, scope: agent?.config.id },
+    enabled: agent !== null,
+    refresh: (event) => {
+      if (event.action === "deleted") {
+        setRun(null);
+        return;
+      }
+      return refreshRun({ showLoading: false });
+    },
+  });
 
   useEffect(() => {
     if (!run) {
@@ -714,74 +733,53 @@ function AgentRunDetail({
     }
   }, [refreshRun, run]);
 
-  useAppEvents<AgentEvent>((event) => {
-    if (!run || !("agentRunId" in event) || event.agentRunId !== run.id) {
-      return;
-    }
-    if (event.type === "agent.run.started" || event.type === "agent.run.completed") {
-      setRun(event.run);
-      return;
-    }
-    if (event.type === "agent.run.message") {
-      setRun((current) => current ? { ...current, messages: upsertById(current.messages, event.message), updatedAt: event.timestamp } : current);
-      return;
-    }
-    if (event.type === "agent.run.tool_call") {
-      setRun((current) => current
-        ? {
-            ...current,
-            toolCalls: upsertById(
-              current.toolCalls,
-              mergeToolCallRecord(
-                current.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
-                event.tool,
+  useRealtimeStream<AgentEvent>({
+    filters: { agentRunId: runId },
+    predicate: (event) => event.type.startsWith("agent.run."),
+    onEvent: (event) => {
+      if (!run || !("agentRunId" in event) || event.agentRunId !== run.id) {
+        return;
+      }
+      if (event.type === "agent.run.message") {
+        setRun((current) => current ? { ...current, messages: upsertById(current.messages, event.message), updatedAt: event.timestamp } : current);
+        return;
+      }
+      if (event.type === "agent.run.tool_call") {
+        setRun((current) => current
+          ? {
+              ...current,
+              toolCalls: upsertById(
+                current.toolCalls,
+                mergeToolCallRecord(
+                  current.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
+                  event.tool,
+                ),
               ),
-            ),
-            updatedAt: event.timestamp,
-          }
-        : current);
-      return;
-    }
-    if (event.type === "agent.run.tool_call.extra") {
-      setRun((current) => current
-        ? {
-            ...current,
-            toolCalls: current.toolCalls.map((toolCall) => (
-              toolCall.id === event.toolId
-                ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
-                : toolCall
-            )),
-            updatedAt: event.timestamp,
-          }
-        : current);
-      return;
-    }
-    if (event.type === "agent.run.log") {
-      setRun((current) => current ? { ...current, logs: upsertById(current.logs, event.log), updatedAt: event.timestamp } : current);
-      return;
-    }
-    if (event.type === "agent.run.status") {
-      setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
-      return;
-    }
-    if (event.type === "agent.run.failed") {
-      setRun((current) => current
-        ? {
-            ...current,
-            status: "failed",
-            error: { message: event.message, timestamp: event.timestamp, code: "failed" },
-            completedAt: current.completedAt ?? event.timestamp,
-            updatedAt: event.timestamp,
-          }
-        : current);
-      return;
-    }
-    if (event.type === "agent.run.interrupted") {
-      setRun((current) => current
-        ? { ...current, status: "interrupted", completedAt: current.completedAt ?? event.timestamp, updatedAt: event.timestamp }
-        : current);
-    }
-  }, isAgentEvent);
+              updatedAt: event.timestamp,
+            }
+          : current);
+        return;
+      }
+      if (event.type === "agent.run.tool_call.extra") {
+        setRun((current) => current
+          ? {
+              ...current,
+              toolCalls: current.toolCalls.map((toolCall) => (
+                toolCall.id === event.toolId
+                  ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
+                  : toolCall
+              )),
+              updatedAt: event.timestamp,
+            }
+          : current);
+        return;
+      }
+      if (event.type === "agent.run.log") {
+        setRun((current) => current ? { ...current, logs: upsertById(current.logs, event.log), updatedAt: event.timestamp } : current);
+      }
+    },
+    onReconnect: () => refreshRun({ showLoading: false }),
+  });
 
   if (loading && !run) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading agent run...</div>;

@@ -1,7 +1,6 @@
 import { AppShell } from "./components/AppShell";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import { StandaloneChatTranscriptViewer } from "./components/StandaloneChatTranscriptViewer";
-import { AppEventsProvider } from "./hooks";
 import "@xterm/xterm/css/xterm.css";
 import "./index.css";
 
@@ -25,9 +24,7 @@ export function App() {
 
   return (
     <LogLevelInitializer>
-      <AppEventsProvider>
-        {transcriptChatId ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} /> : <AppShell />}
-      </AppEventsProvider>
+      {transcriptChatId ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} /> : <AppShell />}
     </LogLevelInitializer>
   );
 }

@@ -7,13 +7,13 @@ export type { CreateTaskResult } from "./use-task-mutations";
 export type { UseTasksStateResult } from "./use-tasks-state";
 
 import { useTasksState } from "./use-tasks-state";
-import { useTaskEvents } from "./use-task-events";
 import { useTaskMutations, type CreateTaskResult } from "./use-task-mutations";
 import { useTaskActions } from "./use-task-actions";
 import type { AcceptTaskResult, PushTaskResult, AddressCommentsResult, PurgeArchivedTasksResult } from "../taskActions";
 import type { Task } from "@/shared";
 import type { CreateTaskRequest, UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
+import { useRealtimeRefreshWithRecovery } from "../useRealtimeStream";
 
 export interface UseTasksResult {
   /** Array of all tasks */
@@ -49,12 +49,17 @@ export interface UseTasksResult {
 }
 
 /**
- * Hook for managing tasks state with real-time updates via WebSocket.
+ * Hook for managing tasks state with framework realtime resource updates.
  */
 export function useTasks(): UseTasksResult {
   const { tasks, loading, error, setTasks, setError, refresh, refreshTask, getTask } = useTasksState();
 
-  useTaskEvents({ refresh, refreshTask, setTasks });
+  useRealtimeRefreshWithRecovery({
+    resources: ["tasks"],
+    filters: { resource: "tasks" },
+    refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
+  });
 
   const { createTask, updateTask, deleteTask } = useTaskMutations({ setError, setTasks });
 

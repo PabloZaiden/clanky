@@ -1,15 +1,16 @@
 /**
  * Event type definitions for Clanky Tasks Management System.
  * 
- * These types define the events emitted during task execution and streamed
- * to connected clients via WebSocket. Events follow a consistent structure:
+ * These types define internal task-domain notifications. A retained subset is
+ * streamed through framework realtime for incremental UI updates; ordinary
+ * persisted state changes are published as framework resource events.
  * - `type`: Event identifier (always prefixed with "task.")
  * - `taskId`: The task this event belongs to
  * - `timestamp`: ISO 8601 timestamp when the event occurred
  * 
  * Events are used for:
- * - Real-time UI updates (progress, messages, tool calls)
- * - State synchronization across browser tabs
+ * - Internal task orchestration and persistence
+ * - Incremental realtime UI updates (progress, messages, tool calls)
  * - Activity logging and debugging
  * 
  * @module types/events
@@ -76,9 +77,9 @@ export interface ToolCallData extends ToolCallRecord {}
 /**
  * Union type of all possible task events.
  * 
- * These events are streamed via WebSocket to connected clients for real-time
- * updates. Each event type corresponds to a specific state change or activity
- * in the task lifecycle.
+ * Each event type corresponds to a specific state change or activity in the
+ * task lifecycle. The realtime adapter maps ordinary state changes to resource
+ * invalidations and retains only incremental events for the browser stream.
  * 
  * Event categories:
  * - **Lifecycle events**: created, started, completed, stopped, session_aborted, error, deleted, merged
