@@ -610,6 +610,12 @@ export function AppShell() {
       : codeExplorerServerId
         ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
         : null;
+  const selectedAgentId = route.view === "agent" || route.view === "agent-run"
+    ? getRouteString(route, "agentId")
+    : null;
+  const selectedAgent = selectedAgentId
+    ? (agents.agents.find((agent) => agent.config.id === selectedAgentId) ?? null)
+    : null;
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
     hasCodeExplorerAction: true,
@@ -711,6 +717,7 @@ export function AppShell() {
       ? [{
           id: "stop-task",
           label: "Stop task",
+          destructive: true,
           onClick: () => void stopSidebarTask(task),
         }]
       : [];
@@ -1555,6 +1562,9 @@ export function AppShell() {
       case "home":
         return { title: "Clanky" };
       case "task":
+        if (taskId && !selectedTask && !tasksLoading) {
+          return { title: "Task not found" };
+        }
         return selectedTask?.state.status === "draft" && nodeModel
           ? { ...nodeModel, title: `Edit ${nodeModel.title}` }
           : nodeModel ?? { title: "Task" };
@@ -1563,6 +1573,9 @@ export function AppShell() {
           ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
           : { title: "Task files" };
       case "chat":
+        if (chatId && !selectedChat && !chatsLoading) {
+          return { title: "Chat not found" };
+        }
         return nodeModel ?? { title: "Chat" };
       case "chat-transcript":
         return nodeModel
@@ -1602,7 +1615,10 @@ export function AppShell() {
         return nodeModel ? { title: `Arise ${nodeModel.title}` } : { title: "Arise" };
       case "agent": {
         const agentId = getRouteString(route, "agentId");
-        const agent = agentId ? agents.agents.find((item) => item.config.id === agentId) : null;
+        if (agentId && !selectedAgent && !agents.loading) {
+          return { title: "Agent not found" };
+        }
+        const agent = selectedAgent;
         return editingAgentId && editingAgentId === agentId
           ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim() }
           : nodeModel ?? { title: "Agent" };
@@ -1610,7 +1626,7 @@ export function AppShell() {
       case "agent-run": {
         const agentId = getRouteString(route, "agentId");
         const runId = getRouteString(route, "runId");
-        const agent = agentId ? agents.agents.find((item) => item.config.id === agentId) : null;
+        const agent = selectedAgent;
         const run = agentId && runId
           ? (agents.runsByAgentId[agentId] ?? []).find((item) => item.id === runId)
           : null;
@@ -1679,15 +1695,22 @@ export function AppShell() {
     }
   }, [
     agents.agents,
+    agents.loading,
     agents.runsByAgentId,
+    chatId,
+    chatsLoading,
     composeKind,
     composeServer,
     composeWorkspace,
     editingAgentId,
     headerNode,
     route,
+    selectedAgent,
+    selectedChat,
     selectedTask,
     selectedWorkspace,
+    taskId,
+    tasksLoading,
     workspaces,
   ]);
   const headerActions = useMemo<ActionMenuItem[]>(() => {
