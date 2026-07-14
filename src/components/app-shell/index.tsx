@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ConfirmModal,
-  ErrorState,
-  Modal,
-  Page,
   replaceWebAppRoute,
   WebAppRoot,
   type ActionMenuItem,
   type SidebarNode,
   type WebAppRoute,
-  type WebAppRootProps,
 } from "@pablozaiden/webapp/web";
 import {
   useChats,
@@ -29,238 +24,33 @@ import {
   useWorkspaces,
   stopTaskApi,
 } from "../../hooks";
-import { DEFAULT_QUICK_CHAT_SETTINGS, type QuickChatSettings } from "@/shared/preferences";
 import {
-  buildActiveWorkSidebarItems,
   buildServerSidebarNodes,
   buildWorkspaceSidebarGroups,
 } from "./shell-types";
-import { AppRouteContent } from "./shell-main-content";
+import {
+  buildShellRoutes,
+  getShellRouteSelection,
+  type ShellRouteCompositionContext,
+} from "./shell-route-composition";
+import {
+  buildShellSidebarComposition,
+  getHeaderOwnerRoute,
+  sidebarNodeMatchesRoute,
+  type ShellSidebarActionHandlers,
+} from "./shell-sidebar-composition";
 import { getRouteString } from "./route-fields";
 import { getShellShortcutForKeyboardEvent, isEditableShortcutTarget } from "./shell-shortcuts";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
-import {
-  PurgeTerminalTasksAction,
-  QuickChatModelRowContent,
-  SchedulerTimezoneRowContent,
-  SettingsCheckbox,
-  SettingsError,
-  SettingsSelect,
-} from "../app-settings";
 import { useChatActions } from "./chat-actions";
-import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
-import { appFetch } from "../../lib/public-path";
+import { buildShellSettingsSections } from "./shell-settings-composition";
+import { useShellDialogComposition } from "./shell-dialog-composition";
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
-import type { GitHubRepositoryUrlResponse } from "@/contracts";
-import { RenameSshSessionModal } from "../RenameSshSessionModal";
-import {
-  isEffectivelyPrivate,
-  privateSidebarPresentation,
-  shouldObscurePrivateItem,
-  type PrivateEntity,
-  type PrivateSidebarNode,
-} from "../../lib/private-items";
-import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { StatusBadge } from "../common";
-import { isTaskActive, isTaskGenerating } from "../../utils";
-
-type SshSessionActionTarget =
-  | { kind: "workspace"; id: string; name: string }
-  | { kind: "standalone"; id: string; name: string; serverId: string };
-
-type SearchableSidebarNode = PrivateSidebarNode & {
-  searchText?: string;
-};
-
-const ROUTE_VIEWS = [
-  "home",
-  "agents",
-  "agent",
-  "agent-run",
-  "code-explorer",
-  "task",
-  "task-files",
-  "chat",
-  "chat-transcript",
-  "ssh",
-  "workspace",
-  "workspace-files",
-  "workspace-previews",
-  "workspace-settings",
-  "ssh-server",
-  "vnc-session",
-  "ssh-server-settings",
-  "server-files",
-  "server-arise",
-  "compose",
-  "rebuild-workspace",
-  "restart-workspace",
-] as const;
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
-
-function sidebarActionItems(items: Array<{ id?: string; label: string; disabled?: boolean; destructive?: boolean; onClick: () => void }>): ActionMenuItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    label: item.label,
-    disabled: item.disabled,
-    destructive: item.destructive,
-    onAction: item.onClick,
-  }));
-}
-
-async function openWorkspaceGitHubUrl(workspace: Workspace, onError: (message: string) => void): Promise<void> {
-  const persistedUrl = normalizeGitHubRepositoryUrl(workspace.repoUrl ?? "");
-  if (persistedUrl) {
-    window.open(persistedUrl, "_blank", "noopener,noreferrer");
-    return;
-  }
-
-  const response = await appFetch(
-    `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
-  );
-  if (!response.ok) {
-    onError("GitHub repository URL is not available for this workspace");
-    return;
-  }
-
-  const data = await response.json() as GitHubRepositoryUrlResponse;
-  if (!data.githubUrl) {
-    onError("GitHub repository URL is not available for this workspace");
-    return;
-  }
-
-  window.open(data.githubUrl, "_blank", "noopener,noreferrer");
-}
-
-function withPrivateToggleAction(
-  items: ActionMenuItem[],
-  entity: PrivateEntity,
-  onToggle: () => void,
-): ActionMenuItem[] {
-  return [
-    ...items,
-    {
-      id: entity.isPrivate ? "unmark-private" : "mark-private",
-      label: entity.isPrivate ? "Unmark private" : "Mark as private",
-      onAction: onToggle,
-    },
-  ];
-}
-
-function privateActions(
-  items: ActionMenuItem[],
-  privateHidden: boolean,
-  selfPrivate: boolean,
-): ActionMenuItem[] {
-  if (!privateHidden) {
-    return items;
-  }
-  if (!selfPrivate) {
-    return [];
-  }
-  return items.filter((item) => item.id === "unmark-private");
-}
-
-function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): SidebarNode[] {
-  const normalized = search.trim().toLowerCase();
-  if (!normalized) {
-    return nodes;
-  }
-
-  const matches = (node: SearchableSidebarNode) => {
-    if (node.privateHidden) {
-      return false;
-    }
-    return `${node.title} ${node.subtitle ?? ""} ${node.searchText ?? ""}`.toLowerCase().includes(normalized);
-  };
-  return nodes.flatMap((node) => {
-    const children = node.children ? filterSidebarNodes(node.children as SearchableSidebarNode[], search) : undefined;
-    const childMatches = children !== undefined && children.length > 0;
-    if (childMatches || (node.type !== "section" && matches(node))) {
-      return [{ ...node, children, defaultCollapsed: false }];
-    }
-    return [];
-  });
-}
-
-function flattenSidebarNodes(nodes: SidebarNode[]): SidebarNode[] {
-  return nodes.flatMap((node) => [
-    node,
-    ...(node.children ? flattenSidebarNodes(node.children) : []),
-  ]);
-}
-
-function sidebarNodeMatchesRoute(node: SidebarNode, route: WebAppRoute): boolean {
-  if (!node.route || node.route.view !== route.view) {
-    return false;
-  }
-  return Object.entries(node.route).every(([key, value]) => route[key] === value);
-}
-
-function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
-  switch (route.view) {
-    case "task":
-      return getRouteString(route, "taskId")
-        ? { view: "task", taskId: getRouteString(route, "taskId")! }
-        : null;
-    case "task-files":
-      return getRouteString(route, "taskId")
-        ? { view: "task", taskId: getRouteString(route, "taskId")! }
-        : null;
-    case "chat":
-    case "chat-transcript":
-      return getRouteString(route, "chatId")
-        ? { view: "chat", chatId: getRouteString(route, "chatId")! }
-        : null;
-    case "ssh":
-      return getRouteString(route, "sshSessionId")
-        ? { view: "ssh", sshSessionId: getRouteString(route, "sshSessionId")! }
-        : null;
-    case "workspace":
-    case "workspace-files":
-    case "workspace-previews":
-    case "workspace-settings":
-    case "rebuild-workspace":
-    case "restart-workspace":
-      return getRouteString(route, "workspaceId")
-        ? { view: "workspace", workspaceId: getRouteString(route, "workspaceId")! }
-        : null;
-    case "ssh-server":
-    case "vnc-session":
-    case "ssh-server-settings":
-    case "server-files":
-    case "server-arise":
-      return getRouteString(route, "serverId")
-        ? { view: "ssh-server", serverId: getRouteString(route, "serverId")! }
-        : null;
-    case "agent":
-    case "agent-run":
-      return getRouteString(route, "agentId")
-        ? { view: "agent", agentId: getRouteString(route, "agentId")! }
-        : null;
-    case "code-explorer": {
-      const contentType = getRouteString(route, "contentType");
-      if (contentType === "task" && getRouteString(route, "taskId")) {
-        return { view: "task", taskId: getRouteString(route, "taskId")! };
-      }
-      if (contentType === "chat" && getRouteString(route, "chatId")) {
-        return { view: "chat", chatId: getRouteString(route, "chatId")! };
-      }
-      if (contentType === "workspace" && getRouteString(route, "workspaceId")) {
-        return { view: "workspace", workspaceId: getRouteString(route, "workspaceId")! };
-      }
-      if (contentType === "server" && getRouteString(route, "serverId")) {
-        return { view: "ssh-server", serverId: getRouteString(route, "serverId")! };
-      }
-      return null;
-    }
-    default:
-      return null;
-  }
-}
 
 interface HeaderModel {
   title: string;
@@ -369,13 +159,6 @@ export function AppShell() {
   const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
   const [archivingWorkspaceIds, setArchivingWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [renameSshSessionTarget, setRenameSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
-  const [deleteSshSessionTarget, setDeleteSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
-  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
-  const [deleteAgentPending, setDeleteAgentPending] = useState(false);
-  const [purgeAgentTarget, setPurgeAgentTarget] = useState<Agent | null>(null);
-  const [purgeAgentPending, setPurgeAgentPending] = useState(false);
 
   const focusSidebarSearch = useCallback(() => {
     document.querySelector<HTMLButtonElement>('button[aria-label="Show sidebar"]')?.click();
@@ -383,46 +166,6 @@ export function AppShell() {
       document.querySelector<HTMLInputElement>("#wapp-sidebar input")?.focus();
     });
   }, []);
-
-  const openRenameSshSession = useCallback((target: SshSessionActionTarget) => {
-    setRenameSshSessionTarget(target);
-  }, []);
-
-  const openDeleteSshSession = useCallback((target: SshSessionActionTarget) => {
-    setDeleteSshSessionTarget(target);
-  }, []);
-
-  const renameSshSession = useCallback(async (newName: string): Promise<void> => {
-    if (!renameSshSessionTarget) {
-      return;
-    }
-    if (renameSshSessionTarget.kind === "workspace") {
-      await updateWorkspaceSshSession(renameSshSessionTarget.id, { name: newName });
-    } else {
-      await updateStandaloneSession(renameSshSessionTarget.serverId, renameSshSessionTarget.id, { name: newName });
-      await refreshSshServers();
-    }
-    setRenameSshSessionTarget(null);
-  }, [refreshSshServers, renameSshSessionTarget, updateStandaloneSession, updateWorkspaceSshSession]);
-
-  const deleteSshSession = useCallback(async (): Promise<void> => {
-    if (!deleteSshSessionTarget) {
-      return;
-    }
-    const success = deleteSshSessionTarget.kind === "workspace"
-      ? await deleteWorkspaceSshSession(deleteSshSessionTarget.id)
-      : await deleteStandaloneSession(deleteSshSessionTarget.serverId, deleteSshSessionTarget.id);
-    if (!success) {
-      toast.error("Failed to delete SSH session.");
-      return;
-    }
-    const deletedActiveSession = route.view === "ssh"
-      && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id;
-    setDeleteSshSessionTarget(null);
-    if (deletedActiveSession) {
-      navigateWithinShell({ view: "home" });
-    }
-  }, [deleteSshSessionTarget, deleteStandaloneSession, deleteWorkspaceSshSession, navigateWithinShell, route, toast]);
 
   const workspaceCreate = useWorkspaceCreate({
     route,
@@ -521,7 +264,6 @@ export function AppShell() {
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
     [quickChatSettings.settings.workspaceId, workspaces],
   );
-  const [quickChatCreating, setQuickChatCreating] = useState(false);
   const quickChatUnavailableReason = useMemo(() => {
     if (!quickChatSettings.settings.workspaceId) {
       return "Choose a quick chat workspace in Settings first";
@@ -543,80 +285,24 @@ export function AppShell() {
   const shellErrors = [chatsError, tasksError, sshSessionsError, sshServersError, workspaceError, agents.error].filter(
     Boolean,
   ) as string[];
-  const codeExplorerContentType = route.view === "code-explorer" ? route["contentType"] : undefined;
-  const codeExplorerTaskId = codeExplorerContentType === "task"
-    ? getRouteString(route, "taskId")
-    : null;
-  const codeExplorerChatId = codeExplorerContentType === "chat"
-    ? getRouteString(route, "chatId")
-    : null;
-  const codeExplorerWorkspaceId = codeExplorerContentType === "workspace"
-    ? getRouteString(route, "workspaceId")
-    : null;
-  const codeExplorerServerId = codeExplorerContentType === "server"
-    ? getRouteString(route, "serverId")
-    : null;
-  const taskId = getRouteString(route, "taskId");
-  const chatId = getRouteString(route, "chatId");
-  const workspaceId = getRouteString(route, "workspaceId");
-  const serverId = getRouteString(route, "serverId");
-  const composeKind = route.view === "compose" ? getRouteString(route, "kind") : undefined;
-  const composeScopeId = route.view === "compose" ? getRouteString(route, "scopeId") : undefined;
-
-  const selectedTask =
-    route.view === "task" || route.view === "task-files"
-      ? (taskId ? (tasks.find((task) => task.config.id === taskId) ?? null) : null)
-      : codeExplorerTaskId
-        ? (tasks.find((task) => task.config.id === codeExplorerTaskId) ?? null)
-      : null;
-  const selectedChat =
-    route.view === "chat"
-      ? (chatId ? (chats.find((chat) => chat.config.id === chatId) ?? null) : null)
-      : codeExplorerChatId
-        ? (chats.find((chat) => chat.config.id === codeExplorerChatId) ?? null)
-        : null;
-  const selectedWorkspace =
-    route.view === "workspace"
-      || route.view === "workspace-files"
-      || route.view === "workspace-previews"
-      || route.view === "workspace-settings"
-      || route.view === "rebuild-workspace"
-      || route.view === "restart-workspace"
-      ? (workspaceId ? (workspaces.find((w) => w.id === workspaceId) ?? null) : null)
-      : codeExplorerWorkspaceId
-        ? (workspaces.find((w) => w.id === codeExplorerWorkspaceId) ?? null)
-        : codeExplorerTaskId
-          ? (workspaces.find((w) => w.id === selectedTask?.config.workspaceId) ?? null)
-          : codeExplorerChatId
-            ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
-            : null;
-  const composeWorkspace =
-    route.view === "compose" && composeKind !== "ssh-server" && composeKind !== "ssh-server-chat"
-      ? (workspaces.find((w) => w.id === (workspaceId ?? composeScopeId)) ?? null)
-      : null;
-  const composeServer =
-    route.view === "compose" && (composeKind === "ssh-session" || composeKind === "ssh-server" || composeKind === "ssh-server-chat")
-      ? (servers.find((s) => s.config.id === (serverId ?? composeScopeId)) ?? null)
-      : null;
-  const composeServerSessionCount = composeServer
-    ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
-    : 0;
-  const selectedServer =
-    route.view === "ssh-server"
-      || route.view === "vnc-session"
-      || route.view === "ssh-server-settings"
-      || route.view === "server-files"
-      || route.view === "server-arise"
-      ? (serverId ? (servers.find((s) => s.config.id === serverId) ?? null) : null)
-      : codeExplorerServerId
-        ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
-        : null;
-  const selectedAgentId = route.view === "agent" || route.view === "agent-run"
-    ? getRouteString(route, "agentId")
-    : null;
-  const selectedAgent = selectedAgentId
-    ? (agents.agents.find((agent) => agent.config.id === selectedAgentId) ?? null)
-    : null;
+  const {
+    taskId,
+    chatId,
+    composeKind,
+    selectedTask,
+    selectedChat,
+    selectedWorkspace,
+    composeWorkspace,
+    composeServer,
+    selectedAgent,
+  } = getShellRouteSelection(route, {
+    tasks,
+    chats,
+    workspaces,
+    servers,
+    sessionsByServerId,
+    agents: agents.agents,
+  });
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
     hasCodeExplorerAction: true,
@@ -631,6 +317,21 @@ export function AppShell() {
     onActionError: (message) => toast.error(message),
   });
   const selectedChatActions = useMemo(() => chatActions.items, [chatActions.items]);
+  const dialogs = useShellDialogComposition({
+    route,
+    navigateWithinShell,
+    onError: toast.error,
+    updateWorkspaceSshSession,
+    updateStandaloneSession,
+    refreshSshServers,
+    deleteWorkspaceSshSession,
+    deleteStandaloneSession,
+    agents,
+    createChat,
+    quickChatSettings,
+    quickChatWorkspace,
+    chatActionModals: chatActions.modals,
+  });
 
   const toggleTaskPrivate = useCallback(async (task: Task): Promise<void> => {
     const updated = await updateTask(task.config.id, { isPrivate: !task.config.isPrivate });
@@ -699,198 +400,6 @@ export function AppShell() {
     }
   }, [refreshTasks, toast]);
 
-  const getChatSidebarActions = useCallback((chat: Chat): ActionMenuItem[] => {
-    const chatId = chat.config.id;
-    const baseActions = route.view === "chat" && selectedChat?.config.id === chatId
-      ? selectedChatActions
-      : sidebarActionItems([
-        {
-          id: "open-code-explorer",
-          label: "Open code explorer",
-          onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "chat", chatId }),
-        },
-      ]);
-    return withPrivateToggleAction(baseActions, chat.config, () => void toggleChatPrivate(chat));
-  }, [navigateWithinShell, route.view, selectedChat?.config.id, selectedChatActions, toggleChatPrivate]);
-
-  const getTaskSidebarActions = useCallback((task: Task): ActionMenuItem[] => {
-    const stopAction = isTaskGenerating(task) && (isTaskActive(task.state.status) || task.state.status === "planning")
-      ? [{
-          id: "stop-task",
-          label: "Stop task",
-          destructive: true,
-          onClick: () => void stopSidebarTask(task),
-        }]
-      : [];
-    return withPrivateToggleAction(sidebarActionItems([
-      {
-        id: "open-code-explorer",
-        label: "Open code explorer",
-        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "task", taskId: task.config.id }),
-      },
-      ...stopAction,
-    ]), task.config, () => void toggleTaskPrivate(task));
-  }, [navigateWithinShell, stopSidebarTask, toggleTaskPrivate]);
-
-  const getWorkspaceSidebarActions = useCallback((workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): ActionMenuItem[] => {
-    const workspaceId = workspaceNode.workspace.id;
-    const workspaceArchived = workspaceNode.workspace.archived === true;
-    const workspaceArchiving = archivingWorkspaceIds.has(workspaceId);
-    return withPrivateToggleAction(sidebarActionItems([
-      { id: "new-task", label: "New Task", onClick: () => navigateWithinShell({ view: "compose", kind: "task", scopeId: workspaceId }) },
-      { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "chat", scopeId: workspaceId }) },
-      { id: "new-agent", label: "New Agent", onClick: () => navigateWithinShell({ view: "compose", kind: "agent", workspaceId }) },
-      {
-        id: "open-code-explorer",
-        label: "Open code explorer",
-        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "workspace", workspaceId }),
-      },
-      { id: "workspace-previews", label: "Previews", onClick: () => navigateWithinShell({ view: "workspace-previews", workspaceId }) },
-      {
-        id: "pull-latest-changes",
-        label: pullingLatestWorkspaceIds.has(workspaceId) ? "Pulling Latest Changes..." : "Pull Latest Changes",
-        disabled: pullingLatestWorkspaceIds.has(workspaceId),
-        onClick: () => void pullLatestWorkspaceChanges(workspaceId),
-      },
-      {
-        id: "open-github",
-        label: "Open in GitHub",
-        onClick: () => void openWorkspaceGitHubUrl(workspaceNode.workspace, (message) => toast.error(message)),
-      },
-      ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
-        ? [{ id: "new-ssh-session", label: "New SSH Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", workspaceId }) }]
-        : []),
-      {
-        id: workspaceArchived ? "unarchive-workspace" : "archive-workspace",
-        label: workspaceArchiving
-          ? (workspaceArchived ? "Unarchiving Workspace..." : "Archiving Workspace...")
-          : (workspaceArchived ? "Unarchive Workspace" : "Archive Workspace"),
-        disabled: workspaceArchiving,
-        onClick: () => void toggleWorkspaceArchived(workspaceNode.workspace),
-      },
-      { id: "workspace-settings", label: "Workspace Settings", onClick: () => navigateWithinShell({ view: "workspace-settings", workspaceId }) },
-    ]), workspaceNode.workspace, () => void toggleWorkspacePrivate(workspaceNode.workspace));
-  }, [
-    archivingWorkspaceIds,
-    navigateWithinShell,
-    pullLatestWorkspaceChanges,
-    pullingLatestWorkspaceIds,
-    toast,
-    toggleWorkspaceArchived,
-    toggleWorkspacePrivate,
-  ]);
-
-  const getSshServerSidebarActions = useCallback((server: SshServer): ActionMenuItem[] => {
-    const serverId = server.config.id;
-    return withPrivateToggleAction(sidebarActionItems([
-      {
-        id: "open-code-explorer",
-        label: "Open code explorer",
-        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "server", serverId }),
-      },
-      { id: "new-session", label: "New Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", serverId }) },
-      { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-server-chat", scopeId: serverId }) },
-      { id: "start-vnc-session", label: "Start VNC Session", onClick: () => navigateWithinShell({ view: "vnc-session", serverId }) },
-      { id: "ssh-server-settings", label: "SSH Server Settings", onClick: () => navigateWithinShell({ view: "ssh-server-settings", serverId }) },
-    ]), server.config, () => void toggleSshServerPrivate(server));
-  }, [navigateWithinShell, toggleSshServerPrivate]);
-
-  const getSshSessionSidebarActions = useCallback((target: SshSessionActionTarget, session: SshSession | SshServerSession): ActionMenuItem[] => {
-    const baseActions = sidebarActionItems([
-      { id: "rename-ssh-session", label: "Rename", onClick: () => openRenameSshSession(target) },
-      { id: "delete-ssh-session", label: "Delete Session", destructive: true, onClick: () => openDeleteSshSession(target) },
-    ]);
-    return withPrivateToggleAction(baseActions, session.config, () => {
-      if (target.kind === "workspace") {
-        void toggleWorkspaceSshSessionPrivate(session as SshSession);
-        return;
-      }
-      void toggleStandaloneSshSessionPrivate(target.serverId, session as SshServerSession);
-    });
-  }, [
-    openDeleteSshSession,
-    openRenameSshSession,
-    toggleStandaloneSshSessionPrivate,
-    toggleWorkspaceSshSessionPrivate,
-  ]);
-
-  const getAgentSidebarActions = useCallback((agent: Agent): ActionMenuItem[] => {
-    return withPrivateToggleAction(sidebarActionItems([
-      { id: "edit-agent", label: "Edit", onClick: () => setEditingAgentId(agent.config.id) },
-      {
-        id: "toggle-agent-paused",
-        label: agent.config.enabled ? "Pause" : "Resume",
-        onClick: () => {
-          const request = agent.config.enabled ? agents.pauseAgent(agent.config.id) : agents.resumeAgent(agent.config.id);
-          void request.then((updated) => {
-            if (!updated) {
-              toast.error(agent.config.enabled ? "Failed to pause agent" : "Failed to resume agent");
-            }
-          });
-        },
-      },
-      agent.state.status === "running"
-        ? { id: "interrupt-agent", label: "Interrupt", onClick: () => void agents.interruptAgent(agent.config.id) }
-        : { id: "run-agent", label: "Run now", onClick: () => void agents.runAgent(agent.config.id) },
-      { id: "purge-agent-runs", label: "Purge runs", destructive: true, onClick: () => setPurgeAgentTarget(agent) },
-      { id: "delete-agent", label: "Delete", destructive: true, onClick: () => setDeleteAgentTarget(agent) },
-    ]), agent.config, () => void toggleAgentPrivate(agent));
-  }, [agents, toast, toggleAgentPrivate]);
-
-  const getPrivateHidden = useCallback((
-    entity: PrivateEntity | null | undefined,
-    ancestors: Array<PrivateEntity | null | undefined> = [],
-  ): boolean => {
-    return shouldObscurePrivateItem(
-      isEffectivelyPrivate(entity, ancestors),
-      privateItemsPreference.showPrivateItems,
-    );
-  }, [privateItemsPreference.showPrivateItems]);
-
-  const cancelAgentEdit = useCallback(() => {
-    setEditingAgentId(null);
-  }, []);
-
-  const handleAgentSaved = useCallback((savedAgent: Agent) => {
-    setEditingAgentId(null);
-    navigateWithinShell({ view: "agent", agentId: savedAgent.config.id });
-  }, [navigateWithinShell]);
-
-  const deleteAgent = useCallback(async (): Promise<void> => {
-    if (!deleteAgentTarget) {
-      return;
-    }
-    setDeleteAgentPending(true);
-    try {
-      const deleted = await agents.deleteAgent(deleteAgentTarget.config.id);
-      if (!deleted) {
-        toast.error("Failed to delete agent");
-        return;
-      }
-      const deletedActiveAgent = route.view === "agent"
-        && getRouteString(route, "agentId") === deleteAgentTarget.config.id;
-      setDeleteAgentTarget(null);
-      if (deletedActiveAgent) {
-        navigateWithinShell({ view: "agents", workspaceId: deleteAgentTarget.config.workspaceId });
-      }
-    } finally {
-      setDeleteAgentPending(false);
-    }
-  }, [agents, deleteAgentTarget, navigateWithinShell, route, toast]);
-
-  const purgeAgentRuns = useCallback(async (): Promise<void> => {
-    if (!purgeAgentTarget) {
-      return;
-    }
-    setPurgeAgentPending(true);
-    try {
-      await agents.purgeRuns(purgeAgentTarget.config.id);
-      setPurgeAgentTarget(null);
-    } finally {
-      setPurgeAgentPending(false);
-    }
-  }, [agents, purgeAgentTarget]);
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const shortcut = getShellShortcutForKeyboardEvent(event);
@@ -912,137 +421,58 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusSidebarSearch, navigateWithinShell]);
 
-  const handleQuickChat = useCallback(async () => {
-    if (quickChatSettings.loading || quickChatCreating) {
-      return;
-    }
-
-    const settings: QuickChatSettings = quickChatSettings.settings;
-    if (!settings.workspaceId) {
-      toast.error("Choose a quick chat workspace in Settings first");
-      return;
-    }
-    if (!quickChatWorkspace) {
-      toast.error("The selected quick chat workspace no longer exists");
-      return;
-    }
-    if (!settings.model) {
-      toast.error("Choose a quick chat model in Settings first");
-      return;
-    }
-
-    setQuickChatCreating(true);
-    try {
-      const chat = await createChat({
-        workspaceId: quickChatWorkspace.id,
-        model: settings.model,
-        useWorktree: settings.useWorktree,
-        autoApprovePermissions: true,
-        quick: true,
-      });
-      if (!chat) {
-        toast.error("Failed to create quick chat");
-        return;
-      }
-      navigateWithinShell({ view: "chat", chatId: chat.config.id });
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      setQuickChatCreating(false);
-    }
-  }, [
-    createChat,
+  const routes = useMemo(() => buildShellRoutes({
+    shellLoading,
+    shellErrors,
     navigateWithinShell,
-    quickChatCreating,
-    quickChatSettings.loading,
-    quickChatSettings.settings,
-    quickChatWorkspace,
-    toast,
-  ]);
-
-  const renderRouteContent = useCallback((webRoute: WebAppRoute) => {
-    if (webRoute.view === "chat-transcript") {
-      const transcriptChatId = getRouteString(webRoute, "chatId");
-      return (
-        <Page layout="full">
-          {transcriptChatId
-            ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} />
-            : (
-              <ErrorState
-                title="Chat transcript not found"
-                description="The transcript route is missing a chat identifier."
-              />
-            )}
-        </Page>
-      );
-    }
-
-    return (
-      <AppRouteContent
-        route={webRoute}
-        shellLoading={shellLoading}
-        shellErrors={shellErrors}
-        navigateWithinShell={navigateWithinShell}
-        tasks={tasks}
-        chats={chats}
-        workspaces={workspaces}
-        sessions={sessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
-        serverNodes={serverNodes}
-        workspaceGroups={workspaceGroups}
-        sidebarWorkspaceGroups={sidebarWorkspaceGroups}
-        workspacesLoading={workspacesLoading}
-        workspacesSaving={workspacesSaving}
-        workspaceError={workspaceError}
-        selectedTask={selectedTask}
-        selectedChat={selectedChat}
-        selectedWorkspace={selectedWorkspace}
-        composeWorkspace={composeWorkspace}
-        composeServer={composeServer}
-        composeServerSessionCount={composeServerSessionCount}
-        selectedServer={selectedServer}
-        refreshTasks={refreshTasks}
-        refreshChats={refreshChats}
-        purgeTask={purgeTask}
-        refreshSshSessions={refreshSshSessions}
-        refreshSshServers={refreshSshServers}
-        refreshWorkspaces={refreshWorkspaces}
-        createSession={createSession}
-        createStandaloneSession={createStandaloneSession}
-        createServer={createServer}
-        updateServer={updateServer}
-        deleteServer={deleteServer}
-        deleteWorkspace={deleteWorkspace}
-        dashboardData={dashboardData}
-        schedulerTimezone={schedulerTimezone.timezone}
-        agents={agents}
-        editingAgentId={editingAgentId}
-        onCancelAgentEdit={cancelAgentEdit}
-        onSavedAgentEdit={handleAgentSaved}
-        composeActionState={composeState.composeActionState}
-        setComposeActionState={composeState.setComposeActionState}
-        handleTaskSubmit={composeState.handleTaskSubmit}
-        createChat={createChat}
-        importExistingChat={importExistingChat}
-        createSshServerChat={createSshServerChat}
-        workspaceCreate={workspaceCreate}
-        workspaceSettings={workspaceSettings}
-        provisioning={provisioning}
-        toast={toast}
-        showPrivateItems={privateItemsPreference.showPrivateItems}
-      />
-    );
-  }, [
-    agents,
-    cancelAgentEdit,
+    tasks,
     chats,
-    composeServer,
-    composeServerSessionCount,
+    workspaces,
+    sessions,
+    servers,
+    sessionsByServerId,
+    serverNodes,
+    workspaceGroups,
+    sidebarWorkspaceGroups,
+    workspacesLoading,
+    workspacesSaving,
+    workspaceError,
+    refreshTasks,
+    refreshChats,
+    purgeTask,
+    refreshSshSessions,
+    refreshSshServers,
+    refreshWorkspaces,
+    createSession,
+    createStandaloneSession,
+    createServer,
+    updateServer,
+    deleteServer,
+    deleteWorkspace,
+    dashboardData,
+    schedulerTimezone: schedulerTimezone.timezone,
+    agents,
+    editingAgentId: dialogs.editingAgentId,
+    onCancelAgentEdit: dialogs.cancelAgentEdit,
+    onSavedAgentEdit: dialogs.handleAgentSaved,
+    composeActionState: composeState.composeActionState,
+    setComposeActionState: composeState.setComposeActionState,
+    handleTaskSubmit: composeState.handleTaskSubmit,
+    createChat,
+    importExistingChat,
+    createSshServerChat,
+    workspaceCreate,
+    workspaceSettings,
+    provisioning,
+    toast,
+    showPrivateItems: privateItemsPreference.showPrivateItems,
+  } satisfies ShellRouteCompositionContext), [
+    agents,
+    dialogs.cancelAgentEdit,
+    chats,
     composeState.composeActionState,
     composeState.handleTaskSubmit,
     composeState.setComposeActionState,
-    composeWorkspace,
     createChat,
     createServer,
     createSession,
@@ -1051,11 +481,11 @@ export function AppShell() {
     dashboardData,
     deleteServer,
     deleteWorkspace,
-    editingAgentId,
-    handleAgentSaved,
+    dialogs.editingAgentId,
+    dialogs.handleAgentSaved,
     importExistingChat,
-    privateItemsPreference.showPrivateItems,
     navigateWithinShell,
+    privateItemsPreference.showPrivateItems,
     provisioning,
     purgeTask,
     refreshChats,
@@ -1063,11 +493,7 @@ export function AppShell() {
     refreshSshSessions,
     refreshTasks,
     refreshWorkspaces,
-    schedulerTimezone,
-    selectedChat,
-    selectedServer,
-    selectedTask,
-    selectedWorkspace,
+    schedulerTimezone.timezone,
     serverNodes,
     servers,
     sessions,
@@ -1087,207 +513,17 @@ export function AppShell() {
     workspacesSaving,
   ]);
 
-  const routes = useMemo(() => Object.fromEntries(
-    ROUTE_VIEWS.map((view) => [view, renderRouteContent]),
-  ) as WebAppRootProps["routes"], [renderRouteContent]);
-
-  const settingsSections = useMemo<NonNullable<NonNullable<WebAppRootProps["settings"]>["sections"]>>(() => {
-    const selectedQuickChatWorkspace = workspaces.find(
-      (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
-    ) ?? null;
-
-    return [
-      {
-        id: "quick-chat",
-        title: "Quick Chat",
-        scope: "user" as const,
-        description: "Configure the defaults used by the Quick Chat shortcut.",
-        rows: [
-          {
-            id: "quick-chat-workspace",
-            title: "Workspace",
-            description: "Workspace used by the Quick Chat shortcut.",
-            content: (
-              <div className="space-y-2">
-                <SettingsSelect
-                  id="quick-chat-workspace"
-                  aria-label="Quick Chat workspace"
-                  value={quickChatSettings.settings.workspaceId}
-                  onChange={(event) => void quickChatSettings.updateSettings({
-                    workspaceId: event.currentTarget.value,
-                    model: null,
-                    useWorktree: quickChatSettings.settings.useWorktree,
-                  })}
-                  disabled={quickChatSettings.loading || quickChatSettings.saving || workspacesLoading}
-                >
-                  <option value="">
-                    {workspacesLoading ? "Loading workspaces..." : "No quick chat workspace"}
-                  </option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </SettingsSelect>
-                {quickChatSettings.error ? <SettingsError>{quickChatSettings.error}</SettingsError> : null}
-              </div>
-            ),
-          },
-          {
-            id: "quick-chat-model",
-            title: "Model",
-            description: "Model used by the Quick Chat shortcut.",
-            content: (
-              <QuickChatModelRowContent
-                workspace={selectedQuickChatWorkspace}
-                settings={quickChatSettings.settings}
-                loading={quickChatSettings.loading}
-                saving={quickChatSettings.saving}
-                onUpdate={quickChatSettings.updateSettings}
-              />
-            ),
-          },
-          {
-            id: "quick-chat-worktree",
-            title: "Use worktrees for quick chats",
-            description: "Create quick chats in a separate git worktree when enabled.",
-            content: (
-              <SettingsCheckbox
-                id="quick-chat-worktree"
-                ariaLabel="Use worktrees for quick chats"
-                checked={quickChatSettings.settings.useWorktree}
-                onChange={(event) => void quickChatSettings.updateSettings({
-                  workspaceId: quickChatSettings.settings.workspaceId,
-                  model: quickChatSettings.settings.model,
-                  useWorktree: event.currentTarget.checked,
-                })}
-                disabled={quickChatSettings.loading || quickChatSettings.saving}
-              />
-            ),
-          },
-          {
-            id: "quick-chat-clear",
-            title: "Reset Quick Chat",
-            description: "Clear the saved Quick Chat workspace, model, and worktree preferences.",
-            actions: [{
-              id: "clear-quick-chat",
-              label: "Clear",
-              variant: "ghost" as const,
-              disabled: quickChatSettings.loading
-                || quickChatSettings.saving
-                || (!quickChatSettings.settings.workspaceId
-                  && !quickChatSettings.settings.model
-                  && !quickChatSettings.settings.useWorktree),
-              onAction: () => {
-                void quickChatSettings.updateSettings(DEFAULT_QUICK_CHAT_SETTINGS);
-              },
-            }],
-          },
-        ],
-      },
-      {
-        id: "agents",
-        title: "Agents",
-        scope: "user" as const,
-        description: "Configure Clanky-specific agent defaults.",
-        rows: [{
-          id: "scheduler-timezone",
-          title: "Timezone",
-          description: "Timezone used when scheduling agents.",
-          content: (
-            <SchedulerTimezoneRowContent
-              timezone={schedulerTimezone.timezone}
-              loading={schedulerTimezone.loading}
-              saving={schedulerTimezone.saving}
-              error={schedulerTimezone.error}
-              onUpdate={schedulerTimezone.updateTimezone}
-            />
-          ),
-        }],
-      },
-      {
-        id: "private-items",
-        title: "Private items",
-        scope: "user" as const,
-        description: "Control whether this browser shows or obscures items marked private.",
-        rows: [{
-          id: "show-private-items",
-          title: "Show private items",
-          description: "When enabled, private items are shown normally in this browser. When disabled, they remain visible but are blurred, excluded from sidebar search, and cannot be opened from lists.",
-          content: (
-            <SettingsCheckbox
-              id="show-private-items"
-              ariaLabel="Show private items"
-              checked={privateItemsPreference.showPrivateItems}
-              onChange={(event) => privateItemsPreference.setShowPrivateItems(event.currentTarget.checked)}
-            />
-          ),
-        }],
-      },
-      {
-        id: "content",
-        title: "Content",
-        scope: "user" as const,
-        description: "Configure Clanky-specific content rendering and file explorer behavior.",
-        rows: [
-          {
-            id: "markdown-rendering",
-            title: "Render markdown",
-            description: "Show task, chat, and agent markdown as rich content instead of plain text.",
-            content: (
-              <SettingsCheckbox
-                id="markdown-rendering"
-                ariaLabel="Render markdown"
-                checked={markdownPreference.enabled}
-                disabled={markdownPreference.loading || markdownPreference.saving}
-                error={markdownPreference.error}
-                onChange={(event) => void markdownPreference.setEnabled(event.currentTarget.checked)}
-              />
-            ),
-          },
-          {
-            id: "file-explorer-full-tree",
-            title: "Load full file tree",
-            description: "Load the complete workspace file tree up front instead of expanding directories lazily.",
-            content: (
-              <SettingsCheckbox
-                id="file-explorer-full-tree"
-                ariaLabel="Load full file tree"
-                checked={fullTreePreference.enabled}
-                disabled={fullTreePreference.loading || fullTreePreference.saving}
-                error={fullTreePreference.error}
-                onChange={(event) => void fullTreePreference.setEnabled(event.currentTarget.checked)}
-              />
-            ),
-          },
-        ],
-      },
-      {
-        id: "clanky-danger-zone",
-        title: "Maintenance",
-        scope: "owner" as const,
-        description: "Clanky-specific maintenance operations. Framework server operations live in the standard settings sections.",
-        rows: [{
-          id: "purge-terminal-tasks",
-          title: "Purge terminal-state tasks",
-          description: "Permanently delete archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept.",
-          danger: true,
-          actions: (
-            <PurgeTerminalTasksAction
-              onPurgeTerminalTasks={async () => {
-                const result = await dashboardData.purgeTerminalTasks();
-                if (result) {
-                  await refreshTasks();
-                }
-                return result;
-              }}
-              purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
-            />
-          ),
-        }],
-      },
-    ];
-  }, [
+  const settingsSections = useMemo(() => buildShellSettingsSections({
+    quickChatSettings,
+    schedulerTimezone,
+    markdownPreference,
+    fullTreePreference,
+    privateItemsPreference,
+    dashboardData,
+    workspaces,
+    workspacesLoading,
+    refreshTasks,
+  }), [
     dashboardData,
     fullTreePreference,
     markdownPreference,
@@ -1299,374 +535,73 @@ export function AppShell() {
     workspacesLoading,
   ]);
 
-  const sidebarNodes = useCallback(({ search }: { search: string }): SidebarNode[] => {
-    const standaloneServerIdBySessionId = new Map<string, string>();
-    for (const serverNode of serverNodes) {
-      for (const sessionNode of serverNode.sessions) {
-        standaloneServerIdBySessionId.set(sessionNode.id, serverNode.server.config.id);
-      }
-    }
-
-    const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }).map((item): SidebarNode => {
-      if (item.kind === "task") {
-        const privateHidden = getPrivateHidden(item.taskNode.task.config, [item.workspace]);
-        const actions = getTaskSidebarActions(item.taskNode.task);
-        return privateSidebarPresentation({
-          type: "item",
-          id: item.key,
-          title: item.taskNode.title,
-          subtitle: item.workspaceName,
-          badge: item.taskNode.badge,
-          badgeVariant: item.taskNode.badgeVariant,
-          route: { view: "task", taskId: item.taskNode.task.config.id },
-          actions: privateActions(actions, privateHidden, item.taskNode.task.config.isPrivate === true),
-          pinnable: true,
-          pinId: item.key,
-        }, privateHidden);
-      }
-      if (item.kind === "chat" || item.kind === "ssh-server-chat") {
-        const ancestors = item.kind === "chat" ? [item.workspace] : [item.server.config];
-        const privateHidden = getPrivateHidden(item.chatNode.chat.config, ancestors);
-        const actions = getChatSidebarActions(item.chatNode.chat);
-        return privateSidebarPresentation({
-          type: "item",
-          id: item.key,
-          title: item.chatNode.title,
-          subtitle: item.kind === "chat" ? item.workspaceName : item.serverName,
-          badge: item.chatNode.badge,
-          badgeVariant: item.chatNode.badgeVariant,
-          route: { view: "chat", chatId: item.chatNode.chat.config.id },
-          actions: privateActions(actions, privateHidden, item.chatNode.chat.config.isPrivate === true),
-          pinnable: true,
-          pinId: item.key,
-        }, privateHidden);
-      }
-      const sessionId = item.kind === "ssh-session" ? item.sessionNode.session.config.id : item.sessionNode.id;
-      const session = item.sessionNode.session;
-      const ancestors = item.kind === "ssh-session" ? [item.workspace] : [item.server.config];
-      const privateHidden = getPrivateHidden(session.config, ancestors);
-      const sessionActions = item.kind === "ssh-session"
-        ? getSshSessionSidebarActions({ kind: "workspace", id: sessionId, name: item.sessionNode.session.config.name }, session)
-        : getSshSessionSidebarActions({
-          kind: "standalone",
-          id: sessionId,
-          name: item.sessionNode.title,
-          serverId: standaloneServerIdBySessionId.get(sessionId) ?? "",
-        }, session);
-      return privateSidebarPresentation({
-        type: "item",
-        id: item.key,
-        title: item.sessionNode.title,
-        subtitle: item.kind === "ssh-session" ? item.workspaceName : item.serverName,
-        badge: item.sessionNode.badge,
-        badgeVariant: item.sessionNode.badgeVariant,
-        route: { view: "ssh", sshSessionId: sessionId },
-        actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
-        pinnable: true,
-        pinId: item.key,
-      }, privateHidden);
-    });
-
-    const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-    const agentNodesByWorkspace = new Map<string, SidebarNode[]>();
-    for (const agent of agents.agents) {
-      const workspaceAgents = agentNodesByWorkspace.get(agent.config.workspaceId) ?? [];
-      const workspace = workspaceById.get(agent.config.workspaceId) ?? null;
-      const privateHidden = getPrivateHidden(agent.config, [workspace]);
-      const actions = getAgentSidebarActions(agent);
-      workspaceAgents.push(privateSidebarPresentation({
-        type: "item",
-        id: `agent:${agent.config.id}`,
-        title: agent.config.name,
-        subtitle: agent.config.enabled ? "Agent" : "Paused agent",
-        badge: agent.config.enabled ? "enabled" : "paused",
-        badgeVariant: agent.config.enabled ? "success" : "disabled",
-        route: { view: "agent", agentId: agent.config.id },
-        actions: privateActions(actions, privateHidden, agent.config.isPrivate === true),
-        pinnable: true,
-        pinId: `agent:${agent.config.id}`,
-      }, privateHidden));
-      agentNodesByWorkspace.set(agent.config.workspaceId, workspaceAgents);
-    }
-
-    const buildWorkspaceNode = (workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): SearchableSidebarNode => {
-      const workspaceId = workspaceNode.workspace.id;
-      const workspacePrivateHidden = getPrivateHidden(workspaceNode.workspace);
-      const children: SidebarNode[] = [
-        {
-          type: "section" as const,
-          id: `workspace:${workspaceId}:tasks`,
-          title: "Tasks",
-          action: {
-            id: "new-task",
-            title: "New task",
-            label: "New",
-            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "task", scopeId: workspaceId },
-          },
-          children: [
-            ...workspaceNode.tasks.map((taskNode): SidebarNode => {
-              const privateHidden = getPrivateHidden(taskNode.task.config, [workspaceNode.workspace]);
-              const actions = getTaskSidebarActions(taskNode.task);
-              return privateSidebarPresentation({
-                type: "item",
-                id: `task:${taskNode.task.config.id}`,
-                title: taskNode.title,
-                badge: taskNode.badge,
-                badgeVariant: taskNode.badgeVariant,
-                route: { view: "task", taskId: taskNode.task.config.id },
-                actions: privateActions(actions, privateHidden, taskNode.task.config.isPrivate === true),
-                pinnable: true,
-                pinId: `task:${taskNode.task.config.id}`,
-              }, privateHidden);
-            }),
-            ...(workspaceNode.historyTasks.length > 0 ? [{
-              type: "section" as const,
-              id: `workspace:${workspaceId}:history`,
-              title: "History",
-              defaultCollapsed: true,
-              children: workspaceNode.historyTasks.map((taskNode): SidebarNode => {
-                const privateHidden = getPrivateHidden(taskNode.task.config, [workspaceNode.workspace]);
-                const actions = getTaskSidebarActions(taskNode.task);
-                return privateSidebarPresentation({
-                  type: "item",
-                  id: `task:${taskNode.task.config.id}`,
-                  title: taskNode.title,
-                  badge: taskNode.badge,
-                  badgeVariant: taskNode.badgeVariant,
-                  route: { view: "task", taskId: taskNode.task.config.id },
-                  actions: privateActions(actions, privateHidden, taskNode.task.config.isPrivate === true),
-                  pinnable: true,
-                  pinId: `task:${taskNode.task.config.id}`,
-                }, privateHidden);
-              }),
-            }] : []),
-          ],
-        },
-        {
-          type: "section" as const,
-          id: `workspace:${workspaceId}:chats`,
-          title: "Chats",
-          action: {
-            id: "new-chat",
-            title: "New chat",
-            label: "New",
-            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "chat", scopeId: workspaceId },
-          },
-          children: workspaceNode.chats.map((chatNode): SidebarNode => {
-            const privateHidden = getPrivateHidden(chatNode.chat.config, [workspaceNode.workspace]);
-            const actions = getChatSidebarActions(chatNode.chat);
-            return privateSidebarPresentation({
-              type: "item",
-              id: `chat:${chatNode.chat.config.id}`,
-              title: chatNode.title,
-              badge: chatNode.badge,
-              badgeVariant: chatNode.badgeVariant,
-              route: { view: "chat", chatId: chatNode.chat.config.id },
-              actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
-              pinnable: true,
-              pinId: `chat:${chatNode.chat.config.id}`,
-            }, privateHidden);
-          }),
-        },
-        {
-          type: "section" as const,
-          id: `workspace:${workspaceId}:agents`,
-          title: "Agents",
-          action: {
-            id: "new-agent",
-            title: "New agent",
-            label: "New",
-            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "agent", workspaceId },
-          },
-          children: agentNodesByWorkspace.get(workspaceId) ?? [],
-        },
-        {
-          type: "section" as const,
-          id: `workspace:${workspaceId}:ssh-sessions`,
-          title: "SSH sessions",
-          action: {
-            id: "new-ssh-session",
-            title: "New SSH session",
-            label: "New",
-            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "ssh-session", workspaceId },
-          },
-          children: workspaceNode.sshSessions.map((sessionNode): SidebarNode => {
-            const privateHidden = getPrivateHidden(sessionNode.session.config, [workspaceNode.workspace]);
-            const actions = getSshSessionSidebarActions({
-              kind: "workspace",
-              id: sessionNode.session.config.id,
-              name: sessionNode.session.config.name,
-            }, sessionNode.session);
-            return privateSidebarPresentation({
-              type: "item",
-              id: `ssh-session:${sessionNode.session.config.id}`,
-              title: sessionNode.title,
-              subtitle: sessionNode.subtitle,
-              badge: sessionNode.badge,
-              badgeVariant: sessionNode.badgeVariant,
-              route: { view: "ssh", sshSessionId: sessionNode.session.config.id },
-              actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
-              pinnable: true,
-              pinId: `ssh-session:${sessionNode.session.config.id}`,
-            }, privateHidden);
-          }),
-        },
-      ];
-
-      return privateSidebarPresentation({
-        type: "item",
-        id: `workspace:${workspaceId}`,
-        title: workspaceNode.workspace.name,
-        searchText: workspaceNode.workspace.directory,
-        route: { view: "workspace", workspaceId },
-        actions: privateActions(
-          getWorkspaceSidebarActions(workspaceNode),
-          workspacePrivateHidden,
-          workspaceNode.workspace.isPrivate === true,
-        ),
-        pinnable: true,
-        pinId: `workspace:${workspaceId}`,
-        children,
-      }, workspacePrivateHidden);
-    };
-
-    const workspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces
-      .filter((workspaceNode) => workspaceNode.workspace.archived !== true)
-      .map(buildWorkspaceNode));
-    const archivedWorkspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces
-      .filter((workspaceNode) => workspaceNode.workspace.archived === true)
-      .map(buildWorkspaceNode));
-
-    const sshServerNodes = serverNodes.map((serverNode): SidebarNode => {
-      const serverId = serverNode.server.config.id;
-      const serverPrivateHidden = getPrivateHidden(serverNode.server.config);
-      return privateSidebarPresentation({
-        type: "item",
-        id: `ssh-server:${serverId}`,
-        title: serverNode.server.config.name,
-        subtitle: serverNode.server.config.address,
-        route: { view: "ssh-server", serverId },
-        actions: privateActions(
-          getSshServerSidebarActions(serverNode.server),
-          serverPrivateHidden,
-          serverNode.server.config.isPrivate === true,
-        ),
-        pinnable: true,
-        pinId: `ssh-server:${serverId}`,
-        children: [
-          {
-            type: "section" as const,
-            id: `ssh-server:${serverId}:sessions`,
-            title: "Sessions",
-            action: {
-              id: "new-session",
-              title: "New SSH session",
-              label: "New",
-              route: serverPrivateHidden ? undefined : { view: "compose", kind: "ssh-session", serverId },
-            },
-            children: serverNode.sessions.map((sessionNode): SidebarNode => {
-              const privateHidden = getPrivateHidden(sessionNode.session.config, [serverNode.server.config]);
-              const actions = getSshSessionSidebarActions({
-                kind: "standalone",
-                id: sessionNode.id,
-                name: sessionNode.title,
-                serverId,
-              }, sessionNode.session);
-              return privateSidebarPresentation({
-                type: "item",
-                id: `ssh-server-session:${sessionNode.id}`,
-                title: sessionNode.title,
-                subtitle: sessionNode.subtitle,
-                badge: sessionNode.badge,
-                badgeVariant: sessionNode.badgeVariant,
-                route: { view: "ssh", sshSessionId: sessionNode.id },
-                actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
-                pinnable: true,
-                pinId: `ssh-server-session:${sessionNode.id}`,
-              }, privateHidden);
-            }),
-          },
-          {
-            type: "section" as const,
-            id: `ssh-server:${serverId}:chats`,
-            title: "Chats",
-            action: {
-              id: "new-chat",
-              title: "New chat",
-              label: "New",
-              route: serverPrivateHidden ? undefined : { view: "compose", kind: "ssh-server-chat", scopeId: serverId },
-            },
-            children: serverNode.chats.map((chatNode): SidebarNode => {
-              const privateHidden = getPrivateHidden(chatNode.chat.config, [serverNode.server.config]);
-              const actions = getChatSidebarActions(chatNode.chat);
-              return privateSidebarPresentation({
-                type: "item",
-                id: `ssh-server-chat:${chatNode.chat.config.id}`,
-                title: chatNode.title,
-                badge: chatNode.badge,
-                badgeVariant: chatNode.badgeVariant,
-                route: { view: "chat", chatId: chatNode.chat.config.id },
-                actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
-                pinnable: true,
-                pinId: `ssh-server-chat:${chatNode.chat.config.id}`,
-              }, privateHidden);
-            }),
-          },
-        ],
-      }, serverPrivateHidden);
-    });
-
-    return filterSidebarNodes([
-      ...(activeWork.length > 0 ? [{ type: "section" as const, id: "active-work", title: "Active work", children: activeWork }] : []),
-      {
-        type: "section",
-        id: "workspaces",
-        title: "Workspaces",
-        action: {
-          id: "new-workspace",
-          title: "New workspace",
-          label: "New",
-          route: { view: "compose", kind: "workspace" },
-        },
-        children: workspaceNodes,
-      },
-      ...(archivedWorkspaceNodes.length > 0 ? [{
-        type: "section" as const,
-        id: "archived-workspaces",
-        title: "Archived",
-        children: archivedWorkspaceNodes,
-      }] : []),
-      {
-        type: "section",
-        id: "ssh-servers",
-        title: "SSH servers",
-        action: {
-          id: "new-ssh-server",
-          title: "New SSH server",
-          label: "New",
-          route: { view: "compose", kind: "ssh-server" },
-        },
-        children: sshServerNodes,
-      },
-    ], search);
-  }, [
-    agents.agents,
-    getChatSidebarActions,
-    getAgentSidebarActions,
-    getPrivateHidden,
-    getSshSessionSidebarActions,
-    getSshServerSidebarActions,
-    getTaskSidebarActions,
-    getWorkspaceSidebarActions,
-    serverNodes,
+  const sidebarComposition = useMemo(() => buildShellSidebarComposition({
     sidebarWorkspaceGroups,
+    serverNodes,
+    workspaces,
+    agents: agents.agents,
+    handlers: {
+      route,
+      selectedChat,
+      selectedChatActions,
+      navigateWithinShell,
+      onError: (message) => toast.error(message),
+      toggleTaskPrivate,
+      toggleChatPrivate,
+      toggleAgentPrivate,
+      toggleWorkspacePrivate,
+      toggleWorkspaceSshSessionPrivate,
+      toggleSshServerPrivate,
+      toggleStandaloneSshSessionPrivate,
+      stopSidebarTask,
+      openRenameSshSession: dialogs.openRenameSshSession,
+      openDeleteSshSession: dialogs.openDeleteSshSession,
+      pullLatestWorkspaceChanges,
+      pullingLatestWorkspaceIds,
+      toggleWorkspaceArchived,
+      archivingWorkspaceIds,
+      setEditingAgentId: dialogs.setEditingAgentId,
+      setDeleteAgentTarget: dialogs.setDeleteAgentTarget,
+      setPurgeAgentTarget: dialogs.setPurgeAgentTarget,
+      agents,
+      showPrivateItems: privateItemsPreference.showPrivateItems,
+    } satisfies ShellSidebarActionHandlers,
+    quickChatUnavailableReason,
+    quickChatCreating: dialogs.quickChatCreating,
+    onQuickChat: () => void dialogs.handleQuickChat(),
+  }), [
+    agents,
+    archivingWorkspaceIds,
+    dialogs.handleQuickChat,
+    navigateWithinShell,
+    dialogs.openDeleteSshSession,
+    dialogs.openRenameSshSession,
+    privateItemsPreference.showPrivateItems,
+    pullLatestWorkspaceChanges,
+    pullingLatestWorkspaceIds,
+    dialogs.quickChatCreating,
+    quickChatUnavailableReason,
+    route,
+    selectedChat,
+    selectedChatActions,
+    serverNodes,
+    dialogs.setDeleteAgentTarget,
+    dialogs.setEditingAgentId,
+    dialogs.setPurgeAgentTarget,
+    sidebarWorkspaceGroups,
+    stopSidebarTask,
+    toast,
+    toggleAgentPrivate,
+    toggleChatPrivate,
+    toggleSshServerPrivate,
+    toggleStandaloneSshSessionPrivate,
+    toggleTaskPrivate,
+    toggleWorkspaceArchived,
+    toggleWorkspacePrivate,
+    toggleWorkspaceSshSessionPrivate,
     workspaces,
   ]);
-
-  const headerNodes = useMemo(
-    () => flattenSidebarNodes(sidebarNodes({ search: "" })),
-    [sidebarNodes],
-  );
+  const headerNodes = sidebarComposition.headerNodes;
   const headerOwnerRoute = useMemo(() => getHeaderOwnerRoute(route), [route]);
   const headerNode = useMemo(
     () => headerOwnerRoute
@@ -1745,7 +680,7 @@ export function AppShell() {
           return { title: "Agent not found" };
         }
         const agent = selectedAgent;
-        return editingAgentId && editingAgentId === agentId
+        return dialogs.editingAgentId && dialogs.editingAgentId === agentId
           ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim() }
           : nodeModel ?? { title: "Agent" };
       }
@@ -1828,7 +763,7 @@ export function AppShell() {
     composeKind,
     composeServer,
     composeWorkspace,
-    editingAgentId,
+    dialogs.editingAgentId,
     headerNode,
     route,
     selectedAgent,
@@ -1863,27 +798,7 @@ export function AppShell() {
       <WebAppRoot
         appName="Clanky"
         homeRoute={HOME_ROUTE}
-        sidebar={{
-          search: true,
-          pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
-          topActions: [
-            {
-              id: "quick-chat",
-              title: quickChatUnavailableReason ?? "Start Quick Chat",
-              label: quickChatCreating ? "Creating..." : "Start Quick Chat",
-              icon: "chat",
-              onAction: () => void handleQuickChat(),
-            },
-            {
-              id: "code-explorer",
-              title: "Code Explorer",
-              label: "Code Explorer",
-              icon: "code",
-              route: { view: "code-explorer" },
-            },
-          ],
-          getNodes: sidebarNodes,
-        }}
+        sidebar={sidebarComposition.sidebar}
         routes={routes}
         onRouteChange={handleWebRouteChange}
         header={{
@@ -1893,61 +808,7 @@ export function AppShell() {
         settings={{ sections: settingsSections }}
         version={dashboardData.version ?? undefined}
       />
-
-      <RenameSshSessionModal
-        isOpen={Boolean(renameSshSessionTarget)}
-        onClose={() => setRenameSshSessionTarget(null)}
-        currentName={renameSshSessionTarget?.name ?? ""}
-        onRename={renameSshSession}
-      />
-      <ConfirmModal
-        isOpen={Boolean(deleteSshSessionTarget)}
-        onClose={() => setDeleteSshSessionTarget(null)}
-        onConfirm={() => void deleteSshSession()}
-        title="Delete SSH session?"
-        message={deleteSshSessionTarget
-          ? `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent remote session.`
-          : ""}
-        confirmLabel="Delete"
-        loading={false}
-      />
-      <ConfirmModal
-        isOpen={Boolean(deleteAgentTarget)}
-        onClose={() => setDeleteAgentTarget(null)}
-        onConfirm={() => void deleteAgent()}
-        title="Delete agent"
-        message={deleteAgentTarget ? `Delete "${deleteAgentTarget.config.name}" and its runs?` : ""}
-        confirmLabel="Delete agent"
-        loading={deleteAgentPending}
-      />
-      <ConfirmModal
-        isOpen={Boolean(purgeAgentTarget)}
-        onClose={() => setPurgeAgentTarget(null)}
-        onConfirm={() => void purgeAgentRuns()}
-        title="Purge agent runs"
-        message={purgeAgentTarget ? `Purge all completed, failed, skipped, interrupted, and cancelled runs for "${purgeAgentTarget.config.name}"? This cannot be undone.` : ""}
-        confirmLabel="Purge runs"
-        loading={purgeAgentPending}
-      />
-
-      <Modal
-        isOpen={quickChatCreating}
-        onClose={() => {}}
-        title="Creating quick chat"
-        description="Your quick chat is being prepared."
-        size="sm"
-        showCloseButton={false}
-        closeOnOverlayClick={false}
-      >
-        <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-          <span
-            className="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-transparent dark:border-gray-500"
-            aria-hidden="true"
-          />
-          <span>Creating a new quick chat...</span>
-        </div>
-      </Modal>
-      {chatActions.modals}
+      {dialogs.modals}
     </>
   );
 }
