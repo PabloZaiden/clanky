@@ -72,7 +72,7 @@ export function WorkspacePreviewsView({
       </Panel>
 
       <Panel title="Active previews">
-        {loading ? (
+        {loading && previews.length === 0 ? (
           <LoadingState title="Refreshing previews" />
         ) : error ? (
           <ErrorState title="Unable to load previews" description={error} />
