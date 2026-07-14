@@ -62,38 +62,3 @@ export interface PublicServerSettings {
 export interface PublicWorkspace extends Omit<Workspace, "serverSettings"> {
   serverSettings: PublicServerSettings;
 }
-
-export interface PublicWorkspaceConfig {
-  name: string;
-  directory: string;
-  serverSettings: PublicServerSettings;
-  archived?: boolean;
-}
-
-export interface PublicWorkspaceExportData {
-  version: 1;
-  exportedAt: string;
-  workspaces: PublicWorkspaceConfig[];
-}
-
-/**
- * Result of a workspace import operation.
- * Reports what was created and failed validation.
- */
-export interface WorkspaceImportResult {
-  /** Number of workspaces successfully created */
-  created: number;
-  /** Number of workspaces that failed validation */
-  failed: number;
-  /** Details of each workspace in the import */
-  details: Array<{
-    /** Workspace name from the import file */
-    name: string;
-    /** Workspace directory from the import file */
-    directory: string;
-    /** Whether this workspace was created or failed validation */
-    status: "created" | "failed";
-    /** Reason for failure */
-    reason?: string;
-  }>;
-}

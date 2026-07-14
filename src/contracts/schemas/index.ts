@@ -76,18 +76,12 @@ export {
   DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
   TestConnectionRequestSchema,
-  WorkspaceConfigSchema,
-  WorkspaceExportSchema,
-  WorkspaceImportRequestSchema,
   type AgentProvider,
   type AgentTransport,
   type AgentSettings,
   type ServerSettings,
   type CreateWorkspaceRequest,
   type UpdateWorkspaceRequest,
-  type WorkspaceConfig,
-  type WorkspaceExportData,
-  type WorkspaceImportRequest,
   type DeleteWorkspaceRequest,
 } from "./workspace";
 

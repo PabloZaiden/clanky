@@ -3,10 +3,10 @@
  * Provides CRUD operations for workspaces and fetches workspace list.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { PublicWorkspace, Workspace, WorkspaceImportResult } from "@/shared/workspace";
+import { useCallback, useEffect, useState } from "react";
+import type { PublicWorkspace, Workspace } from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
-import type { DeleteWorkspaceRequest, WorkspaceExportData } from "@/contracts/schemas/workspace";
+import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 
@@ -31,10 +31,6 @@ export interface UseWorkspacesResult {
   pullLatestChanges: (
     id: string,
   ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
-  /** Fetch all workspace configs as JSON from the export API */
-  exportConfig: () => Promise<WorkspaceExportData | null>;
-  /** Import workspace configs from a JSON object */
-  importConfig: (data: WorkspaceExportData) => Promise<WorkspaceImportResult | null>;
 }
 
 /**
@@ -47,10 +43,6 @@ export function useWorkspaces(): UseWorkspacesResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // AbortController for cancelling in-flight import requests on unmount.
-  // Import can take a while when validating many workspaces against remote servers.
-  const importAbortRef = useRef<AbortController | null>(null);
 
   // Fetch all workspaces
   const fetchWorkspaces = useCallback(async () => {
@@ -207,76 +199,10 @@ export function useWorkspaces(): UseWorkspacesResult {
     }
   }, []);
 
-  // Export all workspace configs
-  const exportConfig = useCallback(async (): Promise<WorkspaceExportData | null> => {
-    try {
-      setSaving(true);
-      setError(null);
-      const response = await appFetch("/api/workspaces/export?sensitive=true");
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to export workspaces");
-      }
-      return (await response.json()) as WorkspaceExportData;
-    } catch (err) {
-      log.error("Failed to export workspaces", { error: String(err) });
-      setError(String(err));
-      return null;
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  // Import workspace configs
-  const importConfig = useCallback(async (data: WorkspaceExportData): Promise<WorkspaceImportResult | null> => {
-    // Abort any previous in-flight import request
-    importAbortRef.current?.abort();
-    const controller = new AbortController();
-    importAbortRef.current = controller;
-
-    try {
-      setSaving(true);
-      setError(null);
-      const response = await appFetch("/api/workspaces/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      });
-
-      if (controller.signal.aborted) return null;
-
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to import workspaces");
-      }
-
-      const result = (await response.json()) as WorkspaceImportResult;
-      // Refresh the list to include newly imported workspaces
-      await fetchWorkspaces();
-      return result;
-    } catch (err) {
-      // Don't set error state if the request was intentionally aborted
-      if (controller.signal.aborted) return null;
-      log.error("Failed to import workspaces", { error: String(err) });
-      setError(String(err));
-      return null;
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchWorkspaces]);
-
   // Initial fetch
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
-
-  // Cleanup: abort any in-flight import request on unmount
-  useEffect(() => {
-    return () => {
-      importAbortRef.current?.abort();
-    };
-  }, []);
 
   return {
     workspaces,
@@ -288,7 +214,5 @@ export function useWorkspaces(): UseWorkspacesResult {
     updateWorkspace,
     deleteWorkspace,
     pullLatestChanges,
-    exportConfig,
-    importConfig,
   };
 }

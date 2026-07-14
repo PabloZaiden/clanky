@@ -31,7 +31,6 @@ import { useComposeState } from "./use-compose-state";
 import {
   DangerZoneSection,
   ContentPreferencesSection,
-  ImportExportSection,
   PrivateItemsSection,
   QuickChatSettingsSection,
   SchedulerSettingsSection,
@@ -281,8 +280,6 @@ export function AppShell() {
     updateWorkspace,
     deleteWorkspace,
     pullLatestChanges,
-    exportConfig,
-    importConfig,
   } = useWorkspaces();
   const quickChatSettings = useQuickChatSettings();
   const schedulerTimezone = useSchedulerTimezone();
@@ -916,10 +913,8 @@ export function AppShell() {
     dashboardData,
     deleteServer,
     deleteWorkspace,
-    exportConfig,
     editingAgentId,
     handleAgentSaved,
-    importConfig,
     importExistingChat,
     privateItemsPreference.showPrivateItems,
     navigateWithinShell,
@@ -1007,18 +1002,6 @@ export function AppShell() {
       ),
     },
     {
-      id: "workspace-import-export",
-      title: "Workspace import/export",
-      description: "Export or import Clanky workspace definitions.",
-      render: () => (
-        <ImportExportSection
-          onExportConfig={exportConfig}
-          onImportConfig={importConfig}
-          configSaving={workspacesSaving}
-        />
-      ),
-    },
-    {
       id: "clanky-danger-zone",
       title: "Maintenance",
       description: "Clanky-specific maintenance operations. Framework server operations live in the standard settings sections.",
@@ -1037,9 +1020,7 @@ export function AppShell() {
     },
   ], [
     dashboardData,
-    exportConfig,
     fullTreePreference,
-    importConfig,
     markdownPreference,
     privateItemsPreference,
     quickChatSettings,
