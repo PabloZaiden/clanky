@@ -47,7 +47,12 @@ For more project information, see the [README.md](README.md).
 - Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
 - Use route-backed `SidebarNode.actions` for task, chat, agent, SSH session, workspace and server commands. The framework owns both sidebar context menus and active title-bar three-line menus; do not reintroduce Clanky-local shell/header action menus.
 - Use framework dialogs/modals/action menus for generic UI behavior. Framework dialogs handle Enter/Escape, destructive/delete menu items are red and last, and sidebar badges render as compact status dots.
-- Prefer structured `settings.sections[].rows` for app settings; use custom `render` sections only when the framework row model cannot represent the setting.
+- Use structured `settings.sections[].rows` for app settings with an explicit
+  `user`, `admin`, or `owner` scope. Put selectors and toggles in row
+  `content`, ordinary operations in row `actions`, and destructive operations
+  in row `danger` presentation with framework confirmation. Use custom `render`
+  sections only when the framework row model cannot represent the setting, and
+  add a nearby code comment explaining every remaining limitation.
 - Header action buttons must remain visible and non-deforming; titles/subtitles should truncate before actions are clipped.
 - Never query or portal into framework-owned shell DOM nodes. Titles and
   actions must come from route-backed `SidebarNode` data or documented
