@@ -15,6 +15,7 @@ import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 import { backendManager } from "../../src/core/backend-manager";
 import { chatEventEmitter } from "../../src/core/event-emitter";
+import { getManagedWorktreePath } from "../../src/core/git";
 import { getPlanFilePath } from "../../src/lib/planning-files";
 import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
@@ -1225,7 +1226,7 @@ describe("Chats API Integration", () => {
     expect(created.config.useWorktree).toBe(true);
     expect(created.config.baseBranch).toBeUndefined();
 
-    const expectedWorktreePath = `${testWorkDir}/.clanky-worktrees/${created.config.id}`;
+    const expectedWorktreePath = getManagedWorktreePath(testWorkDir, created.config.id);
     expect(created.state.worktree?.originalBranch).toBe("main");
     expect(created.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
     expect(created.state.worktree?.worktreePath).toBe(expectedWorktreePath);
@@ -1782,7 +1783,7 @@ describe("Chats API Integration", () => {
 
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
-    const taskWorkingDirectory = join(testWorkDir, ".clanky-worktrees", taskId);
+    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
     const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {

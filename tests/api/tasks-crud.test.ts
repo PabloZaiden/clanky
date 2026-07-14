@@ -11,6 +11,7 @@ import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { getManagedWorktreePath } from "../../src/core/git";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -1165,7 +1166,7 @@ describe("Tasks CRUD API Integration", () => {
         git: {
           originalBranch: "master",
           workingBranch: `${taskId}-a1b2c3d`,
-          worktreePath: `${testWorkDir}/.clanky-worktrees/${taskId}`,
+          worktreePath: getManagedWorktreePath(testWorkDir, taskId),
           commits: [],
         },
       });

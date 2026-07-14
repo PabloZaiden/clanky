@@ -130,7 +130,8 @@ export async function canReuseExistingBranch(task: Task): Promise<boolean> {
 
   const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
   const git = GitService.withExecutor(executor);
-  return git.worktreeExists(task.config.directory, worktreePath);
+  const managedWorktreePath = git.assertCanonicalManagedWorktreePath(task.config.directory, task.config.id, worktreePath);
+  return git.worktreeExists(task.config.directory, managedWorktreePath);
 }
 
 export async function reviveDeletedTask(taskId: string): Promise<TaskResult> {
