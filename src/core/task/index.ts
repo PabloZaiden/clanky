@@ -7,14 +7,14 @@
  */
 
 // Re-export all public types
-export type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult, SeedPlanFilesOptions } from "./task-types";
+export type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult, SeedPlanFilesOptions, TaskFailure, TaskResult, TaskErrorCode, TaskOperationError } from "./task-types";
 export { getTaskWorkingDirectory } from "./task-types";
 
 import type { TaskCtx } from "./context";
 import type { AutomaticPrFlowFeedbackSource, Task, TaskConfig, TaskState } from "@/shared/task";
 import type { TaskEvent } from "@/shared/events";
 import type { ModelConfig } from "@/shared/task";
-import type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult } from "./task-types";
+import type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult, TaskResult } from "./task-types";
 import type { SeedPlanFilesOptions } from "./task-types";
 import type { PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -152,23 +152,23 @@ export class TaskManager {
     return updateBranchImpl(this.ctx, taskId);
   }
 
-  async discardTask(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async discardTask(taskId: string): Promise<TaskResult> {
     return discardTaskImpl(this.ctx, taskId);
   }
 
-  async purgeTask(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async purgeTask(taskId: string): Promise<TaskResult> {
     return purgeTaskImpl(this.ctx, taskId);
   }
 
-  async markMerged(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async markMerged(taskId: string): Promise<TaskResult> {
     return markMergedImpl(this.ctx, taskId);
   }
 
-  async closeLocalTask(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async closeLocalTask(taskId: string): Promise<TaskResult> {
     return closeLocalTaskImpl(this.ctx, taskId);
   }
 
-  async manualCompleteTask(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async manualCompleteTask(taskId: string): Promise<TaskResult> {
     return manualCompleteTaskImpl(this.ctx, taskId);
   }
 
@@ -176,37 +176,37 @@ export class TaskManager {
     taskId: string,
     prompt: string,
     attachments?: MessageImageAttachment[],
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<TaskResult> {
     return setPendingPromptImpl(this.ctx, taskId, prompt, attachments);
   }
 
-  async clearPendingPrompt(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async clearPendingPrompt(taskId: string): Promise<TaskResult> {
     return clearPendingPromptImpl(this.ctx, taskId);
   }
 
-  async setPendingModel(taskId: string, model: ModelConfig): Promise<{ success: boolean; error?: string }> {
+  async setPendingModel(taskId: string, model: ModelConfig): Promise<TaskResult> {
     return setPendingModelImpl(this.ctx, taskId, model);
   }
 
-  async clearPendingModel(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async clearPendingModel(taskId: string): Promise<TaskResult> {
     return clearPendingModelImpl(this.ctx, taskId);
   }
 
-  async clearPending(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async clearPending(taskId: string): Promise<TaskResult> {
     return clearPendingImpl(this.ctx, taskId);
   }
 
   async setPending(
     taskId: string,
     options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<TaskResult> {
     return setPendingImpl(this.ctx, taskId, options);
   }
 
   async injectPending(
     taskId: string,
     options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<TaskResult> {
     return injectPendingImpl(this.ctx, taskId, options);
   }
 
@@ -221,7 +221,7 @@ export class TaskManager {
     taskId: string,
     comments: string,
     attachments?: MessageImageAttachment[],
-  ): Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }> {
+  ): Promise<SendFollowUpResult> {
     return addressReviewCommentsImpl(this.ctx, taskId, comments, attachments);
   }
 
@@ -248,27 +248,27 @@ export class TaskManager {
 
   async startAutomaticPrFlow(
     taskId: string,
-  ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Task["state"]["automaticPrFlow"] }> {
+  ): Promise<TaskResult<{ automaticPrFlow?: Task["state"]["automaticPrFlow"] }>> {
     return startAutomaticPrFlowImpl(this.ctx, taskId);
   }
 
   async stopAutomaticPrFlow(
     taskId: string,
-  ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Task["state"]["automaticPrFlow"] }> {
+  ): Promise<TaskResult<{ automaticPrFlow?: Task["state"]["automaticPrFlow"] }>> {
     return stopAutomaticPrFlowImpl(this.ctx, taskId);
   }
 
   async enablePullRequestAutoMerge(
     taskId: string,
-  ): Promise<{ success: boolean; error?: string; pullRequest?: { number: number; url: string } }> {
+  ): Promise<TaskResult<{ pullRequest?: { number: number; url: string } }>> {
     return enablePullRequestAutoMergeImpl(this.ctx, taskId);
   }
 
-  async getReviewHistory(taskId: string): Promise<{ success: boolean; error?: string; history?: {
+  async getReviewHistory(taskId: string): Promise<TaskResult<{ history?: {
     addressable: boolean;
     completionAction: "local" | "push";
     reviewCycles: number;
-  } }> {
+  } }>> {
     return getReviewHistoryImpl(this.ctx, taskId);
   }
 

@@ -68,6 +68,7 @@ export async function processTaskAgentEvent(event: AgentEvent, ctx: IterationCon
     case "error":
       ctx.outcome = "error";
       ctx.error = event.message;
+      ctx.errorCode = event.code;
       toolCtx.emitLog("error", `AI backend error: ${event.message}`);
       break;
 

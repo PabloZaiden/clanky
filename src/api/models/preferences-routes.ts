@@ -16,7 +16,7 @@ import { createLogger } from "../../core/logger";
 import { isDomainError } from "../../core/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
-import { errorResponse } from "../helpers";
+import { errorResponse, internalErrorResponse } from "../helpers";
 import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
@@ -73,7 +73,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("last-model", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the last model preference",
+          status: 500,
+        });
       }
     },
   },
@@ -105,7 +109,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("last-cheap-model", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the last cheap model preference",
+          status: 500,
+        });
       }
     },
   },
@@ -145,7 +153,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("last-directory", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the last directory preference",
+          status: 500,
+        });
       }
     },
   },
@@ -185,7 +197,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("markdown-rendering", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the markdown rendering preference",
+          status: 500,
+        });
       }
     },
   },
@@ -225,7 +241,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("file-explorer-full-tree", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the file explorer preference",
+          status: 500,
+        });
       }
     },
   },
@@ -264,7 +284,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true, mode: result.data.mode });
       } catch (error) {
         logPreferenceSaveFailure("dashboard-view-mode", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the dashboard view preference",
+          status: 500,
+        });
       }
     },
   },
@@ -298,7 +322,11 @@ export const preferencesRoutes = defineRoutes({
           return errorResponse(error.code, error.message, 404);
         }
         logPreferenceSaveFailure("quick-chat", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save quick chat settings",
+          status: 500,
+        });
       }
     },
   },
@@ -323,7 +351,11 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true, timezone: result.data.timezone });
       } catch (error) {
         logPreferenceSaveFailure("scheduler-timezone", error);
-        return errorResponse("save_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the scheduler timezone preference",
+          status: 500,
+        });
       }
     },
   },

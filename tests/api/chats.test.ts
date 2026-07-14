@@ -533,7 +533,7 @@ describe("Chats API Integration", () => {
       const errorBody = await importResponse.json() as { message: string };
 
       expect(importResponse.status).toBe(500);
-      expect(errorBody.message).toContain("Session provider-session-cleanup-failure not found");
+      expect(errorBody.message).toBe("Failed to import chat session");
       expect(errorBody.message).not.toContain("cleanup disconnect failed");
       expect(disconnectAttempts).toBe(1);
     } finally {

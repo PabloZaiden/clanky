@@ -18,6 +18,7 @@ import { resolveEffectiveCheapModel } from "../cheap-model";
 import { isWorkspaceDeletionInProgress } from "../workspace-deletion";
 import { getTaskWorkingDirectory, type GenerateTaskTitleOptions } from "./task-types";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
+import { TaskOperationError, TaskUpdateError, type TaskUpdateErrorCode } from "./task-errors";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -29,10 +30,16 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
     : false;
 
   if (!name) {
-    throw new Error("Task name is required");
+    throw new TaskOperationError("invalid_task_input", "Task name is required", {
+      details: { field: "name" },
+    });
   }
   if (isWorkspaceDeletionInProgress(options.workspaceId)) {
-    throw new Error("Workspace deletion is in progress");
+    throw new TaskOperationError(
+      "operation_in_progress",
+      "Workspace deletion is in progress",
+      { details: { workspaceId: options.workspaceId } },
+    );
   }
 
   log.debug("createTask - Input", {
@@ -194,13 +201,9 @@ const POST_APPROVAL_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<TaskConfig,
 
 function createTaskUpdateError(
   message: string,
-  code: string,
-  status = 409,
-): Error & { code: string; status: number } {
-  const error = new Error(message) as Error & { code: string; status: number };
-  error.code = code;
-  error.status = status;
-  return error;
+  code: TaskUpdateErrorCode,
+): TaskUpdateError {
+  return new TaskUpdateError(code, message);
 }
 
 function getDefinedUpdateKeys(
@@ -244,7 +247,7 @@ function assertAllowedPlanModeUpdateKeys(
     if (disallowedPlanningKeys.length > 0) {
       throw createTaskUpdateError(
         "Only auto-accept plan and fully autonomous task can be changed while plan mode is running.",
-        "PLANNING_UPDATE_RESTRICTED",
+        "planning_update_restricted",
       );
     }
     return;
@@ -257,7 +260,7 @@ function assertAllowedPlanModeUpdateKeys(
     if (disallowedPostApprovalKeys.length > 0) {
       throw createTaskUpdateError(
         "After plan approval, only the fully autonomous setting can be changed while execution is still in progress.",
-        "PLAN_EXECUTION_UPDATE_RESTRICTED",
+        "plan_execution_update_restricted",
       );
     }
   }
@@ -273,7 +276,7 @@ function assertNameUpdateAllowed(
 
   throw createTaskUpdateError(
     "Task name can only be updated while the task is still a draft.",
-    "TASK_RENAME_RESTRICTED",
+    "task_rename_restricted",
   );
 }
 
@@ -323,14 +326,14 @@ export async function updateTaskImpl(
       && !isPostApprovalFullyAutonomousMutable(currentConfig, engine.state)
       && (status === "waiting" || isActiveStatus(status))
     ) {
-      throw createTaskUpdateError("Cannot update an active task. Stop it first.", "ACTIVE_TASK_UPDATE_RESTRICTED");
+      throw createTaskUpdateError("Cannot update an active task. Stop it first.", "active_task_update_restricted");
     }
   }
 
   const pendingGitState = engine?.state.git;
   if (updates.baseBranch !== undefined && (task.state.git?.originalBranch || pendingGitState?.originalBranch)) {
     log.warn(`Rejected baseBranch update for task ${taskId} after git setup`);
-    throw createTaskUpdateError("Base branch cannot be updated after git setup.", "BASE_BRANCH_IMMUTABLE");
+    throw createTaskUpdateError("Base branch cannot be updated after git setup.", "base_branch_immutable");
   }
 
   if (
@@ -339,7 +342,7 @@ export async function updateTaskImpl(
     (task.state.git?.originalBranch || pendingGitState?.originalBranch)
   ) {
     log.warn(`Rejected useWorktree update for task ${taskId} after git setup`);
-    throw createTaskUpdateError("Use Worktree cannot be updated after git setup.", "USE_WORKTREE_IMMUTABLE");
+    throw createTaskUpdateError("Use Worktree cannot be updated after git setup.", "use_worktree_immutable");
   }
 
   if (updates.baseBranch !== undefined && task.state.status === "draft") {

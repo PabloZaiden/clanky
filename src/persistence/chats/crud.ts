@@ -7,6 +7,7 @@ import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 
 const log = createLogger("persistence:chats");
 
@@ -77,12 +78,23 @@ export async function saveChat(chat: Chat): Promise<void> {
   const updateColumns = columns.filter((column) => column !== "id");
   const updateClause = updateColumns.map((column) => `${column} = excluded.${column}`).join(", ");
 
-  db.prepare(`
-    INSERT INTO chats (${columns.join(", ")})
-    VALUES (${placeholders})
-    ON CONFLICT(id) DO UPDATE SET ${updateClause}
-    WHERE chats.user_id = excluded.user_id
-  `).run(...values);
+  try {
+    db.prepare(`
+      INSERT INTO chats (${columns.join(", ")})
+      VALUES (${placeholders})
+      ON CONFLICT(id) DO UPDATE SET ${updateClause}
+      WHERE chats.user_id = excluded.user_id
+    `).run(...values);
+  } catch (error) {
+    if (isSqliteUniqueConstraintError(error)) {
+      throw uniqueConstraintError(
+        "Chat task uniqueness constraint violated",
+        { table: "chats", constraint: "task_id" },
+        error,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function loadChat(chatId: string): Promise<Chat | null> {

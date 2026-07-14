@@ -13,6 +13,7 @@ import { GitService } from "../git-service";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
+import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 
 async function deleteLinkedTaskChat(taskId: string): Promise<void> {
   const { chatManager } = await import("../chat-manager");
@@ -96,7 +97,7 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
     log.debug(`[TaskManager] deleteTask: Discarding git branch for task ${taskId}`);
     const discardResult = await discardTaskImpl(ctx, taskId);
     if (!discardResult.success) {
-      log.warn(`Failed to discard git branch during delete: ${discardResult.error}`);
+      log.warn(`Failed to discard git branch during delete: ${discardResult.error.message}`);
     }
   }
 
@@ -126,23 +127,27 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
   return true;
 }
 
-export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Discarding task", { taskId });
   let task = await ctx.getTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (ctx.engines.has(taskId)) {
     await ctx.stopTask(taskId, "Task discarded");
     task = await ctx.getTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
   }
 
   if (!task.state.git) {
-    return { success: false, error: "No git branch was created for this task" };
+    return taskFailure(
+      "task_branch_missing",
+      "No git branch was created for this task",
+      { details: { taskId } },
+    );
   }
 
   try {
@@ -180,27 +185,39 @@ export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<{ s
     log.info("Task discarded", { taskId });
     return { success: true };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to discard task",
+    );
   }
 }
 
-export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Purging task", { taskId });
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const isDraft = task.state.status === "draft";
 
   if (!isDraft && task.state.status !== "accepted_local" && task.state.status !== "merged" && task.state.status !== "pushed" && task.state.status !== "deleted") {
-    return { success: false, error: `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   try {
     await sshSessionManager.deleteSessionByTaskId(taskId);
   } catch (error) {
-    return { success: false, error: `Failed to delete linked SSH session: ${String(error)}` };
+    return taskFailure(
+      "task_ssh_session_failed",
+      "Failed to delete linked SSH session",
+      { cause: error, details: { taskId } },
+    );
   }
 
   if (!isDraft) {
@@ -229,7 +246,11 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<{ su
 
       }
     } catch (error) {
-      return { success: false, error: `Failed to clean up git state during purge: ${String(error)}` };
+      return taskFailure(
+        "task_git_operation_failed",
+        "Failed to clean up git state during purge",
+        { cause: error, details: { taskId } },
+      );
     }
   }
 
@@ -241,7 +262,11 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<{ su
 
   const deleted = await deleteTaskFile(taskId);
   if (!deleted) {
-    return { success: false, error: "Failed to delete task file" };
+    return taskFailure(
+      "task_file_operation_failed",
+      "Failed to delete task file",
+      { details: { taskId } },
+    );
   }
 
   await deleteLinkedTaskChat(taskId);
@@ -250,26 +275,31 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<{ su
   return { success: true };
 }
 
-export async function markMergedImpl(ctx: TaskCtx, taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function markMergedImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Marking task as merged", { taskId });
   const task = await ctx.getTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const allowedStatuses = ["pushed", "merged"];
   if (!allowedStatuses.includes(task.state.status)) {
-    return {
-      success: false,
-      error: `Cannot mark task as merged in status: ${task.state.status}. Only finished tasks can be marked as merged.`,
-    };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot mark task as merged in status: ${task.state.status}. Only finished tasks can be marked as merged.`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const persistedTask = await loadTask(taskId);
   const gitState = persistedTask ? persistedTask.state.git : task.state.git;
 
   if (!gitState) {
-    return { success: false, error: "No git branch was created for this task" };
+    return taskFailure(
+      "task_branch_missing",
+      "No git branch was created for this task",
+      { details: { taskId } },
+    );
   }
 
   try {
@@ -302,22 +332,27 @@ export async function markMergedImpl(ctx: TaskCtx, taskId: string): Promise<{ su
     log.info("Task marked as merged", { taskId });
     return { success: true };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to mark task as merged",
+    );
   }
 }
 
-export async function closeLocalTaskImpl(ctx: TaskCtx, taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function closeLocalTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Closing locally accepted task", { taskId });
   const task = await ctx.getTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (task.state.status !== "accepted_local") {
-    return {
-      success: false,
-      error: `Cannot close local task in status: ${task.state.status}. Only locally accepted tasks can be closed.`,
-    };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot close local task in status: ${task.state.status}. Only locally accepted tasks can be closed.`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (!task.state.reviewMode?.addressable) {
@@ -341,29 +376,38 @@ export async function closeLocalTaskImpl(ctx: TaskCtx, taskId: string): Promise<
     log.info("Locally accepted task closed", { taskId });
     return { success: true };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to close local task",
+    );
   }
 }
 
-export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Manually completing task", { taskId });
   const task = await ctx.getTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const allowedStatuses = new Set(["stopped", "failed"]);
   if (!allowedStatuses.has(task.state.status)) {
-    return {
-      success: false,
-      error: `Cannot manually complete task in status: ${task.state.status}. Only stopped or failed tasks can be manually completed.`,
-    };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot manually complete task in status: ${task.state.status}. Only stopped or failed tasks can be manually completed.`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const persistedTask = await loadTask(taskId);
   const gitState = persistedTask ? persistedTask.state.git : task.state.git;
   if (!gitState) {
-    return { success: false, error: "No git branch was created for this task" };
+    return taskFailure(
+      "task_branch_missing",
+      "No git branch was created for this task",
+      { details: { taskId } },
+    );
   }
 
   try {
@@ -396,7 +440,11 @@ export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Prom
     log.info("Task manually completed", { taskId, previousStatus: task.state.status });
     return { success: true };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to manually complete task",
+    );
   }
 }
 

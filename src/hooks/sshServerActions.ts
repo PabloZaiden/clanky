@@ -1,6 +1,7 @@
 import type { DevboxTemplateSummary, SshServer, SshConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
 import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
+import { ApiError, isApiErrorCode, parseApiError } from "../lib/api-error";
 import { appFetch } from "../lib/public-path";
 import {
   getStoredSshCredentialToken,
@@ -21,11 +22,15 @@ async function apiCall<T = unknown>(
   try {
     const response = await appFetch(url, options);
     if (!response.ok) {
-      const errorData = await response.json() as { message?: string };
-      const message = errorData.message || `Failed to ${actionName.toLowerCase()}`;
-      log.error("SSH server API request failed", { actionName, url, error: message });
+      const apiError = await parseApiError(response, `Failed to ${actionName.toLowerCase()}`);
+      log.error("SSH server API request failed", {
+        actionName,
+        url,
+        error: apiError.message,
+        errorCode: apiError.code,
+      });
       loggedFailure = true;
-      throw new Error(message);
+      throw apiError;
     }
     return await response.json() as T;
   } catch (error) {
@@ -49,9 +54,15 @@ async function resolveCredentialToken(serverId: string, password?: string): Prom
   const token = await getStoredSshCredentialToken(serverId);
   if (!token) {
     if (getStoredSshServerCredential(serverId)) {
-      throw new Error("Stored SSH password is no longer valid. Enter the password again.");
+      throw new ApiError("Stored SSH password is no longer valid. Enter the password again.", {
+        code: "ssh_credential_invalid",
+        status: 400,
+      });
     }
-    throw new Error("Enter the SSH password for this server.");
+    throw new ApiError("Enter the SSH password for this server.", {
+      code: "ssh_credential_required",
+      status: 400,
+    });
   }
   return token;
 }
@@ -263,8 +274,7 @@ export async function createOrResumeVncSessionApi(options: {
   try {
     return await requestSession(credentialToken);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("credential token")) {
+    if (!isApiErrorCode(error, "invalid_credential_token")) {
       throw error;
     }
     invalidateStoredSshCredentialToken(options.serverId);

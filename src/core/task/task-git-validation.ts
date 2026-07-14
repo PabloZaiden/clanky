@@ -2,6 +2,7 @@ import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
 import { GitService } from "../git-service";
 import { getActiveTaskByDirectory } from "../../persistence/tasks";
+import { TaskOperationError } from "./task-errors";
 
 export async function validateMainCheckoutStartImpl(_ctx: TaskCtx, task: Task, git: GitService): Promise<void> {
   if (task.config.useWorktree) {
@@ -10,12 +11,16 @@ export async function validateMainCheckoutStartImpl(_ctx: TaskCtx, task: Task, g
 
   const activeTask = await getActiveTaskByDirectory(task.config.directory, task.config.workspaceId);
   if (activeTask && activeTask.config.id !== task.config.id) {
-    const error = new Error(
+    throw new TaskOperationError(
+      "directory_in_use",
       `Cannot start without a worktree while task "${activeTask.config.name}" is already active in this workspace.`,
-    ) as Error & { code: string; status: number };
-    error.code = "directory_in_use";
-    error.status = 409;
-    throw error;
+      {
+        details: {
+          taskId: task.config.id,
+          activeTaskId: activeTask.config.id,
+        },
+      },
+    );
   }
 
   const hasChanges = await git.hasUncommittedChanges(task.config.directory);
@@ -24,13 +29,11 @@ export async function validateMainCheckoutStartImpl(_ctx: TaskCtx, task: Task, g
   }
 
   const changedFiles = await git.getChangedFiles(task.config.directory);
-  const error = new Error(
+  throw new TaskOperationError(
+    "uncommitted_changes",
     "Cannot start without a worktree because the repository has uncommitted changes.",
-  ) as Error & { code: string; status: number; changedFiles: string[] };
-  error.code = "uncommitted_changes";
-  error.status = 409;
-  error.changedFiles = changedFiles;
-  throw error;
+    { details: { taskId: task.config.id, changedFiles } },
+  );
 }
 
 export async function ensureTaskBranchCheckedOutImpl(

@@ -7,20 +7,31 @@ import { getTaskWorkingDirectory } from "./task-types";
 import { ensureTaskBranchCheckedOutImpl } from "./task-git-validation";
 import { startStatePersistenceImpl } from "./task-state-persistence";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
+import { TaskOperationError } from "./task-errors";
 
 export async function recoverPlanningEngineImpl(ctx: TaskCtx, taskId: string): Promise<TaskEngine> {
   const task = await loadTask(taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new TaskOperationError("task_not_found", "Task not found", {
+      details: { taskId },
+    });
   }
 
   if (task.state.status !== "planning") {
-    throw new Error("Task plan mode is not running");
+    throw new TaskOperationError(
+      "task_not_planning",
+      "Task plan mode is not running",
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const workingDirectory = getTaskWorkingDirectory(task);
   if (!workingDirectory) {
-    throw new Error("Task is configured to use a worktree, but no worktree path is available - cannot recreate engine for planning recovery");
+    throw new TaskOperationError(
+      "task_worktree_missing",
+      "Task is configured to use a worktree, but no worktree path is available - cannot recreate engine for planning recovery",
+      { details: { taskId } },
+    );
   }
   const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workingDirectory);
   const git = GitService.withExecutor(executor);
@@ -50,9 +61,10 @@ export async function recoverPlanningEngineImpl(ctx: TaskCtx, taskId: string): P
       await engine.reconnectSession();
     } catch (error) {
       ctx.engines.delete(taskId);
-      throw new Error(
-        `Failed to recover planning engine session for task ${taskId}: ${String(error)}`,
-        { cause: error },
+      throw new TaskOperationError(
+        "task_session_reconnect_failed",
+        "Failed to recover planning engine session",
+        { cause: error, details: { taskId } },
       );
     }
   }

@@ -28,7 +28,7 @@ export async function transitionToFeedbackCycleAndStart(
     resultBranch: string;
     attachments?: MessageImageAttachment[];
   },
-): Promise<{ success: boolean; reviewCycle: number; branch: string; commentIds?: string[] }> {
+): Promise<{ success: true; reviewCycle: number; branch: string; commentIds?: string[] }> {
   assertValidTransition(task.state.status, "idle", `startFeedbackCycle:${options.transitionLabel}`);
   task.state.status = "idle";
   task.state.completedAt = undefined;

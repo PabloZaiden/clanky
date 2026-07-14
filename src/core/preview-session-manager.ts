@@ -14,6 +14,7 @@ import {
   savePreviewSession,
 } from "../persistence/preview-sessions";
 import { createLogger } from "./logger";
+import { DomainError } from "./domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig, getSshConnectionTargetFromWorkspace } from "./ssh-connection-target";
@@ -189,7 +190,7 @@ export class PreviewSessionManager {
   async resolveWorkspaceReference(reference: string): Promise<Workspace> {
     const normalized = reference.trim();
     if (!normalized) {
-      throw new Error("Workspace is required");
+      throw new DomainError("workspace_reference_required", "Workspace is required");
     }
     const workspaceById = await getWorkspace(normalized);
     if (workspaceById) {
@@ -198,11 +199,24 @@ export class PreviewSessionManager {
 
     const matches = (await listWorkspaces()).filter((workspace) => workspace.name === normalized);
     if (matches.length === 0) {
-      throw new Error(`Workspace not found: ${normalized}`);
+      throw new DomainError("workspace_not_found", "Workspace not found", {
+        details: { reference: normalized },
+      });
     }
     if (matches.length > 1) {
-      const candidates = matches.map((workspace) => `${workspace.name} (${workspace.id})`).join(", ");
-      throw new Error(`Workspace name is ambiguous: ${normalized}. Matching workspaces: ${candidates}`);
+      throw new DomainError(
+        "workspace_name_ambiguous",
+        "Workspace name is ambiguous",
+        {
+          details: {
+            reference: normalized,
+            candidates: matches.map((workspace) => ({
+              id: workspace.id,
+              name: workspace.name,
+            })),
+          },
+        },
+      );
     }
     return matches[0]!;
   }

@@ -255,6 +255,7 @@ export interface ChatErrorEvent {
   chatId: string;
   scope: ChatConfig["scope"];
   message: string;
+  code?: string;
   timestamp: string;
 }
 

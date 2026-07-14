@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from "bun";
+import { isDomainError } from "../../core/domain-error";
 import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 import { createLogger } from "../../core/logger";
 import { runWithCurrentUser } from "../../core/user-context";
@@ -37,7 +38,11 @@ export async function startTerminalBridge(
     },
     onError: (error) => {
       try {
-        ws.send(JSON.stringify({ type: "terminal.error", message: String(error) }));
+        ws.send(JSON.stringify({
+          type: "terminal.error",
+          code: isDomainError(error) ? error.code : undefined,
+          message: String(error),
+        }));
       } catch (sendError) {
         log.trace("Failed to send terminal error", { error: String(sendError), sshSessionId });
       }
@@ -76,7 +81,11 @@ export async function startTerminalBridge(
       error: String(error),
     });
     try {
-      ws.send(JSON.stringify({ type: "terminal.error", message: String(error) }));
+      ws.send(JSON.stringify({
+        type: "terminal.error",
+        code: isDomainError(error) ? error.code : undefined,
+        message: String(error),
+      }));
     } catch (sendError) {
       log.trace("Failed to send terminal startup error", {
         error: String(sendError),

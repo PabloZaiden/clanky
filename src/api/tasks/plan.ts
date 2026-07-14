@@ -10,9 +10,11 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
-import { errorResponse, successResponse } from "../helpers";
+import { domainErrorResponse, errorResponse, successResponse } from "../helpers";
 import type { PlanAcceptResponse } from "@/contracts";
 import { PlanFeedbackRequestSchema, PlanAcceptRequestSchema } from "@/contracts/schemas";
+import { isTaskOperationError } from "../../core/task/task-errors";
+import { taskErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -51,18 +53,27 @@ export const tasksPlanRoutes = defineRoutes({
         await taskManager.sendPlanFeedback(ctx.params["id"]!, body.feedback, body.attachments);
         return successResponse();
       } catch (error) {
-        const errorMsg = String(error);
-        if (errorMsg.includes("not running") || errorMsg.includes("not found")) {
-          return errorResponse("not_running", errorMsg, 409);
-        }
-        if (errorMsg.includes("not in planning status")) {
-          return errorResponse("not_planning", errorMsg, 400);
+        if (isTaskOperationError(error)) {
+          if (error.code === "task_not_found") {
+            return errorResponse("not_running", "Task not found", 409);
+          }
+          return taskErrorResponse(error, {
+            error: "feedback_failed",
+            message: "Failed to send plan feedback",
+            status: 500,
+          });
         }
         log.error("Failed to send plan feedback", {
           taskId: ctx.params["id"]!,
-          error: errorMsg,
+          error: String(error),
         });
-        return errorResponse("feedback_failed", errorMsg, 500);
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "feedback_failed",
+            message: "Failed to send plan feedback",
+            status: 500,
+          },
+        });
       }
     },
   },
@@ -96,21 +107,24 @@ export const tasksPlanRoutes = defineRoutes({
           : { success: true, mode: result.mode };
         return Response.json(response);
       } catch (error) {
-        const errorMsg = String(error);
-        if (errorMsg.includes("not running")) {
-          return errorResponse("not_running", errorMsg, 409);
-        }
-        if (errorMsg.includes("not in planning status")) {
-          return errorResponse("not_planning", errorMsg, 400);
-        }
-        if (errorMsg.includes("Plan is not ready yet")) {
-          return errorResponse("plan_not_ready", errorMsg, 400);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "accept_failed",
+            message: "Failed to accept plan",
+            status: 500,
+          });
         }
         log.error("Failed to accept plan", {
           taskId: ctx.params["id"]!,
-          error: errorMsg,
+          error: String(error),
         });
-        return errorResponse("accept_failed", errorMsg, 500);
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "accept_failed",
+            message: "Failed to accept plan",
+            status: 500,
+          },
+        });
       }
     },
   },
@@ -139,7 +153,13 @@ export const tasksPlanRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("discard_failed", String(error), 500);
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "discard_failed",
+            message: "Failed to discard plan",
+            status: 500,
+          },
+        });
       }
     },
   },

@@ -30,6 +30,7 @@ import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
 import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
 import { createLogger } from "./logger";
+import { DomainError } from "./domain-error";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
 
@@ -65,7 +66,11 @@ export class SshServerManager {
     await sshServerKeyManager.ensurePublicKey(config.id);
     const server = await getSshServer(config.id);
     if (!server) {
-      throw new Error(`Failed to reload SSH server after creation: ${config.id}`);
+      throw new DomainError(
+        "ssh_server_reload_failed",
+        "Failed to reload SSH server after creation",
+        { details: { serverId: config.id } },
+      );
     }
     return server;
   }
@@ -85,7 +90,11 @@ export class SshServerManager {
     });
     const updated = await getSshServer(id);
     if (!updated) {
-      throw new Error(`Failed to reload SSH server after update: ${id}`);
+      throw new DomainError(
+        "ssh_server_reload_failed",
+        "Failed to reload SSH server after update",
+        { details: { serverId: id } },
+      );
     }
     return updated;
   }
@@ -148,7 +157,16 @@ export class SshServerManager {
     const executor = this.buildExecutor(server, password ?? "");
     const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
     if (!result.success) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to list devbox templates");
+      throw new DomainError(
+        "ssh_server_templates_failed",
+        "Failed to list devbox templates",
+        {
+          details: {
+            serverId,
+            exitCode: result.exitCode,
+          },
+        },
+      );
     }
     return parseDevboxTemplatesOutput(result.stdout);
   }
@@ -229,7 +247,10 @@ export class SshServerManager {
     const server = await this.requireServerConfig(session.config.sshServerId);
     const trimmedToken = credentialToken.trim();
     if (!trimmedToken) {
-      throw new Error("SSH credential token is required for standalone terminal connections");
+      throw new DomainError(
+        "invalid_credential_token",
+        "SSH credential token is required for standalone terminal connections",
+      );
     }
     const password = sshCredentialManager.getPasswordForToken(server.id, trimmedToken);
     const target = getSshConnectionTargetFromServer(server, password);
@@ -322,7 +343,9 @@ export class SshServerManager {
   private async requireServerConfig(id: string): Promise<SshServerConfig> {
     const server = await getSshServerConfig(id);
     if (!server) {
-      throw new Error(`SSH server not found: ${id}`);
+      throw new DomainError("ssh_server_not_found", "SSH server not found", {
+        details: { serverId: id },
+      });
     }
     return server;
   }
@@ -330,7 +353,11 @@ export class SshServerManager {
   private async requireSession(id: string): Promise<SshServerSession> {
     const session = await getSshServerSession(id);
     if (!session) {
-      throw new Error(`SSH server session not found: ${id}`);
+      throw new DomainError(
+        "ssh_server_session_not_found",
+        "SSH server session not found",
+        { details: { sessionId: id } },
+      );
     }
     return session;
   }

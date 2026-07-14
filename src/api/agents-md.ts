@@ -11,7 +11,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { agentsMdService } from "../core/agents-md-service";
 import { isDomainError } from "../core/domain-error";
 import { createLogger } from "../core/logger";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 
 const log = createLogger("api:agents-md");
 
@@ -23,21 +23,46 @@ function mapAgentsMdError(error: unknown, operation: AgentsMdOperation): Respons
       return errorResponse("workspace_not_found", "Workspace not found", 404);
     }
     if (error.code === "agents_md_read_failed") {
-      return errorResponse("read_failed", error.message, 500);
+      return domainErrorResponse(error, {
+        mappings: {
+          agents_md_read_failed: {
+            error: "read_failed",
+            status: 500,
+            message: "Failed to read AGENTS.md",
+          },
+        },
+        fallback: {
+          error: "read_failed",
+          message: "Failed to read AGENTS.md",
+          status: 500,
+        },
+      });
     }
     if (error.code === "agents_md_write_failed") {
-      return errorResponse("write_failed", error.message, 500);
+      return domainErrorResponse(error, {
+        mappings: {
+          agents_md_write_failed: {
+            error: "write_failed",
+            status: 500,
+            message: "Failed to update AGENTS.md",
+          },
+        },
+        fallback: {
+          error: "write_failed",
+          message: "Failed to update AGENTS.md",
+          status: 500,
+        },
+      });
     }
   }
 
-  const message = error instanceof Error ? error.message : String(error);
   if (operation === "read") {
-    return errorResponse("read_failed", `Failed to read AGENTS.md: ${message}`, 500);
+    return errorResponse("read_failed", "Failed to read AGENTS.md", 500);
   }
   if (operation === "preview") {
-    return errorResponse("preview_failed", `Failed to preview optimization: ${message}`, 500);
+    return errorResponse("preview_failed", "Failed to preview optimization", 500);
   }
-  return errorResponse("optimize_failed", `Failed to optimize AGENTS.md: ${message}`, 500);
+  return errorResponse("optimize_failed", "Failed to optimize AGENTS.md", 500);
 }
 
 export const agentsMdRoutes = defineRoutes({

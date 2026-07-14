@@ -10,6 +10,7 @@ import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
 import type { TaskState } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
+import { TaskOperationError } from "./task-errors";
 
 export async function sendPlanFeedbackImpl(
   ctx: TaskCtx,
@@ -20,7 +21,11 @@ export async function sendPlanFeedbackImpl(
   const engine = ctx.engines.get(taskId) ?? await ctx.recoverPlanningEngine(taskId);
 
   if (engine.state.status !== "planning") {
-    throw new Error(`Task is not in planning status: ${engine.state.status}`);
+    throw new TaskOperationError(
+      "task_not_planning",
+      `Task is not in planning status: ${engine.state.status}`,
+      { details: { taskId, status: engine.state.status } },
+    );
   }
 
   if (engine.state.planMode) {
@@ -49,11 +54,19 @@ export async function acceptPlanImpl(
   const mode = options.mode ?? "start_task";
 
   if (engine.state.status !== "planning") {
-    throw new Error(`Task is not in planning status: ${engine.state.status}`);
+    throw new TaskOperationError(
+      "task_not_planning",
+      `Task is not in planning status: ${engine.state.status}`,
+      { details: { taskId, status: engine.state.status } },
+    );
   }
 
   if (!engine.state.planMode?.isPlanReady) {
-    throw new Error("Plan is not ready yet. Wait for the AI to finish generating the plan.");
+    throw new TaskOperationError(
+      "plan_not_ready",
+      "Plan is not ready yet. Wait for the AI to finish generating the plan.",
+      { details: { taskId } },
+    );
   }
 
   await engine.waitForTaskIdle();
@@ -121,9 +134,9 @@ export async function acceptPlanImpl(
   );
 
   if (!syncResult.success) {
-    const errorMsg = syncResult.error ?? "Accepted plan could not be synced with the base branch";
+    const errorMsg = syncResult.error.message;
     await failAcceptedPlanExecutionStart(taskId, engine, errorMsg);
-    throw new Error(errorMsg);
+    throw syncResult.error;
   }
 
   if (syncResult.syncStatus !== "conflicts_being_resolved") {
@@ -156,7 +169,11 @@ async function beginAcceptedPlanExecution(
 ): Promise<void> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
-    throw new Error(`Task plan mode is not running: ${taskId}`);
+    throw new TaskOperationError(
+      "task_not_running",
+      "Task plan mode is not running",
+      { details: { taskId } },
+    );
   }
 
   await engine.waitForTaskIdle();

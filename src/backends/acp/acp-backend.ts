@@ -51,8 +51,14 @@ import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import {
   sanitizeSpawnArgsForLogging,
   getProcessExitHint,
-  isTransientSshAuthenticationFailure,
 } from "./process-utils";
+import {
+  AcpError,
+  createAcpProcessError,
+  createAcpRpcError,
+  getAcpErrorMessage,
+  isAcpErrorCode,
+} from "./errors";
 
 const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
 const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
@@ -225,9 +231,16 @@ export class AcpBackend implements Backend {
         }
         this.pendingRequests.clear();
 
-        if (!isTransientSshAuthenticationFailure(error) || attempt >= maxAttempts) {
+        const failure = error instanceof AcpError
+          ? error
+          : new AcpError(
+              "acp_process_failed",
+              `Failed to initialize ACP process (${command}): ${getAcpErrorMessage(error)}`,
+              { cause: error },
+            );
+        if (failure.code !== "acp_ssh_authentication_failed" || attempt >= maxAttempts) {
           await this.disconnect();
-          throw new Error(`Failed to initialize ACP process (${command}): ${String(error)}`);
+          throw failure;
         }
 
         log.warn("[AcpBackend] Retrying ACP SSH initialization after transient auth failure", {
@@ -263,7 +276,7 @@ export class AcpBackend implements Backend {
 
     this.abortAllSubscriptions();
 
-    this.rejectPendingRequests("Disconnected");
+    this.rejectPendingRequests(new AcpError("acp_process_failed", "Disconnected"));
 
     this.process = null;
 
@@ -356,7 +369,10 @@ export class AcpBackend implements Backend {
         parts.push(hint);
       }
       const reason = parts.join(": ");
-      this.rejectPendingRequests(reason);
+      this.rejectPendingRequests(createAcpProcessError(reason, {
+        command,
+        exitCode,
+      }));
     });
   }
 
@@ -367,10 +383,10 @@ export class AcpBackend implements Backend {
     }
   }
 
-  private rejectPendingRequests(reason: string): void {
+  private rejectPendingRequests(error: Error): void {
     for (const pending of this.pendingRequests.values()) {
       clearTimeout(pending.timeout);
-      pending.reject(new Error(reason));
+      pending.reject(error);
     }
     this.pendingRequests.clear();
   }
@@ -606,8 +622,7 @@ export class AcpBackend implements Backend {
       this.pendingRequests.delete(message.id);
 
       if (message.error) {
-        const errMessage = message.error.message ?? JSON.stringify(message.error);
-        pending.reject(new Error(errMessage));
+        pending.reject(createAcpRpcError(message.error));
         return;
       }
 
@@ -1084,7 +1099,11 @@ export class AcpBackend implements Backend {
     return await new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`ACP request timed out for method '${method}'`));
+        reject(new AcpError(
+          "acp_request_timed_out",
+          `ACP request timed out for method '${method}'`,
+          { details: { method } },
+        ));
       }, timeoutMs);
 
       this.pendingRequests.set(id, {
@@ -1276,11 +1295,10 @@ export class AcpBackend implements Backend {
     try {
       await this.sendRpcRequest("session/delete", { sessionId }, 5_000);
     } catch (error) {
-      const message = String(error);
-      if (!message.includes("Method not found") && !message.includes("-32601")) {
+      if (!isAcpErrorCode(error, "acp_method_not_found")) {
         log.debug("[AcpBackend] Failed to delete temporary discovery session", {
           sessionId,
-          error: message,
+          error: getAcpErrorMessage(error),
         });
       }
     }
@@ -1694,12 +1712,6 @@ export class AcpBackend implements Backend {
         events,
       };
     } catch (error) {
-      const message = String(error);
-      if (message.toLowerCase().includes("not found")) {
-        throw new Error(`Session ${options.sessionId} not found`, {
-          cause: error instanceof Error ? error : undefined,
-        });
-      }
       throw error;
     } finally {
       this.removeReplaySubscriber(options.sessionId, capture);
@@ -1719,8 +1731,7 @@ export class AcpBackend implements Backend {
     try {
       await this.sendRpcRequest("session/delete", { sessionId: id });
     } catch (error) {
-      const message = String(error);
-      if (!message.includes("Method not found") && !message.includes("-32601")) {
+      if (!isAcpErrorCode(error, "acp_method_not_found")) {
         throw error;
       }
     }
@@ -1911,13 +1922,13 @@ export class AcpBackend implements Backend {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
           return;
         }
-        const message = String(error);
-        if (message.includes("ACP request timed out for method 'session/prompt'")) {
+        if (isAcpErrorCode(error, "acp_request_timed_out")) {
           log.warn("[AcpBackend] session/prompt request timed out; waiting for status-driven completion", {
             sessionId,
           });
           return;
         }
+        const message = getAcpErrorMessage(error);
         log.error("[AcpBackend] Async prompt failed", {
           sessionId,
           sequence,
@@ -1926,6 +1937,7 @@ export class AcpBackend implements Backend {
         this.emitSessionEvent(sessionId, {
           type: "error",
           message,
+          ...(error instanceof AcpError ? { code: error.code } : {}),
         });
         this.clearPromptState(sessionId);
       });
@@ -1970,8 +1982,7 @@ export class AcpBackend implements Backend {
         }
         return;
       } catch (error) {
-        const message = String(error);
-        if (!message.includes("Method not found") && !message.includes("-32601")) {
+        if (!isAcpErrorCode(error, "acp_method_not_found")) {
           throw error;
         }
       }
@@ -2099,8 +2110,7 @@ export class AcpBackend implements Backend {
         await this.sendRpcRequest(method, payload, 10_000);
         return;
       } catch (error) {
-        const message = String(error);
-        if (!message.includes("Method not found") && !message.includes("-32601")) {
+        if (!isAcpErrorCode(error, "acp_method_not_found")) {
           throw error;
         }
       }
@@ -2129,8 +2139,7 @@ export class AcpBackend implements Backend {
         await this.sendRpcRequest(method, payload, 10_000);
         return;
       } catch (error) {
-        const message = String(error);
-        if (!message.includes("Method not found") && !message.includes("-32601")) {
+        if (!isAcpErrorCode(error, "acp_method_not_found")) {
           throw error;
         }
       }
@@ -2489,10 +2498,20 @@ export class AcpBackend implements Backend {
         const errorMessage = typeof error?.data?.message === "string"
           ? error.data.message
           : "Unknown error";
-        log.error(`[AcpBackend:${subId}] translateEvent: session.error`, { sessionId, errorMessage });
+        const errorCode = typeof error?.code === "number" ? error.code : undefined;
+        const typedError = createAcpRpcError({
+          code: errorCode,
+          message: errorMessage,
+        });
+        log.error(`[AcpBackend:${subId}] translateEvent: session.error`, {
+          sessionId,
+          errorMessage,
+          errorCode: typedError.code,
+        });
         return {
           type: "error",
-          message: errorMessage,
+          message: typedError.message,
+          code: typedError.code,
         };
       }
 

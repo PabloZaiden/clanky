@@ -5,25 +5,45 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { createLogger } from "../core/logger";
 import { sshSessionManager } from "../core/ssh-session-manager";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { CreateSshSessionRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:ssh-sessions");
 
 function mapSessionError(error: unknown): Response {
-  const message = String(error);
-  if (message.includes("not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (
-    message.includes("ssh transport")
-    || message.includes("dtach is not available")
-    || message.includes("dtach is not installed")
-  ) {
-    return errorResponse("invalid_session_configuration", message, 400);
-  }
-  return errorResponse("ssh_session_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      workspace_not_found: {
+        error: "not_found",
+        message: "Workspace not found",
+        status: 404,
+      },
+      ssh_session_not_found: {
+        error: "not_found",
+        message: "SSH session not found",
+        status: 404,
+      },
+      ssh_transport_required: {
+        error: "invalid_session_configuration",
+        status: 400,
+      },
+      task_not_found: {
+        error: "not_found",
+        message: "Task not found",
+        status: 404,
+      },
+      task_working_directory_unavailable: {
+        error: "invalid_session_configuration",
+        status: 400,
+      },
+    },
+    fallback: {
+      error: "ssh_session_error",
+      message: "SSH session operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const sshSessionsRoutes = defineRoutes({

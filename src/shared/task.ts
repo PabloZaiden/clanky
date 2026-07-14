@@ -267,6 +267,8 @@ export interface PersistedToolCall extends ToolCallRecord {}
 export interface ConsecutiveErrorTracker {
   /** The last error message that was seen */
   lastErrorMessage: string;
+  /** Stable code for the last error, used for consecutive-error classification */
+  lastErrorCode?: string;
   /** How many times this error has occurred consecutively */
   count: number;
 }

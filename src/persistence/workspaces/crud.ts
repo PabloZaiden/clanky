@@ -132,27 +132,24 @@ export async function countWorkspaceTasks(id: string): Promise<number> {
  *
  * @returns true if deleted, false if not found or has tasks
  */
-export async function deleteWorkspace(id: string): Promise<{ success: boolean; reason?: string }> {
+export async function deleteWorkspace(id: string): Promise<boolean> {
   log.debug("Deleting workspace", { id });
   const db = getDatabase();
 
   const workspace = await getWorkspace(id);
   if (!workspace) {
     log.debug("Workspace not found for deletion", { id });
-    return { success: false, reason: "Workspace not found" };
+    return false;
   }
 
   const taskCount = await countWorkspaceTasks(id);
 
   if (taskCount > 0) {
     log.warn("Cannot delete workspace with tasks", { id, taskCount });
-    return {
-      success: false,
-      reason: `Workspace has ${taskCount} task(s). Delete all tasks first.`,
-    };
+    return false;
   }
 
   db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
   log.info("Workspace deleted", { id, name: workspace.name });
-  return { success: true };
+  return true;
 }

@@ -10,7 +10,9 @@ import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {
   requireWorkspace,
+  domainErrorResponse,
   errorResponse,
+  internalErrorResponse,
 } from "../helpers";
 import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
@@ -19,11 +21,25 @@ import { SensitiveQuerySchema } from "../route-schemas";
 const log = createLogger("api:workspaces");
 
 function mapDeleteWorkspaceError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("credential token")) {
-    return errorResponse("invalid_credential_token", message, 400);
-  }
-  return errorResponse("delete_failed", `Failed to delete workspace: ${message}`, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      invalid_credential_token: {
+        status: 400,
+      },
+      workspace_delete_metadata_invalid: {
+        status: 400,
+      },
+      workspace_delete_remote_failed: {
+        status: 500,
+        message: "Failed to delete the auto-provisioned workspace directory",
+      },
+    },
+    fallback: {
+      error: "delete_failed",
+      message: "Failed to delete workspace",
+      status: 500,
+    },
+  });
 }
 
 export const crudRoutes = defineRoutes({
@@ -46,7 +62,11 @@ export const crudRoutes = defineRoutes({
         return Response.json(includeSensitive ? workspaces : workspaces.map(sanitizeWorkspace));
       } catch (error) {
         log.error("Failed to list workspaces:", String(error));
-        return errorResponse("list_failed", `Failed to list workspaces: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "list_failed",
+          message: "Failed to list workspaces",
+          status: 500,
+        });
       }
     },
 
@@ -67,10 +87,34 @@ export const crudRoutes = defineRoutes({
         return Response.json(workspace, { status: 201 });
       } catch (error) {
         if (isDomainError(error)) {
-          return errorResponse(error.code, error.message);
+          return domainErrorResponse(error, {
+            mappings: {
+              validation_failed: {
+                status: 400,
+                message: "Failed to validate the workspace directory",
+              },
+              directory_not_found: {
+                status: 400,
+                message: "Directory does not exist on the remote server",
+              },
+              not_git_repo: {
+                status: 400,
+                message: "Directory must be a git repository",
+              },
+            },
+            fallback: {
+              error: "create_failed",
+              message: "Failed to create workspace",
+              status: 500,
+            },
+          });
         }
         log.error("Failed to create workspace:", String(error));
-        return errorResponse("create_failed", `Failed to create workspace: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "create_failed",
+          message: "Failed to create workspace",
+          status: 500,
+        });
       }
     },
   },
@@ -96,7 +140,11 @@ export const crudRoutes = defineRoutes({
         return Response.json(shouldIncludeSensitiveData(req) ? result : sanitizeWorkspace(result));
       } catch (error) {
         log.error("Failed to get workspace:", String(error));
-        return errorResponse("get_failed", `Failed to get workspace: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "get_failed",
+          message: "Failed to get workspace",
+          status: 500,
+        });
       }
     },
 
@@ -133,7 +181,11 @@ export const crudRoutes = defineRoutes({
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
         log.error("Failed to update workspace:", String(error));
-        return errorResponse("update_failed", `Failed to update workspace: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "update_failed",
+          message: "Failed to update workspace",
+          status: 500,
+        });
       }
     },
 
@@ -152,11 +204,31 @@ export const crudRoutes = defineRoutes({
       try {
         const result = await workspaceManager.deleteWorkspace(id, validation.data);
         if (!result.success) {
-          log.warn("DELETE /api/workspaces/:id - Failed", { workspaceId: id, reason: result.reason });
-          const reason = result.reason ?? "Delete failed";
-          const errorCode = reason === "Workspace not found" ? "workspace_not_found" : "delete_failed";
-          const status = reason === "Workspace not found" ? 404 : 400;
-          return errorResponse(errorCode, reason, status);
+          log.warn("DELETE /api/workspaces/:id - Failed", {
+            workspaceId: id,
+            errorCode: result.error.code,
+          });
+          return domainErrorResponse(result.error, {
+            mappings: {
+              workspace_not_found: {
+                status: 404,
+              },
+              workspace_has_tasks: {
+                status: 400,
+              },
+              workspace_deletion_in_progress: {
+                status: 409,
+              },
+              workspace_not_auto_provisioned: {
+                status: 400,
+              },
+            },
+            fallback: {
+              error: "delete_failed",
+              message: "Failed to delete workspace",
+              status: 500,
+            },
+          });
         }
         log.info(`Deleted workspace: ${id}`);
         return Response.json({ success: true });

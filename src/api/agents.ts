@@ -8,7 +8,7 @@ import { AgentRunsQuerySchema, CreateAgentRequestSchema, DeleteAgentRunsRequestS
 import { agentManager } from "../core/agent-manager";
 import { createLogger } from "../core/logger";
 import { isModelEnabled } from "../core/model-discovery";
-import { errorResponse, requireWorkspace, successResponse } from "./helpers";
+import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 
 const log = createLogger("api:agents");
@@ -94,7 +94,11 @@ export const agentsRoutes = defineRoutes({
           workspaceId: body.workspaceId,
           error: String(error),
         });
-        return errorResponse("create_agent_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "create_agent_failed",
+          message: "Failed to create agent",
+          status: 500,
+        });
       }
     },
   },
@@ -140,7 +144,11 @@ export const agentsRoutes = defineRoutes({
           agentId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("update_agent_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "update_agent_failed",
+          message: "Failed to update agent",
+          status: 500,
+        });
       }
     },
 
@@ -156,7 +164,11 @@ export const agentsRoutes = defineRoutes({
           agentId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("delete_agent_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "delete_agent_failed",
+          message: "Failed to delete agent",
+          status: 500,
+        });
       }
     },
   },
@@ -175,18 +187,31 @@ export const agentsRoutes = defineRoutes({
         const run = await agentManager.runNow(ctx.params["id"]!, validation.data.attachments);
         return Response.json(run, { status: 202 });
       } catch (error) {
-        const message = String(error);
-        if (message.includes("not found")) {
-          return errorResponse("agent_not_found", "Agent not found", 404);
-        }
-        if (message.includes("active run")) {
-          return errorResponse("agent_already_running", message, 409);
-        }
-        log.error("Failed to run agent", {
-          agentId: ctx.params["id"]!,
-          error: message,
+        const response = domainErrorResponse(error, {
+          mappings: {
+            agent_not_found: {
+              error: "agent_not_found",
+              message: "Agent not found",
+              status: 404,
+            },
+            agent_already_running: {
+              error: "agent_already_running",
+              status: 409,
+            },
+          },
+          fallback: {
+            error: "run_agent_failed",
+            message: "Failed to run agent",
+            status: 500,
+          },
         });
-        return errorResponse("run_agent_failed", message, 500);
+        if (response.status >= 500) {
+          log.error("Failed to run agent", {
+            agentId: ctx.params["id"]!,
+            error: String(error),
+          });
+        }
+        return response;
       }
     },
   },
@@ -203,15 +228,31 @@ export const agentsRoutes = defineRoutes({
         }
         return Response.json(run);
       } catch (error) {
-        const message = String(error);
-        if (message.includes("cannot be interrupted yet")) {
-          return errorResponse("agent_run_not_ready", message, 409);
-        }
-        log.error("Failed to interrupt agent", {
-          agentId: ctx.params["id"]!,
-          error: message,
+        const response = domainErrorResponse(error, {
+          mappings: {
+            agent_run_not_ready: {
+              error: "agent_run_not_ready",
+              status: 409,
+            },
+            agent_chat_not_found: {
+              error: "agent_run_not_ready",
+              message: "Agent run chat is no longer available",
+              status: 409,
+            },
+          },
+          fallback: {
+            error: "interrupt_agent_failed",
+            message: "Failed to interrupt agent",
+            status: 500,
+          },
         });
-        return errorResponse("interrupt_agent_failed", message, 500);
+        if (response.status >= 500) {
+          log.error("Failed to interrupt agent", {
+            agentId: ctx.params["id"]!,
+            error: String(error),
+          });
+        }
+        return response;
       }
     },
   },
@@ -232,7 +273,11 @@ export const agentsRoutes = defineRoutes({
           agentId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("pause_agent_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "pause_agent_failed",
+          message: "Failed to pause agent",
+          status: 500,
+        });
       }
     },
   },
@@ -253,7 +298,11 @@ export const agentsRoutes = defineRoutes({
           agentId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("resume_agent_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "resume_agent_failed",
+          message: "Failed to resume agent",
+          status: 500,
+        });
       }
     },
   },

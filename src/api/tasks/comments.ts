@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse } from "../helpers";
+import { errorResponse, internalErrorResponse } from "../helpers";
 import type { GetCommentsResponse } from "@/contracts";
 
 const log = createLogger("api:tasks");
@@ -46,7 +46,11 @@ export const tasksCommentsRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("get_comments_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "get_comments_failed",
+          message: "Failed to load task comments",
+          status: 500,
+        });
       }
     },
   },

@@ -495,6 +495,8 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 - **Use the Toast system** (`useToast()` hook, `ToastProvider`) to surface errors to users. Silent `console.error` is insufficient for user-facing operations.
 - **Chain error causes** — when re-throwing or wrapping errors, use `new Error("context message", { cause: originalError })` to preserve the stack trace.
 - **Use structured error classes** for domain errors (e.g., `GitCommandError` with command, stderr, exit code fields).
+- **Classify domain failures by stable typed codes, not human-readable messages** — use `DomainError` subclasses or discriminated result failures with structured details; treat `message` as presentation text only and preserve the original cause when wrapping.
+- **Map typed failures at boundaries** — API and WebSocket handlers must translate known codes to intentional safe responses and use a fixed generic 5xx fallback for unknown failures; browser recovery and retry logic must branch on the public code/status.
 
 ### Logging Severity
 

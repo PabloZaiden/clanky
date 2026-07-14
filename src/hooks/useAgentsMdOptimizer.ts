@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OptimizationAnalysis, OptimizationPreview } from "../core/agents-md-optimizer";
 import { analyzeAgentsMd } from "../core/agents-md-optimizer";
+import { isApiErrorCode, parseApiError } from "../lib/api-error";
 import { log } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 
@@ -49,7 +50,18 @@ export interface UseAgentsMdOptimizerResult {
  * Connection failures from getCommandExecutorAsync() can produce verbose error
  * messages -- this simplifies them for display.
  */
-function formatOptimizerError(rawMessage: string): string {
+function formatOptimizerError(error: unknown): string {
+  if (isApiErrorCode(error, "workspace_not_found")) {
+    return "Workspace not found. It may have been deleted.";
+  }
+  if (isApiErrorCode(error, "read_failed")) {
+    return "Failed to read AGENTS.md.";
+  }
+  if (isApiErrorCode(error, "write_failed")) {
+    return "Failed to update AGENTS.md.";
+  }
+
+  const rawMessage = error instanceof Error ? error.message : String(error);
   const lower = rawMessage.toLowerCase();
   if (lower.includes("econnrefused") || lower.includes("connect error") || lower.includes("connection refused")) {
     return "Could not connect to the server. Check your connection settings and try again.";
@@ -92,8 +104,7 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
       }
       const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md`);
       if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to fetch AGENTS.md status");
+        throw await parseApiError(response, "Failed to fetch AGENTS.md status");
       }
       const data = (await response.json()) as AgentsMdStatus;
       if (isMountedRef.current) {
@@ -101,9 +112,8 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
       }
       return data;
     } catch (err) {
-      const rawMessage = String(err);
       // Provide user-friendly messages for common connection errors
-      const message = formatOptimizerError(rawMessage);
+      const message = formatOptimizerError(err);
       if (isMountedRef.current) {
         setError(message);
       }
@@ -126,8 +136,7 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         method: "POST",
       });
       if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to preview optimization");
+        throw await parseApiError(response, "Failed to preview optimization");
       }
       const data = (await response.json()) as OptimizationPreview;
       if (isMountedRef.current) {
@@ -141,9 +150,8 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
       }
       return data;
     } catch (err) {
-      const rawMessage = String(err);
       // Apply the same user-friendly formatting as fetchStatus and optimize
-      const message = formatOptimizerError(rawMessage);
+      const message = formatOptimizerError(err);
       if (isMountedRef.current) {
         setError(message);
       }
@@ -166,8 +174,7 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         method: "POST",
       });
       if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to optimize AGENTS.md");
+        throw await parseApiError(response, "Failed to optimize AGENTS.md");
       }
       const data = (await response.json()) as OptimizeResult;
       // Update local status after successful optimization
@@ -183,8 +190,7 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
       }
       return data;
     } catch (err) {
-      const rawMessage = String(err);
-      const message = formatOptimizerError(rawMessage);
+      const message = formatOptimizerError(err);
       if (isMountedRef.current) {
         setError(message);
       }

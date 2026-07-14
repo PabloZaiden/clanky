@@ -3,6 +3,7 @@
  */
 
 import { appFetch, appPath } from "../lib/public-path";
+import { isApiErrorCode } from "../lib/api-error";
 import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
@@ -108,10 +109,9 @@ export async function requireFileExplorerServerCredentialToken(serverId: string)
       return credentialToken;
     }
   } catch (error) {
-    const errorCode = (error as Error & { code?: string }).code;
     if (
-      errorCode === "invalid_credential_token"
-      || errorCode === "invalid_encrypted_credential"
+      isApiErrorCode(error, "invalid_credential_token")
+      || isApiErrorCode(error, "invalid_encrypted_credential")
     ) {
       throw createInvalidSshCredentialError();
     }

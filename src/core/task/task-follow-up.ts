@@ -13,6 +13,7 @@ import { assertValidTransition } from "../task-state-machine";
 import { canReuseExistingBranch, jumpstartTaskFromEngine } from "./task-jumpstart";
 import { getTaskWorkingDirectory } from "./task-types";
 import { startStatePersistenceImpl } from "./task-state-persistence";
+import { taskFailure } from "./task-errors";
 
 export async function sendFollowUpImpl(
   ctx: TaskCtx,
@@ -21,15 +22,18 @@ export async function sendFollowUpImpl(
 ): Promise<SendFollowUpResult> {
   const message = options.message.trim();
   if (message === "") {
-    return { success: false, error: "Follow-up message cannot be empty" };
+    return taskFailure("invalid_task_input", "Follow-up message cannot be empty");
   }
   if (options.model && (!options.model.providerID || !options.model.modelID)) {
-    return { success: false, error: "Invalid model config: providerID and modelID are required" };
+    return taskFailure(
+      "invalid_model_config",
+      "Invalid model config: providerID and modelID are required",
+    );
   }
 
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const promptMode = options.promptMode ?? "task_context";
@@ -72,24 +76,44 @@ async function startPlainChatFollowUp(
   const taskId = task.config.id;
   const activeEngine = ctx.engines.get(taskId);
   if (activeEngine && isActiveSingleTurnStatus(activeEngine.state.status)) {
-    return { success: false, error: `Task is already active (status: ${activeEngine.state.status})` };
+    return taskFailure(
+      "task_already_running",
+      `Task is already active (status: ${activeEngine.state.status})`,
+      { details: { taskId, status: activeEngine.state.status } },
+    );
   }
 
   if (task.state.planMode?.active || task.state.status === "planning") {
-    return { success: false, error: "Planning tasks must receive feedback through plan feedback" };
+    return taskFailure(
+      "task_not_planning",
+      "Planning tasks must receive feedback through plan feedback",
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (task.state.status !== "completed" && task.state.status !== "pushed") {
-    return { success: false, error: `Task cannot accept a plain chat follow-up from status: ${task.state.status}` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task cannot accept a plain chat follow-up from status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (!(await canReuseExistingBranch(task))) {
-    return { success: false, error: "Cannot resume conversation: the task branch or worktree is no longer available" };
+    return taskFailure(
+      "task_branch_missing",
+      "Cannot resume conversation: the task branch or worktree is no longer available",
+      { details: { taskId } },
+    );
   }
 
   const workingDirectory = getTaskWorkingDirectory(task);
   if (!workingDirectory) {
-    return { success: false, error: "Task is configured to use a worktree, but no worktree path is available - cannot resume conversation" };
+    return taskFailure(
+      "task_worktree_missing",
+      "Task is configured to use a worktree, but no worktree path is available - cannot resume conversation",
+      { details: { taskId } },
+    );
   }
 
   const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workingDirectory);
@@ -118,7 +142,11 @@ async function startPlainChatFollowUp(
     if (ctx.engines.get(taskId) === engine) {
       ctx.engines.delete(taskId);
     }
-    return { success: false, error: `Failed to reconnect task session: ${String(error)}` };
+    return taskFailure(
+      "task_session_reconnect_failed",
+      "Failed to reconnect task session",
+      { cause: error, details: { taskId } },
+    );
   }
   if (previousSessionId && engine.state.session?.id && engine.state.session.id !== previousSessionId) {
     log.warn("Previous task session expired; plain chat follow-up is starting with a fresh session", {

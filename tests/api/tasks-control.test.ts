@@ -1035,6 +1035,9 @@ describe("Tasks Control API Integration", () => {
         });
 
         expect(reviewCycleResult.success).toBe(true);
+        if (!reviewCycleResult.success) {
+          throw reviewCycleResult.error;
+        }
         expect(reviewCycleResult.reviewCycle).toBe(1);
 
         const commentsResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/comments`);

@@ -2,6 +2,7 @@ import type { Agent, AgentRun, AgentRunTrigger } from "@/shared/agent";
 import type { ChatEvent } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
+import { DomainError } from "./domain-error";
 import { chatManager } from "./chat-manager";
 import {
   loadAgent,
@@ -116,11 +117,19 @@ export class AgentRunner {
 
   async interruptRun(run: AgentRun, reason = "Agent run interrupted"): Promise<AgentRun> {
     if (!run.chatId) {
-      throw new Error(`Agent run ${run.id} cannot be interrupted because its chat has not been created yet`);
+      throw new DomainError(
+        "agent_run_not_ready",
+        "Agent run cannot be interrupted because its chat has not been created yet",
+        { details: { runId: run.id } },
+      );
     }
     const chat = await chatManager.interruptChat(run.chatId, reason);
     if (!chat) {
-      throw new Error(`Agent run ${run.id} cannot be interrupted because chat ${run.chatId} was not found`);
+      throw new DomainError(
+        "agent_chat_not_found",
+        "Agent run chat was not found",
+        { details: { runId: run.id, chatId: run.chatId } },
+      );
     }
     const now = createTimestamp();
     const updated: AgentRun = {

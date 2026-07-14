@@ -240,7 +240,7 @@ export type AgentEvent =
   | { type: "reasoning.delta"; content: string }
   | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
   | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; code?: string }
   | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
   | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }
   | { type: "session.status"; sessionId: string; status: "idle" | "busy" | "retry"; attempt?: number; message?: string };

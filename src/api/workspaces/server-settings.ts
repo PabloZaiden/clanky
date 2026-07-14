@@ -9,6 +9,7 @@ import { parseAndValidate } from "../validation";
 import {
   requireWorkspace,
   errorResponse,
+  internalErrorResponse,
 } from "../helpers";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import { ServerSettingsSchema, TestConnectionRequestSchema } from "@/contracts/schemas";
@@ -39,7 +40,11 @@ export const serverSettingsRoutes = defineRoutes({
           );
         } catch (error) {
           log.error("Failed to get workspace server settings:", String(error));
-          return errorResponse("get_settings_failed", `Failed to get server settings: ${String(error)}`, 500);
+          return internalErrorResponse(error, {
+            error: "get_settings_failed",
+            message: "Failed to get server settings",
+            status: 500,
+          });
       }
     },
 
@@ -77,7 +82,11 @@ export const serverSettingsRoutes = defineRoutes({
         );
       } catch (error) {
         log.error("Failed to update workspace server settings:", String(error));
-        return errorResponse("update_settings_failed", `Failed to update server settings: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "update_settings_failed",
+          message: "Failed to update server settings",
+          status: 500,
+        });
       }
     },
   },
@@ -99,7 +108,11 @@ export const serverSettingsRoutes = defineRoutes({
         return Response.json(status);
       } catch (error) {
         log.error("Failed to get workspace connection status:", String(error));
-        return errorResponse("status_failed", `Failed to get connection status: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "status_failed",
+          message: "Failed to get connection status",
+          status: 500,
+        });
       }
     },
   },
@@ -155,7 +168,11 @@ export const serverSettingsRoutes = defineRoutes({
         return Response.json(result);
       } catch (error) {
         log.error("Failed to test workspace connection:", String(error));
-        return errorResponse("test_failed", `Failed to test connection: ${String(error)}`, 500);
+        return internalErrorResponse(error, {
+          error: "test_failed",
+          message: "Failed to test connection",
+          status: 500,
+        });
       }
     },
   },
@@ -183,10 +200,11 @@ export const serverSettingsRoutes = defineRoutes({
         return Response.json(testResult);
       } catch (error) {
         log.error("Failed to test connection:", String(error));
-        return Response.json(
-          { success: false, error: String(error) },
-          { status: 500 },
-        );
+        return internalErrorResponse(error, {
+          error: "test_failed",
+          message: "Failed to test connection",
+          status: 500,
+        });
       }
     },
   },

@@ -6,6 +6,7 @@ import { DEFAULT_SSH_CONNECTION_MODE, normalizeSshSessionUseTmux, normalizeSshCo
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
 import { requirePersistenceUserId } from "./ownership";
+import { isSqliteUniqueConstraintError, uniqueConstraintError } from "./errors";
 
 const log = createLogger("persistence:ssh-sessions");
 
@@ -101,12 +102,23 @@ export async function saveSshSession(session: SshSession): Promise<void> {
     .map((column) => `${column} = excluded.${column}`)
     .join(", ");
 
-  db.run(
-    `INSERT INTO ssh_sessions (${columns.join(", ")}) VALUES (${placeholders})
-     ON CONFLICT(id) DO UPDATE SET ${updateClause}
-     WHERE ssh_sessions.user_id = excluded.user_id`,
-    values,
-  );
+  try {
+    db.run(
+      `INSERT INTO ssh_sessions (${columns.join(", ")}) VALUES (${placeholders})
+       ON CONFLICT(id) DO UPDATE SET ${updateClause}
+       WHERE ssh_sessions.user_id = excluded.user_id`,
+      values,
+    );
+  } catch (error) {
+    if (isSqliteUniqueConstraintError(error)) {
+      throw uniqueConstraintError(
+        "SSH session task uniqueness constraint violated",
+        { table: "ssh_sessions", constraint: "task_id" },
+        error,
+      );
+    }
+    throw error;
+  }
   log.debug("Saved SSH session", {
     id: session.config.id,
     workspaceId: session.config.workspaceId,

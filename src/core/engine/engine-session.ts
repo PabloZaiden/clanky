@@ -5,7 +5,7 @@
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { LogLevel } from "@/shared/events";
 import type { AgentSession } from "../../backends/types";
-import { AcpBackend } from "../../backends/acp";
+import { AcpBackend, getAcpErrorMessage, isAcpErrorCode } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";
 import { log } from "../logger";
 import type { TaskBackend, IterationContext } from "./engine-types";
@@ -135,8 +135,8 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
           return;
         }
       } catch (error) {
-        const message = String(error);
-        if (isSessionNotFoundError(message)) {
+        if (isAcpErrorCode(error, "acp_session_not_found")) {
+          const message = getAcpErrorMessage(error);
           ctx.emitLog("warn", "Persisted session lookup reported not found - creating a new session", {
             sessionId: existingSession.id,
             error: message,
@@ -146,6 +146,7 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
           return;
         }
 
+        const message = getAcpErrorMessage(error);
         ctx.emitLog("warn", "Failed to verify persisted session - reusing stored session id", {
           sessionId: existingSession.id,
           error: message,
@@ -279,14 +280,6 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
   }
 }
 
-export function isSessionNotFoundError(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    (normalized.includes("session") && normalized.includes("not found")) ||
-    normalized.includes("unknown session")
-  );
-}
-
 export function resetIterationContextForRetry(ctx: IterationContext): void {
   ctx.responseContent = "";
   ctx.reasoningContent = "";
@@ -294,6 +287,7 @@ export function resetIterationContextForRetry(ctx: IterationContext): void {
   ctx.toolCallCount = 0;
   ctx.outcome = "continue";
   ctx.error = undefined;
+  ctx.errorCode = undefined;
   ctx.currentMessageId = null;
   ctx.toolCalls.clear();
   ctx.currentResponseLogId = null;

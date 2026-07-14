@@ -83,17 +83,6 @@ function upsertById<T extends { id: string; timestamp?: string }>(items: T[], it
   });
 }
 
-function isCancellationMessage(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return normalized.includes("request cancelled")
-    || normalized.includes("operation cancelled by user")
-    || normalized.includes("prompt cancelled")
-    || normalized.includes("session cancelled")
-    || normalized.includes("aborterror")
-    || normalized.includes("useraborterror")
-    || normalized.includes("-32800");
-}
-
 function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
   const lastActivityAt = chat.state.lastActivityAt;
   return typeof lastActivityAt === "string" && lastActivityAt.localeCompare(timestamp) > 0;
@@ -345,7 +334,7 @@ export function ChatDetails({
         case "chat.error":
           if (
             isStaleTerminalEvent(current, event.timestamp)
-            && isCancellationMessage(event.message)
+            && event.code === "acp_request_cancelled"
           ) {
             return current;
           }

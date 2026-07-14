@@ -12,7 +12,7 @@ import {
   getModelVariantsForWorkspace,
   getModelsForWorkspace,
 } from "../../core/model-discovery";
-import { errorResponse, requireWorkspace } from "../helpers";
+import { errorResponse, internalErrorResponse, requireWorkspace } from "../helpers";
 
 const log = createLogger("api:models");
 
@@ -65,7 +65,11 @@ export const modelsRoutes = defineRoutes({
           modelID,
           error: String(error),
         });
-        return errorResponse("model_variants_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "model_variants_failed",
+          message: "Failed to discover model variants",
+          status: 500,
+        });
       }
     },
   },
@@ -106,7 +110,11 @@ export const modelsRoutes = defineRoutes({
           workspaceId,
           error: String(error),
         });
-        return errorResponse("models_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "models_failed",
+          message: "Failed to discover models",
+          status: 500,
+        });
       }
     },
   },

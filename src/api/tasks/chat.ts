@@ -2,7 +2,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse } from "../helpers";
+import { errorResponse, internalErrorResponse } from "../helpers";
 
 const log = createLogger("api:tasks:chat");
 
@@ -39,7 +39,11 @@ export const tasksChatRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("task_chat_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "task_chat_failed",
+          message: "Failed to create the task chat",
+          status: 500,
+        });
       }
     },
   },

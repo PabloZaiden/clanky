@@ -6,7 +6,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { backendManager } from "../../core/backend-manager";
 import { GitCommandError, GitService } from "../../core/git";
 import { createLogger } from "../../core/logger";
-import { errorResponse, requireWorkspace, successResponse } from "../helpers";
+import { errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 
 const log = createLogger("api:workspace-maintenance");
 
@@ -94,7 +94,11 @@ export const workspaceMaintenanceRoutes = defineRoutes({
           directory: workspaceResult.directory,
           error: String(error),
         });
-        return errorResponse("git_pull_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "git_pull_failed",
+          message: "Failed to pull the latest workspace changes",
+          status: 500,
+        });
       }
     },
   },

@@ -9,6 +9,7 @@ import { join } from "path";
 import { mkdir, rm, unlink } from "fs/promises";
 import { runMigrations } from "./migrations";
 import { createLogger } from "../core/logger";
+import { DatabaseNotInitializedError } from "./errors";
 
 const log = createLogger("database");
 
@@ -39,7 +40,7 @@ function getSshServerKeyStorePath(): string {
  */
 export function getDatabase(): Database {
   if (!db) {
-    throw new Error("Database not initialized. Call initializeDatabase() first.");
+    throw new DatabaseNotInitializedError();
   }
   return db;
 }

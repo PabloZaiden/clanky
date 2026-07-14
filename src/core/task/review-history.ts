@@ -1,18 +1,23 @@
 import type { TaskCtx } from "./context";
 import { loadTask } from "../../persistence/tasks";
 import { getReviewComments as getReviewCommentsFromDb } from "../../persistence/review-comments";
+import { taskFailure, type TaskResult } from "./task-errors";
 
 export async function getReviewHistoryImpl(
   _ctx: TaskCtx,
   taskId: string
-): Promise<{ success: boolean; error?: string; history?: {
-  addressable: boolean;
-  completionAction: "local" | "push";
-  reviewCycles: number;
-} }> {
+): Promise<
+  TaskResult<{
+    history?: {
+      addressable: boolean;
+      completionAction: "local" | "push";
+      reviewCycles: number;
+    };
+  }>
+> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (!task.state.reviewMode) {

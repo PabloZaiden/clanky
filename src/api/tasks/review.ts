@@ -10,9 +10,11 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
-import { errorResponse, successResponse } from "../helpers";
+import { domainErrorResponse, successResponse } from "../helpers";
 import type { AddressCommentsResponse, ReviewHistoryResponse } from "@/contracts";
 import { AddressCommentsRequestSchema } from "@/contracts/schemas";
+import { isTaskOperationError } from "../../core/task/task-errors";
+import { taskErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -46,21 +48,20 @@ export const tasksReviewRoutes = defineRoutes({
         const result = await taskManager.addressReviewComments(ctx.params["id"]!, body.comments, body.attachments);
 
         if (!result.success) {
-          // Map error messages to status codes
-          const errorMsg = result.error ?? "Unknown error";
-          let status = 400;
-
-          if (errorMsg.includes("not found")) {
-            status = 404;
-          } else if (errorMsg.includes("already running")) {
-            status = 409;
-          }
+          const mappedResponse = taskErrorResponse(result.error, {
+            error: "address_comments_failed",
+            message: "Failed to address review comments",
+            status: 400,
+          });
 
           const responseBody: AddressCommentsResponse = {
             success: false,
-            error: errorMsg,
+            error: result.error.message,
           };
-          return Response.json(responseBody, { status });
+          return Response.json(
+            { ...responseBody, code: result.error.code },
+            { status: mappedResponse.status },
+          );
         }
 
         const responseBody: AddressCommentsResponse = {
@@ -75,9 +76,16 @@ export const tasksReviewRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "address_comments_failed",
+            message: "Failed to address review comments",
+            status: 500,
+          });
+        }
         const responseBody: AddressCommentsResponse = {
           success: false,
-          error: String(error),
+          error: "Failed to address review comments",
         };
         return Response.json(responseBody, { status: 500 });
       }
@@ -101,11 +109,19 @@ export const tasksReviewRoutes = defineRoutes({
         const result = await taskManager.getReviewHistory(ctx.params["id"]!);
 
         if (!result.success) {
+          const mappedResponse = taskErrorResponse(result.error, {
+            error: "get_review_history_failed",
+            message: "Failed to get task review history",
+            status: 400,
+          });
           const responseBody: ReviewHistoryResponse = {
             success: false,
-            error: result.error!,
+            error: result.error.message,
           };
-          return Response.json(responseBody, { status: result.error === "Task not found" ? 404 : 400 });
+          return Response.json(
+            { ...responseBody, code: result.error.code },
+            { status: mappedResponse.status },
+          );
         }
 
         const responseBody: ReviewHistoryResponse = {
@@ -118,7 +134,20 @@ export const tasksReviewRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("get_review_history_failed", String(error), 500);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "get_review_history_failed",
+            message: "Failed to get task review history",
+            status: 500,
+          });
+        }
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "get_review_history_failed",
+            message: "Failed to get task review history",
+            status: 500,
+          },
+        });
       }
     },
   },
@@ -131,10 +160,11 @@ export const tasksReviewRoutes = defineRoutes({
       try {
         const result = await taskManager.startAutomaticPrFlow(ctx.params["id"]!);
         if (!result.success) {
-          if (result.error === "Task not found") {
-            return errorResponse("not_found", result.error, 404);
-          }
-          return errorResponse("automatic_pr_flow_start_failed", result.error ?? "Unknown error", 400);
+          return taskErrorResponse(result.error, {
+            error: "automatic_pr_flow_start_failed",
+            message: "Failed to start automatic PR flow",
+            status: 400,
+          });
         }
         return successResponse({ automaticPrFlow: result.automaticPrFlow });
       } catch (error) {
@@ -142,7 +172,20 @@ export const tasksReviewRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("automatic_pr_flow_start_failed", String(error), 500);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "automatic_pr_flow_start_failed",
+            message: "Failed to start automatic PR flow",
+            status: 500,
+          });
+        }
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "automatic_pr_flow_start_failed",
+            message: "Failed to start automatic PR flow",
+            status: 500,
+          },
+        });
       }
     },
   },
@@ -155,10 +198,11 @@ export const tasksReviewRoutes = defineRoutes({
       try {
         const result = await taskManager.stopAutomaticPrFlow(ctx.params["id"]!);
         if (!result.success) {
-          if (result.error === "Task not found") {
-            return errorResponse("not_found", result.error, 404);
-          }
-          return errorResponse("automatic_pr_flow_stop_failed", result.error ?? "Unknown error", 400);
+          return taskErrorResponse(result.error, {
+            error: "automatic_pr_flow_stop_failed",
+            message: "Failed to stop automatic PR flow",
+            status: 400,
+          });
         }
         return successResponse({ automaticPrFlow: result.automaticPrFlow });
       } catch (error) {
@@ -166,7 +210,20 @@ export const tasksReviewRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("automatic_pr_flow_stop_failed", String(error), 500);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "automatic_pr_flow_stop_failed",
+            message: "Failed to stop automatic PR flow",
+            status: 500,
+          });
+        }
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "automatic_pr_flow_stop_failed",
+            message: "Failed to stop automatic PR flow",
+            status: 500,
+          },
+        });
       }
     },
   },
@@ -179,10 +236,11 @@ export const tasksReviewRoutes = defineRoutes({
       try {
         const result = await taskManager.enablePullRequestAutoMerge(ctx.params["id"]!);
         if (!result.success) {
-          if (result.error === "Task not found") {
-            return errorResponse("not_found", result.error, 404);
-          }
-          return errorResponse("pull_request_auto_merge_enable_failed", result.error ?? "Unknown error", 400);
+          return taskErrorResponse(result.error, {
+            error: "pull_request_auto_merge_enable_failed",
+            message: "Failed to enable pull request auto-merge",
+            status: 400,
+          });
         }
         return successResponse({ pullRequest: result.pullRequest });
       } catch (error) {
@@ -190,7 +248,20 @@ export const tasksReviewRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("pull_request_auto_merge_enable_failed", String(error), 500);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "pull_request_auto_merge_enable_failed",
+            message: "Failed to enable pull request auto-merge",
+            status: 500,
+          });
+        }
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "pull_request_auto_merge_enable_failed",
+            message: "Failed to enable pull request auto-merge",
+            status: 500,
+          },
+        });
       }
     },
   },

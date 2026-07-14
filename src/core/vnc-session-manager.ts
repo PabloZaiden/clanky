@@ -19,6 +19,7 @@ import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { createLogger } from "./logger";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
+import { DomainError, isDomainError } from "./domain-error";
 
 const log = createLogger("core:vnc-session-manager");
 const VNC_REMOTE_HOST = "127.0.0.1";
@@ -81,11 +82,16 @@ export class VncSessionManager {
 
     const server = await getSshServerConfig(options.sshServerId);
     if (!server) {
-      throw new Error(`SSH server not found: ${options.sshServerId}`);
+      throw new DomainError("ssh_server_not_found", "SSH server not found", {
+        details: { serverId: options.sshServerId },
+      });
     }
     const credentialToken = options.credentialToken?.trim();
     if (!credentialToken) {
-      throw new Error("SSH credential token is required to start a VNC session");
+      throw new DomainError(
+        "invalid_credential_token",
+        "SSH credential token is required to start a VNC session",
+      );
     }
     const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
     const localPort = await ensureLocalPortAvailable(await this.getReservedLocalPorts());
@@ -125,12 +131,22 @@ export class VncSessionManager {
       return activeSession;
     } catch (error) {
       this.runtimeHandles.delete(session.config.id);
+      const failure = isDomainError(error)
+        ? error
+        : new DomainError(
+          "vnc_session_start_failed",
+          "Failed to start VNC session",
+          {
+            cause: error,
+            details: { sessionId: session.config.id },
+          },
+        );
       const failedSession: VncSession = {
         config: { ...session.config, updatedAt: new Date().toISOString() },
-        state: { status: "failed", error: String(error) },
+        state: { status: "failed", error: failure.message },
       };
       await saveVncSession(failedSession);
-      throw error;
+      throw failure;
     }
   }
 
@@ -148,10 +164,14 @@ export class VncSessionManager {
     await this.initialize();
     const session = await getVncSession(id);
     if (!session) {
-      throw new Error("VNC session not found");
+      throw new DomainError("vnc_session_not_found", "VNC session not found", {
+        details: { sessionId: id },
+      });
     }
     if (session.state.status !== "active") {
-      throw new Error("VNC session is not active");
+      throw new DomainError("vnc_session_not_active", "VNC session is not active", {
+        details: { sessionId: id, status: session.state.status },
+      });
     }
     return {
       session,
@@ -252,7 +272,14 @@ export class VncSessionManager {
       }
     }
 
-    throw new Error(`VNC SSH tunnel did not open local port ${String(localPort)}: ${String(lastError)}`);
+    throw new DomainError(
+      "vnc_tunnel_failed",
+      "VNC SSH tunnel did not open the local port",
+      {
+        cause: lastError,
+        details: { localPort },
+      },
+    );
   }
 
   private async reconcilePersistedSessions(): Promise<void> {

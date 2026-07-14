@@ -11,7 +11,7 @@ import { taskManager } from "../../core/task-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
 import { PendingPromptRequestSchema, SetPendingRequestSchema, FollowUpRequestSchema } from "@/contracts/schemas";
-import { validateEnabledModelForTask } from "./helpers";
+import { taskErrorResponse, validateEnabledModelForTask } from "./helpers";
 
 export const tasksPendingRoutes = defineRoutes({
   "/api/tasks/:id/pending-prompt": {
@@ -42,13 +42,11 @@ export const tasksPendingRoutes = defineRoutes({
       const result = await taskManager.setPendingPrompt(ctx.params["id"]!, body.prompt, body.attachments);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        if (result.error?.includes("not running")) {
-          return errorResponse("not_running", result.error, 409);
-        }
-        return errorResponse("set_pending_prompt_failed", result.error ?? "Unknown error", 400);
+        return taskErrorResponse(result.error, {
+          error: "set_pending_prompt_failed",
+          message: "Failed to set pending prompt",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -66,13 +64,11 @@ export const tasksPendingRoutes = defineRoutes({
       const result = await taskManager.clearPendingPrompt(ctx.params["id"]!);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        if (result.error?.includes("not running")) {
-          return errorResponse("not_running", result.error, 409);
-        }
-        return errorResponse("clear_pending_prompt_failed", result.error ?? "Unknown error", 400);
+        return taskErrorResponse(result.error, {
+          error: "clear_pending_prompt_failed",
+          message: "Failed to clear pending prompt",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -151,13 +147,11 @@ export const tasksPendingRoutes = defineRoutes({
         });
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        if (result.error?.includes("not running") || result.error?.includes("not in an active state")) {
-          return errorResponse("not_running", result.error, 409);
-        }
-        return errorResponse("set_pending_failed", result.error ?? "Unknown error", 400);
+        return taskErrorResponse(result.error, {
+          error: "set_pending_failed",
+          message: "Failed to set pending task input",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -174,13 +168,11 @@ export const tasksPendingRoutes = defineRoutes({
       const result = await taskManager.clearPending(ctx.params["id"]!);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        if (result.error?.includes("not running") || result.error?.includes("not in an active state")) {
-          return errorResponse("not_running", result.error, 409);
-        }
-        return errorResponse("clear_pending_failed", result.error ?? "Unknown error", 400);
+        return taskErrorResponse(result.error, {
+          error: "clear_pending_failed",
+          message: "Failed to clear pending task input",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -216,10 +208,11 @@ export const tasksPendingRoutes = defineRoutes({
         promptMode: body.promptMode ?? "task_context",
       });
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("invalid_state", result.error ?? "Task cannot accept a terminal follow-up", 400);
+        return taskErrorResponse(result.error, {
+          error: "invalid_state",
+          message: "Task cannot accept a terminal follow-up",
+          status: 400,
+        });
       }
 
       return successResponse();
