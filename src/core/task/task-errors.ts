@@ -30,6 +30,8 @@ export type TaskErrorCode =
   | "uncommitted_changes"
   | "directory_in_use";
 
+export const TASK_GIT_OPERATION_FAILURE_MESSAGE = "Task git operation failed";
+
 export type TaskUpdateErrorCode =
   | "base_branch_immutable"
   | "use_worktree_immutable"
@@ -97,9 +99,6 @@ export function taskFailureFromUnknown(
     fallbackMessage,
     {
       cause: error,
-      details: {
-        originalError: error instanceof Error ? error.message : String(error),
-      },
     },
   );
 }

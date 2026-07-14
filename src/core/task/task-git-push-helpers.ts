@@ -10,12 +10,26 @@ import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { startStatePersistenceImpl } from "./task-execution";
 import { finalizeFullyAutonomousPushImpl } from "./task-fully-autonomous";
-import { taskFailure } from "./task-errors";
+import {
+  taskFailure,
+  TASK_GIT_OPERATION_FAILURE_MESSAGE,
+} from "./task-errors";
 
 interface ConflictResolutionOptions {
   onCompleted?: () => Promise<void>;
   completionDescription?: string;
   engineToReplace?: TaskEngine;
+}
+
+export function createGitSyncFailure(
+  taskId: string,
+  branch: string,
+): PushTaskResult {
+  return taskFailure(
+    "task_git_operation_failed",
+    TASK_GIT_OPERATION_FAILURE_MESSAGE,
+    { details: { taskId, branch } },
+  );
 }
 
 export async function syncWorkingBranch(
@@ -91,13 +105,7 @@ export async function syncWorkingBranch(
 
   const errorMsg = mergeResult.stderr || "Unknown merge error";
   log.error(`[TaskManager] ${caller}: Working branch merge failed for task ${taskId}: ${errorMsg}`);
-  return {
-    ...taskFailure(
-      "task_git_operation_failed",
-      `Failed to merge origin/${workingBranch}: ${errorMsg}`,
-      { details: { taskId, branch: workingBranch, stderr: mergeResult.stderr } },
-    ),
-  };
+  return createGitSyncFailure(taskId, workingBranch);
 }
 
 export async function syncBaseBranchAndPush(
@@ -194,13 +202,7 @@ export async function syncBaseBranchAndPush(
     } else {
       const errorMsg = mergeResult.stderr || "Unknown merge error";
       log.error(`[TaskManager] syncBaseBranchAndPush: Merge failed (not conflicts) for task ${taskId}: ${errorMsg}`);
-      return {
-        ...taskFailure(
-          "task_git_operation_failed",
-          `Failed to merge origin/${baseBranch}: ${errorMsg}`,
-          { details: { taskId, branch: baseBranch, stderr: mergeResult.stderr } },
-        ),
-      };
+      return createGitSyncFailure(taskId, baseBranch);
     }
   }
 
@@ -380,16 +382,10 @@ export async function syncBaseBranchBeforeExecution(
     type: "task.sync.failed",
     taskId,
     baseBranch,
-    error: errorMsg,
+    error: TASK_GIT_OPERATION_FAILURE_MESSAGE,
     timestamp: createTimestamp(),
   });
-  return {
-    ...taskFailure(
-      "task_git_operation_failed",
-      `Failed to merge origin/${baseBranch}: ${errorMsg}`,
-      { details: { taskId, branch: baseBranch, stderr: mergeResult.stderr } },
-    ),
-  };
+  return createGitSyncFailure(taskId, baseBranch);
 }
 
 export async function pushAndFinalize(
