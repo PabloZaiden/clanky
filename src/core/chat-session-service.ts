@@ -241,7 +241,15 @@ export class ChatSessionService implements ChatSessionPort {
     try {
       await backend.setConfigOption(sessionId, "model", desiredModel);
       return;
-    } catch {
+    } catch (error) {
+      if (!isAcpErrorCode(error, "acp_method_not_found")) {
+        log.warn("Failed to configure chat session model via ACP config option", {
+          sessionId,
+          model: desiredModel,
+          error: String(error),
+        });
+        return;
+      }
       log.debug("Chat session config option not supported, trying setSessionModel", {
         sessionId,
         model: desiredModel,

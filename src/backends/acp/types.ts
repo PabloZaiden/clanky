@@ -68,6 +68,7 @@ export type PermissionOption = {
 };
 
 export type PendingPermissionRequest = {
+  sessionId: string;
   rpcId: JsonRpcId;
   options: PermissionOption[];
 };

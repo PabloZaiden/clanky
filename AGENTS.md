@@ -151,6 +151,33 @@ state-transition rules, or direct persistence/transport implementations.
 Service dependencies must remain one-way and transport-neutral; workspace
 repository operations continue to use the selected host's `CommandExecutor`.
 
+### Backend adapter boundaries
+
+Backend adapters (e.g. the ACP backend under `src/backends/acp/`) must separate
+process/transport lifecycle, JSON-RPC protocol sessions, event translation,
+permission/question coordination, and provider/capability adaptation into
+focused collaborators with strictly one-way dependencies. `AcpBackend` is a
+stable facade that implements the public `Backend` contract by composing those
+collaborators, routing inbound notifications, and orchestrating connection-level
+teardown; it must not own protocol maps, process handles, session/run maps, or
+duplicated domain logic, and no extracted collaborator may import or call back
+into the facade.
+
+Every mutable resource has exactly one explicit owner with deterministic
+cleanup of listeners, timers, subprocesses, pending requests, subscriptions,
+permission requests, and per-session state on success, error, timeout,
+cancellation, process exit, disconnect, and reconnect. All cleanup must be
+reachable from the single connection-teardown path. Optional ACP methods flow
+through one typed method-not-found helper (`optional-method.ts`) that treats
+only `acp_method_not_found` as capability absence and preserves protocol error
+codes/details; never centralize backend behavior in one class.
+
+Record intentional compatibility shims (legacy ACP event forms such as the
+legacy SDK `translateEvent`, ordered method-name fallbacks, and
+provider-specific adaptation behind the capability table) at their narrow
+boundary rather than scattering provider checks through transport or session
+code.
+
 ### TypeScript
 
 - **Strict mode is enabled** - respect all strict checks
