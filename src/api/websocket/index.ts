@@ -1,26 +1,17 @@
 /**
  * WebSocket handlers for Clanky Tasks Management System.
  *
- * Supports three websocket surfaces:
- * - WS /api/ws for task events and SSH session lifecycle events
+ * Supports raw websocket surfaces:
  * - WS /api/ssh-terminal for interactive SSH terminal streams
+ * - WS /api/vnc for raw VNC traffic
+ * - WS /api/previews/bridge for live-preview forwarding
  *
  * Features:
- * - Real-time task and SSH session event streaming
- * - Optional task or SSH session filtering via query parameters
+ * - Raw terminal, VNC, and preview bridge transport
  * - Ping/pong keep-alive support
  * - Automatic cleanup on disconnect
  *
- * Event Types Streamed:
- * - chat.created, chat.updated, chat.status, chat.interrupted, chat.error, chat.deleted
- * - task.created, task.started, task.completed, task.ssh_handoff, task.stopped, task.error
- * - task.iteration.start, task.iteration.end
- * - task.message, task.tool_call, task.progress, task.log
- * - task.git.commit, task.deleted, task.merged, task.accepted, task.pushed, task.discarded
- * - task.plan.ready, task.plan.feedback, task.plan.accepted, task.plan.discarded
- * - task.pending.updated, task.automatic_pr_flow.updated
- * - ssh_session.created, ssh_session.updated, ssh_session.deleted, ssh_session.status
- * - preview.created, preview.connected, preview.closed, preview.failed
+ * Normal application state events are delivered through framework realtime.
  *
  * @module api/websocket
  */
@@ -36,7 +27,7 @@ import { startTerminalBridge, sendTerminalAuthError } from "./terminal";
 
 /**
  * WebSocket message handlers for Bun.serve().
- * These handlers manage the WebSocket lifecycle and event streaming.
+ * These handlers manage raw WebSocket transport lifecycles.
  *
  * `message` is created via a factory that holds a reference to `websocketHandlers`
  * itself so that spying on `websocketHandlers.startTerminalBridge` in tests correctly

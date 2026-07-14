@@ -37,7 +37,7 @@ For more project information, see the [README.md](README.md).
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
 - Treat app data as private per user. New users start with empty Clanky app data.
-- Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and preview bridges. Normal app state updates should use framework realtime.
+- Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and preview bridges. Do not retain or add normal app-state event subscriptions in raw transport handlers; normal app-state updates should use framework realtime.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.

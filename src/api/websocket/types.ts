@@ -6,22 +6,10 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
  * Stored in the WebSocket's data property for per-connection state.
  */
 export interface WebSocketData {
-  /** Optional task ID to filter events - only events for this task are sent */
-  taskId?: string;
-  /** Optional chat ID to filter chat events */
-  chatId?: string;
-  /** Optional agent ID to filter scheduled agent events */
-  agentId?: string;
-  /** Optional agent run ID to filter scheduled agent run events */
-  agentRunId?: string;
-  /** Optional SSH session ID to filter session events or attach a terminal */
+  /** Optional SSH session ID to attach a terminal */
   sshSessionId?: string;
-  /** Optional standalone SSH server session ID to filter session events or attach a terminal */
+  /** Optional standalone SSH server session ID to attach a terminal */
   sshServerSessionId?: string;
-  /** Optional provisioning job ID to filter provisioning events */
-  provisioningJobId?: string;
-  /** Whether sensitive provisioning data should be included */
-  sensitive?: boolean;
   /** Optional VNC session ID for raw RFB websocket traffic */
   vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
@@ -42,6 +30,4 @@ export interface WebSocketData {
   pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: SshTerminalBridge;
-  /** Unsubscribe functions for event emitter cleanup */
-  unsubscribers?: Array<() => void>;
 }
