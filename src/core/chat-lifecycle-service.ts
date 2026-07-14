@@ -200,13 +200,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     this.state.emitChatCreated(chat, now);
 
     if (options.credentialToken?.trim()) {
-      const reconnected = await this.session.reconnectSession(chat, {
+      return this.session.reconnectSession(chat, {
         credentialToken: options.credentialToken,
       });
-      if (!reconnected) {
-        throw new Error(`Failed to reconnect created SSH-server chat: ${id}`);
-      }
-      return reconnected;
     }
     return chat;
   }
