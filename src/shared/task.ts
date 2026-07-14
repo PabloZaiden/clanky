@@ -484,7 +484,7 @@ export interface IterationSummary {
   /** Number of tool calls made in this iteration */
   toolCallCount: number;
   /** How the iteration ended */
-  outcome: "continue" | "complete" | "error" | "plan_ready";
+  outcome: "continue" | "complete" | "blocked" | "error" | "plan_ready";
 }
 
 /**

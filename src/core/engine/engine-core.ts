@@ -1119,6 +1119,10 @@ export class TaskEngine {
    * Returns true if the task should exit, false to continue iterating.
    */
   private async handleIterationOutcome(result: IterationResult): Promise<boolean> {
+    if (result.outcome === "blocked") {
+      return this.handleBlockedOutcome();
+    }
+
     if (result.outcome === "complete") {
       return this.handleCompletedOutcome();
     }
@@ -1134,6 +1138,32 @@ export class TaskEngine {
     // Successful iteration (outcome === "continue") - clear error tracker
     this.updateState({ consecutiveErrors: undefined });
     return false;
+  }
+
+  /**
+   * Handle a BLOCKED iteration outcome.
+   * Reuses the stopped task state so the user can resolve the blocker and
+   * resume the task with a follow-up, without enabling completion actions.
+   */
+  private async handleBlockedOutcome(): Promise<boolean> {
+    this.emitLog("warn", "Agent reported BLOCKED - task stopped without completion", {
+      totalIterations: this.task.state.currentIteration,
+    });
+    this.updateState({
+      status: "stopped",
+      completedAt: createTimestamp(),
+      consecutiveErrors: undefined,
+    });
+
+    this.emit({
+      type: "task.stopped",
+      taskId: this.config.id,
+      reason: "Agent reported a blocker",
+      timestamp: createTimestamp(),
+    });
+
+    await this.triggerPersistence();
+    return true;
   }
 
   /**

@@ -445,8 +445,9 @@ export interface TaskIterationEndEvent {
    * - "complete": Stop pattern matched, task is done
    * - "error": An error occurred during iteration
    * - "plan_ready": Plan mode completed, awaiting approval
+   * - "blocked": Agent reported an external blocker and stopped without completion
    */
-  outcome: "continue" | "complete" | "error" | "plan_ready";
+  outcome: "continue" | "complete" | "blocked" | "error" | "plan_ready";
   /** ISO 8601 timestamp */
   timestamp: string;
 }

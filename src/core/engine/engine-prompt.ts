@@ -9,6 +9,7 @@ import type { LogLevel } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
 import type { IterationContext } from "./engine-types";
 import { StopPatternDetector } from "./engine-helpers";
+import { detectTrailingPromiseMarker } from "../../utils/promise-markers";
 
 export interface PromptBuildContext {
   config: TaskConfig;
@@ -33,6 +34,12 @@ function buildPromptParts(text: string, attachments: MessageImageAttachment[]): 
     })),
   ];
 }
+
+const BLOCKED_OUTCOME_INSTRUCTION = `- If you are blocked by an external dependency, missing prerequisite, or issue you cannot safely work around, explain the blocker and end your response with:
+
+<promise>BLOCKED</promise>
+
+Do not claim completion. Clanky will stop the task without pushing it, and the user can resume it with a follow-up message.`;
 
 function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageImageAttachment[] {
   const pendingAttachments = ctx.consumePendingPromptAttachments();
@@ -75,7 +82,7 @@ export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): Pr
 function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
   const feedbackRounds = ctx.state.planMode!.feedbackRounds;
 
-  if (feedbackRounds === 0) {
+  if (feedbackRounds === 0 && !ctx.state.pendingPrompt) {
     const attachments = ctx.consumeInitialPromptAttachments();
     ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
 
@@ -86,6 +93,7 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     const finalInstructions = [
       "- Do NOT start implementing yet. Only create the plan.",
       questionsInstruction,
+      BLOCKED_OUTCOME_INSTRUCTION,
       "- When the plan is ready, end your response with:\n\n<promise>PLAN_READY</promise>",
     ].filter((instruction) => instruction.length > 0).join("\n\n");
     const text = `- Goal: ${ctx.config.prompt}
@@ -125,6 +133,8 @@ ${errorContext}
 **FIRST**: Immediately add this feedback as a pending item in \`./.clanky-planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
 
 Then, update the plan in \`./.clanky-planning/plan.md\` based on this feedback.
+
+${BLOCKED_OUTCOME_INSTRUCTION}
 
 When the updated plan is ready, end your response with:
 
@@ -180,6 +190,8 @@ ${userMessageSection}${errorContext}
 
 - Never ask for input from the user or any questions. This will always run unattended
 
+${BLOCKED_OUTCOME_INSTRUCTION}
+
 - **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.clanky-planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
 
 - **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.clanky-planning/status.md\` with:
@@ -227,6 +239,13 @@ export function evaluateTaskOutcome(ctx: IterationContext, buildCtx: PromptBuild
   buildCtx.emitLog("info", "Evaluating stop pattern...");
 
   if (ctx.outcome === "error") {
+    return;
+  }
+
+  const trailingMarker = detectTrailingPromiseMarker(ctx.responseContent);
+  if (trailingMarker?.kind === "blocked") {
+    buildCtx.emitLog("warn", "BLOCKED marker detected - stopping without completion");
+    ctx.outcome = "blocked";
     return;
   }
 
