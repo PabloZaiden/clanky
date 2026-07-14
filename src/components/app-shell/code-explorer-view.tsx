@@ -1,4 +1,5 @@
 import { useMemo, type ComponentType } from "react";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
@@ -10,7 +11,7 @@ import {
   getCodeExplorerOptions,
   resolveCodeExplorerTarget,
 } from "./code-explorer-targets";
-import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
+import type { CodeExplorerTarget } from "./shell-types";
 
 interface CodeExplorerViewProps {
   routeTarget?: CodeExplorerTarget;
@@ -26,7 +27,7 @@ interface CodeExplorerViewProps {
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
@@ -86,7 +87,17 @@ export function CodeExplorerView({
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => onNavigate({ view: "code-explorer", target: option.target })}
+                      onClick={() => onNavigate({
+                        view: "code-explorer",
+                        contentType: option.target.contentType,
+                        ...(option.target.contentType === "workspace"
+                          ? { workspaceId: option.target.workspaceId }
+                          : option.target.contentType === "task"
+                            ? { taskId: option.target.taskId }
+                            : option.target.contentType === "server"
+                              ? { serverId: option.target.serverId }
+                              : { chatId: option.target.chatId }),
+                      })}
                       className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
                     >
                       <div className="text-sm font-medium text-gray-950 dark:text-gray-100">{option.label}</div>

@@ -4,6 +4,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { appAbsoluteUrl } from "../../lib/public-path";
+import { replaceWebAppRoute, routeToHash } from "@pablozaiden/webapp/web";
 import type { Task } from "@/shared";
 import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "@/shared/task";
 import type { EntityLabels } from "../../utils";
@@ -18,7 +20,6 @@ import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
 import { ActionsTab } from "./actions-tab";
 import { ChatTab } from "./chat-tab";
-import { getHashForShellRoute, replaceHashRoute } from "../app-shell/shell-navigation";
 
 interface TaskDetailsTabContentProps {
   activeTab: TabId;
@@ -75,19 +76,17 @@ export function TaskDetailsTabContent({
     }
   }, [activeTab]);
 
-  const getTaskFileHash = useCallback(({ path, startDirectory, kind }: TranscriptFileLinkTarget) => getHashForShellRoute({
+  const getTaskFileRoute = useCallback(({ path, startDirectory, kind }: TranscriptFileLinkTarget) => ({
     view: "code-explorer",
-    target: {
-      contentType: "task",
-      taskId,
-      startDirectory,
-      filePath: kind === "directory" ? undefined : path,
-    },
+    contentType: "task",
+    taskId,
+    startDirectory,
+    filePath: kind === "directory" ? undefined : path,
   }), [taskId]);
 
   const openLinkedTaskFile = useCallback((target: TranscriptFileLinkTarget) => {
-    replaceHashRoute(getTaskFileHash(target));
-  }, [getTaskFileHash]);
+    replaceWebAppRoute(getTaskFileRoute(target));
+  }, [getTaskFileRoute]);
 
   const fileLinkContext = useMemo(() => ({
     fileExplorerTarget: {
@@ -96,10 +95,10 @@ export function TaskDetailsTabContent({
       startDirectory: toolPathDisplayRoot,
     },
     rootDirectory: toolPathDisplayRoot,
-    getFileHref: (target: TranscriptFileLinkTarget) => `#${getTaskFileHash(target)}`,
+    getFileHref: (target: TranscriptFileLinkTarget) => appAbsoluteUrl(routeToHash(getTaskFileRoute(target))),
     openFile: openLinkedTaskFile,
     onFileOpenError,
-  }), [config.workspaceId, getTaskFileHash, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
+  }), [config.workspaceId, getTaskFileRoute, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
     <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800">

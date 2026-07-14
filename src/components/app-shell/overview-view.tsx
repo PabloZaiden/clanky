@@ -5,16 +5,16 @@ import { StatusBadge, type BadgeVariant } from "../common";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
-  type ShellRoute,
   type SidebarActiveWorkItem,
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
-function getActiveWorkRoute(item: SidebarActiveWorkItem): ShellRoute {
+function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
   if (item.kind === "task") {
     return { view: "task", taskId: item.taskNode.task.config.id };
   }
@@ -101,7 +101,7 @@ export function OverviewView({
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   headerOffsetClassName?: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
   const activeWorkItems = useMemo(

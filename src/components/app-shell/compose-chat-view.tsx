@@ -22,7 +22,7 @@ import { BranchSelector } from "../create-task/branch-selector";
 import { Modal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ImportableChatSession {
   id: string;
@@ -88,7 +88,7 @@ export function ComposeChatView({
   workspaceError: string | null;
   dashboardData: UseDashboardDataResult;
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
   createSshServerChat?: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;

@@ -1,4 +1,5 @@
 import type { SshSession, SshConnectionMode, Workspace } from "@/shared";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateSshSessionRequest, CreateSshServerRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -6,7 +7,6 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
-import type { ComposeKind, ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
@@ -14,12 +14,26 @@ import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AgentComposer } from "./agents-view";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
+
+export function isComposeKind(value: string): value is ComposeKind {
+  return [
+    "task",
+    "chat",
+    "agent",
+    "workspace",
+    "ssh-session",
+    "ssh-server",
+    "ssh-server-chat",
+  ].includes(value);
+}
+
 interface ComposeViewProps {
   kind: ComposeKind;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;

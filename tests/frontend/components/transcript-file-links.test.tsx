@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
+import { routeToHash } from "@pablozaiden/webapp/web";
 import { render, waitFor } from "../helpers/render";
 import { TranscriptTextContent } from "../../../src/components/log-viewer/transcript-file-links";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "../../../src/components/log-viewer/types";
@@ -14,7 +15,13 @@ function createFileLinkContext(openFile = mock((_target: TranscriptFileLinkTarge
       startDirectory: "/workspace/project",
     },
     rootDirectory: "/workspace/project",
-    getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => `#/code?path=${encodeURIComponent(path)}&start=${encodeURIComponent(startDirectory)}`,
+    getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => routeToHash({
+      view: "code-explorer",
+      contentType: "workspace",
+      workspaceId: "workspace-1",
+      startDirectory,
+      filePath: path,
+    }),
     openFile,
     onFileOpenError: mock((_message: string) => {}),
   };

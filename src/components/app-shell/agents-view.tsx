@@ -9,10 +9,10 @@ import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { ConfirmModal, useRealtimeRefresh } from "@pablozaiden/webapp/web";
+import { ConfirmModal, useRealtimeRefresh, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import { getRouteString } from "./route-fields";
 import { FrameworkMainHeaderPortal } from "./main-header-portal";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -430,7 +430,7 @@ function AgentRunsList({
   agent: Agent;
   runs: AgentRun[];
   onDeleteRun: (runId: string) => Promise<boolean>;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
   const [deleteRun, setDeleteRun] = useState<AgentRun | null>(null);
@@ -517,7 +517,7 @@ function AgentWorkspaceList({
   loading: boolean;
   error: string | null;
   headerOffsetClassName: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
     <ShellPanel
@@ -602,7 +602,7 @@ function AgentDetail({
   onRefreshRuns: UseAgentsResult["refreshRuns"];
   onCancelEdit: () => void;
   onSavedEdit: (agent: Agent) => void;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   const workspace = workspaces.find((item) => item.id === agent.config.workspaceId) ?? null;
 
@@ -685,7 +685,7 @@ function AgentRunDetail({
   runId: string;
   initialRun: AgentRun | null;
   headerOffsetClassName: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const [run, setRun] = useState<AgentRun | null>(initialRun);
@@ -871,7 +871,7 @@ export function AgentComposer({
   shellHeaderOffsetClassName: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
 }) {
   return (
     <AgentForm
@@ -936,8 +936,8 @@ export function AgentsView({
   onDeleteRun: UseAgentsResult["deleteRun"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
   runsByAgentId: Record<string, AgentRun[]>;
-  route: ShellRoute;
-  navigateWithinShell: (route: ShellRoute) => void;
+  route: WebAppRoute;
+  navigateWithinShell: (route: WebAppRoute) => void;
   headerOffsetClassName: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
@@ -950,7 +950,15 @@ export function AgentsView({
   onSavedAgentEdit: (agent: Agent) => void;
 }) {
   if (route.view === "agent") {
-    const agent = agents.find((item) => item.config.id === route.agentId);
+    const agentId = getRouteString(route, "agentId");
+    if (!agentId) {
+      return (
+        <ShellPanel title="Invalid route" description="The agent route is missing its agent identifier." variant="compact">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Use the sidebar or home button to continue.</p>
+        </ShellPanel>
+      );
+    }
+    const agent = agents.find((item) => item.config.id === agentId);
     if (!agent) {
       return loading ? (
         <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading agent...</div>
@@ -989,12 +997,21 @@ export function AgentsView({
   }
 
   if (route.view === "agent-run") {
-    const agent = agents.find((item) => item.config.id === route.agentId) ?? null;
-    const initialRun = (runsByAgentId[route.agentId] ?? []).find((run) => run.id === route.runId) ?? null;
+    const agentId = getRouteString(route, "agentId");
+    const runId = getRouteString(route, "runId");
+    if (!agentId || !runId) {
+      return (
+        <ShellPanel title="Invalid route" description="The agent run route is missing an identifier." variant="compact">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Use the sidebar or home button to continue.</p>
+        </ShellPanel>
+      );
+    }
+    const agent = agents.find((item) => item.config.id === agentId) ?? null;
+    const initialRun = (runsByAgentId[agentId] ?? []).find((run) => run.id === runId) ?? null;
     return (
       <AgentRunDetail
         agent={agent}
-        runId={route.runId}
+        runId={runId}
         initialRun={initialRun}
         headerOffsetClassName={headerOffsetClassName}
         onNavigate={navigateWithinShell}
@@ -1002,7 +1019,7 @@ export function AgentsView({
     );
   }
 
-  const workspaceId = route.view === "agents" ? route.workspaceId : undefined;
+  const workspaceId = route.view === "agents" ? getRouteString(route, "workspaceId") : undefined;
   const workspace = workspaces.find((item) => item.id === workspaceId) ?? null;
   const visibleAgents = workspace
     ? agents.filter((agent) => agent.config.workspaceId === workspace.id)

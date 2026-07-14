@@ -1,6 +1,6 @@
 import type { SshServer, SshServerSession } from "@/shared";
 import { Badge } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel, SummaryCard } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
@@ -15,7 +15,7 @@ export function SshServerView({
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
   const serverPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);

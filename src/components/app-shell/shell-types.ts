@@ -140,44 +140,6 @@ export type CodeExplorerTarget =
       filePath?: string;
     };
 
-export type ShellRoute =
-  | { view: "home" }
-  | { view: "settings" }
-  | { view: "agents"; workspaceId?: string }
-  | { view: "agent"; agentId: string }
-  | { view: "agent-run"; agentId: string; runId: string }
-  | { view: "code-explorer"; target?: CodeExplorerTarget }
-  | { view: "task"; taskId: string }
-  | { view: "task-files"; taskId: string; startDirectory?: string }
-  | { view: "chat"; chatId: string }
-  | { view: "ssh"; sshSessionId: string }
-  | { view: "workspace"; workspaceId: string }
-  | { view: "workspace-files"; workspaceId: string; startDirectory?: string }
-  | { view: "workspace-previews"; workspaceId: string }
-  | { view: "workspace-settings"; workspaceId: string }
-  | { view: "ssh-server"; serverId: string }
-  | { view: "vnc-session"; serverId: string }
-  | { view: "ssh-server-settings"; serverId: string }
-  | { view: "server-files"; serverId: string; startDirectory?: string }
-  | { view: "server-arise"; serverId: string }
-  | {
-      view: "compose";
-      kind: "task" | "chat" | "agent" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
-      scopeId?: string;
-      workspaceId?: string;
-      serverId?: string;
-    }
-  | {
-      view: "rebuild-workspace";
-      workspaceId: string;
-    }
-  | {
-      view: "restart-workspace";
-      workspaceId: string;
-    };
-
-export type ComposeKind = Extract<ShellRoute, { view: "compose" }>["kind"];
-
 export function getSshConnectionModeLabel(mode: "direct" | "dtach" | string): string {
   return mode === "direct" ? "Direct SSH" : "Persistent SSH";
 }

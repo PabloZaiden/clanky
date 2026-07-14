@@ -9,6 +9,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect, mock } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
 import { resolveDefaultApiRoute } from "./helpers/default-api-routes";
 import { MockFitAddon, MockTerminal, MockWebglAddon, resetXtermMockState } from "./helpers/mock-xterm";
 
@@ -169,7 +170,7 @@ afterEach(() => {
 // never leaks between unrelated test files.
 beforeEach(() => {
   window.location.href = "http://localhost:3000/";
-  window.location.hash = "#/";
+  replaceWebAppRoute({ view: "home" });
   window.localStorage.clear();
   window.sessionStorage.clear();
   globalThis.fetch = frontendFetchGuard;

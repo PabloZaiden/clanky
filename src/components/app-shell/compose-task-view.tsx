@@ -9,12 +9,12 @@ import {
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;

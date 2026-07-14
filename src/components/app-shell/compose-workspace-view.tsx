@@ -10,7 +10,7 @@ import type { ServerSettings } from "@/shared/settings";
 import type { AgentProvider } from "@/shared/settings";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ShellPanel, InlineField } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { SshServer } from "@/shared/ssh-server";
@@ -21,7 +21,7 @@ import {
 
 interface ComposeWorkspaceViewProps {
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
   provisioning: UseProvisioningJobResult;

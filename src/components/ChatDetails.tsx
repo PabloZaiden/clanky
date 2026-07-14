@@ -26,17 +26,16 @@ import {
   useComposerSizing,
 } from "./common";
 import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
-import { appFetch } from "../lib/public-path";
+import { appAbsoluteUrl, appFetch } from "../lib/public-path";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useAvailableModels, useMarkdownPreference, useRealtimeStream, useToast } from "../hooks";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
-import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
 import { DictationControls, insertDictationText } from "./dictation";
 import type { Chat, ChatEvent, ComposerImageAttachment, TaskLogEntry, MessageData, ToolCallData } from "@/shared";
-import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, routeToHash, useRealtimeRefresh, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
 
@@ -595,6 +594,24 @@ export function ChatDetails({
       return undefined;
     }
 
+    const getCodeExplorerRoute = ({ path, startDirectory, kind }: TranscriptFileLinkTarget): WebAppRoute => (
+      embeddedTaskId
+        ? {
+            view: "code-explorer",
+            contentType: "task",
+            taskId: embeddedTaskId,
+            startDirectory,
+            filePath: kind === "directory" ? undefined : path,
+          }
+        : {
+            view: "code-explorer",
+            contentType: "chat",
+            chatId: chat.config.id,
+            startDirectory,
+            filePath: kind === "directory" ? undefined : path,
+          }
+    );
+
     return {
       fileExplorerTarget: {
         type: "workspace" as const,
@@ -602,39 +619,9 @@ export function ChatDetails({
         startDirectory: chatWorkingDirectory,
       },
       rootDirectory: chatWorkingDirectory,
-      getFileHref: ({ path, startDirectory, kind }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
-        view: "code-explorer",
-        target: embeddedTaskId
-          ? {
-              contentType: "task",
-              taskId: embeddedTaskId,
-              startDirectory,
-              filePath: kind === "directory" ? undefined : path,
-            }
-          : {
-              contentType: "chat",
-              chatId: chat.config.id,
-              startDirectory,
-              filePath: kind === "directory" ? undefined : path,
-            },
-      })}`,
-      openFile: ({ path, startDirectory, kind }: TranscriptFileLinkTarget) => {
-        replaceShellRoute({
-          view: "code-explorer",
-          target: embeddedTaskId
-            ? {
-                contentType: "task",
-                taskId: embeddedTaskId,
-                startDirectory,
-                filePath: kind === "directory" ? undefined : path,
-              }
-            : {
-                contentType: "chat",
-                chatId: chat.config.id,
-                startDirectory,
-                filePath: kind === "directory" ? undefined : path,
-              },
-        });
+      getFileHref: (target: TranscriptFileLinkTarget) => appAbsoluteUrl(routeToHash(getCodeExplorerRoute(target))),
+      openFile: (target: TranscriptFileLinkTarget) => {
+        replaceWebAppRoute(getCodeExplorerRoute(target));
       },
       onFileOpenError: (message: string) => {
         toast.error(message);

@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
 import type { SshSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -15,7 +16,6 @@ import type {
   PullRequestAutoMergeResult,
 } from "../../hooks/taskActions";
 import { log } from "../../lib/logger";
-import { replaceShellRoute } from "../app-shell/shell-navigation";
 
 interface UseTaskActionsOptions {
   onBack?: () => void;
@@ -138,7 +138,7 @@ export function useTaskActions({
     if (onSelectSshSession) {
       onSelectSshSession(sshSessionId);
     } else {
-      replaceShellRoute({ view: "ssh", sshSessionId });
+      replaceWebAppRoute({ view: "ssh", sshSessionId });
     }
   }
 

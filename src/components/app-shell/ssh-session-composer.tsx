@@ -3,7 +3,7 @@ import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions, useToast } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel } from "./shell-panel";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
@@ -39,7 +39,7 @@ export function SshSessionComposer({
   initialServerId?: string;
   headerOffsetClassName?: string;
   onCancel: () => void;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   onCreateWorkspaceSession: ReturnType<typeof useSshSessions>["createSession"];
   onCreateStandaloneSession: ReturnType<typeof useSshServers>["createSession"];
 }) {

@@ -6,7 +6,7 @@ import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/
 import { getStoredVncCredentials, storeVncCredentials } from "../../lib/vnc-browser-credentials";
 import { isApiErrorCode } from "../../lib/api-error";
 import { Button } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 import { VncViewer } from "./VncViewer";
@@ -32,7 +32,7 @@ export function VncSessionView({
 }: {
   server: SshServer;
   headerOffsetClassName?: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
   const fullscreenRef = useRef<HTMLDivElement>(null);

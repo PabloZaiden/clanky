@@ -3,7 +3,7 @@ import { useToast } from "../../hooks";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { Badge, Button } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel } from "./shell-panel";
 import { SshServerFields } from "./ssh-server-fields";
 import {
@@ -18,7 +18,7 @@ interface SshServerComposerProps {
   initialServer?: SshServer | null;
   relatedSessionCount?: number;
   onCancel: () => void;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   onCreateServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   onUpdateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
 }

@@ -1,4 +1,4 @@
-import { Page } from "@pablozaiden/webapp/web";
+import { Page, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Chat, Task, SshSession, Workspace } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer } from "@/shared/ssh-server";
@@ -12,7 +12,7 @@ import { SshSessionDetails } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
 import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
 import { DraftTaskComposer } from "./shell-composers";
-import { ComposeView } from "./shell-compose-view";
+import { ComposeView, isComposeKind } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { SshServerSettingsView } from "./ssh-server-settings-view";
@@ -21,8 +21,8 @@ import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
-import type { ShellRoute } from "./shell-types";
-import type { SidebarServerNode, SidebarWorkspaceGroupNode } from "./shell-types";
+import type { CodeExplorerTarget, SidebarServerNode, SidebarWorkspaceGroupNode } from "./shell-types";
+import { getRouteString } from "./route-fields";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -31,11 +31,11 @@ import type {
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 
 interface ShellMainContentProps {
-  route: ShellRoute;
+  route: WebAppRoute;
   shellLoading: boolean;
   shellErrors: string[];
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
 
   // Data
   tasks: Task[];
@@ -119,6 +119,54 @@ interface ShellMainContentProps {
   showPrivateItems: boolean;
 }
 
+function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefined {
+  if (route.view !== "code-explorer") {
+    return undefined;
+  }
+
+  const contentType = route["contentType"];
+  const startDirectory = getRouteString(route, "startDirectory");
+  const filePath = getRouteString(route, "filePath");
+  if (typeof contentType !== "string") {
+    return undefined;
+  }
+
+  switch (contentType) {
+    case "workspace": {
+      const workspaceId = getRouteString(route, "workspaceId");
+      return workspaceId ? { contentType, workspaceId, startDirectory, filePath } : undefined;
+    }
+    case "task": {
+      const taskId = getRouteString(route, "taskId");
+      return taskId ? { contentType, taskId, startDirectory, filePath } : undefined;
+    }
+    case "server": {
+      const serverId = getRouteString(route, "serverId");
+      return serverId ? { contentType, serverId, startDirectory, filePath } : undefined;
+    }
+    case "chat": {
+      const chatId = getRouteString(route, "chatId");
+      return chatId ? { contentType, chatId, startDirectory, filePath } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function missingRouteParameter(view: string, parameter: string) {
+  return (
+    <ShellPanel
+      title="Invalid route"
+      description={`The ${view} route is missing its ${parameter}.`}
+      variant="compact"
+    >
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Use the sidebar or home button to continue.
+      </p>
+    </ShellPanel>
+  );
+}
+
 function renderMainContent(props: ShellMainContentProps) {
   const {
     route,
@@ -194,6 +242,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "task") {
+    const taskId = getRouteString(route, "taskId");
+    if (!taskId) {
+      return missingRouteParameter(route.view, "taskId");
+    }
     if (!selectedTask) {
       return shellLoading ? (
         <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading task…</div>
@@ -235,26 +287,35 @@ function renderMainContent(props: ShellMainContentProps) {
 
     return (
       <TaskDetails
-        key={`task:${route.taskId}`}
-        taskId={route.taskId}
+        key={`task:${taskId}`}
+        taskId={taskId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
           void refreshTasks();
         }}
         showBackButton={false}
         onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
-        onOpenTaskFiles={(taskId) => navigateWithinShell({
+        onOpenTaskFiles={(selectedTaskId) => navigateWithinShell({
           view: "code-explorer",
-          target: { contentType: "task", taskId },
+          contentType: "task",
+          taskId: selectedTaskId,
         })}
       />
     );
   }
 
   if (route.view === "task-files") {
+    const taskId = getRouteString(route, "taskId");
+    if (!taskId) {
+      return missingRouteParameter(route.view, "taskId");
+    }
     return (
       <CodeExplorerView
-        routeTarget={{ contentType: "task", taskId: route.taskId, startDirectory: route.startDirectory }}
+        routeTarget={{
+          contentType: "task",
+          taskId,
+          startDirectory: getRouteString(route, "startDirectory"),
+        }}
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
@@ -270,6 +331,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "chat") {
+    const chatId = getRouteString(route, "chatId");
+    if (!chatId) {
+      return missingRouteParameter(route.view, "chatId");
+    }
     if (!selectedChat) {
       return shellLoading ? (
         <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>
@@ -284,8 +349,8 @@ function renderMainContent(props: ShellMainContentProps) {
 
     return (
       <ChatDetails
-        key={`chat:${route.chatId}`}
-        chatId={route.chatId}
+        key={`chat:${chatId}`}
+        chatId={chatId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
           void refreshChats();
@@ -296,9 +361,13 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "ssh") {
+    const sshSessionId = getRouteString(route, "sshSessionId");
+    if (!sshSessionId) {
+      return missingRouteParameter(route.view, "sshSessionId");
+    }
     return (
       <SshSessionDetails
-        sshSessionId={route.sshSessionId}
+        sshSessionId={sshSessionId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
           void refreshSshSessions();
@@ -347,9 +416,17 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "workspace-files") {
+    const workspaceId = getRouteString(route, "workspaceId");
+    if (!workspaceId) {
+      return missingRouteParameter(route.view, "workspaceId");
+    }
     return (
       <CodeExplorerView
-        routeTarget={{ contentType: "workspace", workspaceId: route.workspaceId, startDirectory: route.startDirectory }}
+        routeTarget={{
+          contentType: "workspace",
+          workspaceId,
+          startDirectory: getRouteString(route, "startDirectory"),
+        }}
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
@@ -417,6 +494,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "ssh-server") {
+    const serverId = getRouteString(route, "serverId");
+    if (!serverId) {
+      return missingRouteParameter(route.view, "serverId");
+    }
     if (!selectedServer) {
       return (
         <ShellPanel
@@ -442,6 +523,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "ssh-server-settings") {
+    const serverId = getRouteString(route, "serverId");
+    if (!serverId) {
+      return missingRouteParameter(route.view, "serverId");
+    }
     if (!selectedServer) {
       return (
         <ShellPanel
@@ -469,6 +554,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "vnc-session") {
+    const serverId = getRouteString(route, "serverId");
+    if (!serverId) {
+      return missingRouteParameter(route.view, "serverId");
+    }
     if (!selectedServer) {
       return (
         <ShellPanel
@@ -493,9 +582,17 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "server-files") {
+    const serverId = getRouteString(route, "serverId");
+    if (!serverId) {
+      return missingRouteParameter(route.view, "serverId");
+    }
     return (
       <CodeExplorerView
-        routeTarget={{ contentType: "server", serverId: route.serverId, startDirectory: route.startDirectory }}
+        routeTarget={{
+          contentType: "server",
+          serverId,
+          startDirectory: getRouteString(route, "startDirectory"),
+        }}
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
@@ -513,7 +610,7 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "code-explorer") {
     return (
       <CodeExplorerView
-        routeTarget={route.target}
+        routeTarget={getCodeExplorerTarget(route)}
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
@@ -529,6 +626,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "server-arise") {
+    const serverId = getRouteString(route, "serverId");
+    if (!serverId) {
+      return missingRouteParameter(route.view, "serverId");
+    }
     if (!selectedServer) {
       return (
         <ShellPanel
@@ -595,9 +696,13 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "compose") {
+    const kind = getRouteString(route, "kind");
+    if (!kind || !isComposeKind(kind)) {
+      return missingRouteParameter(route.view, "kind");
+    }
     return (
       <ComposeView
-        kind={route.kind}
+        kind={kind}
         composeWorkspace={props.composeWorkspace}
         composeServer={props.composeServer}
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
@@ -645,7 +750,7 @@ function renderMainContent(props: ShellMainContentProps) {
   );
 }
 
-export function ShellRouteContent(props: ShellMainContentProps) {
+export function AppRouteContent(props: ShellMainContentProps) {
   return (
     <Page layout="full">
       {props.shellErrors.length > 0 && (

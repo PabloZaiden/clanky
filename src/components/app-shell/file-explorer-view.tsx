@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { SshSession, WorkspaceFileEntry } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
@@ -10,7 +11,6 @@ import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
@@ -61,9 +61,9 @@ interface FileExplorerViewProps {
   description: string;
   defaultRootDirectory: string;
   backLabel: string;
-  backRoute: ShellRoute;
+  backRoute: WebAppRoute;
   headerOffsetClassName?: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   target: { type: "workspace" | "server"; id: string; startDirectory?: string };
   sessions: ExplorerSession[];
   hasTerminal: boolean;
@@ -74,7 +74,7 @@ interface FileExplorerViewProps {
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
   initialFilePath?: string;
-  buildRoute?: (startDirectory?: string) => ShellRoute;
+  buildRoute?: (startDirectory?: string) => WebAppRoute;
   headerActions?: React.ReactNode;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
@@ -244,7 +244,7 @@ export function FileExplorerView({
       : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
     ].join(" ");
 
-  function buildExplorerRoute(startDirectory?: string): ShellRoute {
+  function buildExplorerRoute(startDirectory?: string): WebAppRoute {
     if (buildRoute) {
       return buildRoute(startDirectory);
     }

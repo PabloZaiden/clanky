@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
 import { useTask, useMarkdownPreference, useToast } from "../../hooks";
 import { Button, StatusBadge } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
@@ -23,7 +24,6 @@ import { useLogDisplayState } from "./use-log-display-state";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
-import { replaceShellRoute } from "../app-shell/shell-navigation";
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
 export interface TaskDetailsProps {
@@ -74,9 +74,10 @@ export function TaskDetails({
         onOpenTaskFiles(taskId);
         return;
       }
-      replaceShellRoute({
+      replaceWebAppRoute({
         view: "code-explorer",
-        target: { contentType: "task", taskId },
+        contentType: "task",
+        taskId,
       });
      },
       toast,

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Modal, routeToHash, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
@@ -49,7 +49,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getChatTranscriptViewerUrl(chat: Chat): string {
-  return appAbsoluteUrl(`/#/chat-transcript/${encodeURIComponent(chat.config.id)}`);
+  return appAbsoluteUrl(routeToHash({ view: "chat-transcript", chatId: chat.config.id }));
 }
 
 function getChatTranscriptDownloadUrl(chat: Chat): string {
