@@ -1,9 +1,9 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { Workspace } from "../../types";
-import { getCreateWorkspaceDefaultServerSettings } from "../../types/settings";
-import type { AgentProvider, ServerSettings } from "../../types/settings";
-import type { CreateWorkspaceRequest } from "../../types/workspace";
-import type { SshServer } from "../../types/ssh-server";
+import type { Workspace } from "@/shared";
+import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
+import type { AgentProvider, ServerSettings } from "@/shared/settings";
+import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
+import type { SshServer } from "@/shared/ssh-server";
 import { appFetch } from "../../lib/public-path";
 import {
   getAutomaticWorkspaceBasePath,

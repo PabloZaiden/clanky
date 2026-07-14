@@ -4,7 +4,7 @@
  */
 
 import type { BackendConnectionConfig } from "../../backends/types";
-import type { ServerSettings } from "../../types/settings";
+import type { ServerSettings } from "@/shared/settings";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {

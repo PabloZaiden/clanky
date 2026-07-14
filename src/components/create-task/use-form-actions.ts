@@ -4,14 +4,14 @@
  */
 
 import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
-import type { ComposerImageAttachment } from "../../types/message-attachments";
+import type { ComposerImageAttachment } from "@/shared/message-attachments";
 import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CreateTaskFormProps } from "./types";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
-import { DEFAULT_TASK_CONFIG } from "../../types/task";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { UploadedPlanFile } from "./types";
 

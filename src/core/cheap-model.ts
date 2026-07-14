@@ -1,7 +1,8 @@
 import { createLogger } from "./logger";
 import { getModelsForSettings } from "./model-discovery";
 import { workspaceManager } from "./workspace-manager";
-import type { CheapModelSelection, ModelConfig, ModelInfo } from "../types";
+import type { CheapModelSelection, ModelConfig } from "@/shared";
+import type { ModelInfo } from "@/contracts";
 
 const log = createLogger("core:cheap-model");
 

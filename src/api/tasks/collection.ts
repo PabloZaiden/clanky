@@ -10,7 +10,7 @@ import {
   taskCreationService,
 } from "../../core/task-creation-service";
 import { taskManager } from "../../core/task-manager";
-import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "../../types/schemas";
+import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "@/contracts/schemas";
 import { errorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";

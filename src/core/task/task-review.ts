@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
-import type { Task, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpResult } from "./task-types";
 import type { AutomaticPrFlowFeedbackItem } from "../automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";

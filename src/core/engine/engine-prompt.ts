@@ -3,9 +3,9 @@
  */
 
 import { log } from "../logger";
-import type { TaskConfig, TaskState, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
-import type { LogLevel } from "../../types/events";
+import type { TaskConfig, TaskState, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { LogLevel } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
 import type { IterationContext } from "./engine-types";
 import { StopPatternDetector } from "./engine-helpers";

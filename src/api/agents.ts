@@ -3,14 +3,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Scheduled agents API routes.
  */
 
-import type { AgentRunStatus } from "../types/agent";
-import {
-  AgentRunsQuerySchema,
-  CreateAgentRequestSchema,
-  DeleteAgentRunsRequestSchema,
-  RunAgentRequestSchema,
-  UpdateAgentRequestSchema,
-} from "../types/schemas";
+import type { AgentRunStatus } from "@/shared/agent";
+import { AgentRunsQuerySchema, CreateAgentRequestSchema, DeleteAgentRunsRequestSchema, RunAgentRequestSchema, UpdateAgentRequestSchema } from "@/contracts/schemas";
 import { agentManager } from "../core/agent-manager";
 import { createLogger } from "../core/logger";
 import { isModelEnabled } from "../core/model-discovery";

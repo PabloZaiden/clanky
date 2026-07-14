@@ -2,24 +2,8 @@
  * Core manager for standalone SSH servers and server-owned SSH sessions.
  */
 
-import {
-  DEFAULT_SSH_CONNECTION_MODE,
-  DEFAULT_SSH_SESSION_USE_TMUX,
-  type CreateSshServerRequest,
-  type CreateSshServerSessionRequest,
-  type CheckSshServerPrerequisitesRequest,
-  type DevboxTemplateSummary,
-  type GetDevboxTemplatesRequest,
-  type DeleteSshServerSessionRequest,
-  type SshConnectionMode,
-  type SshServer,
-  type SshServerConfig,
-  type SshServerPrerequisiteReport,
-  type SshSessionStatus,
-  type SshServerSession,
-  type UpdateSshServerRequest,
-  type UpdateSshSessionRequest,
-} from "../types";
+import { DEFAULT_SSH_CONNECTION_MODE, DEFAULT_SSH_SESSION_USE_TMUX, type DevboxTemplateSummary, type SshConnectionMode, type SshServer, type SshServerConfig, type SshServerPrerequisiteReport, type SshSessionStatus, type SshServerSession } from "@/shared";
+import { type CreateSshServerRequest, type CreateSshServerSessionRequest, type CheckSshServerPrerequisitesRequest, type GetDevboxTemplatesRequest, type DeleteSshServerSessionRequest, type UpdateSshServerRequest, type UpdateSshSessionRequest } from "@/contracts";
 import type { CommandExecutor } from "./command-executor";
 import {
   countSshServerSessionsByServerId,

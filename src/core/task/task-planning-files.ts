@@ -1,5 +1,5 @@
 import type { TaskCtx } from "./context";
-import type { Task } from "../../types/task";
+import type { Task } from "@/shared/task";
 import type { CommandExecutor } from "../command-executor";
 import { updateTaskState } from "../../persistence/tasks";
 import { log } from "../logger";

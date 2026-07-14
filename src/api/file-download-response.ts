@@ -2,7 +2,7 @@
  * Helpers for returning file download responses.
  */
 
-import type { WorkspaceFileEntry } from "../types";
+import type { WorkspaceFileEntry } from "@/shared";
 
 function sanitizeAttachmentFileName(fileName: string): string {
   return fileName.replace(/["\r\n]/g, "_") || "download";

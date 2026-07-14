@@ -1,5 +1,5 @@
-import type { Task, ReviewComment, TaskState } from "../../types/task";
-import type { FileContentResponse, PullRequestDestinationResponse } from "../../types";
+import type { Task, ReviewComment, TaskState } from "@/shared/task";
+import type { FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { EntityLabels } from "../../utils";
 import { isFinalState, canAccept, canManualComplete, canMarkMerged } from "../../utils";
 import { ReviewTab } from "./review-tab";

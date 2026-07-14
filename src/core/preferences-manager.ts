@@ -23,8 +23,8 @@ import {
   setQuickChatSettings as setQuickChatSettingsRecord,
   setSchedulerTimezone as setSchedulerTimezoneRecord,
 } from "../persistence/preferences";
-import type { CheapModelSelection } from "../types/schemas/model";
-import type { DashboardViewMode, QuickChatSettings } from "../types/preferences";
+import type { CheapModelSelection } from "@/contracts/schemas/model";
+import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
 import { DomainError } from "./domain-error";
 import { workspaceManager } from "./workspace-manager";
 

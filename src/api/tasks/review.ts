@@ -11,8 +11,8 @@ import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
-import type { AddressCommentsResponse, ReviewHistoryResponse } from "../../types/api";
-import { AddressCommentsRequestSchema } from "../../types/schemas";
+import type { AddressCommentsResponse, ReviewHistoryResponse } from "@/contracts";
+import { AddressCommentsRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:tasks");
 

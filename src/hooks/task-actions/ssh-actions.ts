@@ -2,7 +2,7 @@
  * SSH session actions for tasks.
  */
 
-import type { SshSession } from "../../types";
+import type { SshSession } from "@/shared";
 import { apiCall } from "./helpers";
 
 /**

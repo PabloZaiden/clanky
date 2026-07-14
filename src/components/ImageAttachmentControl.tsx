@@ -10,7 +10,7 @@ import {
   type ClipboardEvent,
   type ForwardedRef,
 } from "react";
-import type { ComposerImageAttachment } from "../types/message-attachments";
+import type { ComposerImageAttachment } from "@/shared/message-attachments";
 import {
   MESSAGE_IMAGE_ACCEPT,
   MESSAGE_IMAGE_ATTACHMENT_LIMIT,

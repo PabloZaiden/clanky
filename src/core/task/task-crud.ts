@@ -1,14 +1,9 @@
 import type { TaskCtx } from "./context";
-import {
-  POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES,
-  type Task,
-  type TaskConfig,
-  type TaskState,
-} from "../../types/task";
+import { POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES, type Task, type TaskConfig, type TaskState } from "@/shared/task";
 import type { CreateTaskOptions } from "./task-types";
-import type { PullRequestDestinationResponse } from "../../types/api";
-import { createTimestamp } from "../../types/events";
-import { createInitialState, DEFAULT_TASK_CONFIG } from "../../types/task";
+import type { PullRequestDestinationResponse } from "@/contracts";
+import { createTimestamp } from "@/shared/events";
+import { createInitialState, DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { createTaskListSnapshot, saveTask, loadTask, listTasks, listTaskSummaries } from "../../persistence/tasks";
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";

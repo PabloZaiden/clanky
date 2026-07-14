@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
-import type { SshSession, WorkspaceFileEntry } from "../../types";
-import type { SshServerSession } from "../../types/ssh-server";
+import type { SshSession, WorkspaceFileEntry } from "@/shared";
+import type { SshServerSession } from "@/shared/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";

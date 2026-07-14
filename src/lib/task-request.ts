@@ -1,5 +1,9 @@
-import type { UpdateTaskRequest } from "../types";
-import type { CreateTaskFormSubmitRequest } from "../types/task-request";
+import type { CreateTaskRequest, UpdateTaskRequest } from "@/contracts";
+import type { ModelConfig } from "@/shared";
+
+export type CreateTaskFormSubmitRequest = Omit<CreateTaskRequest, "model"> & {
+  model?: ModelConfig;
+};
 
 /**
  * Draft editors start from the create-task form shape, but draft PUT requests

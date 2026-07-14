@@ -1,7 +1,7 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { vncSessionManager } from "../core/vnc-session-manager";
 import { createLogger } from "../core/logger";
-import { CreateVncSessionRequestSchema } from "../types/schemas";
+import { CreateVncSessionRequestSchema } from "@/contracts/schemas";
 import { parseAndValidate } from "./validation";
 import { errorResponse, successResponse } from "./helpers";
 

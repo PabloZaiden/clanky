@@ -1,4 +1,5 @@
-import type { FileDiff, ToolCallData } from "../../types";
+import type { ToolCallData } from "@/shared";
+import type { FileDiff } from "@/contracts";
 import { formatToolPathForDisplay } from "./tool-paths";
 
 export type InferredToolKind =

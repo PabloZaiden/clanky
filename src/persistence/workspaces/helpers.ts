@@ -2,9 +2,9 @@
  * Internal row-conversion helpers for workspace persistence.
  */
 
-import type { Workspace } from "../../types/workspace";
-import type { AgentProvider } from "../../types/settings";
-import { getServerFingerprint, parseServerSettings } from "../../types/settings";
+import type { Workspace } from "@/shared/workspace";
+import type { AgentProvider } from "@/shared/settings";
+import { getServerFingerprint, parseServerSettings } from "@/shared/settings";
 import { requirePersistenceUserId } from "../ownership";
 
 export function workspaceToRow(workspace: Workspace): Record<string, unknown> {

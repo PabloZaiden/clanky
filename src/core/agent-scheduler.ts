@@ -1,5 +1,5 @@
-import type { Agent, AgentRun } from "../types/agent";
-import { createTimestamp } from "../types/events";
+import type { Agent, AgentRun } from "@/shared/agent";
+import { createTimestamp } from "@/shared/events";
 import {
   listActiveAgentRuns,
   listAgents,

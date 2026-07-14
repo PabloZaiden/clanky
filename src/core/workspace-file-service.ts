@@ -4,9 +4,8 @@
 
 import { backendManager } from "./backend-manager";
 import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-explorer-service";
+import type { Workspace, WorkspaceFileEntry, WorkspaceFileKind } from "@/shared";
 import type {
-  Workspace,
-  WorkspaceFileEntry,
   WorkspaceFileDeleteResponse,
   WorkspaceFileUploadCancelResponse,
   WorkspaceFileUploadChunkResponse,
@@ -18,8 +17,7 @@ import type {
   WorkspaceFileReadResponse,
   WorkspaceFileTreeResponse,
   WorkspaceFileWriteResponse,
-  WorkspaceFileKind,
-} from "../types";
+} from "@/contracts";
 
 export interface WorkspaceFileImageReadResponse {
   workspaceId: string;

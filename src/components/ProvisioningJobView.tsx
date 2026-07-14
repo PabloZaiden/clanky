@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
-import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "../types";
+import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "@/shared";
 import type { WebSocketConnectionStatus } from "../hooks";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {

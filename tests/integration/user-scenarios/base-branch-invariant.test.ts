@@ -18,7 +18,7 @@ import {
   remoteBranchExists,
   type TestServerContext,
 } from "./helpers";
-import type { Task } from "../../../src/types/task";
+import type { Task } from "@/shared/task";
 
 function createPlanModeMockResponses(options: {
   planIterations?: number;

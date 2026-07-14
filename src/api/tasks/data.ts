@@ -14,7 +14,7 @@ import { getTaskWorkingDirectory, taskManager } from "../../core/task-manager";
 import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git-service";
 import { createLogger } from "../../core/logger";
-import type { FileContentResponse, PullRequestDestinationResponse } from "../../types/api";
+import type { FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import { errorResponse, requireWorkspace } from "../helpers";
 import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";
 

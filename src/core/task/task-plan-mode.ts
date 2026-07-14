@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { AcceptPlanOptions, AcceptPlanResult } from "./task-types";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
@@ -8,8 +8,8 @@ import { sshSessionManager } from "../ssh-session-manager";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
-import type { TaskState } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { TaskState } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 
 export async function sendPlanFeedbackImpl(
   ctx: TaskCtx,

@@ -1,5 +1,5 @@
-import type { Agent, Chat, SshServer, Workspace } from "../../types";
-import { findRegisteredSshServer } from "../../types/settings";
+import type { Agent, Chat, SshServer, Workspace } from "@/shared";
+import { findRegisteredSshServer } from "@/shared/settings";
 import type { useChats, useTasks, useSshSessions } from "../../hooks";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {

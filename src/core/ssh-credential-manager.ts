@@ -2,10 +2,7 @@
  * Short-lived in-memory credential handoff for standalone SSH servers.
  */
 
-import type {
-  SshCredentialExchangeResponse,
-  SshServerEncryptedCredential,
-} from "../types";
+import type { SshCredentialExchangeResponse, SshServerEncryptedCredential } from "@/shared";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
 import { createLogger } from "./logger";
 

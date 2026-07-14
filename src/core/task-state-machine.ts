@@ -7,7 +7,7 @@
  * @module core/task-state-machine
  */
 
-import type { TaskStatus } from "../types/task";
+import type { TaskStatus } from "@/shared/task";
 
 /**
  * Transition table mapping each status to its set of valid target statuses.

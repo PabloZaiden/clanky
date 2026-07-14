@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { ModelInfo } from "../types";
+import type { ModelInfo } from "@/contracts";
 import { log } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 

@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
-import type {
-  Chat,
-  ChatError,
-  ChatEvent,
-  CreateChatRequest,
-  CreateSshServerChatRequest,
-  ImportExistingChatRequest,
-  InterruptChatRequest,
-  SendChatMessageRequest,
-  UpdateChatRequest,
-} from "../types";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
+import type { Chat, ChatError, ChatEvent } from "@/shared";
+import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { isChatEvent, useAppEvents } from "./useAppEvents";
 

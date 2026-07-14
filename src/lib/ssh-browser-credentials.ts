@@ -1,10 +1,6 @@
 import { createLogger } from "./logger";
 import { appFetch } from "./public-path";
-import type {
-  SshCredentialExchangeResponse,
-  SshServerEncryptedCredential,
-  SshServerPublicKey,
-} from "../types";
+import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
 const log = createLogger("sshBrowserCredentials");
 const SSH_CREDENTIAL_STORAGE_PREFIX = "clanky.sshServerCredential.";

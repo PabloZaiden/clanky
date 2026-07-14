@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "../../lib/logger";
-import type { ServerSettings } from "../../types/settings";
+import type { ServerSettings } from "@/shared/settings";
 import { appFetch } from "../../lib/public-path";
 
 export function useWorkspaceMutations(

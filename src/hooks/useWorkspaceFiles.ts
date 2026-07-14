@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceFileEntry, WorkspaceFileNode } from "../types";
+import type { WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import {
   type FileExplorerCredentialErrorCode,
   type FileExplorerTarget,

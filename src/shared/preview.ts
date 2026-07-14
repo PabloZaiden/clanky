@@ -1,5 +1,5 @@
 /**
- * Workspace live preview domain types.
+ * Workspace live preview domain and bridge protocol types.
  */
 
 export type PreviewSessionStatus = "active" | "closing" | "closed" | "failed";

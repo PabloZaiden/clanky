@@ -3,12 +3,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  SshServerSession,
-  SshSession,
-  SshSessionEvent,
-  UpdateSshSessionRequest,
-} from "../types";
+import type { SshServerSession, SshSession, SshSessionEvent } from "@/shared";
+import type { UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
 import { useWebSocket } from "./useWebSocket";
 import { appFetch } from "../lib/public-path";

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import type { SshConnectionMode, SshServer, Workspace } from "../../types";
+import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions, useToast } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";

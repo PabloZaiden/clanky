@@ -4,8 +4,8 @@
 
 import type { CommandExecutor } from "./command-executor";
 import { createLogger } from "./logger";
-import type { Task, PullRequestMonitoringState } from "../types/task";
-import type { PullRequestDestinationResponse } from "../types/api";
+import type { Task, PullRequestMonitoringState } from "@/shared/task";
+import type { PullRequestDestinationResponse } from "@/contracts";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 
 export { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";

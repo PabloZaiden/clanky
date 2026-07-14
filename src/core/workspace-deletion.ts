@@ -1,5 +1,5 @@
 import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceTasks } from "../persistence/workspaces";
-import type { Workspace } from "../types/workspace";
+import type { Workspace } from "@/shared/workspace";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { createLogger } from "./logger";

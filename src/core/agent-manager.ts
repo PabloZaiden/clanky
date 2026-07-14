@@ -1,7 +1,7 @@
-import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "../types/agent";
-import type { MessageImageAttachment } from "../types/message-attachments";
-import { createInitialAgentState, isAgentRunActiveStatus } from "../types/agent";
-import { createTimestamp } from "../types/events";
+import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "@/shared/agent";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
+import { createInitialAgentState, isAgentRunActiveStatus } from "@/shared/agent";
+import { createTimestamp } from "@/shared/events";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
   deleteAgent,

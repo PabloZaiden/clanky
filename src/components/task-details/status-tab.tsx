@@ -1,4 +1,4 @@
-import type { FileContentResponse } from "../../types";
+import type { FileContentResponse } from "@/contracts";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { taskDetailsTabContentClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";
 

@@ -1,8 +1,8 @@
 import type { TaskCtx } from "./context";
-import type { Task, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { loadTask, updateTaskState, saveTask } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";

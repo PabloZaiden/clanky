@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
-import type { GitRemoteStatusResponse } from "../../types";
+import type { GitRemoteStatusResponse } from "@/contracts";
 
 const log = createLogger("useTaskRemoteStatus");
 

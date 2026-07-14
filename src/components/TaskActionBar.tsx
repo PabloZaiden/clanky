@@ -10,8 +10,9 @@
  */
 
 import { useState, useRef, useCallback, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
-import type { ModelInfo, ModelConfig, TaskConfig } from "../types";
-import type { ComposerImageAttachment, MessageImageAttachment } from "../types/message-attachments";
+import type { ModelConfig, TaskConfig } from "@/shared";
+import type { ModelInfo } from "@/contracts";
+import type { ComposerImageAttachment, MessageImageAttachment } from "@/shared/message-attachments";
 import { ModelSelector, makeModelKey, parseModelKey, isModelEnabled, getModelDisplayName } from "./ModelSelector";
 import { createLogger } from "../lib/logger";
 import {

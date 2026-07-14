@@ -10,12 +10,7 @@ import {
   getWorkspace,
   updateWorkspace,
 } from "../../persistence/workspaces";
-import type {
-  ProvisioningJob,
-  ProvisioningJobSnapshot,
-  ProvisioningLogEntry,
-  ServerSettings,
-} from "../../types";
+import type { ProvisioningJob, ProvisioningJobSnapshot, ProvisioningLogEntry, ServerSettings } from "@/shared";
 import { DEFAULT_JOB_RETENTION_MS, DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { buildError, getPublishedPortFallback, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";

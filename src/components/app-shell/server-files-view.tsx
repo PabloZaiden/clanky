@@ -1,5 +1,6 @@
-import type { CreateSshSessionRequest, SshConnectionMode, SshSession } from "../../types";
-import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { SshConnectionMode, SshSession } from "@/shared";
+import type { CreateSshSessionRequest } from "@/contracts";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { ShellRoute } from "./shell-types";
 import { CodeExplorerView } from "./code-explorer-view";
 

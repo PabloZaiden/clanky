@@ -1,14 +1,4 @@
-import type {
-  ProvisioningEvent,
-  ProvisioningJob,
-  ProvisioningJobSnapshot,
-  PublicProvisioningJob,
-  PublicProvisioningJobSnapshot,
-  PublicServerSettings,
-  PublicWorkspace,
-  ServerSettings,
-  Workspace,
-} from "../types";
+import type { ProvisioningEvent, ProvisioningJob, ProvisioningJobSnapshot, PublicProvisioningJob, PublicProvisioningJobSnapshot, PublicServerSettings, PublicWorkspace, ServerSettings, Workspace } from "@/shared";
 
 export function parseSensitiveFlag(value: string | null | undefined): boolean {
   return value === "true";

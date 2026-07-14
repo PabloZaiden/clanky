@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { InlineField, ShellPanel } from "./shell-panel";

@@ -1,10 +1,6 @@
-import type {
-  CheapModelSelection,
-  ModelConfig,
-  UncommittedChangesError,
-  Workspace,
-} from "../types";
-import type { CreateTaskFormSubmitRequest } from "../types/task-request";
+import type { CheapModelSelection, ModelConfig, Workspace } from "@/shared";
+import type { UncommittedChangesError } from "@/contracts";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { createLogger } from "./logger";
 import {
   saveStoredTaskCheapModelPreference,

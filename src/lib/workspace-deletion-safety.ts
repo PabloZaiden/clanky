@@ -1,4 +1,4 @@
-import type { Workspace } from "../types/workspace";
+import type { Workspace } from "@/shared/workspace";
 
 function normalizeAbsolutePath(path: string): string | null {
   const trimmed = path.trim();

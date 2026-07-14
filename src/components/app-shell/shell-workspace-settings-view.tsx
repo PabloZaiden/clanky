@@ -1,4 +1,4 @@
-import type { Workspace } from "../../types";
+import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
@@ -12,7 +12,7 @@ interface WorkspaceSettingsViewProps {
   workspaceSettings: UseWorkspaceSettingsShellResult;
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
-  deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   navigateWithinShell: (route: ShellRoute) => void;
   shellHeaderOffsetClassName: string;
 }

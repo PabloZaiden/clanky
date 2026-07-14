@@ -1,7 +1,6 @@
 export * from "./agent";
 export * from "./chat";
 export * from "./commit-scope";
-export * from "./components";
 export * from "./events";
 export * from "./task";
 export * from "./message-attachments";
@@ -13,5 +12,6 @@ export * from "./ssh-server";
 export * from "./ssh-session";
 export * from "./ssh-session-events";
 export * from "./tool-call";
+export * from "./preview";
 export * from "./workspace";
 export * from "./workspace-files";

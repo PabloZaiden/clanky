@@ -7,9 +7,9 @@ import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
 } from "../lib/ssh-browser-credentials";
+import type { WorkspaceFileEntry } from "@/shared";
 import type {
   WorkspaceFileConflictResponse,
-  WorkspaceFileEntry,
   SshServerFileDeleteResponse,
   SshServerFileListResponse,
   SshServerFileMetadataResponse,
@@ -36,7 +36,7 @@ import type {
   WorkspaceFileUploadCreateResponse,
   WorkspaceFileWriteResponse,
   WriteWorkspaceFileRequest,
-} from "../types";
+} from "@/contracts";
 
 interface ApiErrorBody {
   error?: string;

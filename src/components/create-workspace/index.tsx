@@ -6,8 +6,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent } fro
 import { Modal } from "@pablozaiden/webapp/web";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import type { AgentProvider, ServerSettings, SshServer } from "../../types";
-import type { CreateWorkspaceRequest } from "../../types/workspace";
+import type { AgentProvider, ServerSettings, SshServer } from "@/shared";
+import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { appFetch } from "../../lib/public-path";
 import {
   getAutomaticWorkspaceBasePath,
@@ -16,7 +16,7 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { useProvisioningJob } from "../../hooks/useProvisioningJob";
-import { getCreateWorkspaceDefaultServerSettings } from "../../types/settings";
+import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import { ModeTabs } from "./mode-tabs";
 import { WorkspaceNameField } from "./workspace-name-field";
 import { ManualWorkspaceForm } from "./manual-workspace-form";

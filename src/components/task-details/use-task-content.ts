@@ -4,8 +4,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileDiff, FileContentResponse, Task, PullRequestDestinationResponse } from "../../types";
-import type { ReviewComment } from "../../types/task";
+import type { Task } from "@/shared";
+import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
+import type { ReviewComment } from "@/shared/task";
 import { log } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 import type { TabId } from "./types";

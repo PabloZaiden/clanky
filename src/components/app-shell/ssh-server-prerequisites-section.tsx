@@ -1,6 +1,6 @@
 import type { BadgeVariant } from "../common";
 import { Badge, Button } from "../common";
-import type { SshServerPrerequisiteReport } from "../../types";
+import type { SshServerPrerequisiteReport } from "@/shared";
 
 interface SshServerPrerequisitesSectionProps {
   checking: boolean;

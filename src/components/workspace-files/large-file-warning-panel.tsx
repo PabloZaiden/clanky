@@ -1,4 +1,4 @@
-import type { WorkspaceFileEntry } from "../../types";
+import type { WorkspaceFileEntry } from "@/shared";
 import { formatFileSize } from "../../utils";
 import { Button } from "../common";
 

@@ -2,7 +2,7 @@
  * Specialized query operations for chats persistence.
  */
 
-import type { Chat, ChatStatus } from "../../types";
+import type { Chat, ChatStatus } from "@/shared";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { rowToChat } from "./helpers";

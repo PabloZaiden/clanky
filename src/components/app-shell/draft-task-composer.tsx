@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Task, Workspace } from "../../types";
+import type { Task, Workspace } from "@/shared";
 import { useDashboardData, useToast } from "../../hooks";
 import {
   CreateTaskForm,
@@ -7,7 +7,7 @@ import {
   getComposeSubmitActionLabel,
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { ConfirmModal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";

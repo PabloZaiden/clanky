@@ -16,9 +16,9 @@ import {
   type AutomaticPrFlowResult,
 } from "../taskActions";
 import { createLogger } from "../../lib/logger";
-import type { FollowUpPromptMode } from "../../types/task";
-import type { SshSession } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { FollowUpPromptMode } from "@/shared/task";
+import type { SshSession } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");

@@ -5,7 +5,8 @@
 
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { FileDiff, FileContentResponse, PullRequestDestinationResponse, Task } from "../../types";
+import type { Task } from "@/shared";
+import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 

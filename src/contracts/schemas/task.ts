@@ -2,9 +2,9 @@
  * Zod schemas for task-related API requests.
  *
  * These schemas validate request bodies for task CRUD and control operations.
- * They match the interfaces defined in types/api.ts.
+ * They match the interfaces defined in contracts/api.ts.
  *
- * @module types/schemas/task
+ * @module contracts/schemas/task
  */
 
 import { z } from "zod";

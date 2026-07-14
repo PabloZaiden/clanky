@@ -1,6 +1,6 @@
-import type { CheapModelSelection, FollowUpPromptMode, Task, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
-import type { SshSession } from "../../types/ssh-session";
+import type { CheapModelSelection, FollowUpPromptMode, Task, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { SshSession } from "@/shared/ssh-session";
 
 /**
  * Options for creating a new task.

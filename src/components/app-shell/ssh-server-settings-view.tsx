@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "../common";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
@@ -11,7 +11,7 @@ interface SshServerSettingsViewProps {
   shellHeaderOffsetClassName: string;
   updateServer: (
     id: string,
-    request?: import("../../types").UpdateSshServerRequest,
+    request?: import("@/contracts").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: () => Promise<boolean>;

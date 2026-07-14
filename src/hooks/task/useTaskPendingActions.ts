@@ -12,7 +12,7 @@ import {
   type SetPendingResult,
 } from "../taskActions";
 import { createLogger } from "../../lib/logger";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");

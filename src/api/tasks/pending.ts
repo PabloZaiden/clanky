@@ -10,11 +10,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
-import {
-  PendingPromptRequestSchema,
-  SetPendingRequestSchema,
-  FollowUpRequestSchema,
-} from "../../types/schemas";
+import { PendingPromptRequestSchema, SetPendingRequestSchema, FollowUpRequestSchema } from "@/contracts/schemas";
 import { validateEnabledModelForTask } from "./helpers";
 
 export const tasksPendingRoutes = defineRoutes({

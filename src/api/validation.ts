@@ -9,7 +9,7 @@
  */
 
 import { z, ZodError } from "zod";
-import type { ErrorResponse } from "../types/api";
+import type { ErrorResponse } from "@/contracts";
 
 /**
  * Result of a validation operation.

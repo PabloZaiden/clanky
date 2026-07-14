@@ -14,13 +14,9 @@ import {
   touchWorkspace as touchWorkspaceRecord,
   updateWorkspace as updateWorkspaceRecord,
 } from "../persistence/workspaces";
-import type { WorkspaceConfig, WorkspaceExportData } from "../types/schemas";
-import {
-  areServerSettingsEqual,
-  getDefaultServerSettings,
-  type ServerSettings,
-} from "../types/settings";
-import type { Workspace, WorkspaceImportResult } from "../types/workspace";
+import type { WorkspaceConfig, WorkspaceExportData } from "@/contracts/schemas";
+import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
+import type { Workspace, WorkspaceImportResult } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { DomainError } from "./domain-error";
 import {

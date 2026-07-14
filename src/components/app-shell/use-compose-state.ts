@@ -1,5 +1,5 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
-import type { CreateTaskRequest } from "../../types";
+import type { CreateTaskRequest } from "@/contracts";
 import type { CreateTaskResult } from "../../hooks/useTasks";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { ToastContextValue } from "../../hooks/useToast";
@@ -8,7 +8,7 @@ import {
   saveStoredTaskModelPreference,
 } from "../../lib/model-selection-preferences";
 import type { ShellRoute } from "./shell-types";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 
 export interface UseComposeStateResult {

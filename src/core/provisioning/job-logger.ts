@@ -1,5 +1,5 @@
 import { provisioningEventEmitter } from "../event-emitter";
-import type { ProvisioningLogEntry, ProvisioningStep } from "../../types";
+import type { ProvisioningLogEntry, ProvisioningStep } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";
 
 export function appendLog(

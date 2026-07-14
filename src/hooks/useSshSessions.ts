@@ -3,7 +3,8 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { CreateSshSessionRequest, SshSession, SshSessionEvent, UpdateSshSessionRequest } from "../types";
+import type { SshSession, SshSessionEvent } from "@/shared";
+import type { CreateSshSessionRequest, UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
 import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
 import { appFetch } from "../lib/public-path";

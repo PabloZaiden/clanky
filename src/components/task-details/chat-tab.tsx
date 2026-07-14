@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
-import type { Chat } from "../../types";
+import type { Chat } from "@/shared";
 import { ChatDetails } from "../ChatDetails";
 
 async function parseError(response: Response, fallback: string): Promise<string> {

@@ -3,11 +3,11 @@
  * Handles column validation, JSON serialization, and row mapping.
  */
 
-import type { FollowUpPromptMode, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "../../types";
-import { DEFAULT_TASK_CONFIG } from "../../types/task";
+import type { FollowUpPromptMode, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "@/shared";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { createLogger } from "../../core/logger";
-import { CheapModelSelectionSchema } from "../../types/schemas";
+import { CheapModelSelectionSchema } from "@/contracts/schemas";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:tasks");

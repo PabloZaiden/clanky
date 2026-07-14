@@ -8,7 +8,7 @@ import {
   generateKeyPairSync,
   privateDecrypt,
 } from "node:crypto";
-import type { SshServerEncryptedCredential, SshServerPublicKey } from "../types";
+import type { SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 import { getSshServerConfig } from "../persistence/ssh-servers";
 import {
   createPersistedSshServerKeyPair,

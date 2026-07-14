@@ -1,5 +1,5 @@
 import type { CommandExecutor, CommandResult } from "../command-executor";
-import type { ProvisioningStep } from "../../types";
+import type { ProvisioningStep } from "@/shared";
 import { DEFAULT_COMMAND_TIMEOUT_MS } from "./constants";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { appendLog, appendSystemLog } from "./job-logger";

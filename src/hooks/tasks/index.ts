@@ -11,8 +11,9 @@ import { useTaskEvents } from "./use-task-events";
 import { useTaskMutations, type CreateTaskResult } from "./use-task-mutations";
 import { useTaskActions } from "./use-task-actions";
 import type { AcceptTaskResult, PushTaskResult, AddressCommentsResult, PurgeArchivedTasksResult } from "../taskActions";
-import type { Task, CreateTaskRequest, UpdateTaskRequest } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task } from "@/shared";
+import type { CreateTaskRequest, UpdateTaskRequest } from "@/contracts";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 
 export interface UseTasksResult {
   /** Array of all tasks */

@@ -14,7 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createWorkspace } from "../../src/persistence/workspaces";
-import { getDefaultServerSettings } from "../../src/types/settings";
+import { getDefaultServerSettings } from "@/shared/settings";
 
 describe("Git API Integration", () => {
   let testDataDir: string;

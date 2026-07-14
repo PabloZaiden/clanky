@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import RFB from "../../vendor/novnc-rfb.js";
-import type { VncSession } from "../../types";
+import type { VncSession } from "@/shared";
 import { appWebSocketUrl } from "../../lib/public-path";
 
 export function VncViewer({

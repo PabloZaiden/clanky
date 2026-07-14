@@ -1,6 +1,6 @@
-import type { Task } from "../../types";
+import type { Task } from "@/shared";
 import type { StatusGroups, StatusSectionKey } from "../../hooks/useTaskGrouping";
-import type { DashboardViewMode } from "../../types/preferences";
+import type { DashboardViewMode } from "@/shared/preferences";
 import { sectionConfig } from "../../hooks/useTaskGrouping";
 import { CollapsibleSection } from "../common";
 import { TaskCard } from "../TaskCard";

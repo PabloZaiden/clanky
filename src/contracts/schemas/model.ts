@@ -1,10 +1,10 @@
 /**
  * Zod schemas for model-related types.
  *
- * These schemas validate ModelConfig and related structures used across
- * multiple API endpoints.
+ * These schemas validate model-related API request fields. The reusable
+ * domain types are owned by `src/shared/model.ts`.
  *
- * @module types/schemas/model
+ * @module contracts/schemas/model
  */
 
 import { z } from "zod";
@@ -12,7 +12,7 @@ import { z } from "zod";
 /**
  * Schema for ModelConfig - AI model configuration.
  *
- * This schema is the single source of truth. The ModelConfig type is inferred from it.
+ * The schema is the runtime validator for the shared ModelConfig domain type.
  * - providerID: Required non-empty string (e.g., "anthropic", "openai", "bedrock")
  * - modelID: Required non-empty string (e.g., "claude-sonnet-4-20250514", "gpt-4o")
  * - variant: Optional string (e.g., "thinking", ""). Empty string or undefined for default.
@@ -40,8 +40,7 @@ export const CheapModelSelectionSchema = z.discriminatedUnion("mode", [
 ]);
 
 /**
- * Inferred type from ModelConfigSchema.
- * This is the single source of truth for the ModelConfig type.
+ * Re-export the shared domain types for contract consumers that need both
+ * validators and the corresponding type names.
  */
-export type ModelConfig = z.infer<typeof ModelConfigSchema>;
-export type CheapModelSelection = z.infer<typeof CheapModelSelectionSchema>;
+export type { CheapModelSelection, ModelConfig } from "@/shared/model";

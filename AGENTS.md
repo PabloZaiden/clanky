@@ -463,7 +463,7 @@ These guidelines are distilled from a comprehensive code review (108+ findings).
 - **Respect the layer hierarchy: API → Core → Persistence.** API route modules should contain request validation, authorization, HTTP response mapping, and route-level logging only; they must not import persistence modules or persistence barrels. Route all data access and state changes through Core services/managers (e.g., `TaskManager`, `WorkspaceManager`, or `PreferencesManager`), and keep persistence details behind those Core boundaries.
 - **Keep Core services transport-independent.** Core modules own domain validation, orchestration, and cross-repository workflows; they may depend on persistence, but must not depend on API route modules or HTTP response types.
 - **Keep persistence focused on storage.** Persistence modules expose database/repository operations and must not import API routes or encode HTTP concerns.
-- **Never define shared types in backend-specific modules.** Domain types (like `TodoItem`) belong in `src/types/`. Backends should import from types, not the other way around.
+- **Keep cross-boundary types in one canonical tree.** Browser/server-safe domain types and realtime event unions belong in `src/shared/`; public API request/response types and Zod schemas belong in `src/contracts/`. Contracts may depend on shared, but shared must not depend on API routes, persistence, or server-only modules. Keep UI-only and backend-only types beside their owning implementation, and do not recreate compatibility copies or barrels.
 - **Centralize state transitions.** Use a state machine with a transition table (`src/core/task-state-machine.ts`) instead of ad-hoc status checks scattered across files. Always call `assertValidTransition()` before changing state.
 - **Never mutate state directly in API handlers.** Always delegate state changes to the appropriate Core layer manager method.
 
@@ -526,7 +526,7 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 
 1. Add the route handler in the appropriate `src/api/*.ts` file
 2. Export from `src/api/index.ts`
-3. Add types in `src/types/api.ts` if needed
+3. Add public request/response types in `src/contracts/api.ts` or the appropriate contract module if needed
 4. Add tests in `tests/api/`
 
 ### Fixing TypeScript Errors

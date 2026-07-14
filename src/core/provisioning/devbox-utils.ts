@@ -1,9 +1,4 @@
-import type {
-  DevboxPublishedPort,
-  DevboxStatusResult,
-  ProvisioningJobError,
-  ProvisioningStep,
-} from "../../types";
+import type { DevboxPublishedPort, DevboxStatusResult, ProvisioningJobError, ProvisioningStep } from "@/shared";
 
 export function parseDevboxStatusOutput(output: string): DevboxStatusResult {
   let parsed: unknown;

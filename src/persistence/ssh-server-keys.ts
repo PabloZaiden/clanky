@@ -4,7 +4,7 @@
 
 import { mkdir, rm, unlink } from "fs/promises";
 import { join } from "path";
-import type { SshKeyAlgorithm, SshServerPublicKey } from "../types";
+import type { SshKeyAlgorithm, SshServerPublicKey } from "@/shared";
 import { createLogger } from "../core/logger";
 import { getDataDir } from "./database";
 

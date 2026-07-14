@@ -6,8 +6,8 @@
 import { isRemoteOnlyMode } from "../../core/config";
 import { log } from "../../core/logger";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
-import type { ModelInfo } from "../../types/api";
-import type { AgentProvider } from "../../types/settings";
+import type { ModelInfo } from "@/contracts";
+import type { AgentProvider } from "@/shared/settings";
 
 import type {
   BackendConnectionConfig,

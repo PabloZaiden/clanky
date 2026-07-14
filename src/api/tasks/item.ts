@@ -12,9 +12,9 @@ import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
-import type { TaskConfig, Task } from "../../types/task";
+import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
-import { UpdateTaskRequestSchema } from "../../types/schemas";
+import { UpdateTaskRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:tasks");
 

@@ -1,5 +1,5 @@
 import type { CommandExecutor, CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
-import type { DevboxStatusResult } from "../../src/types";
+import type { DevboxStatusResult } from "@/shared";
 
 interface ExecCall {
   command: string;

@@ -1,4 +1,4 @@
-import type { FileDiff } from "../../types";
+import type { FileDiff } from "@/contracts";
 
 export function getDiffFileStatusPresentation(status: FileDiff["status"]): { symbol: string; className: string } {
   switch (status) {

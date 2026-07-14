@@ -1,6 +1,6 @@
 import { memo, useMemo, type ReactNode } from "react";
 import { ActionMenu, type ActionMenuItem } from "@pablozaiden/webapp/web";
-import type { WorkspaceFileNode } from "../../types";
+import type { WorkspaceFileNode } from "@/shared";
 import { Button, CopyPathIcon, RefreshIcon, SidebarIcon } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {

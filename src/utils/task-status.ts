@@ -4,7 +4,7 @@
  * to determine what actions are available for a task.
  */
 
-import type { Task, TaskConfig, TaskState, TaskStatus } from "../types";
+import type { Task, TaskConfig, TaskState, TaskStatus } from "@/shared";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("TaskStatus");

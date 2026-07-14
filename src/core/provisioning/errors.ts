@@ -1,4 +1,4 @@
-import type { ProvisioningStep } from "../../types";
+import type { ProvisioningStep } from "@/shared";
 
 export class ProvisioningFailedError extends Error {
   constructor(

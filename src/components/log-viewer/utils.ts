@@ -1,4 +1,4 @@
-import type { LogLevel } from "../../types";
+import type { LogLevel } from "@/shared";
 import type {
   EntryBase,
   GroupedEntryBase,

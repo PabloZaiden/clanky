@@ -3,7 +3,7 @@ import { provisioningManager } from "../core/provisioning-manager";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "../core/logger";
-import { CreateProvisioningJobRequestSchema } from "../types/schemas";
+import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";
 import { errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { sanitizeProvisioningSnapshot, shouldIncludeSensitiveData } from "../lib/sensitive-data";

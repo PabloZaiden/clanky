@@ -1,4 +1,4 @@
-import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "../../types/task";
+import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "@/shared/task";
 import { LogViewer } from "../LogViewer";
 import { taskDetailsTabPaddingClassName } from "./tab-layout";
 import type { TranscriptFileLinkContext } from "../log-viewer";

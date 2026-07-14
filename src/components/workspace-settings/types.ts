@@ -2,8 +2,9 @@
  * Shared prop types for WorkspaceSettingsModal and WorkspaceSettingsForm.
  */
 
-import type { ServerSettings, ConnectionStatus } from "../../types/settings";
-import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
+import type { ServerSettings, ConnectionStatus } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
+import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 
 export interface WorkspaceSettingsModalProps {

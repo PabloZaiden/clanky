@@ -1,4 +1,4 @@
-import type { SshServer, SshServerSession } from "../types";
+import type { SshServer, SshServerSession } from "@/shared";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
 import { Badge, Button, Card, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 

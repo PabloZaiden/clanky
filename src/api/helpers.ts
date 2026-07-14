@@ -7,8 +7,8 @@
  * @module api/helpers
  */
 
-import type { ErrorResponse } from "../types/api";
-import type { Workspace } from "../types/workspace";
+import type { ErrorResponse } from "@/contracts";
+import type { Workspace } from "@/shared/workspace";
 import { workspaceManager } from "../core/workspace-manager";
 
 /**

@@ -1,47 +1,22 @@
 /**
- * Zod schemas for model-related types.
+ * Browser/server-safe model domain types.
  *
- * These schemas validate ModelConfig and related structures used across
- * multiple API endpoints.
+ * Runtime validation for these types belongs in `src/contracts/schemas/model.ts`.
  *
- * @module types/schemas/model
+ * @module shared/model
  */
 
-import { z } from "zod";
+export interface ModelConfig {
+  providerID: string;
+  modelID: string;
+  variant: string;
+}
 
-/**
- * Schema for ModelConfig - AI model configuration.
- *
- * This schema is the single source of truth. The ModelConfig type is inferred from it.
- * - providerID: Required non-empty string (e.g., "anthropic", "openai", "bedrock")
- * - modelID: Required non-empty string (e.g., "claude-sonnet-4-20250514", "gpt-4o")
- * - variant: Optional string (e.g., "thinking", ""). Empty string or undefined for default.
- */
-export const ModelConfigSchema = z.object({
-  providerID: z.string().min(1, "providerID is required and must be a non-empty string"),
-  modelID: z.string().min(1, "modelID is required and must be a non-empty string"),
-  variant: z.string(),
-});
-
-/**
- * Schema for choosing how helper-only operations should pick a model.
-  *
- * - `same-as-task`: use the task's main execution model
- * - `custom`: use a distinct model configuration for lightweight helper work
- */
-export const CheapModelSelectionSchema = z.discriminatedUnion("mode", [
-  z.object({
-    mode: z.literal("same-as-task"),
-  }),
-  z.object({
-    mode: z.literal("custom"),
-    model: ModelConfigSchema,
-  }),
-]);
-
-/**
- * Inferred type from ModelConfigSchema.
- * This is the single source of truth for the ModelConfig type.
- */
-export type ModelConfig = z.infer<typeof ModelConfigSchema>;
-export type CheapModelSelection = z.infer<typeof CheapModelSelectionSchema>;
+export type CheapModelSelection =
+  | {
+      mode: "same-as-task";
+    }
+  | {
+      mode: "custom";
+      model: ModelConfig;
+    };

@@ -3,7 +3,7 @@
  *
  * This module re-exports all Zod schemas from a single entry point.
  *
- * @module types/schemas
+ * @module contracts/schemas
  */
 
 export {
@@ -83,6 +83,8 @@ export {
   type AgentTransport,
   type AgentSettings,
   type ServerSettings,
+  type CreateWorkspaceRequest,
+  type UpdateWorkspaceRequest,
   type WorkspaceConfig,
   type WorkspaceExportData,
   type WorkspaceImportRequest,

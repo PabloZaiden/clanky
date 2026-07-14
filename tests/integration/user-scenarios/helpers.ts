@@ -26,7 +26,7 @@ import type {
   PromptInput,
 } from "../../../src/backends/types";
 import { createEventStream, type EventStream } from "../../../src/utils/event-stream";
-import type { Task } from "../../../src/types/task";
+import type { Task } from "@/shared/task";
 
 /**
  * Test context containing all test dependencies.

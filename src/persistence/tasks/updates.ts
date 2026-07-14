@@ -3,7 +3,7 @@
  * Handles atomic state and config updates via transactions.
  */
 
-import type { TaskConfig, TaskState } from "../../types";
+import type { TaskConfig, TaskState } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";

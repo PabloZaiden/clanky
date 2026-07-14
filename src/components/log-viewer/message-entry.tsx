@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { MessageData } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { MessageData } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { StreamingTextContent } from "./streaming-text-content";
 import type { TranscriptFileLinkContext } from "./types";

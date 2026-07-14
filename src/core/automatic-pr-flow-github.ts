@@ -3,11 +3,7 @@
  */
 
 import type { CommandExecutor } from "./command-executor";
-import type {
-  AutomaticPrFlowFeedbackSource,
-  AutomaticPrFlowMergeStateStatus,
-  Task,
-} from "../types/task";
+import type { AutomaticPrFlowFeedbackSource, AutomaticPrFlowMergeStateStatus, Task } from "@/shared/task";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";

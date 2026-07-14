@@ -8,7 +8,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
-import type { ProvisioningJobSnapshot } from "../../src/types";
+import type { ProvisioningJobSnapshot } from "@/shared";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
   ProvisioningTestExecutor,

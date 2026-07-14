@@ -15,7 +15,7 @@ import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { updateTaskState } from "../../src/persistence/tasks";
-import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
+import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };

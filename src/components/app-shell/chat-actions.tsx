@@ -4,7 +4,7 @@ import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl, appFetch } from "../../lib/public-path";
-import type { Chat, Task } from "../../types";
+import type { Chat, Task } from "@/shared";
 
 interface ChatActionItemOptions {
   chat: Chat;

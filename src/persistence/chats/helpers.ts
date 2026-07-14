@@ -2,9 +2,9 @@
  * Internal helpers for the chats persistence layer.
  */
 
-import type { Chat, ChatConfig, ChatSource, ChatState } from "../../types";
-import type { PersistedMessage, PersistedToolCall } from "../../types/task";
-import { DEFAULT_CHAT_CONFIG } from "../../types/chat";
+import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
+import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
+import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "../../core/logger";
 import { requirePersistenceUserId } from "../ownership";
 

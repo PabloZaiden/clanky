@@ -1,5 +1,5 @@
-import { CheapModelSelectionSchema, ModelConfigSchema } from "../types/schemas/model";
-import type { CheapModelSelection, ModelConfig } from "../types";
+import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schemas/model";
+import type { CheapModelSelection, ModelConfig } from "@/shared";
 import { createLogger } from "./logger";
 
 const log = createLogger("modelSelectionPreferences");

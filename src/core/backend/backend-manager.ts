@@ -9,9 +9,9 @@
 import { AcpBackend } from "../../backends/acp";
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
-import { getDefaultServerSettings, type ServerSettings } from "../../types/settings";
+import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import { taskEventEmitter } from "../event-emitter";
-import type { TaskEvent } from "../../types/events";
+import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
 import { GitService } from "../git-service";
@@ -465,11 +465,11 @@ class BackendManager {
   /**
    * Get connection status for a specific workspace.
    */
-  async getWorkspaceStatus(workspaceId: string): Promise<import("../../types/settings").ConnectionStatus> {
+  async getWorkspaceStatus(workspaceId: string): Promise<import("@/shared/settings").ConnectionStatus> {
     const workspace = await getWorkspace(workspaceId);
     const settings = workspace?.serverSettings ?? getDefaultServerSettings();
     const state = this.connections.get(workspaceId);
-    const status: import("../../types/settings").ConnectionStatus = {
+    const status: import("@/shared/settings").ConnectionStatus = {
       connected: state?.backend.isConnected() ?? false,
       provider: settings.agent.provider,
       transport: settings.agent.transport,

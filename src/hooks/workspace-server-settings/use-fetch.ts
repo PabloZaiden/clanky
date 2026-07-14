@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import type { ConnectionStatus } from "../../types/settings";
-import type { Workspace } from "../../types/workspace";
+import type { ConnectionStatus } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
 import { log } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 

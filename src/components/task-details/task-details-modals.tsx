@@ -3,8 +3,8 @@
  * Accepts the actions hook result directly to minimize prop-threading.
  */
 
-import type { FileContentResponse } from "../../types";
-import type { TaskState } from "../../types/task";
+import type { FileContentResponse } from "@/contracts";
+import type { TaskState } from "@/shared/task";
 import type { UseTaskActionsResult } from "./use-task-actions";
 import { ConfirmModal } from "@pablozaiden/webapp/web";
 import {

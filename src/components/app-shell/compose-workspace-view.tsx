@@ -6,14 +6,14 @@ import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { ServerSettingsForm } from "../ServerSettingsForm";
-import type { ServerSettings } from "../../types/settings";
-import type { AgentProvider } from "../../types/settings";
+import type { ServerSettings } from "@/shared/settings";
+import type { AgentProvider } from "@/shared/settings";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ShellPanel, InlineField } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
-import type { SshServer } from "../../types/ssh-server";
+import type { SshServer } from "@/shared/ssh-server";
 import {
   getAutomaticWorkspaceBasePath,
   saveLastAutomaticWorkspaceSshServerId,

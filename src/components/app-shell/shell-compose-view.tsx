@@ -1,9 +1,9 @@
-import type { SshSession, SshConnectionMode, Workspace } from "../../types";
-import type { CreateSshSessionRequest, CreateSshServerRequest } from "../../types/api";
-import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { SshSession, SshConnectionMode, Workspace } from "@/shared";
+import type { CreateSshSessionRequest, CreateSshServerRequest } from "@/contracts";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
 import type { ComposeKind, ShellRoute } from "./shell-types";
@@ -23,12 +23,12 @@ interface ComposeViewProps {
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
-  createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
-  importExistingChat: (request: import("../../types").ImportExistingChatRequest) => Promise<import("../../types").Chat | null>;
+  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
   createSshServerChat: (
     serverId: string,
-    request: import("../../types").CreateSshServerChatRequest,
-  ) => Promise<import("../../types").Chat | null>;
+    request: import("@/contracts").CreateSshServerChatRequest,
+  ) => Promise<import("@/shared").Chat | null>;
   dashboardData: UseDashboardDataResult;
   agents: UseAgentsResult;
   schedulerTimezone: string;
@@ -47,7 +47,7 @@ interface ComposeViewProps {
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (
     id: string,
-    request?: import("../../types").UpdateSshServerRequest,
+    request?: import("@/contracts").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   composeServerSessionCount: number;

@@ -24,7 +24,7 @@ import {
   waitForGitAvailable,
   type TestServerContext,
 } from "./helpers";
-import type { Task } from "../../../src/types/task";
+import type { Task } from "@/shared/task";
 import { backendManager } from "../../../src/core/backend-manager";
 import { TestCommandExecutor } from "../../mocks/mock-executor";
 

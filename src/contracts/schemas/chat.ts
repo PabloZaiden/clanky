@@ -1,7 +1,7 @@
 /**
  * Zod schemas for chat-related API requests.
  *
- * @module types/schemas/chat
+ * @module contracts/schemas/chat
  */
 
 import { z } from "zod";

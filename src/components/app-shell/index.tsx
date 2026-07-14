@@ -17,7 +17,7 @@ import {
   useToast,
   useWorkspaces,
 } from "../../hooks";
-import type { QuickChatSettings } from "../../types/preferences";
+import type { QuickChatSettings } from "@/shared/preferences";
 import {
   buildActiveWorkSidebarItems,
   buildServerSidebarNodes,
@@ -41,7 +41,8 @@ import { FrameworkMainHeaderActionsSlot, FrameworkMainHeaderTitleSlot } from "./
 import { useChatActions } from "./chat-actions";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { appFetch } from "../../lib/public-path";
-import type { Agent, Chat, GitHubRepositoryUrlResponse, SshServer, SshServerSession, SshSession, Task, Workspace } from "../../types";
+import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
+import type { GitHubRepositoryUrlResponse } from "@/contracts";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import {
   isEffectivelyPrivate,

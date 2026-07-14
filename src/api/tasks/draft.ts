@@ -8,7 +8,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
-import { StartDraftRequestSchema } from "../../types/schemas";
+import { StartDraftRequestSchema } from "@/contracts/schemas";
 import { startErrorResponse } from "./helpers";
 
 export const tasksDraftRoutes = defineRoutes({

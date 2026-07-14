@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from "react";
-import type { Task, Workspace } from "../types";
+import type { Task, Workspace } from "@/shared";
 import { isArchivedTask, isAwaitingFeedback, isTaskPlanReady } from "../utils";
 
 export interface StatusGroups {

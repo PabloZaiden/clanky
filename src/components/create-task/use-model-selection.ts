@@ -14,7 +14,7 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
-import type { CheapModelSelection } from "../../types";
+import type { CheapModelSelection } from "@/shared";
 import type { CreateTaskFormProps } from "./types";
 
 const log = createLogger("CreateTaskForm");

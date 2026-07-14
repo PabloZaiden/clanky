@@ -2,10 +2,10 @@
  * Background monitor for pushed tasks waiting on external pull request merges.
  */
 
-import type { AutomaticPrFlowHandledItem, Task } from "../types/task";
+import type { AutomaticPrFlowHandledItem, Task } from "@/shared/task";
 import type { CommandExecutor } from "./command-executor";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
-import type { TaskEvent } from "../types/events";
+import type { TaskEvent } from "@/shared/events";
 import type {
   AutomaticPrFlowFeedbackItem,
   AutomaticPrFlowPullRequest,

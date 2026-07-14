@@ -3,7 +3,7 @@
  */
 
 import { ServerSettingsForm } from "../ServerSettingsForm";
-import type { ServerSettings, SshServer } from "../../types";
+import type { ServerSettings, SshServer } from "@/shared";
 
 interface ManualWorkspaceFormProps {
   directory: string;

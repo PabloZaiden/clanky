@@ -4,7 +4,7 @@
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
-import type { ModelConfig } from "../types";
+import type { ModelConfig } from "@/shared";
 
 export const DEFAULT_TASK_TITLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_CHAT_NAME_TIMEOUT_MS = 30_000;

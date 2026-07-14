@@ -1,6 +1,6 @@
-import type { Task } from "../../types";
+import type { Task } from "@/shared";
 import type { StatusGroups } from "../../hooks/useTaskGrouping";
-import type { DashboardViewMode } from "../../types/preferences";
+import type { DashboardViewMode } from "@/shared/preferences";
 import { StatusSections } from "./status-sections";
 
 export interface UnassignedSectionProps {

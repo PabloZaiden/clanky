@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Workspace } from "../../types";
+import type { Workspace } from "@/shared";
 import { useToast, useWorkspacePreviews } from "../../hooks";
 import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";

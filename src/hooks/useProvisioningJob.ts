@@ -4,12 +4,7 @@ import {
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
 import { appFetch } from "../lib/public-path";
-import type {
-  AgentProvider,
-  ProvisioningEvent,
-  PublicProvisioningJobSnapshot,
-  ProvisioningLogEntry,
-} from "../types";
+import type { AgentProvider, ProvisioningEvent, PublicProvisioningJobSnapshot, ProvisioningLogEntry } from "@/shared";
 import { useWebSocket, type WebSocketConnectionStatus } from "./useWebSocket";
 
 export interface StartProvisioningJobRequest {

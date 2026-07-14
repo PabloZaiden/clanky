@@ -3,7 +3,8 @@
  */
 
 import { useCallback } from "react";
-import type { Task, CreateTaskRequest, UpdateTaskRequest, UncommittedChangesError } from "../../types";
+import type { Task } from "@/shared";
+import type { CreateTaskRequest, UpdateTaskRequest, UncommittedChangesError } from "@/contracts";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 import { deleteTaskApi } from "../taskActions";

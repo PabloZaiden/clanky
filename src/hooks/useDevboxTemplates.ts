@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DevboxTemplateSummary } from "../types";
+import type { DevboxTemplateSummary } from "@/shared";
 import { listDevboxTemplatesApi } from "./sshServerActions";
 
 export interface UseDevboxTemplatesOptions {

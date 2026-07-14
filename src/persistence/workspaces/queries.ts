@@ -7,7 +7,7 @@
  * async storage in the future.
  */
 
-import type { Workspace } from "../../types/workspace";
+import type { Workspace } from "@/shared/workspace";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { rowToWorkspace } from "./helpers";

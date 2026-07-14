@@ -4,16 +4,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import {
-  type PreviewBridgeClientMessage,
-  type PreviewBridgeHelloMessage,
-  type PreviewBridgeWebSocketCloseMessage,
-  type PreviewBridgeWebSocketMessage,
-  type PreviewBridgeWebSocketOpenMessage,
-  type PreviewSession,
-  type RegisterCliPreviewOptions,
-  type Workspace,
-} from "../types";
+import { type PreviewBridgeClientMessage, type PreviewBridgeHelloMessage, type PreviewBridgeWebSocketCloseMessage, type PreviewBridgeWebSocketMessage, type PreviewBridgeWebSocketOpenMessage, type PreviewSession, type RegisterCliPreviewOptions, type Workspace } from "@/shared";
 import { getWorkspace, listWorkspaces, touchWorkspace } from "../persistence/workspaces";
 import {
   deletePreviewSession,

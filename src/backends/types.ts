@@ -3,9 +3,9 @@
  * These types define the data structures used by AcpBackend.
  */
 
-import type { AgentProvider } from "../types/settings";
+import type { AgentProvider } from "@/shared/settings";
 import type { EventStream } from "../utils/event-stream";
-import type { ModelInfo } from "../types/api";
+import type { ModelInfo } from "@/contracts";
 
 /**
  * Connection info needed for WebSocket and other direct connections.

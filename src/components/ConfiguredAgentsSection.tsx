@@ -1,4 +1,4 @@
-import type { Agent } from "../types";
+import type { Agent } from "@/shared";
 import { getPrivateContainerClassName } from "../lib/private-items";
 
 function formatDate(value?: string): string {

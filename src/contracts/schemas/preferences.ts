@@ -3,7 +3,7 @@
  *
  * These schemas validate request bodies for user preference endpoints.
  *
- * @module types/schemas/preferences
+ * @module contracts/schemas/preferences
  */
 
 import { z } from "zod";

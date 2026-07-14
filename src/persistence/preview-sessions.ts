@@ -2,7 +2,7 @@
  * Preview session persistence layer.
  */
 
-import type { PreviewSession, PreviewSessionStatus } from "../types";
+import type { PreviewSession, PreviewSessionStatus } from "@/shared";
 import { createLogger } from "../core/logger";
 import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";

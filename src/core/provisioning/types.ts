@@ -1,4 +1,4 @@
-import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningLogEntry } from "../../types";
+import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningLogEntry } from "@/shared";
 
 export interface StartProvisioningJobOptions {
   name: string;

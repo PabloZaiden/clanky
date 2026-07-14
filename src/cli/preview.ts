@@ -6,11 +6,7 @@ import {
   type CliRequestAuthContext,
   type StatusCommandOptions,
 } from "./auth";
-import type {
-  PreviewBridgeClientMessage,
-  PreviewBridgeReadyMessage,
-  PreviewBridgeServerMessage,
-} from "../types";
+import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;

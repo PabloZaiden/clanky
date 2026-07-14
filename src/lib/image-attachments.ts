@@ -1,10 +1,5 @@
-import type { ComposerImageAttachment, MessageImageAttachment } from "../types/message-attachments";
-import {
-  MESSAGE_IMAGE_ACCEPT,
-  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-} from "../types/message-attachments";
+import type { ComposerImageAttachment, MessageImageAttachment } from "@/shared/message-attachments";
+import { MESSAGE_IMAGE_ACCEPT, MESSAGE_IMAGE_ALLOWED_MIME_TYPES, MESSAGE_IMAGE_ATTACHMENT_LIMIT, MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES } from "@/shared/message-attachments";
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

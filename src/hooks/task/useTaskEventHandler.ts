@@ -4,12 +4,12 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { TaskEvent, MessageData, ToolCallData } from "../../types";
+import type { TaskEvent, MessageData, ToolCallData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useTaskData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
-import { mergeToolCallRecord, upsertToolCallExtra } from "../../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 
 const log = createLogger("useTask");
 

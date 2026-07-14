@@ -1,4 +1,5 @@
-import type { SshServer, UpdateSshServerRequest } from "../../types";
+import type { SshServer } from "@/shared";
+import type { UpdateSshServerRequest } from "@/contracts";
 
 export interface SshServerFormValues {
   name: string;

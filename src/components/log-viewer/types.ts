@@ -1,4 +1,4 @@
-import type { MessageData, ToolCallData, LogLevel } from "../../types";
+import type { MessageData, ToolCallData, LogLevel } from "@/shared";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
 

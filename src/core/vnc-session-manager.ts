@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import type { ChildProcess } from "node:child_process";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import type { VncSession } from "../types";
+import type { VncSession } from "@/shared";
 import {
   deleteVncSession,
   findActiveVncSession,

@@ -4,9 +4,10 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "../../lib/logger";
-import type { CheapModelSelection, ModelConfig, ModelInfo } from "../../types";
+import type { CheapModelSelection, ModelConfig } from "@/shared";
+import type { ModelInfo } from "@/contracts";
 import { appFetch } from "../../lib/public-path";
-import { ModelConfigSchema } from "../../types/schemas/model";
+import { ModelConfigSchema } from "@/contracts/schemas/model";
 
 export interface UseWorkspaceModelsResult {
   models: ModelInfo[];

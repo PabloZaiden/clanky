@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { Button, Badge } from "../common";
 import { useAgentsMdOptimizer } from "../../hooks/useAgentsMdOptimizer";
-import type { Workspace } from "../../types/workspace";
+import type { Workspace } from "@/shared/workspace";
 import { LoadingSpinner, DocumentIcon, OptimizeIcon } from "./icons";
 
 interface AgentsMdSectionProps {

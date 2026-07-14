@@ -2,7 +2,7 @@
  * Basic CRUD operations for chats persistence.
  */
 
-import type { Chat } from "../../types";
+import type { Chat } from "@/shared";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";

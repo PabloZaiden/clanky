@@ -21,8 +21,8 @@ import { FormActions } from "./form-actions";
 import { UploadedPlanField } from "./uploaded-plan-field";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
-import type { ComposerImageAttachment } from "../../types/message-attachments";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { UploadedPlanFile } from "./types";
 
 export type { CreateTaskFormActionState, CreateTaskFormProps, CreateTaskFormSubmitRequest };

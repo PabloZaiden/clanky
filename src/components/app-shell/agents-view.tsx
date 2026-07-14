@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Agent, AgentEvent, AgentRun, BranchInfo, ModelConfig, ModelInfo, Workspace } from "../../types";
+import type { Agent, AgentEvent, AgentRun, ModelConfig, Workspace } from "@/shared";
+import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import type { CreateAgentRequest, UpdateAgentRequest } from "../../types/schemas";
+import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { appFetch } from "../../lib/public-path";
 import { isAgentEvent, useAppEvents, useMarkdownPreference, useToast } from "../../hooks";
-import { mergeToolCallRecord, upsertToolCallExtra } from "../../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";

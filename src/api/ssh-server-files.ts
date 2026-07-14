@@ -11,19 +11,8 @@ import {
 } from "../core/file-explorer-service";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "../core/logger";
-import { type WorkspaceFileEntry } from "../types";
-import {
-  CancelWorkspaceFileUploadRequestSchema,
-  CompleteWorkspaceFileUploadRequestSchema,
-  CreateWorkspaceFileUploadRequestSchema,
-  DeleteWorkspaceFileRequestSchema,
-  GetWorkspaceFileRequestSchema,
-  GetWorkspaceFileTreeRequestSchema,
-  ListWorkspaceFilesRequestSchema,
-  RenameWorkspaceFileRequestSchema,
-  UploadWorkspaceFileChunkRequestSchema,
-  WriteWorkspaceFileRequestSchema,
-} from "../types/schemas";
+import { type WorkspaceFileEntry } from "@/shared";
+import { CancelWorkspaceFileUploadRequestSchema, CompleteWorkspaceFileUploadRequestSchema, CreateWorkspaceFileUploadRequestSchema, DeleteWorkspaceFileRequestSchema, GetWorkspaceFileRequestSchema, GetWorkspaceFileTreeRequestSchema, ListWorkspaceFilesRequestSchema, RenameWorkspaceFileRequestSchema, UploadWorkspaceFileChunkRequestSchema, WriteWorkspaceFileRequestSchema } from "@/contracts/schemas";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 import { createFileDownloadResponse } from "./file-download-response";

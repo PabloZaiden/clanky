@@ -5,9 +5,9 @@ import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ShellPanel, InlineField } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
-import type { Workspace } from "../../types/workspace";
-import type { SshServer } from "../../types/ssh-server";
-import type { ProvisioningJobMode } from "../../types/provisioning";
+import type { Workspace } from "@/shared/workspace";
+import type { SshServer } from "@/shared/ssh-server";
+import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
 
 interface RebuildWorkspaceViewProps {

@@ -1,4 +1,4 @@
-import type { FileDiff } from "../../types";
+import type { FileDiff } from "@/contracts";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { DiffPatchViewer } from "./diff-patch-viewer";
 import { taskDetailsTabContentClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";
