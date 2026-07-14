@@ -3,7 +3,7 @@ import type { Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServerSession } from "@/shared/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { CodeExplorerView } from "./code-explorer-view";
 
 interface TaskFilesViewProps {
@@ -17,7 +17,7 @@ interface TaskFilesViewProps {
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 

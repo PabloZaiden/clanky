@@ -8,9 +8,8 @@ import {
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { ConfirmModal, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
-import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";
 
@@ -55,7 +54,7 @@ export function DraftTaskComposer({
   headerOffsetClassName?: string;
   onRefresh: () => Promise<void>;
   onDeleteDraft: (id: string) => Promise<boolean>;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -64,8 +63,8 @@ export function DraftTaskComposer({
 
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === task.config.workspaceId) ?? null;
   const exitRoute = selectedWorkspace
-    ? { view: "workspace", workspaceId: selectedWorkspace.id } satisfies ShellRoute
-    : { view: "home" } satisfies ShellRoute;
+    ? { view: "workspace", workspaceId: selectedWorkspace.id } satisfies WebAppRoute
+    : { view: "home" } satisfies WebAppRoute;
 
   function handleCancel() {
     setDeleteConfirmOpen(false);

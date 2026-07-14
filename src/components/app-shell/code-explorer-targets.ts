@@ -1,8 +1,9 @@
 import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import { getOrCreateTaskSshSessionApi } from "../../hooks/task-actions/ssh-actions";
-import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
+import type { CodeExplorerTarget } from "./shell-types";
 
 type ExplorerSession = SshSession | SshServerSession;
 
@@ -44,9 +45,9 @@ export interface ResolvedCodeExplorerTarget {
   description: string;
   defaultRootDirectory: string;
   backLabel: string;
-  backRoute: ShellRoute;
+  backRoute: WebAppRoute;
   target: { type: "workspace" | "server"; id: string; startDirectory?: string };
-  buildRoute: (startDirectory?: string) => ShellRoute;
+  buildRoute: (startDirectory?: string) => WebAppRoute;
   sessions: ExplorerSession[];
   hasTerminal: boolean;
   emptyTerminalMessage: string;
@@ -190,13 +191,11 @@ export function resolveCodeExplorerTarget({
         target: { type: "workspace", id: workspace.id, startDirectory: target.startDirectory },
         buildRoute: (startDirectory?: string) => ({
           view: "code-explorer",
-          target: {
-            contentType: "workspace",
-            workspaceId: workspace.id,
-            startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
-              ? startDirectory.trim()
-              : undefined,
-          },
+          contentType: "workspace",
+          workspaceId: workspace.id,
+          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
+            ? startDirectory.trim()
+            : undefined,
         }),
         sessions: workspaceSessions,
         hasTerminal,
@@ -241,13 +240,11 @@ export function resolveCodeExplorerTarget({
         target: { type: "workspace", id: task.config.workspaceId, startDirectory: effectiveStartDirectory },
         buildRoute: (startDirectory?: string) => ({
           view: "code-explorer",
-          target: {
-            contentType: "task",
-            taskId: task.config.id,
-            startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
-              ? startDirectory.trim()
-              : undefined,
-          },
+          contentType: "task",
+          taskId: task.config.id,
+          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
+            ? startDirectory.trim()
+            : undefined,
         }),
         sessions: taskSessions,
         hasTerminal,
@@ -278,13 +275,11 @@ export function resolveCodeExplorerTarget({
         target: { type: "server", id: server.config.id, startDirectory: target.startDirectory },
         buildRoute: (startDirectory?: string) => ({
           view: "code-explorer",
-          target: {
-            contentType: "server",
-            serverId: server.config.id,
-            startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
-              ? startDirectory.trim()
-              : undefined,
-          },
+          contentType: "server",
+          serverId: server.config.id,
+          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
+            ? startDirectory.trim()
+            : undefined,
         }),
         sessions: sessionsByServerId[server.config.id] ?? [],
         hasTerminal: true,
@@ -327,13 +322,11 @@ export function resolveCodeExplorerTarget({
         target: { type: "workspace", id: workspace.id, startDirectory: effectiveStartDirectory },
         buildRoute: (startDirectory?: string) => ({
           view: "code-explorer",
-          target: {
-            contentType: "chat",
-            chatId: chat.config.id,
-            startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
-              ? startDirectory.trim()
-              : undefined,
-          },
+          contentType: "chat",
+          chatId: chat.config.id,
+          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
+            ? startDirectory.trim()
+            : undefined,
         }),
         sessions: workspaceSessions,
         hasTerminal,

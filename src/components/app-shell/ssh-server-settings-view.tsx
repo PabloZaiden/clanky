@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "../common";
 import type { SshServer } from "@/shared";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 
 interface SshServerSettingsViewProps {
@@ -15,7 +15,7 @@ interface SshServerSettingsViewProps {
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: () => Promise<boolean>;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
 }
 
 export function SshServerSettingsView({

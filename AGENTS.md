@@ -49,6 +49,12 @@ For more project information, see the [README.md](README.md).
 - Use framework dialogs/modals/action menus for generic UI behavior. Framework dialogs handle Enter/Escape, destructive/delete menu items are red and last, and sidebar badges render as compact status dots.
 - Prefer structured `settings.sections[].rows` for app settings; use custom `render` sections only when the framework row model cannot represent the setting.
 - Header action buttons must remain visible and non-deforming; titles/subtitles should truncate before actions are clipped.
+- Use `WebAppRoute` from `@pablozaiden/webapp/web` as the only canonical
+  client route model. Do not add app-owned route unions, hash parsers,
+  serializers, conversion layers, or direct hash mutation; use the framework's
+  route state and navigation helpers. When replacing undocumented routing
+  compatibility, remove the legacy shape rather than translating or
+  redirecting it.
 
 ## Authentication & Authorization
 

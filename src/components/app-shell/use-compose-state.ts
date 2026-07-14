@@ -1,4 +1,5 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTaskRequest } from "@/contracts";
 import type { CreateTaskResult } from "../../hooks/useTasks";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -7,7 +8,7 @@ import {
   saveStoredTaskCheapModelPreference,
   saveStoredTaskModelPreference,
 } from "../../lib/model-selection-preferences";
-import type { ShellRoute } from "./shell-types";
+import { getRouteString } from "./route-fields";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 
@@ -18,10 +19,10 @@ export interface UseComposeStateResult {
 }
 
 interface UseComposeStateOptions {
-  route: ShellRoute;
+  route: WebAppRoute;
   createTask: (req: CreateTaskRequest) => Promise<CreateTaskResult>;
   refreshTasks: () => Promise<void>;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   dashboardData: UseDashboardDataResult;
   toast: ToastContextValue;
 }
@@ -41,7 +42,7 @@ export function useComposeState({
       dashboardData.resetCreateModalState();
       return;
     }
-    if (route.kind !== "task") {
+    if (getRouteString(route, "kind") !== "task") {
       dashboardData.resetCreateModalState();
     }
   }, [dashboardData.resetCreateModalState, route]);
@@ -51,10 +52,10 @@ export function useComposeState({
       setComposeActionState(null);
       return;
     }
-    if (route.kind !== "task") {
+    if (getRouteString(route, "kind") !== "task") {
       setComposeActionState(null);
     }
-  }, [route.view, route.view === "compose" ? route.kind : undefined]);
+  }, [route.view, route.view === "compose" ? getRouteString(route, "kind") : undefined]);
 
   async function finalizeTaskCreation(request: CreateTaskFormSubmitRequest) {
     if (!request.model) {

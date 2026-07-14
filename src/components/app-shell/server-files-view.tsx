@@ -1,7 +1,7 @@
 import type { SshConnectionMode, SshSession } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { CodeExplorerView } from "./code-explorer-view";
 
 interface ServerFilesViewProps {
@@ -14,7 +14,7 @@ interface ServerFilesViewProps {
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
 }
 
 export function ServerFilesView({

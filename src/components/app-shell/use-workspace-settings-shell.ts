@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
-import type { ShellRoute } from "./shell-types";
+import { getRouteString } from "./route-fields";
 
 export interface UseWorkspaceSettingsShellResult extends UseWorkspaceServerSettingsResult {
   workspaceSettingsWorkspaceId: string | null;
@@ -15,7 +16,7 @@ export interface UseWorkspaceSettingsShellResult extends UseWorkspaceServerSetti
 }
 
 interface UseWorkspaceSettingsShellOptions {
-  route: ShellRoute;
+  route: WebAppRoute;
   workspaceGroups: WorkspaceGroup[];
   purgeArchivedWorkspaceTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
 }
@@ -25,7 +26,9 @@ export function useWorkspaceSettingsShell({
   workspaceGroups,
   purgeArchivedWorkspaceTasks,
 }: UseWorkspaceSettingsShellOptions): UseWorkspaceSettingsShellResult {
-  const workspaceSettingsWorkspaceId = route.view === "workspace-settings" ? route.workspaceId : null;
+  const workspaceSettingsWorkspaceId = route.view === "workspace-settings"
+    ? getRouteString(route, "workspaceId") ?? null
+    : null;
   const [workspaceSettingsFormValid, setWorkspaceSettingsFormValid] = useState(false);
   const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
 

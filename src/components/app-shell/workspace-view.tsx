@@ -8,7 +8,7 @@ import {
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { ShellPanel } from "./shell-panel";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
@@ -51,7 +51,7 @@ export function WorkspaceView({
   agentsError: string | null;
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
-  onNavigate: (route: ShellRoute) => void;
+  onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
@@ -61,7 +61,7 @@ export function WorkspaceView({
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const historyDescription = "Merged and deleted tasks from this workspace.";
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
-    const route: ShellRoute = { view: "task", taskId: task.config.id };
+    const route: WebAppRoute = { view: "task", taskId: task.config.id };
     const statusPill = getTaskStatusPill(task);
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
     return (

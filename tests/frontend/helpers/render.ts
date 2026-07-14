@@ -2,17 +2,19 @@
  * Custom render helper for frontend tests.
  *
  * Wraps @testing-library/react's render with common setup
- * like hash-based routing support and required context providers (ToastProvider).
+ * like canonical framework route setup and required context providers
+ * (ToastProvider).
  */
 
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement, type ReactElement, type ReactNode } from "react";
+import { replaceWebAppRoute, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ToastProvider } from "@/components/common/Toast";
 
 interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
-  /** Set window.location.hash before rendering */
-  route?: string;
+  /** Set the framework route before rendering */
+  route?: WebAppRoute;
 }
 
 interface CustomRenderResult extends RenderResult {
@@ -30,13 +32,15 @@ function AllProviders({ children }: { children: ReactNode }) {
 
 /**
  * Custom render function that provides:
- * - Hash route setup via `route` option
+ * - Framework route setup via the `route` option
  * - Pre-configured userEvent instance
  * - Wraps components in required context providers (ToastProvider)
  *
  * @example
  * ```typescript
- * const { user, getByText } = renderWithUser(<MyComponent />, { route: "#/task/123" });
+ * const { user, getByText } = renderWithUser(<MyComponent />, {
+ *   route: { view: "task", taskId: "123" },
+ * });
  * await user.click(getByText("Submit"));
  * ```
  */
@@ -46,9 +50,9 @@ export function renderWithUser(
 ): CustomRenderResult {
   const { route, ...renderOptions } = options ?? {};
 
-  // Set hash route if provided
+  // Set the route through the same framework helper used by the application.
   if (route) {
-    window.location.hash = route;
+    replaceWebAppRoute(route);
   }
 
   const user = userEvent.setup({

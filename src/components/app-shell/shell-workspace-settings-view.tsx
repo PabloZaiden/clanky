@@ -4,7 +4,7 @@ import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
 import { ProvisioningActionsSection } from "../workspace-settings";
 import { ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 
 interface WorkspaceSettingsViewProps {
@@ -13,7 +13,7 @@ interface WorkspaceSettingsViewProps {
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
   deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   shellHeaderOffsetClassName: string;
 }
 

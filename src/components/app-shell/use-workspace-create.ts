@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
 import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
@@ -11,7 +12,7 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { ToastContextValue } from "../../hooks/useToast";
-import type { ShellRoute } from "./shell-types";
+import { getRouteString } from "./route-fields";
 
 export interface UseWorkspaceCreateResult {
   workspaceCreateMode: "manual" | "automatic";
@@ -52,13 +53,13 @@ export interface UseWorkspaceCreateResult {
 }
 
 interface UseWorkspaceCreateOptions {
-  route: ShellRoute;
+  route: WebAppRoute;
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
   createWorkspace: (req: CreateWorkspaceRequest) => Promise<Workspace | null>;
   refreshWorkspaces: () => Promise<void>;
   toast: ToastContextValue;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
 }
 
 export function useWorkspaceCreate({
@@ -93,7 +94,7 @@ export function useWorkspaceCreate({
   const wasOnComposeWorkspaceRef = useRef(false);
 
   useEffect(() => {
-    const isOnComposeWorkspace = route.view === "compose" && route.kind === "workspace";
+    const isOnComposeWorkspace = route.view === "compose" && getRouteString(route, "kind") === "workspace";
     const wasOnComposeWorkspace = wasOnComposeWorkspaceRef.current;
     wasOnComposeWorkspaceRef.current = isOnComposeWorkspace;
 
@@ -135,7 +136,7 @@ export function useWorkspaceCreate({
   }, [provisioning.activeJobId, provisioning.snapshot?.job.state.status, route, servers]);
 
   useEffect(() => {
-    if (route.view !== "compose" || route.kind !== "workspace" || automaticServerId || servers.length === 0) {
+    if (route.view !== "compose" || getRouteString(route, "kind") !== "workspace" || automaticServerId || servers.length === 0) {
       return;
     }
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);

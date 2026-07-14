@@ -5,14 +5,14 @@ import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { InlineField, ShellPanel } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 
 interface ServerAriseViewProps {
   server: SshServer;
   provisioning: UseProvisioningJobResult;
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
 }
 
 export function ServerAriseView({

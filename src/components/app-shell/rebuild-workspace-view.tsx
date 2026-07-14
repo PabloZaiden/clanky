@@ -3,7 +3,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ShellPanel, InlineField } from "./shell-panel";
-import type { ShellRoute } from "./shell-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
@@ -16,7 +16,7 @@ interface RebuildWorkspaceViewProps {
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
   shellHeaderOffsetClassName: string;
-  navigateWithinShell: (route: ShellRoute) => void;
+  navigateWithinShell: (route: WebAppRoute) => void;
   refreshWorkspaces: () => Promise<void>;
 }
 

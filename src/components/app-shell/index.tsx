@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConfirmModal, Modal, WebAppRoot, type ActionMenuItem, type SidebarNode, type WebAppRoute, type WebAppRootProps } from "@pablozaiden/webapp/web";
+import {
+  ConfirmModal,
+  Modal,
+  Page,
+  replaceWebAppRoute,
+  WebAppRoot,
+  type ActionMenuItem,
+  type SidebarNode,
+  type WebAppRoute,
+  type WebAppRootProps,
+} from "@pablozaiden/webapp/web";
 import {
   useChats,
   useAgents,
@@ -23,8 +33,9 @@ import {
   buildServerSidebarNodes,
   buildWorkspaceSidebarGroups,
 } from "./shell-types";
-import { ShellRouteContent } from "./shell-main-content";
-import { getHashForShellRoute, getShellShortcutForKeyboardEvent, isEditableShortcutTarget, replaceShellRoute } from "./shell-navigation";
+import { AppRouteContent } from "./shell-main-content";
+import { getRouteString } from "./route-fields";
+import { getShellShortcutForKeyboardEvent, isEditableShortcutTarget } from "./shell-shortcuts";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
@@ -35,7 +46,6 @@ import {
   QuickChatSettingsSection,
   SchedulerSettingsSection,
 } from "../app-settings";
-import type { ShellRoute } from "./shell-types";
 import { FrameworkMainHeaderActionsSlot, FrameworkMainHeaderTitleSlot } from "./main-header-portal";
 import { useChatActions } from "./chat-actions";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
@@ -50,8 +60,8 @@ import {
   type PrivateEntity,
   type PrivateSidebarNode,
 } from "../../lib/private-items";
-
-export type { ShellRoute } from "./shell-types";
+import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
+import { ShellPanel } from "./shell-panel";
 
 type SshSessionActionTarget =
   | { kind: "workspace"; id: string; name: string }
@@ -70,6 +80,7 @@ const ROUTE_VIEWS = [
   "task",
   "task-files",
   "chat",
+  "chat-transcript",
   "ssh",
   "workspace",
   "workspace-files",
@@ -86,55 +97,6 @@ const ROUTE_VIEWS = [
 ] as const;
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
-
-function shellRouteToWebRoute(route: ShellRoute): WebAppRoute {
-  const hash = getHashForShellRoute(route).replace(/^\//, "");
-  const [view = "home", query = ""] = hash.split("?", 2);
-  return {
-    view,
-    ...Object.fromEntries(new URLSearchParams(query).entries()),
-  };
-}
-
-function toShellRoute(route: WebAppRoute): ShellRoute {
-  const contentType = route["contentType"];
-  if (route.view === "code-explorer" && typeof contentType === "string") {
-    const common = {
-      startDirectory: typeof route["startDirectory"] === "string" ? route["startDirectory"] : undefined,
-      filePath: typeof route["filePath"] === "string" ? route["filePath"] : undefined,
-    };
-    if (contentType === "workspace" && typeof route["workspaceId"] === "string") {
-      return { view: "code-explorer", target: { contentType: "workspace", workspaceId: route["workspaceId"], ...common } };
-    }
-    if (contentType === "task" && typeof route["taskId"] === "string") {
-      return { view: "code-explorer", target: { contentType: "task", taskId: route["taskId"], ...common } };
-    }
-    if (contentType === "server" && typeof route["serverId"] === "string") {
-      return { view: "code-explorer", target: { contentType: "server", serverId: route["serverId"], ...common } };
-    }
-    if (contentType === "chat" && typeof route["chatId"] === "string") {
-      return { view: "code-explorer", target: { contentType: "chat", chatId: route["chatId"], ...common } };
-    }
-  }
-
-  return route as ShellRoute;
-}
-
-function parseCurrentShellRoute(): ShellRoute {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  if (!hash) {
-    return { view: "home" };
-  }
-  const [view = "home", query = ""] = hash.split("?", 2);
-  return toShellRoute({
-    view: view.replace(/^\//, "") || "home",
-    ...Object.fromEntries(new URLSearchParams(query).entries()),
-  });
-}
-
-function routeNode(route: ShellRoute): WebAppRoute {
-  return shellRouteToWebRoute(route);
-}
 
 function sidebarActionItems(items: Array<{ id?: string; label: string; disabled?: boolean; destructive?: boolean; onClick: () => void }>): ActionMenuItem[] {
   return items.map((item) => ({
@@ -223,10 +185,8 @@ function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): Sid
 
 export function AppShell() {
   const toast = useToast();
-  const [route, setRoute] = useState<ShellRoute>(() => parseCurrentShellRoute());
-  const handleWebRouteChange = useCallback((nextRoute: WebAppRoute) => {
-    setRoute(toShellRoute(nextRoute));
-  }, []);
+  const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
+  const handleWebRouteChange = useCallback((nextRoute: WebAppRoute) => setRoute(nextRoute), []);
   const {
     chats,
     loading: chatsLoading,
@@ -296,7 +256,9 @@ export function AppShell() {
     { includeArchivedWorkspaces: true },
   );
 
-  const navigateWithinShell = useCallback((nextRoute: ShellRoute) => replaceShellRoute(nextRoute), []);
+  const navigateWithinShell = useCallback((nextRoute: WebAppRoute) => {
+    replaceWebAppRoute(nextRoute);
+  }, []);
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -348,7 +310,8 @@ export function AppShell() {
       toast.error("Failed to delete SSH session.");
       return;
     }
-    const deletedActiveSession = route.view === "ssh" && route.sshSessionId === deleteSshSessionTarget.id;
+    const deletedActiveSession = route.view === "ssh"
+      && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id;
     setDeleteSshSessionTarget(null);
     if (deletedActiveSession) {
       navigateWithinShell({ view: "home" });
@@ -474,23 +437,35 @@ export function AppShell() {
   const shellErrors = [chatsError, tasksError, sshSessionsError, sshServersError, workspaceError, agents.error].filter(
     Boolean,
   ) as string[];
-  const codeExplorerTarget = route.view === "code-explorer" ? route.target : undefined;
-  const codeExplorerTaskId = codeExplorerTarget?.contentType === "task" ? codeExplorerTarget.taskId : null;
-  const codeExplorerChatId = codeExplorerTarget?.contentType === "chat" ? codeExplorerTarget.chatId : null;
-  const codeExplorerWorkspaceId = codeExplorerTarget?.contentType === "workspace"
-    ? codeExplorerTarget.workspaceId
+  const codeExplorerContentType = route.view === "code-explorer" ? route["contentType"] : undefined;
+  const codeExplorerTaskId = codeExplorerContentType === "task"
+    ? getRouteString(route, "taskId")
     : null;
-  const codeExplorerServerId = codeExplorerTarget?.contentType === "server" ? codeExplorerTarget.serverId : null;
+  const codeExplorerChatId = codeExplorerContentType === "chat"
+    ? getRouteString(route, "chatId")
+    : null;
+  const codeExplorerWorkspaceId = codeExplorerContentType === "workspace"
+    ? getRouteString(route, "workspaceId")
+    : null;
+  const codeExplorerServerId = codeExplorerContentType === "server"
+    ? getRouteString(route, "serverId")
+    : null;
+  const taskId = getRouteString(route, "taskId");
+  const chatId = getRouteString(route, "chatId");
+  const workspaceId = getRouteString(route, "workspaceId");
+  const serverId = getRouteString(route, "serverId");
+  const composeKind = route.view === "compose" ? getRouteString(route, "kind") : undefined;
+  const composeScopeId = route.view === "compose" ? getRouteString(route, "scopeId") : undefined;
 
   const selectedTask =
     route.view === "task" || route.view === "task-files"
-      ? (tasks.find((task) => task.config.id === route.taskId) ?? null)
+      ? (taskId ? (tasks.find((task) => task.config.id === taskId) ?? null) : null)
       : codeExplorerTaskId
         ? (tasks.find((task) => task.config.id === codeExplorerTaskId) ?? null)
       : null;
   const selectedChat =
     route.view === "chat"
-      ? (chats.find((chat) => chat.config.id === route.chatId) ?? null)
+      ? (chatId ? (chats.find((chat) => chat.config.id === chatId) ?? null) : null)
       : codeExplorerChatId
         ? (chats.find((chat) => chat.config.id === codeExplorerChatId) ?? null)
         : null;
@@ -501,7 +476,7 @@ export function AppShell() {
       || route.view === "workspace-settings"
       || route.view === "rebuild-workspace"
       || route.view === "restart-workspace"
-      ? (workspaces.find((w) => w.id === route.workspaceId) ?? null)
+      ? (workspaceId ? (workspaces.find((w) => w.id === workspaceId) ?? null) : null)
       : codeExplorerWorkspaceId
         ? (workspaces.find((w) => w.id === codeExplorerWorkspaceId) ?? null)
         : codeExplorerTaskId
@@ -510,12 +485,12 @@ export function AppShell() {
             ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
             : null;
   const composeWorkspace =
-    route.view === "compose" && route.kind !== "ssh-server" && route.kind !== "ssh-server-chat"
-      ? (workspaces.find((w) => w.id === (route.workspaceId ?? route.scopeId)) ?? null)
+    route.view === "compose" && composeKind !== "ssh-server" && composeKind !== "ssh-server-chat"
+      ? (workspaces.find((w) => w.id === (workspaceId ?? composeScopeId)) ?? null)
       : null;
   const composeServer =
-    route.view === "compose" && (route.kind === "ssh-session" || route.kind === "ssh-server" || route.kind === "ssh-server-chat")
-      ? (servers.find((s) => s.config.id === (route.serverId ?? route.scopeId)) ?? null)
+    route.view === "compose" && (composeKind === "ssh-session" || composeKind === "ssh-server" || composeKind === "ssh-server-chat")
+      ? (servers.find((s) => s.config.id === (serverId ?? composeScopeId)) ?? null)
       : null;
   const composeServerSessionCount = composeServer
     ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
@@ -526,14 +501,18 @@ export function AppShell() {
       || route.view === "ssh-server-settings"
       || route.view === "server-files"
       || route.view === "server-arise"
-      ? (servers.find((s) => s.config.id === route.serverId) ?? null)
+      ? (serverId ? (servers.find((s) => s.config.id === serverId) ?? null) : null)
       : codeExplorerServerId
         ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
         : null;
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
     hasCodeExplorerAction: true,
-    onOpenCodeExplorer: (chat) => navigateWithinShell({ view: "code-explorer", target: { contentType: "chat", chatId: chat.config.id } }),
+    onOpenCodeExplorer: (chat) => navigateWithinShell({
+      view: "code-explorer",
+      contentType: "chat",
+      chatId: chat.config.id,
+    }),
     onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
     onChatRenamed: refreshChats,
     onChatDeleted: () => navigateWithinShell({ view: "home" }),
@@ -600,14 +579,22 @@ export function AppShell() {
     const baseActions = route.view === "chat" && selectedChat?.config.id === chatId
       ? selectedChatActions
       : sidebarActionItems([
-        { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "chat", chatId } }) },
+        {
+          id: "open-code-explorer",
+          label: "Open code explorer",
+          onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "chat", chatId }),
+        },
       ]);
     return withPrivateToggleAction(baseActions, chat.config, () => void toggleChatPrivate(chat));
   }, [navigateWithinShell, route.view, selectedChat?.config.id, selectedChatActions, toggleChatPrivate]);
 
   const getTaskSidebarActions = useCallback((task: Task): ActionMenuItem[] => {
     return withPrivateToggleAction(sidebarActionItems([
-      { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "task", taskId: task.config.id } }) },
+      {
+        id: "open-code-explorer",
+        label: "Open code explorer",
+        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "task", taskId: task.config.id }),
+      },
     ]), task.config, () => void toggleTaskPrivate(task));
   }, [navigateWithinShell, toggleTaskPrivate]);
 
@@ -619,7 +606,11 @@ export function AppShell() {
       { id: "new-task", label: "New Task", onClick: () => navigateWithinShell({ view: "compose", kind: "task", scopeId: workspaceId }) },
       { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "chat", scopeId: workspaceId }) },
       { id: "new-agent", label: "New Agent", onClick: () => navigateWithinShell({ view: "compose", kind: "agent", workspaceId }) },
-      { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "workspace", workspaceId } }) },
+      {
+        id: "open-code-explorer",
+        label: "Open code explorer",
+        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "workspace", workspaceId }),
+      },
       { id: "workspace-previews", label: "Previews", onClick: () => navigateWithinShell({ view: "workspace-previews", workspaceId }) },
       {
         id: "pull-latest-changes",
@@ -658,7 +649,11 @@ export function AppShell() {
   const getSshServerSidebarActions = useCallback((server: SshServer): ActionMenuItem[] => {
     const serverId = server.config.id;
     return withPrivateToggleAction(sidebarActionItems([
-      { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "server", serverId } }) },
+      {
+        id: "open-code-explorer",
+        label: "Open code explorer",
+        onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "server", serverId }),
+      },
       { id: "new-session", label: "New Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", serverId }) },
       { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-server-chat", scopeId: serverId }) },
       { id: "start-vnc-session", label: "Start VNC Session", onClick: () => navigateWithinShell({ view: "vnc-session", serverId }) },
@@ -738,7 +733,8 @@ export function AppShell() {
         toast.error("Failed to delete agent");
         return;
       }
-      const deletedActiveAgent = route.view === "agent" && route.agentId === deleteAgentTarget.config.id;
+      const deletedActiveAgent = route.view === "agent"
+        && getRouteString(route, "agentId") === deleteAgentTarget.config.id;
       setDeleteAgentTarget(null);
       if (deletedActiveAgent) {
         navigateWithinShell({ view: "agents", workspaceId: deleteAgentTarget.config.workspaceId });
@@ -830,17 +826,31 @@ export function AppShell() {
     toast,
   ]);
 
-  useEffect(() => {
-    const handleHashChange = () => setRoute(parseCurrentShellRoute());
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
   const renderRouteContent = useCallback((webRoute: WebAppRoute) => {
-    const contentRoute = toShellRoute(webRoute);
+    if (webRoute.view === "chat-transcript") {
+      const transcriptChatId = getRouteString(webRoute, "chatId");
+      return (
+        <Page layout="full">
+          {transcriptChatId
+            ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} />
+            : (
+              <ShellPanel
+                title="Chat transcript not found"
+                description="The transcript route is missing a chat identifier."
+                variant="compact"
+              >
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Use the sidebar or home button to continue.
+                </p>
+              </ShellPanel>
+            )}
+        </Page>
+      );
+    }
+
     return (
-      <ShellRouteContent
-        route={contentRoute}
+      <AppRouteContent
+        route={webRoute}
         shellLoading={shellLoading}
         shellErrors={shellErrors}
         shellHeaderOffsetClassName=""
@@ -1050,7 +1060,7 @@ export function AppShell() {
           subtitle: item.workspaceName,
           badge: item.taskNode.badge,
           badgeVariant: item.taskNode.badgeVariant,
-          route: routeNode({ view: "task", taskId: item.taskNode.task.config.id }),
+          route: { view: "task", taskId: item.taskNode.task.config.id },
           actions: privateActions(actions, privateHidden, item.taskNode.task.config.isPrivate === true),
           pinnable: true,
           pinId: item.key,
@@ -1067,7 +1077,7 @@ export function AppShell() {
           subtitle: item.kind === "chat" ? item.workspaceName : item.serverName,
           badge: item.chatNode.badge,
           badgeVariant: item.chatNode.badgeVariant,
-          route: routeNode({ view: "chat", chatId: item.chatNode.chat.config.id }),
+          route: { view: "chat", chatId: item.chatNode.chat.config.id },
           actions: privateActions(actions, privateHidden, item.chatNode.chat.config.isPrivate === true),
           pinnable: true,
           pinId: item.key,
@@ -1092,7 +1102,7 @@ export function AppShell() {
         subtitle: item.kind === "ssh-session" ? item.workspaceName : item.serverName,
         badge: item.sessionNode.badge,
         badgeVariant: item.sessionNode.badgeVariant,
-        route: routeNode({ view: "ssh", sshSessionId: sessionId }),
+        route: { view: "ssh", sshSessionId: sessionId },
         actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
         pinnable: true,
         pinId: item.key,
@@ -1113,7 +1123,7 @@ export function AppShell() {
         subtitle: agent.config.enabled ? "Agent" : "Paused agent",
         badge: agent.config.enabled ? "enabled" : "paused",
         badgeVariant: agent.config.enabled ? "success" : "disabled",
-        route: routeNode({ view: "agent", agentId: agent.config.id }),
+        route: { view: "agent", agentId: agent.config.id },
         actions: privateActions(actions, privateHidden, agent.config.isPrivate === true),
         pinnable: true,
         pinId: `agent:${agent.config.id}`,
@@ -1133,7 +1143,7 @@ export function AppShell() {
             id: "new-task",
             title: "New task",
             label: "New",
-            route: workspacePrivateHidden ? undefined : routeNode({ view: "compose", kind: "task", scopeId: workspaceId }),
+            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "task", scopeId: workspaceId },
           },
           children: [
             ...workspaceNode.tasks.map((taskNode): SidebarNode => {
@@ -1145,7 +1155,7 @@ export function AppShell() {
                 title: taskNode.title,
                 badge: taskNode.badge,
                 badgeVariant: taskNode.badgeVariant,
-                route: routeNode({ view: "task", taskId: taskNode.task.config.id }),
+                route: { view: "task", taskId: taskNode.task.config.id },
                 actions: privateActions(actions, privateHidden, taskNode.task.config.isPrivate === true),
                 pinnable: true,
                 pinId: `task:${taskNode.task.config.id}`,
@@ -1165,7 +1175,7 @@ export function AppShell() {
                   title: taskNode.title,
                   badge: taskNode.badge,
                   badgeVariant: taskNode.badgeVariant,
-                  route: routeNode({ view: "task", taskId: taskNode.task.config.id }),
+                  route: { view: "task", taskId: taskNode.task.config.id },
                   actions: privateActions(actions, privateHidden, taskNode.task.config.isPrivate === true),
                   pinnable: true,
                   pinId: `task:${taskNode.task.config.id}`,
@@ -1182,7 +1192,7 @@ export function AppShell() {
             id: "new-chat",
             title: "New chat",
             label: "New",
-            route: workspacePrivateHidden ? undefined : routeNode({ view: "compose", kind: "chat", scopeId: workspaceId }),
+            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "chat", scopeId: workspaceId },
           },
           children: workspaceNode.chats.map((chatNode): SidebarNode => {
             const privateHidden = getPrivateHidden(chatNode.chat.config, [workspaceNode.workspace]);
@@ -1193,7 +1203,7 @@ export function AppShell() {
               title: chatNode.title,
               badge: chatNode.badge,
               badgeVariant: chatNode.badgeVariant,
-              route: routeNode({ view: "chat", chatId: chatNode.chat.config.id }),
+              route: { view: "chat", chatId: chatNode.chat.config.id },
               actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
               pinnable: true,
               pinId: `chat:${chatNode.chat.config.id}`,
@@ -1208,7 +1218,7 @@ export function AppShell() {
             id: "new-agent",
             title: "New agent",
             label: "New",
-            route: workspacePrivateHidden ? undefined : routeNode({ view: "compose", kind: "agent", workspaceId }),
+            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "agent", workspaceId },
           },
           children: agentNodesByWorkspace.get(workspaceId) ?? [],
         },
@@ -1220,7 +1230,7 @@ export function AppShell() {
             id: "new-ssh-session",
             title: "New SSH session",
             label: "New",
-            route: workspacePrivateHidden ? undefined : routeNode({ view: "compose", kind: "ssh-session", workspaceId }),
+            route: workspacePrivateHidden ? undefined : { view: "compose", kind: "ssh-session", workspaceId },
           },
           children: workspaceNode.sshSessions.map((sessionNode): SidebarNode => {
             const privateHidden = getPrivateHidden(sessionNode.session.config, [workspaceNode.workspace]);
@@ -1236,7 +1246,7 @@ export function AppShell() {
               subtitle: sessionNode.subtitle,
               badge: sessionNode.badge,
               badgeVariant: sessionNode.badgeVariant,
-              route: routeNode({ view: "ssh", sshSessionId: sessionNode.session.config.id }),
+              route: { view: "ssh", sshSessionId: sessionNode.session.config.id },
               actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
               pinnable: true,
               pinId: `ssh-session:${sessionNode.session.config.id}`,
@@ -1250,7 +1260,7 @@ export function AppShell() {
         id: `workspace:${workspaceId}`,
         title: workspaceNode.workspace.name,
         searchText: workspaceNode.workspace.directory,
-        route: routeNode({ view: "workspace", workspaceId }),
+        route: { view: "workspace", workspaceId },
         actions: privateActions(
           getWorkspaceSidebarActions(workspaceNode),
           workspacePrivateHidden,
@@ -1277,7 +1287,7 @@ export function AppShell() {
         id: `ssh-server:${serverId}`,
         title: serverNode.server.config.name,
         subtitle: serverNode.server.config.address,
-        route: routeNode({ view: "ssh-server", serverId }),
+        route: { view: "ssh-server", serverId },
         actions: privateActions(
           getSshServerSidebarActions(serverNode.server),
           serverPrivateHidden,
@@ -1294,7 +1304,7 @@ export function AppShell() {
               id: "new-session",
               title: "New SSH session",
               label: "New",
-              route: serverPrivateHidden ? undefined : routeNode({ view: "compose", kind: "ssh-session", serverId }),
+              route: serverPrivateHidden ? undefined : { view: "compose", kind: "ssh-session", serverId },
             },
             children: serverNode.sessions.map((sessionNode): SidebarNode => {
               const privateHidden = getPrivateHidden(sessionNode.session.config, [serverNode.server.config]);
@@ -1311,7 +1321,7 @@ export function AppShell() {
                 subtitle: sessionNode.subtitle,
                 badge: sessionNode.badge,
                 badgeVariant: sessionNode.badgeVariant,
-                route: routeNode({ view: "ssh", sshSessionId: sessionNode.id }),
+                route: { view: "ssh", sshSessionId: sessionNode.id },
                 actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
                 pinnable: true,
                 pinId: `ssh-server-session:${sessionNode.id}`,
@@ -1326,7 +1336,7 @@ export function AppShell() {
               id: "new-chat",
               title: "New chat",
               label: "New",
-              route: serverPrivateHidden ? undefined : routeNode({ view: "compose", kind: "ssh-server-chat", scopeId: serverId }),
+              route: serverPrivateHidden ? undefined : { view: "compose", kind: "ssh-server-chat", scopeId: serverId },
             },
             children: serverNode.chats.map((chatNode): SidebarNode => {
               const privateHidden = getPrivateHidden(chatNode.chat.config, [serverNode.server.config]);
@@ -1337,7 +1347,7 @@ export function AppShell() {
                 title: chatNode.title,
                 badge: chatNode.badge,
                 badgeVariant: chatNode.badgeVariant,
-                route: routeNode({ view: "chat", chatId: chatNode.chat.config.id }),
+                route: { view: "chat", chatId: chatNode.chat.config.id },
                 actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
                 pinnable: true,
                 pinId: `ssh-server-chat:${chatNode.chat.config.id}`,
@@ -1358,7 +1368,7 @@ export function AppShell() {
           id: "new-workspace",
           title: "New workspace",
           label: "New",
-          route: routeNode({ view: "compose", kind: "workspace" }),
+          route: { view: "compose", kind: "workspace" },
         },
         children: workspaceNodes,
       },
@@ -1376,7 +1386,7 @@ export function AppShell() {
           id: "new-ssh-server",
           title: "New SSH server",
           label: "New",
-          route: routeNode({ view: "compose", kind: "ssh-server" }),
+          route: { view: "compose", kind: "ssh-server" },
         },
         children: sshServerNodes,
       },
@@ -1416,7 +1426,7 @@ export function AppShell() {
               title: "Code Explorer",
               label: "Code Explorer",
               icon: "code",
-              route: routeNode({ view: "code-explorer" }),
+              route: { view: "code-explorer" },
             },
           ],
           getNodes: sidebarNodes,
