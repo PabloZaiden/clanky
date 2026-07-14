@@ -7,10 +7,6 @@ import type { Terminal } from "@xterm/xterm";
 import { appWebSocketUrl } from "../../lib/public-path";
 import type { SshSessionKind } from "../../hooks/useSshSession";
 
-function isStandaloneCredentialTokenError(message: string): boolean {
-  return message.includes("SSH credential token") || message.includes("credential token");
-}
-
 interface UseSshLifecycleParams {
   terminalUrl: string | null;
   terminalRef: React.MutableRefObject<Terminal | null>;
@@ -128,6 +124,7 @@ export function useSshLifecycle({
         }
         const data = JSON.parse(event.data as string) as {
           type: string;
+          code?: string;
           data?: string;
           message?: string;
           text?: string;
@@ -146,7 +143,7 @@ export function useSshLifecycle({
         }
         if (data.type === "terminal.error" && data.message) {
           terminalRef.current?.writeln(`\r\n${data.message}`);
-          if (sessionKind === "standalone" && isStandaloneCredentialTokenError(data.message)) {
+          if (sessionKind === "standalone" && data.code === "invalid_credential_token") {
             setStandaloneCredentialToken(null);
             if (standaloneTokenRecoveryAttemptedRef.current) {
               setPendingStandaloneAction("terminal");

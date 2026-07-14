@@ -18,6 +18,7 @@ import {
   type PersistedSshServerKeyPair,
 } from "../persistence/ssh-server-keys";
 import { createLogger } from "./logger";
+import { DomainError } from "./domain-error";
 
 const log = createLogger("core:ssh-server-key-manager");
 const SSH_SERVER_KEY_MODULUS_LENGTH = 4096;
@@ -106,24 +107,43 @@ export class SshServerKeyManager {
   async decryptCredential(serverId: string, credential: SshServerEncryptedCredential): Promise<string> {
     const keyPair = await this.requireKeyPair(serverId);
     if (credential.algorithm !== keyPair.algorithm) {
-      throw new Error("Encrypted SSH credential algorithm does not match the registered server key");
+      throw new DomainError(
+        "invalid_encrypted_credential",
+        "Encrypted SSH credential algorithm does not match the registered server key",
+        { details: { serverId } },
+      );
     }
     if (credential.fingerprint !== keyPair.fingerprint || credential.version !== keyPair.version) {
-      throw new Error("Encrypted SSH credential does not match the current registered server key");
+      throw new DomainError(
+        "invalid_encrypted_credential",
+        "Encrypted SSH credential does not match the current registered server key",
+        { details: { serverId } },
+      );
     }
 
-    const plaintext = privateDecrypt({
-      key: keyPair.privateKey,
-      padding: constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: "sha256",
-    }, Buffer.from(credential.ciphertext, "base64"));
+    let plaintext: Buffer;
+    try {
+      plaintext = privateDecrypt({
+        key: keyPair.privateKey,
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
+      }, Buffer.from(credential.ciphertext, "base64"));
+    } catch (error) {
+      throw new DomainError(
+        "invalid_encrypted_credential",
+        "Unable to decrypt the encrypted SSH credential",
+        { cause: error, details: { serverId } },
+      );
+    }
     return plaintext.toString("utf8");
   }
 
   private async getExistingOrThrow(serverId: string): Promise<PersistedSshServerKeyPair | null> {
     const server = await getSshServerConfig(serverId);
     if (!server) {
-      throw new Error(`SSH server not found: ${serverId}`);
+      throw new DomainError("ssh_server_not_found", "SSH server not found", {
+        details: { serverId },
+      });
     }
     return await loadSshServerKeyPair(serverId);
   }
@@ -136,7 +156,11 @@ export class SshServerKeyManager {
     await this.ensurePublicKey(serverId);
     const generated = await loadSshServerKeyPair(serverId);
     if (!generated) {
-      throw new Error(`Failed to generate SSH server key pair for server ${serverId}`);
+      throw new DomainError(
+        "ssh_server_key_generation_failed",
+        "Failed to generate the SSH server key pair",
+        { details: { serverId } },
+      );
     }
     return generated;
   }

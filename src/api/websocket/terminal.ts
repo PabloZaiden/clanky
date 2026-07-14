@@ -1,10 +1,35 @@
 import type { ServerWebSocket } from "bun";
+import { isDomainError } from "../../core/domain-error";
 import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 import { createLogger } from "../../core/logger";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 
 const log = createLogger("api:websocket");
+const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
+const KNOWN_TERMINAL_DOMAIN_ERROR_CODES = new Set([
+  "invalid_credential_token",
+  "ssh_server_not_found",
+  "ssh_server_session_not_found",
+  "ssh_session_not_found",
+  "workspace_not_found",
+]);
+
+export interface TerminalErrorPayload {
+  code?: string;
+  message: string;
+}
+
+export function getTerminalErrorPayload(error: unknown): TerminalErrorPayload {
+  if (isDomainError(error) && KNOWN_TERMINAL_DOMAIN_ERROR_CODES.has(error.code)) {
+    return {
+      code: error.code,
+      message: error.message,
+    };
+  }
+
+  return { message: SAFE_TERMINAL_ERROR_MESSAGE };
+}
 
 export async function startTerminalBridge(
   ws: ServerWebSocket<WebSocketData>,
@@ -36,8 +61,12 @@ export async function startTerminalBridge(
       }
     },
     onError: (error) => {
+      const payload = getTerminalErrorPayload(error);
       try {
-        ws.send(JSON.stringify({ type: "terminal.error", message: String(error) }));
+        ws.send(JSON.stringify({
+          type: "terminal.error",
+          ...payload,
+        }));
       } catch (sendError) {
         log.trace("Failed to send terminal error", { error: String(sendError), sshSessionId });
       }
@@ -69,6 +98,7 @@ export async function startTerminalBridge(
       sshServerSessionId: sshServerSessionId ?? null,
     }));
   } catch (error) {
+    const payload = getTerminalErrorPayload(error);
     log.error("Failed to connect SSH terminal bridge", {
       terminalSessionId,
       sshSessionId,
@@ -76,7 +106,10 @@ export async function startTerminalBridge(
       error: String(error),
     });
     try {
-      ws.send(JSON.stringify({ type: "terminal.error", message: String(error) }));
+      ws.send(JSON.stringify({
+        type: "terminal.error",
+        ...payload,
+      }));
     } catch (sendError) {
       log.trace("Failed to send terminal startup error", {
         error: String(sendError),

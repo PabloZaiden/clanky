@@ -7,7 +7,9 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse, successResponse } from "../helpers";
+import { domainErrorResponse, errorResponse, successResponse } from "../helpers";
+import { isTaskOperationError } from "../../core/task/task-errors";
+import { taskErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -43,15 +45,24 @@ export const tasksStopRoutes = defineRoutes({
         await taskManager.stopTask(ctx.params["id"]!);
         return successResponse({ taskId: ctx.params["id"]! });
       } catch (error) {
-        const errorMsg = String(error);
-        if (errorMsg.includes("not running")) {
-          return errorResponse("not_running", errorMsg, 409);
+        if (isTaskOperationError(error)) {
+          return taskErrorResponse(error, {
+            error: "stop_task_failed",
+            message: "Failed to stop task",
+            status: 500,
+          });
         }
         log.error("Failed to stop task", {
           taskId: ctx.params["id"]!,
-          error: errorMsg,
+          error: String(error),
         });
-        return errorResponse("stop_task_failed", errorMsg, 500);
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "stop_task_failed",
+            message: "Failed to stop task",
+            status: 500,
+          },
+        });
       }
     },
   },

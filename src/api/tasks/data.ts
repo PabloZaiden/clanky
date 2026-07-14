@@ -15,7 +15,7 @@ import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git-service";
 import { createLogger } from "../../core/logger";
 import type { FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
-import { errorResponse, requireWorkspace } from "../helpers";
+import { errorResponse, internalErrorResponse, requireWorkspace } from "../helpers";
 import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";
 
 const log = createLogger("api:tasks");
@@ -61,7 +61,11 @@ export const tasksDataRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           error: String(error),
         });
-        return errorResponse("diff_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "diff_failed",
+          message: "Failed to load the task diff",
+          status: 500,
+        });
       }
     },
   },
@@ -244,7 +248,11 @@ export const tasksDataRoutes = defineRoutes({
           workspaceId: workspace.id,
           error: String(error),
         });
-        return errorResponse("check_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "check_failed",
+          message: "Failed to check the planning directory",
+          status: 500,
+        });
       }
     },
   },

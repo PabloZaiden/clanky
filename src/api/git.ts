@@ -18,7 +18,7 @@ import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 import type { Workspace } from "@/shared";
 import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse } from "@/contracts";
 import { createLogger } from "../core/logger";
-import { errorResponse, requireWorkspace } from "./helpers";
+import { errorResponse, internalErrorResponse, requireWorkspace } from "./helpers";
 
 const log = createLogger("api:git");
 
@@ -175,7 +175,11 @@ export const gitRoutes = defineRoutes({
         return Response.json(response);
       } catch (error) {
         log.error("Git branches error", { error: String(error) });
-        return errorResponse("git_error", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "git_error",
+          message: "Failed to list git branches",
+          status: 500,
+        });
       }
     },
   },
@@ -218,7 +222,11 @@ export const gitRoutes = defineRoutes({
         return Response.json(response);
       } catch (error) {
         log.error("Git default-branch error", { error: String(error) });
-        return errorResponse("git_error", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "git_error",
+          message: "Failed to determine the default branch",
+          status: 500,
+        });
       }
     },
   },
@@ -246,7 +254,11 @@ export const gitRoutes = defineRoutes({
         return Response.json(response);
       } catch (error) {
         log.error("Git remote-status error", { error: String(error) });
-        return errorResponse("git_error", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "git_error",
+          message: "Failed to determine git remote status",
+          status: 500,
+        });
       }
     },
   },
@@ -278,7 +290,11 @@ export const gitRoutes = defineRoutes({
         return Response.json(response);
       } catch (error) {
         log.error("GitHub repository URL error", { error: String(error) });
-        return errorResponse("git_error", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "git_error",
+          message: "Failed to determine the GitHub repository URL",
+          status: 500,
+        });
       }
     },
   },

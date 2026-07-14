@@ -7,7 +7,13 @@
  * persistence.
  */
 
-import { AcpBackend } from "../backends/acp";
+import {
+  AcpBackend,
+  createAcpSessionNotFoundError,
+  getAcpErrorMessage,
+  isAcpError,
+  isAcpErrorCode,
+} from "../backends/acp";
 import type {
   Backend,
   BackendConnectionConfig,
@@ -41,7 +47,6 @@ import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
-import { isSessionNotFoundError } from "./engine/engine-session";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { taskManager } from "./task-manager";
@@ -65,10 +70,10 @@ import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-run
 import type { AgentProvider } from "@/shared/settings";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
+import { isPersistenceError, isUniqueConstraint } from "../persistence/errors";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
 const CHAT_STREAM_PERSIST_INTERVAL_MS = 1000;
 const CHAT_STREAM_PERSIST_MIN_CHARS = 4096;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
@@ -87,10 +92,6 @@ interface ResolvedChatDirectory {
 interface NormalizedChatMessageInput {
   message: string;
   attachments: MessageImageAttachment[];
-}
-
-function isDatabaseNotInitializedError(error: unknown): boolean {
-  return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
 }
 
 export interface CreateChatOptions {
@@ -475,7 +476,7 @@ export class ChatManager {
       });
       return { chat, created: true };
     } catch (error) {
-      if (String(error).includes("UNIQUE constraint failed: chats.task_id")) {
+      if (isUniqueConstraint(error, "chats", "task_id")) {
         const concurrent = await this.getTaskChat(taskId);
         if (concurrent) {
           return { chat: concurrent, created: false };
@@ -605,15 +606,14 @@ export class ChatManager {
           return this.finishReconnect(reconnectingChat, chatId);
         }
       } catch (error) {
-        const message = String(error);
-        if (!isSessionNotFoundError(message)) {
+        if (!isAcpErrorCode(error, "acp_session_not_found")) {
           throw error;
         }
         reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
         return this.finishReconnect(reconnectingChat, chatId);
       }
     } catch (error) {
-      await this.emitChatError(reconnectingChat, String(error));
+      await this.emitChatError(reconnectingChat, error);
       throw error;
     }
 
@@ -1348,14 +1348,13 @@ export class ChatManager {
         if (options?.recreateIfMissing) {
           return this.recreateSession(chat, backend);
         }
-        return this.failLostSession(chat, `Session ${chat.state.session.id} not found`);
+        return this.failLostSession(chat, createAcpSessionNotFoundError(chat.state.session.id));
       } catch (error) {
-        const message = String(error);
-        if (isSessionNotFoundError(message)) {
+        if (isAcpErrorCode(error, "acp_session_not_found")) {
           if (options?.recreateIfMissing) {
             return this.recreateSession(chat, backend);
           }
-          return this.failLostSession(chat, message);
+          return this.failLostSession(chat, error);
         }
         throw error;
       }
@@ -1406,7 +1405,7 @@ export class ChatManager {
     try {
       return await this.createSession(reconnecting, backend, { prepareWorkspace: false });
     } catch (error) {
-      await this.emitChatError(reconnecting, String(error));
+      await this.emitChatError(reconnecting, error);
       throw error;
     }
   }
@@ -2029,7 +2028,7 @@ export class ChatManager {
           }
 
           case "error":
-            if (this.shouldSuppressStreamError(chatId, generation, event.message)) {
+            if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
               chat = await loadChat(chatId) ?? chat;
               if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
                 await this.completeInterruptedChat(chat);
@@ -2037,7 +2036,7 @@ export class ChatManager {
               this.clearActiveStream(chatId, generation);
               return;
             }
-            await this.emitChatError(chat, event.message);
+            await this.emitChatError(chat, event.message, event.code);
             this.clearActiveStream(chatId, generation);
             return;
 
@@ -2066,8 +2065,11 @@ export class ChatManager {
         event = await nextWithTimeout<AgentEvent>(eventStream, DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS);
       }
     } catch (error) {
-      const message = String(error);
-      if (this.shouldSuppressStreamError(chatId, generation, message)) {
+      if (this.shouldSuppressStreamError(
+        chatId,
+        generation,
+        isAcpErrorCode(error, "acp_request_cancelled") ? "acp_request_cancelled" : undefined,
+      )) {
         const interruptedChat = await this.loadChatIfAvailable(chatId);
         if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
           await this.completeInterruptedChat(interruptedChat);
@@ -2076,7 +2078,7 @@ export class ChatManager {
       }
       const errorChat = await this.loadChatIfAvailable(chatId);
       if (errorChat && this.isActiveStreamGeneration(chatId, generation)) {
-        await this.emitChatError(errorChat, message);
+        await this.emitChatError(errorChat, error);
       }
     } finally {
       eventStream.close();
@@ -2706,7 +2708,9 @@ export class ChatManager {
     })();
   }
 
-  private async emitChatError(chat: Chat, message: string): Promise<Chat> {
+  private async emitChatError(chat: Chat, error: unknown, code?: string): Promise<Chat> {
+    const message = typeof error === "string" ? error : getAcpErrorMessage(error);
+    const errorCode = code ?? (isAcpError(error) ? error.code : undefined);
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
     const now = createTimestamp();
     const updated = await this.updateChatStateAndReturn(chat, {
@@ -2715,6 +2719,7 @@ export class ChatManager {
       error: {
         message,
         timestamp: now,
+        ...(errorCode ? { code: errorCode } : {}),
       },
       completedAt: now,
       pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
@@ -2731,13 +2736,14 @@ export class ChatManager {
       chatId: chat.config.id,
       scope: chat.config.scope,
       message,
+      ...(errorCode ? { code: errorCode } : {}),
       timestamp: now,
     });
     return updated;
   }
 
-  private async failLostSession(chat: Chat, message: string): Promise<Chat> {
-    return this.emitChatError(chat, message);
+  private async failLostSession(chat: Chat, error: unknown): Promise<Chat> {
+    return this.emitChatError(chat, error);
   }
 
   private async completeInterruptedChat(chat: Chat): Promise<Chat> {
@@ -2827,19 +2833,12 @@ export class ChatManager {
     }
   }
 
-  private shouldSuppressStreamError(chatId: string, generation: number, message: string): boolean {
+  private shouldSuppressStreamError(chatId: string, generation: number, code?: string): boolean {
     if (!this.isActiveStreamGeneration(chatId, generation)) {
       return true;
     }
 
-    const normalized = message.toLowerCase();
-    return normalized.includes("request cancelled")
-      || normalized.includes("operation cancelled by user")
-      || normalized.includes("prompt cancelled")
-      || normalized.includes("session cancelled")
-      || normalized.includes("useraborterror")
-      || normalized.includes("aborterror")
-      || normalized.includes("-32800");
+    return code === "acp_request_cancelled";
   }
 
   private async updateChatStateAndReturn(chat: Chat, state: Chat["state"]): Promise<Chat> {
@@ -2868,7 +2867,7 @@ export class ChatManager {
     try {
       return await loadChat(chatId);
     } catch (error) {
-      if (isDatabaseNotInitializedError(error)) {
+      if (isPersistenceError(error) && error.code === "database_not_initialized") {
         return null;
       }
       throw error;

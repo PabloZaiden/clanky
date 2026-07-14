@@ -11,7 +11,7 @@ import {
 } from "../../core/task-creation-service";
 import { taskManager } from "../../core/task-manager";
 import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "@/contracts/schemas";
-import { errorResponse } from "../helpers";
+import { errorResponse, internalErrorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";
 
@@ -103,7 +103,11 @@ export const tasksCollectionRoutes = defineRoutes({
           workspaceId: body.workspaceId,
           error: String(error),
         });
-        return errorResponse("create_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "create_failed",
+          message: "Failed to create task",
+          status: 500,
+        });
       }
     },
   },
@@ -135,7 +139,11 @@ export const tasksCollectionRoutes = defineRoutes({
           workspaceId: validation.data.workspaceId,
           error: String(error),
         });
-        return errorResponse("title_generation_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "title_generation_failed",
+          message: "Failed to generate task title",
+          status: 500,
+        });
       }
     },
   },

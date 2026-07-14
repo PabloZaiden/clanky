@@ -5,19 +5,31 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 
 import { previewSessionManager } from "../core/preview-session-manager";
 import { createLogger } from "../core/logger";
-import { errorResponse, successResponse } from "./helpers";
+import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 
 const log = createLogger("api:previews");
 
 function mapPreviewError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (message.includes("ambiguous")) {
-    return errorResponse("workspace_name_ambiguous", message, 409);
-  }
-  return errorResponse("preview_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      workspace_not_found: {
+        error: "not_found",
+        message: "Workspace not found",
+        status: 404,
+      },
+      workspace_name_ambiguous: {
+        status: 409,
+      },
+      workspace_reference_required: {
+        status: 400,
+      },
+    },
+    fallback: {
+      error: "preview_error",
+      message: "Preview operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const previewRoutes = defineRoutes({

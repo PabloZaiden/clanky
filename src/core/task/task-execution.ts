@@ -12,6 +12,7 @@ import { startStatePersistenceImpl } from "./task-state-persistence";
 import { validateMainCheckoutStartImpl } from "./task-git-validation";
 import { clearPlanningFilesImpl } from "./task-planning-files";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
+import { TaskOperationError } from "./task-errors";
 
 export { startStatePersistenceImpl } from "./task-state-persistence";
 export { validateMainCheckoutStartImpl, ensureTaskBranchCheckedOutImpl } from "./task-git-validation";
@@ -21,11 +22,15 @@ export { recoverPlanningEngineImpl } from "./task-engine-recovery";
 export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: StartTaskOptions): Promise<void> {
   const task = await loadTask(taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new TaskOperationError("task_not_found", "Task not found", {
+      details: { taskId },
+    });
   }
 
   if (ctx.engines.has(taskId)) {
-    throw new Error("Task is already running");
+    throw new TaskOperationError("task_already_running", "Task is already running", {
+      details: { taskId },
+    });
   }
 
   log.info("Starting task execution", {
@@ -74,7 +79,9 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
 export async function stopTaskImpl(ctx: TaskCtx, taskId: string, reason = "User requested stop"): Promise<void> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
-    throw new Error("Task is not running");
+    throw new TaskOperationError("task_not_running", "Task is not running", {
+      details: { taskId },
+    });
   }
 
   log.info("Stopping task execution", { taskId, reason });
@@ -94,15 +101,25 @@ export async function stopTaskImpl(ctx: TaskCtx, taskId: string, reason = "User 
 export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: StartTaskOptions): Promise<void> {
   const task = await loadTask(taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new TaskOperationError("task_not_found", "Task not found", {
+      details: { taskId },
+    });
   }
 
   if (task.state.status !== "planning") {
-    throw new Error(`Task is not in planning status: ${task.state.status}`);
+    throw new TaskOperationError(
+      "task_not_planning",
+      `Task is not in planning status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (ctx.engines.has(taskId)) {
-    throw new Error("Task plan mode is already running");
+    throw new TaskOperationError(
+      "task_already_running",
+      "Task plan mode is already running",
+      { details: { taskId } },
+    );
   }
 
   log.info("Starting task plan mode", {
@@ -142,7 +159,11 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
   try {
     await engine.setupGitBranchForPlanAcceptance();
   } catch (error) {
-    throw new Error(`Failed to set up git branch for plan mode: ${String(error)}`, { cause: error });
+    throw new TaskOperationError(
+      "task_git_operation_failed",
+      "Failed to set up git branch for plan mode",
+      { cause: error, details: { taskId } },
+    );
   }
 
   const workingDirectory = engine.workingDirectory;
@@ -172,11 +193,17 @@ export async function startDraftImpl(
 ): Promise<Task> {
   const task = await loadTask(taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new TaskOperationError("task_not_found", "Task not found", {
+      details: { taskId },
+    });
   }
 
   if (task.state.status !== "draft") {
-    throw new Error(`Task is not in draft status: ${task.state.status}`);
+    throw new TaskOperationError(
+      "invalid_task_state",
+      `Task is not in draft status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (options.planMode) {

@@ -15,6 +15,7 @@ import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { taskManager } from "../../src/core/task-manager";
+import { taskFailure } from "../../src/core/task/task-errors";
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 
 // Default test model for task creation (model is now required)
@@ -801,7 +802,7 @@ describe("Workspace API Integration", () => {
       expect(response.ok).toBe(false);
       expect(response.status).toBe(500);
       const body = await response.json() as { message: string };
-      expect(body.message).toContain("permission denied");
+      expect(body.message).toBe("Failed to delete the auto-provisioned workspace directory");
       expect(await getWorkspace("auto-fail-workspace")).not.toBeNull();
       await rm(sourceDirectory, { recursive: true, force: true });
     });
@@ -860,7 +861,7 @@ describe("Workspace API Integration", () => {
 
       expect(response.status).toBe(500);
       const body = await response.json() as { message: string };
-      expect(body.message).toContain("ssh connection lost");
+      expect(body.message).toBe("Failed to delete workspace");
       expect(await getWorkspace("auto-exists-fail-workspace")).not.toBeNull();
       await rm(sourceDirectory, { recursive: true, force: true });
     });
@@ -1980,7 +1981,7 @@ describe("Workspace API Integration", () => {
         activePurges--;
 
         if (taskId === "task-3") {
-          return { success: false, error: "permission denied" };
+          return taskFailure("task_operation_failed", "permission denied");
         }
 
         if (taskId === "task-5") {
@@ -2079,7 +2080,7 @@ describe("Workspace API Integration", () => {
         taskManager.purgeTask = async (taskId: string) => {
           purgedIds.push(taskId);
           if (taskId === "task-b-pushed") {
-            return { success: false, error: "branch protected" };
+            return taskFailure("task_git_operation_failed", "branch protected");
           }
           return { success: true };
         };

@@ -12,7 +12,7 @@ import type {
   AutomaticPrFlowSnapshot,
 } from "./automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem, AutomaticPrFlowFeedbackExtractionResult } from "./automatic-pr-feedback";
-import type { PushTaskResult } from "./task-manager";
+import type { PushTaskResult, SendFollowUpResult, TaskResult } from "./task-manager";
 import { listTasks, loadTask, updateTaskState } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { taskEventEmitter, SimpleEventEmitter } from "./event-emitter";
@@ -86,7 +86,7 @@ export interface PushedTaskMonitorDependencies {
   emitter: SimpleEventEmitter<TaskEvent>;
   getCommandExecutor: (workspaceId: string, directory: string) => Promise<CommandExecutor>;
   createGitService: (executor: CommandExecutor) => PullRequestNavigationGitService;
-  markMerged: (taskId: string) => Promise<{ success: boolean; error?: string }>;
+  markMerged: (taskId: string) => Promise<TaskResult>;
   pushTask: (taskId: string) => Promise<PushTaskResult>;
   updateBranch: (taskId: string) => Promise<PushTaskResult>;
   isTaskRunning: (taskId: string) => boolean;
@@ -120,7 +120,7 @@ export interface PushedTaskMonitorDependencies {
       sourceItems: AutomaticPrFlowFeedbackItem[];
       feedbackItems: AutomaticPrFlowExtractedFeedbackItem[];
     },
-  ) => Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }>;
+  ) => Promise<SendFollowUpResult>;
   resolveAutomaticPrFlowReviewThread: (
     threadId: string,
     directory: string,
@@ -257,7 +257,7 @@ export class PushedTaskMonitor {
         if (!result.success) {
           log.warn("Failed to auto-mark task as merged after merged PR detection", {
             taskId: task.config.id,
-            error: result.error,
+            error: result.error.message,
           });
         }
       }
@@ -328,7 +328,7 @@ export class PushedTaskMonitor {
       if (task.state.status === "completed") {
         const finalizeResult = await this.deps.pushTask(task.config.id);
         if (!finalizeResult.success) {
-          throw new Error(finalizeResult.error ?? "Automatic PR review cycle failed to push updated changes.");
+          throw finalizeResult.error;
         }
 
         if (finalizeResult.syncStatus === "conflicts_being_resolved") {
@@ -378,11 +378,11 @@ export class PushedTaskMonitor {
           },
           monitoringState: {
             ...requestedMonitoringState,
-            lastError: updateResult.error ?? "Automatic PR branch update failed.",
+            lastError: updateResult.error.message,
             branchUpdate: {
               ...requestedMonitoringState.branchUpdate,
               status: "failed",
-              lastError: updateResult.error ?? "Automatic PR branch update failed.",
+              lastError: updateResult.error.message,
             },
           },
         };
@@ -428,7 +428,7 @@ export class PushedTaskMonitor {
         feedbackItems,
       });
       if (!result.success) {
-        throw new Error(result.error ?? "Automatic PR review cycle failed to start.");
+        throw result.error;
       }
 
       return {

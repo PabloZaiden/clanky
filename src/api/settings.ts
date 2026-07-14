@@ -15,7 +15,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import { createLogger } from "../core/logger";
 import { isDomainError } from "../core/domain-error";
 import { settingsMaintenanceService } from "../core/settings-maintenance-service";
-import { errorResponse, successResponse } from "./helpers";
+import { internalErrorResponse, successResponse } from "./helpers";
 
 const log = createLogger("api:settings");
 
@@ -57,10 +57,20 @@ export const settingsRoutes = defineRoutes({
         });
       } catch (error) {
         if (isDomainError(error) && error.code === "reset_failed") {
-          return errorResponse(error.code, error.message, 500);
+          return internalErrorResponse(error, {
+            error: "reset_failed",
+            message: "Failed to reset settings",
+            status: 500,
+          }, {
+            reset_failed: { status: 500, message: "Failed to reset settings" },
+          });
         }
         log.error("Failed to reset all settings", { error: String(error) });
-        return errorResponse("reset_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "reset_failed",
+          message: "Failed to reset settings",
+          status: 500,
+        });
       }
     },
   },
@@ -91,14 +101,23 @@ export const settingsRoutes = defineRoutes({
         return successResponse({ ...result });
       } catch (error) {
         if (isDomainError(error) && error.code === "purge_terminal_tasks_failed") {
-          return errorResponse(error.code, error.message, 500);
+          return internalErrorResponse(error, {
+            error: "purge_terminal_tasks_failed",
+            message: "Failed to purge terminal-state tasks",
+            status: 500,
+          }, {
+            purge_terminal_tasks_failed: {
+              status: 500,
+              message: "Failed to purge terminal-state tasks",
+            },
+          });
         }
         log.error("Failed to purge terminal-state tasks across all workspaces", { error: String(error) });
-        return errorResponse(
-          "purge_terminal_tasks_failed",
-          `Failed to purge terminal-state tasks: ${String(error)}`,
-          500,
-        );
+        return internalErrorResponse(error, {
+          error: "purge_terminal_tasks_failed",
+          message: "Failed to purge terminal-state tasks",
+          status: 500,
+        });
       }
     },
   },

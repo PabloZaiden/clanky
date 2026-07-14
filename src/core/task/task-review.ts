@@ -15,6 +15,7 @@ import {
   ensureAutomaticPrFlowPullRequest,
 } from "../automatic-pr-flow-github";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task-automatic-pr-flow-events";
+import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 export { getReviewHistoryImpl } from "./review-history";
 export { getReviewCommentsImpl } from "./review-history";
 
@@ -23,9 +24,9 @@ export async function addressReviewCommentsImpl(
   taskId: string,
   comments: string,
   attachments: MessageImageAttachment[] = [],
-): Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }> {
+): Promise<SendFollowUpResult> {
   if (!comments || comments.trim() === "") {
-    return { success: false, error: "Comments cannot be empty" };
+    return taskFailure("invalid_task_input", "Comments cannot be empty");
   }
 
   return startFeedbackCycleImpl(ctx, taskId, {
@@ -145,27 +146,42 @@ export async function startAutomaticPrReviewCycleImpl(
   },
 ): Promise<SendFollowUpResult> {
   if (options.sourceItems.length === 0 || options.feedbackItems.length === 0) {
-    return { success: false, error: "Automatic PR review cycle requires extracted feedback with source items." };
+    return taskFailure(
+      "invalid_task_input",
+      "Automatic PR review cycle requires extracted feedback with source items.",
+    );
   }
 
   const itemIds = [...new Set(options.sourceItems.map((item) => item.id))];
 
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const automaticPrFlowState = task.state.automaticPrFlow;
   if (!automaticPrFlowState?.enabled) {
-    return { success: false, error: "Automatic PR flow is not enabled for this task." };
+    return taskFailure(
+      "automatic_pr_flow_disabled",
+      "Automatic PR flow is not enabled for this task.",
+      { details: { taskId } },
+    );
   }
 
   if (task.state.status !== "pushed") {
-    return { success: false, error: `Cannot start automatic PR review cycle for task in status: ${task.state.status}` };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot start automatic PR review cycle for task in status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (automaticPrFlowState.activeBatch) {
-    return { success: false, error: "Automatic PR flow is already processing feedback." };
+    return taskFailure(
+      "automatic_pr_flow_busy",
+      "Automatic PR flow is already processing feedback.",
+      { details: { taskId, batchId: automaticPrFlowState.activeBatch.batchId } },
+    );
   }
 
   const now = new Date().toISOString();
@@ -219,7 +235,7 @@ export async function startAutomaticPrReviewCycleImpl(
       status: "error",
       updatedAt: new Date().toISOString(),
       lastCheckedAt: new Date().toISOString(),
-      lastError: result.error ?? "Automatic PR review cycle failed to start.",
+      lastError: result.error.message,
       activeBatch: undefined,
     };
     await saveTask(rollbackTask);
@@ -232,25 +248,27 @@ export async function startAutomaticPrReviewCycleImpl(
 export async function startAutomaticPrFlowImpl(
   ctx: TaskCtx,
   taskId: string,
-): Promise<{ success: boolean; error?: string; automaticPrFlow?: Task["state"]["automaticPrFlow"] }> {
+): Promise<TaskResult<{ automaticPrFlow?: Task["state"]["automaticPrFlow"] }>> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (task.state.status !== "pushed" || task.state.reviewMode?.addressable !== true) {
-    return {
-      success: false,
-      error: "Automatic PR flow only works for pushed tasks that can receive review feedback.",
-    };
+    return taskFailure(
+      "invalid_task_state",
+      "Automatic PR flow only works for pushed tasks that can receive review feedback.",
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const workingDirectory = getTaskWorkingDirectory(task);
   if (!workingDirectory) {
-    return {
-      success: false,
-      error: "Task is configured to use a worktree, but no worktree path is available.",
-    };
+    return taskFailure(
+      "task_worktree_missing",
+      "Task is configured to use a worktree, but no worktree path is available.",
+      { details: { taskId } },
+    );
   }
 
   const existingState = task.state.automaticPrFlow;
@@ -282,17 +300,21 @@ export async function startAutomaticPrFlowImpl(
 
     return { success: true, automaticPrFlow: task.state.automaticPrFlow };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to start automatic PR flow",
+    );
   }
 }
 
 export async function stopAutomaticPrFlowImpl(
   ctx: TaskCtx,
   taskId: string,
-): Promise<{ success: boolean; error?: string; automaticPrFlow?: Task["state"]["automaticPrFlow"] }> {
+): Promise<TaskResult<{ automaticPrFlow?: Task["state"]["automaticPrFlow"] }>> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const existingState = task.state.automaticPrFlow;
@@ -327,25 +349,27 @@ export async function stopAutomaticPrFlowImpl(
 export async function enablePullRequestAutoMergeImpl(
   _ctx: TaskCtx,
   taskId: string,
-): Promise<{ success: boolean; error?: string; pullRequest?: { number: number; url: string } }> {
+): Promise<TaskResult<{ pullRequest?: { number: number; url: string } }>> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (task.state.status !== "pushed" || task.state.reviewMode?.addressable !== true) {
-    return {
-      success: false,
-      error: "Automatic merge only works for pushed tasks that can receive review feedback.",
-    };
+    return taskFailure(
+      "invalid_task_state",
+      "Automatic merge only works for pushed tasks that can receive review feedback.",
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const workingDirectory = getTaskWorkingDirectory(task);
   if (!workingDirectory) {
-    return {
-      success: false,
-      error: "Task is configured to use a worktree, but no worktree path is available.",
-    };
+    return taskFailure(
+      "task_worktree_missing",
+      "Task is configured to use a worktree, but no worktree path is available.",
+      { details: { taskId } },
+    );
   }
 
   try {
@@ -360,7 +384,11 @@ export async function enablePullRequestAutoMergeImpl(
       },
     };
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to enable pull request auto-merge",
+    );
   }
 }
 
@@ -376,19 +404,29 @@ export async function startFeedbackCycleImpl(
 ): Promise<SendFollowUpResult> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   if (!task.state.reviewMode?.addressable) {
-    return { success: false, error: "Task is not addressable. Only pushed or locally accepted tasks can receive follow-up feedback." };
+    return taskFailure(
+      "task_not_addressable",
+      "Task is not addressable. Only pushed or locally accepted tasks can receive follow-up feedback.",
+      { details: { taskId } },
+    );
   }
 
   if (task.state.status !== "pushed" && task.state.status !== "accepted_local") {
-    return { success: false, error: `Cannot send follow-up on task with status: ${task.state.status}` };
+    return taskFailure(
+      "invalid_task_state",
+      `Cannot send follow-up on task with status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (ctx.engines.has(taskId)) {
-    return { success: false, error: "Task is already running" };
+    return taskFailure("task_already_running", "Task is already running", {
+      details: { taskId },
+    });
   }
 
   try {
@@ -404,7 +442,11 @@ export async function startFeedbackCycleImpl(
       : undefined;
 
     if (!task.state.git?.workingBranch) {
-      return { success: false, error: "No working branch found for task" };
+      return taskFailure(
+        "task_branch_missing",
+        "No working branch found for task",
+        { details: { taskId } },
+      );
     }
 
     task.state.reviewMode.reviewCycles += 1;
@@ -419,6 +461,10 @@ export async function startFeedbackCycleImpl(
       attachments: options.attachments,
     });
   } catch (error) {
-    return { success: false, error: String(error) };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to start task feedback cycle",
+    );
   }
 }

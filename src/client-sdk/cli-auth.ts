@@ -101,10 +101,7 @@ function isLocalhostBaseUrl(baseUrl: string): boolean {
 export function normalizeBaseUrlValue(rawValue: string): string {
   try {
     return normalizeBaseUrl(rawValue);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Invalid base URL")) {
-      throw error;
-    }
+  } catch {
     throw new Error(`Invalid base URL: ${rawValue}`);
   }
 }

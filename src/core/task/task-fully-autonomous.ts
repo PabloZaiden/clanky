@@ -3,6 +3,7 @@ import { loadTask, updateTaskState } from "../../persistence/tasks";
 import { createLogger } from "../logger";
 import type { TaskCtx } from "./context";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task-automatic-pr-flow-events";
+import type { TaskOperationError } from "./task-errors";
 
 const log = createLogger("core:task-fully-autonomous");
 
@@ -31,8 +32,8 @@ async function persistAutomationFailure(ctx: TaskCtx, task: Task, error: string)
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, task.config.id, task.state.automaticPrFlow);
 }
 
-function isConcurrentCompletionNoop(error: string | undefined): boolean {
-  return error === "Operation already in progress";
+function isConcurrentCompletionNoop(error: TaskOperationError | undefined): boolean {
+  return error?.code === "operation_in_progress";
 }
 
 export async function finalizeFullyAutonomousPushImpl(ctx: TaskCtx, taskId: string): Promise<void> {
@@ -56,7 +57,7 @@ export async function finalizeFullyAutonomousPushImpl(ctx: TaskCtx, taskId: stri
       await persistAutomationFailure(
         ctx,
         latestTask,
-        result.error ?? "Fully autonomous task failed to start the automatic PR flow after push.",
+        result.error.message,
       );
     }
     return;
@@ -95,7 +96,7 @@ export async function handleFullyAutonomousCompletionImpl(ctx: TaskCtx, taskId: 
       await persistAutomationFailure(
         ctx,
         latestTask,
-        result.error ?? "Fully autonomous task failed to push the completed branch.",
+        result.error.message,
       );
     }
     return;

@@ -62,7 +62,7 @@ async function purgeArchivedTasksWithConcurrency(
           : {
               success: false,
               taskId: task.config.id,
-              error: result.error ?? "Unknown error",
+              error: result.error.message,
             };
       } catch (error) {
         results[currentIndex] = {

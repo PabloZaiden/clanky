@@ -9,9 +9,10 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { taskManager } from "../../core/task-manager";
+import { TaskUpdateError } from "../../core/task/task-errors";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
-import { errorResponse, successResponse } from "../helpers";
+import { errorResponse, internalErrorResponse, successResponse } from "../helpers";
 import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
 import { UpdateTaskRequestSchema } from "@/contracts/schemas";
@@ -86,30 +87,15 @@ async function applyTaskUpdates(
     return Response.json(updatedTask);
   } catch (error) {
     const errorMessage = String(error);
-    if (error instanceof Error) {
-      const code = (error as Error & { code?: string }).code;
-      const status = (error as Error & { status?: number }).status;
-      if (code === "BASE_BRANCH_IMMUTABLE") {
-        return errorResponse("base_branch_immutable", errorMessage, status ?? 409);
-      }
-      if (code === "USE_WORKTREE_IMMUTABLE") {
-        return errorResponse("use_worktree_immutable", errorMessage, status ?? 409);
-      }
-      if (code === "ACTIVE_TASK_UPDATE_RESTRICTED") {
-        return errorResponse("active_task_update_restricted", errorMessage, status ?? 409);
-      }
-      if (code === "PLANNING_UPDATE_RESTRICTED") {
-        return errorResponse("planning_update_restricted", errorMessage, status ?? 409);
-      }
-      if (code === "PLAN_EXECUTION_UPDATE_RESTRICTED") {
-        return errorResponse("plan_execution_update_restricted", errorMessage, status ?? 409);
-      }
-      if (code === "TASK_RENAME_RESTRICTED") {
-        return errorResponse("task_rename_restricted", errorMessage, status ?? 409);
-      }
+    if (error instanceof TaskUpdateError) {
+      return errorResponse(error.code, error.message, 409);
     }
     log.error("Failed to update task", { taskId, error: errorMessage });
-    return errorResponse("update_failed", errorMessage, 500);
+    return internalErrorResponse(error, {
+      error: "update_failed",
+      message: "Failed to update task",
+      status: 500,
+    });
   }
 }
 
@@ -225,7 +211,11 @@ export const tasksItemRoutes = defineRoutes({
         return successResponse();
       } catch (error) {
         log.error("DELETE /api/tasks/:id - Delete failed", { taskId: ctx.params["id"]!, error: String(error) });
-        return errorResponse("delete_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "delete_failed",
+          message: "Failed to delete task",
+          status: 500,
+        });
       }
     },
   },

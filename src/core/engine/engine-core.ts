@@ -54,12 +54,17 @@ import {
   reconnectTaskSession,
   recreateSessionAfterLoss,
   handleModelChange,
-  isSessionNotFoundError,
   resetIterationContextForRetry,
   type SessionOperationContext,
 } from "./engine-session";
 import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
 import type { EventStream } from "../../utils/event-stream";
+import {
+  AcpError,
+  createAcpSessionNotFoundError,
+  getAcpErrorMessage,
+  isAcpErrorCode,
+} from "../../backends/acp";
 
 export class TaskEngine {
   private task: Task;
@@ -717,13 +722,6 @@ export class TaskEngine {
   }
 
   /**
-   * Detect if an error indicates that an ACP session no longer exists remotely.
-   */
-  private isSessionNotFoundError(message: string): boolean {
-    return isSessionNotFoundError(message);
-  }
-
-  /**
    * Reset transient per-iteration state before retrying a prompt with a new session.
    */
   private resetIterationContextForRetry(ctx: IterationContext): void {
@@ -1308,7 +1306,7 @@ export class TaskEngine {
     this.emitLog("error", `Iteration failed with error: ${errorMessage}`);
 
     // Track consecutive identical errors
-    const shouldFailsafe = this.trackConsecutiveError(errorMessage);
+    const shouldFailsafe = this.trackConsecutiveError(errorMessage, result.errorCode);
 
     if (shouldFailsafe) {
       const maxErrors = this.config.maxConsecutiveErrors ?? DEFAULT_TASK_CONFIG.maxConsecutiveErrors;
@@ -1389,17 +1387,19 @@ export class TaskEngine {
    * Returns true if we should failsafe exit (max consecutive errors reached).
    * Returns false if maxConsecutiveErrors is undefined or 0 (unlimited).
    */
-  private trackConsecutiveError(errorMessage: string): boolean {
+  private trackConsecutiveError(errorMessage: string, errorCode?: string): boolean {
     const tracker = this.task.state.consecutiveErrors;
     const maxErrors = this.config.maxConsecutiveErrors;
+    const errorKey = errorCode ?? "unknown_error";
 
     // If maxErrors is undefined or 0, errors are unlimited - never failsafe
     if (maxErrors === undefined || maxErrors === 0) {
       // Still track the error count for logging purposes
-      if (tracker && tracker.lastErrorMessage === errorMessage) {
+      if (tracker && tracker.lastErrorCode === errorKey) {
         this.updateState({
           consecutiveErrors: {
             lastErrorMessage: errorMessage,
+            lastErrorCode: errorKey,
             count: tracker.count + 1,
           },
         });
@@ -1407,6 +1407,7 @@ export class TaskEngine {
         this.updateState({
           consecutiveErrors: {
             lastErrorMessage: errorMessage,
+            lastErrorCode: errorKey,
             count: 1,
           },
         });
@@ -1414,12 +1415,13 @@ export class TaskEngine {
       return false;
     }
 
-    if (tracker && tracker.lastErrorMessage === errorMessage) {
+    if (tracker && tracker.lastErrorCode === errorKey) {
       // Same error as before, increment count
       const newCount = tracker.count + 1;
       this.updateState({
         consecutiveErrors: {
           lastErrorMessage: errorMessage,
+          lastErrorCode: errorKey,
           count: newCount,
         },
       });
@@ -1429,6 +1431,7 @@ export class TaskEngine {
       this.updateState({
         consecutiveErrors: {
           lastErrorMessage: errorMessage,
+          lastErrorCode: errorKey,
           count: 1,
         },
       });
@@ -1474,6 +1477,7 @@ export class TaskEngine {
       toolCallCount: 0,
       outcome: "continue",
       error: undefined,
+      errorCode: undefined,
       currentMessageId: null,
       toolCalls: new Map(),
       currentResponseLogId: null,
@@ -1486,6 +1490,11 @@ export class TaskEngine {
       // Build and send prompt, then process the event stream
       await this.executeIterationPrompt(ctx);
 
+      if (this.aborted && ctx.errorCode === "acp_request_cancelled") {
+        ctx.outcome = "continue";
+        ctx.error = undefined;
+      }
+
       // Evaluate whether the response matches a stop/completion pattern
       this.evaluateOutcome(ctx);
 
@@ -1496,7 +1505,8 @@ export class TaskEngine {
       }
     } catch (err) {
       ctx.outcome = "error";
-      ctx.error = String(err);
+      ctx.error = getAcpErrorMessage(err);
+      ctx.errorCode = err instanceof AcpError ? err.code : undefined;
       this.emitLog("error", `Iteration error: ${ctx.error}`);
     }
 
@@ -1602,8 +1612,10 @@ export class TaskEngine {
           // Delegate event processing to the handler
           await this.processAgentEvent(event, ctx);
 
-          if (event.type === "error" && ctx.error && this.isSessionNotFoundError(ctx.error)) {
-            throw new Error(ctx.error);
+          if (event.type === "error" && event.code === "acp_session_not_found") {
+            throw createAcpSessionNotFoundError(activeSessionId, {
+              details: { eventMessage: event.message },
+            });
           }
 
           // If message is complete or error occurred, stop listening
@@ -1618,9 +1630,9 @@ export class TaskEngine {
 
         completed = true;
       } catch (error) {
-        const message = String(error);
-        if (!hasRetriedMissingSession && this.isSessionNotFoundError(message)) {
+        if (!hasRetriedMissingSession && isAcpErrorCode(error, "acp_session_not_found")) {
           hasRetriedMissingSession = true;
+          const message = getAcpErrorMessage(error);
           this.emitLog("warn", "Session not found during prompt execution - recreating session and retrying once", {
             sessionId: activeSessionId,
             error: message,
@@ -1743,6 +1755,7 @@ export class TaskEngine {
       outcome: ctx.outcome,
       responseContent: ctx.responseContent,
       error: ctx.error,
+      errorCode: ctx.errorCode,
       messageCount: ctx.messageCount,
       toolCallCount: ctx.toolCallCount,
     };

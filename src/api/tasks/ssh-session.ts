@@ -8,23 +8,38 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { sshSessionManager } from "../../core/ssh-session-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse } from "../helpers";
+import { domainErrorResponse, errorResponse } from "../helpers";
 
 const log = createLogger("api:tasks");
 
 function mapTaskSshSessionError(error: unknown): Response {
-  const message = String(error);
-  if (message.includes("Task not found")) {
-    return errorResponse("not_found", "Task not found", 404);
-  }
-  if (
-    message.includes("ssh transport")
-    || message.includes("dtach is not available")
-    || message.includes("Task working directory is not available")
-  ) {
-    return errorResponse("invalid_session_configuration", message, 400);
-  }
-  return errorResponse("ssh_session_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      task_not_found: {
+        error: "not_found",
+        message: "Task not found",
+        status: 404,
+      },
+      ssh_transport_required: {
+        error: "invalid_session_configuration",
+        status: 400,
+      },
+      task_working_directory_unavailable: {
+        error: "invalid_session_configuration",
+        status: 400,
+      },
+      ssh_session_not_found: {
+        error: "not_found",
+        message: "SSH session not found for task",
+        status: 404,
+      },
+    },
+    fallback: {
+      error: "ssh_session_error",
+      message: "SSH session operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const tasksSshSessionRoutes = defineRoutes({

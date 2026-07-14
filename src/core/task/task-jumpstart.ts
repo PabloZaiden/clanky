@@ -10,12 +10,13 @@ import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { getTaskWorkingDirectory } from "./task-types";
 import { startStatePersistenceImpl } from "./task-execution";
+import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 
 export async function jumpstartTaskImpl(
   ctx: TaskCtx,
   taskId: string,
   options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<TaskResult> {
   return jumpstartTaskFromEngine(ctx, taskId, options);
 }
 
@@ -24,15 +25,19 @@ export async function jumpstartTaskFromEngine(
   ctx: TaskCtx,
   taskId: string,
   options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
   const jumpstartableStates = ["completed", "stopped", "failed", "max_iterations", "planning", "deleted"];
   if (!jumpstartableStates.includes(task.state.status)) {
-    return { success: false, error: `Task cannot be jumpstarted from status: ${task.state.status}` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task cannot be jumpstarted from status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   if (options.message !== undefined) {
@@ -82,7 +87,11 @@ export async function jumpstartTaskFromEngine(
         return { success: true };
       } catch (startError) {
         log.error(`Failed to jumpstart planning task ${taskId}: ${String(startError)}`);
-        return { success: false, error: `Failed to jumpstart planning task: ${String(startError)}` };
+        return taskFailureFromUnknown(
+          startError,
+          "task_operation_failed",
+          "Failed to jumpstart planning task",
+        );
       }
     }
   }
@@ -96,7 +105,11 @@ export async function jumpstartTaskFromEngine(
       return { success: true };
     } catch (startError) {
       log.error(`Failed to jumpstart task ${taskId}: ${String(startError)}`);
-      return { success: false, error: `Failed to jumpstart task: ${String(startError)}` };
+      return taskFailureFromUnknown(
+        startError,
+        "task_operation_failed",
+        "Failed to jumpstart task",
+      );
     }
   }
 }
@@ -120,13 +133,17 @@ export async function canReuseExistingBranch(task: Task): Promise<boolean> {
   return git.worktreeExists(task.config.directory, worktreePath);
 }
 
-export async function reviveDeletedTask(taskId: string): Promise<{ success: boolean; error?: string }> {
+export async function reviveDeletedTask(taskId: string): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
-    return { success: false, error: "Task not found" };
+    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
   if (task.state.status !== "deleted") {
-    return { success: false, error: `Task is not deleted (status: ${task.state.status})` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not deleted (status: ${task.state.status})`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const targetStatus = task.state.planMode?.active ? "planning" as const : "stopped" as const;
@@ -149,11 +166,15 @@ async function jumpstartOnExistingBranch(
   task: Task,
   isPlanning = false,
   attachments: MessageImageAttachment[] = [],
-): Promise<{ success: boolean; error?: string }> {
+): Promise<TaskResult> {
   try {
     const workingDirectory = getTaskWorkingDirectory(task);
     if (!workingDirectory) {
-      return { success: false, error: "Task is configured to use a worktree, but no worktree path is available - cannot jumpstart" };
+      return taskFailure(
+        "task_worktree_missing",
+        "Task is configured to use a worktree, but no worktree path is available - cannot jumpstart",
+        { details: { taskId } },
+      );
     }
     const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workingDirectory);
     const git = GitService.withExecutor(executor);
@@ -188,6 +209,10 @@ async function jumpstartOnExistingBranch(
     return { success: true };
   } catch (error) {
     log.error(`Failed to jumpstart ${isPlanning ? "planning task" : "task"} ${taskId} on existing branch: ${String(error)}`);
-    return { success: false, error: `Failed to jumpstart task: ${String(error)}` };
+    return taskFailureFromUnknown(
+      error,
+      "task_operation_failed",
+      "Failed to jumpstart task",
+    );
   }
 }

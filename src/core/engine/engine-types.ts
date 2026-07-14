@@ -86,6 +86,8 @@ export interface IterationResult {
   responseContent: string;
   /** Error message if outcome is "error" */
   error?: string;
+  /** Stable error code if outcome is "error" */
+  errorCode?: string;
   /** Number of messages received */
   messageCount: number;
   /** Number of tool calls made */
@@ -105,6 +107,7 @@ export interface IterationContext {
   toolCallCount: number;
   outcome: IterationResult["outcome"];
   error: string | undefined;
+  errorCode: string | undefined;
   currentMessageId: string | null;
   toolCalls: Map<string, { id: string; name: string; input: unknown }>;
   /** ID of the current streaming response log entry (for delta combining) */

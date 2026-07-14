@@ -3,19 +3,44 @@ import { vncSessionManager } from "../core/vnc-session-manager";
 import { createLogger } from "../core/logger";
 import { CreateVncSessionRequestSchema } from "@/contracts/schemas";
 import { parseAndValidate } from "./validation";
-import { errorResponse, successResponse } from "./helpers";
+import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 
 const log = createLogger("api:vnc-sessions");
 
 function mapVncError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (message.includes("credential token")) {
-    return errorResponse("invalid_credential_token", message, 400);
-  }
-  return errorResponse("vnc_session_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      ssh_server_not_found: {
+        error: "not_found",
+        message: "SSH server not found",
+        status: 404,
+      },
+      vnc_session_not_found: {
+        error: "not_found",
+        message: "VNC session not found",
+        status: 404,
+      },
+      invalid_credential_token: {
+        status: 400,
+      },
+      vnc_session_not_active: {
+        status: 409,
+      },
+      vnc_session_start_failed: {
+        status: 500,
+        message: "Failed to start VNC session",
+      },
+      vnc_tunnel_failed: {
+        status: 500,
+        message: "VNC tunnel failed to start",
+      },
+    },
+    fallback: {
+      error: "vnc_session_error",
+      message: "VNC session operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const vncSessionRoutes = defineRoutes({

@@ -4,6 +4,7 @@ import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createLogger } from "../logger";
 import { isStaleTaskStatus, loadTask, resetStaleTask } from "../../persistence/tasks";
 import { jumpstartTaskFromEngine } from "./task-jumpstart";
+import { taskFailure, type TaskResult } from "./task-errors";
 
 const log = createLogger("task:pending");
 
@@ -12,19 +13,27 @@ export async function setPendingPromptImpl(
   taskId: string,
   prompt: string,
   attachments: MessageImageAttachment[] = [],
-): Promise<{ success: boolean; error?: string }> {
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending prompts can only be set for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending prompts can only be set for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (status !== "running" && status !== "starting") {
-    return { success: false, error: `Task is not running (status: ${status}). Pending prompts can only be set for running tasks.` };
+    return taskFailure(
+      "task_not_running",
+      `Task is not running (status: ${status}). Pending prompts can only be set for running tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   engine.setPendingPrompt(prompt, attachments);
@@ -34,20 +43,28 @@ export async function setPendingPromptImpl(
 
 export async function clearPendingPromptImpl(
   ctx: TaskCtx,
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
+  taskId: string,
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending prompts can only be cleared for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending prompts can only be cleared for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (status !== "running" && status !== "starting") {
-    return { success: false, error: `Task is not running (status: ${status}). Pending prompts can only be cleared for running tasks.` };
+    return taskFailure(
+      "task_not_running",
+      `Task is not running (status: ${status}). Pending prompts can only be cleared for running tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   engine.clearPendingPrompt();
@@ -58,24 +75,36 @@ export async function clearPendingPromptImpl(
 export async function setPendingModelImpl(
   ctx: TaskCtx,
   taskId: string,
-  model: ModelConfig
-): Promise<{ success: boolean; error?: string }> {
+  model: ModelConfig,
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending model can only be set for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending model can only be set for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (!["running", "waiting", "planning", "starting"].includes(status)) {
-    return { success: false, error: `Task is not in an active state (status: ${status}). Pending model can only be set for active tasks.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not in an active state (status: ${status}). Pending model can only be set for active tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   if (!model.providerID || !model.modelID) {
-    return { success: false, error: "Invalid model config: providerID and modelID are required" };
+    return taskFailure(
+      "invalid_model_config",
+      "Invalid model config: providerID and modelID are required",
+      { details: { taskId } },
+    );
   }
 
   engine.setPendingModel(model);
@@ -85,20 +114,28 @@ export async function setPendingModelImpl(
 
 export async function clearPendingModelImpl(
   ctx: TaskCtx,
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
+  taskId: string,
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending model can only be cleared for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending model can only be cleared for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (!["running", "waiting", "planning", "starting"].includes(status)) {
-    return { success: false, error: `Task is not in an active state (status: ${status}). Pending model can only be cleared for active tasks.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not in an active state (status: ${status}). Pending model can only be cleared for active tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   engine.clearPendingModel();
@@ -108,20 +145,28 @@ export async function clearPendingModelImpl(
 
 export async function clearPendingImpl(
   ctx: TaskCtx,
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
+  taskId: string,
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending values can only be cleared for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending values can only be cleared for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (!["running", "waiting", "planning", "starting"].includes(status)) {
-    return { success: false, error: `Task is not in an active state (status: ${status}). Pending values can only be cleared for active tasks.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not in an active state (status: ${status}). Pending values can only be cleared for active tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   engine.clearPending();
@@ -132,24 +177,40 @@ export async function clearPendingImpl(
 export async function setPendingImpl(
   ctx: TaskCtx,
   taskId: string,
-  options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
-): Promise<{ success: boolean; error?: string }> {
+  options: {
+    message?: string;
+    model?: ModelConfig;
+    attachments?: MessageImageAttachment[];
+  },
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-    return { success: false, error: "Task is not running. Pending values can only be set for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending values can only be set for running tasks.",
+      { details: { taskId } },
+    );
   }
 
   const status = engine.state.status;
   if (!["running", "waiting", "planning", "starting"].includes(status)) {
-    return { success: false, error: `Task is not in an active state (status: ${status}). Pending values can only be set for active tasks.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not in an active state (status: ${status}). Pending values can only be set for active tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   if (options.model && (!options.model.providerID || !options.model.modelID)) {
-    return { success: false, error: "Invalid model config: providerID and modelID are required" };
+    return taskFailure(
+      "invalid_model_config",
+      "Invalid model config: providerID and modelID are required",
+      { details: { taskId } },
+    );
   }
 
   if (options.message !== undefined) {
@@ -165,24 +226,34 @@ export async function setPendingImpl(
 export async function injectPendingImpl(
   ctx: TaskCtx,
   taskId: string,
-  options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
-): Promise<{ success: boolean; error?: string }> {
+  options: {
+    message?: string;
+    model?: ModelConfig;
+    attachments?: MessageImageAttachment[];
+  },
+): Promise<TaskResult> {
   const engine = ctx.engines.get(taskId);
 
   if (options.model && (!options.model.providerID || !options.model.modelID)) {
-    return { success: false, error: "Invalid model config: providerID and modelID are required" };
+    return taskFailure(
+      "invalid_model_config",
+      "Invalid model config: providerID and modelID are required",
+      { details: { taskId } },
+    );
   }
 
   if (!engine) {
     const task = await loadTask(taskId);
     if (!task) {
-      return { success: false, error: "Task not found" };
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
 
     if (isStaleTaskStatus(task.state.status)) {
       const reconciled = await resetStaleTask(taskId);
       if (reconciled) {
-        log.warn(`Reconciled stale active task ${taskId} from persisted status ${task.state.status} before pending injection`);
+        log.warn(
+          `Reconciled stale active task ${taskId} from persisted status ${task.state.status} before pending injection`,
+        );
         return jumpstartTaskFromEngine(ctx, taskId, options);
       }
     }
@@ -192,7 +263,11 @@ export async function injectPendingImpl(
       return jumpstartTaskFromEngine(ctx, taskId, options);
     }
 
-    return { success: false, error: "Task is not running. Pending values can only be injected for running tasks." };
+    return taskFailure(
+      "task_not_running",
+      "Task is not running. Pending values can only be injected for running tasks.",
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const status = engine.state.status;
@@ -201,7 +276,11 @@ export async function injectPendingImpl(
     if (jumpstartableStates.includes(status)) {
       return jumpstartTaskFromEngine(ctx, taskId, options);
     }
-    return { success: false, error: `Task is not in an active state (status: ${status}). Pending values can only be injected for active tasks.` };
+    return taskFailure(
+      "invalid_task_state",
+      `Task is not in an active state (status: ${status}). Pending values can only be injected for active tasks.`,
+      { details: { taskId, status } },
+    );
   }
 
   await engine.injectPendingNow(options);

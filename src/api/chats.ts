@@ -11,7 +11,7 @@ import { createLogger } from "../core/logger";
 import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat } from "@/shared/chat";
 import type { ChatConfig } from "@/shared/chat";
 import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";
-import { requireWorkspace, errorResponse, successResponse } from "./helpers";
+import { requireWorkspace, errorResponse, internalErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "../core/model-discovery";
 import { isDomainError } from "../core/domain-error";
@@ -32,6 +32,29 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     || error instanceof SshCredentialsRequiredError
   ) {
     return errorResponse(error.code, error.message, error.status);
+  }
+  if (isDomainError(error)) {
+    const mappings = {
+      acp_request_cancelled: {
+        error: "cancelled",
+        message: "Chat operation was cancelled",
+        status: 409,
+      },
+      acp_session_not_found: {
+        error: "session_not_found",
+        message: "The chat session is no longer available",
+        status: 409,
+      },
+      acp_ssh_authentication_failed: {
+        error: "ssh_authentication_failed",
+        message: "SSH authentication failed",
+        status: 401,
+      },
+    } as const;
+    const mapping = mappings[error.code as keyof typeof mappings];
+    if (mapping) {
+      return errorResponse(mapping.error, mapping.message, mapping.status);
+    }
   }
   return null;
 }
@@ -131,7 +154,11 @@ export const chatsRoutes = defineRoutes({
           workspaceId: body.workspaceId,
           error: String(error),
         });
-        return errorResponse("create_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "create_failed",
+          message: "Failed to create chat",
+          status: 500,
+        });
       }
     },
   },
@@ -159,7 +186,11 @@ export const chatsRoutes = defineRoutes({
           workspaceId,
           error: String(error),
         });
-        return errorResponse("list_importable_sessions_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "list_importable_sessions_failed",
+          message: "Failed to list importable chat sessions",
+          status: 500,
+        });
       }
     },
   },
@@ -210,7 +241,11 @@ export const chatsRoutes = defineRoutes({
           sessionId: body.sessionId,
           error: String(error),
         });
-        return errorResponse("import_session_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "import_session_failed",
+          message: "Failed to import chat session",
+          status: 500,
+        });
       }
     },
   },
@@ -264,7 +299,11 @@ export const chatsRoutes = defineRoutes({
         return Response.json(updated);
       } catch (error) {
         log.error("Failed to update chat", { chatId: ctx.params["id"]!, error: String(error) });
-        return errorResponse("update_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "update_failed",
+          message: "Failed to update chat",
+          status: 500,
+        });
       }
     },
 
@@ -282,7 +321,11 @@ export const chatsRoutes = defineRoutes({
         return successResponse();
       } catch (error) {
         log.error("Failed to delete chat", { chatId: ctx.params["id"]!, error: String(error) });
-        return errorResponse("delete_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "delete_failed",
+          message: "Failed to delete chat",
+          status: 500,
+        });
       }
     },
   },
@@ -316,7 +359,11 @@ export const chatsRoutes = defineRoutes({
         }
         const message = String(error);
         log.error("Failed to send chat message", { chatId: ctx.params["id"]!, error: message });
-        return errorResponse("send_failed", message, 500);
+        return internalErrorResponse(error, {
+          error: "send_failed",
+          message: "Failed to send chat message",
+          status: 500,
+        });
       }
     },
   },
@@ -339,7 +386,11 @@ export const chatsRoutes = defineRoutes({
           messageId: ctx.params["messageId"]!,
           error: message,
         });
-        return errorResponse("remove_queued_message_failed", message, 500);
+        return internalErrorResponse(error, {
+          error: "remove_queued_message_failed",
+          message: "Failed to remove queued chat message",
+          status: 500,
+        });
       }
     },
   },
@@ -395,7 +446,11 @@ export const chatsRoutes = defineRoutes({
         return Response.json(updated);
       } catch (error) {
         log.error("Failed to interrupt chat", { chatId: ctx.params["id"]!, error: String(error) });
-        return errorResponse("interrupt_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "interrupt_failed",
+          message: "Failed to interrupt chat",
+          status: 500,
+        });
       }
     },
   },
@@ -436,7 +491,11 @@ export const chatsRoutes = defineRoutes({
           requestId: ctx.params["requestId"]!,
           error: String(error),
         });
-        return errorResponse("permission_reply_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "permission_reply_failed",
+          message: "Failed to reply to chat permission request",
+          status: 500,
+        });
       }
     },
   },
@@ -470,7 +529,11 @@ export const chatsRoutes = defineRoutes({
           return knownErrorResponse;
         }
         log.error("Failed to reconnect chat", { chatId: ctx.params["id"]!, error: String(error) });
-        return errorResponse("reconnect_failed", String(error), 500);
+        return internalErrorResponse(error, {
+          error: "reconnect_failed",
+          message: "Failed to reconnect chat",
+          status: 500,
+        });
       }
     },
   },
@@ -512,7 +575,11 @@ export const chatsRoutes = defineRoutes({
         }
         const message = error instanceof Error ? error.message : String(error);
         log.error("Failed to spawn task from chat", { chatId: ctx.params["id"]!, error: message });
-        return errorResponse("spawn_failed", message, 500);
+        return internalErrorResponse(error, {
+          error: "spawn_failed",
+          message: "Failed to create a task from the chat",
+          status: 500,
+        });
       }
     },
   },
@@ -561,7 +628,11 @@ export const chatsRoutes = defineRoutes({
         }
         const message = error instanceof Error ? error.message : String(error);
         log.error("Failed to spawn task from current plan", { chatId: ctx.params["id"]!, error: message });
-        return errorResponse("spawn_failed", message, 500);
+        return internalErrorResponse(error, {
+          error: "spawn_failed",
+          message: "Failed to create a task from the current chat plan",
+          status: 500,
+        });
       }
     },
   },

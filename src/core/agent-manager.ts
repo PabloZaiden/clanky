@@ -2,6 +2,7 @@ import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "@/shared/agen
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createInitialAgentState, isAgentRunActiveStatus } from "@/shared/agent";
 import { createTimestamp } from "@/shared/events";
+import { DomainError } from "./domain-error";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
   deleteAgent,
@@ -80,13 +81,19 @@ export class AgentManager {
     if (run.chatId) {
       return run;
     }
-    throw new Error(`Agent run ${runId} cannot be interrupted yet because its chat has not been created; try again shortly`);
+    throw new DomainError(
+      "agent_run_not_ready",
+      "Agent run cannot be interrupted until its chat has been created",
+      { details: { runId } },
+    );
   }
 
   async createAgent(options: CreateAgentOptions): Promise<Agent> {
     const workspace = await getWorkspace(options.workspaceId);
     if (!workspace) {
-      throw new Error(`Workspace not found: ${options.workspaceId}`);
+      throw new DomainError("workspace_not_found", "Workspace not found", {
+        details: { workspaceId: options.workspaceId },
+      });
     }
     const now = createTimestamp();
     const nextRunAt = options.schedule.nextRunAt
@@ -198,11 +205,15 @@ export class AgentManager {
   async runNow(agentId: string, attachments: MessageImageAttachment[] = []): Promise<AgentRun> {
     const agent = await loadAgent(agentId);
     if (!agent) {
-      throw new Error(`Agent not found: ${agentId}`);
+      throw new DomainError("agent_not_found", "Agent not found", {
+        details: { agentId },
+      });
     }
     const activeRuns = await listActiveAgentRuns(agentId);
     if (activeRuns.length > 0 || agent.state.activeRunId) {
-      throw new Error("Agent already has an active run");
+      throw new DomainError("agent_already_running", "Agent already has an active run", {
+        details: { agentId },
+      });
     }
     return agentRunner.startAgentRun(agent, "manual", { attachments });
   }

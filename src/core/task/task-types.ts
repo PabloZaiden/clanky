@@ -1,6 +1,13 @@
 import type { CheapModelSelection, FollowUpPromptMode, Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SshSession } from "@/shared/ssh-session";
+import type { TaskResult } from "./task-errors";
+export type {
+  TaskFailure,
+  TaskResult,
+  TaskErrorCode,
+  TaskOperationError,
+} from "./task-errors";
 
 /**
  * Options for creating a new task.
@@ -97,18 +104,13 @@ export type AcceptPlanResult =
 /**
  * Result of accepting a task.
  */
-export interface AcceptTaskResult {
-  success: boolean;
-  error?: string;
-}
+export type AcceptTaskResult = TaskResult;
 
-export interface SendFollowUpResult {
-  success: boolean;
-  error?: string;
+export type SendFollowUpResult = TaskResult<{
   reviewCycle?: number;
   branch?: string;
   commentIds?: string[];
-}
+}>;
 
 export interface SendFollowUpOptions {
   message: string;
@@ -120,13 +122,11 @@ export interface SendFollowUpOptions {
 /**
  * Result of pushing a task branch.
  */
-export interface PushTaskResult {
-  success: boolean;
+export type PushTaskResult = TaskResult<{
   remoteBranch?: string;
   /** Sync status with base branch */
   syncStatus?: "already_up_to_date" | "clean" | "conflicts_being_resolved";
-  error?: string;
-}
+}>;
 
 /**
  * Resolve the effective working directory for a task.

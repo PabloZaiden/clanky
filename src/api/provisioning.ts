@@ -4,7 +4,7 @@ import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "../core/logger";
 import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";
-import { errorResponse, successResponse } from "./helpers";
+import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { sanitizeProvisioningSnapshot, shouldIncludeSensitiveData } from "../lib/sensitive-data";
 import { SensitiveQuerySchema } from "./route-schemas";
@@ -12,16 +12,26 @@ import { SensitiveQuerySchema } from "./route-schemas";
 const log = createLogger("api:provisioning");
 
 function mapProvisioningError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (message.includes("SSH server not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (message.includes("credential token")) {
-    return errorResponse("invalid_credential_token", message, 400);
-  }
-
-  return errorResponse("provisioning_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      ssh_server_not_found: {
+        error: "not_found",
+        message: "SSH server not found",
+        status: 404,
+      },
+      invalid_credential_token: {
+        status: 400,
+      },
+      provisioning_cancelled: {
+        status: 409,
+      },
+    },
+    fallback: {
+      error: "provisioning_error",
+      message: "Provisioning operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const provisioningRoutes = defineRoutes({

@@ -7,6 +7,7 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { TaskEngine } from "../task-engine";
 import { writePlanningFiles } from "../planning-file-service";
+import { TaskOperationError } from "./task-errors";
 
 export async function seedPlanFilesImpl(
   ctx: TaskCtx,
@@ -15,10 +16,16 @@ export async function seedPlanFilesImpl(
 ): Promise<Task> {
   const task = await loadTask(taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new TaskOperationError("task_not_found", "Task not found", {
+      details: { taskId },
+    });
   }
   if (task.state.status !== "planning" || !task.state.planMode?.active) {
-    throw new Error(`Task is not in planning status: ${task.state.status}`);
+    throw new TaskOperationError(
+      "task_not_planning",
+      `Task is not in planning status: ${task.state.status}`,
+      { details: { taskId, status: task.state.status } },
+    );
   }
 
   const startedAt = task.state.startedAt ?? createTimestamp();

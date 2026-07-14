@@ -8,7 +8,7 @@ import { chatManager } from "../core/chat-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { sshServerKeyManager } from "../core/ssh-server-key-manager";
 import { createLogger } from "../core/logger";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { CheckSshServerPrerequisitesRequestSchema, CreateSshServerChatRequestSchema, CreateSshServerRequestSchema, CreateSshServerSessionRequestSchema, GetDevboxTemplatesRequestSchema, DiscoverSshServerChatProvidersRequestSchema, DiscoverSshServerChatModelsRequestSchema, DeleteSshServerSessionRequestSchema, SshCredentialExchangeRequestSchema, UpdateSshServerRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";
 import { getModelsForSettings } from "../core/model-discovery";
@@ -19,24 +19,43 @@ import type { ServerSettings } from "@/shared/settings";
 const log = createLogger("api:ssh-servers");
 
 function mapSshServerError(error: unknown): Response {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("SSH server not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (message.includes("SSH server session not found")) {
-    return errorResponse("not_found", message, 404);
-  }
-  if (
-    message.includes("does not match the current registered server key")
-    || message.includes("algorithm does not match")
-    || message.includes("oaep decoding error")
-  ) {
-    return errorResponse("invalid_encrypted_credential", message, 400);
-  }
-  if (message.includes("credential token")) {
-    return errorResponse("invalid_credential_token", message, 400);
-  }
-  return errorResponse("ssh_server_error", message, 500);
+  return domainErrorResponse(error, {
+    mappings: {
+      ssh_server_not_found: {
+        error: "not_found",
+        message: "SSH server not found",
+        status: 404,
+      },
+      ssh_server_session_not_found: {
+        error: "not_found",
+        message: "SSH server session not found",
+        status: 404,
+      },
+      invalid_encrypted_credential: {
+        status: 400,
+      },
+      invalid_credential_token: {
+        status: 400,
+      },
+      ssh_server_templates_failed: {
+        status: 500,
+        message: "Failed to list devbox templates",
+      },
+      ssh_server_reload_failed: {
+        status: 500,
+        message: "Failed to reload SSH server",
+      },
+      ssh_server_key_generation_failed: {
+        status: 500,
+        message: "Failed to generate SSH server key pair",
+      },
+    },
+    fallback: {
+      error: "ssh_server_error",
+      message: "SSH server operation failed",
+      status: 500,
+    },
+  });
 }
 
 export const sshServersRoutes = defineRoutes({

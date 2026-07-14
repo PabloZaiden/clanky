@@ -12,8 +12,9 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse, successResponse } from "../helpers";
+import { successResponse } from "../helpers";
 import type { AcceptResponse, PushResponse } from "@/contracts";
+import { taskActionErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -36,11 +37,15 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.acceptTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/accept - Failed", { taskId: ctx.params["id"]!, error: result.error });
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("accept_failed", result.error ?? "Unknown error", 400);
+        log.warn("POST /api/tasks/:id/accept - Failed", {
+          taskId: ctx.params["id"]!,
+          errorCode: result.error.code,
+        });
+        return taskActionErrorResponse(result.error, {
+          error: "accept_failed",
+          message: "Failed to accept task",
+          status: 400,
+        });
       }
 
       log.info("POST /api/tasks/:id/accept - Task accepted locally", { taskId: ctx.params["id"]! });
@@ -69,11 +74,15 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.pushTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/push - Failed", { taskId: ctx.params["id"]!, error: result.error });
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("push_failed", result.error ?? "Unknown error", 400);
+        log.warn("POST /api/tasks/:id/push - Failed", {
+          taskId: ctx.params["id"]!,
+          errorCode: result.error.code,
+        });
+        return taskActionErrorResponse(result.error, {
+          error: "push_failed",
+          message: "Failed to push task",
+          status: 400,
+        });
       }
 
       log.info("POST /api/tasks/:id/push - Task pushed", { taskId: ctx.params["id"]!, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
@@ -107,11 +116,15 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.updateBranch(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/update-branch - Failed", { taskId: ctx.params["id"]!, error: result.error });
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("update_branch_failed", result.error ?? "Unknown error", 400);
+        log.warn("POST /api/tasks/:id/update-branch - Failed", {
+          taskId: ctx.params["id"]!,
+          errorCode: result.error.code,
+        });
+        return taskActionErrorResponse(result.error, {
+          error: "update_branch_failed",
+          message: "Failed to update task branch",
+          status: 400,
+        });
       }
 
       log.info("POST /api/tasks/:id/update-branch - Branch updated", { taskId: ctx.params["id"]!, remoteBranch: result.remoteBranch, syncStatus: result.syncStatus });
@@ -149,10 +162,11 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.markMerged(ctx.params["id"]!);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("mark_merged_failed", result.error ?? "Unknown error", 400);
+        return taskActionErrorResponse(result.error, {
+          error: "mark_merged_failed",
+          message: "Failed to mark task as merged",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -176,10 +190,11 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.closeLocalTask(ctx.params["id"]!);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("close_local_failed", result.error ?? "Unknown error", 400);
+        return taskActionErrorResponse(result.error, {
+          error: "close_local_failed",
+          message: "Failed to close local task",
+          status: 400,
+        });
       }
 
       return successResponse();
@@ -202,10 +217,11 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.manualCompleteTask(ctx.params["id"]!);
 
       if (!result.success) {
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("manual_complete_failed", result.error ?? "Unknown error", 400);
+        return taskActionErrorResponse(result.error, {
+          error: "manual_complete_failed",
+          message: "Failed to manually complete task",
+          status: 400,
+        });
       }
 
       return successResponse();

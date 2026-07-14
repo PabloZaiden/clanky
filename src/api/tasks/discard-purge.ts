@@ -8,7 +8,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { errorResponse, successResponse } from "../helpers";
+import { successResponse } from "../helpers";
+import { taskErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -30,11 +31,15 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
       const result = await taskManager.discardTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/discard - Failed", { taskId: ctx.params["id"]!, error: result.error });
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("discard_failed", result.error ?? "Unknown error", 400);
+        log.warn("POST /api/tasks/:id/discard - Failed", {
+          taskId: ctx.params["id"]!,
+          errorCode: result.error.code,
+        });
+        return taskErrorResponse(result.error, {
+          error: "discard_failed",
+          message: "Failed to discard task",
+          status: 400,
+        });
       }
 
       log.info("POST /api/tasks/:id/discard - Task discarded", { taskId: ctx.params["id"]! });
@@ -59,11 +64,15 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
       const result = await taskManager.purgeTask(ctx.params["id"]!);
 
       if (!result.success) {
-        log.warn("POST /api/tasks/:id/purge - Failed", { taskId: ctx.params["id"]!, error: result.error });
-        if (result.error?.includes("not found")) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        return errorResponse("purge_failed", result.error ?? "Unknown error", 400);
+        log.warn("POST /api/tasks/:id/purge - Failed", {
+          taskId: ctx.params["id"]!,
+          errorCode: result.error.code,
+        });
+        return taskErrorResponse(result.error, {
+          error: "purge_failed",
+          message: "Failed to purge task",
+          status: 400,
+        });
       }
 
       log.info("POST /api/tasks/:id/purge - Task purged", { taskId: ctx.params["id"]! });

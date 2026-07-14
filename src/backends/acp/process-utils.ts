@@ -3,6 +3,7 @@
  */
 
 import { SSHPASS_INVALID_PASSWORD_EXIT_CODE } from "./types";
+import { isAcpErrorCode } from "./errors";
 
 /**
  * Sanitize process args before logging.
@@ -32,9 +33,7 @@ export function getProcessExitHint(command: string, exitCode: number): string | 
 }
 
 export function isTransientSshAuthenticationFailure(error: unknown): boolean {
-  const message = String(error);
-  return message.includes("ACP process exited with code 255")
-    && message.includes("Permission denied (publickey,password,keyboard-interactive)");
+  return isAcpErrorCode(error, "acp_ssh_authentication_failed");
 }
 
 export function inferProviderID(modelID: string): string {

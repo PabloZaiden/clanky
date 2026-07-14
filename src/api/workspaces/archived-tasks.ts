@@ -6,7 +6,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { createLogger } from "../../core/logger";
 import { isDomainError } from "../../core/domain-error";
 import { purgeArchivedWorkspaceTasks } from "../../core/settings-maintenance-service";
-import { errorResponse, successResponse } from "../helpers";
+import { errorResponse, internalErrorResponse, successResponse } from "../helpers";
 
 const log = createLogger("api:workspaces");
 
@@ -42,11 +42,11 @@ export const archivedTasksRoutes = defineRoutes({
           workspaceId: id,
           error: String(error),
         });
-        return errorResponse(
-          "purge_archived_failed",
-          `Failed to purge archived workspace tasks: ${String(error)}`,
-          500,
-        );
+        return internalErrorResponse(error, {
+          error: "purge_archived_failed",
+          message: "Failed to purge archived workspace tasks",
+          status: 500,
+        });
       }
     },
   },

@@ -774,7 +774,8 @@ describe("Standalone SSH servers API integration", () => {
     expect(templatesResponse.status).toBe(500);
     const body = await templatesResponse.json() as { error: string; message: string };
     expect(body.error).toBe("ssh_server_error");
-    expect(body.message).toContain("Failed to parse devbox templates output as JSON");
+    expect(body.message).toBe("SSH server operation failed");
+    expect(body.message).not.toContain("Failed to parse devbox templates output as JSON");
   });
 
   test("returns 500 when devbox templates cannot be listed", async () => {
@@ -798,7 +799,8 @@ describe("Standalone SSH servers API integration", () => {
     });
     expect(templatesResponse.status).toBe(500);
     const body = await templatesResponse.json() as { error: string; message: string };
-    expect(body.error).toBe("ssh_server_error");
-    expect(body.message).toContain("devbox: command not found");
+    expect(body.error).toBe("ssh_server_templates_failed");
+    expect(body.message).toBe("Failed to list devbox templates");
+    expect(body.message).not.toContain("devbox: command not found");
   });
 });

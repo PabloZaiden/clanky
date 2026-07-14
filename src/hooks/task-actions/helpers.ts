@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from "../../lib/logger";
+import { ApiError, parseApiError } from "../../lib/api-error";
 import { appFetch } from "../../lib/public-path";
 
 export const log = createLogger("taskActions");
@@ -29,13 +30,23 @@ export async function apiCall<T = unknown>(
   const response = await appFetch(url, options);
 
   if (!response.ok) {
-    const errorData = await response.json();
+    const apiError = await parseApiError(response, `Failed to ${actionName.toLowerCase()}`);
     const errorMessage = extractError
-      ? extractError(errorData as Record<string, unknown>)
-      : (errorData as Record<string, unknown>)["message"] as string | undefined;
-    const finalMessage = errorMessage || `Failed to ${actionName.toLowerCase()}`;
-    log.error(`API: ${actionName} failed`, { url, error: finalMessage });
-    throw new Error(finalMessage);
+      ? extractError({
+          code: apiError.code,
+          error: apiError.code,
+          message: apiError.message,
+        }) ?? apiError.message
+      : apiError.message;
+    log.error(`API: ${actionName} failed`, { url, error: errorMessage });
+    if (errorMessage !== apiError.message) {
+      throw new ApiError(errorMessage, {
+        code: apiError.code,
+        status: apiError.status,
+        cause: apiError,
+      });
+    }
+    throw apiError;
   }
 
   const data = await response.json() as T;

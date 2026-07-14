@@ -4,6 +4,7 @@ import { useToast } from "../../hooks";
 import { closeVncSessionApi, createOrResumeVncSessionApi, listVncSessionsApi } from "../../hooks/sshServerActions";
 import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { getStoredVncCredentials, storeVncCredentials } from "../../lib/vnc-browser-credentials";
+import { isApiErrorCode } from "../../lib/api-error";
 import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -22,11 +23,6 @@ function getInitialRemotePort(serverId: string): string {
     return String(DEFAULT_VNC_PORT);
   }
   return window.localStorage.getItem(getVncPortStorageKey(serverId)) ?? String(DEFAULT_VNC_PORT);
-}
-
-function isCredentialPromptError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("SSH password") || message.includes("Stored SSH password");
 }
 
 export function VncSessionView({
@@ -130,7 +126,11 @@ export function VncSessionView({
       setActiveSessionId(session.config.id);
       await refreshSessions();
     } catch (error) {
-      if (isCredentialPromptError(error)) {
+      if (
+        isApiErrorCode(error, "invalid_credential_token")
+        || isApiErrorCode(error, "ssh_credential_required")
+        || isApiErrorCode(error, "ssh_credential_invalid")
+      ) {
         setServerPasswordModalOpen(true);
         setServerPasswordError(error instanceof Error ? error.message : String(error));
         return;

@@ -21,6 +21,8 @@ import { createLogger } from "./logger";
 import { buildDefaultSshSessionName, buildTaskSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
+import { isUniqueConstraint } from "../persistence/errors";
+import { DomainError } from "./domain-error";
 
 const log = createLogger("core:ssh-session-manager");
 
@@ -31,10 +33,16 @@ function buildRemoteSessionName(id: string): string {
 async function requireSshWorkspace(workspaceId: string): Promise<Workspace> {
   const workspace = await getWorkspace(workspaceId);
   if (!workspace) {
-    throw new Error(`Workspace not found: ${workspaceId}`);
+    throw new DomainError("workspace_not_found", "Workspace not found", {
+      details: { workspaceId },
+    });
   }
   if (workspace.serverSettings.agent.transport !== "ssh") {
-    throw new Error("SSH sessions require a workspace configured with ssh transport");
+    throw new DomainError(
+      "ssh_transport_required",
+      "SSH sessions require a workspace configured with ssh transport",
+      { details: { workspaceId } },
+    );
   }
   return workspace;
 }
@@ -119,7 +127,9 @@ export class SshSessionManager {
     const { taskManager } = await import("./task-manager");
     const task = await taskManager.getTask(taskId) ?? await loadTask(taskId);
     if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
+      throw new DomainError("task_not_found", "Task not found", {
+        details: { taskId },
+      });
     }
 
     const workspace = await requireSshWorkspace(task.config.workspaceId);
@@ -129,7 +139,11 @@ export class SshSessionManager {
       ? task.state.git?.worktreePath ?? null
       : task.config.directory;
     if (!directory) {
-      throw new Error("Task working directory is not available");
+      throw new DomainError(
+        "task_working_directory_unavailable",
+        "Task working directory is not available",
+        { details: { taskId } },
+      );
     }
 
     return await this.createAndSaveSession({
@@ -239,7 +253,7 @@ export class SshSessionManager {
     try {
       await saveSshSession(session);
     } catch (error) {
-      if (options.taskId && String(error).includes("ssh_sessions.task_id")) {
+      if (options.taskId && isUniqueConstraint(error, "ssh_sessions", "task_id")) {
         const existingSession = await getSshSessionByTaskId(options.taskId);
         if (existingSession) {
           return existingSession;
@@ -260,7 +274,9 @@ export class SshSessionManager {
   private async requireSession(id: string): Promise<SshSession> {
     const session = await getSshSession(id);
     if (!session) {
-      throw new Error(`SSH session not found: ${id}`);
+      throw new DomainError("ssh_session_not_found", "SSH session not found", {
+        details: { sessionId: id },
+      });
     }
     return session;
   }

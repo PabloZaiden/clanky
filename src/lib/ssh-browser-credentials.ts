@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { isApiErrorCode, parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
@@ -269,15 +270,7 @@ export async function exchangeSshServerCredential(
     body: JSON.stringify({ encryptedCredential }),
   });
   if (!response.ok) {
-    const errorData = await response.json() as Record<string, unknown>;
-    const message = (errorData["message"] as string | undefined) ?? "Failed to exchange SSH credential";
-    const error = new Error(message);
-    (error as Error & { code?: string }).code = (
-      errorData["code"] as string | undefined
-    ) ?? (
-      errorData["error"] as string | undefined
-    );
-    throw error;
+    throw await parseApiError(response, "Failed to exchange SSH credential");
   }
   return await response.json() as SshCredentialExchangeResponse;
 }
@@ -312,8 +305,7 @@ export async function getStoredSshCredentialToken(
     cacheCredentialToken(serverId, storedCredential, exchange);
     return exchange.credentialToken;
   } catch (error) {
-    const code = (error as Error & { code?: string }).code;
-    if (code === "invalid_encrypted_credential") {
+    if (isApiErrorCode(error, "invalid_encrypted_credential")) {
       clearStoredSshServerCredential(serverId, dependencies);
       return null;
     }
