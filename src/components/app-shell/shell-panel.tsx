@@ -1,5 +1,4 @@
 import type { InputHTMLAttributes } from "react";
-import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./main-header-portal";
 
 export function ShellPanel({
   eyebrow: _eyebrow,
@@ -12,7 +11,6 @@ export function ShellPanel({
   bodyClassName,
   bodyContainerClassName,
   bodyContainerTestId,
-  headerOffsetClassName,
   children,
 }: {
   eyebrow?: string;
@@ -25,58 +23,17 @@ export function ShellPanel({
   bodyClassName?: string;
   bodyContainerClassName?: string;
   bodyContainerTestId?: string;
-  headerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
-  const frameworkHeader = useFrameworkMainHeaderSlots();
-
   if (variant === "compact") {
-    const header = (
-      <div className="border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-800 sm:px-6 lg:px-8">
-        <div
-          className={[
-            headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0",
-            "flex min-h-14 items-center gap-1.5 overflow-hidden",
-          ].join(" ")}
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <h1 className="min-w-0 truncate text-base font-semibold text-gray-900 dark:text-gray-100">
-              {title}
-            </h1>
-            {badges && <div className="flex flex-shrink-0 items-center gap-1.5">{badges}</div>}
-            {description && (
-              <span
-                className={[
-                  "min-w-0 flex-shrink truncate text-xs text-gray-500 dark:text-gray-400",
-                  descriptionClassName ?? "",
-                ].join(" ").trim()}
-              >
-                {description}
-              </span>
-            )}
-          </div>
-          {actions && <div className="ml-auto flex min-w-max flex-shrink-0 items-center justify-end gap-1.5 overflow-visible">{actions}</div>}
-        </div>
-      </div>
-    );
-
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
-        {frameworkHeader.available ? (
-          <FrameworkMainHeaderPortal
-            title={title}
-            description={description}
-            descriptionClassName={descriptionClassName}
-            badges={badges}
-            actions={actions}
-          />
-        ) : header}
-
         <div
           data-testid={bodyContainerTestId}
           className={bodyContainerClassName ?? "flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-5 pb-[calc(6rem+var(--safe-area-inset-bottom))] sm:px-6 sm:pb-5 lg:px-8 lg:py-6"}
         >
           <div className={bodyClassName ?? "space-y-6"}>
+            {actions && <div className="flex flex-wrap justify-end gap-2">{actions}</div>}
             {children}
           </div>
         </div>

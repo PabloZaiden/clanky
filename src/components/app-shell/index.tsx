@@ -26,6 +26,7 @@ import {
   useSshSessions,
   useToast,
   useWorkspaces,
+  stopTaskApi,
 } from "../../hooks";
 import type { QuickChatSettings } from "@/shared/preferences";
 import {
@@ -46,7 +47,6 @@ import {
   QuickChatSettingsSection,
   SchedulerSettingsSection,
 } from "../app-settings";
-import { FrameworkMainHeaderActionsSlot, FrameworkMainHeaderTitleSlot } from "./main-header-portal";
 import { useChatActions } from "./chat-actions";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { appFetch } from "../../lib/public-path";
@@ -62,6 +62,8 @@ import {
 } from "../../lib/private-items";
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { ShellPanel } from "./shell-panel";
+import { StatusBadge } from "../common";
+import { isTaskActive, isTaskGenerating } from "../../utils";
 
 type SshSessionActionTarget =
   | { kind: "workspace"; id: string; name: string }
@@ -181,6 +183,109 @@ function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): Sid
     }
     return [];
   });
+}
+
+function flattenSidebarNodes(nodes: SidebarNode[]): SidebarNode[] {
+  return nodes.flatMap((node) => [
+    node,
+    ...(node.children ? flattenSidebarNodes(node.children) : []),
+  ]);
+}
+
+function sidebarNodeMatchesRoute(node: SidebarNode, route: WebAppRoute): boolean {
+  if (!node.route || node.route.view !== route.view) {
+    return false;
+  }
+  return Object.entries(node.route).every(([key, value]) => route[key] === value);
+}
+
+function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
+  switch (route.view) {
+    case "task":
+      return getRouteString(route, "taskId")
+        ? { view: "task", taskId: getRouteString(route, "taskId")! }
+        : null;
+    case "task-files":
+      return getRouteString(route, "taskId")
+        ? { view: "task", taskId: getRouteString(route, "taskId")! }
+        : null;
+    case "chat":
+    case "chat-transcript":
+      return getRouteString(route, "chatId")
+        ? { view: "chat", chatId: getRouteString(route, "chatId")! }
+        : null;
+    case "ssh":
+      return getRouteString(route, "sshSessionId")
+        ? { view: "ssh", sshSessionId: getRouteString(route, "sshSessionId")! }
+        : null;
+    case "workspace":
+    case "workspace-files":
+    case "workspace-previews":
+    case "workspace-settings":
+    case "rebuild-workspace":
+    case "restart-workspace":
+      return getRouteString(route, "workspaceId")
+        ? { view: "workspace", workspaceId: getRouteString(route, "workspaceId")! }
+        : null;
+    case "ssh-server":
+    case "vnc-session":
+    case "ssh-server-settings":
+    case "server-files":
+    case "server-arise":
+      return getRouteString(route, "serverId")
+        ? { view: "ssh-server", serverId: getRouteString(route, "serverId")! }
+        : null;
+    case "agent":
+    case "agent-run":
+      return getRouteString(route, "agentId")
+        ? { view: "agent", agentId: getRouteString(route, "agentId")! }
+        : null;
+    case "code-explorer": {
+      const contentType = getRouteString(route, "contentType");
+      if (contentType === "task" && getRouteString(route, "taskId")) {
+        return { view: "task", taskId: getRouteString(route, "taskId")! };
+      }
+      if (contentType === "chat" && getRouteString(route, "chatId")) {
+        return { view: "chat", chatId: getRouteString(route, "chatId")! };
+      }
+      if (contentType === "workspace" && getRouteString(route, "workspaceId")) {
+        return { view: "workspace", workspaceId: getRouteString(route, "workspaceId")! };
+      }
+      if (contentType === "server" && getRouteString(route, "serverId")) {
+        return { view: "ssh-server", serverId: getRouteString(route, "serverId")! };
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+interface HeaderModel {
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  badgeVariant?: SidebarNode["badgeVariant"];
+}
+
+function RouteHeaderTitle({ model }: { model: HeaderModel }) {
+  return (
+    <span className="flex min-w-0 max-w-full flex-1 items-center gap-1.5 overflow-hidden">
+      <span className="min-w-0 flex-shrink truncate text-lg font-bold text-gray-900 dark:text-gray-100">
+        {model.title}
+      </span>
+      {model.badge ? (
+        <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
+          {model.badge}
+        </StatusBadge>
+      ) : null}
+      {model.subtitle ? (
+        <span className="min-w-0 flex-shrink truncate text-xs font-normal text-gray-500 dark:text-gray-400">
+          {model.subtitle}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 export function AppShell() {
@@ -505,6 +610,12 @@ export function AppShell() {
       : codeExplorerServerId
         ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
         : null;
+  const selectedAgentId = route.view === "agent" || route.view === "agent-run"
+    ? getRouteString(route, "agentId")
+    : null;
+  const selectedAgent = selectedAgentId
+    ? (agents.agents.find((agent) => agent.config.id === selectedAgentId) ?? null)
+    : null;
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
     hasCodeExplorerAction: true,
@@ -574,6 +685,19 @@ export function AppShell() {
     }
   }, [toast, updateStandaloneSession]);
 
+  const stopSidebarTask = useCallback(async (task: Task): Promise<void> => {
+    try {
+      const stopped = await stopTaskApi(task.config.id);
+      if (!stopped) {
+        toast.error("Failed to stop task");
+        return;
+      }
+      await refreshTasks();
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [refreshTasks, toast]);
+
   const getChatSidebarActions = useCallback((chat: Chat): ActionMenuItem[] => {
     const chatId = chat.config.id;
     const baseActions = route.view === "chat" && selectedChat?.config.id === chatId
@@ -589,14 +713,23 @@ export function AppShell() {
   }, [navigateWithinShell, route.view, selectedChat?.config.id, selectedChatActions, toggleChatPrivate]);
 
   const getTaskSidebarActions = useCallback((task: Task): ActionMenuItem[] => {
+    const stopAction = isTaskGenerating(task) && (isTaskActive(task.state.status) || task.state.status === "planning")
+      ? [{
+          id: "stop-task",
+          label: "Stop task",
+          destructive: true,
+          onClick: () => void stopSidebarTask(task),
+        }]
+      : [];
     return withPrivateToggleAction(sidebarActionItems([
       {
         id: "open-code-explorer",
         label: "Open code explorer",
         onClick: () => navigateWithinShell({ view: "code-explorer", contentType: "task", taskId: task.config.id }),
       },
+      ...stopAction,
     ]), task.config, () => void toggleTaskPrivate(task));
-  }, [navigateWithinShell, toggleTaskPrivate]);
+  }, [navigateWithinShell, stopSidebarTask, toggleTaskPrivate]);
 
   const getWorkspaceSidebarActions = useCallback((workspaceNode: (typeof sidebarWorkspaceGroups)[number]["workspaces"][number]): ActionMenuItem[] => {
     const workspaceId = workspaceNode.workspace.id;
@@ -853,7 +986,6 @@ export function AppShell() {
         route={webRoute}
         shellLoading={shellLoading}
         shellErrors={shellErrors}
-        shellHeaderOffsetClassName=""
         navigateWithinShell={navigateWithinShell}
         tasks={tasks}
         chats={chats}
@@ -1405,6 +1537,201 @@ export function AppShell() {
     workspaces,
   ]);
 
+  const headerNodes = useMemo(
+    () => flattenSidebarNodes(sidebarNodes({ search: "" })),
+    [sidebarNodes],
+  );
+  const headerOwnerRoute = useMemo(() => getHeaderOwnerRoute(route), [route]);
+  const headerNode = useMemo(
+    () => headerOwnerRoute
+      ? headerNodes.find((node) => sidebarNodeMatchesRoute(node, headerOwnerRoute)) ?? null
+      : null,
+    [headerNodes, headerOwnerRoute],
+  );
+  const headerModel = useMemo<HeaderModel>(() => {
+    const nodeModel: HeaderModel | null = headerNode
+      ? {
+          title: headerNode.title,
+          subtitle: headerNode.subtitle,
+          badge: headerNode.badge,
+          badgeVariant: headerNode.badgeVariant,
+        }
+      : null;
+
+    switch (route.view) {
+      case "home":
+        return { title: "Clanky" };
+      case "task":
+        if (taskId && !selectedTask && !tasksLoading) {
+          return { title: "Task not found" };
+        }
+        return selectedTask?.state.status === "draft" && nodeModel
+          ? { ...nodeModel, title: `Edit ${nodeModel.title}` }
+          : nodeModel ?? { title: "Task" };
+      case "task-files":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "Task files" };
+      case "chat":
+        if (chatId && !selectedChat && !chatsLoading) {
+          return { title: "Chat not found" };
+        }
+        return nodeModel ?? { title: "Chat" };
+      case "chat-transcript":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: "Transcript" }
+          : { title: "Chat transcript" };
+      case "ssh":
+        return nodeModel ?? { title: "SSH session" };
+      case "workspace":
+        return nodeModel ?? { title: "Workspace" };
+      case "workspace-files":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "Workspace files" };
+      case "workspace-previews":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `Live previews${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "Live previews" };
+      case "workspace-settings":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `Workspace settings${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "Workspace settings" };
+      case "ssh-server":
+        return nodeModel ?? { title: "SSH server" };
+      case "vnc-session":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `VNC session${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "VNC session" };
+      case "ssh-server-settings":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `SSH server settings${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "SSH server settings" };
+      case "server-files":
+        return nodeModel
+          ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
+          : { title: "Server files" };
+      case "server-arise":
+        return nodeModel ? { title: `Arise ${nodeModel.title}` } : { title: "Arise" };
+      case "agent": {
+        const agentId = getRouteString(route, "agentId");
+        if (agentId && !selectedAgent && !agents.loading) {
+          return { title: "Agent not found" };
+        }
+        const agent = selectedAgent;
+        return editingAgentId && editingAgentId === agentId
+          ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim() }
+          : nodeModel ?? { title: "Agent" };
+      }
+      case "agent-run": {
+        const agentId = getRouteString(route, "agentId");
+        const runId = getRouteString(route, "runId");
+        const agent = selectedAgent;
+        const run = agentId && runId
+          ? (agents.runsByAgentId[agentId] ?? []).find((item) => item.id === runId)
+          : null;
+        return {
+          title: agent?.config.name ?? run?.configSnapshot.name ?? "Agent run",
+          subtitle: run ? `Run · ${run.status}` : "Agent run",
+        };
+      }
+      case "agents": {
+        const workspaceId = getRouteString(route, "workspaceId");
+        const workspace = workspaceId ? workspaces.find((item) => item.id === workspaceId) : null;
+        return {
+          title: workspace ? `Agents in ${workspace.name}` : "Agents",
+          subtitle: workspace?.directory,
+        };
+      }
+      case "code-explorer":
+        return {
+          title: "Code Explorer",
+          subtitle: headerNode?.title,
+        };
+      case "compose": {
+        const kind = composeKind;
+        if (kind === "task") {
+          return {
+            title: composeWorkspace ? `Start a new task in ${composeWorkspace.name}` : "Start a new task",
+            subtitle: composeWorkspace?.directory,
+          };
+        }
+        if (kind === "chat" || kind === "ssh-server-chat") {
+          return {
+            title: composeServer
+              ? `Start a new chat on ${composeServer.config.name}`
+              : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
+            subtitle: composeServer
+              ? `${composeServer.config.username}@${composeServer.config.address}`
+              : composeWorkspace?.directory,
+          };
+        }
+        if (kind === "agent") {
+          return {
+            title: composeWorkspace ? `Start a new agent in ${composeWorkspace.name}` : "Start a new agent",
+            subtitle: composeWorkspace?.directory,
+          };
+        }
+        if (kind === "workspace") {
+          return { title: "Create a workspace" };
+        }
+        if (kind === "ssh-session") {
+          return { title: "Create an SSH session" };
+        }
+        if (kind === "ssh-server") {
+          return {
+            title: composeServer ? `Edit ${composeServer.config.name}` : "Register a standalone SSH server",
+            subtitle: composeServer ? "Update the saved host metadata and optional client-only password." : undefined,
+          };
+        }
+        return { title: "Compose" };
+      }
+      case "rebuild-workspace":
+        return selectedWorkspace ? { title: `Rebuild ${selectedWorkspace.name}` } : { title: "Rebuild workspace" };
+      case "restart-workspace":
+        return selectedWorkspace ? { title: `Restart ${selectedWorkspace.name}` } : { title: "Restart workspace" };
+      default:
+        return { title: route.view.replace(/-/g, " ") };
+    }
+  }, [
+    agents.agents,
+    agents.loading,
+    agents.runsByAgentId,
+    chatId,
+    chatsLoading,
+    composeKind,
+    composeServer,
+    composeWorkspace,
+    editingAgentId,
+    headerNode,
+    route,
+    selectedAgent,
+    selectedChat,
+    selectedTask,
+    selectedWorkspace,
+    taskId,
+    tasksLoading,
+    workspaces,
+  ]);
+  const headerActions = useMemo<ActionMenuItem[]>(() => {
+    const ownerActions = headerNode?.actions ?? [];
+    if (route.view === "agent-run") {
+      const agentId = getRouteString(route, "agentId");
+      return [
+        {
+          id: "back-to-agent",
+          label: "Back",
+          onAction: () => navigateWithinShell(agentId ? { view: "agent", agentId } : HOME_ROUTE),
+        },
+        ...ownerActions,
+      ];
+    }
+    if (headerOwnerRoute && headerNode && !sidebarNodeMatchesRoute(headerNode, route)) {
+      return ownerActions;
+    }
+    return [];
+  }, [headerNode, headerOwnerRoute, navigateWithinShell, route]);
+
   return (
     <>
       <WebAppRoot
@@ -1434,8 +1761,8 @@ export function AppShell() {
         routes={routes}
         onRouteChange={handleWebRouteChange}
         header={{
-          renderTitle: ({ defaultTitle }) => <FrameworkMainHeaderTitleSlot fallback={defaultTitle} />,
-          renderActions: () => <FrameworkMainHeaderActionsSlot />,
+          renderTitle: () => <RouteHeaderTitle model={headerModel} />,
+          getActions: () => headerActions,
         }}
         settings={{ sections: settingsSections }}
         version={dashboardData.version ?? undefined}

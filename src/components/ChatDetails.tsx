@@ -21,8 +21,6 @@ import { ChatTemplateSelector } from "./chat-template-selector";
 import {
   Button,
   FocusPreservingButton,
-  StatusBadge,
-  getChatStatusBadgeVariant,
   useComposerSizing,
 } from "./common";
 import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
@@ -32,31 +30,11 @@ import { useAvailableModels, useMarkdownPreference, useRealtimeStream, useToast 
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
-import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
 import { DictationControls, insertDictationText } from "./dictation";
 import type { Chat, ChatEvent, ComposerImageAttachment, TaskLogEntry, MessageData, ToolCallData } from "@/shared";
 import { replaceWebAppRoute, routeToHash, useRealtimeRefresh, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
-
-function getChatStatusLabel(status: Chat["state"]["status"]): string {
-  switch (status) {
-    case "starting":
-      return "Starting";
-    case "streaming":
-      return "Streaming";
-    case "interrupting":
-      return "Interrupting";
-    case "reconnecting":
-      return "Reconnecting";
-    case "stopped":
-      return "Stopped";
-    case "failed":
-      return "Failed";
-    default:
-      return "Idle";
-  }
-}
 
 async function parseError(response: Response, fallback: string): Promise<string> {
   try {
@@ -129,7 +107,6 @@ export function ChatDetails({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressActivatedRef = useRef(false);
   const reconnectAttemptedRef = useRef(false);
-  const frameworkHeader = useFrameworkMainHeaderSlots();
   const { models, modelsLoading } = useAvailableModels({
     workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
   });
@@ -1010,20 +987,6 @@ export function ChatDetails({
 
   return (
     <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
-      {!isEmbedded && frameworkHeader.available ? (
-        <FrameworkMainHeaderPortal
-          title={chat.config.name}
-          badges={(
-            <StatusBadge
-              variant={getChatStatusBadgeVariant(chat.state.status)}
-              size="sm"
-              className="shrink-0"
-            >
-              {getChatStatusLabel(chat.state.status)}
-            </StatusBadge>
-          )}
-        />
-      ) : null}
       {chat.state.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {chat.state.error.message}

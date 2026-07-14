@@ -27,11 +27,9 @@ function getInitialRemotePort(serverId: string): string {
 
 export function VncSessionView({
   server,
-  headerOffsetClassName,
   onNavigate,
 }: {
   server: SshServer;
-  headerOffsetClassName?: string;
   onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
@@ -236,7 +234,6 @@ export function VncSessionView({
       title={server.config.name}
       description={`${server.config.username}@${server.config.address}`}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       actions={(
         <Button variant="secondary" size="sm" onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}>
           Back to server

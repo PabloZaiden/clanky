@@ -11,14 +11,12 @@ import { getProvisioningStatusBadgeVariant } from "./shell-types";
 interface ServerAriseViewProps {
   server: SshServer;
   provisioning: UseProvisioningJobResult;
-  shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: WebAppRoute) => void;
 }
 
 export function ServerAriseView({
   server,
   provisioning,
-  shellHeaderOffsetClassName,
   navigateWithinShell,
 }: ServerAriseViewProps) {
   const [password, setPassword] = useState("");
@@ -61,7 +59,6 @@ export function ServerAriseView({
       title={`Arise ${server.config.name}`}
       description="Run devbox arise on this server to revive existing stopped devboxes."
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
         <>
           <Badge variant="info" size="sm">Arise</Badge>

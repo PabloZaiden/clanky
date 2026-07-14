@@ -9,7 +9,6 @@ import { CodeExplorerView } from "./code-explorer-view";
 interface WorkspaceFilesViewProps {
   workspace: Workspace;
   sessions: SshSession[];
-  headerOffsetClassName?: string;
   startDirectory?: string;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession?: (
@@ -23,7 +22,6 @@ interface WorkspaceFilesViewProps {
 export function WorkspaceFilesView({
   workspace,
   sessions,
-  headerOffsetClassName,
   startDirectory,
   createSession,
   createStandaloneSession = async () => {
@@ -41,7 +39,6 @@ export function WorkspaceFilesView({
       sessions={sessions}
       servers={[]}
       sessionsByServerId={{}}
-      headerOffsetClassName={headerOffsetClassName}
       createSession={createSession}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}

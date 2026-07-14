@@ -15,11 +15,9 @@ function formatDateTime(value?: string): string {
 export function WorkspacePreviewsView({
   workspace,
   workspaces,
-  headerOffsetClassName,
 }: {
   workspace: Workspace;
   workspaces: Workspace[];
-  headerOffsetClassName?: string;
 }) {
   const [port, setPort] = useState("3000");
   const toast = useToast();
@@ -53,7 +51,6 @@ export function WorkspacePreviewsView({
       title="Live previews"
       description={`${workspace.name} · ${workspace.directory}`}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
     >
       <div className="min-w-0 space-y-6">
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">

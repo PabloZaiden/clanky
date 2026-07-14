@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { Button, StatusBadge } from "../common";
+import { Button } from "../common";
 import { useSshSession, useToast } from "../../hooks";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
 import { isStandaloneSession } from "./session-utils";
@@ -28,7 +28,6 @@ import { useTerminalRenderer } from "./use-terminal-renderer";
 import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
 import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
-import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
 export interface SshSessionDetailsProps {
   sshSessionId: string;
@@ -48,7 +47,6 @@ export function SshSessionDetails({
   const toast = useToast();
   const { error: showErrorToast } = toast;
   const { session, sessionKind, loading, error, deleteSession, refresh } = useSshSession(sshSessionId);
-  const frameworkHeader = useFrameworkMainHeaderSlots();
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -104,24 +102,6 @@ export function SshSessionDetails({
 
   const { isFocusMode, toggleFocusMode } = useFocusMode(forcedFocusMode);
   const usesViewportAwareFocusMode = isFocusMode && !forcedFocusMode;
-
-  useEffect(() => {
-    if (forcedFocusMode || typeof document === "undefined") {
-      return;
-    }
-
-    const header = document.querySelector<HTMLElement>(".wapp-main-header");
-    if (!header) {
-      return;
-    }
-
-    const previousDisplay = header.style.display;
-    header.style.display = isFocusMode ? "none" : previousDisplay;
-
-    return () => {
-      header.style.display = previousDisplay;
-    };
-  }, [forcedFocusMode, isFocusMode]);
 
   // Track the visual viewport so the focus-mode layout can shrink when the
   // mobile on-screen keyboard is visible.
@@ -235,8 +215,6 @@ export function SshSessionDetails({
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
   };
-  const shouldPublishFrameworkHeader = frameworkHeader.available && !forcedFocusMode && !isFocusMode;
-
   function renderClipboardFallback(compact: boolean) {
     if (clipboard.pendingTerminalClipboardText === null) {
       return null;
@@ -259,23 +237,14 @@ export function SshSessionDetails({
   return (
     <div
       className={
-        isFocusMode
-          ? "flex min-h-0 flex-1 flex-col bg-[#1e1e1e]"
+        usesViewportAwareFocusMode
+          ? "fixed inset-0 z-50 flex min-h-0 flex-col bg-[#1e1e1e]"
+          : isFocusMode
+            ? "flex min-h-0 flex-1 flex-col bg-[#1e1e1e]"
           : "flex min-h-0 flex-1 flex-col bg-gray-50 dark:bg-neutral-900"
       }
       style={focusModeContainerStyle}
     >
-      {/* Embedded focus mode is controlled by its parent (for example, code explorer). */}
-      {shouldPublishFrameworkHeader ? (
-        <FrameworkMainHeaderPortal
-          title={session.config.name}
-          badges={(
-            <StatusBadge variant={connection.socketStatus === "open" ? "success" : connection.socketStatus === "connecting" ? "info" : "warning"}>
-              {connection.socketStatus === "open" ? "connected" : connection.socketStatus === "closed" ? "disconnected" : "connecting"}
-            </StatusBadge>
-          )}
-        />
-      ) : null}
       {/* Main content area */}
       <div
         className={

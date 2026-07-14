@@ -14,7 +14,6 @@ import {
 } from "./ssh-server-form-utils";
 
 interface SshServerComposerProps {
-  headerOffsetClassName?: string;
   initialServer?: SshServer | null;
   relatedSessionCount?: number;
   onCancel: () => void;
@@ -24,7 +23,6 @@ interface SshServerComposerProps {
 }
 
 export function SshServerComposer({
-  headerOffsetClassName,
   initialServer,
   relatedSessionCount = 0,
   onCancel,
@@ -109,7 +107,6 @@ export function SshServerComposer({
       title={isEditing ? `Edit ${initialServer?.config.name ?? "SSH server"}` : "Register a standalone SSH server"}
       description={isEditing ? "Update the saved host metadata and optional client-only password." : undefined}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       badges={(
         <Badge variant="info" size="sm">Standalone SSH</Badge>
       )}

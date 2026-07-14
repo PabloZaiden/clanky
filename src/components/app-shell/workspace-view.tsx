@@ -38,7 +38,6 @@ export function WorkspaceView({
   agentsLoading,
   agentsError,
   registeredSshServers,
-  headerOffsetClassName,
   onNavigate,
   showPrivateItems = false,
 }: {
@@ -50,7 +49,6 @@ export function WorkspaceView({
   agentsLoading: boolean;
   agentsError: string | null;
   registeredSshServers: readonly SshServer[];
-  headerOffsetClassName?: string;
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
@@ -93,7 +91,6 @@ export function WorkspaceView({
       title={workspace.name}
       description={serverLabel}
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
     >
       <div className="min-w-0 space-y-6">
         <div

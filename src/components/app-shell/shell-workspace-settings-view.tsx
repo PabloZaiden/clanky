@@ -14,7 +14,6 @@ interface WorkspaceSettingsViewProps {
   refreshWorkspaces: () => Promise<void>;
   deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   navigateWithinShell: (route: WebAppRoute) => void;
-  shellHeaderOffsetClassName: string;
 }
 
 export function WorkspaceSettingsView({
@@ -24,7 +23,6 @@ export function WorkspaceSettingsView({
   refreshWorkspaces,
   deleteWorkspace,
   navigateWithinShell,
-  shellHeaderOffsetClassName,
 }: WorkspaceSettingsViewProps) {
   const {
     workspace: workspaceFromHook,
@@ -51,7 +49,6 @@ export function WorkspaceSettingsView({
       description={workspaceFromHook?.directory ?? selectedWorkspace.directory}
       descriptionClassName="hidden sm:inline font-mono"
       variant="compact"
-      headerOffsetClassName={shellHeaderOffsetClassName}
       actions={
         <Button
           type="submit"

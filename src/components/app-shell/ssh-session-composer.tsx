@@ -27,7 +27,6 @@ export function SshSessionComposer({
   servers,
   initialWorkspaceId,
   initialServerId,
-  headerOffsetClassName,
   onCancel,
   onNavigate,
   onCreateWorkspaceSession,
@@ -37,7 +36,6 @@ export function SshSessionComposer({
   servers: SshServer[];
   initialWorkspaceId?: string;
   initialServerId?: string;
-  headerOffsetClassName?: string;
   onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
   onCreateWorkspaceSession: ReturnType<typeof useSshSessions>["createSession"];
@@ -129,7 +127,6 @@ export function SshSessionComposer({
       eyebrow="SSH session"
       title="Create an SSH session"
       variant="compact"
-      headerOffsetClassName={headerOffsetClassName}
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
