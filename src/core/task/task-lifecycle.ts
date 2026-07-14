@@ -229,8 +229,9 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
 
         const worktreePath = task.state.git?.worktreePath;
         if (worktreePath) {
-          await git.ensureWorktreeRemoved(cleanupDirectory, worktreePath, { force: true });
-          log.debug(`[TaskManager] purgeTask: Removed worktree and pruned metadata for task ${taskId}: ${worktreePath}`);
+          const managedWorktreePath = git.assertManagedWorktreePath(cleanupDirectory, worktreePath);
+          await git.ensureWorktreeRemoved(cleanupDirectory, managedWorktreePath, { force: true });
+          log.debug(`[TaskManager] purgeTask: Removed worktree and pruned metadata for task ${taskId}: ${managedWorktreePath}`);
         }
 
         const workingBranch = task.state.git?.workingBranch;

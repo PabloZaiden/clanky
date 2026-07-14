@@ -14,6 +14,7 @@ export {
   BranchMismatchError,
   GitCommandError,
   InvalidBranchNameError,
+  InvalidManagedWorktreePathError,
 } from "./git-types";
 export type {
   GitCommandResult,
@@ -38,7 +39,12 @@ import { stash, stashPop } from "./git-stash";
 import { resetHard, mergeBranch, mergeWithConflictDetection, abortMerge, ensureMergeStrategy } from "./git-merge";
 import { getDiff, getDiffSummary, getFileDiffContent, getDiffWithContent } from "./git-diff";
 import {
+  assertManagedWorktreePath,
   createWorktree,
+  getManagedWorktreePath,
+  getManagedWorktreeRoot,
+  isManagedWorktreePath,
+  normalizeManagedWorktreeIdentifier,
   addWorktreeForExistingBranch,
   removeWorktree,
   ensureWorktreeRemoved,
@@ -47,6 +53,15 @@ import {
   ensureWorktreeExcluded,
   getComparableWorktreePaths,
   normalizeWorktreePath,
+} from "./git-worktree";
+
+export {
+  MANAGED_WORKTREE_DIRECTORY_NAME,
+  assertManagedWorktreePath,
+  getManagedWorktreePath,
+  getManagedWorktreeRoot,
+  isManagedWorktreePath,
+  normalizeManagedWorktreeIdentifier,
 } from "./git-worktree";
 
 import type {
@@ -319,6 +334,26 @@ export class GitService {
 
   // ─── Worktree operations ──────────────────────────────────────────────────
 
+  getManagedWorktreeRoot(repoDirectory: string): string {
+    return getManagedWorktreeRoot(repoDirectory);
+  }
+
+  normalizeManagedWorktreeIdentifier(identifier: string): string {
+    return normalizeManagedWorktreeIdentifier(identifier);
+  }
+
+  getManagedWorktreePath(repoDirectory: string, identifier: string): string {
+    return getManagedWorktreePath(repoDirectory, identifier);
+  }
+
+  isManagedWorktreePath(repoDirectory: string, worktreePath: string): boolean {
+    return isManagedWorktreePath(repoDirectory, worktreePath);
+  }
+
+  assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
+    return assertManagedWorktreePath(repoDirectory, worktreePath);
+  }
+
   async createWorktree(
     repoDirectory: string,
     worktreePath: string,
@@ -363,9 +398,10 @@ export class GitService {
   }
 
   async worktreeExists(repoDirectory: string, worktreePath: string): Promise<boolean> {
+    const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
     // Use this.listWorktrees() so test mocks of listWorktrees are respected
     const worktrees = await this.listWorktrees(repoDirectory);
-    const comparablePaths = await getComparableWorktreePaths(this.executor, worktreePath);
+    const comparablePaths = await getComparableWorktreePaths(this.executor, managedWorktreePath);
     return worktrees.some((wt) => comparablePaths.has(normalizeWorktreePath(wt.path)));
   }
 

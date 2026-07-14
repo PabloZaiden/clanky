@@ -5,8 +5,98 @@
 import type { CommandExecutor } from "../command-executor";
 import { log } from "../logger";
 import { runGitCommand, gitError } from "./git-core";
-import { dirname, relative, resolve } from "node:path";
+import { posix } from "node:path";
+import { InvalidManagedWorktreePathError } from "./git-types";
 import { PLANNING_DIRECTORY_NAME } from "../../lib/planning-files";
+
+export const MANAGED_WORKTREE_DIRECTORY_NAME = ".clanky-worktrees";
+
+function normalizeManagedPath(worktreePath: string): string {
+  const normalizedPath = posix.normalize(worktreePath);
+  return normalizedPath.length > 1
+    ? normalizedPath.replace(/\/+$/, "")
+    : normalizedPath;
+}
+
+export function normalizeManagedWorktreeIdentifier(identifier: string): string {
+  const normalizedIdentifier = identifier.trim();
+  if (
+    normalizedIdentifier.length === 0
+    || normalizedIdentifier === "."
+    || normalizedIdentifier === ".."
+    || normalizedIdentifier.includes("/")
+    || normalizedIdentifier.includes("\\")
+    || normalizedIdentifier.includes("\0")
+  ) {
+    throw new InvalidManagedWorktreePathError(
+      identifier,
+      "Managed worktree identifiers must be a non-empty, single safe path component",
+    );
+  }
+
+  return normalizedIdentifier;
+}
+
+export function getManagedWorktreeRoot(repoDirectory: string): string {
+  if (repoDirectory.length === 0 || repoDirectory.includes("\0")) {
+    throw new InvalidManagedWorktreePathError(
+      repoDirectory,
+      "A repository directory is required to construct a managed worktree path",
+    );
+  }
+
+  return normalizeManagedPath(posix.join(repoDirectory, MANAGED_WORKTREE_DIRECTORY_NAME));
+}
+
+export function getManagedWorktreePath(repoDirectory: string, identifier: string): string {
+  return posix.join(
+    getManagedWorktreeRoot(repoDirectory),
+    normalizeManagedWorktreeIdentifier(identifier),
+  );
+}
+
+export function isManagedWorktreePath(repoDirectory: string, worktreePath: string): boolean {
+  if (
+    repoDirectory.length === 0
+    || repoDirectory.includes("\0")
+    || worktreePath.length === 0
+    || worktreePath.includes("\0")
+  ) {
+    return false;
+  }
+
+  const root = getManagedWorktreeRoot(repoDirectory);
+  const normalizedPath = normalizeManagedPath(worktreePath);
+  const rootPrefix = root === "/" ? "/" : `${root}/`;
+  if (!normalizedPath.startsWith(rootPrefix)) {
+    return false;
+  }
+
+  const identifier = normalizedPath.slice(rootPrefix.length);
+  if (
+    identifier.length === 0
+    || identifier === "."
+    || identifier === ".."
+    || identifier.includes("/")
+    || identifier.includes("\\")
+    || identifier.trim() !== identifier
+  ) {
+    return false;
+  }
+
+  return normalizeManagedWorktreeIdentifier(identifier) === identifier;
+}
+
+export function assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
+  if (!isManagedWorktreePath(repoDirectory, worktreePath)) {
+    throw new InvalidManagedWorktreePathError(
+      worktreePath,
+      `Managed worktree path must be a direct child of '${getManagedWorktreeRoot(repoDirectory)}'`,
+    );
+  }
+
+  return normalizeManagedPath(worktreePath);
+}
 
 export async function createWorktree(
   executor: CommandExecutor,
@@ -15,12 +105,13 @@ export async function createWorktree(
   branchName: string,
   baseBranch?: string
 ): Promise<void> {
+  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
   await ensureWorktreeExcluded(executor, repoDirectory);
 
-  await executor.exec("mkdir", ["-p", worktreePath]);
-  await executor.exec("rmdir", [worktreePath]);
+  await executor.exec("mkdir", ["-p", managedWorktreePath]);
+  await executor.exec("rmdir", [managedWorktreePath]);
 
-  let args = ["worktree", "add", worktreePath, "-b", branchName];
+  let args = ["worktree", "add", managedWorktreePath, "-b", branchName];
   if (baseBranch) {
     const baseBranchResult = await runGitCommand(
       executor,
@@ -40,7 +131,7 @@ export async function createWorktree(
       );
 
       if (currentBranchResult.stdout.trim() === baseBranch) {
-        args = ["worktree", "add", "--orphan", "-b", branchName, worktreePath];
+        args = ["worktree", "add", "--orphan", "-b", branchName, managedWorktreePath];
       } else {
         args.push(baseBranch);
       }
@@ -49,10 +140,10 @@ export async function createWorktree(
 
   const result = await runGitCommand(executor, repoDirectory, args);
   if (!result.success) {
-    throw gitError(`Failed to create worktree at ${worktreePath}`, result, args);
+    throw gitError(`Failed to create worktree at ${managedWorktreePath}`, result, args);
   }
 
-  log.info(`[GitService] Created worktree at ${worktreePath} with branch ${branchName}`);
+  log.info(`[GitService] Created worktree at ${managedWorktreePath} with branch ${branchName}`);
 }
 
 export async function addWorktreeForExistingBranch(
@@ -61,18 +152,19 @@ export async function addWorktreeForExistingBranch(
   worktreePath: string,
   branchName: string
 ): Promise<void> {
+  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
   await ensureWorktreeExcluded(executor, repoDirectory);
 
-  await executor.exec("mkdir", ["-p", worktreePath]);
-  await executor.exec("rmdir", [worktreePath]);
+  await executor.exec("mkdir", ["-p", managedWorktreePath]);
+  await executor.exec("rmdir", [managedWorktreePath]);
 
-  const args = ["worktree", "add", worktreePath, branchName];
+  const args = ["worktree", "add", managedWorktreePath, branchName];
   const result = await runGitCommand(executor, repoDirectory, args);
   if (!result.success) {
-    throw gitError(`Failed to add worktree for branch ${branchName} at ${worktreePath}`, result, args);
+    throw gitError(`Failed to add worktree for branch ${branchName} at ${managedWorktreePath}`, result, args);
   }
 
-  log.info(`[GitService] Added worktree at ${worktreePath} for existing branch ${branchName}`);
+  log.info(`[GitService] Added worktree at ${managedWorktreePath} for existing branch ${branchName}`);
 }
 
 export async function removeWorktree(
@@ -81,17 +173,18 @@ export async function removeWorktree(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
-  const args = ["worktree", "remove", worktreePath];
+  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const args = ["worktree", "remove", managedWorktreePath];
   if (options?.force) {
     args.push("--force");
   }
 
   const result = await runGitCommand(executor, repoDirectory, args);
   if (!result.success) {
-    throw gitError(`Failed to remove worktree at ${worktreePath}`, result, args);
+    throw gitError(`Failed to remove worktree at ${managedWorktreePath}`, result, args);
   }
 
-  log.info(`[GitService] Removed worktree at ${worktreePath}`);
+  log.info(`[GitService] Removed worktree at ${managedWorktreePath}`);
 }
 
 export async function ensureWorktreeRemoved(
@@ -100,28 +193,29 @@ export async function ensureWorktreeRemoved(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
-  const registeredBefore = await worktreeExists(executor, repoDirectory, worktreePath);
+  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const registeredBefore = await worktreeExists(executor, repoDirectory, managedWorktreePath);
 
   if (registeredBefore) {
-    const args = ["worktree", "remove", worktreePath];
+    const args = ["worktree", "remove", managedWorktreePath];
     if (options?.force) {
       args.push("--force");
     }
     const result = await runGitCommand(executor, repoDirectory, args, { allowFailure: true });
     if (!result.success) {
-      log.warn(`[GitService] Worktree removal command failed for ${worktreePath}: ${result.stderr || result.stdout || "unknown error"}`);
+      log.warn(`[GitService] Worktree removal command failed for ${managedWorktreePath}: ${result.stderr || result.stdout || "unknown error"}`);
     }
   }
 
   await pruneWorktrees(executor, repoDirectory);
 
-  const registeredAfter = await worktreeExists(executor, repoDirectory, worktreePath);
+  const registeredAfter = await worktreeExists(executor, repoDirectory, managedWorktreePath);
   if (registeredAfter) {
-    throw new Error(`Worktree is still registered after cleanup: ${worktreePath}`);
+    throw new Error(`Worktree is still registered after cleanup: ${managedWorktreePath}`);
   }
 
-  if (await executor.directoryExists(worktreePath)) {
-    throw new Error(`Worktree directory still exists after cleanup: ${worktreePath}`);
+  if (await executor.directoryExists(managedWorktreePath)) {
+    throw new Error(`Worktree directory still exists after cleanup: ${managedWorktreePath}`);
   }
 }
 
@@ -181,8 +275,9 @@ export async function worktreeExists(
   repoDirectory: string,
   worktreePath: string
 ): Promise<boolean> {
+  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
   const worktrees = await listWorktrees(executor, repoDirectory);
-  const comparablePaths = await getComparableWorktreePaths(executor, worktreePath);
+  const comparablePaths = await getComparableWorktreePaths(executor, managedWorktreePath);
   return worktrees.some((wt) => comparablePaths.has(normalizeWorktreePath(wt.path)));
 }
 
@@ -190,7 +285,7 @@ export async function ensureWorktreeExcluded(
   executor: CommandExecutor,
   repoDirectory: string
 ): Promise<void> {
-  const excludePatterns = [".clanky-worktrees", PLANNING_DIRECTORY_NAME];
+  const excludePatterns = [MANAGED_WORKTREE_DIRECTORY_NAME, PLANNING_DIRECTORY_NAME];
 
   let excludePath: string;
   try {
@@ -245,7 +340,7 @@ export async function ensureWorktreeExcluded(
 // ─── Path-comparison helpers (exported for use in GitService facade) ─────────
 
 export function normalizeWorktreePath(worktreePath: string): string {
-  return resolve(worktreePath).replace(/\/+$/, "");
+  return posix.resolve(worktreePath).replace(/\/+$/, "");
 }
 
 export async function getComparableWorktreePaths(
@@ -294,7 +389,7 @@ async function resolvePathThroughExistingParent(
   let existingParent = normalizedPath;
 
   while (!(await executor.directoryExists(existingParent))) {
-    const parentPath = dirname(existingParent);
+    const parentPath = posix.dirname(existingParent);
     if (parentPath === existingParent) return null;
     existingParent = parentPath;
   }
@@ -302,9 +397,9 @@ async function resolvePathThroughExistingParent(
   const canonicalParent = await resolveExistingDirectory(executor, existingParent);
   if (!canonicalParent) return null;
 
-  const relativeSuffix = relative(existingParent, normalizedPath);
+  const relativeSuffix = posix.relative(existingParent, normalizedPath);
   return normalizeWorktreePath(
-    relativeSuffix ? resolve(canonicalParent, relativeSuffix) : canonicalParent
+    relativeSuffix ? posix.resolve(canonicalParent, relativeSuffix) : canonicalParent
   );
 }
 

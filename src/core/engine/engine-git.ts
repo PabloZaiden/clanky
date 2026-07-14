@@ -208,7 +208,7 @@ async function resolveOriginalBranch(ctx: GitOperationContext, directory: string
 }
 
 async function setupWorktree(ctx: GitOperationContext, directory: string, branchName: string, originalBranch: string): Promise<string> {
-  const worktreePath = `${directory}/.clanky-worktrees/${ctx.config.id}`;
+  const worktreePath = ctx.git.getManagedWorktreePath(directory, ctx.config.id);
 
   const branchExists = await ctx.git.branchExists(directory, branchName);
 

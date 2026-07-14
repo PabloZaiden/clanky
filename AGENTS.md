@@ -133,6 +133,12 @@ const content = await executor.readFile(path);
 
 When workspace and standalone SSH-server routes expose the same domain operation, implement that operation once against a transport-neutral interface such as `CommandExecutor`. Route adapters should resolve their own authorization, target, credentials, executor, and root, then delegate the common operation to the shared core service. Do not duplicate file-operation logic or bypass the selected host with local filesystem access; preserve each adapter's ownership, credential, and response-identifier rules at the route boundary.
 
+### Managed workspace paths
+
+**Managed workspace paths and directory names must be defined by one domain service. Callers must not concatenate `.clanky-*` paths themselves, and path checks for workspace repositories must execute through the selected host's `CommandExecutor`.**
+
+Use the Git/worktree service's canonical managed-path helpers for task and chat worktree construction, ownership validation, lookup, and cleanup. Keep path construction explicit about the repository directory and do not use local Clanky-server filesystem checks for workspace repositories.
+
 ### TypeScript
 
 - **Strict mode is enabled** - respect all strict checks
