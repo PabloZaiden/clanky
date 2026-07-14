@@ -218,7 +218,18 @@ export async function handleModelChange(ctx: SessionOperationContext): Promise<v
         sessionId: ctx.getSessionId(),
       });
       return;
-    } catch {
+    } catch (error) {
+      if (!isAcpErrorCode(error, "acp_method_not_found")) {
+        log.warn("[TaskEngine] Failed to set model via config option, will use per-prompt model", {
+          error: String(error),
+          model: newModelID,
+        });
+        ctx.emitLog("warn", "Could not set model via ACP — will use per-prompt model override", {
+          model: newModelID,
+          error: String(error),
+        });
+        return;
+      }
       log.debug("[TaskEngine] session/set_config_option not supported, trying session/set_model");
     }
 
@@ -259,7 +270,17 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
       sessionId: ctx.getSessionId(),
     });
     return;
-  } catch {
+  } catch (error) {
+    if (!isAcpErrorCode(error, "acp_method_not_found")) {
+      log.warn("[TaskEngine] Failed to set model via config option after session creation, will use per-prompt model", {
+        error: String(error),
+        model: desiredModel,
+      });
+      ctx.emitLog("debug", "Model setting not supported — will use per-prompt model override", {
+        model: desiredModel,
+      });
+      return;
+    }
     log.debug("[TaskEngine] session/set_config_option not supported, trying session/set_model");
   }
 
