@@ -1,15 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import {
-  agentEventEmitter,
-  chatEventEmitter,
-  taskEventEmitter,
-  provisioningEventEmitter,
-  previewEventEmitter,
-  sshSessionEventEmitter,
-} from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
-import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
@@ -48,35 +38,15 @@ function clearPreviewBridgeKeepalive(ws: ServerWebSocket<WebSocketData>): void {
   ws.data.previewBridgeKeepalive = undefined;
 }
 
-function getChatEventScope(event: ChatEvent): string | undefined {
-  if ("scope" in event) {
-    return event.scope;
-  }
-  if (event.type === "chat.created") {
-    return event.config.scope;
-  }
-  if (event.type === "chat.updated") {
-    return event.chat.config.scope;
-  }
-  return undefined;
-}
-
 /**
  * Called when a WebSocket connection is opened.
  *
- * Sets up event subscription and sends initial connection confirmation.
- * The confirmation message includes the taskId filter if one was specified.
+ * Attaches the socket to its raw transport and starts any required bridge.
  */
 export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
-    taskId,
-    chatId,
-    agentId,
-    agentRunId,
     sshSessionId,
     sshServerSessionId,
-    provisioningJobId,
-    sensitive,
     terminalMode,
     vncMode,
     vncSessionId,
@@ -98,14 +68,16 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   // Track this connection
   activeConnections.add(ws);
   log.info("WebSocket connection opened", {
-    taskId: taskId ?? "all",
-    chatId: chatId ?? "all",
-    agentId: agentId ?? "all",
-    agentRunId: agentRunId ?? "all",
+    terminalMode: terminalMode ?? false,
+    vncMode: vncMode ?? false,
+    previewBridgeMode: previewBridgeMode ?? false,
+    sshSessionId: sshSessionId ?? "none",
+    sshServerSessionId: sshServerSessionId ?? "none",
+    vncSessionId: vncSessionId ?? "none",
     activeConnections: activeConnections.size,
   });
 
-  // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
+  // Preview bridge sockets use the raw transport directly and do not subscribe to app events.
   if (previewBridgeMode) {
     ws.send(JSON.stringify({ type: "connected" }));
     ws.data.previewBridgeKeepalive = startPreviewBridgeKeepalive(ws);
@@ -158,130 +130,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     });
     return;
   }
-
-  // Send initial connection confirmation
-  ws.send(JSON.stringify({
-    type: "connected",
-    taskId: taskId ?? null,
-    chatId: chatId ?? null,
-    agentId: agentId ?? null,
-    agentRunId: agentRunId ?? null,
-    sshSessionId: sshSessionId ?? null,
-    sshServerSessionId: sshServerSessionId ?? null,
-    provisioningJobId: provisioningJobId ?? null,
-  }));
-
-  const hasScopedSubscription = Boolean(
-    taskId || chatId || agentId || agentRunId || sshSessionId || sshServerSessionId || provisioningJobId,
-  );
-  const shouldSubscribeToAllRuntimeEvents = !hasScopedSubscription;
-
-  const shouldSubscribeToTaskEvents = shouldSubscribeToAllRuntimeEvents || !!taskId;
-  const taskUnsubscribe = shouldSubscribeToTaskEvents
-    ? taskEventEmitter.subscribe((event: TaskEvent) => {
-        if (taskId && "taskId" in event && event.taskId !== taskId) {
-          return;
-        }
-
-        try {
-          ws.send(JSON.stringify(event));
-        } catch (sendError) {
-          log.trace("Failed to send event to WebSocket client", { error: String(sendError) });
-        }
-      })
-    : undefined;
-
-  const shouldSubscribeToChatEvents = shouldSubscribeToAllRuntimeEvents || !!chatId;
-  const chatUnsubscribe = shouldSubscribeToChatEvents
-    ? chatEventEmitter.subscribe((event: ChatEvent) => {
-        if (chatId && event.chatId !== chatId) {
-          return;
-        }
-        if (!chatId && getChatEventScope(event) === "agent") {
-          return;
-        }
-        try {
-          ws.send(JSON.stringify(event));
-        } catch (sendError) {
-          log.trace("Failed to send chat event to WebSocket client", { error: String(sendError) });
-        }
-      })
-    : undefined;
-
-  const shouldSubscribeToAgentEvents = shouldSubscribeToAllRuntimeEvents || !!agentId || !!agentRunId;
-  const agentUnsubscribe = shouldSubscribeToAgentEvents
-    ? agentEventEmitter.subscribe((event: AgentEvent) => {
-        if (agentId && event.agentId !== agentId) {
-          return;
-        }
-        if (agentRunId && "agentRunId" in event && event.agentRunId !== agentRunId) {
-          return;
-        }
-
-        try {
-          ws.send(JSON.stringify(event));
-        } catch (sendError) {
-          log.trace("Failed to send agent event to WebSocket client", { error: String(sendError) });
-        }
-      })
-    : undefined;
-
-  const shouldSubscribeToSshEvents = shouldSubscribeToAllRuntimeEvents || !!sshSessionId || !!sshServerSessionId;
-  const sshSessionUnsubscribe = shouldSubscribeToSshEvents
-    ? sshSessionEventEmitter.subscribe((event: SshSessionEvent) => {
-        const expectedSessionId = sshSessionId ?? sshServerSessionId;
-        if (expectedSessionId && event.sshSessionId !== expectedSessionId) {
-          return;
-        }
-
-        try {
-          ws.send(JSON.stringify(event));
-        } catch (sendError) {
-          log.trace("Failed to send SSH session event to WebSocket client", { error: String(sendError) });
-        }
-      })
-    : undefined;
-
-  const provisioningUnsubscribe = provisioningJobId
-    ? provisioningEventEmitter.subscribe((event: ProvisioningEvent) => {
-        if (event.provisioningJobId !== provisioningJobId) {
-          return;
-        }
-
-        try {
-          ws.send(JSON.stringify(sensitive ? event : sanitizeProvisioningEvent(event)));
-        } catch (sendError) {
-          log.trace("Failed to send provisioning event to WebSocket client", {
-            error: String(sendError),
-          });
-        }
-      })
-    : undefined;
-
-  const previewUnsubscribe = shouldSubscribeToAllRuntimeEvents
-    ? previewEventEmitter.subscribe((event: PreviewEvent) => {
-        try {
-          ws.send(JSON.stringify(event));
-        } catch (sendError) {
-          log.trace("Failed to send preview event to WebSocket client", { error: String(sendError) });
-        }
-      })
-    : undefined;
-
-  ws.data.unsubscribers = [
-    ...(taskUnsubscribe ? [taskUnsubscribe] : []),
-    ...(chatUnsubscribe ? [chatUnsubscribe] : []),
-    ...(agentUnsubscribe ? [agentUnsubscribe] : []),
-    ...(sshSessionUnsubscribe ? [sshSessionUnsubscribe] : []),
-    ...(provisioningUnsubscribe ? [provisioningUnsubscribe] : []),
-    ...(previewUnsubscribe ? [previewUnsubscribe] : []),
-  ];
 }
 
 /**
  * Called when the WebSocket connection is closed.
  *
- * Cleans up the event subscription to prevent memory leaks.
+ * Cleans up transport resources to prevent leaks.
  */
 export function close(ws: ServerWebSocket<WebSocketData>): void {
   // Remove from active connections
@@ -304,30 +158,20 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
   clearPreviewBridgeKeepalive(ws);
-
-  if (ws.data.unsubscribers) {
-    for (const unsubscribe of ws.data.unsubscribers) {
-      unsubscribe();
-    }
-    ws.data.unsubscribers = undefined;
-  }
 }
 
 /**
  * Called when an error occurs on the WebSocket connection.
  *
- * Logs the error and cleans up the event subscription.
+ * Logs the error and cleans up transport resources.
  */
 export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
-    taskId: ws.data.taskId,
-    chatId: ws.data.chatId,
-    agentId: ws.data.agentId,
-    agentRunId: ws.data.agentRunId,
     sshSessionId: ws.data.sshSessionId,
     sshServerSessionId: ws.data.sshServerSessionId,
-    provisioningJobId: ws.data.provisioningJobId,
+    vncSessionId: ws.data.vncSessionId,
+    previewBridgeSessionId: ws.data.previewBridgeSessionId,
   });
   // Remove from active connections
   activeConnections.delete(ws);
@@ -343,10 +187,4 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
   }
   clearPreviewBridgeKeepalive(ws);
-  if (ws.data.unsubscribers) {
-    for (const unsubscribe of ws.data.unsubscribers) {
-      unsubscribe();
-    }
-    ws.data.unsubscribers = undefined;
-  }
 }
