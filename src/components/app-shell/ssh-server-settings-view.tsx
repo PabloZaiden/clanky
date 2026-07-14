@@ -11,7 +11,7 @@ interface SshServerSettingsViewProps {
   shellHeaderOffsetClassName: string;
   updateServer: (
     id: string,
-    request?: import("../../types").UpdateSshServerRequest,
+    request?: import("@/contracts").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: () => Promise<boolean>;

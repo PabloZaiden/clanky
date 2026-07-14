@@ -12,7 +12,7 @@ interface WorkspaceSettingsViewProps {
   workspaceSettings: UseWorkspaceSettingsShellResult;
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
-  deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   navigateWithinShell: (route: ShellRoute) => void;
   shellHeaderOffsetClassName: string;
 }

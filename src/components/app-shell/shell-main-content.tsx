@@ -43,7 +43,7 @@ interface ShellMainContentProps {
   workspaces: Workspace[];
   sessions: SshSession[];
   servers: SshServer[];
-  sessionsByServerId: Record<string, import("../../types/ssh-server").SshServerSession[]>;
+  sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
   serverNodes: SidebarServerNode[];
   workspaceGroups: WorkspaceGroup[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
@@ -70,19 +70,19 @@ interface ShellMainContentProps {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: import("../../types").SshConnectionMode; useTmux?: boolean },
-  ) => Promise<import("../../types/ssh-server").SshServerSession>;
+    options?: { name?: string; connectionMode?: import("@/shared").SshConnectionMode; useTmux?: boolean },
+  ) => Promise<import("@/shared/ssh-server").SshServerSession>;
   createServer: (
-    request: import("../../types").CreateSshServerRequest,
+    request: import("@/contracts").CreateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   updateServer: (
     id: string,
-    request?: import("../../types").UpdateSshServerRequest,
+    request?: import("@/contracts").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
-  deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
 
   // Dashboard data
   dashboardData: UseDashboardDataResult;
@@ -90,18 +90,18 @@ interface ShellMainContentProps {
   agents: UseAgentsResult;
   editingAgentId: string | null;
   onCancelAgentEdit: () => void;
-  onSavedAgentEdit: (agent: import("../../types").Agent) => void;
+  onSavedAgentEdit: (agent: import("@/shared").Agent) => void;
 
   // Compose state
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
-  createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
-  importExistingChat: (request: import("../../types").ImportExistingChatRequest) => Promise<import("../../types").Chat | null>;
+  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
   createSshServerChat: (
     serverId: string,
-    request: import("../../types").CreateSshServerChatRequest,
-  ) => Promise<import("../../types").Chat | null>;
+    request: import("@/contracts").CreateSshServerChatRequest,
+  ) => Promise<import("@/shared").Chat | null>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;

@@ -24,19 +24,19 @@ export interface UseDashboardDataResult {
   version: string | null;
 
   // Models
-  models: import("../../types").ModelInfo[];
+  models: import("@/contracts").ModelInfo[];
   modelsLoading: boolean;
-  lastModel: import("../../types").ModelConfig | null;
-  setLastModel: (model: import("../../types").ModelConfig | null) => void;
-  lastCheapModel: import("../../types").CheapModelSelection | null;
-  setLastCheapModel: (selection: import("../../types").CheapModelSelection | null) => void;
+  lastModel: import("@/shared").ModelConfig | null;
+  setLastModel: (model: import("@/shared").ModelConfig | null) => void;
+  lastCheapModel: import("@/shared").CheapModelSelection | null;
+  setLastCheapModel: (selection: import("@/shared").CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
 
   // Planning
   planningWarning: string | null;
 
   // Branches
-  branches: import("../../types").BranchInfo[];
+  branches: import("@/contracts").BranchInfo[];
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;

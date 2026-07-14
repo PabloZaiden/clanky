@@ -4,7 +4,7 @@
  * These schemas validate request bodies for workspace CRUD and
  * server settings operations.
  *
- * @module types/schemas/workspace
+ * @module contracts/schemas/workspace
  */
 
 import { z } from "zod";
