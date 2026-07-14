@@ -4,7 +4,7 @@
 
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
-import { isModelEnabled } from "../models";
+import { isModelEnabled } from "../../core/model-discovery";
 import { errorResponse } from "../helpers";
 
 const log = createLogger("api:tasks");

@@ -32,8 +32,9 @@ import {
 } from "../types/schemas";
 import { requireWorkspace, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { isModelEnabled } from "./models";
-import { getQuickChatSettings } from "../persistence/preferences";
+import { isModelEnabled } from "../core/model-discovery";
+import { isDomainError } from "../core/domain-error";
+import { preferencesManager } from "../core/preferences-manager";
 import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
 
 const log = createLogger("api:chats");
@@ -84,22 +85,15 @@ async function validateQuickChatRequestModel(body: {
   workspaceId: string;
   model: { providerID: string; modelID: string; variant?: string };
 }): Promise<Response | null> {
-  const quickChatSettings = await getQuickChatSettings();
-  const configuredModel = quickChatSettings.model;
-  if (
-    quickChatSettings.workspaceId !== body.workspaceId
-    || !configuredModel
-    || configuredModel.providerID !== body.model.providerID
-    || configuredModel.modelID !== body.model.modelID
-    || configuredModel.variant !== (body.model.variant ?? "")
-  ) {
-    return errorResponse(
-      "quick_chat_model_mismatch",
-      "Quick chat requests must use the saved quick chat workspace and model settings",
-      400,
-    );
+  try {
+    await preferencesManager.validateQuickChatModel(body);
+    return null;
+  } catch (error) {
+    if (isDomainError(error) && error.code === "quick_chat_model_mismatch") {
+      return errorResponse(error.code, error.message, 400);
+    }
+    throw error;
   }
-  return null;
 }
 
 export const chatsRoutes = defineRoutes({

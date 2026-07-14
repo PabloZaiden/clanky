@@ -3,10 +3,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Route handlers for workspace server settings: CRUD, status, and test connection.
  */
 
-import { updateWorkspace } from "../../persistence/workspaces";
-import { backendManager } from "../../core/backend-manager";
 import { createLogger } from "../../core/logger";
-import { areServerSettingsEqual } from "../../types/settings";
+import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {
   requireWorkspace,
@@ -65,24 +63,10 @@ export const serverSettingsRoutes = defineRoutes({
           return currentWorkspace;
         }
 
-        const settingsChanged = !areServerSettingsEqual(currentWorkspace.serverSettings, body);
-
-        if (!settingsChanged) {
-          log.info(`Server settings unchanged for workspace: ${currentWorkspace.name}`);
-          return Response.json(
-            includeSensitive
-              ? currentWorkspace.serverSettings
-              : sanitizeServerSettings(currentWorkspace.serverSettings),
-          );
-        }
-
-        const workspace = await updateWorkspace(id, { serverSettings: body });
+        const workspace = await workspaceManager.updateServerSettings(id, body);
         if (!workspace) {
           return errorResponse("workspace_not_found", "Workspace not found", 404);
         }
-
-        // Reset the connection for this workspace so it picks up new settings
-        await backendManager.resetWorkspaceConnection(id);
 
         log.info(`Updated server settings for workspace: ${workspace.name}`);
         return Response.json(
@@ -110,7 +94,7 @@ export const serverSettingsRoutes = defineRoutes({
         const result = await requireWorkspace(id);
         if (result instanceof Response) return result;
 
-        const status = await backendManager.getWorkspaceStatus(id);
+        const status = await workspaceManager.getWorkspaceStatus(id);
         return Response.json(status);
       } catch (error) {
         log.error("Failed to get workspace connection status:", String(error));
@@ -166,7 +150,7 @@ export const serverSettingsRoutes = defineRoutes({
           }
         }
 
-        const result = await backendManager.testConnection(settings, workspace.directory);
+        const result = await workspaceManager.testConnection(settings, workspace.directory);
         return Response.json(result);
       } catch (error) {
         log.error("Failed to test workspace connection:", String(error));
@@ -194,7 +178,7 @@ export const serverSettingsRoutes = defineRoutes({
       const { settings, directory } = result.data;
 
       try {
-        const testResult = await backendManager.testConnection(settings, directory);
+        const testResult = await workspaceManager.testConnection(settings, directory);
         return Response.json(testResult);
       } catch (error) {
         log.error("Failed to test connection:", String(error));

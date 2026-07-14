@@ -4,16 +4,9 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Covers list, create, get, update, and delete operations.
  */
 
-import {
-  createWorkspace,
-  listWorkspaces,
-  updateWorkspace,
-} from "../../persistence/workspaces";
-import { backendManager } from "../../core/backend-manager";
-import { deleteWorkspaceWithOptions } from "../../core/workspace-deletion";
 import { createLogger } from "../../core/logger";
-import { areServerSettingsEqual, getDefaultServerSettings } from "../../types/settings";
-import type { Workspace } from "../../types/workspace";
+import { isDomainError } from "../../core/domain-error";
+import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {
   requireWorkspace,
@@ -52,7 +45,7 @@ export const crudRoutes = defineRoutes({
       log.debug("GET /api/workspaces - Listing all workspaces");
       try {
         const includeSensitive = shouldIncludeSensitiveData(req);
-        const workspaces = await listWorkspaces();
+        const workspaces = await workspaceManager.listWorkspaces();
         log.debug("GET /api/workspaces - Retrieved workspaces", { count: workspaces.length });
         return Response.json(includeSensitive ? workspaces : workspaces.map(sanitizeWorkspace));
       } catch (error) {
@@ -72,59 +65,14 @@ export const crudRoutes = defineRoutes({
 
       const body = result.data;
 
-      // Validate serverSettings - use default if not provided
-      const serverSettings = body.serverSettings ?? getDefaultServerSettings();
-
-      // Trim name and directory to prevent whitespace issues
-      const trimmedName = body.name.trim();
-      const trimmedDirectory = body.directory.trim();
-
       try {
-        // Validate directory is a git repository on the remote server
-        log.debug("Validating workspace directory on remote server", {
-          directory: trimmedDirectory,
-          name: trimmedName,
-          agentProvider: serverSettings.agent.provider,
-          agentTransport: serverSettings.agent.transport,
-        });
-
-        const validation = await backendManager.validateRemoteDirectory(serverSettings, trimmedDirectory);
-
-        if (!validation.success) {
-          log.warn("Failed to validate remote directory", {
-            directory: trimmedDirectory,
-            error: validation.error,
-          });
-          return errorResponse("validation_failed", `Failed to validate directory: ${validation.error}`);
-        }
-
-        // Check if directory exists first to provide a clearer error message
-        if (validation.directoryExists === false) {
-          log.warn("Directory does not exist on remote server", { directory: trimmedDirectory });
-          return errorResponse("directory_not_found", "Directory does not exist on the remote server");
-        }
-
-        if (!validation.isGitRepo) {
-          log.warn("Directory is not a git repository", { directory: trimmedDirectory });
-          return errorResponse("not_git_repo", "Directory must be a git repository");
-        }
-
-        const now = new Date().toISOString();
-        const workspace: Workspace = {
-          id: crypto.randomUUID(),
-          name: trimmedName,
-          directory: trimmedDirectory,
-          serverSettings,
-          createdAt: now,
-          updatedAt: now,
-          archived: false,
-        };
-
-        await createWorkspace(workspace);
+        const workspace = await workspaceManager.createWorkspace(body);
         log.info(`Created workspace: ${workspace.name} (${workspace.directory})`);
-
         return Response.json(workspace, { status: 201 });
       } catch (error) {
+        if (isDomainError(error)) {
+          return errorResponse(error.code, error.message);
+        }
         log.error("Failed to create workspace:", String(error));
         return errorResponse("create_failed", `Failed to create workspace: ${String(error)}`, 500);
       }
@@ -175,40 +123,10 @@ export const crudRoutes = defineRoutes({
           return currentWorkspace;
         }
 
-        const nameChanged = body.name !== undefined && body.name !== currentWorkspace.name;
-        const serverSettingsChanged = body.serverSettings !== undefined
-          && !areServerSettingsEqual(currentWorkspace.serverSettings, body.serverSettings);
-        const privateChanged = body.isPrivate !== undefined && body.isPrivate !== (currentWorkspace.isPrivate === true);
-        const archivedChanged = body.archived !== undefined && body.archived !== (currentWorkspace.archived === true);
-
-        if (!nameChanged && !serverSettingsChanged && !privateChanged && !archivedChanged) {
-          log.info(`Workspace unchanged: ${currentWorkspace.name}`);
-          return Response.json(includeSensitive ? currentWorkspace : sanitizeWorkspace(currentWorkspace));
-        }
-
-        const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings" | "isPrivate" | "archived">> = {};
-        if (nameChanged) {
-          workspaceUpdates.name = body.name;
-        }
-        if (serverSettingsChanged && body.serverSettings) {
-          workspaceUpdates.serverSettings = body.serverSettings;
-        }
-        if (privateChanged) {
-          workspaceUpdates.isPrivate = body.isPrivate;
-        }
-        if (archivedChanged) {
-          workspaceUpdates.archived = body.archived;
-        }
-
-        const workspace = await updateWorkspace(id, workspaceUpdates);
+        const workspace = await workspaceManager.updateWorkspace(id, body);
         if (!workspace) {
           log.debug("PUT /api/workspaces/:id - Workspace not found", { workspaceId: id });
           return errorResponse("workspace_not_found", "Workspace not found", 404);
-        }
-
-        // Reset connection if server settings were updated so new config takes effect
-        if (serverSettingsChanged) {
-          await backendManager.resetWorkspaceConnection(id);
         }
 
         log.info(`Updated workspace: ${workspace.name}`);
@@ -232,7 +150,7 @@ export const crudRoutes = defineRoutes({
       }
 
       try {
-        const result = await deleteWorkspaceWithOptions(id, validation.data);
+        const result = await workspaceManager.deleteWorkspace(id, validation.data);
         if (!result.success) {
           log.warn("DELETE /api/workspaces/:id - Failed", { workspaceId: id, reason: result.reason });
           const reason = result.reason ?? "Delete failed";
@@ -240,7 +158,6 @@ export const crudRoutes = defineRoutes({
           const status = reason === "Workspace not found" ? 404 : 400;
           return errorResponse(errorCode, reason, status);
         }
-        await backendManager.resetWorkspaceConnection(id);
         log.info(`Deleted workspace: ${id}`);
         return Response.json({ success: true });
       } catch (error) {

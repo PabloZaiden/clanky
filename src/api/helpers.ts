@@ -9,7 +9,7 @@
 
 import type { ErrorResponse } from "../types/api";
 import type { Workspace } from "../types/workspace";
-import { getWorkspace } from "../persistence/workspaces";
+import { workspaceManager } from "../core/workspace-manager";
 
 /**
  * Create a standardized error response.
@@ -38,7 +38,7 @@ export function successResponse(data: Record<string, unknown> = {}): Response {
  * Look up a workspace by ID and return it, or return a 404 error response.
  *
  * This helper eliminates the repeated pattern of:
- *   const workspace = await getWorkspace(id);
+ *   const workspace = await workspaceManager.getWorkspace(id);
  *   if (!workspace) { return Response.json({ message: "Workspace not found" }, { status: 404 }); }
  *
  * @param workspaceId - The workspace ID to look up
@@ -47,7 +47,7 @@ export function successResponse(data: Record<string, unknown> = {}): Response {
 export async function requireWorkspace(
   workspaceId: string,
 ): Promise<Workspace | Response> {
-  const workspace = await getWorkspace(workspaceId);
+  const workspace = await workspaceManager.getWorkspace(workspaceId);
   if (!workspace) {
     return errorResponse("workspace_not_found", "Workspace not found", 404);
   }

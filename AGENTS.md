@@ -460,7 +460,9 @@ These guidelines are distilled from a comprehensive code review (108+ findings).
 
 ### Architecture & Layering
 
-- **Respect the layer hierarchy: API → Core → Persistence.** The API layer should never import directly from persistence modules. Route all data access through Core layer managers (e.g., `TaskManager`).
+- **Respect the layer hierarchy: API → Core → Persistence.** API route modules should contain request validation, authorization, HTTP response mapping, and route-level logging only; they must not import persistence modules or persistence barrels. Route all data access and state changes through Core services/managers (e.g., `TaskManager`, `WorkspaceManager`, or `PreferencesManager`), and keep persistence details behind those Core boundaries.
+- **Keep Core services transport-independent.** Core modules own domain validation, orchestration, and cross-repository workflows; they may depend on persistence, but must not depend on API route modules or HTTP response types.
+- **Keep persistence focused on storage.** Persistence modules expose database/repository operations and must not import API routes or encode HTTP concerns.
 - **Never define shared types in backend-specific modules.** Domain types (like `TodoItem`) belong in `src/types/`. Backends should import from types, not the other way around.
 - **Centralize state transitions.** Use a state machine with a transition table (`src/core/task-state-machine.ts`) instead of ad-hoc status checks scattered across files. Always call `assertValidTransition()` before changing state.
 - **Never mutate state directly in API handlers.** Always delegate state changes to the appropriate Core layer manager method.

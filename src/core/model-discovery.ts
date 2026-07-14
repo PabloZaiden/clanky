@@ -1,17 +1,19 @@
 /**
- * Model discovery helpers: backend querying, Copilot normalization,
- * and model-enabled validation.
+ * Provider-aware model discovery and validation.
  *
- * @module api/models/model-discovery
+ * Backend connections, workspace resolution, normalization, caching, and
+ * model availability rules belong to Core rather than API route modules.
  */
 
-import { backendManager, buildConnectionConfig } from "../../core/backend-manager";
-import { getWorkspace } from "../../persistence/workspaces";
-import type { ServerSettings } from "../../types/settings";
-import type { ModelInfo } from "../../types/api";
-import { createLogger } from "../../core/logger";
+import { backendManager, buildConnectionConfig } from "./backend-manager";
+import { DomainError } from "./domain-error";
+import { createLogger } from "./logger";
+import { workspaceManager } from "./workspace-manager";
+import type { ModelInfo } from "../types/api";
+import type { ServerSettings } from "../types/settings";
+import type { Workspace } from "../types/workspace";
 
-const log = createLogger("api:models");
+const log = createLogger("core:model-discovery");
 const MODEL_DISCOVERY_CACHE_TTL_MS = 12 * 60 * 60 * 1_000;
 
 interface TimedCacheEntry<T> {
@@ -68,21 +70,12 @@ function getModelVariantCacheKey(
   return createCacheKey(["variants", workspaceId, provider, directory, modelID]);
 }
 
-/**
- * Result of checking if a model is enabled/connected.
- */
 export interface ModelValidationResult {
-  /** Whether the model is enabled and can be used */
   enabled: boolean;
-  /** Error message if the model is not enabled */
   error?: string;
-  /** Error code for programmatic handling */
   errorCode?: "model_not_enabled" | "model_not_found" | "provider_not_found" | "validation_failed";
 }
 
-/**
- * Normalize ACP-discovered Copilot models to the API contract used by the UI.
- */
 function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
   const seen = new Set<string>();
   return models
@@ -100,9 +93,6 @@ function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
     });
 }
 
-/**
- * Discover models via the configured agent backend (ACP path).
- */
 async function getAgentBackendModels(
   connectionId: string,
   directory: string,
@@ -180,34 +170,24 @@ async function getAgentBackendModelVariants(
   }
 }
 
-/**
- * Discover models for a workspace using provider-aware routing.
- */
-export async function getModelsForWorkspace(
-  workspaceId: string,
-  workspaceOverride?: Awaited<ReturnType<typeof getWorkspace>>,
-): Promise<ModelInfo[]> {
-  const workspace = workspaceOverride ?? await getWorkspace(workspaceId);
-  if (!workspace) {
-    throw new Error(`Workspace not found: ${workspaceId}`);
-  }
-
-  const directory = workspace.directory;
-  const settings = workspace.serverSettings;
-  const cacheKey = getModelListCacheKey(workspaceId, settings.agent.provider, directory);
-  const cached = getCacheValue(modelListCache, cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const models = await getAgentBackendModels(workspaceId, directory, settings);
-  const normalizedModels = settings.agent.provider === "copilot"
+function normalizeDiscoveredModels(settings: ServerSettings, models: ModelInfo[]): ModelInfo[] {
+  return settings.agent.provider === "copilot"
     ? normalizeCopilotModelInfo(models)
     : models;
-  if (normalizedModels.length > 0) {
-    setCacheValue(modelListCache, cacheKey, normalizedModels);
+}
+
+export async function getModelsForWorkspace(
+  workspaceId: string,
+  workspaceOverride?: Workspace,
+): Promise<ModelInfo[]> {
+  const workspace = workspaceOverride ?? await workspaceManager.getWorkspace(workspaceId);
+  if (!workspace) {
+    throw new DomainError("workspace_not_found", `Workspace not found: ${workspaceId}`, {
+      details: { workspaceId },
+    });
   }
-  return normalizedModels;
+
+  return await getModelsForSettings(workspaceId, workspace.directory, workspace.serverSettings);
 }
 
 export async function getModelsForSettings(
@@ -222,9 +202,7 @@ export async function getModelsForSettings(
   }
 
   const models = await getAgentBackendModels(connectionId, directory, settings);
-  const normalizedModels = settings.agent.provider === "copilot"
-    ? normalizeCopilotModelInfo(models)
-    : models;
+  const normalizedModels = normalizeDiscoveredModels(settings, models);
   if (normalizedModels.length > 0) {
     setCacheValue(modelListCache, cacheKey, normalizedModels);
   }
@@ -234,11 +212,13 @@ export async function getModelsForSettings(
 export async function getModelVariantsForWorkspace(
   workspaceId: string,
   modelID: string,
-  workspaceOverride?: Awaited<ReturnType<typeof getWorkspace>>,
+  workspaceOverride?: Workspace,
 ): Promise<string[]> {
-  const workspace = workspaceOverride ?? await getWorkspace(workspaceId);
+  const workspace = workspaceOverride ?? await workspaceManager.getWorkspace(workspaceId);
   if (!workspace) {
-    throw new Error(`Workspace not found: ${workspaceId}`);
+    throw new DomainError("workspace_not_found", `Workspace not found: ${workspaceId}`, {
+      details: { workspaceId },
+    });
   }
 
   const directory = workspace.directory;
@@ -255,19 +235,6 @@ export async function getModelVariantsForWorkspace(
   return normalizedVariants;
 }
 
-/**
- * Check if a model is enabled (its provider is connected).
- *
- * This function fetches the available models for a workspace and checks
- * if the specified model exists and its provider is connected.
- *
- * Discovery is provider-aware through the configured ACP backend.
- *
- * @param workspaceId - The workspace ID to check models for
- * @param providerID - The provider ID (e.g., "anthropic")
- * @param modelID - The model ID (e.g., "claude-sonnet-4-20250514")
- * @returns Promise with validation result
- */
 export async function isModelEnabled(
   workspaceId: string,
   providerID: string,
@@ -275,9 +242,7 @@ export async function isModelEnabled(
 ): Promise<ModelValidationResult> {
   try {
     const models = await getModelsForWorkspace(workspaceId);
-
-    // Check if the provider exists
-    const providerModels = models.filter((m) => m.providerID === providerID);
+    const providerModels = models.filter((model) => model.providerID === providerID);
     if (providerModels.length === 0) {
       return {
         enabled: false,
@@ -286,8 +251,7 @@ export async function isModelEnabled(
       };
     }
 
-    // Check if the specific model exists
-    const model = providerModels.find((m) => m.modelID === modelID);
+    const model = providerModels.find((entry) => entry.modelID === modelID);
     if (!model) {
       return {
         enabled: false,
@@ -296,7 +260,6 @@ export async function isModelEnabled(
       };
     }
 
-    // Check if the model's provider is connected
     if (!model.connected) {
       return {
         enabled: false,

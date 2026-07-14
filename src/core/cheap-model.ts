@@ -1,6 +1,6 @@
-import { backendManager, buildConnectionConfig } from "./backend-manager";
 import { createLogger } from "./logger";
-import { getWorkspace } from "../persistence/workspaces";
+import { getModelsForSettings } from "./model-discovery";
+import { workspaceManager } from "./workspace-manager";
 import type { CheapModelSelection, ModelConfig, ModelInfo } from "../types";
 
 const log = createLogger("core:cheap-model");
@@ -16,38 +16,8 @@ async function getWorkspaceModels(
   workspaceId: string,
   directory: string,
 ): Promise<ModelInfo[]> {
-  const workspace = await getWorkspace(workspaceId);
-  if (!workspace) {
-    throw new Error(`Workspace not found: ${workspaceId}`);
-  }
-
-  const settings = workspace.serverSettings;
-  const testBackend = backendManager.getTestBackend();
-  if (testBackend) {
-    if (!testBackend.isConnected()) {
-      await testBackend.connect(buildConnectionConfig(settings, directory));
-    }
-    return await testBackend.getModels(directory);
-  }
-
-  const existingBackend = backendManager.getInitializedBackend(workspaceId);
-  if (existingBackend?.isConnected() && existingBackend.getDirectory() === directory) {
-    return await existingBackend.getModels(directory);
-  }
-
-  const tempBackend = backendManager.createBackend(settings);
-  try {
-    await tempBackend.connect(buildConnectionConfig(settings, directory));
-    return await tempBackend.getModels(directory);
-  } finally {
-    try {
-      await tempBackend.disconnect();
-    } catch (disconnectError) {
-      log.trace("Failed to disconnect temporary backend while resolving cheap model", {
-        error: String(disconnectError),
-      });
-    }
-  }
+  const workspace = await workspaceManager.requireWorkspace(workspaceId);
+  return await getModelsForSettings(workspaceId, directory, workspace.serverSettings);
 }
 
 function hasEnabledModel(models: ModelInfo[], model: ModelConfig): boolean {
