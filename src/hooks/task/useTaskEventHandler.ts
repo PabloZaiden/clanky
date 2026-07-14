@@ -1,5 +1,5 @@
 /**
- * WebSocket event handler for task real-time updates.
+ * Incremental realtime stream handler for task updates.
  * Processes incoming TaskEvents and dispatches state updates.
  */
 
@@ -15,7 +15,7 @@ const log = createLogger("useTask");
 
 export interface TaskEventHandlerParams {
   isActiveTask: (expectedTaskId: string) => boolean;
-  refresh: () => Promise<void>;
+  refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setMessages: Dispatch<SetStateAction<MessageData[]>>;
   setToolCalls: Dispatch<SetStateAction<ToolCallData[]>>;
@@ -23,7 +23,7 @@ export interface TaskEventHandlerParams {
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
 }
 
-/** Returns a stable event handler function for use with useTaskEvents. */
+/** Returns the incremental task stream handler. */
 export function createTaskEventHandler(params: TaskEventHandlerParams) {
   const {
     isActiveTask,
@@ -87,7 +87,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           const existingIndex = prev.findIndex((logEntry) => logEntry.id === event.id);
           if (existingIndex < 0) {
             if (event.baseLength !== 0) {
-              void refresh();
+              void refresh({ hydrateFromSnapshot: true });
               return prev;
             }
             const newLogs = [
@@ -109,7 +109,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           const existingLog = prev[existingIndex]!;
           const currentContent = existingLog?.details?.["responseContent"];
           if (typeof currentContent !== "string" || currentContent.length !== event.baseLength) {
-            void refresh();
+            void refresh({ hydrateFromSnapshot: true });
             return prev;
           }
 
@@ -179,35 +179,12 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
         // Clear progress content for new iteration
         // Keep messages, tool calls, and logs as they accumulate across iterations
         setProgressContent("");
-        refresh();
-        break;
-
-      case "task.started":
-      case "task.stopped":
-      case "task.completed":
-      case "task.ssh_handoff":
-      case "task.merged":
-      case "task.accepted":
-      case "task.pushed":
-      case "task.discarded":
-      case "task.error":
-      case "task.plan.ready":
-      case "task.plan.feedback":
-      case "task.plan.accepted":
-      case "task.plan.discarded":
-      case "task.automatic_pr_flow.updated":
-        refresh();
         break;
 
       case "task.iteration.end":
       case "task.git.commit":
         // These events indicate git changes that affect the diff
         setGitChangeCounter((prev) => prev + 1);
-        refresh();
-        break;
-      case "task.pending.updated":
-        // Pending values changed - refresh to get updated state
-        refresh();
         break;
     }
   };

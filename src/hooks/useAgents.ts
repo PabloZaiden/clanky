@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appFetch } from "../lib/public-path";
 import { createLogger } from "../lib/logger";
-import type { Agent, AgentEvent, AgentRun, AgentRunStatus } from "@/shared";
+import type { Agent, AgentRun } from "@/shared";
 import type { CreateAgentRequest, DeleteAgentRunsRequest, RunAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
-import { isAgentEvent, useAppEvents } from "./useAppEvents";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 const log = createLogger("useAgents");
 
@@ -21,48 +21,6 @@ function sortRuns(runs: AgentRun[]): AgentRun[] {
 
 function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   return sortRuns([...runs.filter((item) => item.id !== run.id), run]);
-}
-
-function isTerminalRunStatus(status: AgentRunStatus): boolean {
-  return status === "completed"
-    || status === "failed"
-    || status === "skipped"
-    || status === "cancelled"
-    || status === "interrupted";
-}
-
-function updateKnownRunStatus(
-  runs: AgentRun[],
-  runId: string,
-  status: AgentRunStatus,
-  timestamp: string,
-  options: {
-    errorMessage?: string;
-    skipReason?: string;
-  } = {},
-): AgentRun[] {
-  let changed = false;
-  const nextRuns = runs.map((run) => {
-    if (run.id !== runId) {
-      return run;
-    }
-    changed = true;
-    return {
-      ...run,
-      status,
-      completedAt: isTerminalRunStatus(status) ? run.completedAt ?? timestamp : run.completedAt,
-      skipReason: options.skipReason ?? run.skipReason,
-      error: options.errorMessage
-        ? {
-            message: options.errorMessage,
-            timestamp,
-            code: status,
-          }
-        : run.error,
-      updatedAt: timestamp,
-    };
-  });
-  return changed ? sortRuns(nextRuns) : runs;
 }
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -99,12 +57,15 @@ export function useAgents(): UseAgentsResult {
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch("/api/agents", { signal: controller.signal });
       if (controller.signal.aborted) {
@@ -121,7 +82,7 @@ export function useAgents(): UseAgentsResult {
       }
       setError(String(refreshError));
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && showLoading) {
         setLoading(false);
       }
     }
@@ -140,6 +101,10 @@ export function useAgents(): UseAgentsResult {
       setError(String(refreshError));
     }
   }, []);
+
+  const refreshAllRuns = useCallback(async () => {
+    await Promise.all(Object.keys(runsByAgentId).map((agentId) => refreshRuns(agentId)));
+  }, [refreshRuns, runsByAgentId]);
 
   const requestAgent = useCallback(async <T>(
     path: string,
@@ -272,102 +237,19 @@ export function useAgents(): UseAgentsResult {
     return deletedRunIds;
   }, [requestAgent]);
 
-  useAppEvents<AgentEvent>((event) => {
-    if (event.type === "agent.created" || event.type === "agent.updated") {
-      setAgents((prev) => upsertAgent(prev, event.agent));
-      return;
-    }
-    if (event.type === "agent.deleted") {
-      setAgents((prev) => prev.filter((agent) => agent.config.id !== event.agentId));
-      return;
-    }
-    if (
-      event.type === "agent.run.scheduled"
-      || event.type === "agent.run.started"
-      || event.type === "agent.run.completed"
-    ) {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: upsertRun(prev[event.agentId] ?? [], event.run),
-      }));
-      void refresh();
-      return;
-    }
-    if (event.type === "agent.run.status") {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: updateKnownRunStatus(
-          prev[event.agentId] ?? [],
-          event.agentRunId,
-          event.status,
-          event.timestamp,
-        ),
-      }));
-      if (isTerminalRunStatus(event.status)) {
-        void refreshRuns(event.agentId);
-        void refresh();
-      }
-      return;
-    }
-    if (event.type === "agent.run.failed") {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: updateKnownRunStatus(
-          prev[event.agentId] ?? [],
-          event.agentRunId,
-          "failed",
-          event.timestamp,
-          { errorMessage: event.message },
-        ),
-      }));
-      void refreshRuns(event.agentId);
-      void refresh();
-      return;
-    }
-    if (event.type === "agent.run.skipped") {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: updateKnownRunStatus(
-          prev[event.agentId] ?? [],
-          event.agentRunId,
-          "skipped",
-          event.timestamp,
-          { skipReason: event.reason },
-        ),
-      }));
-      void refreshRuns(event.agentId);
-      void refresh();
-      return;
-    }
-    if (event.type === "agent.run.interrupted") {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: updateKnownRunStatus(
-          prev[event.agentId] ?? [],
-          event.agentRunId,
-          "interrupted",
-          event.timestamp,
-        ),
-      }));
-      void refreshRuns(event.agentId);
-      void refresh();
-      return;
-    }
-    if (event.type === "agent.run.deleted") {
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: (prev[event.agentId] ?? []).filter((run) => run.id !== event.agentRunId),
-      }));
-      return;
-    }
-    if (event.type === "agent.runs.purged") {
-      const deleted = new Set(event.deletedRunIds);
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [event.agentId]: (prev[event.agentId] ?? []).filter((run) => !deleted.has(run.id)),
-      }));
-    }
-  }, isAgentEvent);
+  useRealtimeRefreshWithRecovery({
+    resources: ["agents"],
+    filters: { resource: "agents" },
+    refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
+  });
+
+  useRealtimeRefreshWithRecovery({
+    resources: ["agent-runs"],
+    filters: { resource: "agent-runs" },
+    refresh: (event) => event.scope ? refreshRuns(event.scope) : refresh({ showLoading: false }),
+    onReconnect: refreshAllRuns,
+  });
 
   useEffect(() => {
     void refresh();

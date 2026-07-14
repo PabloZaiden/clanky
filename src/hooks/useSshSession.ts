@@ -3,10 +3,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SshServerSession, SshSession, SshSessionEvent } from "@/shared";
+import type { SshServerSession, SshSession } from "@/shared";
 import type { UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
-import { useWebSocket } from "./useWebSocket";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { appFetch } from "../lib/public-path";
 import { deleteStandaloneSshSessionApi } from "./sshServerActions";
 
@@ -98,26 +98,19 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
     await refreshInternal(!initialLoadDoneRef.current);
   }, [refreshInternal]);
 
-  const handleEvent = useCallback((event: SshSessionEvent | { type?: string; sshSessionId?: string }) => {
-    if (!event.type?.startsWith("ssh_session.")) {
-      return;
-    }
-    if (event.sshSessionId !== sessionId) {
-      return;
-    }
-    if (event.type === "ssh_session.deleted") {
-      setSession(null);
-      return;
-    }
-    void refreshInternal(false);
-  }, [refreshInternal, sessionId]);
-
-  useWebSocket<SshSessionEvent>({
-    url: sessionKind === "standalone"
-      ? `/api/ws?sshServerSessionId=${encodeURIComponent(sessionId)}`
-      : `/api/ws?sshSessionId=${encodeURIComponent(sessionId)}`,
-    autoConnect: sessionKind !== null,
-    onEvent: handleEvent,
+  useRealtimeRefreshWithRecovery({
+    resources: ["ssh-sessions"],
+    ids: [sessionId],
+    filters: { resource: "ssh-sessions", id: sessionId },
+    enabled: sessionKind !== null,
+    refresh: (event) => {
+      if (event.action === "deleted") {
+        setSession(null);
+        return;
+      }
+      return refreshInternal(false);
+    },
+    onReconnect: () => refreshInternal(false),
   });
 
   const updateSession = useCallback(async (request: UpdateSshSessionRequest): Promise<AnySshSession> => {

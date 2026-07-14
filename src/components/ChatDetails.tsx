@@ -28,7 +28,7 @@ import {
 import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
-import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
+import { useAvailableModels, useMarkdownPreference, useRealtimeStream, useToast } from "../hooks";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
@@ -36,9 +36,9 @@ import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navig
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
 import { DictationControls, insertDictationText } from "./dictation";
 import type { Chat, ChatEvent, ComposerImageAttachment, TaskLogEntry, MessageData, ToolCallData } from "@/shared";
+import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
-const TERMINAL_CHAT_STATUSES = new Set(["idle", "stopped", "failed"]);
 
 function getChatStatusLabel(status: Chat["state"]["status"]): string {
   switch (status) {
@@ -80,13 +80,21 @@ function upsertById<T extends { id: string; timestamp?: string }>(items: T[], it
     const rightTimestamp = right.timestamp ?? "";
     const byTimestamp = leftTimestamp.localeCompare(rightTimestamp);
     return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  });
+  }).slice(-1000);
 }
 
-function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
-  const lastActivityAt = chat.state.lastActivityAt;
-  return typeof lastActivityAt === "string" && lastActivityAt.localeCompare(timestamp) > 0;
-}
+type ChatStreamEvent = Extract<
+  ChatEvent,
+  {
+    type:
+      | "chat.message"
+      | "chat.message.delta"
+      | "chat.tool_call"
+      | "chat.tool_call.extra"
+      | "chat.log"
+      | "chat.log.delta";
+  }
+>;
 
 export function ChatDetails({
   chatId,
@@ -127,9 +135,12 @@ export function ChatDetails({
     workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
   });
 
-  const refreshChat = useCallback(async () => {
+  const refreshChat = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch(`/api/chats/${chatId}`);
       if (!response.ok) {
@@ -145,11 +156,13 @@ export function ChatDetails({
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [chatId]);
 
-  const handleEvent = useCallback((event: ChatEvent) => {
+  const handleEvent = useCallback((event: ChatStreamEvent) => {
     if (event.chatId !== chatId) {
       return;
     }
@@ -158,25 +171,6 @@ export function ChatDetails({
         return current;
       }
       switch (event.type) {
-        case "chat.updated":
-          return mergeChatSnapshot(current, event.chat);
-        case "chat.status":
-          if (
-            isStaleTerminalEvent(current, event.timestamp)
-            && ACTIVE_CHAT_STATUSES.has(current.state.status)
-            && !TERMINAL_CHAT_STATUSES.has(event.status)
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            state: {
-              ...current.state,
-              status: event.status,
-              activeMessageId: TERMINAL_CHAT_STATUSES.has(event.status) ? undefined : current.state.activeMessageId,
-              lastActivityAt: event.timestamp,
-            },
-          };
         case "chat.message":
           return {
             ...current,
@@ -193,11 +187,11 @@ export function ChatDetails({
           const messages = current.state.messages as MessageData[];
           const existingIndex = messages.findIndex((messageEntry) => messageEntry.id === event.messageId);
           if (existingIndex < 0 && event.baseLength !== 0) {
-            void refreshChat();
+            void refreshChat({ showLoading: false });
             return current;
           }
           if (existingIndex >= 0 && messages[existingIndex]!.content.length !== event.baseLength) {
-            void refreshChat();
+            void refreshChat({ showLoading: false });
             return current;
           }
           const nextMessage: MessageData = existingIndex >= 0
@@ -214,7 +208,7 @@ export function ChatDetails({
               };
           const nextMessages = existingIndex >= 0
             ? messages.map((messageEntry, index) => index === existingIndex ? nextMessage : messageEntry)
-            : [...messages, nextMessage];
+            : [...messages, nextMessage].slice(-1000);
           return {
             ...current,
             state: {
@@ -272,7 +266,7 @@ export function ChatDetails({
           const logs = current.state.logs as TaskLogEntry[];
           const existingIndex = logs.findIndex((logEntry) => logEntry.id === event.logId);
           if (existingIndex < 0 && event.baseLength !== 0) {
-            void refreshChat();
+            void refreshChat({ showLoading: false });
             return current;
           }
           const existingContent = existingIndex >= 0
@@ -306,7 +300,7 @@ export function ChatDetails({
               };
           const nextLogs = existingIndex >= 0
             ? logs.map((logEntry, index) => index === existingIndex ? nextLog : logEntry)
-            : [...logs, nextLog];
+            : [...logs, nextLog].slice(-1000);
           return {
             ...current,
             state: {
@@ -317,47 +311,32 @@ export function ChatDetails({
             },
           };
         }
-        case "chat.interrupted":
-          if (isStaleTerminalEvent(current, event.timestamp)) {
-            return current;
-          }
-          return {
-            ...current,
-            state: {
-              ...current.state,
-              status: "idle",
-              error: undefined,
-              activeMessageId: undefined,
-              lastActivityAt: event.timestamp,
-            },
-          };
-        case "chat.error":
-          if (
-            isStaleTerminalEvent(current, event.timestamp)
-            && event.code === "acp_request_cancelled"
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            state: {
-              ...current.state,
-              status: "failed",
-              error: {
-                message: event.message,
-                timestamp: event.timestamp,
-              },
-            },
-          };
-        case "chat.deleted":
-          return null;
         default:
           return current;
       }
     });
   }, [chatId, refreshChat]);
 
-  const { status: chatSocketStatus } = useAppEvents<ChatEvent>(handleEvent, isChatEvent);
+  useRealtimeRefresh({
+    resources: ["chats"],
+    ids: [chatId],
+    filters: { resource: "chats", id: chatId },
+    refresh: (event) => {
+      if (event.action === "deleted") {
+        setChat(null);
+        setError("Chat not found");
+        return;
+      }
+      return refreshChat({ showLoading: false });
+    },
+  });
+
+  const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
+    filters: { chatId },
+    predicate: (event) => event.type.startsWith("chat."),
+    onEvent: handleEvent,
+    onReconnect: () => refreshChat({ showLoading: false }),
+  });
 
   useEffect(() => {
     void refreshChat();

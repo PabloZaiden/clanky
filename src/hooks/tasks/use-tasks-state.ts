@@ -13,7 +13,7 @@ export interface UseTasksStateResult {
   error: string | null;
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  refresh: () => Promise<void>;
+  refresh: (options?: { showLoading?: boolean }) => Promise<void>;
   refreshTask: (id: string) => Promise<void>;
   getTask: (id: string) => Task | undefined;
 }
@@ -26,14 +26,17 @@ export function useTasksState(): UseTasksStateResult {
   // AbortController for cancelling in-flight fetch requests on unmount
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     // Cancel any in-flight request
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch("/api/tasks", { signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -46,7 +49,9 @@ export function useTasksState(): UseTasksStateResult {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setError(String(err));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 

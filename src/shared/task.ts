@@ -220,7 +220,8 @@ export interface TaskState {
 
 /**
  * A persisted log entry in the task state.
- * Stored in the database and emitted via WebSocket as task.log events.
+ * Stored in the database and emitted through the task incremental realtime
+ * stream as task.log events.
  */
 export interface TaskLogEntry {
   /** Unique ID for the log entry (used for updates and deduplication) */

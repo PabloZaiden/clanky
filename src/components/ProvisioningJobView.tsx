@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
 import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "@/shared";
-import type { WebSocketConnectionStatus } from "../hooks";
+import type { RealtimeStreamStatus } from "../hooks";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {
   verify_devbox: "Verify devbox",
@@ -97,7 +97,7 @@ function getSecondarySummary(mode: ProvisioningJobMode | undefined, snapshot: Pr
   };
 }
 
-function getWebSocketStatusLabel(status: WebSocketConnectionStatus): string {
+function getWebSocketStatusLabel(status: RealtimeStreamStatus): string {
   switch (status) {
     case "open":
       return "Live";
@@ -113,7 +113,7 @@ function getWebSocketStatusLabel(status: WebSocketConnectionStatus): string {
 export interface ProvisioningJobViewProps {
   snapshot: ProvisioningJobSnapshot | null;
   logs: ProvisioningJobSnapshot["logs"];
-  websocketStatus: WebSocketConnectionStatus;
+  websocketStatus: RealtimeStreamStatus;
   loading?: boolean;
   error?: string | null;
 }

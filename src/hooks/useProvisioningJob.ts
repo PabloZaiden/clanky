@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getStoredSshCredentialToken,
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
 import { appFetch } from "../lib/public-path";
 import type { AgentProvider, ProvisioningEvent, PublicProvisioningJobSnapshot, ProvisioningLogEntry } from "@/shared";
-import { useWebSocket, type WebSocketConnectionStatus } from "./useWebSocket";
+import { useRealtimeStream, type RealtimeStreamStatus } from "./useRealtimeStream";
+import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
+
+type ProvisioningStreamEvent = Extract<
+  ProvisioningEvent,
+  { type: "provisioning.step" | "provisioning.output" }
+>;
 
 export interface StartProvisioningJobRequest {
   name: string;
@@ -30,7 +36,7 @@ export interface UseProvisioningJobResult {
   loading: boolean;
   starting: boolean;
   error: string | null;
-  websocketStatus: WebSocketConnectionStatus;
+  websocketStatus: RealtimeStreamStatus;
   startJob: (request: StartProvisioningJobRequest) => Promise<PublicProvisioningJobSnapshot | null>;
   refreshJob: () => Promise<PublicProvisioningJobSnapshot | null>;
   cancelJob: () => Promise<boolean>;
@@ -83,13 +89,18 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     setError(null);
   }, []);
 
-  const refreshJob = useCallback(async (): Promise<PublicProvisioningJobSnapshot | null> => {
+  const refreshJob = useCallback(async (
+    options: { showLoading?: boolean } = {},
+  ): Promise<PublicProvisioningJobSnapshot | null> => {
     if (!activeJobId) {
       return null;
     }
 
+    const showLoading = options.showLoading ?? true;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`);
       if (response.status === 404) {
@@ -109,11 +120,29 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       setError(String(nextError));
       return null;
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [activeJobId, clearActiveJob]);
 
-  const handleProvisioningEvent = useCallback((event: ProvisioningEvent) => {
+  useRealtimeRefresh({
+    resources: ["provisioning-jobs"],
+    ids: activeJobId ? [activeJobId] : [],
+    filters: activeJobId
+      ? { resource: "provisioning-jobs", id: activeJobId }
+      : undefined,
+    enabled: activeJobId !== null,
+    refresh: async (event) => {
+      if (event.action === "deleted") {
+        clearActiveJob();
+        return;
+      }
+      await refreshJob({ showLoading: false });
+    },
+  });
+
+  const handleProvisioningEvent = useCallback((event: ProvisioningStreamEvent) => {
     switch (event.type) {
       case "provisioning.output":
         setLogs((current) => mergeLogEntry(current, event.entry));
@@ -121,39 +150,21 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           void refreshJob();
         }
         return;
-      case "provisioning.started":
       case "provisioning.step":
-      case "provisioning.completed":
-      case "provisioning.failed":
-      case "provisioning.cancelled":
         setSnapshot((current) => current
           ? { ...current, job: event.job }
           : { job: event.job, logs: [] });
-        if (
-          event.type === "provisioning.completed"
-          || event.type === "provisioning.failed"
-          || event.type === "provisioning.cancelled"
-        ) {
-          void refreshJob();
-        }
         return;
     }
   }, [refreshJob]);
 
-  const websocketUrl = useMemo(() => {
-    return activeJobId
-      ? `/api/ws?provisioningJobId=${encodeURIComponent(activeJobId)}`
-      : "/api/ws";
-  }, [activeJobId]);
-
-  const { status: websocketStatus } = useWebSocket<ProvisioningEvent>({
-    url: websocketUrl,
-    autoConnect: activeJobId !== null,
+  const { status: websocketStatus } = useRealtimeStream<ProvisioningStreamEvent>({
+    enabled: activeJobId !== null,
+    filters: activeJobId ? { provisioningJobId: activeJobId } : undefined,
+    predicate: (event) => event.type.startsWith("provisioning."),
     onEvent: handleProvisioningEvent,
-    onStatusChange: (status) => {
-      if (status === "open" && activeJobId) {
-        void refreshJob();
-      }
+    onReconnect: async () => {
+      await refreshJob({ showLoading: false });
     },
   });
 

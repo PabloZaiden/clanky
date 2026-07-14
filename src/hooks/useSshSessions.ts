@@ -3,10 +3,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { SshSession, SshSessionEvent } from "@/shared";
+import type { SshSession } from "@/shared";
 import type { CreateSshSessionRequest, UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
-import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { appFetch } from "../lib/public-path";
 
 export interface UseSshSessionsResult {
@@ -26,9 +26,12 @@ export function useSshSessions(): UseSshSessionsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading ?? true;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const response = await appFetch("/api/ssh-sessions");
       if (!response.ok) {
@@ -41,55 +44,18 @@ export function useSshSessions(): UseSshSessionsResult {
       log.error("Failed to fetch SSH sessions", { error: String(err) });
       setError(String(err));
     } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const refreshSession = useCallback(async (id: string) => {
-    try {
-      const response = await appFetch(`/api/ssh-sessions/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          setSessions((prev) => prev.filter((session) => session.config.id !== id));
-          return;
-        }
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to fetch SSH session");
+      if (showLoading) {
+        setLoading(false);
       }
-      const session = await response.json() as SshSession;
-      setSessions((prev) => {
-        const index = prev.findIndex((item) => item.config.id === id);
-        if (index >= 0) {
-          const next = [...prev];
-          next[index] = session;
-          return next;
-        }
-        return [session, ...prev];
-      });
-    } catch (err) {
-      log.error("Failed to refresh SSH session", { sshSessionId: id, error: String(err) });
-      setError(String(err));
     }
   }, []);
 
-  const handleEvent = useCallback((event: SshSessionEvent | { type?: string; sshSessionId?: string }) => {
-    if (!event.type?.startsWith("ssh_session.")) {
-      return;
-    }
-
-    if (event.type === "ssh_session.deleted" && event.sshSessionId) {
-      setSessions((prev) => prev.filter((session) => session.config.id !== event.sshSessionId));
-      return;
-    }
-
-    if (event.sshSessionId) {
-      void refreshSession(event.sshSessionId);
-    } else {
-      void refresh();
-    }
-  }, [refresh, refreshSession]);
-
-  useAppEvents<SshSessionEvent>(handleEvent, isSshSessionEvent);
+  useRealtimeRefreshWithRecovery({
+    resources: ["ssh-sessions"],
+    filters: { resource: "ssh-sessions" },
+    refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
+  });
 
   const createSession = useCallback(async (request: CreateSshSessionRequest): Promise<SshSession> => {
     try {
