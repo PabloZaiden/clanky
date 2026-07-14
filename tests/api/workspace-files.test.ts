@@ -931,4 +931,34 @@ describe("workspace files API integration", () => {
       error: "start_directory_not_found",
     });
   });
+
+  test("maps shared executor failures to a stable internal error response", async () => {
+    const workspace = await createWorkspace();
+
+    class MetadataFailureExecutor extends TestCommandExecutor {
+      override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+        if (command === "bash" && args[2] === "file-explorer-metadata") {
+          return {
+            success: false,
+            stdout: "",
+            stderr: "sensitive command failure",
+            exitCode: 1,
+          };
+        }
+        return await super.exec(command, args, options);
+      }
+    }
+
+    backendManager.setExecutorFactoryForTesting(() => new MetadataFailureExecutor());
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/content?path=${encodeURIComponent("README.md")}`,
+    );
+
+    expect(response.status).toBe(500);
+    const data = await response.json() as { error: string; message: string };
+    expect(data.error).toBe("workspace_file_error");
+    expect(data.message).toBe("File explorer operation failed");
+    expect(data.message).not.toContain("sensitive command failure");
+  });
 });

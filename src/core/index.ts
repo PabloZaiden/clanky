@@ -5,6 +5,7 @@
 export * from "./conventional-commits";
 export * from "./agents-md-service";
 export * from "./domain-error";
+export * from "./file-explorer-errors";
 export * from "./task-creation-service";
 export * from "./settings-maintenance-service";
 export * from "./chat-manager";

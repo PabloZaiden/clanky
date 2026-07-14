@@ -8,6 +8,10 @@ function sanitizeAttachmentFileName(fileName: string): string {
   return fileName.replace(/["\r\n]/g, "_") || "download";
 }
 
+function sanitizeInlineFileName(fileName: string): string {
+  return fileName.replace(/["\r\n]/g, "_") || "image";
+}
+
 function encodeAttachmentFileName(fileName: string): string {
   return encodeURIComponent(fileName).replace(/[!'()*]/g, (character) =>
     `%${character.charCodeAt(0).toString(16).toUpperCase()}`
@@ -44,6 +48,22 @@ export function createFileDownloadResponse(
   const headers = createFileDownloadHeaders(contentType, file, options);
   return new Response(body, {
     headers,
+  });
+}
+
+export function createInlineImageResponse(
+  data: Uint8Array,
+  contentType: string,
+  fileName: string,
+): Response {
+  const body = new ArrayBuffer(data.byteLength);
+  new Uint8Array(body).set(data);
+  return new Response(body, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Disposition": `inline; filename="${sanitizeInlineFileName(fileName)}"`,
+      "Content-Type": contentType,
+    },
   });
 }
 

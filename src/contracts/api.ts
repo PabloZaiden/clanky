@@ -50,16 +50,16 @@ import {
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   CreateProvisioningJobRequestSchema,
-  ListWorkspaceFilesRequestSchema,
-  GetWorkspaceFileTreeRequestSchema,
-  GetWorkspaceFileRequestSchema,
-  WriteWorkspaceFileRequestSchema,
-  RenameWorkspaceFileRequestSchema,
-  DeleteWorkspaceFileRequestSchema,
-  CreateWorkspaceFileUploadRequestSchema,
-  UploadWorkspaceFileChunkRequestSchema,
-  CompleteWorkspaceFileUploadRequestSchema,
-  CancelWorkspaceFileUploadRequestSchema,
+  ListFileExplorerRequestSchema,
+  GetFileExplorerTreeRequestSchema,
+  GetFileExplorerFileRequestSchema,
+  WriteFileExplorerRequestSchema,
+  RenameFileExplorerRequestSchema,
+  DeleteFileExplorerRequestSchema,
+  CreateFileExplorerUploadRequestSchema,
+  UploadFileExplorerChunkRequestSchema,
+  CompleteFileExplorerUploadRequestSchema,
+  CancelFileExplorerUploadRequestSchema,
 } from "./schemas";
 import type { z } from "zod";
 
@@ -211,63 +211,55 @@ export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobR
 
 export type ListChatsResponse = Chat[];
 
-export type ListWorkspaceFilesRequest = z.input<typeof ListWorkspaceFilesRequestSchema>;
-export type GetWorkspaceFileTreeRequest = z.input<typeof GetWorkspaceFileTreeRequestSchema>;
-export type GetWorkspaceFileRequest = z.input<typeof GetWorkspaceFileRequestSchema>;
-export type WriteWorkspaceFileRequest = z.input<typeof WriteWorkspaceFileRequestSchema>;
-export type RenameWorkspaceFileRequest = z.input<typeof RenameWorkspaceFileRequestSchema>;
-export type DeleteWorkspaceFileRequest = z.input<typeof DeleteWorkspaceFileRequestSchema>;
-export type CreateWorkspaceFileUploadRequest = z.input<typeof CreateWorkspaceFileUploadRequestSchema>;
-export type UploadWorkspaceFileChunkRequest = z.input<typeof UploadWorkspaceFileChunkRequestSchema>;
-export type CompleteWorkspaceFileUploadRequest = z.input<typeof CompleteWorkspaceFileUploadRequestSchema>;
-export type CancelWorkspaceFileUploadRequest = z.input<typeof CancelWorkspaceFileUploadRequestSchema>;
+export type ListWorkspaceFilesRequest = z.input<typeof ListFileExplorerRequestSchema>;
+export type GetWorkspaceFileTreeRequest = z.input<typeof GetFileExplorerTreeRequestSchema>;
+export type GetWorkspaceFileRequest = z.input<typeof GetFileExplorerFileRequestSchema>;
+export type WriteWorkspaceFileRequest = z.input<typeof WriteFileExplorerRequestSchema>;
+export type RenameWorkspaceFileRequest = z.input<typeof RenameFileExplorerRequestSchema>;
+export type DeleteWorkspaceFileRequest = z.input<typeof DeleteFileExplorerRequestSchema>;
+export type CreateWorkspaceFileUploadRequest = z.input<typeof CreateFileExplorerUploadRequestSchema>;
+export type UploadWorkspaceFileChunkRequest = z.input<typeof UploadFileExplorerChunkRequestSchema>;
+export type CompleteWorkspaceFileUploadRequest = z.input<typeof CompleteFileExplorerUploadRequestSchema>;
+export type CancelWorkspaceFileUploadRequest = z.input<typeof CancelFileExplorerUploadRequestSchema>;
 
-export interface WorkspaceFileListResponse {
-  workspaceId: string;
+export interface FileExplorerListData {
   directory: string;
   entries: WorkspaceFileNode[];
 }
 
-export interface WorkspaceFileTreeResponse {
-  workspaceId: string;
+export interface FileExplorerTreeData {
   entriesByDirectory: Record<string, WorkspaceFileNode[]>;
 }
 
-export interface WorkspaceFileReadResponse {
-  workspaceId: string;
+export interface FileExplorerReadData {
   file: WorkspaceFileEntry;
   content: string;
 }
 
-export interface WorkspaceFileMetadataResponse {
-  workspaceId: string;
+export interface FileExplorerMetadataData {
   file: WorkspaceFileEntry;
 }
 
-export interface WorkspaceFileWriteResponse {
+export interface FileExplorerWriteData {
   success: true;
-  workspaceId: string;
   file: WorkspaceFileEntry;
   overwritten: boolean;
 }
 
-export interface WorkspaceFileRenameResponse {
+export interface FileExplorerRenameData {
   success: true;
-  workspaceId: string;
   file: WorkspaceFileEntry;
   previousPath: string;
   overwritten: boolean;
 }
 
-export interface WorkspaceFileDeleteResponse {
+export interface FileExplorerDeleteData {
   success: true;
-  workspaceId: string;
   deletedPath: string;
   kind: WorkspaceFileKind;
 }
 
-export interface WorkspaceFileUploadCreateResponse {
-  workspaceId: string;
+export interface FileExplorerUploadCreateData {
   uploadId: string;
   path: string;
   directory: string;
@@ -275,106 +267,120 @@ export interface WorkspaceFileUploadCreateResponse {
   size: number;
 }
 
-export interface WorkspaceFileUploadChunkResponse {
+export interface FileExplorerUploadChunkData {
   success: true;
-  workspaceId: string;
   uploadId: string;
   bytesWritten: number;
   nextOffset: number;
 }
 
-export interface WorkspaceFileUploadCompleteResponse {
+export interface FileExplorerUploadCompleteData {
+  success: true;
+  file: WorkspaceFileEntry;
+  overwritten: boolean;
+}
+
+export interface FileExplorerUploadCancelData {
+  uploadId: string;
+}
+
+export interface WorkspaceFileListResponse extends FileExplorerListData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileTreeResponse extends FileExplorerTreeData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileReadResponse extends FileExplorerReadData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileMetadataResponse extends FileExplorerMetadataData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileWriteResponse extends FileExplorerWriteData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileRenameResponse extends FileExplorerRenameData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileDeleteResponse extends FileExplorerDeleteData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileUploadCreateResponse extends FileExplorerUploadCreateData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileUploadChunkResponse extends FileExplorerUploadChunkData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileUploadCompleteResponse extends FileExplorerUploadCompleteData {
+  workspaceId: string;
+}
+
+export interface WorkspaceFileUploadCancelResponse extends FileExplorerUploadCancelData {
   success: true;
   workspaceId: string;
-  file: WorkspaceFileEntry;
-  overwritten: boolean;
 }
 
-export interface WorkspaceFileUploadCancelResponse {
-  success: true;
-  workspaceId: string;
-  uploadId: string;
-}
-
-export interface SshServerFileListResponse {
+export interface SshServerFileListResponse extends FileExplorerListData {
   serverId: string;
-  directory: string;
-  entries: WorkspaceFileNode[];
 }
 
-export interface SshServerFileTreeResponse {
+export interface SshServerFileTreeResponse extends FileExplorerTreeData {
   serverId: string;
-  entriesByDirectory: Record<string, WorkspaceFileNode[]>;
 }
 
-export interface SshServerFileReadResponse {
+export interface SshServerFileReadResponse extends FileExplorerReadData {
   serverId: string;
-  file: WorkspaceFileEntry;
-  content: string;
 }
 
-export interface SshServerFileMetadataResponse {
+export interface SshServerFileMetadataResponse extends FileExplorerMetadataData {
   serverId: string;
-  file: WorkspaceFileEntry;
 }
 
-export interface SshServerFileWriteResponse {
-  success: true;
+export interface SshServerFileWriteResponse extends FileExplorerWriteData {
   serverId: string;
-  file: WorkspaceFileEntry;
-  overwritten: boolean;
 }
 
-export interface SshServerFileRenameResponse {
-  success: true;
+export interface SshServerFileRenameResponse extends FileExplorerRenameData {
   serverId: string;
-  file: WorkspaceFileEntry;
-  previousPath: string;
-  overwritten: boolean;
 }
 
-export interface SshServerFileDeleteResponse {
+export interface SshServerFileDeleteResponse extends FileExplorerDeleteData {
+  serverId: string;
+}
+
+export interface SshServerFileUploadCreateResponse extends FileExplorerUploadCreateData {
+  serverId: string;
+}
+
+export interface SshServerFileUploadChunkResponse extends FileExplorerUploadChunkData {
+  serverId: string;
+}
+
+export interface SshServerFileUploadCompleteResponse extends FileExplorerUploadCompleteData {
+  serverId: string;
+}
+
+export interface SshServerFileUploadCancelResponse extends FileExplorerUploadCancelData {
   success: true;
   serverId: string;
-  deletedPath: string;
-  kind: WorkspaceFileKind;
 }
 
-export interface SshServerFileUploadCreateResponse {
-  serverId: string;
-  uploadId: string;
-  path: string;
-  directory: string;
-  fileName: string;
-  size: number;
-}
-
-export interface SshServerFileUploadChunkResponse {
-  success: true;
-  serverId: string;
-  uploadId: string;
-  bytesWritten: number;
-  nextOffset: number;
-}
-
-export interface SshServerFileUploadCompleteResponse {
-  success: true;
-  serverId: string;
-  file: WorkspaceFileEntry;
-  overwritten: boolean;
-}
-
-export interface SshServerFileUploadCancelResponse {
-  success: true;
-  serverId: string;
-  uploadId: string;
-}
-
-export interface WorkspaceFileConflictResponse {
+export interface FileExplorerConflictResponse {
   error: "file_conflict";
   message: string;
   currentFile: WorkspaceFileEntry | null;
 }
+
+export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 
 /**
  * Request body for PATCH /api/ssh-sessions/:id.
