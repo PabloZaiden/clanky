@@ -28,6 +28,8 @@ function getFinalizedResponseBadgeVariant(log: LogEntry): BadgeVariant {
       return "completed";
     case "plan_ready":
       return "plan_ready";
+    case "blocked":
+      return "warning";
     default:
       return "default";
   }

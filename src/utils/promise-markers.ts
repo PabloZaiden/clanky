@@ -1,4 +1,4 @@
-export type PromiseMarkerOutcomeKind = "plan_ready" | "complete" | "custom";
+export type PromiseMarkerOutcomeKind = "plan_ready" | "complete" | "blocked" | "custom";
 
 export interface PromiseMarkerMatch {
   marker: string;
@@ -25,6 +25,8 @@ function getPromiseMarkerOutcomeKind(marker: string): PromiseMarkerOutcomeKind {
       return "plan_ready";
     case "COMPLETE":
       return "complete";
+    case "BLOCKED":
+      return "blocked";
     default:
       return "custom";
   }
@@ -36,6 +38,8 @@ function getPromiseMarkerLabel(marker: string, kind: PromiseMarkerOutcomeKind): 
       return "PLAN READY";
     case "complete":
       return "COMPLETED";
+    case "blocked":
+      return "BLOCKED";
     case "custom":
       return humanizePromiseMarker(marker);
   }

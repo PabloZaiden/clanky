@@ -191,7 +191,7 @@ Create a new task.
 | `maxIterations` | number | No | Maximum iterations (unlimited if not set) |
 | `maxConsecutiveErrors` | number | No | Max errors before failsafe (default: 10) |
 | `activityTimeoutSeconds` | number \| null | No | Seconds without events before treating as error. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
-| `stopPattern` | string | No | Completion regex (default: `<promise>COMPLETE</promise>$`) |
+| `stopPattern` | string | No | Completion regex (default: `<promise>COMPLETE</promise>$`). A trailing `<promise>BLOCKED</promise>` always stops safely without completion or automatic push. |
 | `git` | object | No | Git configuration |
 | `git.branchPrefix` | string | No | Optional prefix prepended before the generated `title-hash` branch name (default: empty string). Non-empty values are normalized to git-safe path segments and stored with a trailing `/`. |
 | `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"clanky"` are treated as empty. The deprecated `git.commitPrefix` is still accepted and converted the same way. |

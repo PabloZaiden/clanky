@@ -81,7 +81,7 @@ export interface IterationResult {
   /** Whether the task should continue */
   continue: boolean;
   /** The outcome of this iteration */
-  outcome: "continue" | "complete" | "error" | "plan_ready";
+  outcome: "continue" | "complete" | "blocked" | "error" | "plan_ready";
   /** The full response content from the AI */
   responseContent: string;
   /** Error message if outcome is "error" */

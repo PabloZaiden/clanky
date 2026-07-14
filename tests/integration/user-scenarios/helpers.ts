@@ -660,6 +660,23 @@ export async function pushTaskViaAPI(
 }
 
 /**
+ * Send a terminal follow-up via the API.
+ */
+export async function sendFollowUpViaAPI(
+  baseUrl: string,
+  taskId: string,
+  message: string,
+): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/follow-up`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, model: null, attachments: [] }),
+  });
+  const body = await response.json();
+  return { status: response.status, body };
+}
+
+/**
  * Update branch (sync with base) for a pushed task via the API.
  */
 export async function updateBranchViaAPI(
