@@ -27,6 +27,8 @@ export const serverSettingsRoutes = defineRoutes({
    * PUT /api/workspaces/:id/server-settings - Update workspace server settings
    */
   "/api/workspaces/:id/server-settings": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read or update workspace server settings.",
     requestSchema: ServerSettingsSchema,
     querySchema: SensitiveQuerySchema,
@@ -99,6 +101,8 @@ export const serverSettingsRoutes = defineRoutes({
    * GET /api/workspaces/:id/server-settings/status - Get connection status for workspace
    */
   "/api/workspaces/:id/server-settings/status": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read the current workspace connection status.",
     async GET(_req: Request, ctx) {
       const id = ctx.params["id"]!;
@@ -121,6 +125,8 @@ export const serverSettingsRoutes = defineRoutes({
    * If no body, uses the workspace's current settings.
    */
   "/api/workspaces/:id/server-settings/test": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Test the configured workspace connection using workspace settings.",
     requestSchema: TestConnectionRequestSchema,
     async POST(req: Request, ctx) {
@@ -175,6 +181,8 @@ export const serverSettingsRoutes = defineRoutes({
    * Expects { settings: ServerSettings, directory: string } in the body.
    */
   "/api/server-settings/test": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Test a server connection without creating a workspace.",
     requestSchema: TestConnectionRequestSchema,
     async POST(req: Request, _ctx) {

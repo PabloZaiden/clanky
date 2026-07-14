@@ -28,6 +28,8 @@ function mapSessionError(error: unknown): Response {
 
 export const sshSessionsRoutes = defineRoutes({
   "/api/ssh-sessions": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Create a workspace-backed SSH session.",
     requestSchema: CreateSshSessionRequestSchema,
     async GET(req: Request, _ctx): Promise<Response> {
@@ -59,6 +61,8 @@ export const sshSessionsRoutes = defineRoutes({
   },
 
   "/api/ssh-sessions/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Update or delete a workspace-backed SSH session.",
     requestSchema: UpdateSshSessionRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {

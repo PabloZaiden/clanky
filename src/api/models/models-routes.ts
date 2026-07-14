@@ -18,6 +18,8 @@ const log = createLogger("api:models");
  */
 export const modelsRoutes = defineRoutes({
   "/api/models/variants": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List available model variants for a workspace.",
     /**
      * GET /api/models/variants - Get lazily discovered variants for one model.
@@ -66,6 +68,8 @@ export const modelsRoutes = defineRoutes({
   },
 
   "/api/models": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List available AI models for a workspace.",
     /**
      * GET /api/models - Get available AI models.

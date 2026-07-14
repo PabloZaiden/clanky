@@ -13,6 +13,8 @@ const log = createLogger("api:tasks");
 
 export const tasksStopRoutes = defineRoutes({
   "/api/tasks/:id/stop": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Stop an active task run.",
     /**
      * POST /api/tasks/:id/stop - Stop an active task without deleting it.

@@ -29,6 +29,8 @@ function mapTaskSshSessionError(error: unknown): Response {
 
 export const tasksSshSessionRoutes = defineRoutes({
   "/api/tasks/:id/ssh-session": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read or create a task-backed SSH session.",
     async GET(_req: Request, ctx): Promise<Response> {
       try {

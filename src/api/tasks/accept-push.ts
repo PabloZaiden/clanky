@@ -19,6 +19,8 @@ const log = createLogger("api:tasks");
 
 export const tasksAcceptPushRoutes = defineRoutes({
   "/api/tasks/:id/accept": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Accept a completed task locally without pushing.",
     /**
      * POST /api/tasks/:id/accept - Accept a completed task locally.
@@ -50,6 +52,8 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/push": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Push a completed task branch to the remote repository.",
     /**
      * POST /api/tasks/:id/push - Push a completed task's branch to remote.
@@ -85,6 +89,8 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/update-branch": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Sync a pushed task branch with its base branch.",
     /**
      * POST /api/tasks/:id/update-branch - Update a pushed task's branch by syncing with the base branch.
@@ -121,6 +127,8 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/mark-merged": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Mark a task as merged after an external merge.",
     /**
      * POST /api/tasks/:id/mark-merged - Mark an externally merged task as merged.
@@ -152,6 +160,8 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/close-local": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Close a locally accepted task without PR actions.",
     /**
      * POST /api/tasks/:id/close-local - Stop accepting follow-up comments locally.
@@ -177,6 +187,8 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/manual-complete": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Promote a stopped or failed task to completed.",
     /**
      * POST /api/tasks/:id/manual-complete - Manually finalize a halted task.

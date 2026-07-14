@@ -70,6 +70,9 @@ function mapPurgeStatuses(body: {
 
 export const agentsRoutes = defineRoutes({
   "/api/agents": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List or create scheduled agents.",
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
@@ -103,6 +106,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read, update, or delete a scheduled agent.",
     async GET(_req: Request, ctx): Promise<Response> {
       const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
@@ -162,6 +168,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/run": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Start an agent run immediately.",
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(RunAgentRequestSchema, req, { allowEmptyBody: true });
       if (!validation.success) {
@@ -189,6 +198,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/interrupt": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Interrupt an active agent run.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const run = await agentManager.interruptAgent(ctx.params["id"]!, "Agent run interrupted by user");
@@ -211,6 +223,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/pause": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Pause a scheduled agent.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const agent = await agentManager.pauseAgent(ctx.params["id"]!);
@@ -229,6 +244,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/resume": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Resume a paused scheduled agent.",
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const agent = await agentManager.resumeAgent(ctx.params["id"]!);
@@ -247,6 +265,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/runs": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List or purge runs for an agent.",
     async GET(req: Request, ctx): Promise<Response> {
       const parsedQuery = validateRequest(
         AgentRunsQuerySchema,
@@ -281,6 +302,9 @@ export const agentsRoutes = defineRoutes({
   },
 
   "/api/agent-runs/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read or delete an agent run.",
     async GET(_req: Request, ctx): Promise<Response> {
       const run = await agentManager.getRun(ctx.params["id"]!);
       if (!run) {

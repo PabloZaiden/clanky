@@ -8,6 +8,8 @@ const log = createLogger("api:tasks:chat");
 
 export const tasksChatRoutes = defineRoutes({
   "/api/tasks/:id/chat": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read or create the chat session attached to a task.",
     async GET(_req: Request, ctx): Promise<Response> {
       const task = await taskManager.getTask(ctx.params["id"]!);

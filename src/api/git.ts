@@ -151,6 +151,8 @@ export const gitRoutes = defineRoutes({
    * @returns BranchesResponse with currentBranch and branches array
    */
   "/api/git/branches": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List local git branches for a workspace.",
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/branches");
@@ -194,6 +196,8 @@ export const gitRoutes = defineRoutes({
    * @returns DefaultBranchResponse with defaultBranch
    */
   "/api/git/default-branch": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Detect the default git branch for a workspace.",
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/default-branch");
@@ -219,6 +223,8 @@ export const gitRoutes = defineRoutes({
   },
 
   "/api/git/remote-status": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Check whether a git remote exists for a workspace.",
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/remote-status");
@@ -245,6 +251,8 @@ export const gitRoutes = defineRoutes({
   },
 
   "/api/git/github-repository-url": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Resolve the GitHub repository URL for a workspace.",
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-repository-url");

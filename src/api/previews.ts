@@ -22,6 +22,9 @@ function mapPreviewError(error: unknown): Response {
 
 export const previewRoutes = defineRoutes({
   "/api/workspaces/:workspaceId/previews": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List previews for a workspace.",
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const previews = await previewSessionManager.listWorkspacePreviews(ctx.params["workspaceId"]!);
@@ -37,6 +40,9 @@ export const previewRoutes = defineRoutes({
   },
 
   "/api/previews": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List active workspace previews.",
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         const previews = await previewSessionManager.listActivePreviews();
@@ -49,6 +55,9 @@ export const previewRoutes = defineRoutes({
   },
 
   "/api/previews/:previewId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Close an active workspace preview.",
     async DELETE(_req: Request, ctx): Promise<Response> {
       try {
         const closed = await previewSessionManager.closePreview(ctx.params["previewId"]!, "Closed from web UI");

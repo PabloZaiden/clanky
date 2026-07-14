@@ -14,6 +14,8 @@ const log = createLogger("api:tasks");
 
 export const tasksCommentsRoutes = defineRoutes({
   "/api/tasks/:id/comments": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List review comments for a task.",
     /**
      * GET /api/tasks/:id/comments - Get all review comments for a task.

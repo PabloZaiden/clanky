@@ -103,6 +103,8 @@ function parseSearchParams<T extends Record<string, unknown>>(
 
 export const workspaceFilesRoutes = defineRoutes({
   "/api/workspaces/:id/files": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List workspace files in the active explorer root.",
     querySchema: ListWorkspaceFilesRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -137,6 +139,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/content": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read a workspace file.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -166,6 +170,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/preview": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Preview a browser-renderable workspace image file.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -196,6 +202,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/download": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Download a workspace file from the active explorer root.",
     querySchema: GetWorkspaceFileRequestSchema,
 
@@ -230,6 +238,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/tree": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Load the full workspace file tree.",
     querySchema: GetWorkspaceFileTreeRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -258,6 +268,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/metadata": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read workspace file metadata.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -294,6 +306,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/write": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Write a workspace file with optional conflict checks.",
     requestSchema: WriteWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -330,6 +344,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/rename": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Rename a workspace file or directory in the active explorer root.",
     requestSchema: RenameWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -366,6 +382,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/delete": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Delete a workspace file or directory in the active explorer root.",
     requestSchema: DeleteWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -401,6 +419,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/upload": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Create a workspace file upload session.",
     requestSchema: CreateWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -437,6 +457,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/upload/chunk": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Upload a raw chunk for a workspace file upload session.",
     querySchema: UploadWorkspaceFileChunkRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -476,6 +498,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/upload/complete": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Complete a workspace file upload session.",
     requestSchema: CompleteWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -509,6 +533,8 @@ export const workspaceFilesRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/files/upload/cancel": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Cancel a workspace file upload session.",
     requestSchema: CancelWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {

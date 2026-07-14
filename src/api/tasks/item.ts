@@ -115,6 +115,8 @@ async function applyTaskUpdates(
 
 export const tasksItemRoutes = defineRoutes({
   "/api/tasks/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read, update, or delete a task.",
     requestSchema: UpdateTaskRequestSchema,
     /**

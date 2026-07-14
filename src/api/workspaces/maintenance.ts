@@ -12,6 +12,8 @@ const log = createLogger("api:workspace-maintenance");
 
 export const workspaceMaintenanceRoutes = defineRoutes({
   "/api/workspaces/:id/pull-latest-changes": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Pull the latest changes for a workspace's default branch.",
     async POST(_req: Request, ctx): Promise<Response> {
       const workspaceResult = await requireWorkspace(ctx.params["id"]!);

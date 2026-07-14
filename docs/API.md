@@ -16,6 +16,23 @@ Authentication, users, passkeys, API keys, device auth, health, theme, log level
 
 `clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with stored framework tokens, `clanky ws` opens authenticated websocket sessions against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
 
+## Route security and discovery metadata
+
+Every Clanky-owned route declares its authorization and same-origin policy in
+its `defineRoutes` entry. Normal private REST routes use authenticated user
+access and same-origin protection for browser mutations. The database reset and
+terminal-task purge routes are owner-only. Raw preview, SSH terminal, and VNC
+websocket upgrades require an authenticated user and always enforce
+same-origin checks.
+
+Route `auth`, `sameOrigin`, `scopes`, request/query/response schemas,
+descriptions, tags, and CLI paths are consumed directly by the framework route
+catalog. `clanky api` and `clanky schema` therefore expose the same contract
+that the server enforces; no separate policy catalog or global route rewrite is
+used. Public endpoints are not part of the Clanky-owned API contract unless a
+route explicitly documents a deliberate `auth: "public"` and
+`sameOrigin: "never"` exception.
+
 ## CLI discovery helpers
 
 The standalone `clanky` binary exposes the server and API discovery directly:

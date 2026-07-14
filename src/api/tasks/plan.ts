@@ -21,6 +21,8 @@ const log = createLogger("api:tasks");
 
 export const tasksPlanRoutes = defineRoutes({
   "/api/tasks/:id/plan/feedback": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Submit feedback on a generated task plan.",
     requestSchema: PlanFeedbackRequestSchema,
     /**
@@ -69,6 +71,8 @@ export const tasksPlanRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan/accept": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Accept a generated task plan.",
     requestSchema: PlanAcceptRequestSchema,
     /**
@@ -115,6 +119,8 @@ export const tasksPlanRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan/discard": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Discard a generated task plan and delete the task.",
     /**
      * POST /api/tasks/:id/plan/discard - Discard the plan and delete the task.

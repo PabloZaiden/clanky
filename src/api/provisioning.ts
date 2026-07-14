@@ -26,6 +26,8 @@ function mapProvisioningError(error: unknown): Response {
 
 export const provisioningRoutes = defineRoutes({
   "/api/provisioning-jobs": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Start a remote provisioning job.",
     requestSchema: CreateProvisioningJobRequestSchema,
     querySchema: SensitiveQuerySchema,
@@ -74,6 +76,8 @@ export const provisioningRoutes = defineRoutes({
   },
 
   "/api/provisioning-jobs/:id": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read or cancel a remote provisioning job.",
     querySchema: SensitiveQuerySchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -114,6 +118,8 @@ export const provisioningRoutes = defineRoutes({
   },
 
   "/api/provisioning-jobs/:id/logs": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read logs for a remote provisioning job.",
     async GET(_req: Request, ctx): Promise<Response> {
       try {

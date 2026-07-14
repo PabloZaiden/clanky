@@ -152,6 +152,8 @@ async function getServerFileTarget(
 
 export const sshServerFilesRoutes = defineRoutes({
   "/api/ssh-servers/:id/files": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "List standalone SSH server files in the active explorer root.",
     querySchema: ListWorkspaceFilesRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -184,6 +186,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/content": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read a standalone SSH server file.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -212,6 +216,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/preview": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Preview a browser-renderable standalone SSH server image file.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -236,6 +242,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/download": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Download a standalone SSH server file from the active explorer root.",
     querySchema: GetWorkspaceFileRequestSchema,
 
@@ -267,6 +275,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/tree": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Load the full standalone SSH server file tree.",
     querySchema: GetWorkspaceFileTreeRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -293,6 +303,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/metadata": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Read standalone SSH server file metadata.",
     querySchema: GetWorkspaceFileRequestSchema,
     async GET(req: Request, ctx): Promise<Response> {
@@ -323,6 +335,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/write": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Write a standalone SSH server file.",
     requestSchema: WriteWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -360,6 +374,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/rename": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Rename a standalone SSH server file or directory in the active explorer root.",
     requestSchema: RenameWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -398,6 +414,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/delete": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Delete a standalone SSH server file or directory in the active explorer root.",
     requestSchema: DeleteWorkspaceFileRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -430,6 +448,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/upload": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Create a standalone SSH server file upload session.",
     requestSchema: CreateWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -465,6 +485,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/upload/chunk": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Upload a raw chunk for a standalone SSH server file upload session.",
     querySchema: UploadWorkspaceFileChunkRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -506,6 +528,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/upload/complete": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Complete a standalone SSH server file upload session.",
     requestSchema: CompleteWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
@@ -535,6 +559,8 @@ export const sshServerFilesRoutes = defineRoutes({
   },
 
   "/api/ssh-servers/:id/files/upload/cancel": {
+    auth: "user",
+    sameOrigin: "mutations",
     description: "Cancel a standalone SSH server file upload session.",
     requestSchema: CancelWorkspaceFileUploadRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
