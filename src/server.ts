@@ -14,6 +14,7 @@ import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persist
 import { resetStaleTasks } from "./persistence/tasks";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
+import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
 import { log, setLogLevel } from "./core/logger";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
@@ -46,7 +47,10 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     return;
   }
   const publisher = createClankyRealtimePublisher(appServer.realtime);
-  const publishEvent = (event: ClankyDomainEvent, context: EventContext): void => {
+  const publishEvent = (event: ClankyDomainEvent | ServerEvent, context: EventContext): void => {
+    if (isServerEvent(event)) {
+      return;
+    }
     if (!context.userId) {
       log.warn("Skipping user realtime event without an owner context", {
         eventType: event.type,

@@ -224,9 +224,9 @@ export function publishClankyDomainEvent(
     case "task.tool_call.extra":
     case "task.log":
     case "task.log.delta":
-    case "task.iteration.start":
       publishStream(publisher, owner, event, { taskId: event.taskId });
       return;
+    case "task.iteration.start":
     case "task.iteration.end":
     case "task.git.commit":
       publishStream(publisher, owner, event, { taskId: event.taskId });

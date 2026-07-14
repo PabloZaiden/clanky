@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import { RealtimeBus, type WebSocketData } from "@pablozaiden/webapp/server";
+import { isServerEvent } from "../../src/core/backend/backend-state";
 import {
   CLANKY_REALTIME_RESOURCES,
   createClankyRealtimePublisher,
@@ -70,6 +71,11 @@ function createSocket(userId: string, filters?: Record<string, string>): {
 }
 
 describe("Clanky realtime migration", () => {
+  test("classifies backend server events before domain publication", () => {
+    expect(isServerEvent({ type: "server.reset" })).toBe(true);
+    expect(isServerEvent({ type: "task.started" })).toBe(false);
+  });
+
   test("maps lifecycle events to owner-targeted resource invalidations", () => {
     const recording = createRecordingPublisher();
 
@@ -104,6 +110,30 @@ describe("Clanky realtime migration", () => {
     expect(recording.streams).toEqual([{
       ownerId: "user-1",
       type: "task.iteration.end",
+      target: { taskId: "task-1" },
+    }]);
+    expect(recording.resources).toEqual([{
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.tasks,
+      action: "changed",
+      id: "task-1",
+      scope: undefined,
+    }]);
+  });
+
+  test("invalidates the task resource when an iteration starts", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "task.iteration.start",
+      taskId: "task-1",
+      iteration: 3,
+      timestamp: "2026-01-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    expect(recording.streams).toEqual([{
+      ownerId: "user-1",
+      type: "task.iteration.start",
       target: { taskId: "task-1" },
     }]);
     expect(recording.resources).toEqual([{

@@ -113,6 +113,10 @@ export type ServerEvent =
   | ServerErrorEvent
   | ServerResetEvent;
 
+export function isServerEvent(event: { type?: unknown }): event is ServerEvent {
+  return typeof event.type === "string" && event.type.startsWith("server.");
+}
+
 /**
  * Combined event type for the event emitter.
  */
