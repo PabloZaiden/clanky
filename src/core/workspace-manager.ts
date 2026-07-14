@@ -8,15 +8,13 @@
 
 import {
   createWorkspace as createWorkspaceRecord,
-  exportWorkspaces as exportWorkspaceRecords,
   getWorkspace as getWorkspaceRecord,
   listWorkspaces as listWorkspaceRecords,
   touchWorkspace as touchWorkspaceRecord,
   updateWorkspace as updateWorkspaceRecord,
 } from "../persistence/workspaces";
-import type { WorkspaceConfig, WorkspaceExportData } from "@/contracts/schemas";
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
-import type { Workspace, WorkspaceImportResult } from "@/shared/workspace";
+import type { Workspace } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { DomainError } from "./domain-error";
 import {
@@ -97,18 +95,6 @@ function createWorkspaceRecordFromInput(
     updatedAt: now,
     ...(input.archived !== undefined ? { archived: input.archived } : { archived: false }),
     ...(input.isPrivate !== undefined ? { isPrivate: input.isPrivate } : {}),
-  };
-}
-
-function createImportFailure(
-  config: WorkspaceConfig,
-  reason: string,
-): WorkspaceImportResult["details"][number] {
-  return {
-    name: config.name.trim(),
-    directory: config.directory.trim(),
-    status: "failed",
-    reason,
   };
 }
 
@@ -232,65 +218,6 @@ export class WorkspaceManager {
     if (result.success) {
       await backendManager.resetWorkspaceConnection(id);
     }
-    return result;
-  }
-
-  async exportWorkspaces(): Promise<WorkspaceExportData> {
-    return await exportWorkspaceRecords();
-  }
-
-  async importWorkspaces(data: WorkspaceExportData): Promise<WorkspaceImportResult> {
-    log.debug("Importing workspaces with validation", {
-      count: data.workspaces.length,
-    });
-
-    const result: WorkspaceImportResult = {
-      created: 0,
-      failed: 0,
-      details: [],
-    };
-
-    for (const config of data.workspaces) {
-      const name = config.name.trim();
-      const directory = config.directory.trim();
-      const serverSettings = config.serverSettings ?? getDefaultServerSettings();
-
-      try {
-        const validation = await this.validateRemoteDirectory(serverSettings, directory);
-        const failure = getValidationFailure(validation);
-        if (failure) {
-          result.failed++;
-          const reason = failure.code === "not_git_repo"
-            ? "Directory is not a git repository"
-            : failure.message;
-          result.details.push(createImportFailure(config, reason));
-          continue;
-        }
-      } catch (error) {
-        result.failed++;
-        result.details.push(createImportFailure(config, `Validation error: ${String(error)}`));
-        continue;
-      }
-
-      const workspace = createWorkspaceRecordFromInput({
-        name,
-        directory,
-        serverSettings,
-        archived: config.archived === true,
-      });
-      await createWorkspaceRecord(workspace);
-      result.created++;
-      result.details.push({
-        name,
-        directory,
-        status: "created",
-      });
-    }
-
-    log.info("Workspaces imported with validation", {
-      created: result.created,
-      failed: result.failed,
-    });
     return result;
   }
 
