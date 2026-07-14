@@ -13,7 +13,7 @@ import {
 } from "../types/schemas";
 import { agentManager } from "../core/agent-manager";
 import { createLogger } from "../core/logger";
-import { isModelEnabled } from "./models";
+import { isModelEnabled } from "../core/model-discovery";
 import { errorResponse, requireWorkspace, successResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 

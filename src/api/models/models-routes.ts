@@ -8,8 +8,11 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "../../core/logger";
+import {
+  getModelVariantsForWorkspace,
+  getModelsForWorkspace,
+} from "../../core/model-discovery";
 import { errorResponse, requireWorkspace } from "../helpers";
-import { getModelVariantsForWorkspace, getModelsForWorkspace } from "./model-discovery";
 
 const log = createLogger("api:models");
 

@@ -23,7 +23,7 @@ import {
   UpdateSshServerRequestSchema,
   UpdateSshSessionRequestSchema,
 } from "../types/schemas";
-import { getModelsForSettings } from "./models";
+import { getModelsForSettings } from "../core/model-discovery";
 import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
 import type { ServerSettings } from "../types/settings";

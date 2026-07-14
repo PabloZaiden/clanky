@@ -3,6 +3,10 @@
  */
 
 export * from "./conventional-commits";
+export * from "./agents-md-service";
+export * from "./domain-error";
+export * from "./task-creation-service";
+export * from "./settings-maintenance-service";
 export * from "./chat-manager";
 export * from "./agent-manager";
 export * from "./agent-runner";
@@ -23,3 +27,6 @@ export * from "./ssh-server-key-manager";
 export * from "./ssh-session-manager";
 export * from "./ssh-terminal-env";
 export * from "./provisioning-manager";
+export * from "./preferences-manager";
+export * from "./model-discovery";
+export * from "./workspace-manager";

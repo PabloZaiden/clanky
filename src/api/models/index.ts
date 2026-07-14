@@ -4,7 +4,6 @@
  * @module api/models
  */
 
-export * from "./model-discovery";
 export * from "./models-routes";
 export * from "./preferences-routes";
 

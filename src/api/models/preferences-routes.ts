@@ -12,26 +12,9 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  * @module api/models/preferences-routes
  */
 
-import {
-  getLastModel,
-  getLastCheapModel,
-  setLastModel,
-  setLastCheapModel,
-  getLastDirectory,
-  setLastDirectory,
-  getMarkdownRenderingEnabled,
-  setMarkdownRenderingEnabled,
-  getFileExplorerFullTreeEnabled,
-  setFileExplorerFullTreeEnabled,
-  getDashboardViewMode,
-  setDashboardViewMode,
-  getQuickChatSettings,
-  setQuickChatSettings,
-  getSchedulerTimezone,
-  setSchedulerTimezone,
-} from "../../persistence/preferences";
-import { getWorkspace } from "../../persistence/workspaces";
 import { createLogger } from "../../core/logger";
+import { isDomainError } from "../../core/domain-error";
+import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
 import {
@@ -69,7 +52,7 @@ export const preferencesRoutes = defineRoutes({
      * @returns ModelConfig object or null if none set
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const lastModel = await getLastModel();
+      const lastModel = await preferencesManager.getLastModel();
       return Response.json(lastModel ?? null);
     },
 
@@ -90,7 +73,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setLastModel({
+        await preferencesManager.setLastModel({
           providerID: result.data.providerID,
           modelID: result.data.modelID,
           variant: result.data.variant,
@@ -113,7 +96,7 @@ export const preferencesRoutes = defineRoutes({
      * GET /api/preferences/last-cheap-model - Get the last used cheap helper-model selection.
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const lastCheapModel = await getLastCheapModel();
+      const lastCheapModel = await preferencesManager.getLastCheapModel();
       return Response.json(lastCheapModel ?? null);
     },
 
@@ -127,7 +110,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setLastCheapModel(result.data);
+        await preferencesManager.setLastCheapModel(result.data);
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("last-cheap-model", error);
@@ -147,7 +130,7 @@ export const preferencesRoutes = defineRoutes({
      * @returns Directory path string or null if none set
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const lastDirectory = await getLastDirectory();
+      const lastDirectory = await preferencesManager.getLastDirectory();
       return Response.json(lastDirectory ?? null);
     },
 
@@ -166,7 +149,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setLastDirectory(result.data.directory);
+        await preferencesManager.setLastDirectory(result.data.directory);
 
         return Response.json({ success: true });
       } catch (error) {
@@ -187,7 +170,7 @@ export const preferencesRoutes = defineRoutes({
      * @returns Boolean indicating if markdown rendering is enabled
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const enabled = await getMarkdownRenderingEnabled();
+      const enabled = await preferencesManager.getMarkdownRenderingEnabled();
       return Response.json({ enabled });
     },
 
@@ -206,7 +189,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setMarkdownRenderingEnabled(result.data.enabled);
+        await preferencesManager.setMarkdownRenderingEnabled(result.data.enabled);
 
         return Response.json({ success: true });
       } catch (error) {
@@ -227,7 +210,7 @@ export const preferencesRoutes = defineRoutes({
      * @returns Boolean indicating if the explorer should load the full tree at once
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const enabled = await getFileExplorerFullTreeEnabled();
+      const enabled = await preferencesManager.getFileExplorerFullTreeEnabled();
       return Response.json({ enabled });
     },
 
@@ -246,7 +229,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setFileExplorerFullTreeEnabled(result.data.enabled);
+        await preferencesManager.setFileExplorerFullTreeEnabled(result.data.enabled);
 
         return Response.json({ success: true });
       } catch (error) {
@@ -267,7 +250,7 @@ export const preferencesRoutes = defineRoutes({
      * @returns Object with mode property
      */
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const mode = await getDashboardViewMode();
+      const mode = await preferencesManager.getDashboardViewMode();
       return Response.json({ mode });
     },
 
@@ -286,7 +269,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setDashboardViewMode(result.data.mode);
+        await preferencesManager.setDashboardViewMode(result.data.mode);
         return Response.json({ success: true, mode: result.data.mode });
       } catch (error) {
         logPreferenceSaveFailure("dashboard-view-mode", error);
@@ -301,7 +284,7 @@ export const preferencesRoutes = defineRoutes({
     description: "Persist quick chat workspace and model preferences.",
     requestSchema: SetQuickChatSettingsRequestSchema,
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const settings = await getQuickChatSettings();
+      const settings = await preferencesManager.getQuickChatSettings();
       return Response.json(settings);
     },
 
@@ -317,19 +300,12 @@ export const preferencesRoutes = defineRoutes({
           model: result.data.model,
           useWorktree: result.data.useWorktree,
         };
-        if (settings.workspaceId) {
-          const workspace = await getWorkspace(settings.workspaceId);
-          if (!workspace) {
-            return errorResponse(
-              "workspace_not_found",
-              "Quick chat workspace does not exist",
-              404,
-            );
-          }
-        }
-        await setQuickChatSettings(settings);
+        await preferencesManager.setQuickChatSettings(settings);
         return Response.json({ success: true, settings });
       } catch (error) {
+        if (isDomainError(error) && error.code === "workspace_not_found") {
+          return errorResponse(error.code, error.message, 404);
+        }
         logPreferenceSaveFailure("quick-chat", error);
         return errorResponse("save_failed", String(error), 500);
       }
@@ -341,7 +317,7 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the scheduler timezone preference.",
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const timezone = await getSchedulerTimezone();
+      const timezone = await preferencesManager.getSchedulerTimezone();
       return Response.json({ timezone });
     },
 
@@ -352,7 +328,7 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await setSchedulerTimezone(result.data.timezone);
+        await preferencesManager.setSchedulerTimezone(result.data.timezone);
         return Response.json({ success: true, timezone: result.data.timezone });
       } catch (error) {
         logPreferenceSaveFailure("scheduler-timezone", error);

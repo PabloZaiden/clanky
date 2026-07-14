@@ -4,12 +4,9 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "../../core/logger";
-import { purgeArchivedWorkspaceTasks } from "./archived-task-purge";
-import {
-  requireWorkspace,
-  errorResponse,
-  successResponse,
-} from "../helpers";
+import { isDomainError } from "../../core/domain-error";
+import { purgeArchivedWorkspaceTasks } from "../../core/settings-maintenance-service";
+import { errorResponse, successResponse } from "../helpers";
 
 const log = createLogger("api:workspaces");
 
@@ -27,11 +24,6 @@ export const archivedTasksRoutes = defineRoutes({
       log.debug("POST /api/workspaces/:id/archived-tasks/purge", { workspaceId: id });
 
       try {
-        const workspace = await requireWorkspace(id);
-        if (workspace instanceof Response) {
-          return workspace;
-        }
-
         const purgeResult = await purgeArchivedWorkspaceTasks(id);
 
         log.info("POST /api/workspaces/:id/archived-tasks/purge - Completed", {
@@ -43,6 +35,9 @@ export const archivedTasksRoutes = defineRoutes({
 
         return successResponse({ ...purgeResult });
       } catch (error) {
+        if (isDomainError(error) && error.code === "workspace_not_found") {
+          return errorResponse("workspace_not_found", "Workspace not found", 404);
+        }
         log.error("Failed to purge archived workspace tasks:", {
           workspaceId: id,
           error: String(error),
