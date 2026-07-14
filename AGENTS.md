@@ -139,6 +139,18 @@ When workspace and standalone SSH-server routes expose the same domain operation
 
 Use the Git/worktree service's canonical managed-path helpers for task and chat worktree construction, ownership validation, lookup, and cleanup. Keep path construction explicit about the repository directory and do not use local Clanky-server filesystem checks for workspace repositories.
 
+### Chat core service boundaries
+
+`ChatManager` is an orchestration facade, not a second domain implementation.
+Keep chat persistence/state writes, lifecycle workflows, workspace/worktree
+operations, backend/session ownership, conversation streaming, interaction
+queues/permissions, and chat-to-task conversion in their focused core
+services. The facade may coordinate cross-service workflows and preserve its
+public API, but must not reintroduce service-owned mutable maps, duplicate
+state-transition rules, or direct persistence/transport implementations.
+Service dependencies must remain one-way and transport-neutral; workspace
+repository operations continue to use the selected host's `CommandExecutor`.
+
 ### TypeScript
 
 - **Strict mode is enabled** - respect all strict checks
