@@ -1175,7 +1175,9 @@ export function AppShell() {
               variant: "ghost" as const,
               disabled: quickChatSettings.loading
                 || quickChatSettings.saving
-                || (!quickChatSettings.settings.workspaceId && !quickChatSettings.settings.model),
+                || (!quickChatSettings.settings.workspaceId
+                  && !quickChatSettings.settings.model
+                  && !quickChatSettings.settings.useWorktree),
               onAction: () => {
                 void quickChatSettings.updateSettings(DEFAULT_QUICK_CHAT_SETTINGS);
               },
