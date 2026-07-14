@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ModelInfo, PublicWorkspace } from "../../types";
-import type { QuickChatSettings } from "../../types/preferences";
-import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../types/preferences";
+import type { PublicWorkspace } from "@/shared";
+import type { ModelInfo } from "@/contracts";
+import type { QuickChatSettings } from "@/shared/preferences";
+import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import { createLogger } from "../../lib/logger";
 import { fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import {

@@ -1,5 +1,5 @@
-import type { Chat } from "../types";
-import { mergeToolCallRecords } from "../types/tool-call";
+import type { Chat } from "@/shared";
+import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
 

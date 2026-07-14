@@ -4,7 +4,7 @@
  * No external dependencies - uses native patterns.
  */
 
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "../types";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
 import { log } from "./logger";
 
 type EventHandler<T> = (event: T) => void;

@@ -136,6 +136,8 @@ export type AgentTransport = z.infer<typeof AgentTransportSchema>;
 export type AgentSettings = z.infer<typeof AgentSettingsSchema>;
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>;
 
+export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
+export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type WorkspaceExportData = z.infer<typeof WorkspaceExportSchema>;
 export type WorkspaceImportRequest = z.infer<typeof WorkspaceImportRequestSchema>;

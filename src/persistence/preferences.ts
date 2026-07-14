@@ -14,23 +14,17 @@
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
 import { requirePersistenceUserId } from "./ownership";
-import {
-  DEFAULT_QUICK_CHAT_SETTINGS,
-  DEFAULT_SCHEDULER_TIMEZONE,
-  isValidIanaTimeZone,
-  type DashboardViewMode,
-  type QuickChatSettings,
-} from "../types/preferences";
-import { CheapModelSelectionSchema } from "../types/schemas/model";
-import { normalizeQuickChatSettings } from "../types/schemas";
-import type { CheapModelSelection } from "../types";
+import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type DashboardViewMode, type QuickChatSettings } from "@/shared/preferences";
+import { CheapModelSelectionSchema } from "@/contracts/schemas/model";
+import { normalizeQuickChatSettings } from "@/contracts/schemas";
+import type { CheapModelSelection } from "@/shared";
 
 const log = createLogger("persistence:preferences");
 
 /**
  * Re-export DashboardViewMode so existing consumers of this module don't break.
  */
-export type { DashboardViewMode } from "../types/preferences";
+export type { DashboardViewMode } from "@/shared/preferences";
 
 /**
  * Valid dashboard view mode values for validation.

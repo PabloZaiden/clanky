@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type { SshServer, VncSession } from "../../types";
+import type { SshServer, VncSession } from "@/shared";
 import { useToast } from "../../hooks";
 import { closeVncSessionApi, createOrResumeVncSessionApi, listVncSessionsApi } from "../../hooks/sshServerActions";
 import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/ssh-browser-credentials";

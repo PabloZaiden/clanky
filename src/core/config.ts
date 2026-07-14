@@ -3,7 +3,7 @@
  * Reads configuration from environment variables.
  */
 
-import type { AppConfig } from "../types/api";
+import type { AppConfig } from "@/contracts";
 
 export function isTruthyEnvFlag(name: string): boolean {
   const value = process.env[name]?.trim().toLowerCase();

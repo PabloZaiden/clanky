@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSshServerApi } from "../../hooks";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 import type { SshSessionKind } from "../../hooks/useSshSession";
 import { isStandaloneSession, type SshSession } from "./session-utils";
 

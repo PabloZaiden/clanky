@@ -1,4 +1,4 @@
-import type { AgentProvider, AgentTransport } from "../types/settings";
+import type { AgentProvider, AgentTransport } from "@/shared/settings";
 import { getMockAcpCommand } from "../backends/acp/mock-acp-command";
 import { isMockAcpEnabled } from "./config";
 import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";

@@ -30,19 +30,12 @@ import { appFetch } from "../lib/public-path";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
-import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
+import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
 import { DictationControls, insertDictationText } from "./dictation";
-import type {
-  Chat,
-  ChatEvent,
-  ComposerImageAttachment,
-  TaskLogEntry,
-  MessageData,
-  ToolCallData,
-} from "../types";
+import type { Chat, ChatEvent, ComposerImageAttachment, TaskLogEntry, MessageData, ToolCallData } from "@/shared";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
 const TERMINAL_CHAT_STATUSES = new Set(["idle", "stopped", "failed"]);

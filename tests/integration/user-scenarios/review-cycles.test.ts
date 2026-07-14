@@ -15,7 +15,7 @@ import {
   branchExists,
   type TestServerContext,
 } from "./helpers";
-import type { Task } from "../../../src/types/task";
+import type { Task } from "@/shared/task";
 
 describe("Review Cycle User Scenarios", () => {
   describe("Pushed Task with Single Review Cycle", () => {

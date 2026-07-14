@@ -1,9 +1,9 @@
-import type { SshSession, SshConnectionMode, Workspace } from "../../types";
-import type { CreateSshSessionRequest, CreateSshServerRequest } from "../../types/api";
-import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { SshSession, SshConnectionMode, Workspace } from "@/shared";
+import type { CreateSshSessionRequest, CreateSshServerRequest } from "@/contracts";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
 import type { ComposeKind, ShellRoute } from "./shell-types";

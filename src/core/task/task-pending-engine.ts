@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
-import type { ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createLogger } from "../logger";
 import { isStaleTaskStatus, loadTask, resetStaleTask } from "../../persistence/tasks";
 import { jumpstartTaskFromEngine } from "./task-jumpstart";

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES, type Task } from "../../types/task";
-import type { UpdateTaskRequest } from "../../types";
+import { POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES, type Task } from "@/shared/task";
+import type { UpdateTaskRequest } from "@/contracts";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { taskDetailsTabContentFullWidthClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";

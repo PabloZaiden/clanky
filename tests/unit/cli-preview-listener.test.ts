@@ -4,7 +4,7 @@ import { join } from "path";
 import { describe, expect, test } from "bun:test";
 
 import { runPreviewCommand } from "../../src/cli/preview";
-import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage } from "../../src/types";
+import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage } from "@/shared";
 
 class FakeBridgeSocket extends EventTarget {
   readyState: number = WebSocket.CONNECTING;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DevboxTemplateSummary } from "../types";
+import type { DevboxTemplateSummary } from "@/shared";
 
 const DevboxTemplateSummarySchema = z.object({
   name: z.string().trim().min(1, "template name is required"),

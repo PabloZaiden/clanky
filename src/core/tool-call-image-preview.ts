@@ -2,12 +2,8 @@ import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import { backendManager } from "./backend/backend-manager";
 import { quoteShell } from "./remote-executor/utils";
-import type { ToolCallExtra } from "../types/tool-call";
-import {
-  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-  type MessageImageAttachment,
-} from "../types/message-attachments";
+import type { ToolCallExtra } from "@/shared/tool-call";
+import { MESSAGE_IMAGE_ALLOWED_MIME_TYPES, MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES, type MessageImageAttachment } from "@/shared/message-attachments";
 
 const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>(MESSAGE_IMAGE_ALLOWED_MIME_TYPES);
 const VIEW_ALLOWED_INPUT_KEYS = new Set(["path", "filePath", "view_range", "forceReadLargeFiles"]);

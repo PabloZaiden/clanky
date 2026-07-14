@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import type { ModelInfo } from "../types";
+import type { ModelInfo } from "@/contracts";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 

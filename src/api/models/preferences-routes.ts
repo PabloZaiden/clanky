@@ -17,16 +17,7 @@ import { isDomainError } from "../../core/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
-import {
-  SetLastModelRequestSchema,
-  SetLastCheapModelRequestSchema,
-  SetLastDirectoryRequestSchema,
-  SetMarkdownRenderingRequestSchema,
-  SetFileExplorerFullTreeRequestSchema,
-  SetDashboardViewModeRequestSchema,
-  SetSchedulerTimezoneRequestSchema,
-  SetQuickChatSettingsRequestSchema,
-} from "../../types/schemas";
+import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
 

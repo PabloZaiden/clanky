@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import type { ToolCallData } from "../../types";
+import type { ToolCallData } from "@/shared";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../task-details/diff-patch-viewer";

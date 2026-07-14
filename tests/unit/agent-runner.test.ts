@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { agentRunner } from "../../src/core/agent-runner";
-import type { AgentRun } from "../../src/types/agent";
+import type { AgentRun } from "@/shared/agent";
 
 function createRunWithoutChatId(): AgentRun {
   const now = new Date("2026-01-01T00:00:00Z").toISOString();

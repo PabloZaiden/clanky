@@ -6,7 +6,8 @@
  * file seeding, startup, and cleanup all remain inside Core.
  */
 
-import type { CreateTaskRequest, GenerateTaskTitleRequest, Task } from "../types";
+import type { Task } from "@/shared";
+import type { CreateTaskRequest, GenerateTaskTitleRequest } from "@/contracts";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../lib/uploaded-plan";
 import {
   normalizeUploadedPlanningFiles,

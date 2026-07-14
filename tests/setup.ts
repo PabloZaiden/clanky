@@ -16,8 +16,8 @@ import { createWorkspace } from "../src/persistence/workspaces";
 import { loadTask } from "../src/persistence/tasks";
 import { TestCommandExecutor } from "./mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "./mocks/mock-backend";
-import type { TaskEvent } from "../src/types/events";
-import { getDefaultServerSettings } from "../src/types/settings";
+import type { TaskEvent } from "@/shared/events";
+import { getDefaultServerSettings } from "@/shared/settings";
 import { runWithCurrentUser } from "../src/core/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
@@ -318,7 +318,7 @@ export async function waitForTaskStatus(
   taskId: string,
   expectedStatuses: string[],
   timeoutMs = 10000
-): Promise<import("../src/types").Task> {
+): Promise<import("@/shared").Task> {
   const startTime = Date.now();
   let lastStatus = "unknown";
   while (Date.now() - startTime < timeoutMs) {
@@ -343,7 +343,7 @@ export async function waitForPlanReady(
   manager: TaskManager,
   taskId: string,
   timeoutMs = 10000
-): Promise<import("../src/types").Task> {
+): Promise<import("@/shared").Task> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     const task = await manager.getTask(taskId);
@@ -368,7 +368,7 @@ export async function waitForPlanReady(
 export async function waitForPersistedPlanReady(
   taskId: string,
   timeoutMs = 10000
-): Promise<import("../src/types").Task> {
+): Promise<import("@/shared").Task> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     const task = await loadTask(taskId);

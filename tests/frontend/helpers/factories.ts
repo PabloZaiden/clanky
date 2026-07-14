@@ -5,14 +5,14 @@
  * partial overrides via the spread pattern.
  */
 
-import type { Task, TaskConfig, TaskState, TaskStatus, ModelConfig } from "@/types/task";
-import type { GitConfig, GitState, GitCommit, IterationSummary, TaskLogEntry, PersistedMessage, PersistedToolCall, TaskError, SessionInfo } from "@/types/task";
-import type { Workspace } from "@/types/workspace";
-import type { Chat, ChatConfig, ChatState, ChatStatus } from "@/types/chat";
-import type { SshSession } from "@/types/ssh-session";
-import type { BranchInfo, ModelInfo, FileDiff } from "@/types/api";
-import type { MessageData, ToolCallData, TaskEvent } from "@/types/events";
-import type { ServerSettings } from "@/types/settings";
+import type { Task, TaskConfig, TaskState, TaskStatus, ModelConfig } from "@/shared/task";
+import type { GitConfig, GitState, GitCommit, IterationSummary, TaskLogEntry, PersistedMessage, PersistedToolCall, TaskError, SessionInfo } from "@/shared/task";
+import type { Workspace } from "@/shared/workspace";
+import type { Chat, ChatConfig, ChatState, ChatStatus } from "@/shared/chat";
+import type { SshSession } from "@/shared/ssh-session";
+import type { BranchInfo, ModelInfo, FileDiff } from "@/contracts";
+import type { MessageData, ToolCallData, TaskEvent } from "@/shared/events";
+import type { ServerSettings } from "@/shared/settings";
 
 let counter = 0;
 function nextId(): string {

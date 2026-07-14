@@ -1,5 +1,5 @@
 import { AGENT_PROVIDER_IDS } from "@/shared";
-import type { AgentProvider } from "../types/settings";
+import type { AgentProvider } from "@/shared/settings";
 
 export interface AgentProviderOption {
   id: AgentProvider;

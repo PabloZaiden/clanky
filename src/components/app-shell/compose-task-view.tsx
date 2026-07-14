@@ -1,4 +1,4 @@
-import type { Workspace } from "../../types";
+import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import {
   CreateTaskForm,
@@ -6,7 +6,7 @@ import {
   getComposeSubmitActionLabel,
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";

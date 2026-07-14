@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import type { ModelInfo, BranchInfo } from "../../types";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
-import type { ComposerImageAttachment } from "../../types/message-attachments";
-import type { Workspace } from "../../types/workspace";
-import type { CheapModelSelection } from "../../types";
+import type { ModelInfo, BranchInfo } from "@/contracts";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
+import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { Workspace } from "@/shared/workspace";
+import type { CheapModelSelection } from "@/shared";
 
 /** State for action buttons, exposed via renderActions prop */
 export interface CreateTaskFormActionState {

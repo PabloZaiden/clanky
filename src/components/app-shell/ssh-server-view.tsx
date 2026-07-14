@@ -1,4 +1,4 @@
-import type { SshServer, SshServerSession } from "../../types";
+import type { SshServer, SshServerSession } from "@/shared";
 import { Badge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel, SummaryCard } from "./shell-panel";

@@ -1,7 +1,7 @@
-import type { Agent, AgentRun, AgentRunTrigger } from "../types/agent";
-import type { ChatEvent } from "../types";
-import type { MessageImageAttachment } from "../types/message-attachments";
-import { createTimestamp } from "../types/events";
+import type { Agent, AgentRun, AgentRunTrigger } from "@/shared/agent";
+import type { ChatEvent } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
+import { createTimestamp } from "@/shared/events";
 import { chatManager } from "./chat-manager";
 import {
   loadAgent,

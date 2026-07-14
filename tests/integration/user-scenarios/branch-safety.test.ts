@@ -23,7 +23,7 @@ import {
   waitForGitAvailable,
   type TestServerContext,
 } from "./helpers";
-import type { Task } from "../../../src/types/task";
+import type { Task } from "@/shared/task";
 
 describe("Branch Safety - Worktree Isolation", () => {
   describe("Task commits correctly with worktree isolation", () => {

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Agent, SshServer, SshServerSession } from "../../types";
+import type { Agent, SshServer, SshServerSession } from "@/shared";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";

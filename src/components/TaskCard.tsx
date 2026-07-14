@@ -2,7 +2,7 @@
  * TaskCard component for displaying a task summary in the dashboard grid.
  */
 
-import type { TaskSummaryProps } from "../types";
+import type { TaskSummaryProps } from "./task-summary-types";
 import { Badge, Card, StatusBadge } from "./common";
 import {
   getTaskStatusPill,

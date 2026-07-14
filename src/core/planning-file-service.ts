@@ -8,7 +8,7 @@ import {
   normalizePlanningBasePath,
   STATUS_FILE_NAME,
 } from "../lib/planning-files";
-import { InvalidCurrentPlanError } from "../types/chat";
+import { InvalidCurrentPlanError } from "@/shared/chat";
 
 const PLAN_READY_MARKER = /<promise>PLAN_READY<\/promise>/gi;
 

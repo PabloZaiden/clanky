@@ -2,7 +2,7 @@
  * Shell command builders for the SSH terminal bridge.
  */
 
-import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "../../types";
+import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "@/shared";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import {
   buildPersistentSessionAttachCommand,

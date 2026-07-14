@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { Task } from "../../types";
+import type { Task } from "@/shared";
 import { isFinalState, canAccept } from "../../utils";
 import type { TabId } from "./types";
 

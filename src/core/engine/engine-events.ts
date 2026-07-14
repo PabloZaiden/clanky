@@ -3,9 +3,9 @@
  */
 
 import { log } from "../logger";
-import type { TaskLogEntry, PersistedMessage } from "../../types/task";
-import type { MessageData, ToolCallData, LogLevel } from "../../types/events";
-import { mergeToolCallRecord } from "../../types/tool-call";
+import type { TaskLogEntry, PersistedMessage } from "@/shared/task";
+import type { MessageData, ToolCallData, LogLevel } from "@/shared/events";
+import { mergeToolCallRecord } from "@/shared/tool-call";
 import {
   MAX_PERSISTED_LOGS,
   MAX_PERSISTED_MESSAGES,

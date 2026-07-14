@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Workspace } from "../../src/types";
+import type { Workspace } from "@/shared";
 import { buildPreviewCliCommand, getPreviewWorkspaceReference } from "../../src/utils";
 
 function workspace(id: string, name: string): Workspace {

@@ -13,11 +13,7 @@ import {
   errorResponse,
 } from "../helpers";
 import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
-import {
-  CreateWorkspaceRequestSchema,
-  DeleteWorkspaceRequestSchema,
-  UpdateWorkspaceRequestSchema,
-} from "../../types/schemas";
+import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:workspaces");

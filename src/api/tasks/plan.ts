@@ -11,11 +11,8 @@ import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
-import type { PlanAcceptResponse } from "../../types/api";
-import {
-  PlanFeedbackRequestSchema,
-  PlanAcceptRequestSchema,
-} from "../../types/schemas";
+import type { PlanAcceptResponse } from "@/contracts";
+import { PlanFeedbackRequestSchema, PlanAcceptRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:tasks");
 

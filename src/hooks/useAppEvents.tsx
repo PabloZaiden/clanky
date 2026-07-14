@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AgentEvent, TaskEvent, ChatEvent, PreviewEvent, SshSessionEvent } from "../types";
+import type { AgentEvent, TaskEvent, ChatEvent, PreviewEvent, SshSessionEvent } from "@/shared";
 import {
   useWebSocket,
   type UseWebSocketResult,

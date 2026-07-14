@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import type { AppConfig, HealthResponse } from "../../types";
+import type { AppConfig, HealthResponse } from "@/contracts";
 import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
 import { useToast } from "../useToast";
 import { createLogger } from "../../lib/logger";

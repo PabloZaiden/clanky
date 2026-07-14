@@ -1,6 +1,6 @@
 import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
-import type { Agent, Chat, Task, SshSession, Workspace } from "../../types";
-import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { Agent, Chat, Task, SshSession, Workspace } from "@/shared";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import {
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,

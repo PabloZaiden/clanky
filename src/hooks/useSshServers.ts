@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type {
-  CreateSshServerRequest,
-  SshConnectionMode,
-  SshServer,
-  SshServerSession,
-  SshSessionEvent,
-  UpdateSshSessionRequest,
-  UpdateSshServerRequest,
-} from "../types";
+import type { SshConnectionMode, SshServer, SshServerSession, SshSessionEvent } from "@/shared";
+import type { CreateSshServerRequest, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
 import {
   createStandaloneSshSessionApi,

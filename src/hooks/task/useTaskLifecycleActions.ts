@@ -15,7 +15,8 @@ import {
 } from "../taskActions";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
-import type { Task, UpdateTaskRequest } from "../../types";
+import type { Task } from "@/shared";
+import type { UpdateTaskRequest } from "@/contracts";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");

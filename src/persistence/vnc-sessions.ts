@@ -1,4 +1,4 @@
-import type { VncSession } from "../types";
+import type { VncSession } from "@/shared";
 import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";
 

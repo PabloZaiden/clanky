@@ -1,4 +1,4 @@
-import type { Task, ReviewComment } from "../../types/task";
+import type { Task, ReviewComment } from "@/shared/task";
 import type { EntityLabels } from "../../utils";
 
 interface ReviewTabProps {

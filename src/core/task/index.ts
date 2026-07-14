@@ -11,18 +11,13 @@ export type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, Acc
 export { getTaskWorkingDirectory } from "./task-types";
 
 import type { TaskCtx } from "./context";
-import type {
-  AutomaticPrFlowFeedbackSource,
-  Task,
-  TaskConfig,
-  TaskState,
-} from "../../types/task";
-import type { TaskEvent } from "../../types/events";
-import type { ModelConfig } from "../../types/task";
+import type { AutomaticPrFlowFeedbackSource, Task, TaskConfig, TaskState } from "@/shared/task";
+import type { TaskEvent } from "@/shared/events";
+import type { ModelConfig } from "@/shared/task";
 import type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult } from "./task-types";
 import type { SeedPlanFilesOptions } from "./task-types";
-import type { PullRequestDestinationResponse } from "../../types/api";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { PullRequestDestinationResponse } from "@/contracts";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
 
 import { TaskEngine } from "../task-engine";

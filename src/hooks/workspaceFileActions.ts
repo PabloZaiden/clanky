@@ -7,36 +7,8 @@ import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
 } from "../lib/ssh-browser-credentials";
-import type {
-  WorkspaceFileConflictResponse,
-  WorkspaceFileEntry,
-  SshServerFileDeleteResponse,
-  SshServerFileListResponse,
-  SshServerFileMetadataResponse,
-  SshServerFileRenameResponse,
-  SshServerFileReadResponse,
-  SshServerFileTreeResponse,
-  SshServerFileUploadCancelResponse,
-  SshServerFileUploadChunkResponse,
-  SshServerFileUploadCompleteResponse,
-  SshServerFileUploadCreateResponse,
-  SshServerFileWriteResponse,
-  DeleteWorkspaceFileRequest,
-  RenameWorkspaceFileRequest,
-  CreateWorkspaceFileUploadRequest,
-  WorkspaceFileListResponse,
-  WorkspaceFileMetadataResponse,
-  WorkspaceFileRenameResponse,
-  WorkspaceFileDeleteResponse,
-  WorkspaceFileReadResponse,
-  WorkspaceFileTreeResponse,
-  WorkspaceFileUploadCancelResponse,
-  WorkspaceFileUploadChunkResponse,
-  WorkspaceFileUploadCompleteResponse,
-  WorkspaceFileUploadCreateResponse,
-  WorkspaceFileWriteResponse,
-  WriteWorkspaceFileRequest,
-} from "../types";
+import type { WorkspaceFileEntry } from "@/shared";
+import type { WorkspaceFileConflictResponse, SshServerFileDeleteResponse, SshServerFileListResponse, SshServerFileMetadataResponse, SshServerFileRenameResponse, SshServerFileReadResponse, SshServerFileTreeResponse, SshServerFileUploadCancelResponse, SshServerFileUploadChunkResponse, SshServerFileUploadCompleteResponse, SshServerFileUploadCreateResponse, SshServerFileWriteResponse, DeleteWorkspaceFileRequest, RenameWorkspaceFileRequest, CreateWorkspaceFileUploadRequest, WorkspaceFileListResponse, WorkspaceFileMetadataResponse, WorkspaceFileRenameResponse, WorkspaceFileDeleteResponse, WorkspaceFileReadResponse, WorkspaceFileTreeResponse, WorkspaceFileUploadCancelResponse, WorkspaceFileUploadChunkResponse, WorkspaceFileUploadCompleteResponse, WorkspaceFileUploadCreateResponse, WorkspaceFileWriteResponse, WriteWorkspaceFileRequest } from "@/shared/workspace-files";
 
 interface ApiErrorBody {
   error?: string;

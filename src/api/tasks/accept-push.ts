@@ -13,7 +13,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { errorResponse, successResponse } from "../helpers";
-import type { AcceptResponse, PushResponse } from "../../types/api";
+import type { AcceptResponse, PushResponse } from "@/contracts";
 
 const log = createLogger("api:tasks");
 

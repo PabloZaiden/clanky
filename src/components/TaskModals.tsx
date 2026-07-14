@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import type { UncommittedChangesError } from "../types";
+import type { UncommittedChangesError } from "@/contracts";
 import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
 

@@ -9,9 +9,10 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, UpdateTaskRequest, SshSession } from "../../types";
-import type { FollowUpPromptMode } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task, SshSession } from "@/shared";
+import type { UpdateTaskRequest } from "@/contracts";
+import type { FollowUpPromptMode } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
   AcceptTaskResult,
   AcceptPlanResult,

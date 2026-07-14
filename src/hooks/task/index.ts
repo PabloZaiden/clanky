@@ -11,9 +11,10 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse, MessageData, ToolCallData, SshSession } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
-import type { FollowUpPromptMode } from "../../types/task";
+import type { Task, TaskEvent, MessageData, ToolCallData, SshSession } from "@/shared";
+import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { FollowUpPromptMode } from "@/shared/task";
 import type { LogEntry } from "../../components/LogViewer";
 import { isTaskEvent, useAppEvents } from "../useAppEvents";
 import { createLogger } from "../../lib/logger";

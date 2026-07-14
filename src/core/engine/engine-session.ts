@@ -2,8 +2,8 @@
  * Session management helpers for TaskEngine.
  */
 
-import type { TaskConfig, TaskState } from "../../types/task";
-import type { LogLevel } from "../../types/events";
+import type { TaskConfig, TaskState } from "@/shared/task";
+import type { LogLevel } from "@/shared/events";
 import type { AgentSession } from "../../backends/types";
 import { AcpBackend } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";

@@ -3,8 +3,8 @@
  */
 
 import { apiCall, apiActionWithBody } from "./helpers";
-import type { FollowUpPromptMode } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { FollowUpPromptMode } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 
 /**
  * Result of an address comments action.

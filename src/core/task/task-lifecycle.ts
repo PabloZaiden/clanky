@@ -1,5 +1,5 @@
 import type { TaskCtx } from "./context";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import {
   loadTask,
   updateTaskConfig,

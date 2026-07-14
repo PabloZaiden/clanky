@@ -2,7 +2,7 @@
  * Shared presentation helpers for SSH connection modes.
  */
 
-import type { SshConnectionMode, SshSessionState } from "../types";
+import type { SshConnectionMode, SshSessionState } from "@/shared";
 
 export interface SshConnectionModeSessionLike {
   config: {

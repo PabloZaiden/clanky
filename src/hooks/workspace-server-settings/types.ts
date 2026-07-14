@@ -1,6 +1,6 @@
-import type { ServerSettings } from "../../types/settings";
-import type { Workspace } from "../../types/workspace";
-import type { ConnectionStatus } from "../../types/settings";
+import type { ServerSettings } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
+import type { ConnectionStatus } from "@/shared/settings";
 
 export interface UseWorkspaceServerSettingsResult {
   /** Full workspace data (name, directory, serverSettings) - fetched fresh from API */

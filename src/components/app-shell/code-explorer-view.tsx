@@ -1,6 +1,7 @@
 import { useMemo, type ComponentType } from "react";
-import type { Chat, CreateSshSessionRequest, Task, SshConnectionMode, SshSession, Workspace } from "../../types";
-import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
+import type { CreateSshSessionRequest } from "@/contracts";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
 import { FileExplorerView } from "./file-explorer-view";

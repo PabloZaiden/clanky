@@ -1,5 +1,5 @@
-import type { AgentSchedule, AgentScheduleInterval } from "../types/agent";
-import { isValidIanaTimeZone } from "../types/preferences";
+import type { AgentSchedule, AgentScheduleInterval } from "@/shared/agent";
+import { isValidIanaTimeZone } from "@/shared/preferences";
 
 interface LocalDateParts {
   year: number;

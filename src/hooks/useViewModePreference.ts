@@ -5,13 +5,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "../lib/logger";
-import type { DashboardViewMode } from "../types/preferences";
+import type { DashboardViewMode } from "@/shared/preferences";
 import { appFetch } from "../lib/public-path";
 
 /**
  * Re-export DashboardViewMode so existing consumers of this module don't break.
  */
-export type { DashboardViewMode } from "../types/preferences";
+export type { DashboardViewMode } from "@/shared/preferences";
 
 export interface UseViewModePreferenceResult {
   /** Current view mode */

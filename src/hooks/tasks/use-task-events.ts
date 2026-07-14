@@ -2,7 +2,7 @@
  * WebSocket event handling for real-time task state updates.
  */
 
-import type { Task, TaskEvent } from "../../types";
+import type { Task, TaskEvent } from "@/shared";
 import { isTaskEvent, useAppEvents } from "../useAppEvents";
 import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 

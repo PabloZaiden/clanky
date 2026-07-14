@@ -1,4 +1,4 @@
-import type { Task } from "../../types/task";
+import type { Task } from "@/shared/task";
 import { loadTask, updateTaskState } from "../../persistence/tasks";
 import { createLogger } from "../logger";
 import type { TaskCtx } from "./context";

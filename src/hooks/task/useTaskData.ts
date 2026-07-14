@@ -5,11 +5,11 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, MessageData, ToolCallData } from "../../types";
+import type { Task, MessageData, ToolCallData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
-import { reconcileToolCallRecords } from "../../types/tool-call";
+import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
 const log = createLogger("useTask");

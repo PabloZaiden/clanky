@@ -13,7 +13,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { closeDatabase, ensureDataDirectories } from "../../src/persistence/database";
 import { listAgentRuns, loadAgent, saveAgent, saveAgentRun } from "../../src/persistence/agents";
 import { listTasks } from "../../src/persistence/tasks";
-import type { AgentRun } from "../../src/types/agent";
+import type { AgentRun } from "@/shared/agent";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { seedTestOwnerUser } from "../setup";

@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PreviewEvent, PreviewSession } from "../types";
+import type { PreviewEvent, PreviewSession } from "@/shared";
 import { appFetch } from "../lib/public-path";
 import { isPreviewEvent, useAppEvents } from "./useAppEvents";
 

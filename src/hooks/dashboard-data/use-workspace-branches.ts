@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { createLogger } from "../../lib/logger";
-import type { BranchInfo } from "../../types";
+import type { BranchInfo } from "@/contracts";
 import { appFetch } from "../../lib/public-path";
 
 export interface UseWorkspaceBranchesResult {

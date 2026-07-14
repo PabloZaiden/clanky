@@ -1,5 +1,5 @@
-import type { Workspace, SshServer } from "../../types";
-import { getServerLabel } from "../../types/settings";
+import type { Workspace, SshServer } from "@/shared";
+import { getServerLabel } from "@/shared/settings";
 import { WorkspaceGearIcon } from "./workspace-gear-icon";
 
 /** Workspace header with icon, name, settings button, path, and task count */

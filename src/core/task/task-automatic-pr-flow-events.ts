@@ -1,7 +1,7 @@
 import type { SimpleEventEmitter } from "../event-emitter";
-import type { TaskEvent } from "../../types/events";
-import type { AutomaticPrFlowState } from "../../types/task";
-import { createTimestamp } from "../../types/events";
+import type { TaskEvent } from "@/shared/events";
+import type { AutomaticPrFlowState } from "@/shared/task";
+import { createTimestamp } from "@/shared/events";
 
 export function emitAutomaticPrFlowUpdatedEvent(
   emitter: SimpleEventEmitter<TaskEvent>,

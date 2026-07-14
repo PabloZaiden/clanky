@@ -3,7 +3,7 @@
  */
 
 import { PASSWORD_INPUT_PROPS } from "../common";
-import type { AgentProvider, DevboxTemplateSummary, SshServer } from "../../types";
+import type { AgentProvider, DevboxTemplateSummary, SshServer } from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 
 interface AutomaticWorkspaceFormProps {

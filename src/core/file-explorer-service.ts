@@ -5,11 +5,7 @@
 import { posix as pathPosix } from "node:path";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import type {
-  WorkspaceFileKind,
-  WorkspaceFileEntry,
-  WorkspaceFileNode,
-} from "../types";
+import type { WorkspaceFileKind, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import type { CommandExecutor } from "./command-executor";
 import { getBrowserImageMimeType } from "../utils/workspace-file-images";
 

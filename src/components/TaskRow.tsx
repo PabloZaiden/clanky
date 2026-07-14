@@ -3,7 +3,7 @@
  * Shows full task info without truncation, one row per task.
  */
 
-import type { TaskSummaryProps } from "../types";
+import type { TaskSummaryProps } from "./task-summary-types";
 import { Badge, StatusBadge } from "./common";
 import {
   getTaskStatusPill,

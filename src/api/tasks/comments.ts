@@ -8,7 +8,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { errorResponse } from "../helpers";
-import type { GetCommentsResponse } from "../../types/api";
+import type { GetCommentsResponse } from "@/contracts";
 
 const log = createLogger("api:tasks");
 

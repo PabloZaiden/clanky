@@ -1,5 +1,6 @@
 import { appFetch } from "../lib/public-path";
-import type { ModelInfo, PublicWorkspace } from "../types";
+import type { PublicWorkspace } from "@/shared";
+import type { ModelInfo } from "@/contracts";
 
 interface BranchesResponse {
   currentBranch?: string;

@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Button } from "../common";
-import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
+import type { WorkspaceImportResult } from "@/shared/workspace";
+import type { WorkspaceExportData } from "@/contracts/schemas/workspace";
 
 export interface ImportExportSectionProps {
   onExportConfig?: () => Promise<WorkspaceExportData | null>;

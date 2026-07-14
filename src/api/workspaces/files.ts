@@ -5,19 +5,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { createLogger } from "../../core/logger";
 import { workspaceFileService } from "../../core/workspace-file-service";
-import { type WorkspaceFileEntry } from "../../types";
-import {
-  CancelWorkspaceFileUploadRequestSchema,
-  CompleteWorkspaceFileUploadRequestSchema,
-  CreateWorkspaceFileUploadRequestSchema,
-  DeleteWorkspaceFileRequestSchema,
-  GetWorkspaceFileRequestSchema,
-  GetWorkspaceFileTreeRequestSchema,
-  ListWorkspaceFilesRequestSchema,
-  RenameWorkspaceFileRequestSchema,
-  UploadWorkspaceFileChunkRequestSchema,
-  WriteWorkspaceFileRequestSchema,
-} from "../../types/schemas";
+import { type WorkspaceFileEntry } from "@/shared";
+import { CancelWorkspaceFileUploadRequestSchema, CompleteWorkspaceFileUploadRequestSchema, CreateWorkspaceFileUploadRequestSchema, DeleteWorkspaceFileRequestSchema, GetWorkspaceFileRequestSchema, GetWorkspaceFileTreeRequestSchema, ListWorkspaceFilesRequestSchema, RenameWorkspaceFileRequestSchema, UploadWorkspaceFileChunkRequestSchema, WriteWorkspaceFileRequestSchema } from "@/contracts/schemas";
 import { errorResponse, requireWorkspace } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
 import { createFileDownloadResponse } from "../file-download-response";

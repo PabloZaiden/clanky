@@ -1,5 +1,5 @@
-import type { Chat } from "../types/chat";
-import type { PersistedMessage, PersistedToolCall } from "../types/task";
+import type { Chat } from "@/shared/chat";
+import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
 import { getToolMeta } from "../components/log-viewer/tool-inference";
 
 type TranscriptEntry =

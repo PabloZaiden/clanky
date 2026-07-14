@@ -1,4 +1,4 @@
-import type { ModelInfo } from "../../types";
+import type { ModelInfo } from "@/contracts";
 import { ModelSelector, groupModelsByProvider } from "../ModelSelector";
 
 interface ModelFieldProps {

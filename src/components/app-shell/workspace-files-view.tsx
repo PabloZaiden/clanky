@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
-import type { CreateSshSessionRequest, SshConnectionMode, SshSession, Workspace } from "../../types";
-import type { SshServerSession } from "../../types/ssh-server";
+import type { SshConnectionMode, SshSession, Workspace } from "@/shared";
+import type { CreateSshSessionRequest } from "@/contracts";
+import type { SshServerSession } from "@/shared/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import type { ShellRoute } from "./shell-types";
 import { CodeExplorerView } from "./code-explorer-view";

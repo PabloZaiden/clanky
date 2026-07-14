@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Task } from "../../types";
+import type { Task } from "@/shared";
 import { log } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 

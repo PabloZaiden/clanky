@@ -6,7 +6,7 @@ import { closeDatabase, ensureDataDirectories, getDatabase, initializeDatabase }
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { previewSessionManager } from "../../src/core/preview-session-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import type { PreviewBridgeServerMessage, Workspace } from "../../src/types";
+import type { PreviewBridgeServerMessage, Workspace } from "@/shared";
 import { seedTestOwnerUser, testOwnerUser } from "../setup";
 
 function buildWorkspace(id: string, name: string): Workspace {

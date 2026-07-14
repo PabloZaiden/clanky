@@ -2,12 +2,7 @@
  * Remote prerequisite checks for standalone SSH servers.
  */
 
-import type {
-  SshServerConfig,
-  SshServerPrerequisiteCheck,
-  SshServerPrerequisiteReport,
-  SshServerPrerequisiteStatus,
-} from "../types";
+import type { SshServerConfig, SshServerPrerequisiteCheck, SshServerPrerequisiteReport, SshServerPrerequisiteStatus } from "@/shared";
 import type { CommandExecutor } from "./command-executor";
 import { buildPersistentSessionBackendInstallHint } from "./ssh-persistent-session";
 

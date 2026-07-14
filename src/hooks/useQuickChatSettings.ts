@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
-import {
-  DEFAULT_QUICK_CHAT_SETTINGS,
-  type QuickChatSettings,
-} from "../types/preferences";
-import { normalizeQuickChatSettings } from "../types/schemas";
+import { DEFAULT_QUICK_CHAT_SETTINGS, type QuickChatSettings } from "@/shared/preferences";
+import { normalizeQuickChatSettings } from "@/contracts/schemas";
 
 const log = createLogger("useQuickChatSettings");
 

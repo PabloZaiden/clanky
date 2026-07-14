@@ -4,22 +4,8 @@
 
 import { backendManager } from "./backend-manager";
 import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-explorer-service";
-import type {
-  Workspace,
-  WorkspaceFileEntry,
-  WorkspaceFileDeleteResponse,
-  WorkspaceFileUploadCancelResponse,
-  WorkspaceFileUploadChunkResponse,
-  WorkspaceFileUploadCompleteResponse,
-  WorkspaceFileUploadCreateResponse,
-  WorkspaceFileMetadataResponse,
-  WorkspaceFileListResponse,
-  WorkspaceFileRenameResponse,
-  WorkspaceFileReadResponse,
-  WorkspaceFileTreeResponse,
-  WorkspaceFileWriteResponse,
-  WorkspaceFileKind,
-} from "../types";
+import type { Workspace, WorkspaceFileEntry, WorkspaceFileKind } from "@/shared";
+import type { WorkspaceFileDeleteResponse, WorkspaceFileUploadCancelResponse, WorkspaceFileUploadChunkResponse, WorkspaceFileUploadCompleteResponse, WorkspaceFileUploadCreateResponse, WorkspaceFileMetadataResponse, WorkspaceFileListResponse, WorkspaceFileRenameResponse, WorkspaceFileReadResponse, WorkspaceFileTreeResponse, WorkspaceFileWriteResponse } from "@/shared/workspace-files";
 
 export interface WorkspaceFileImageReadResponse {
   workspaceId: string;

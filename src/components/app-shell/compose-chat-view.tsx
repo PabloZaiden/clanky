@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Chat, CreateSshServerChatRequest, ModelInfo, SshServer, Workspace } from "../../types";
-import type { CreateChatRequest, ImportExistingChatRequest } from "../../types/api";
-import type { AgentProvider } from "../../types/settings";
+import type { Chat, SshServer, Workspace } from "@/shared";
+import type { CreateSshServerChatRequest, ModelInfo } from "@/contracts";
+import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
+import type { AgentProvider } from "@/shared/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useToast } from "../../hooks";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";

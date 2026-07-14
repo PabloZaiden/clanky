@@ -2,16 +2,8 @@
  * Core manager for saved SSH sessions on workspace hosts.
  */
 
-import {
-  DEFAULT_SSH_CONNECTION_MODE,
-  DEFAULT_SSH_SESSION_USE_TMUX,
-  type CreateSshSessionRequest,
-  type SshConnectionMode,
-  type SshSession,
-  type SshSessionStatus,
-  type UpdateSshSessionRequest,
-  type Workspace,
-} from "../types";
+import { DEFAULT_SSH_CONNECTION_MODE, DEFAULT_SSH_SESSION_USE_TMUX, type SshConnectionMode, type SshSession, type SshSessionStatus, type Workspace } from "@/shared";
+import { type CreateSshSessionRequest, type UpdateSshSessionRequest } from "@/contracts";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
   countSshSessionsByWorkspace,

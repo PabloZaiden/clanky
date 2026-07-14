@@ -3,7 +3,7 @@
  */
 
 import { Button } from "../common";
-import type { Workspace } from "../../types/workspace";
+import type { Workspace } from "@/shared/workspace";
 
 interface ProvisioningActionsSectionProps {
   workspace: Workspace;

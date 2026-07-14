@@ -1,4 +1,4 @@
-import type { Workspace } from "../../types";
+import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";

@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
-import type { Task, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
 import { insertReviewComment, } from "../../persistence/review-comments";
 import { backendManager } from "../backend-manager";

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "../common";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";

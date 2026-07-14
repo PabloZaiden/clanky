@@ -11,7 +11,7 @@ import {
   saveStoredNewTaskPlanningPreferences,
 } from "../../lib/new-task-planning-preferences";
 import type { NewTaskPlanningPreferences } from "../../lib/new-task-planning-preferences";
-import { DEFAULT_TASK_CONFIG } from "../../types/task";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { CreateTaskFormProps } from "./types";
 
 type InitialTaskData = CreateTaskFormProps["initialTaskData"];

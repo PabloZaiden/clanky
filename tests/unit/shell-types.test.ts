@@ -5,11 +5,11 @@ import {
   buildServerSidebarNodes,
   buildWorkspaceSidebarGroups,
 } from "../../src/components/app-shell/shell-types";
-import type { Chat } from "../../src/types/chat";
-import type { SshServer, SshServerSession } from "../../src/types/ssh-server";
-import type { SshSession } from "../../src/types/ssh-session";
-import { getDefaultServerSettings } from "../../src/types/settings";
-import type { Workspace } from "../../src/types/workspace";
+import type { Chat } from "@/shared/chat";
+import type { SshServer, SshServerSession } from "@/shared/ssh-server";
+import type { SshSession } from "@/shared/ssh-session";
+import { getDefaultServerSettings } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
 
 const BASE_TIMESTAMP = "2026-01-01T00:00:00.000Z";
 

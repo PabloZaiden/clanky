@@ -1,4 +1,4 @@
-import type { BranchInfo } from "../../types";
+import type { BranchInfo } from "@/contracts";
 
 interface BranchSelectorProps {
   selectedBranch: string;

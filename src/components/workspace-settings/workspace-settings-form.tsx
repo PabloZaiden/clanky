@@ -5,7 +5,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Badge } from "../common";
 import { ServerSettingsForm } from "../ServerSettingsForm";
-import type { ServerSettings } from "../../types/settings";
+import type { ServerSettings } from "@/shared/settings";
 import { createLogger } from "../../lib/logger";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";

@@ -1,10 +1,4 @@
-import type {
-  Agent,
-  AgentConfig,
-  AgentConfigSnapshot,
-  AgentRun,
-  AgentState,
-} from "../../types/agent";
+import type { Agent, AgentConfig, AgentConfigSnapshot, AgentRun, AgentState } from "@/shared/agent";
 import { createLogger } from "../../core/logger";
 import { requirePersistenceUserId } from "../ownership";
 

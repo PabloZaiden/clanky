@@ -1,4 +1,4 @@
-import type { ModelConfig } from "../../types/task";
+import type { ModelConfig } from "@/shared/task";
 
 export type TabId = "log" | "chat" | "info" | "plan" | "diff" | "actions";
 

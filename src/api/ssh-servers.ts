@@ -10,23 +10,11 @@ import { sshServerKeyManager } from "../core/ssh-server-key-manager";
 import { createLogger } from "../core/logger";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import {
-  CheckSshServerPrerequisitesRequestSchema,
-  CreateSshServerChatRequestSchema,
-  CreateSshServerRequestSchema,
-  CreateSshServerSessionRequestSchema,
-  GetDevboxTemplatesRequestSchema,
-  DiscoverSshServerChatProvidersRequestSchema,
-  DiscoverSshServerChatModelsRequestSchema,
-  DeleteSshServerSessionRequestSchema,
-  SshCredentialExchangeRequestSchema,
-  UpdateSshServerRequestSchema,
-  UpdateSshSessionRequestSchema,
-} from "../types/schemas";
+import { CheckSshServerPrerequisitesRequestSchema, CreateSshServerChatRequestSchema, CreateSshServerRequestSchema, CreateSshServerSessionRequestSchema, GetDevboxTemplatesRequestSchema, DiscoverSshServerChatProvidersRequestSchema, DiscoverSshServerChatModelsRequestSchema, DeleteSshServerSessionRequestSchema, SshCredentialExchangeRequestSchema, UpdateSshServerRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";
 import { getModelsForSettings } from "../core/model-discovery";
 import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
-import type { ServerSettings } from "../types/settings";
+import type { ServerSettings } from "@/shared/settings";
 
 const log = createLogger("api:ssh-servers");
 

@@ -3,7 +3,7 @@
  * runtimes.
  */
 
-import type { ServerSettings, SshServerConfig, Workspace } from "../types";
+import type { ServerSettings, SshServerConfig, Workspace } from "@/shared";
 import { buildSshCommandArgs } from "./remote-command-executor";
 
 export interface SshConnectionTarget {

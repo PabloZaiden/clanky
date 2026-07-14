@@ -8,28 +8,9 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { chatManager } from "../core/chat-manager";
 import { createLogger } from "../core/logger";
-import {
-  ChatBranchCheckoutError,
-  ChatBusyError,
-  ChatPermissionReplyError,
-  ChatPermissionRequestNotFoundError,
-  EmptyChatTranscriptError,
-  InvalidChatBaseBranchError,
-  InvalidCurrentPlanError,
-  SshCredentialsRequiredError,
-  isTaskChat,
-} from "../types/chat";
-import type { ChatConfig } from "../types/chat";
-import {
-  CreateChatRequestSchema,
-  ImportExistingChatRequestSchema,
-  InterruptChatRequestSchema,
-  ReconnectChatRequestSchema,
-  ReplyToChatPermissionRequestSchema,
-  SendChatMessageRequestSchema,
-  SpawnCurrentPlanTaskRequestSchema,
-  UpdateChatRequestSchema,
-} from "../types/schemas";
+import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat } from "@/shared/chat";
+import type { ChatConfig } from "@/shared/chat";
+import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";
 import { requireWorkspace, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "../core/model-discovery";

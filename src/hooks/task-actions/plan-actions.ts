@@ -2,8 +2,9 @@
  * Plan-related task actions: feedback, accept, and discard.
  */
 
-import type { SshSession, PlanAcceptResponse } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { SshSession } from "@/shared";
+import type { PlanAcceptResponse } from "@/contracts";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
 
 /**

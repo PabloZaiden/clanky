@@ -4,9 +4,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { findRegisteredSshServer } from "../../types/settings";
-import type { ServerSettings, AgentProvider, AgentTransport } from "../../types/settings";
-import type { SshServer } from "../../types";
+import { findRegisteredSshServer } from "@/shared/settings";
+import type { ServerSettings, AgentProvider, AgentTransport } from "@/shared/settings";
+import type { SshServer } from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { SshFields } from "./ssh-fields";
 import { TestConnection } from "./test-connection";

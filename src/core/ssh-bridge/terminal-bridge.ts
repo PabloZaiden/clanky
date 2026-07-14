@@ -5,7 +5,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { CommandExecutor } from "../command-executor";
-import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "../../types";
+import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "@/shared";
 import { getWorkspace } from "../../persistence/workspaces";
 import {
   buildPersistentSessionBackendInstallHint,

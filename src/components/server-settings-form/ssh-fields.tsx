@@ -2,7 +2,7 @@
 
 import { PASSWORD_INPUT_PROPS } from "../common";
 import { EyeIcon, EyeOffIcon } from "./icons";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 
 const OTHER_SSH_SERVER_OPTION = "__other__";
 

@@ -9,9 +9,9 @@
 import { AcpBackend } from "../../backends/acp";
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
-import { getDefaultServerSettings, type ServerSettings } from "../../types/settings";
+import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import { taskEventEmitter } from "../event-emitter";
-import type { TaskEvent } from "../../types/events";
+import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
 import { GitService } from "../git-service";

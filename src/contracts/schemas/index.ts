@@ -83,6 +83,8 @@ export {
   type AgentTransport,
   type AgentSettings,
   type ServerSettings,
+  type CreateWorkspaceRequest,
+  type UpdateWorkspaceRequest,
   type WorkspaceConfig,
   type WorkspaceExportData,
   type WorkspaceImportRequest,

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useToast } from "../../hooks";
-import type { CreateSshServerRequest, SshServer, UpdateSshServerRequest } from "../../types";
+import type { SshServer } from "@/shared";
+import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { Badge, Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";

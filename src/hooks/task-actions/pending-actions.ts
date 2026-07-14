@@ -2,7 +2,7 @@
  * Pending prompt and pending value actions for tasks.
  */
 
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
 
 /**

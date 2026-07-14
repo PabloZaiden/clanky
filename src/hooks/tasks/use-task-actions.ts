@@ -3,8 +3,8 @@
  */
 
 import { useCallback } from "react";
-import type { Task } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import {
   acceptTaskApi,
   pushTaskApi,

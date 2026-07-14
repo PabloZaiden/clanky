@@ -1,4 +1,4 @@
-import type { Agent, AgentRun, AgentRunStatus } from "../../types/agent";
+import type { Agent, AgentRun, AgentRunStatus } from "@/shared/agent";
 import { getDatabase } from "../database";
 import {
   agentRunToRow,

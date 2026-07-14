@@ -161,6 +161,7 @@ export interface TaskState {
 
   /** Pending prompt that overrides config.prompt for the next iteration only */
   pendingPrompt?: string;
+  pendingPromptMode?: FollowUpPromptMode;
 
   /** Model override for the next prompt (one-time, cleared after use) */
   pendingModel?: ModelConfig;
@@ -276,6 +277,8 @@ export interface ConsecutiveErrorTracker {
  * Lifecycle: draft -> idle -> starting -> running <-> waiting -> completed/stopped/failed
  * Final states: accepted_local, merged, pushed, deleted (can be purged)
  */
+export type FollowUpPromptMode = "task_context" | "plain_chat";
+
 export type TaskStatus =
   | "idle"                // Created but not started (transitional)
   | "draft"               // Saved as draft, not started (no git branch or session)

@@ -3,8 +3,9 @@
  */
 
 import { useState } from "react";
-import type { SshSession, PullRequestDestinationResponse, UpdateTaskRequest } from "../../types";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { SshSession } from "@/shared";
+import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { ToastContextValue } from "../../hooks/useToast";
 import type {
   AcceptPlanResult,

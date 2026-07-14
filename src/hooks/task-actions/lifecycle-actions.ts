@@ -2,7 +2,7 @@
  * Task lifecycle actions: stop, discard, delete, purge, generate title.
  */
 
-import type { GenerateTaskTitleRequest, GenerateTaskTitleResponse } from "../../types";
+import type { GenerateTaskTitleRequest, GenerateTaskTitleResponse } from "@/contracts";
 import { apiCall, apiAction } from "./helpers";
 
 export interface PurgeArchivedTasksResult {

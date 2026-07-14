@@ -3,9 +3,10 @@
  * Supports both card grid and row list view modes.
  */
 
-import type { DeleteWorkspaceRequest, Task, SshServer } from "../types";
+import type { Task, SshServer } from "@/shared";
+import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { StatusGroups, WorkspaceGroup } from "../hooks/useTaskGrouping";
-import type { DashboardViewMode } from "../types/preferences";
+import type { DashboardViewMode } from "@/shared/preferences";
 import { WorkspaceHeader, StatusSections, UnassignedSection, EmptyWorkspacesSection } from "./task-grid";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../lib/private-items";
 

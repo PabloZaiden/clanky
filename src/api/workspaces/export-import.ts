@@ -5,8 +5,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { createLogger } from "../../core/logger";
 import { workspaceManager } from "../../core/workspace-manager";
-import type { WorkspaceImportResult } from "../../types/workspace";
-import { WorkspaceImportRequestSchema } from "../../types/schemas";
+import type { WorkspaceImportResult } from "@/shared/workspace";
+import { WorkspaceImportRequestSchema } from "@/contracts/schemas";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import { parseAndValidate } from "../validation";
 import { SensitiveQuerySchema } from "../route-schemas";

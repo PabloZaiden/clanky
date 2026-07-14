@@ -3,7 +3,7 @@
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
-import type { ModelConfig } from "../types";
+import type { ModelConfig } from "@/shared";
 import { parseConventionalCommit } from "./conventional-commits";
 
 export const DEFAULT_PULL_REQUEST_METADATA_TIMEOUT_MS = 30_000;

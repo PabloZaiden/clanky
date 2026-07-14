@@ -2,7 +2,7 @@
  * Partial update operations for chats persistence.
  */
 
-import type { ChatConfig, ChatState } from "../../types";
+import type { ChatConfig, ChatState } from "@/shared";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";

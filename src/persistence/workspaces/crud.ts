@@ -7,8 +7,8 @@
  * async storage in the future.
  */
 
-import type { Workspace } from "../../types/workspace";
-import { getServerFingerprint } from "../../types/settings";
+import type { Workspace } from "@/shared/workspace";
+import { getServerFingerprint } from "@/shared/settings";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { workspaceToRow, rowToWorkspace } from "./helpers";

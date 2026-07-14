@@ -13,24 +13,11 @@
  * - engine-tools.ts: Agent event processing
  */
 
-import type {
-  FollowUpPromptMode,
-  TaskConfig,
-  TaskState,
-  Task,
-  IterationSummary,
-  TaskLogEntry,
-  ModelConfig,
-} from "../../types/task";
-import { DEFAULT_TASK_CONFIG } from "../../types/task";
-import type {
-  TaskEvent,
-  MessageData,
-  ToolCallData,
-  LogLevel,
-} from "../../types/events";
-import { createTimestamp } from "../../types/events";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { FollowUpPromptMode, TaskConfig, TaskState, Task, IterationSummary, TaskLogEntry, ModelConfig } from "@/shared/task";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
+import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
+import { createTimestamp } from "@/shared/events";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
   PromptInput,
   AgentEvent,
@@ -51,7 +38,7 @@ import {
   type IterationContext,
 } from "./engine-types";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
-import { upsertToolCallExtra } from "../../types/tool-call";
+import { upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
 import { logToConsole, persistTaskLog, persistTaskMessage, persistTaskToolCall } from "./engine-events";
 import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";

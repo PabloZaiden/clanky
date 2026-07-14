@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ConfirmModal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { useToast } from "../../hooks";
-import type { SshServer } from "../../types";
+import type { SshServer } from "@/shared";
 import { TrashIcon } from "../workspace-settings";
 
 interface DeleteSshServerSectionProps {

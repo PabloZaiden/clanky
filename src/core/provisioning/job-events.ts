@@ -1,5 +1,5 @@
 import { provisioningEventEmitter } from "../event-emitter";
-import type { ProvisioningJob, ProvisioningJobError } from "../../types";
+import type { ProvisioningJob, ProvisioningJobError } from "@/shared";
 
 export function emitJobStarted(job: ProvisioningJob): void {
   provisioningEventEmitter.emit({

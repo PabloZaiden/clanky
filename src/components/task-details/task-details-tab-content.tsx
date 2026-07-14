@@ -4,8 +4,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Task } from "../../types";
-import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "../../types/task";
+import type { Task } from "@/shared";
+import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "@/shared/task";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
 import type { LogDisplayState } from "./use-log-display-state";

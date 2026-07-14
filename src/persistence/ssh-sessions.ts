@@ -2,12 +2,7 @@
  * SSH session persistence layer.
  */
 
-import {
-  DEFAULT_SSH_CONNECTION_MODE,
-  normalizeSshSessionUseTmux,
-  normalizeSshConnectionMode,
-  type SshSession,
-} from "../types";
+import { DEFAULT_SSH_CONNECTION_MODE, normalizeSshSessionUseTmux, normalizeSshConnectionMode, type SshSession } from "@/shared";
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
 import { requirePersistenceUserId } from "./ownership";

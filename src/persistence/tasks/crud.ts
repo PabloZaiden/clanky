@@ -2,7 +2,7 @@
  * Basic CRUD operations for tasks persistence.
  */
 
-import type { Task } from "../../types";
+import type { Task } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";

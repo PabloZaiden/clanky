@@ -7,7 +7,7 @@ import { createLogger } from "../core/logger";
 import { sshSessionManager } from "../core/ssh-session-manager";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { CreateSshSessionRequestSchema, UpdateSshSessionRequestSchema } from "../types/schemas";
+import { CreateSshSessionRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:ssh-sessions");
 

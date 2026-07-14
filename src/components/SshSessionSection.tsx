@@ -2,7 +2,7 @@
  * Dashboard section for SSH sessions.
  */
 
-import type { SshSession, Workspace } from "../types";
+import type { SshSession, Workspace } from "@/shared";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
 import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 

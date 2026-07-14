@@ -4,15 +4,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  PublicWorkspace,
-  Workspace,
-  CreateWorkspaceRequest,
-  UpdateWorkspaceRequest,
-  DeleteWorkspaceRequest,
-  WorkspaceImportResult,
-  WorkspaceExportData,
-} from "../types/workspace";
+import type { PublicWorkspace, Workspace, WorkspaceImportResult } from "@/shared/workspace";
+import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
+import type { DeleteWorkspaceRequest, WorkspaceExportData } from "@/contracts/schemas/workspace";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 

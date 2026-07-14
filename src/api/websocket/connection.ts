@@ -9,7 +9,7 @@ import {
 } from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
 import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "../../types";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";

@@ -1,13 +1,13 @@
 import type { TaskCtx } from "./context";
-import type { Task, TaskStatus, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { Task, TaskStatus, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpOptions, SendFollowUpResult } from "./task-types";
 import { loadTask } from "../../persistence/tasks";
 import { updateTaskState } from "../../persistence/tasks";
 import { TaskEngine } from "../task-engine";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { canReuseExistingBranch, jumpstartTaskFromEngine } from "./task-jumpstart";

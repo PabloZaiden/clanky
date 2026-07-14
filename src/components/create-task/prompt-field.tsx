@@ -1,6 +1,6 @@
 import { useRef, type ClipboardEvent } from "react";
 import { getTemplateById } from "../../lib/prompt-templates";
-import type { ComposerImageAttachment } from "../../types/message-attachments";
+import type { ComposerImageAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,

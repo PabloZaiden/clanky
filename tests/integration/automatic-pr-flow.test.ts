@@ -13,11 +13,8 @@ import {
 } from "../../src/core/automatic-pr-flow-github";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
-import type { TaskEvent } from "../../src/types/events";
-import {
-  createInitialState,
-  type Task,
-} from "../../src/types/task";
+import type { TaskEvent } from "@/shared/events";
+import { createInitialState, type Task } from "@/shared/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import {
   setupTestContext,

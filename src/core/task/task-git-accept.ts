@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { AcceptTaskResult } from "./task-types";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { log } from "../logger";

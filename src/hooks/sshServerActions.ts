@@ -1,17 +1,5 @@
-import type {
-  CheckSshServerPrerequisitesRequest,
-  CreateSshServerRequest,
-  DevboxTemplateSummary,
-  GetDevboxTemplatesRequest,
-  ListSshServersResponse,
-  SshServer,
-  SshConnectionMode,
-  SshServerPrerequisiteReport,
-  SshServerSession,
-  VncSession,
-  UpdateSshSessionRequest,
-  UpdateSshServerRequest,
-} from "../types";
+import type { DevboxTemplateSummary, SshServer, SshConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
+import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 import {

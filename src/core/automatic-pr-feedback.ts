@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import type { PromptInput, AgentResponse } from "../backends/types";
-import type { Task, ModelConfig } from "../types/task";
+import type { Task, ModelConfig } from "@/shared/task";
 import type { AutomaticPrFlowFeedbackItem } from "./automatic-pr-flow-github";
 import { backendManager } from "./backend-manager";
 import { resolveEffectiveCheapModel } from "./cheap-model";

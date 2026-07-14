@@ -5,8 +5,8 @@
  */
 
 import type { Backend } from "../../backends/types";
-import type { TaskEvent } from "../../types/events";
-import type { ConnectionStatus, ServerSettings } from "../../types/settings";
+import type { TaskEvent } from "@/shared/events";
+import type { ConnectionStatus, ServerSettings } from "@/shared/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
 
 export { type ConnectionStatus };

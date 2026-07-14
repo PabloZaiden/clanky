@@ -1,5 +1,5 @@
-import { EmptyChatTranscriptError } from "../types/chat";
-import type { PersistedMessage } from "../types/task";
+import { EmptyChatTranscriptError } from "@/shared/chat";
+import type { PersistedMessage } from "@/shared/task";
 
 const MAX_SPAWN_TASK_NAME_LENGTH = 100;
 const MAX_SPAWN_TASK_PROMPT_LENGTH = 32_000;

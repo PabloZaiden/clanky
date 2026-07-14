@@ -2,9 +2,9 @@
  * Agent event processing helpers for TaskEngine.
  */
 
-import type { TaskConfig, TaskState } from "../../types/task";
-import type { LogLevel, TaskEvent, MessageData, ToolCallData } from "../../types/events";
-import { createTimestamp } from "../../types/events";
+import type { TaskConfig, TaskState } from "@/shared/task";
+import type { LogLevel, TaskEvent, MessageData, ToolCallData } from "@/shared/events";
+import { createTimestamp } from "@/shared/events";
 import type { AgentEvent } from "../../backends/types";
 import type { TaskBackend, IterationContext } from "./engine-types";
 

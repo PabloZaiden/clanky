@@ -15,7 +15,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { backendManager } from "../core/backend-manager";
 import { GitCommandError, GitService } from "../core/git";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
-import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse, Workspace } from "../types";
+import type { Workspace } from "@/shared";
+import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse } from "@/contracts";
 import { createLogger } from "../core/logger";
 import { errorResponse, requireWorkspace } from "./helpers";
 

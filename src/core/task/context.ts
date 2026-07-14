@@ -3,14 +3,14 @@
  */
 import type { TaskEngine } from "../task-engine";
 import type { SimpleEventEmitter } from "../event-emitter";
-import type { TaskEvent } from "../../types/events";
-import type { Task, ModelConfig } from "../../types/task";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { TaskEvent } from "@/shared/events";
+import type { Task, ModelConfig } from "@/shared/task";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { GitService } from "../git-service";
 import type { CommandExecutor } from "../command-executor";
 import type { SendFollowUpResult } from "./task-types";
 import type { AcceptPlanResult, AcceptPlanOptions } from "./task-types";
-import type { AutomaticPrFlowState } from "../../types/task";
+import type { AutomaticPrFlowState } from "@/shared/task";
 import type { PushTaskResult } from "./task-types";
 
 export interface TaskCtx {

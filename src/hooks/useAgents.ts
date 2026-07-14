@@ -1,18 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appFetch } from "../lib/public-path";
 import { createLogger } from "../lib/logger";
-import type {
-  Agent,
-  AgentEvent,
-  AgentRun,
-  AgentRunStatus,
-} from "../types";
-import type {
-  CreateAgentRequest,
-  DeleteAgentRunsRequest,
-  RunAgentRequest,
-  UpdateAgentRequest,
-} from "../types/schemas";
+import type { Agent, AgentEvent, AgentRun, AgentRunStatus } from "@/shared";
+import type { CreateAgentRequest, DeleteAgentRunsRequest, RunAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { isAgentEvent, useAppEvents } from "./useAppEvents";
 
 const log = createLogger("useAgents");

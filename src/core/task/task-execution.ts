@@ -1,8 +1,8 @@
 import type { TaskCtx } from "./context";
-import type { Task } from "../../types/task";
+import type { Task } from "@/shared/task";
 import type { StartTaskOptions } from "./task-types";
 import { TaskEngine } from "../task-engine";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { loadTask, updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";

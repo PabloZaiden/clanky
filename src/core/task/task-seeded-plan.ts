@@ -1,7 +1,7 @@
 import type { TaskCtx } from "./context";
-import type { Task } from "../../types/task";
+import type { Task } from "@/shared/task";
 import type { SeedPlanFilesOptions } from "./task-types";
-import { createTimestamp } from "../../types/events";
+import { createTimestamp } from "@/shared/events";
 import { loadTask, saveTask } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";

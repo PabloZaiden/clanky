@@ -1,7 +1,7 @@
 import { Page } from "@pablozaiden/webapp/web";
-import type { Chat, Task, SshSession, Workspace } from "../../types";
-import type { CreateSshSessionRequest } from "../../types/api";
-import type { SshServer } from "../../types/ssh-server";
+import type { Chat, Task, SshSession, Workspace } from "@/shared";
+import type { CreateSshSessionRequest } from "@/contracts";
+import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAgentsResult } from "../../hooks/useAgents";
@@ -28,7 +28,7 @@ import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-s
 import type {
   CreateTaskFormActionState,
 } from "../CreateTaskForm";
-import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 
 interface ShellMainContentProps {
   route: ShellRoute;

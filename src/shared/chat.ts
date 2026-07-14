@@ -53,6 +53,7 @@ export interface ChatConfig {
   model: ModelConfig;
   useWorktree: boolean;
   autoApprovePermissions?: boolean;
+  skipBaseBranchSync?: boolean;
   baseBranch?: string;
   createdAt: string;
   updatedAt: string;
@@ -114,6 +115,8 @@ export interface ChatState {
   error?: ChatError;
   worktree?: ChatWorktreeState;
   messages: PersistedMessage[];
+  hasMessages?: boolean;
+  hasTranscript?: boolean;
   logs: TaskLogEntry[];
   toolCalls: PersistedToolCall[];
   pendingPermissionRequests?: ChatPermissionRequest[];
@@ -230,5 +233,39 @@ export class InvalidCurrentPlanError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InvalidCurrentPlanError";
+  }
+}
+
+export class SshCredentialsRequiredError extends Error {
+  readonly code = "ssh_credentials_required";
+  readonly status = 400;
+
+  constructor(message = "SSH credentials are required to reconnect this chat", options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SshCredentialsRequiredError";
+  }
+}
+
+export class InvalidChatBaseBranchError extends Error {
+  readonly code = "invalid_chat_base_branch";
+  readonly status = 400;
+  readonly branchName: string;
+
+  constructor(branchName: string) {
+    super(`Standalone chat base branch '${branchName}' is not a valid git branch name.`);
+    this.name = "InvalidChatBaseBranchError";
+    this.branchName = branchName;
+  }
+}
+
+export class ChatBranchCheckoutError extends Error {
+  readonly code = "chat_branch_checkout_failed";
+  readonly status = 409;
+  readonly branchName: string;
+
+  constructor(branchName: string, message = `Unable to switch the standalone chat to branch '${branchName}'.`, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ChatBranchCheckoutError";
+    this.branchName = branchName;
   }
 }

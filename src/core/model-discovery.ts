@@ -9,9 +9,9 @@ import { backendManager, buildConnectionConfig } from "./backend-manager";
 import { DomainError } from "./domain-error";
 import { createLogger } from "./logger";
 import { workspaceManager } from "./workspace-manager";
-import type { ModelInfo } from "../types/api";
-import type { ServerSettings } from "../types/settings";
-import type { Workspace } from "../types/workspace";
+import type { ModelInfo } from "@/contracts";
+import type { ServerSettings } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
 
 const log = createLogger("core:model-discovery");
 const MODEL_DISCOVERY_CACHE_TTL_MS = 12 * 60 * 60 * 1_000;

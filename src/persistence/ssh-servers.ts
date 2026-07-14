@@ -2,14 +2,7 @@
  * Persistence layer for standalone SSH servers and server-owned SSH sessions.
  */
 
-import {
-  DEFAULT_SSH_CONNECTION_MODE,
-  normalizeSshSessionUseTmux,
-  normalizeSshConnectionMode,
-  type SshServer,
-  type SshServerConfig,
-  type SshServerSession,
-} from "../types";
+import { DEFAULT_SSH_CONNECTION_MODE, normalizeSshSessionUseTmux, normalizeSshConnectionMode, type SshServer, type SshServerConfig, type SshServerSession } from "@/shared";
 import { createLogger } from "../core/logger";
 import { getDatabase } from "./database";
 import {

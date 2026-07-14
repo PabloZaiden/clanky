@@ -16,27 +16,13 @@ import type {
   ImportableSession,
   SessionReplayEvent,
 } from "../backends/types";
-import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, QueuedChatMessage, SessionInfo } from "../types";
-import type { ChatEvent } from "../types/events";
-import { createTimestamp } from "../types/events";
-import type { MessageImageAttachment } from "../types/message-attachments";
+import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, QueuedChatMessage, SessionInfo } from "@/shared";
+import type { ChatEvent } from "@/shared/events";
+import { createTimestamp } from "@/shared/events";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import {
-  ChatBranchCheckoutError,
-  ChatBusyError,
-  ChatPermissionReplyError,
-  ChatPermissionRequestNotFoundError,
-  createInitialChatState,
-  DEFAULT_CHAT_CONFIG,
-  InvalidChatBaseBranchError,
-  SshCredentialsRequiredError,
-  isAgentChat,
-  isChatBusyStatus,
-  isSshServerChat,
-  isTaskChat,
-  isStandaloneChat,
-} from "../types/chat";
-import type { ChatPermissionDecision, ChatPermissionRequest } from "../types/chat";
+import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, createInitialChatState, DEFAULT_CHAT_CONFIG, InvalidChatBaseBranchError, SshCredentialsRequiredError, isAgentChat, isChatBusyStatus, isSshServerChat, isTaskChat, isStandaloneChat } from "@/shared/chat";
+import type { ChatPermissionDecision, ChatPermissionRequest } from "@/shared/chat";
 import {
   loadChat,
   loadTaskChat,
@@ -69,14 +55,14 @@ import {
   buildSpawnTaskPrompt,
 } from "../utils/chat-to-task-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
-import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "@/shared/tool-call";
 import { getTaskWorkingDirectory } from "./task/task-types";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { buildSshRemoteShellCommand } from "./remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-runtime-command";
-import type { AgentProvider } from "../types/settings";
+import type { AgentProvider } from "@/shared/settings";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
 

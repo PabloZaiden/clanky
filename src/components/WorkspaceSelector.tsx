@@ -6,9 +6,9 @@
  */
 
 import type { ChangeEvent } from "react";
-import type { SshServer } from "../types";
-import type { Workspace } from "../types/workspace";
-import { getServerLabel } from "../types/settings";
+import type { SshServer } from "@/shared";
+import type { Workspace } from "@/shared/workspace";
+import { getServerLabel } from "@/shared/settings";
 
 export interface WorkspaceSelectorProps {
   /** List of available workspaces */

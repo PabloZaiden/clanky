@@ -8,7 +8,7 @@ import { initializeDatabase, closeDatabase } from "../../src/persistence/databas
 import { saveSshSession } from "../../src/persistence/ssh-sessions";
 import { backendManager } from "../../src/core/backend-manager";
 import { SshTerminalBridge } from "../../src/core/ssh-terminal-bridge";
-import type { SshSession, Workspace } from "../../src/types";
+import type { SshSession, Workspace } from "@/shared";
 
 interface CommandRunResult {
   exitCode: number;

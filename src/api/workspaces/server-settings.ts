@@ -11,10 +11,7 @@ import {
   errorResponse,
 } from "../helpers";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
-import {
-  ServerSettingsSchema,
-  TestConnectionRequestSchema,
-} from "../../types/schemas";
+import { ServerSettingsSchema, TestConnectionRequestSchema } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:workspaces");

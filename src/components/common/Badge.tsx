@@ -4,7 +4,7 @@
 
 import type { HTMLAttributes } from "react";
 import { Badge as FrameworkBadge } from "@pablozaiden/webapp/web";
-import type { ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
+import type { ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
 
 export type BadgeVariant = import("@pablozaiden/webapp/web").BadgeVariant;
 

@@ -1,4 +1,4 @@
-import type { Workspace } from "../types";
+import type { Workspace } from "@/shared";
 
 function shellArg(value: string): string {
   if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) {
