@@ -1,6 +1,6 @@
 import { PASSWORD_INPUT_PROPS } from "../common";
-import { InlineField } from "./shell-panel";
 import type { SshServerFormValues } from "./ssh-server-form-utils";
+import { FormGroup, TextField } from "@pablozaiden/webapp/web";
 
 interface SshServerFieldsProps {
   values: SshServerFormValues;
@@ -26,56 +26,57 @@ export function SshServerFields({
           {" "}provisioning actions.
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <InlineField
+      <FormGroup title="Server details">
+        <div className="grid gap-4 lg:grid-cols-2">
+        <TextField
           id="server-name"
           label="Server name"
           value={values.name}
-          onChange={(value) => onChange("name", value)}
+          onChange={(event) => onChange("name", event.target.value)}
           placeholder="Production host"
           required
           disabled={disabled}
         />
-        <InlineField
+        <TextField
           id="server-address"
           label="Address"
           value={values.address}
-          onChange={(value) => onChange("address", value)}
+          onChange={(event) => onChange("address", event.target.value)}
           placeholder="server.example.com"
           required
           disabled={disabled}
         />
-        <InlineField
+        <TextField
           id="server-username"
           label="Username"
           value={values.username}
-          onChange={(value) => onChange("username", value)}
+          onChange={(event) => onChange("username", event.target.value)}
           placeholder="ubuntu"
           required
           disabled={disabled}
         />
-        <InlineField
+        <TextField
           id="server-repositories-base-path"
           label="Repositories base path"
           value={values.repositoriesBasePath}
-          onChange={(value) => onChange("repositoriesBasePath", value)}
+          onChange={(event) => onChange("repositoriesBasePath", event.target.value)}
           placeholder="/workspaces"
-          help="Default base path for cloning repositories during automatic provisioning."
+          hint="Default base path for cloning repositories during automatic provisioning."
           disabled={disabled}
         />
-        <InlineField
+        <TextField
           id="server-password"
           label="Client-only password"
           value={values.password}
-          onChange={(value) => onChange("password", value)}
+          onChange={(event) => onChange("password", event.target.value)}
           placeholder="Optional"
           type="password"
-          help="Stored encrypted in this client to streamline persistent standalone sessions."
-          inputProps={PASSWORD_INPUT_PROPS}
+          hint="Stored encrypted in this client to streamline persistent standalone sessions."
+          {...PASSWORD_INPUT_PROPS}
           disabled={disabled}
         />
-      </div>
+        </div>
+      </FormGroup>
     </>
   );
 }
-

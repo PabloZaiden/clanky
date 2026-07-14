@@ -19,10 +19,16 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { Modal } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
-import { ShellPanel } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import {
+  ErrorState,
+  FormGroup,
+  Modal,
+  Panel,
+  SelectField,
+  TextField,
+  type WebAppRoute,
+} from "@pablozaiden/webapp/web";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 
 interface ImportableChatSession {
   id: string;
@@ -492,16 +498,7 @@ export function ComposeChatView({
 
   return (
     <>
-      <ShellPanel
-        eyebrow="Chat"
-        title={
-          composeServer
-            ? `Start a new chat on ${composeServer.config.name}`
-            : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat"
-        }
-      description={composeServer ? `${composeServer.config.username}@${composeServer.config.address}` : composeWorkspace?.directory}
-      descriptionClassName="hidden font-mono sm:inline"
-      variant="compact"
+      <Panel
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>
@@ -528,76 +525,60 @@ export function ComposeChatView({
         </>
       )}
     >
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="chat-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Name
-          </label>
-          <input
+      <FormGroup title="Chat details">
+        <div className="space-y-5">
+          <TextField
             id="chat-name"
+            label="Name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Repository pairing session"
-            className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
           />
-        </div>
 
         {!isServerChat && (
           <div>
-          <label htmlFor="chat-workspace" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Workspace
-          </label>
-          <select
+          <SelectField
             id="chat-workspace"
+            label="Workspace"
             value={selectedWorkspaceId}
             onChange={(event) => setSelectedWorkspaceId(event.target.value)}
             disabled={Boolean(composeWorkspace) || workspacesLoading}
-            className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60"
           >
             <option value="">
               {workspacesLoading ? "Loading workspaces..." : "Select a workspace"}
             </option>
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
+                  {workspace.name}
+                </option>
             ))}
-          </select>
+          </SelectField>
           {workspaceError && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">{workspaceError}</p>
+            <ErrorState title="Unable to load workspaces" description={workspaceError} />
           )}
         </div>
         )}
 
         {isServerChat && (
           <>
-            <div>
-              <label htmlFor="chat-directory" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Remote directory
-              </label>
-              <input
+            <TextField
                 id="chat-directory"
+                label="Remote directory"
                 value={remoteDirectory}
                 onChange={(event) => setRemoteDirectory(event.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-              />
-            </div>
+                className="font-mono"
+            />
 
-            <div>
-              <label htmlFor="chat-provider" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Provider
-              </label>
-              <select
+            <SelectField
                 id="chat-provider"
+                label="Provider"
                 value={remoteProvider}
                 onChange={(event) => setRemoteProvider(event.target.value as AgentProvider)}
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-              >
+            >
                 {AGENT_PROVIDER_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>{option.label}</option>
                 ))}
-              </select>
-            </div>
+            </SelectField>
           </>
         )}
 
@@ -620,15 +601,12 @@ export function ComposeChatView({
             {importExistingSession && (
               <div className="mt-4">
                 <div>
-                  <label htmlFor="import-session-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Existing sessions
-                  </label>
-                  <select
+                  <SelectField
                     id="import-session-select"
+                    label="Existing sessions"
                     value={selectedImportSessionId}
                     onChange={(event) => setSelectedImportSessionId(event.target.value)}
                     disabled={importSessionsLoading || importSessions.length === 0}
-                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60"
                   >
                     <option value="">
                       {importSessionsLoading
@@ -640,7 +618,7 @@ export function ComposeChatView({
                         {(session.title || session.id)}{session.cwd ? ` - ${session.cwd}` : ""}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
               </div>
             )}
@@ -718,8 +696,9 @@ export function ComposeChatView({
             </div>
           </label>
         </div>
-      </div>
-      </ShellPanel>
+        </div>
+      </FormGroup>
+      </Panel>
 
       <Modal
         isOpen={passwordModalOpen}
@@ -737,15 +716,13 @@ export function ComposeChatView({
           </>
         )}
       >
-        <label htmlFor="ssh-chat-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Password
-        </label>
-        <input
+        <TextField
           id="ssh-chat-password"
+          label="Password"
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+          {...PASSWORD_INPUT_PROPS}
         />
       </Modal>
     </>

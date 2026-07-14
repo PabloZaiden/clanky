@@ -2,8 +2,7 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ShellPanel, InlineField } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, Panel, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
@@ -71,24 +70,23 @@ export function RebuildWorkspaceView({
 
   // When the action completes, refresh workspaces to get updated server settings.
   const isCompleted = provisioningStatus === "completed";
+  const statusBadges = (
+    <>
+      <Badge variant="info" size="sm">{actionLabel}</Badge>
+      {provisioningStatus && (
+        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+          {provisioningStatus}
+        </Badge>
+      )}
+    </>
+  );
 
   return (
-    <ShellPanel
-      eyebrow="Workspace"
-      title={`${actionLabel} ${workspace.name}`}
-      variant="compact"
-      badges={
+    <Panel
+      actions={(
         <>
-          <Badge variant="info" size="sm">{actionLabel}</Badge>
-          {provisioningStatus && (
-            <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-              {provisioningStatus}
-            </Badge>
-          )}
-        </>
-      }
-      actions={
-        provisioning.activeJobId ? (
+          {statusBadges}
+          {provisioning.activeJobId ? (
           <>
             {canReturnToForm && (
               <Button type="button" size="sm" onClick={handleBackToForm}>
@@ -120,7 +118,7 @@ export function RebuildWorkspaceView({
               </Button>
             )}
           </>
-        ) : (
+          ) : (
           <>
             <Button
               type="button"
@@ -140,8 +138,9 @@ export function RebuildWorkspaceView({
               {`${actionLabel} Devbox`}
             </Button>
           </>
-        )
-      }
+          )}
+        </>
+      )}
     >
       {provisioning.activeJobId ? (
         <div className="space-y-6">
@@ -159,27 +158,21 @@ export function RebuildWorkspaceView({
           className="space-y-6"
           onSubmit={(event) => void handleStartWorkspaceAction(event)}
         >
-          <div className="space-y-4">
-            <InlineField
+          <FormGroup title={`${actionLabel} details`}>
+            <div className="space-y-4">
+            <TextField
               id={`${mode}-workspace-name`}
               label="Workspace name"
               value={workspace.name}
-              onChange={() => {}}
               disabled
             />
 
             <div>
-              <label
-                htmlFor={`${mode}-ssh-server`}
-                className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                Saved SSH server
-              </label>
-              <select
+              <SelectField
+                label="Saved SSH server"
                 id={`${mode}-ssh-server`}
                 value={sshServerId}
                 disabled
-                className="block w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 cursor-not-allowed"
               >
                 <option value="">No SSH server</option>
                 {servers.map((server) => (
@@ -187,7 +180,7 @@ export function RebuildWorkspaceView({
                     {server.config.name} ({server.config.username}@{server.config.address})
                   </option>
                 ))}
-              </select>
+              </SelectField>
               {!selectedServer && sshServerId && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                   The SSH server used for provisioning is no longer registered.
@@ -195,69 +188,63 @@ export function RebuildWorkspaceView({
               )}
             </div>
 
-            <InlineField
+            <TextField
               id={`${mode}-repo-url`}
               label="Git repository URL"
               value={workspace.repoUrl ?? ""}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id={`${mode}-base-path`}
               label="Remote base path"
               value={workspace.basePath ?? ""}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id={`${mode}-source-directory`}
               label="Source directory"
               value={workspace.sourceDirectory ?? ""}
-              onChange={() => {}}
               disabled
-              help="Directory on the remote host where the repository was cloned."
+              hint="Directory on the remote host where the repository was cloned."
             />
 
-            <InlineField
+            <TextField
               id={`${mode}-provider`}
               label="Provider"
               value={workspace.provider ?? "copilot"}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id={`${mode}-devcontainer-subpath`}
               label="Devcontainer variant"
               value={workspace.devcontainerSubpath ?? ""}
-              onChange={() => {}}
               disabled
-              help="If set, devbox will reuse this devcontainer variant during rebuild or restart."
+              hint="If set, devbox will reuse this devcontainer variant during rebuild or restart."
             />
 
             {!selectedServerHasStoredCredential && sshServerId && (
-              <InlineField
+              <TextField
                 id={`${mode}-ssh-password`}
                 label="SSH password"
                 value={password}
-                onChange={setPassword}
+                onChange={(event) => setPassword(event.target.value)}
                 placeholder="Leave blank for key-based auth"
                 type="password"
-                help={`Required to connect to the SSH server for the ${actionLabelLower} operation.`}
-                inputProps={PASSWORD_INPUT_PROPS}
+                hint={`Required to connect to the SSH server for the ${actionLabelLower} operation.`}
+                {...PASSWORD_INPUT_PROPS}
               />
             )}
-          </div>
+            </div>
+          </FormGroup>
 
           {provisioning.error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-              <p className="text-sm text-red-600 dark:text-red-400">{provisioning.error}</p>
-            </div>
+            <ErrorState title={`Unable to ${actionLabelLower} workspace`} description={provisioning.error} />
           )}
         </form>
       )}
-    </ShellPanel>
+    </Panel>
   );
 }

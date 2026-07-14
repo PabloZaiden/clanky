@@ -3,8 +3,7 @@ import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions, useToast } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { ShellPanel } from "./shell-panel";
+import { FormGroup, Panel, SelectField, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
 
@@ -123,10 +122,7 @@ export function SshSessionComposer({
   }
 
   return (
-    <ShellPanel
-      eyebrow="SSH session"
-      title="Create an SSH session"
-      variant="compact"
+    <Panel
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
@@ -139,34 +135,29 @@ export function SshSessionComposer({
       )}
     >
       <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
+        <FormGroup title="Connection options">
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
-            <label htmlFor="ssh-target-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Target type
-            </label>
-            <select
+            <SelectField
+              label="Target type"
               id="ssh-target-type"
               value={targetType}
               onChange={(event) => setTargetType(event.target.value as "workspace" | "server")}
-              className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
             >
               <option value="workspace">Workspace</option>
               <option value="server">Standalone SSH server</option>
-            </select>
+            </SelectField>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
-            <label htmlFor="ssh-connection-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Connection mode
-            </label>
-            <select
+            <SelectField
+              label="Connection mode"
               id="ssh-connection-mode"
               value={connectionMode}
               onChange={(event) => setConnectionMode(event.target.value as SshConnectionMode)}
-              className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
             >
               <option value="dtach">Persistent SSH</option>
               <option value="direct">Direct SSH</option>
-            </select>
+            </SelectField>
             <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
             </p>
@@ -204,14 +195,11 @@ export function SshSessionComposer({
           </div>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
-            <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Server
-            </label>
-            <select
+            <SelectField
+              label="Server"
               id="ssh-server"
               value={selectedServerId}
               onChange={(event) => setSelectedServerId(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
             >
               <option value="">Select a server…</option>
               {servers.map((server) => (
@@ -219,7 +207,7 @@ export function SshSessionComposer({
                   {server.config.name} — {server.config.username}@{server.config.address}
                 </option>
               ))}
-            </select>
+            </SelectField>
             {servers.length === 0 && (
               <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
                 Register a standalone SSH server first.
@@ -228,7 +216,8 @@ export function SshSessionComposer({
           </div>
         )}
 
+        </FormGroup>
       </form>
-    </ShellPanel>
+    </Panel>
   );
 }

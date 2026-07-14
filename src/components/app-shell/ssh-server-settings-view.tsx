@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Button } from "../common";
 import type { SshServer } from "@/shared";
-import { ShellPanel } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 
 interface SshServerSettingsViewProps {
@@ -28,11 +27,7 @@ export function SshServerSettingsView({
   const [submitting, setSubmitting] = useState(false);
 
   return (
-    <ShellPanel
-      eyebrow="SSH server settings"
-      title="SSH Server Settings"
-      description={`${server.config.username}@${server.config.address}`}
-      variant="compact"
+    <Panel
       actions={(
         <>
           {server.config.repositoriesBasePath && (
@@ -69,6 +64,6 @@ export function SshServerSettingsView({
         onValidityChange={setFormValid}
         onSubmittingChange={setSubmitting}
       />
-    </ShellPanel>
+    </Panel>
   );
 }

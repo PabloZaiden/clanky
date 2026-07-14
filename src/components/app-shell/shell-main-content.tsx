@@ -1,4 +1,4 @@
-import { Page, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Chat, Task, SshSession, Workspace } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer } from "@/shared/ssh-server";
@@ -9,7 +9,6 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
 import { SshSessionDetails } from "../SshSessionDetails";
-import { ShellPanel } from "./shell-panel";
 import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
 import { DraftTaskComposer } from "./shell-composers";
 import { ComposeView, isComposeKind } from "./shell-compose-view";
@@ -154,15 +153,10 @@ function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefin
 
 function missingRouteParameter(view: string, parameter: string) {
   return (
-    <ShellPanel
+    <ErrorState
       title="Invalid route"
-      description={`The ${view} route is missing its ${parameter}.`}
-      variant="compact"
-    >
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Use the sidebar or home button to continue.
-      </p>
-    </ShellPanel>
+      description={`The ${view} route is missing its ${parameter}. Use the sidebar or home button to continue.`}
+    />
   );
 }
 
@@ -205,7 +199,7 @@ function renderMainContent(props: ShellMainContentProps) {
   } = props;
 
   if (shellLoading && route.view === "home") {
-    return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading…</div>;
+    return <LoadingState title="Loading Clanky" />;
   }
 
   if (route.view === "agents" || route.view === "agent" || route.view === "agent-run") {
@@ -245,13 +239,12 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedTask) {
       return shellLoading ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading task…</div>
+        <LoadingState title="Loading task" />
       ) : (
-        <ShellPanel eyebrow="Task" title="Task not found" description="The selected task no longer exists.">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+        <ErrorState
+          title="Task not found"
+          description="The selected task no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -332,13 +325,12 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedChat) {
       return shellLoading ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>
+        <LoadingState title="Loading chat" />
       ) : (
-        <ShellPanel eyebrow="Chat" title="Chat not found" description="The selected chat no longer exists.">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+        <ErrorState
+          title="Chat not found"
+          description="The selected chat no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -376,15 +368,10 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "workspace") {
     if (!selectedWorkspace) {
       return (
-        <ShellPanel
-          eyebrow="Workspace"
+        <ErrorState
           title="Workspace not found"
-          description="The selected workspace no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected workspace no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
     const relatedTasks = tasks.filter((task) => task.config.workspaceId === selectedWorkspace.id);
@@ -437,15 +424,10 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "workspace-previews") {
     if (!selectedWorkspace) {
       return (
-        <ShellPanel
-          eyebrow="Workspace"
+        <ErrorState
           title="Workspace not found"
-          description="The selected workspace no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected workspace no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -460,15 +442,10 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "workspace-settings") {
     if (!selectedWorkspace) {
       return (
-        <ShellPanel
-          eyebrow="Workspace"
+        <ErrorState
           title="Workspace not found"
-          description="The selected workspace no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected workspace no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -491,15 +468,10 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedServer) {
       return (
-        <ShellPanel
-          eyebrow="SSH server"
+        <ErrorState
           title="Server not found"
-          description="The selected SSH server no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
     return (
@@ -519,15 +491,10 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedServer) {
       return (
-        <ShellPanel
-          eyebrow="SSH server settings"
+        <ErrorState
           title="Server not found"
-          description="The selected SSH server no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -549,15 +516,10 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedServer) {
       return (
-        <ShellPanel
-          eyebrow="VNC session"
+        <ErrorState
           title="Server not found"
-          description="The selected SSH server no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
@@ -618,29 +580,19 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     if (!selectedServer) {
       return (
-        <ShellPanel
-          eyebrow="SSH server"
+        <ErrorState
           title="Server not found"
-          description="The selected SSH server no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
 
     if (!selectedServer.config.repositoriesBasePath) {
       return (
-        <ShellPanel
-          eyebrow="SSH server"
+        <ErrorState
           title="Automatic provisioning unavailable"
-          description="This server is not configured for automatic workspace provisioning."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Add a repositories base path to enable provisioning-related actions like Arise.
-          </p>
-        </ShellPanel>
+          description="This server is not configured for automatic workspace provisioning. Add a repositories base path to enable provisioning-related actions like Arise."
+        />
       );
     }
 
@@ -656,15 +608,10 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "rebuild-workspace" || route.view === "restart-workspace") {
     if (!selectedWorkspace) {
       return (
-        <ShellPanel
-          eyebrow="Workspace"
+        <ErrorState
           title="Workspace not found"
-          description="The selected workspace no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
+          description="The selected workspace no longer exists. Use the sidebar or home button to continue."
+        />
       );
     }
     return (
@@ -732,17 +679,38 @@ function renderMainContent(props: ShellMainContentProps) {
   );
 }
 
+function usesFullViewportLayout(props: ShellMainContentProps): boolean {
+  if (props.route.view === "task") {
+    return props.selectedTask?.state.status !== "draft";
+  }
+
+  return props.route.view === "agent-run"
+    || props.route.view === "chat"
+    || props.route.view === "code-explorer"
+    || props.route.view === "ssh"
+    || props.route.view === "task-files"
+    || props.route.view === "vnc-session"
+    || props.route.view === "workspace-files"
+    || props.route.view === "server-files";
+}
+
 export function AppRouteContent(props: ShellMainContentProps) {
+  const fullViewport = usesFullViewportLayout(props);
   return (
-    <Page layout="full">
+    <Page layout={fullViewport ? "full" : "padded"}>
       {props.shellErrors.length > 0 && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200 sm:px-6">
-          {props.shellErrors.join(" · ")}
-        </div>
+        <ErrorState
+          title="Some app data could not be loaded"
+          description={props.shellErrors.join(" · ")}
+        />
       )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {renderMainContent(props)}
-      </div>
+      {fullViewport
+        ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {renderMainContent(props)}
+          </div>
+        )
+        : renderMainContent(props)}
     </Page>
   );
 }

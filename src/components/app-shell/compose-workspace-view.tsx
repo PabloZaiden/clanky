@@ -9,8 +9,14 @@ import { ServerSettingsForm } from "../ServerSettingsForm";
 import type { ServerSettings } from "@/shared/settings";
 import type { AgentProvider } from "@/shared/settings";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ShellPanel, InlineField } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import {
+  ErrorState,
+  FormGroup,
+  Panel,
+  SelectField,
+  TextField,
+  type WebAppRoute,
+} from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { SshServer } from "@/shared/ssh-server";
@@ -204,18 +210,17 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   );
 
   return (
-    <ShellPanel
-      eyebrow="Workspace"
-      title="Create a workspace"
-      variant="compact"
-      badges={
-        provisioningStatus ? (
-          <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-            {provisioningStatus}
-          </Badge>
-        ) : undefined
-      }
-      actions={!provisioning.activeJobId ? createHeaderAction : undefined}
+    <Panel
+      actions={(
+        <>
+          {provisioningStatus ? (
+            <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+              {provisioningStatus}
+            </Badge>
+          ) : null}
+          {!provisioning.activeJobId ? createHeaderAction : null}
+        </>
+      )}
     >
       {provisioning.activeJobId ? (
         <div className="space-y-6">
@@ -240,25 +245,26 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
             {createModeControls}
           </div>
 
-          <InlineField
+          <FormGroup title="Workspace details">
+          <TextField
             id="workspace-name"
             label="Workspace name"
             value={workspaceName}
-            onChange={setWorkspaceName}
+            onChange={(event) => setWorkspaceName(event.target.value)}
             placeholder="Main repository"
             required
           />
 
           {workspaceCreateMode === "manual" ? (
             <>
-              <InlineField
+              <TextField
                 id="workspace-directory"
                 label="Directory"
                 value={workspaceDirectory}
-                onChange={setWorkspaceDirectory}
+                onChange={(event) => setWorkspaceDirectory(event.target.value)}
                 placeholder="/workspaces/project"
                 required
-                help="Absolute path on the selected workspace host."
+                hint="Absolute path on the selected workspace host."
               />
               <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
@@ -276,15 +282,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
             </>
           ) : (
             <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="automatic-ssh-server"
-                  className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  Saved SSH server <span className="ml-1 text-red-500">*</span>
-                </label>
-                <select
+              <SelectField
                   id="automatic-ssh-server"
+                  label="Saved SSH server"
                   value={automaticServerId}
                   onChange={(event) => {
                     const newServerId = event.target.value;
@@ -294,31 +294,29 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     const selectedServer = servers.find((s) => s.config.id === newServerId);
                     setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
                   }}
-                  className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
-                >
+              >
                   <option value="">Select a saved SSH server</option>
                   {servers.map((server) => (
                     <option key={server.config.id} value={server.config.id}>
                       {server.config.name} ({server.config.username}@{server.config.address})
                     </option>
                   ))}
-                </select>
+              </SelectField>
                 {servers.length === 0 && (
                   <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                     Register a saved SSH server first to use automatic workspace provisioning.
                   </p>
                 )}
-              </div>
 
-              <InlineField
+              <TextField
                 id="automatic-repo-url"
                 label="Git repository URL"
                 value={automaticRepoUrl}
-                onChange={setAutomaticRepoUrl}
+                onChange={(event) => setAutomaticRepoUrl(event.target.value)}
                 placeholder="git@github.com:owner/repo.git"
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
-                help={automaticCreateNewRepository ? "Disabled because this workspace will start from a new local git repository." : "Repository to clone on the remote host."}
+                hint={automaticCreateNewRepository ? "Disabled because this workspace will start from a new local git repository." : "Repository to clone on the remote host."}
               />
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
@@ -341,80 +339,63 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 <span>Create a new repository (the repository doesn't exist yet)</span>
               </label>
 
-              <InlineField
+              <TextField
                 id="automatic-base-path"
                 label="Remote base path"
                 value={automaticBasePath}
-                onChange={setAutomaticBasePath}
+                onChange={(event) => setAutomaticBasePath(event.target.value)}
                 placeholder="/workspaces"
                 required
-                help="Parent directory where the repo should be cloned."
+                hint="Parent directory where the repo should be cloned."
               />
 
-              <div>
-                <label
-                  htmlFor="automatic-provider"
-                  className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  Provider <span className="ml-1 text-red-500">*</span>
-                </label>
-                <select
+              <SelectField
                   id="automatic-provider"
+                  label="Provider"
                   value={automaticProvider}
                   onChange={(event) =>
                     setAutomaticProvider(event.target.value as AgentProvider)
                   }
-                  className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
-                >
+              >
                   {AGENT_PROVIDER_OPTIONS.map((option) => (
                     <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
-                </select>
-              </div>
+              </SelectField>
 
               {!selectedServerHasStoredCredential && (
-                <InlineField
+                <TextField
                   id="automatic-ssh-password"
                   label="SSH password"
                   value={automaticPassword}
-                  onChange={setAutomaticPassword}
+                  onChange={(event) => setAutomaticPassword(event.target.value)}
                   placeholder="Leave blank for key-based auth"
                   type="password"
-                  help="Stored encrypted in this client to start provisioning when password auth is required."
-                  inputProps={PASSWORD_INPUT_PROPS}
+                  hint="Stored encrypted in this client to start provisioning when password auth is required."
+                  {...PASSWORD_INPUT_PROPS}
                 />
               )}
 
-              <div className="rounded-2xl border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-neutral-900/70">
-                <button
-                  type="button"
-                  onClick={() => setAutomaticAdvancedOpen(!automaticAdvancedOpen)}
-                  aria-expanded={automaticAdvancedOpen}
-                  aria-controls={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Advanced options</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{advancedSummary}</p>
-                  </div>
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {automaticAdvancedOpen ? "Hide" : "Show"}
-                  </span>
-                </button>
-
-                {automaticAdvancedOpen && (
-                  <div
-                    id={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID}
-                    className="space-y-4 border-t border-gray-200 px-4 py-4 dark:border-gray-800"
+              <FormGroup
+                title="Advanced options"
+                description={advancedSummary}
+                actions={(
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setAutomaticAdvancedOpen(!automaticAdvancedOpen)}
+                    aria-expanded={automaticAdvancedOpen}
+                    aria-controls={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID}
                   >
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between gap-3">
-                        <label
-                          htmlFor="automatic-devbox-template"
-                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                        >
-                          Devbox template
-                        </label>
+                    {automaticAdvancedOpen ? "Hide" : "Show"}
+                  </Button>
+                )}
+              >
+                {automaticAdvancedOpen && (
+                  <div id={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID} className="space-y-4">
+                    <FormGroup
+                      title="Devbox template"
+                      actions={(
                         <Button
                           type="button"
                           size="sm"
@@ -423,16 +404,17 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         >
                           Refresh templates
                         </Button>
-                      </div>
-                      <select
+                      )}
+                    >
+                      <SelectField
                         id="automatic-devbox-template"
+                        label="Template"
                         value={automaticDevboxTemplate}
                         onChange={(event) => {
                           autoSelectedDevboxTemplateRef.current = null;
                           setAutomaticDevboxTemplate(event.target.value);
                         }}
                         disabled={!automaticServerId || templatesLoading}
-                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700 dark:disabled:bg-neutral-900"
                       >
                         {!automaticCreateNewRepository && (
                           <option value="">Use repository devcontainer (default)</option>
@@ -443,8 +425,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                             {template.name} - {template.runtimeVersion}
                           </option>
                         ))}
-                      </select>
-                      <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      </SelectField>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {automaticCreateNewRepository
                           ? "Required because there is no repository devcontainer yet."
                           : "Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run."}
@@ -452,41 +434,40 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       {templatesError && (
                         <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
                       )}
-                    </div>
+                    </FormGroup>
 
-                    <InlineField
+                    <TextField
                       id="automatic-github-user"
                       label="GitHub CLI account"
                       value={automaticGithubUser}
-                      onChange={setAutomaticGithubUser}
+                      onChange={(event) => setAutomaticGithubUser(event.target.value)}
                       placeholder="work-account"
-                      help="Optional. When set, devbox runs with --gh-user for GH_TOKEN injection. Leave blank to use the current default gh account."
+                      hint="Optional. When set, devbox runs with --gh-user for GH_TOKEN injection. Leave blank to use the current default gh account."
                     />
 
-                    <InlineField
+                    <TextField
                       id="automatic-devcontainer-subpath"
                       label="Devcontainer variant"
                       value={automaticDevcontainerSubpath}
-                      onChange={setAutomaticDevcontainerSubpath}
+                      onChange={(event) => setAutomaticDevcontainerSubpath(event.target.value)}
                       placeholder="backend"
                       disabled={automaticDevboxTemplate.length > 0}
-                      help={automaticDevboxTemplate
+                      hint={automaticDevboxTemplate
                         ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
                         : "Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."}
                     />
                   </div>
                 )}
-              </div>
+              </FormGroup>
             </div>
           )}
+          </FormGroup>
 
           {provisioning.error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-              <p className="text-sm text-red-600 dark:text-red-400">{provisioning.error}</p>
-            </div>
+            <ErrorState title="Unable to provision workspace" description={provisioning.error} />
           )}
         </form>
       )}
-    </ShellPanel>
+    </Panel>
   );
 }

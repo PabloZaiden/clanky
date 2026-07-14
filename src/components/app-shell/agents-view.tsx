@@ -9,9 +9,17 @@ import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { ConfirmModal, useRealtimeRefresh, type WebAppRoute } from "@pablozaiden/webapp/web";
+import {
+  ConfirmModal,
+  DataList,
+  DataListRow,
+  ErrorState,
+  LoadingState,
+  Panel,
+  useRealtimeRefresh,
+  type WebAppRoute,
+} from "@pablozaiden/webapp/web";
 import { Button } from "../common";
-import { ShellPanel } from "./shell-panel";
 import { getRouteString } from "./route-fields";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -240,16 +248,8 @@ function AgentForm({
     }
   }
 
-  const title = mode === "edit"
-    ? `Edit agent ${agent?.config.name ?? ""}`
-    : initialWorkspace ? `Start a new agent in ${initialWorkspace.name}` : "Start a new agent";
-
   return (
-    <ShellPanel
-      title={title}
-      description={selectedWorkspace?.directory}
-      descriptionClassName="hidden font-mono sm:inline"
-      variant="compact"
+    <Panel
       actions={(
         <>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSubmitting}>
@@ -413,7 +413,7 @@ function AgentForm({
           />
         </div>
       </div>
-    </ShellPanel>
+    </Panel>
   );
 }
 
@@ -501,52 +501,36 @@ function AgentRunsList({
 }
 
 function AgentWorkspaceList({
-  workspace,
   agents,
   loading,
   error,
   onNavigate,
 }: {
-  workspace: Workspace | null;
   agents: Agent[];
   loading: boolean;
   error: string | null;
   onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
-    <ShellPanel
-      title={workspace ? `Agents in ${workspace.name}` : "Agents"}
-      description={workspace?.directory}
-      descriptionClassName="hidden font-mono sm:inline"
-      variant="compact"
-    >
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
-      {loading && <p className="text-sm text-gray-500 dark:text-gray-400">Loading agents...</p>}
-      <div className="grid gap-3">
+    <Panel>
+      {error && <ErrorState title="Unable to load agents" description={error} />}
+      {loading && <LoadingState title="Loading agents" />}
+      <DataList>
         {agents.map((agent) => (
-          <button
+          <DataListRow
             key={agent.config.id}
-            type="button"
-            className="rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-gray-300 dark:border-gray-800 dark:bg-neutral-950 dark:hover:border-gray-700"
+            title={agent.config.name}
+            description={agent.config.prompt}
+            meta={`Next run: ${formatDate(agent.state.nextRunAt)} · Every ${agent.config.schedule.interval.value} ${agent.config.schedule.interval.unit}`}
+            badge={<AgentStatusPill status={agent.state.status} />}
             onClick={() => onNavigate({ view: "agent", agentId: agent.config.id })}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-gray-950 dark:text-gray-50">{agent.config.name}</h2>
-              <AgentStatusPill status={agent.state.status} />
-            </div>
-            <p className="mt-2 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{agent.config.prompt}</p>
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Next run: {formatDate(agent.state.nextRunAt)} · Every {agent.config.schedule.interval.value} {agent.config.schedule.interval.unit}
-            </p>
-          </button>
+          />
         ))}
         {!loading && agents.length === 0 && (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-neutral-950 dark:text-gray-400">
-            No agents yet.
-          </div>
+          <p className="p-4 text-sm text-gray-500 dark:text-gray-400">No agents yet.</p>
         )}
-      </div>
-    </ShellPanel>
+      </DataList>
+    </Panel>
   );
 }
 
@@ -631,12 +615,8 @@ function AgentDetail({
 
   return (
     <>
-      <ShellPanel
-        title={agent.config.name}
-        description={workspace?.directory}
-        descriptionClassName="hidden font-mono sm:inline"
-        variant="compact"
-        badges={<AgentStatusPill status={agent.state.status} />}
+      <Panel
+        actions={<AgentStatusPill status={agent.state.status} />}
       >
         <div className="space-y-6">
           <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950">
@@ -658,7 +638,7 @@ function AgentDetail({
             />
           </section>
         </div>
-      </ShellPanel>
+      </Panel>
     </>
   );
 }
@@ -767,17 +747,15 @@ function AgentRunDetail({
   });
 
   if (loading && !run) {
-    return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading agent run...</div>;
+    return <LoadingState title="Loading agent run" />;
   }
 
   if (!run) {
     return (
-      <ShellPanel
+      <ErrorState
         title="Agent run not found"
-        variant="compact"
-      >
-        <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "The selected agent run no longer exists."}</p>
-      </ShellPanel>
+        description={error ?? "The selected agent run no longer exists."}
+      />
     );
   }
 
@@ -915,19 +893,18 @@ export function AgentsView({
     const agentId = getRouteString(route, "agentId");
     if (!agentId) {
       return (
-        <ShellPanel title="Invalid route" description="The agent route is missing its agent identifier." variant="compact">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Use the sidebar or home button to continue.</p>
-        </ShellPanel>
+        <ErrorState
+          title="Invalid route"
+          description="The agent route is missing its agent identifier. Use the sidebar or home button to continue."
+        />
       );
     }
     const agent = agents.find((item) => item.config.id === agentId);
     if (!agent) {
       return loading ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading agent...</div>
+        <LoadingState title="Loading agent" />
       ) : (
-        <ShellPanel title="Agent not found" variant="compact">
-          <p className="text-sm text-gray-500 dark:text-gray-400">The selected agent no longer exists.</p>
-        </ShellPanel>
+        <ErrorState title="Agent not found" description="The selected agent no longer exists." />
       );
     }
     return (
@@ -962,9 +939,10 @@ export function AgentsView({
     const runId = getRouteString(route, "runId");
     if (!agentId || !runId) {
       return (
-        <ShellPanel title="Invalid route" description="The agent run route is missing an identifier." variant="compact">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Use the sidebar or home button to continue.</p>
-        </ShellPanel>
+        <ErrorState
+          title="Invalid route"
+          description="The agent run route is missing an identifier. Use the sidebar or home button to continue."
+        />
       );
     }
     const agent = agents.find((item) => item.config.id === agentId) ?? null;
@@ -986,7 +964,6 @@ export function AgentsView({
 
   return (
     <AgentWorkspaceList
-      workspace={workspace}
       agents={visibleAgents}
       loading={loading}
       error={error}

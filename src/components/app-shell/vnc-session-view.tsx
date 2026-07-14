@@ -6,8 +6,7 @@ import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/
 import { getStoredVncCredentials, storeVncCredentials } from "../../lib/vnc-browser-credentials";
 import { isApiErrorCode } from "../../lib/api-error";
 import { Button } from "../common";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { ShellPanel } from "./shell-panel";
+import { ErrorState, FormGroup, Panel, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { EmptySection } from "./shell-sidebar";
 import { VncViewer } from "./VncViewer";
 import { ServerPasswordModal } from "./server-password-modal";
@@ -229,78 +228,69 @@ export function VncSessionView({
   }, []);
 
   return (
-    <ShellPanel
-      eyebrow="VNC session"
-      title={server.config.name}
-      description={`${server.config.username}@${server.config.address}`}
-      variant="compact"
+    <Panel
+      className="flex h-full min-h-0 flex-col overflow-hidden !border-0 !bg-transparent !p-0"
       actions={(
         <Button variant="secondary" size="sm" onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}>
           Back to server
         </Button>
       )}
     >
-      <form onSubmit={(event) => void handleSubmit(event)} className="grid gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-900 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-          <span>VNC port</span>
-          <input
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+      <form onSubmit={(event) => void handleSubmit(event)} className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-900">
+        <FormGroup title="VNC connection">
+          <TextField
+            label="VNC port"
             type="number"
             min={1}
             max={65535}
             value={remotePort}
             onChange={(event) => setRemotePort(event.target.value)}
-            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-gray-700 dark:bg-neutral-950 dark:text-gray-100"
           />
-        </label>
 
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-          <span>VNC username</span>
-          <input
+          <TextField
+            label="VNC username"
             type="text"
             value={vncUsername}
             onChange={(event) => setVncUsername(event.target.value)}
             autoComplete="username"
-            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-gray-700 dark:bg-neutral-950 dark:text-gray-100"
           />
-        </label>
 
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-          <span>VNC password</span>
-          <input
-            ref={vncPasswordInputRef}
-            type="password"
-            value={vncPassword}
-            onChange={(event) => setVncPassword(event.target.value)}
-            autoComplete="current-password"
-            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-gray-700 dark:bg-neutral-950 dark:text-gray-100"
-          />
-        </label>
+          <label className="wapp-field">
+            <span>VNC password</span>
+            <input
+              ref={vncPasswordInputRef}
+              type="password"
+              value={vncPassword}
+              onChange={(event) => setVncPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </label>
 
-        <div className="flex items-end gap-2 lg:col-span-2">
-          <Button type="submit" variant="primary" disabled={busy}>
-            {busy ? "Starting..." : activeSession ? "Reconnect VNC Session" : "Start VNC Session"}
-          </Button>
-          {activeSession && (
-            <Button type="button" variant="secondary" onClick={toggleFullscreen} disabled={activeSession.state.status !== "active"}>
-              {fullscreenActive ? "Exit Full Screen" : "Full Screen"}
+          <div className="flex flex-wrap items-end gap-2">
+            <Button type="submit" variant="primary" disabled={busy}>
+              {busy ? "Starting..." : activeSession ? "Reconnect VNC Session" : "Start VNC Session"}
             </Button>
+            {activeSession && (
+              <Button type="button" variant="secondary" onClick={toggleFullscreen} disabled={activeSession.state.status !== "active"}>
+                {fullscreenActive ? "Exit Full Screen" : "Full Screen"}
+              </Button>
+            )}
+            {activeSession && (
+              <Button type="button" variant="secondary" onClick={closeVnc} disabled={busy}>
+                Close VNC Connection
+              </Button>
+            )}
+          </div>
+          {vncError && (
+            <ErrorState title="VNC connection error" description={vncError} />
           )}
-          {activeSession && (
-            <Button type="button" variant="secondary" onClick={closeVnc} disabled={busy}>
-              Close VNC Connection
-            </Button>
-          )}
-        </div>
-        {vncError && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400 lg:col-span-2">
-            {vncError}
-          </p>
-        )}
+        </FormGroup>
       </form>
 
       <div
         ref={fullscreenRef}
-        className="min-h-0 rounded-lg bg-black p-0 data-[fullscreen=true]:h-screen data-[fullscreen=true]:w-screen data-[fullscreen=true]:rounded-none"
+        className="min-h-[24rem] flex-1 rounded-lg bg-black p-0 data-[fullscreen=true]:h-screen data-[fullscreen=true]:w-screen data-[fullscreen=true]:rounded-none"
         data-fullscreen={fullscreenActive ? "true" : "false"}
       >
         {activeSession?.state.status === "active" ? (
@@ -330,6 +320,7 @@ export function VncSessionView({
         onClose={handleCloseServerPasswordModal}
         onSubmit={handleSubmitServerPassword}
       />
-    </ShellPanel>
+      </div>
+    </Panel>
   );
 }

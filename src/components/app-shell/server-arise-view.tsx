@@ -4,8 +4,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { InlineField, ShellPanel } from "./shell-panel";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, Panel, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 
 interface ServerAriseViewProps {
@@ -54,12 +53,8 @@ export function ServerAriseView({
   }
 
   return (
-    <ShellPanel
-      eyebrow="SSH server"
-      title={`Arise ${server.config.name}`}
-      description="Run devbox arise on this server to revive existing stopped devboxes."
-      variant="compact"
-      badges={
+    <Panel
+      actions={(
         <>
           <Badge variant="info" size="sm">Arise</Badge>
           {provisioningStatus && (
@@ -67,10 +62,7 @@ export function ServerAriseView({
               {provisioningStatus}
             </Badge>
           )}
-        </>
-      }
-      actions={
-        provisioning.activeJobId ? (
+          {provisioning.activeJobId ? (
           <>
             {canReturnToForm && (
               <Button type="button" size="sm" onClick={handleBackToForm}>
@@ -99,7 +91,7 @@ export function ServerAriseView({
               </Button>
             )}
           </>
-        ) : (
+          ) : (
           <>
             <Button
               type="button"
@@ -118,8 +110,9 @@ export function ServerAriseView({
               Run devbox arise
             </Button>
           </>
-        )
-      }
+          )}
+        </>
+      )}
     >
       {provisioning.activeJobId ? (
         <div className="space-y-6">
@@ -137,61 +130,57 @@ export function ServerAriseView({
           className="space-y-6"
           onSubmit={(event) => void handleStartArise(event)}
         >
-          <div className="space-y-4">
-            <InlineField
+          <FormGroup title="Server details">
+            <div className="space-y-4">
+            <TextField
               id="server-arise-server-name"
               label="Server name"
               value={server.config.name}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id="server-arise-address"
               label="Address"
               value={server.config.address}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id="server-arise-username"
               label="Username"
               value={server.config.username}
-              onChange={() => {}}
               disabled
             />
 
-            <InlineField
+            <TextField
               id="server-arise-base-path"
               label="Repositories base path"
               value={server.config.repositoriesBasePath ?? ""}
-              onChange={() => {}}
               disabled
-              help="This server already supports automatic workspace provisioning."
+              hint="This server already supports automatic workspace provisioning."
             />
 
             {!hasStoredCredential && (
-              <InlineField
+              <TextField
                 id="server-arise-password"
                 label="SSH password"
                 value={password}
-                onChange={setPassword}
+                onChange={(event) => setPassword(event.target.value)}
                 placeholder="Leave blank for key-based auth"
                 type="password"
-                help="Required to connect to the SSH server when password auth is needed."
-                inputProps={PASSWORD_INPUT_PROPS}
+                hint="Required to connect to the SSH server when password auth is needed."
+                {...PASSWORD_INPUT_PROPS}
               />
             )}
-          </div>
+            </div>
+          </FormGroup>
 
           {provisioning.error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-              <p className="text-sm text-red-600 dark:text-red-400">{provisioning.error}</p>
-            </div>
+            <ErrorState title="Unable to run devbox arise" description={provisioning.error} />
           )}
         </form>
       )}
-    </ShellPanel>
+    </Panel>
   );
 }
