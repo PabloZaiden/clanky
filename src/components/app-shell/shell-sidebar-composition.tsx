@@ -107,21 +107,31 @@ async function openWorkspaceGitHubUrl(
     return;
   }
 
-  const response = await appFetch(
-    `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
-  );
-  if (!response.ok) {
+  let fetchedUrl: string | null;
+  try {
+    const response = await appFetch(
+      `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
+    );
+    if (!response.ok) {
+      onError("GitHub repository URL is not available for this workspace");
+      return;
+    }
+
+    const data = await response.json() as { githubUrl?: unknown };
+    fetchedUrl = typeof data.githubUrl === "string"
+      ? normalizeGitHubRepositoryUrl(data.githubUrl)
+      : null;
+  } catch (error) {
+    onError(String(error));
+    return;
+  }
+
+  if (!fetchedUrl) {
     onError("GitHub repository URL is not available for this workspace");
     return;
   }
 
-  const data = await response.json() as { githubUrl?: string };
-  if (!data.githubUrl) {
-    onError("GitHub repository URL is not available for this workspace");
-    return;
-  }
-
-  window.open(data.githubUrl, "_blank", "noopener,noreferrer");
+  window.open(fetchedUrl, "_blank", "noopener,noreferrer");
 }
 
 function withPrivateToggleAction(
@@ -565,13 +575,6 @@ function buildSidebarNodes(
     handlers,
   }: ShellSidebarCompositionOptions,
 ): SidebarNode[] {
-  const standaloneServerIdBySessionId = new Map<string, string>();
-  for (const serverNode of serverNodes) {
-    for (const sessionNode of serverNode.sessions) {
-      standaloneServerIdBySessionId.set(sessionNode.id, serverNode.server.config.id);
-    }
-  }
-
   const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }).map((item): SidebarNode => {
     if (item.kind === "task") {
       const privateHidden = getPrivateHidden(item.taskNode.task.config, [item.workspace], handlers.showPrivateItems);
@@ -623,7 +626,7 @@ function buildSidebarNodes(
           kind: "standalone",
           id: sessionId,
           name: item.sessionNode.title,
-          serverId: standaloneServerIdBySessionId.get(sessionId) ?? "",
+          serverId: item.server.config.id,
         }, session, handlers);
     return privateSidebarPresentation({
       type: "item",
