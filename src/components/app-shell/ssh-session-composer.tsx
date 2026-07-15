@@ -3,7 +3,7 @@ import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import { FormGroup, SelectField, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useShellHeaderActions } from "./shell-header-actions";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
@@ -134,91 +134,95 @@ export function SshSessionComposer({
   );
 
   return (
-    <div className="space-y-6">
-      <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
-        <FormGroup title="Connection options">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <FormGroup>
-            <SelectField
-              label="Target type"
-              id="ssh-target-type"
-              value={targetType}
-              onChange={(event) => setTargetType(event.target.value as "workspace" | "server")}
-            >
-              <option value="workspace">Workspace</option>
-              <option value="server">Standalone SSH server</option>
-            </SelectField>
-          </FormGroup>
-          <FormGroup>
-            <SelectField
-              label="Connection mode"
-              id="ssh-connection-mode"
-              value={connectionMode}
-              onChange={(event) => setConnectionMode(event.target.value as SshConnectionMode)}
-            >
-              <option value="dtach">Persistent SSH</option>
-              <option value="direct">Direct SSH</option>
-            </SelectField>
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
-            </p>
-          </FormGroup>
-        </div>
-
-        <FormGroup>
-          <label className="flex items-start gap-3" htmlFor="ssh-use-tmux">
-            <input
-              id="ssh-use-tmux"
-              type="checkbox"
-              checked={useTmux}
-              onChange={(event) => handleUseTmuxChange(event.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-100 dark:focus:ring-gray-600"
-            />
-            <span>
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Start in tmux when available
-              </span>
-              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                Disable this if you want the session to open a normal interactive shell without trying tmux first.
-              </span>
-            </span>
+    <form id={formId} className="space-y-6 pt-1 sm:pt-0" onSubmit={(event) => void handleSubmit(event)}>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+          <label htmlFor="ssh-target-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Target type
           </label>
-        </FormGroup>
+          <select
+            id="ssh-target-type"
+            value={targetType}
+            onChange={(event) => setTargetType(event.target.value as "workspace" | "server")}
+            className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
+          >
+            <option value="workspace">Workspace</option>
+            <option value="server">Standalone SSH server</option>
+          </select>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+          <label htmlFor="ssh-connection-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Connection mode
+          </label>
+          <select
+            id="ssh-connection-mode"
+            value={connectionMode}
+            onChange={(event) => setConnectionMode(event.target.value as SshConnectionMode)}
+            className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
+          >
+            <option value="dtach">Persistent SSH</option>
+            <option value="direct">Direct SSH</option>
+          </select>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
+          </p>
+        </div>
+      </div>
 
-        {targetType === "workspace" ? (
-          <FormGroup>
-            <WorkspaceSelector
-              workspaces={workspaces}
-              selectedWorkspaceId={selectedWorkspaceId}
-              onSelect={(workspaceId) => setSelectedWorkspaceId(workspaceId ?? undefined)}
-              registeredSshServers={servers}
-            />
-          </FormGroup>
-        ) : (
-          <FormGroup>
-            <SelectField
-              label="Server"
-              id="ssh-server"
-              value={selectedServerId}
-              onChange={(event) => setSelectedServerId(event.target.value)}
-            >
-              <option value="">Select a server…</option>
-              {servers.map((server) => (
-                <option key={server.config.id} value={server.config.id}>
-                  {server.config.name} — {server.config.username}@{server.config.address}
-                </option>
-              ))}
-            </SelectField>
-            {servers.length === 0 && (
-              <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                Register a standalone SSH server first.
-              </p>
-            )}
-          </FormGroup>
-        )}
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+        <label className="flex items-start gap-3" htmlFor="ssh-use-tmux">
+          <input
+            id="ssh-use-tmux"
+            type="checkbox"
+            checked={useTmux}
+            onChange={(event) => handleUseTmuxChange(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-100 dark:focus:ring-gray-600"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Start in tmux when available
+            </span>
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              Disable this if you want the session to open a normal interactive shell without trying tmux first.
+            </span>
+          </span>
+        </label>
+      </div>
 
-        </FormGroup>
-      </form>
-    </div>
+      {targetType === "workspace" ? (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+          <WorkspaceSelector
+            workspaces={workspaces}
+            selectedWorkspaceId={selectedWorkspaceId}
+            onSelect={(workspaceId) => setSelectedWorkspaceId(workspaceId ?? undefined)}
+            registeredSshServers={servers}
+          />
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+          <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Server
+          </label>
+          <select
+            id="ssh-server"
+            value={selectedServerId}
+            onChange={(event) => setSelectedServerId(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
+          >
+            <option value="">Select a server…</option>
+            {servers.map((server) => (
+              <option key={server.config.id} value={server.config.id}>
+                {server.config.name} — {server.config.username}@{server.config.address}
+              </option>
+            ))}
+          </select>
+          {servers.length === 0 && (
+            <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+              Register a standalone SSH server first.
+            </p>
+          )}
+        </div>
+      )}
+    </form>
   );
 }
