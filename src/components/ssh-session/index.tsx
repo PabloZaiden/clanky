@@ -6,7 +6,8 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { Button } from "../common";
-import { useSshSession, useToast } from "../../hooks";
+import { useSshSession } from "../../hooks";
+import { useToast } from "@pablozaiden/webapp/web";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
 import { isStandaloneSession } from "./session-utils";
 import {

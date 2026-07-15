@@ -38,7 +38,6 @@ export {
   type IconProps,
 } from "./Icons";
 export { CollapsibleSection, type CollapsibleSectionProps } from "./CollapsibleSection";
-export { ToastProvider } from "./Toast";
 export { PASSWORD_INPUT_PROPS } from "./passwordInputProps";
 export {
   getComposerMinHeightClass,

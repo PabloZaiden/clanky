@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   replaceWebAppRoute,
+  useToast,
   WebAppRoot,
   type ActionMenuItem,
   type SidebarNode,
@@ -20,7 +21,6 @@ import {
   useSchedulerTimezone,
   useSshServers,
   useSshSessions,
-  useToast,
   useWorkspaces,
   stopTaskApi,
 } from "../../hooks";

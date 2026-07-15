@@ -45,6 +45,9 @@ For more project information, see the [README.md](README.md).
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
 - Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
+- Use the webapp notification service for transient feedback. Do not add
+  Clanky-owned toast providers or wrappers. Use inline `ErrorState`/validation
+  for persistent page state and avoid reporting one failure twice.
 - Use route-backed `SidebarNode.actions` for task, chat, agent, SSH session, workspace and server commands. The framework owns both sidebar context menus and active title-bar three-line menus; do not reintroduce Clanky-local shell/header action menus.
 - Use framework dialogs/modals/action menus for generic UI behavior. Framework dialogs handle Enter/Escape, destructive/delete menu items are red and last, and sidebar badges render as compact status dots.
 - Use structured `settings.sections[].rows` for app settings with an explicit
@@ -541,7 +544,7 @@ Beyond the general "avoid duplication" guideline, watch for these specific recur
 - **API error/success responses** — use `errorResponse()` and `successResponse()` from `src/api/helpers.ts`. Never create ad-hoc `Response.json({ error: ... })` calls.
 - **Workspace lookup + 404** — use `requireWorkspace(workspaceId)` from `src/api/helpers.ts` instead of repeating the lookup-and-check pattern.
 - **Frontend API calls** — use the exported action functions from `src/hooks/taskActions.ts` (e.g., `acceptTaskApi`, `pushTaskApi`, `setPendingApi`) instead of writing raw fetch+check+parse boilerplate. These wrap internal helpers (`apiCall`, `apiAction`, `apiActionWithBody`) that are not exported.
-- **Shared UI components** — always check if a reusable component exists (e.g., `ModelSelector`, `ConfirmModal`, `Toast`) before building inline equivalents.
+- **Shared UI components** — always check if a reusable component exists (e.g., `ModelSelector`, `ConfirmModal`) before building inline equivalents; use the framework notification service for transient feedback.
 
 ### Frontend Performance
 
@@ -555,7 +558,7 @@ Beyond the general "avoid duplication" guideline, watch for these specific recur
 The existing Error Handling section covers try/catch syntax. Additionally:
 
 - **Never leave empty catch blocks** — every catch must either log the error, surface it to the user, or explicitly comment why it's safe to ignore.
-- **Use the Toast system** (`useToast()` hook, `ToastProvider`) to surface errors to users. Silent `console.error` is insufficient for user-facing operations.
+- **Use the webapp notification service** (`useToast()` from `@pablozaiden/webapp/web`) to surface transient errors to users. Silent `console.error` is insufficient for user-facing operations.
 - **Chain error causes** — when re-throwing or wrapping errors, use `new Error("context message", { cause: originalError })` to preserve the stack trace.
 - **Use structured error classes** for domain errors (e.g., `GitCommandError` with command, stderr, exit code fields).
 - **Classify domain failures by stable typed codes, not human-readable messages** — use `DomainError` subclasses or discriminated result failures with structured details; treat `message` as presentation text only and preserve the original cause when wrapping.

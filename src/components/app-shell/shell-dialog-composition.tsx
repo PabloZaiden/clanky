@@ -2,6 +2,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import {
   ConfirmModal,
   Modal,
+  type ToastService,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { CreateChatRequest } from "@/contracts";
@@ -12,7 +13,6 @@ import type {
   UseQuickChatSettingsResult,
   UseSshServersResult,
   UseSshSessionsResult,
-  ToastContextValue,
 } from "../../hooks";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { getRouteString } from "./route-fields";
@@ -21,7 +21,7 @@ import type { SshSessionActionTarget } from "./shell-sidebar-composition";
 interface ShellDialogCompositionOptions {
   route: WebAppRoute;
   navigateWithinShell: (route: WebAppRoute) => void;
-  onError: ToastContextValue["error"];
+  onError: ToastService["error"];
   updateWorkspaceSshSession: UseSshSessionsResult["updateSession"];
   updateStandaloneSession: UseSshServersResult["updateSession"];
   refreshSshServers: UseSshServersResult["refresh"];

@@ -2,8 +2,7 @@ import { useMemo } from "react";
 import { type TranscriptFileLinkTarget } from "./LogViewer";
 import { Button } from "./common";
 import { appAbsoluteUrl } from "../lib/public-path";
-import { useToast } from "../hooks";
-import { replaceWebAppRoute, routeToHash, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, routeToHash, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
 import { ChatComposer } from "./chat-details/chat-composer";
 import {

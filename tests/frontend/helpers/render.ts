@@ -2,15 +2,13 @@
  * Custom render helper for frontend tests.
  *
  * Wraps @testing-library/react's render with common setup
- * like canonical framework route setup and required context providers
- * (ToastProvider).
+ * like canonical framework route setup.
  */
 
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createElement, type ReactElement, type ReactNode } from "react";
+import type { ReactElement } from "react";
 import { replaceWebAppRoute, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { ToastProvider } from "@/components/common/Toast";
 
 interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   /** Set the framework route before rendering */
@@ -23,18 +21,9 @@ interface CustomRenderResult extends RenderResult {
 }
 
 /**
- * Wrapper component that provides all required context providers for tests.
- * Currently includes ToastProvider (required by Dashboard and components that use useToast).
- */
-function AllProviders({ children }: { children: ReactNode }) {
-  return createElement(ToastProvider, null, children);
-}
-
-/**
  * Custom render function that provides:
  * - Framework route setup via the `route` option
  * - Pre-configured userEvent instance
- * - Wraps components in required context providers (ToastProvider)
  *
  * @example
  * ```typescript
@@ -58,7 +47,7 @@ export function renderWithUser(
   const user = userEvent.setup({
     document: globalThis.document,
   });
-  const result = render(ui, { wrapper: AllProviders, ...renderOptions });
+  const result = render(ui, renderOptions);
 
   return {
     ...result,

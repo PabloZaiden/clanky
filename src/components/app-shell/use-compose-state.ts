@@ -1,9 +1,8 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTaskRequest } from "@/contracts";
 import type { CreateTaskResult } from "../../hooks/useTasks";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import type { ToastContextValue } from "../../hooks/useToast";
 import {
   saveStoredTaskCheapModelPreference,
   saveStoredTaskModelPreference,
@@ -24,7 +23,7 @@ interface UseComposeStateOptions {
   refreshTasks: () => Promise<void>;
   navigateWithinShell: (route: WebAppRoute) => void;
   dashboardData: UseDashboardDataResult;
-  toast: ToastContextValue;
+  toast: ToastService;
 }
 
 export function useComposeState({

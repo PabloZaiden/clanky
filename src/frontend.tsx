@@ -10,15 +10,12 @@ import { renderWebApp } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { ToastProvider } from "./components/common/Toast";
 
 function start() {
   configureClientRuntime();
   renderWebApp(
     <ErrorBoundary>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
+      <App />
     </ErrorBoundary>,
   );
 }

@@ -30,6 +30,14 @@ export interface WorkspaceLargeFileWarningState {
   file: WorkspaceFileEntry;
 }
 
+export type FileExplorerOperation = "save" | "rename" | "delete" | "upload";
+
+export interface FileExplorerOperationFailure {
+  operation: FileExplorerOperation;
+  message: string;
+  conflict: boolean;
+}
+
 export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 1 * 1024 * 1024;
 
 export interface UseFileExplorerResult {
@@ -48,6 +56,7 @@ export interface UseFileExplorerResult {
   savingFile: boolean;
   error: string | null;
   errorCode: FileExplorerCredentialErrorCode | null;
+  operationFailure: FileExplorerOperationFailure | null;
   isDirty: boolean;
   conflictState: WorkspaceFileConflictState | null;
   largeFileWarning: WorkspaceLargeFileWarningState | null;
@@ -182,6 +191,7 @@ export function useFileExplorer(
   const [savingFile, setSavingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
+  const [operationFailure, setOperationFailure] = useState<FileExplorerOperationFailure | null>(null);
   const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
   const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
@@ -205,9 +215,11 @@ export function useFileExplorer(
   isDirtyRef.current = isDirty;
   largeFileWarningRef.current = largeFileWarning;
 
-  const applyErrorState = useCallback((requestError: unknown) => {
-    setError(requestError instanceof Error ? requestError.message : String(requestError));
+  const applyErrorState = useCallback((requestError: unknown): string => {
+    const message = requestError instanceof Error ? requestError.message : String(requestError);
+    setError(message);
     setErrorCode(getFileExplorerCredentialErrorCode(requestError));
+    return message;
   }, []);
 
   const loadDirectory = useCallback(async (path: string) => {
@@ -454,6 +466,7 @@ export function useFileExplorer(
   }, [currentFile, isDirty, openFile]);
 
   const saveCurrentFile = useCallback(async (options?: { overwrite?: boolean }) => {
+    setOperationFailure(null);
     if (!currentFile) {
       return false;
     }
@@ -479,6 +492,11 @@ export function useFileExplorer(
       return true;
     } catch (requestError) {
       if (requestError instanceof WorkspaceFileConflictError) {
+        setOperationFailure({
+          operation: "save",
+          message: requestError.message,
+          conflict: true,
+        });
         setConflictState({
           kind: "save_conflict",
           message: requestError.message,
@@ -486,7 +504,12 @@ export function useFileExplorer(
         });
         return false;
       }
-      applyErrorState(requestError);
+      const message = applyErrorState(requestError);
+      setOperationFailure({
+        operation: "save",
+        message,
+        conflict: false,
+      });
       return false;
     } finally {
       setSavingFile(false);
@@ -621,6 +644,7 @@ export function useFileExplorer(
   }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, lazySubtreeRoots, refreshTree]);
 
   const renameSelectedNode = useCallback(async (newName: string, options?: { overwrite?: boolean }) => {
+    setOperationFailure(null);
     if (!selectedNode) {
       return null;
     }
@@ -643,12 +667,18 @@ export function useFileExplorer(
       }
       return response.file;
     } catch (requestError) {
-      applyErrorState(requestError);
+      const message = applyErrorState(requestError);
+      setOperationFailure({
+        operation: "rename",
+        message,
+        conflict: false,
+      });
       return null;
     }
   }, [applyErrorState, currentFile, openFile, refreshTree, selectedNode, startDirectory, targetId, targetType]);
 
   const deleteSelectedNode = useCallback(async () => {
+    setOperationFailure(null);
     if (!selectedNode) {
       return false;
     }
@@ -674,7 +704,12 @@ export function useFileExplorer(
       await refreshTree(parentDirectory);
       return true;
     } catch (requestError) {
-      applyErrorState(requestError);
+      const message = applyErrorState(requestError);
+      setOperationFailure({
+        operation: "delete",
+        message,
+        conflict: false,
+      });
       return false;
     }
   }, [
@@ -693,6 +728,7 @@ export function useFileExplorer(
     file: File,
     options?: { overwrite?: boolean; signal?: AbortSignal },
   ) => {
+    setOperationFailure(null);
     const targetDirectory = selectedNode?.kind === "directory" ? selectedNode.path : currentDirectory;
     try {
       setError(null);
@@ -708,7 +744,12 @@ export function useFileExplorer(
       await refreshTree(targetDirectory);
       return response.file;
     } catch (requestError) {
-      applyErrorState(requestError);
+      const message = applyErrorState(requestError);
+      setOperationFailure({
+        operation: "upload",
+        message,
+        conflict: false,
+      });
       return null;
     } finally {
       setUploadProgress(null);
@@ -724,6 +765,7 @@ export function useFileExplorer(
     setLoadingTree(true);
     setError(null);
     setErrorCode(null);
+    setOperationFailure(null);
     setDirectoryEntries({});
     setExpandedDirectories([]);
     setCurrentDirectory("");
@@ -829,6 +871,7 @@ export function useFileExplorer(
     savingFile,
     error,
     errorCode,
+    operationFailure,
     isDirty,
     conflictState,
     largeFileWarning,

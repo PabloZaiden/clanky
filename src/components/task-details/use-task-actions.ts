@@ -3,11 +3,10 @@
  */
 
 import { useState } from "react";
-import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
 import type { SshSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { ToastContextValue } from "../../hooks/useToast";
 import type {
   AcceptPlanResult,
   PushTaskResult,
@@ -21,7 +20,7 @@ interface UseTaskActionsOptions {
   onBack?: () => void;
   onSelectSshSession?: (sshSessionId: string) => void;
   onOpenTaskFiles?: () => void;
-  toast: ToastContextValue;
+  toast: ToastService;
   accept: () => Promise<AcceptPlanResult | unknown>;
   push: () => Promise<PushTaskResult | unknown>;
   updateBranch: () => Promise<PushTaskResult>;

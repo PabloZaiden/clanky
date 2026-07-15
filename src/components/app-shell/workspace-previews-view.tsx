@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import type { Workspace } from "@/shared";
-import { useToast, useWorkspacePreviews } from "../../hooks";
+import { useWorkspacePreviews } from "../../hooks";
 import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";
-import { EmptyState, ErrorState, LoadingState, Panel, TextField } from "@pablozaiden/webapp/web";
+import { EmptyState, ErrorState, LoadingState, Panel, TextField, useToast } from "@pablozaiden/webapp/web";
 
 function formatDateTime(value?: string): string {
   if (!value) {

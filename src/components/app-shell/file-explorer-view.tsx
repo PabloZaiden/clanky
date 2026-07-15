@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { SshSession, WorkspaceFileEntry } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
-import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
+import {
+  useFileExplorer,
+  useFileExplorerFullTreePreference,
+  type FileExplorerOperation,
+  type FileExplorerOperationFailure,
+} from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
@@ -42,6 +47,27 @@ type ExplorerSession = SshSession | SshServerSession;
 
 function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
+}
+
+function getFileExplorerOperationFallback(operation: FileExplorerOperation): string {
+  switch (operation) {
+    case "save":
+      return "Failed to save file";
+    case "rename":
+      return "Failed to rename selected item.";
+    case "delete":
+      return "Failed to delete selected item.";
+    case "upload":
+      return "Failed to upload file.";
+  }
+}
+
+const FILE_EXPLORER_MOBILE_MEDIA_QUERY = "(max-width: 1023px)";
+
+function isFileExplorerMobileViewport(): boolean {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia(FILE_EXPLORER_MOBILE_MEDIA_QUERY).matches;
 }
 
 function triggerBrowserDownload(url: string, fileName: string): void {
@@ -118,6 +144,7 @@ export function FileExplorerView({
   });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const lastHandledExplorerFailureRef = useRef<FileExplorerOperationFailure | null>(null);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameInputValue, setRenameInputValue] = useState("");
@@ -134,6 +161,10 @@ export function FileExplorerView({
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
+  const isMobileExplorerViewport = isFileExplorerMobileViewport();
+  const shouldToastMobileUploadFailure = isMobileExplorerViewport
+    && explorer.operationFailure?.operation === "upload"
+    && !explorer.operationFailure.conflict;
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -188,6 +219,22 @@ export function FileExplorerView({
   }, [explorer.error, explorer.errorCode, target.type]);
 
   useEffect(() => {
+    const failure = explorer.operationFailure;
+    if (!failure || lastHandledExplorerFailureRef.current === failure) {
+      return;
+    }
+
+    lastHandledExplorerFailureRef.current = failure;
+    const shouldToastFailure = explorerCollapsed
+      || (isMobileExplorerViewport && failure.operation === "upload");
+    if (!shouldToastFailure || failure.conflict) {
+      return;
+    }
+
+    toast.error(failure.message || getFileExplorerOperationFallback(failure.operation));
+  }, [explorer.operationFailure, explorerCollapsed, isMobileExplorerViewport, toast]);
+
+  useEffect(() => {
     if (!canPromptForTerminalTmux) {
       setTmuxPromptOpen(false);
     }
@@ -218,9 +265,6 @@ export function FileExplorerView({
 
   async function handleSave(): Promise<boolean> {
     const success = await explorer.saveCurrentFile();
-    if (!success && !explorer.conflictState) {
-      toast.error(explorer.error ?? "Failed to save file");
-    }
     return success;
   }
 
@@ -456,7 +500,6 @@ export function FileExplorerView({
       setRenamingNode(true);
       const renamedFile = await explorer.renameSelectedNode(trimmedName);
       if (!renamedFile) {
-        toast.error(explorer.error ?? "Failed to rename selected item.");
         return;
       }
       toast.success(`Renamed to ${renamedFile.name}`);
@@ -485,7 +528,6 @@ export function FileExplorerView({
       setDeletingNode(true);
       const deleted = await explorer.deleteSelectedNode();
       if (!deleted) {
-        toast.error(explorer.error ?? "Failed to delete selected item.");
         return;
       }
       toast.success(`Deleted ${selectedNode.name}`);
@@ -509,7 +551,6 @@ export function FileExplorerView({
       setUploadingFile(true);
       const uploadedFile = await explorer.uploadFileToSelectedDirectory(file);
       if (!uploadedFile) {
-        toast.error(explorer.error ?? "Failed to upload file.");
         return;
       }
       toast.success(`Uploaded ${uploadedFile.name}`);
@@ -607,7 +648,7 @@ export function FileExplorerView({
                 selectedNodePath={explorer.selectedNode?.path}
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
-                error={explorer.error}
+                error={shouldToastMobileUploadFailure ? null : explorer.error}
                 collapsed={explorerCollapsed}
                 onOpenRootPicker={openRootPicker}
                 onRefresh={explorer.refreshTree}

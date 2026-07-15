@@ -4,8 +4,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { AppConfig, HealthResponse } from "@/contracts";
+import { useToast } from "@pablozaiden/webapp/web";
 import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
-import { useToast } from "../useToast";
 import { createLogger } from "../../lib/logger";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
