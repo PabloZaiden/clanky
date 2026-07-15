@@ -446,6 +446,10 @@ test("hello world", () => {
 1. **API tests** (`tests/api/`): Preferred for most coverage. Exercise real HTTP requests, persistence, workspace setup, and observable API responses.
 2. **Integration/user-scenario tests** (`tests/integration/`): Use for complete workflows that need multiple subsystems, git repositories, task lifecycle, branch safety, SSH, provisioning, or review cycles.
 3. **E2E tests** (`tests/e2e/`): Use sparingly for the most important full task/runtime workflows.
+   Tests in `tests/e2e` must exercise real public application boundaries. Do
+   not label direct manager tests as E2E, duplicate the same workflow across
+   layers, or assert internal event/iteration sequences unless they are
+   explicit product contracts.
 4. **Unit tests** (`tests/unit/`): Exceptional only. Add one only when API/integration/e2e coverage would be impractical and the behavior is a stable domain contract rather than implementation detail.
 
 Use the test utilities from `tests/setup.ts`:
