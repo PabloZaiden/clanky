@@ -1877,6 +1877,25 @@ describe("Chats API Integration", () => {
     };
     expect(settledChat.state.status).toBe("idle");
 
+    const persistedChat = await loadChat(chatId);
+    expect(persistedChat).not.toBeNull();
+    const toolCallMarkers = {
+      name: "spawn-source-tool-name-marker-802",
+      input: "spawn-source-tool-input-marker-802",
+      output: "spawn-source-tool-output-marker-802",
+    };
+    await updateChatState(chatId, {
+      ...persistedChat!.state,
+      toolCalls: [{
+        id: "spawn-source-tool-call",
+        name: toolCallMarkers.name,
+        input: { marker: toolCallMarkers.input },
+        output: { marker: toolCallMarkers.output },
+        status: "completed",
+        timestamp: new Date().toISOString(),
+      }],
+    });
+
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task`, {
       method: "POST",
     });
@@ -1894,6 +1913,9 @@ describe("Chats API Integration", () => {
     expect(spawnedTask.config.prompt).toContain("Spawn Source Chat");
     expect(spawnedTask.config.prompt).toContain("Turn this debugging conversation into a task plan.");
     expect(spawnedTask.config.prompt).toContain("Hello from chat API");
+    for (const marker of Object.values(toolCallMarkers)) {
+      expect(spawnedTask.config.prompt).not.toContain(marker);
+    }
 
     const listTasksResponse = await fetch(`${baseUrl}/api/tasks`);
     expect(listTasksResponse.status).toBe(200);
