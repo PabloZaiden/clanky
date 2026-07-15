@@ -272,7 +272,7 @@ function AgentForm({
         {mode === "edit" ? "Save agent" : "Create agent"}
       </Button>
     </>
-  ), [canSubmit, isSubmitting, mode, onCancel]);
+  ), [canSubmit, handleSubmit, isSubmitting, mode, onCancel]);
   useShellHeaderActions(headerActions);
 
   return (

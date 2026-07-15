@@ -518,7 +518,7 @@ export function ComposeChatView({
         {importExistingSession ? "Import chat" : "Create chat"}
       </Button>
     </>
-  ), [canSubmit, handleCancel, importExistingSession, isSubmitting]);
+  ), [canSubmit, handleCancel, handleSubmit, importExistingSession, isSubmitting]);
   useShellHeaderActions(headerActions);
 
   return (
