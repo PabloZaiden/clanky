@@ -34,6 +34,7 @@ For more project information, see the [README.md](README.md).
 ## Webapp framework migration rules
 
 - Prefer `@pablozaiden/webapp` primitives for auth, passkeys, API keys, device auth, same-origin checks, app shell, sidebar, settings, realtime, server health, and server lifecycle actions.
+- Use the webapp public `useTheme()` hook for JavaScript integrations that need preference or resolved theme state. Never observe or mutate framework-owned root classes or DOM nodes to infer the resolved theme; prefer CSS theme variants when JavaScript state is unnecessary.
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
 - Treat app data as private per user. New users start with empty Clanky app data.
