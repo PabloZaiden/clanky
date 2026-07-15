@@ -399,6 +399,15 @@ Use `bun run test` to run all the tests. Don't do `bun test` directly, since the
 Always run `bun run build && bun run test` when you think you are done making changes.
 Never say a task is done when there are still failing tests, even if you think they're unrelated to your changes.
 
+### Test orchestration
+
+Test orchestration must not rely on manually maintained per-file runtime
+weights or arbitrary fixed shard counts. Prefer deterministic generic
+partitioning and serialize only for documented resource/isolation constraints.
+`CLANKY_TEST_MAX_WORKERS` is the primary setting for test worker capacity;
+derive each suite's shard count at runtime from its discovered file count and
+that capacity rather than maintaining a separate shard-count configuration.
+
 ```typescript
 import { test, expect } from "bun:test";
 

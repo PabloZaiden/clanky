@@ -2,17 +2,15 @@ interface SuiteDefinition {
   id: string;
   label: string;
   pattern: string;
-  shardCount: number;
   fileConcurrency: number;
   argsPrefix: string[];
   modes: Array<"all" | "backend" | "frontend">;
 }
 
-interface TestBucket {
+export interface TestBucket {
   id: string;
   label: string;
   args: string[];
-  weight: number;
 }
 
 interface TestResult {
@@ -22,38 +20,27 @@ interface TestResult {
   elapsedMs: number;
 }
 
-interface ShardAssignment {
+export interface ShardAssignment {
   files: string[];
-  weight: number;
 }
 
 interface RunTestBucketsDependencies {
-  buildBuckets: (mode: "all" | "backend" | "frontend") => Promise<TestBucket[]>;
+  buildBuckets: (
+    mode: "all" | "backend" | "frontend",
+    workerCapacity: number,
+  ) => Promise<TestBucket[]>;
   runBucket: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>;
   log: (message: string) => void;
 }
 
 const rootDir = `${import.meta.dir}/..`;
-
-const measuredFileWeights: Record<string, number> = {
-  "tests/integration/user-scenarios/plan-task.test.ts": 5,
-  "tests/api/plan-mode.test.ts": 4,
-  "tests/api/provisioning.test.ts": 3,
-  "tests/integration/user-scenarios/review-cycles.test.ts": 3,
-  "tests/api/tasks-control.test.ts": 2,
-  "tests/api/tasks-crud.test.ts": 2,
-  "tests/api/tasks-pending.test.ts": 2,
-  "tests/api/ssh-server-files.test.ts": 2,
-  "tests/api/ssh-servers.test.ts": 2,
-  "tests/integration/user-scenarios/regular-task.test.ts": 2,
-};
+const defaultMaxWorkers = 10;
 
 const suiteDefinitions: SuiteDefinition[] = [
   {
     id: "unit",
     label: "tests/unit",
     pattern: "tests/unit/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 6,
     fileConcurrency: 2,
     argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
@@ -62,7 +49,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "api",
     label: "tests/api",
     pattern: "tests/api/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 3,
     fileConcurrency: 2,
     argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
@@ -71,7 +57,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "e2e",
     label: "tests/e2e",
     pattern: "tests/e2e/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 1,
     fileConcurrency: 1,
     argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
@@ -80,7 +65,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "integration",
     label: "tests/integration",
     pattern: "tests/integration/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 2,
     fileConcurrency: 1,
     argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
@@ -89,7 +73,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "frontend-root",
     label: "tests/frontend/root",
     pattern: "tests/frontend/*.test.{ts,tsx,js,jsx}",
-    shardCount: 1,
     fileConcurrency: 1,
     argsPrefix: [
       "test",
@@ -105,7 +88,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "frontend-components",
     label: "tests/frontend/components",
     pattern: "tests/frontend/components/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 4,
     fileConcurrency: 1,
     argsPrefix: [
       "test",
@@ -121,7 +103,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "frontend-hooks",
     label: "tests/frontend/hooks",
     pattern: "tests/frontend/hooks/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 2,
     fileConcurrency: 1,
     argsPrefix: [
       "test",
@@ -137,7 +118,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     id: "frontend-scenarios",
     label: "tests/frontend/scenarios",
     pattern: "tests/frontend/scenarios/**/*.test.{ts,tsx,js,jsx}",
-    shardCount: 2,
     fileConcurrency: 1,
     argsPrefix: [
       "test",
@@ -200,8 +180,12 @@ async function listTestFiles(pattern: string): Promise<string[]> {
   return files.sort();
 }
 
-function getFileWeight(path: string): number {
-  return measuredFileWeights[path] ?? 1;
+export function resolveMaxWorkers(sourceEnv: Record<string, string | undefined>): number {
+  const parsedWorkerCount = Number.parseInt(sourceEnv["CLANKY_TEST_MAX_WORKERS"] ?? "", 10);
+  if (Number.isNaN(parsedWorkerCount) || parsedWorkerCount === 0) {
+    return defaultMaxWorkers;
+  }
+  return Math.max(1, parsedWorkerCount);
 }
 
 export function shouldRetryFailedBuckets(env: Record<string, string>): boolean {
@@ -280,29 +264,29 @@ function formatCompletionSummary(elapsedMs: number, retriedBucketCount: number):
   return `Test run completed in ${formatDuration(elapsedMs)}${retrySuffix}.`;
 }
 
-function shardFiles(files: string[], shardCount: number): ShardAssignment[] {
-  const effectiveShardCount = Math.max(1, Math.min(shardCount, files.length));
-  const shards: ShardAssignment[] = Array.from({ length: effectiveShardCount }, () => ({
-    files: [],
-    weight: 0,
-  }));
-
-  const weightedFiles = files
-    .map((file) => ({ file, weight: getFileWeight(file) }))
-    .sort((a, b) => b.weight - a.weight || a.file.localeCompare(b.file));
-
-  for (const weightedFile of weightedFiles) {
-    const targetShard = shards.reduce((best, candidate) =>
-      candidate.weight < best.weight ? candidate : best,
-    );
-    targetShard.files.push(weightedFile.file);
-    targetShard.weight += weightedFile.weight;
+export function partitionFiles(files: string[], workerCapacity: number): ShardAssignment[] {
+  if (files.length === 0) {
+    return [];
   }
 
+  const normalizedWorkerCapacity = Number.isFinite(workerCapacity)
+    ? Math.trunc(workerCapacity)
+    : 1;
+  const bucketCount = Math.max(1, Math.min(files.length, normalizedWorkerCapacity));
+  const shards: ShardAssignment[] = Array.from({ length: bucketCount }, () => ({
+    files: [],
+  }));
+
+  for (const [index, file] of files.entries()) {
+    shards[index % bucketCount]?.files.push(file);
+  }
   return shards;
 }
 
-async function buildBuckets(mode: "all" | "backend" | "frontend"): Promise<TestBucket[]> {
+export async function buildBuckets(
+  mode: "all" | "backend" | "frontend",
+  workerCapacity: number = defaultMaxWorkers,
+): Promise<TestBucket[]> {
   const buckets: TestBucket[] = [];
 
   for (const suite of suiteDefinitions) {
@@ -318,7 +302,7 @@ async function buildBuckets(mode: "all" | "backend" | "frontend"): Promise<TestB
       continue;
     }
 
-    const shards = shardFiles(files, suite.shardCount);
+    const shards = partitionFiles(files, workerCapacity);
     for (const [index, shard] of shards.entries()) {
       if (shard.files.length === 0) {
         continue;
@@ -333,12 +317,11 @@ async function buildBuckets(mode: "all" | "backend" | "frontend"): Promise<TestB
           String(suite.fileConcurrency),
           ...shard.files,
         ],
-        weight: shard.weight,
       });
     }
   }
 
-  return buckets.sort((a, b) => b.weight - a.weight || a.label.localeCompare(b.label));
+  return buckets;
 }
 
 async function runBucket(bucket: TestBucket, env: Record<string, string>): Promise<TestResult> {
@@ -422,17 +405,14 @@ export async function runTestBuckets(
   const buildBucketsImpl = dependencies.buildBuckets ?? buildBuckets;
   const runBucketImpl = dependencies.runBucket ?? runBucket;
   const log = dependencies.log ?? ((message: string) => console.log(message));
-  const buckets = await buildBucketsImpl(mode);
-  const maxWorkers = Math.max(
-    1,
-    Number.parseInt(env["CLANKY_TEST_MAX_WORKERS"] ?? "", 10)
-      || Math.min(10, buckets.length),
-  );
+  const configuredMaxWorkers = resolveMaxWorkers(env);
+  const buckets = await buildBucketsImpl(mode, configuredMaxWorkers);
+  const maxWorkers = Math.max(1, Math.min(configuredMaxWorkers, buckets.length));
 
   log(`Running ${buckets.length} test bucket(s) in parallel...`);
   log(`Using up to ${maxWorkers} worker process(es).`);
   for (const bucket of buckets) {
-    log(`- ${bucket.label} (weight ${bucket.weight})`);
+    log(`- ${bucket.label}`);
   }
   log("");
 
