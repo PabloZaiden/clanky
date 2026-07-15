@@ -4,6 +4,7 @@ import type { ChatTranscriptProps } from "./types";
 
 export function ChatTranscript({
   chat,
+  lifecycleError,
   isActive,
   toolPathDisplayRoot,
   fileLinkContext,
@@ -12,6 +13,11 @@ export function ChatTranscript({
 
   return (
     <>
+      {lifecycleError && (
+        <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
+          {lifecycleError}
+        </div>
+      )}
       {chat.state.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {chat.state.error.message}

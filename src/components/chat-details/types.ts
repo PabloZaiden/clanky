@@ -37,6 +37,7 @@ export interface ChatLifecycleResult {
 
 export interface ChatTranscriptProps {
   chat: Chat;
+  lifecycleError: string | null;
   isActive: boolean;
   toolPathDisplayRoot: string;
   fileLinkContext?: TranscriptFileLinkContext;
