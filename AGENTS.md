@@ -435,6 +435,7 @@ test("hello world", () => {
 - **Do not add unit tests by default.** Unit tests are allowed only for small, stable, pure domain contracts that are hard or impossible to cover through public boundaries. Get explicit justification before adding them.
 - **Do not test mocks.** Avoid tests where the main assertion is that a mocked function was called, a mocked adapter returned a value, or a fake implementation behaves like itself.
 - **Do not reimplement production logic in the test.** If the expected value is computed by duplicating the algorithm under test, the test does not add signal.
+- **Test external request behavior semantically.** Do not assert generated GraphQL/SQL/request selection text, nesting depth, or absence of deprecated fields when equivalent behavior can be verified through representative responses and public outputs. Assert exact request shape only when it is itself an external compatibility contract that cannot be covered behaviorally.
 - **Do not add exhaustive matrix tests for implementation tables or tiny helpers.** A few high-value examples are better than dozens of cases that lock down internals.
 - **Do not add tests for wrappers around `fetch`, endpoint string construction, button click plumbing, modal open/close mechanics, default labels, placeholder text, aria wording, CSS utility classes, DOM nesting, or visibility-only toggles.**
 - **Do not add removal-only regression tests.** Avoid tests whose main value is proving old UI/copy/behavior is gone unless the absence is a security or explicit product contract.
