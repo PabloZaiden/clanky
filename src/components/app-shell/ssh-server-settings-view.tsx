@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "../common";
 import type { SshServer } from "@/shared";
-import { Page, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useShellHeaderActions } from "./shell-header-actions";
 
@@ -53,18 +53,16 @@ export function SshServerSettingsView({
   );
 
   return (
-    <Page layout="stack">
-      <SshServerSettingsForm
-        server={server}
-        relatedSessionCount={relatedSessionCount}
-        formId="ssh-server-settings-shell-form"
-        onSave={updateServer}
-        onDeleteServer={deleteServer}
-        onSaved={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
-        onDeleted={() => navigateWithinShell({ view: "home" })}
-        onValidityChange={setFormValid}
-        onSubmittingChange={setSubmitting}
-      />
-    </Page>
+    <SshServerSettingsForm
+      server={server}
+      relatedSessionCount={relatedSessionCount}
+      formId="ssh-server-settings-shell-form"
+      onSave={updateServer}
+      onDeleteServer={deleteServer}
+      onSaved={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
+      onDeleted={() => navigateWithinShell({ view: "home" })}
+      onValidityChange={setFormValid}
+      onSubmittingChange={setSubmitting}
+    />
   );
 }

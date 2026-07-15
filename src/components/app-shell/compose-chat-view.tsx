@@ -21,7 +21,6 @@ import { BranchSelector } from "../create-task/branch-selector";
 import {
   ErrorState,
   Modal,
-  Page,
   SelectField,
   TextField,
   useToast,
@@ -524,8 +523,7 @@ export function ComposeChatView({
 
   return (
     <>
-      <Page layout="stack">
-        <div className="space-y-5">
+      <div className="space-y-5">
           <TextField
             id="chat-name"
             label="Name"
@@ -695,8 +693,7 @@ export function ComposeChatView({
             </div>
           </label>
         </div>
-        </div>
-      </Page>
+      </div>
 
       <Modal
         isOpen={passwordModalOpen}

@@ -3,7 +3,7 @@ import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import { FormGroup, Page, SelectField, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { FormGroup, SelectField, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useShellHeaderActions } from "./shell-header-actions";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
@@ -134,7 +134,7 @@ export function SshSessionComposer({
   );
 
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
         <FormGroup title="Connection options">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -219,6 +219,6 @@ export function SshSessionComposer({
 
         </FormGroup>
       </form>
-    </Page>
+    </div>
   );
 }

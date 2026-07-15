@@ -1,7 +1,8 @@
 import type { SshServer, SshServerSession } from "@/shared";
 import { Badge } from "../common";
-import { DataList, DataListRow, EmptyState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { ClankyListRow } from "./clanky-list-row";
 
 export function SshServerView({
   server,
@@ -16,7 +17,7 @@ export function SshServerView({
 }) {
   const serverPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-3">
         <div className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950 ${getPrivateContainerClassName(serverPrivateHidden)}`}>
           <div className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Address</div>
@@ -42,15 +43,16 @@ export function SshServerView({
         ) : null}
       </div>
 
-      <Panel title="Standalone sessions">
-        <DataList>
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Standalone sessions</h2>
+        <div className="mt-4">
           {sessions.length === 0 ? (
             <EmptyState title="No standalone sessions yet" description="Create one to connect to this SSH server." />
           ) : (
-            sessions.map((session) => {
+            <div className="space-y-2">{sessions.map((session) => {
               const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [server.config]), showPrivateItems);
               return (
-                <DataListRow
+                <ClankyListRow
                   key={session.config.id}
                   title={session.config.name}
                   description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
@@ -68,14 +70,13 @@ export function SshServerView({
                     </Badge>
                   )}
                   onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
-                  disabled={privateHidden}
-                  className={getPrivateContainerClassName(privateHidden)}
+                  privateHidden={privateHidden}
                 />
               );
-            })
+            })}</div>
           )}
-        </DataList>
-      </Panel>
-    </Page>
+        </div>
+      </section>
+    </div>
   );
 }

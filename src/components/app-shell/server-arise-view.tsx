@@ -4,7 +4,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, Page, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import { useShellHeaderActions } from "./shell-header-actions";
 
@@ -115,7 +115,7 @@ export function ServerAriseView({
   useShellHeaderActions(headerActions);
 
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
           <ProvisioningJobView
@@ -183,6 +183,6 @@ export function ServerAriseView({
           )}
         </form>
       )}
-    </Page>
+    </div>
   );
 }

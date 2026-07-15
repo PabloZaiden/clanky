@@ -1,6 +1,5 @@
 import { useMemo, type ComponentType } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { Panel } from "@pablozaiden/webapp/web";
 import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
 import type { CreateSshSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
@@ -64,7 +63,7 @@ export function CodeExplorerView({
 
   if (!routeTarget || !resolvedTarget) {
     return (
-      <Panel description="Choose the content you want to explore.">
+      <div className="h-full overflow-auto p-6">
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Open a workspace, task, SSH server, or chat path in the unified code explorer.
@@ -105,7 +104,7 @@ export function CodeExplorerView({
             ))}
           </div>
         </div>
-      </Panel>
+      </div>
     );
   }
 

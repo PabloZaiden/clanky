@@ -1,6 +1,6 @@
 import type { Agent } from "@/shared";
-import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
-import { getPrivateContainerClassName } from "../lib/private-items";
+import { ErrorState, LoadingState } from "@pablozaiden/webapp/web";
+import { ClankyListRow } from "./app-shell/clanky-list-row";
 
 function formatDate(value?: string): string {
   if (!value) {
@@ -69,30 +69,33 @@ export function ConfiguredAgentsSection({
 
   return (
     <div data-testid="configured-agents-section">
-      <Panel title={title} description={description}>
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <div>
+          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">{title}</h2>
+          {description ? <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p> : null}
+        </div>
         {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
         {loading ? <LoadingState title="Loading agents" /> : null}
         {agents.length > 0 ? (
-          <DataList>
+          <div className="mt-4 space-y-2">
             {agents.map((agent) => {
               const workspaceName = workspaceNamesById[agent.config.workspaceId];
               const privateHidden = isAgentPrivateHidden(agent);
               return (
-                <DataListRow
+                <ClankyListRow
                   key={agent.config.id}
                   title={agent.config.name}
                   description={agent.config.prompt}
                   meta={`${workspaceName ? `${workspaceName} · ` : ""}Next run: ${formatDate(agent.state.nextRunAt)} · ${getScheduleText(agent)}`}
                   badge={<AgentStatusPill status={agent.state.status} />}
                   onClick={onSelectAgent && !privateHidden ? () => onSelectAgent(agent.config.id) : undefined}
-                  disabled={privateHidden}
-                  className={getPrivateContainerClassName(privateHidden)}
+                  privateHidden={privateHidden}
                 />
               );
             })}
-          </DataList>
+          </div>
         ) : null}
-      </Panel>
+      </section>
     </div>
   );
 }

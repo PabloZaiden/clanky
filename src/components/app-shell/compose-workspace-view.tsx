@@ -12,7 +12,6 @@ import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
   ErrorState,
   FormGroup,
-  Page,
   SelectField,
   TextField,
   type WebAppRoute,
@@ -229,7 +228,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   useShellHeaderActions(headerActions);
 
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
           <ProvisioningJobView
@@ -473,6 +472,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           )}
         </form>
       )}
-    </Page>
+    </div>
   );
 }

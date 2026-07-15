@@ -7,9 +7,10 @@ import {
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
-import { DataList, DataListRow, EmptyState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
-import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { ClankyListRow } from "./clanky-list-row";
 
 export function WorkspaceView({
   workspace,
@@ -43,59 +44,57 @@ export function WorkspaceView({
     const statusPill = getTaskStatusPill(task);
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
     return (
-      <DataListRow
+      <ClankyListRow
         key={task.config.id}
         title={task.config.name}
         description="Task"
         badge={<StatusBadge variant={statusPill.variant}>{statusPill.label}</StatusBadge>}
         onClick={!privateHidden ? () => onNavigate(route) : undefined}
-        disabled={privateHidden}
-        className={getPrivateContainerClassName(privateHidden)}
+        privateHidden={privateHidden}
       />
     );
   }
 
   return (
-    <Page layout="stack" className="min-w-0">
-      <div data-testid="workspace-activity-card">
-        <Panel title="Activity">
+    <div className="min-w-0 space-y-6">
+      <section data-testid="workspace-activity-card" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
+        <div className="mt-4">
           {hasActivity ? (
-            <DataList>
+            <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
               {relatedChats.map((chat: Chat) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
                 return (
-                  <DataListRow
+                  <ClankyListRow
                     key={chat.config.id}
                     title={chat.config.name}
                     description="Chat"
                     badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{chat.state.status}</StatusBadge>}
                     onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
-                    disabled={privateHidden}
-                    className={getPrivateContainerClassName(privateHidden)}
+                    privateHidden={privateHidden}
                   />
                 );
               })}
               {relatedSessions.map((session) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
                 return (
-                  <DataListRow
+                  <ClankyListRow
                     key={session.config.id}
                     title={session.config.name}
                     description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
                     badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
                     onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
-                    disabled={privateHidden}
-                    className={getPrivateContainerClassName(privateHidden)}
+                    privateHidden={privateHidden}
                   />
                 );
               })}
-            </DataList>
+            </div>
           ) : (
             <EmptyState title="No active items" description="There are no active tasks, chats, or sessions in this workspace right now." />
           )}
-        </Panel>
-      </div>
+        </div>
+      </section>
 
       <ConfiguredAgentsSection
         agents={relatedAgents}
@@ -107,14 +106,12 @@ export function WorkspaceView({
       />
 
       {historyTasks.length > 0 ? (
-        <div data-testid="workspace-history-card">
-          <Panel title="History" description={historyDescription}>
-            <DataList>
-              {historyTasks.map((task) => renderTaskRow(task))}
-            </DataList>
-          </Panel>
-        </div>
+        <section data-testid="workspace-history-card" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">History</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{historyDescription}</p>
+          <div className="mt-4 space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
+        </section>
       ) : null}
-    </Page>
+    </div>
   );
 }

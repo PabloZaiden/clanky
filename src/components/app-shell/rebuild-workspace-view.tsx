@@ -2,7 +2,7 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, Page, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
@@ -142,7 +142,7 @@ export function RebuildWorkspaceView({
   useShellHeaderActions(headerActions);
 
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
           <ProvisioningJobView
@@ -246,6 +246,6 @@ export function RebuildWorkspaceView({
           )}
         </form>
       )}
-    </Page>
+    </div>
   );
 }

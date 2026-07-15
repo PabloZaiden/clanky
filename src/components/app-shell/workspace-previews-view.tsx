@@ -3,7 +3,7 @@ import type { Workspace } from "@/shared";
 import { useWorkspacePreviews } from "../../hooks";
 import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";
-import { EmptyState, ErrorState, LoadingState, Page, Panel, TextField, useToast } from "@pablozaiden/webapp/web";
+import { EmptyState, ErrorState, LoadingState, TextField, useToast } from "@pablozaiden/webapp/web";
 
 function formatDateTime(value?: string): string {
   if (!value) {
@@ -46,11 +46,14 @@ export function WorkspacePreviewsView({
   }
 
   return (
-    <Page layout="stack" className="min-w-0">
-      <Panel
-        title="Start from the CLI"
-        description="Run this command locally. The port must match your app's dev server inside the workspace."
-      >
+    <div className="min-w-0 space-y-6">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <div>
+          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Start from the CLI</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Run this command locally. The port must match your app's dev server inside the workspace.
+          </p>
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <TextField
             label="Remote port"
@@ -69,9 +72,10 @@ export function WorkspacePreviewsView({
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Add <code>--host 0.0.0.0</code> for LAN/mobile testing. The CLI will print a network exposure warning.
         </p>
-      </Panel>
+      </section>
 
-      <Panel title="Active previews">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Active previews</h2>
         {loading && previews.length === 0 ? (
           <LoadingState title="Refreshing previews" />
         ) : error ? (
@@ -126,7 +130,7 @@ export function WorkspacePreviewsView({
             ))}
           </div>
         )}
-      </Panel>
-    </Page>
+      </section>
+    </div>
   );
 }

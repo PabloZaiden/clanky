@@ -3,7 +3,7 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../workspace-settings";
 import { ProvisioningActionsSection } from "../workspace-settings";
-import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import { useShellHeaderActions } from "./shell-header-actions";
 
@@ -56,7 +56,7 @@ export function WorkspaceSettingsView({
   );
 
   return (
-    <Page layout="stack">
+    <div className="space-y-6">
       {workspaceSettingsError ? (
         <ErrorState title="Unable to load workspace settings" description={workspaceSettingsError} />
       ) : null}
@@ -110,6 +110,6 @@ export function WorkspaceSettingsView({
       ) : (
         <ErrorState title="Workspace settings unavailable" description="Workspace settings are unavailable right now." />
       )}
-    </Page>
+    </div>
   );
 }
