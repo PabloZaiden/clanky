@@ -28,7 +28,8 @@ export function Badge({
     <FrameworkBadge
       data-badge-variant={variant}
       variant={variant}
-      className={size === "md" ? `clanky-badge-md ${className}`.trim() : className}
+      size={size}
+      className={className}
       {...props}
     >
       {children}

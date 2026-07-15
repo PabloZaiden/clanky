@@ -1,6 +1,6 @@
 import type { SshServer, SshServerSession } from "@/shared";
 import { Badge } from "../common";
-import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 
@@ -16,11 +16,11 @@ function SummaryCard({
   className?: string;
 }) {
   return (
-    <div className={`min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50 ${className}`}>
+    <Panel variant="muted" padding="compact" className={`min-w-0 ${className}`.trim()}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{label}</p>
       <p className="mt-2 overflow-hidden break-words text-2xl font-semibold text-gray-950 [overflow-wrap:anywhere] sm:text-3xl dark:text-gray-100">{value}</p>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{meta}</p>
-    </div>
+    </Panel>
   );
 }
 
@@ -47,8 +47,7 @@ export function SshServerView({
         ) : null}
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Standalone sessions</h2>
+      <Panel variant="muted" title="Standalone sessions">
         <div>
           {sessions.length === 0 ? (
             <EmptyState title="No standalone sessions yet" description="Create one to connect to this SSH server." />
@@ -80,7 +79,7 @@ export function SshServerView({
             })}</div>
           )}
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

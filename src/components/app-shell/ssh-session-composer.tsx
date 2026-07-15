@@ -3,7 +3,7 @@ import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
 import { useSshServers, useSshSessions } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useShellHeaderActions } from "./shell-header-actions";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
@@ -136,7 +136,7 @@ export function SshSessionComposer({
   return (
     <form id={formId} className="space-y-6 pt-1 sm:pt-0" onSubmit={(event) => void handleSubmit(event)}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+        <Panel variant="muted" padding="compact">
           <label htmlFor="ssh-target-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Target type
           </label>
@@ -149,8 +149,8 @@ export function SshSessionComposer({
             <option value="workspace">Workspace</option>
             <option value="server">Standalone SSH server</option>
           </select>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+        </Panel>
+        <Panel variant="muted" padding="compact">
           <label htmlFor="ssh-connection-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Connection mode
           </label>
@@ -166,10 +166,10 @@ export function SshSessionComposer({
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
             Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
           </p>
-        </div>
+        </Panel>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+      <Panel variant="muted" padding="compact">
         <label className="flex items-start gap-3" htmlFor="ssh-use-tmux">
           <input
             id="ssh-use-tmux"
@@ -187,19 +187,19 @@ export function SshSessionComposer({
             </span>
           </span>
         </label>
-      </div>
+      </Panel>
 
       {targetType === "workspace" ? (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+        <Panel variant="muted" padding="compact">
           <WorkspaceSelector
             workspaces={workspaces}
             selectedWorkspaceId={selectedWorkspaceId}
             onSelect={(workspaceId) => setSelectedWorkspaceId(workspaceId ?? undefined)}
             registeredSshServers={servers}
           />
-        </div>
+        </Panel>
       ) : (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+        <Panel variant="muted" padding="compact">
           <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Server
           </label>
@@ -221,7 +221,7 @@ export function SshSessionComposer({
               Register a standalone SSH server first.
             </p>
           )}
-        </div>
+        </Panel>
       )}
     </form>
   );

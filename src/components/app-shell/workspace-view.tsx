@@ -7,7 +7,7 @@ import {
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
-import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
@@ -57,8 +57,7 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
-      <section data-testid="workspace-activity-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
+      <Panel data-testid="workspace-activity-card" variant="muted" title="Activity">
         <div>
           {hasActivity ? (
             <div className="space-y-2">
@@ -94,7 +93,7 @@ export function WorkspaceView({
             <EmptyState title="No active items" description="There are no active tasks, chats, or sessions in this workspace right now." />
           )}
         </div>
-      </section>
+      </Panel>
 
       <ConfiguredAgentsSection
         agents={relatedAgents}
@@ -106,11 +105,9 @@ export function WorkspaceView({
       />
 
       {historyTasks.length > 0 ? (
-        <section data-testid="workspace-history-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">History</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{historyDescription}</p>
+        <Panel data-testid="workspace-history-card" variant="muted" title="History" description={historyDescription}>
           <div className="space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
-        </section>
+        </Panel>
       ) : null}
     </div>
   );

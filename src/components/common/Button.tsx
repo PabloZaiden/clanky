@@ -34,9 +34,10 @@ export function Button({
   return (
     <FrameworkButton
       variant={variant === "secondary" ? "default" : variant}
+      size={size}
       loading={loading}
       disabled={disabled || loading}
-      className={`clanky-button-${size} ${className}`.trim()}
+      className={className}
       {...props}
     >
       {!loading && icon ? (
