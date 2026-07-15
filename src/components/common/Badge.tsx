@@ -18,8 +18,8 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 export function Badge({
-  variant = "default",
-  size = "sm",
+  variant,
+  size,
   children,
   className = "",
   ...props

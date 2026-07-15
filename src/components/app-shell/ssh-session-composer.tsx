@@ -136,7 +136,7 @@ export function SshSessionComposer({
   return (
     <form id={formId} className="space-y-6 pt-1 sm:pt-0" onSubmit={(event) => void handleSubmit(event)}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel variant="muted" padding="compact">
+        <Panel padding="compact">
           <label htmlFor="ssh-target-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Target type
           </label>
@@ -150,7 +150,7 @@ export function SshSessionComposer({
             <option value="server">Standalone SSH server</option>
           </select>
         </Panel>
-        <Panel variant="muted" padding="compact">
+        <Panel padding="compact">
           <label htmlFor="ssh-connection-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Connection mode
           </label>
@@ -169,7 +169,7 @@ export function SshSessionComposer({
         </Panel>
       </div>
 
-      <Panel variant="muted" padding="compact">
+      <Panel padding="compact">
         <label className="flex items-start gap-3" htmlFor="ssh-use-tmux">
           <input
             id="ssh-use-tmux"
@@ -190,7 +190,7 @@ export function SshSessionComposer({
       </Panel>
 
       {targetType === "workspace" ? (
-        <Panel variant="muted" padding="compact">
+        <Panel padding="compact">
           <WorkspaceSelector
             workspaces={workspaces}
             selectedWorkspaceId={selectedWorkspaceId}
@@ -199,7 +199,7 @@ export function SshSessionComposer({
           />
         </Panel>
       ) : (
-        <Panel variant="muted" padding="compact">
+        <Panel padding="compact">
           <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Server
           </label>

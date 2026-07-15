@@ -128,7 +128,7 @@ export function OverviewView({
   return (
     <div className="space-y-6">
       {activeWorkItems.length > 0 && (
-        <Panel data-testid="active-work-card" variant="muted" title="Active Work">
+        <Panel data-testid="active-work-card" title="Active Work">
           <div className="space-y-2">
             {activeWorkItems.map((item) => {
               const badge = getActiveWorkBadge(item);
@@ -161,7 +161,7 @@ export function OverviewView({
         }}
       />
 
-      <Panel variant="muted" title="Workspaces">
+      <Panel title="Workspaces">
         <div>
           {workspaceGroups.length === 0 ? (
             <EmptyState title="No workspaces yet" description="Start by creating one." />
@@ -185,7 +185,7 @@ export function OverviewView({
         </div>
       </Panel>
 
-      <Panel variant="muted" title="Servers">
+      <Panel title="Servers">
         <div>
           {serverMapItems.length === 0 ? (
             <EmptyState title="No SSH servers yet" description="Register one to see it here." />

@@ -57,7 +57,7 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
-      <Panel data-testid="workspace-activity-card" variant="muted" title="Activity">
+      <Panel data-testid="workspace-activity-card" title="Activity">
         <div>
           {hasActivity ? (
             <div className="space-y-2">
@@ -105,7 +105,7 @@ export function WorkspaceView({
       />
 
       {historyTasks.length > 0 ? (
-        <Panel data-testid="workspace-history-card" variant="muted" title="History" description={historyDescription}>
+        <Panel data-testid="workspace-history-card" title="History" description={historyDescription}>
           <div className="space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
         </Panel>
       ) : null}

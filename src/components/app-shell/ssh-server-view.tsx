@@ -16,7 +16,7 @@ function SummaryCard({
   className?: string;
 }) {
   return (
-    <Panel variant="muted" padding="compact" className={`min-w-0 ${className}`.trim()}>
+    <Panel padding="compact" className={`min-w-0 ${className}`.trim()}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{label}</p>
       <p className="mt-2 overflow-hidden break-words text-2xl font-semibold text-gray-950 [overflow-wrap:anywhere] sm:text-3xl dark:text-gray-100">{value}</p>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{meta}</p>
@@ -47,7 +47,7 @@ export function SshServerView({
         ) : null}
       </div>
 
-      <Panel variant="muted" title="Standalone sessions">
+      <Panel title="Standalone sessions">
         <div>
           {sessions.length === 0 ? (
             <EmptyState title="No standalone sessions yet" description="Create one to connect to this SSH server." />

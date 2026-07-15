@@ -67,14 +67,13 @@ export function ConfiguredAgentsSection({
   return (
     <Panel
       data-testid="configured-agents-section"
-      variant="muted"
       title={title}
       description={description}
     >
       {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
       {loading ? <LoadingState title="Loading agents" /> : null}
       {agents.length > 0 ? (
-        <DataList variant="cards">
+        <DataList>
           {agents.map((agent) => {
             const workspaceName = workspaceNamesById[agent.config.workspaceId];
             const privateHidden = isAgentPrivateHidden(agent);

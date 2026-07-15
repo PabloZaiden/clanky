@@ -512,7 +512,7 @@ function AgentWorkspaceList({
   onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
-    <Panel variant="muted">
+    <Panel>
       {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
       {loading ? <LoadingState title="Loading agents" /> : null}
       <div className="space-y-2">

@@ -30,7 +30,6 @@ export function ClankyListRow({
       metaPlacement={metaPlacement}
       badge={badge}
       onClick={!privateHidden ? onClick : undefined}
-      variant="card"
       className={getPrivateContainerClassName(privateHidden)}
     />
   );
