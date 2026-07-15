@@ -1784,6 +1784,7 @@ describe("Chats API Integration", () => {
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
     const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
     const standaloneCreateResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -1794,7 +1795,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: currentBranch,
       }),
     });
     expect(standaloneCreateResponse.status).toBe(201);
