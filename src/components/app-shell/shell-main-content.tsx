@@ -29,7 +29,7 @@ import type {
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 
-interface ShellMainContentProps {
+export interface ShellMainContentProps {
   route: WebAppRoute;
   shellLoading: boolean;
   shellErrors: string[];
