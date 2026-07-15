@@ -62,6 +62,14 @@ function getFileExplorerOperationFallback(operation: FileExplorerOperation): str
   }
 }
 
+const FILE_EXPLORER_MOBILE_MEDIA_QUERY = "(max-width: 1023px)";
+
+function isFileExplorerMobileViewport(): boolean {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia(FILE_EXPLORER_MOBILE_MEDIA_QUERY).matches;
+}
+
 function triggerBrowserDownload(url: string, fileName: string): void {
   const link = document.createElement("a");
   link.href = url;
@@ -153,6 +161,10 @@ export function FileExplorerView({
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
+  const isMobileExplorerViewport = isFileExplorerMobileViewport();
+  const shouldToastMobileUploadFailure = isMobileExplorerViewport
+    && explorer.operationFailure?.operation === "upload"
+    && !explorer.operationFailure.conflict;
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -213,12 +225,14 @@ export function FileExplorerView({
     }
 
     lastHandledExplorerFailureRef.current = failure;
-    if (!explorerCollapsed || failure.conflict) {
+    const shouldToastFailure = explorerCollapsed
+      || (isMobileExplorerViewport && failure.operation === "upload");
+    if (!shouldToastFailure || failure.conflict) {
       return;
     }
 
     toast.error(failure.message || getFileExplorerOperationFallback(failure.operation));
-  }, [explorer.operationFailure, explorerCollapsed, toast]);
+  }, [explorer.operationFailure, explorerCollapsed, isMobileExplorerViewport, toast]);
 
   useEffect(() => {
     if (!canPromptForTerminalTmux) {
@@ -634,7 +648,7 @@ export function FileExplorerView({
                 selectedNodePath={explorer.selectedNode?.path}
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
-                error={explorer.error}
+                error={shouldToastMobileUploadFailure ? null : explorer.error}
                 collapsed={explorerCollapsed}
                 onOpenRootPicker={openRootPicker}
                 onRefresh={explorer.refreshTree}
