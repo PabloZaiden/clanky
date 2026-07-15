@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useToast } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
 import type { Chat } from "@/shared";
 import { ChatDetails } from "../ChatDetails";
@@ -14,7 +13,6 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 export function ChatTab({ taskId }: { taskId: string }) {
-  const { error: showErrorToast } = useToast();
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +42,6 @@ export function ChatTab({ taskId }: { taskId: string }) {
         }
         const message = String(loadError);
         setError(message);
-        showErrorToast(message);
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -57,7 +54,7 @@ export function ChatTab({ taskId }: { taskId: string }) {
     return () => {
       controller.abort();
     };
-  }, [taskId, showErrorToast]);
+  }, [taskId]);
 
   if (loading && !chatId) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;

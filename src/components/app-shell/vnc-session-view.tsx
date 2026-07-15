@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { SshServer, VncSession } from "@/shared";
-import { useToast } from "../../hooks";
 import { closeVncSessionApi, createOrResumeVncSessionApi, listVncSessionsApi } from "../../hooks/sshServerActions";
 import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { getStoredVncCredentials, storeVncCredentials } from "../../lib/vnc-browser-credentials";
 import { isApiErrorCode } from "../../lib/api-error";
 import { Button } from "../common";
-import { ErrorState, FormGroup, Panel, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, Panel, TextField, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { EmptySection } from "./shell-sidebar";
 import { VncViewer } from "./VncViewer";
 import { ServerPasswordModal } from "./server-password-modal";

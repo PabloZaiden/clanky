@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useToast } from "../../hooks";
 import type { SshServer, SshServerPrerequisiteReport } from "@/shared";
 import type { UpdateSshServerRequest } from "@/contracts";
 import { checkSshServerPrerequisitesApi } from "../../hooks/sshServerActions";
+import { useToast } from "@pablozaiden/webapp/web";
 import { DeleteSshServerSection } from "./delete-ssh-server-section";
 import { SshServerPrerequisitesSection } from "./ssh-server-prerequisites-section";
 import { SshServerFields } from "./ssh-server-fields";

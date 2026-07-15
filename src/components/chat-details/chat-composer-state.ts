@@ -17,7 +17,7 @@ import {
 import type { ImageAttachmentControlHandle } from "../ImageAttachmentControl";
 import { useComposerSizing } from "../common";
 import { insertDictationText } from "../dictation";
-import { useAvailableModels, useToast } from "../../hooks";
+import { useAvailableModels } from "../../hooks";
 import {
   MESSAGE_IMAGE_ATTACHMENT_LIMIT,
   toMessageImageAttachments,
@@ -27,6 +27,7 @@ import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import type { Chat, ComposerImageAttachment } from "@/shared";
 import { getChatErrorMessage, parseChatError } from "./chat-lifecycle";
 import type { ChatComposerProps } from "./types";
+import { useToast } from "@pablozaiden/webapp/web";
 
 export function useChatComposer({
   chat,

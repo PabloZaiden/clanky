@@ -1,9 +1,8 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { useToast } from "../../hooks";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { Badge, Button } from "../common";
-import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerFields } from "./ssh-server-fields";
 import {
   buildSshServerUpdateRequest,

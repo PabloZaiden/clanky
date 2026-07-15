@@ -4,7 +4,7 @@ import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { appFetch } from "../../lib/public-path";
-import { useMarkdownPreference, useRealtimeStream, useToast } from "../../hooks";
+import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
@@ -16,6 +16,7 @@ import {
   ErrorState,
   LoadingState,
   Panel,
+  useToast,
   useRealtimeRefresh,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";

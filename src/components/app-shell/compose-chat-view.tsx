@@ -4,7 +4,6 @@ import type { CreateSshServerChatRequest, ModelInfo } from "@/contracts";
 import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
 import type { AgentProvider } from "@/shared/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { useToast } from "../../hooks";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken, invalidateStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
@@ -26,6 +25,7 @@ import {
   Panel,
   SelectField,
   TextField,
+  useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";

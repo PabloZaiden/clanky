@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
 import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
@@ -11,7 +11,6 @@ import {
   getDefaultAutomaticWorkspaceServer,
 } from "../../lib/automatic-workspace-preferences";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { ToastContextValue } from "../../hooks/useToast";
 import { getRouteString } from "./route-fields";
 
 export interface UseWorkspaceCreateResult {
@@ -58,7 +57,7 @@ interface UseWorkspaceCreateOptions {
   provisioning: UseProvisioningJobResult;
   createWorkspace: (req: CreateWorkspaceRequest) => Promise<Workspace | null>;
   refreshWorkspaces: () => Promise<void>;
-  toast: ToastContextValue;
+  toast: ToastService;
   navigateWithinShell: (route: WebAppRoute) => void;
 }
 

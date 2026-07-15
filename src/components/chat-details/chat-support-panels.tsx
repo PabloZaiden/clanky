@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Chat } from "@/shared";
-import { useToast } from "../../hooks";
+import { useToast } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 import { Button } from "../common";
 import { getChatErrorMessage, parseChatError } from "./chat-lifecycle";

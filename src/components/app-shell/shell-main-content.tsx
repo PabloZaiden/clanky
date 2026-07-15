@@ -111,7 +111,7 @@ export interface ShellMainContentProps {
   provisioning: UseProvisioningJobResult;
 
   // Toast
-  toast: import("../../hooks/useToast").ToastContextValue;
+  toast: import("@pablozaiden/webapp/web").ToastService;
 
   // Privacy preference
   showPrivateItems: boolean;

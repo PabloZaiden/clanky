@@ -30,7 +30,6 @@ export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSche
 export { usePrivateItemsPreference, type PrivateItemsPreference } from "./usePrivateItemsPreference";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
-export { useToast, type ToastContextValue, type Toast, type ToastOptions } from "./useToast";
 export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";

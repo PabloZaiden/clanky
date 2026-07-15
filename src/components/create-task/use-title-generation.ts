@@ -4,10 +4,10 @@
 
 import { useState, useCallback } from "react";
 import { createLogger } from "../../lib/logger";
-import { useToast } from "../../hooks";
 import { generateTaskTitleApi } from "../../hooks/taskActions";
 import { parseModelKey } from "../ModelSelector";
 import { cheapModelValueToSelection } from "./use-model-selection";
+import { useToast } from "@pablozaiden/webapp/web";
 
 const log = createLogger("CreateTaskForm");
 

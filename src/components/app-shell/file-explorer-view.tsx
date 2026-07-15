@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { SshSession, WorkspaceFileEntry } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
-import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
+import { useFileExplorer, useFileExplorerFullTreePreference } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
@@ -218,9 +218,6 @@ export function FileExplorerView({
 
   async function handleSave(): Promise<boolean> {
     const success = await explorer.saveCurrentFile();
-    if (!success && !explorer.conflictState) {
-      toast.error(explorer.error ?? "Failed to save file");
-    }
     return success;
   }
 
@@ -456,7 +453,6 @@ export function FileExplorerView({
       setRenamingNode(true);
       const renamedFile = await explorer.renameSelectedNode(trimmedName);
       if (!renamedFile) {
-        toast.error(explorer.error ?? "Failed to rename selected item.");
         return;
       }
       toast.success(`Renamed to ${renamedFile.name}`);
@@ -485,7 +481,6 @@ export function FileExplorerView({
       setDeletingNode(true);
       const deleted = await explorer.deleteSelectedNode();
       if (!deleted) {
-        toast.error(explorer.error ?? "Failed to delete selected item.");
         return;
       }
       toast.success(`Deleted ${selectedNode.name}`);
@@ -509,7 +504,6 @@ export function FileExplorerView({
       setUploadingFile(true);
       const uploadedFile = await explorer.uploadFileToSelectedDirectory(file);
       if (!uploadedFile) {
-        toast.error(explorer.error ?? "Failed to upload file.");
         return;
       }
       toast.success(`Uploaded ${uploadedFile.name}`);

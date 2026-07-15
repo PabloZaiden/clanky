@@ -2,8 +2,8 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { replaceWebAppRoute } from "@pablozaiden/webapp/web";
-import { useTask, useMarkdownPreference, useToast } from "../../hooks";
+import { replaceWebAppRoute, useToast } from "@pablozaiden/webapp/web";
+import { useTask, useMarkdownPreference } from "../../hooks";
 import { Button } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {

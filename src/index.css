@@ -144,21 +144,6 @@
   font-size: 1.125rem;
 }
 
-@keyframes slide-in {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.animate-slide-in {
-  animation: slide-in 0.2s ease-out;
-}
-
 .clanky-private-obscured,
 .wapp-sidebar-item:has(.wapp-sidebar-badge[title="Private"]) {
   filter: blur(4px);

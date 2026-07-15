@@ -1,9 +1,9 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
-import { useSshServers, useSshSessions, useToast } from "../../hooks";
+import { useSshServers, useSshSessions } from "../../hooks";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import { FormGroup, Panel, SelectField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { FormGroup, Panel, SelectField, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
 

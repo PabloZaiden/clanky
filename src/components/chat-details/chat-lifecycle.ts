@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
+import { useRealtimeRefresh, useToast } from "@pablozaiden/webapp/web";
 import type {
   Chat,
   MessageData,
@@ -7,7 +7,7 @@ import type {
   ToolCallData,
 } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
-import { useRealtimeStream, useToast } from "../../hooks";
+import { useRealtimeStream } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../../utils/chat-snapshot";
