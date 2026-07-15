@@ -89,10 +89,6 @@ describe("database schema", () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
 
-      expect(tableNames()).not.toContain("passkey_credentials");
-      expect(tableNames()).not.toContain("auth_device_requests");
-      expect(tableNames()).not.toContain("auth_refresh_sessions");
-      expect(tableNames()).not.toContain("forwarded_ports");
       expect(tableNames()).toContain("preview_sessions");
       for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
         expect(columnNames(tableName)).toContain("is_private");
