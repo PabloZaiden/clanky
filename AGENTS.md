@@ -404,6 +404,9 @@ Never say a task is done when there are still failing tests, even if you think t
 Test orchestration must not rely on manually maintained per-file runtime
 weights or arbitrary fixed shard counts. Prefer deterministic generic
 partitioning and serialize only for documented resource/isolation constraints.
+`CLANKY_TEST_MAX_WORKERS` is the primary setting for test worker capacity;
+derive each suite's shard count at runtime from its discovered file count and
+that capacity rather than maintaining a separate shard-count configuration.
 
 ```typescript
 import { test, expect } from "bun:test";
