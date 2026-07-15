@@ -43,7 +43,11 @@ export interface TestServerContext {
   server: Server<unknown>;
   /** Base URL for API calls */
   baseUrl: string;
-  /** Mock backend instance */
+  /**
+   * In-memory configurable backend used when useMockAcpProcess is false.
+   * Process-backed setups register AcpBackend instead, so this instance is
+   * inactive and reset() does not affect those tests.
+   */
   mockBackend: ConfigurableMockBackend;
   /** Original mock ACP environment value before test setup */
   originalMockAcpEnv?: string;
@@ -298,7 +302,11 @@ export class ConfigurableMockBackend implements TaskBackend {
 export interface SetupServerOptions {
   /** Initial responses for the mock backend */
   mockResponses?: string[];
-  /** Use the process-backed mock ACP runtime instead of the in-memory backend */
+  /**
+   * Use the process-backed mock ACP runtime instead of the in-memory backend.
+   * When enabled, backendManager uses AcpBackend and does not register
+   * ConfigurableMockBackend.
+   */
   useMockAcpProcess?: boolean;
   /** Create a local git remote for push tests */
   withRemote?: boolean;

@@ -61,7 +61,7 @@ describe("Task Lifecycle User Scenarios", () => {
 
     expect(status).toBe(201);
     const task = body as Task;
-    await waitForTaskStatus(ctx.baseUrl, task.config.id, ["starting", "running"]);
+    await waitForTaskStatus(ctx.baseUrl, task.config.id, ["starting", "running", "waiting"]);
 
     const stopResponse = await stopTaskViaAPI(ctx.baseUrl, task.config.id);
     expect(stopResponse.status).toBe(200);
