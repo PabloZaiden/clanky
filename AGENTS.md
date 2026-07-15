@@ -44,6 +44,7 @@ For more project information, see the [README.md](README.md).
 - Keep resource event names and retained stream classification centralized at the server realtime boundary. Internal domain event emitters may remain for orchestration and tests, but they are not a browser transport contract.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
+- Consume framework-owned client log-level state and adapt it to Clanky's logger. Do not fetch webapp configuration from app-local initializer components or duplicate settings state.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
 - Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
 - Use the webapp notification service for transient feedback. Do not add

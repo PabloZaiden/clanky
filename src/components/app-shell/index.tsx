@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   replaceWebAppRoute,
+  useLogLevel,
   useToast,
   WebAppRoot,
   type ActionMenuItem,
   type SidebarNode,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
+import { setLogLevel } from "../../lib/logger";
 import {
   useChats,
   useAgents,
@@ -60,6 +62,14 @@ interface HeaderModel {
 }
 
 function RouteHeaderTitle({ model }: { model: HeaderModel }) {
+  const { level } = useLogLevel();
+
+  useEffect(() => {
+    if (level !== undefined) {
+      setLogLevel(level);
+    }
+  }, [level]);
+
   return (
     <span className="flex min-w-0 max-w-full flex-1 items-center gap-1.5 overflow-hidden">
       <span className="min-w-0 flex-shrink truncate text-lg font-bold text-gray-900 dark:text-gray-100">
