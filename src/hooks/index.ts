@@ -51,6 +51,8 @@ export {
   type UseFileExplorerResult,
   type UseWorkspaceFilesResult,
   type WorkspaceFileConflictState,
+  type FileExplorerOperation,
+  type FileExplorerOperationFailure,
 } from "./useWorkspaceFiles";
 // Shared task action API functions
 export {

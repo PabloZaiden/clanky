@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { SshSession, WorkspaceFileEntry } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
-import { useFileExplorer, useFileExplorerFullTreePreference } from "../../hooks";
+import {
+  useFileExplorer,
+  useFileExplorerFullTreePreference,
+  type FileExplorerOperation,
+  type FileExplorerOperationFailure,
+} from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
@@ -42,6 +47,19 @@ type ExplorerSession = SshSession | SshServerSession;
 
 function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
+}
+
+function getFileExplorerOperationFallback(operation: FileExplorerOperation): string {
+  switch (operation) {
+    case "save":
+      return "Failed to save file";
+    case "rename":
+      return "Failed to rename selected item.";
+    case "delete":
+      return "Failed to delete selected item.";
+    case "upload":
+      return "Failed to upload file.";
+  }
 }
 
 function triggerBrowserDownload(url: string, fileName: string): void {
@@ -118,6 +136,7 @@ export function FileExplorerView({
   });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const lastHandledExplorerFailureRef = useRef<FileExplorerOperationFailure | null>(null);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameInputValue, setRenameInputValue] = useState("");
@@ -186,6 +205,20 @@ export function FileExplorerView({
       setServerPasswordModalOpen(true);
     }
   }, [explorer.error, explorer.errorCode, target.type]);
+
+  useEffect(() => {
+    const failure = explorer.operationFailure;
+    if (!failure || lastHandledExplorerFailureRef.current === failure) {
+      return;
+    }
+
+    lastHandledExplorerFailureRef.current = failure;
+    if (!explorerCollapsed || failure.conflict) {
+      return;
+    }
+
+    toast.error(failure.message || getFileExplorerOperationFallback(failure.operation));
+  }, [explorer.operationFailure, explorerCollapsed, toast]);
 
   useEffect(() => {
     if (!canPromptForTerminalTmux) {
