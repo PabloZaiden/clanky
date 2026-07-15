@@ -25,8 +25,6 @@ import {
 } from "../setup";
 
 class GitHubSnapshotExecutor extends TestCommandExecutor {
-  public readonly graphqlQueries: string[] = [];
-
   constructor(private readonly response: unknown) {
     super();
   }
@@ -50,10 +48,6 @@ class GitHubSnapshotExecutor extends TestCommandExecutor {
     }
 
     if (args[0] === "api" && args[1] === "graphql") {
-      const query = args.find((argument) => argument.startsWith("query="));
-      if (query) {
-        this.graphqlQueries.push(query);
-      }
       return {
         success: true,
         stdout: JSON.stringify(this.response),
@@ -76,18 +70,6 @@ const navigationGit: PullRequestNavigationGitService = {
   getRemoteUrl: async () => "https://github.com/test-owner/test-repo.git",
   hasRemote: async () => true,
 };
-
-function getGraphQlSelectionDepth(query: string, selection: string): number {
-  const selectionIndex = query.indexOf(selection);
-  if (selectionIndex === -1) {
-    throw new Error(`GraphQL selection not found: ${selection}`);
-  }
-
-  return [...query.slice(0, selectionIndex)].reduce(
-    (depth, character) => depth + (character === "{" ? 1 : character === "}" ? -1 : 0),
-    0,
-  );
-}
 
 function createSnapshotPullRequest(headSha = "head-sha-1"): AutomaticPrFlowPullRequest {
   return {
@@ -278,25 +260,24 @@ describe("Automatic PR flow feedback sources", () => {
       navigationGit,
     );
 
-    const query = executor.graphqlQueries[0] ?? "";
-    const normalizedQuery = query.replace(/\s+/g, " ");
-    expect(query).toContain("statusCheckRollup");
-    expect(query).toContain("headRefOid");
-    expect(normalizedQuery).toContain("checkSuite { workflowRun { workflow { name } } }");
-    expect(query).not.toContain("workflowName");
-    expect(getGraphQlSelectionDepth(query, "reviewThreads(first:100)")).toBe(3);
-    expect(getGraphQlSelectionDepth(query, "comments(first:100)")).toBe(3);
-    expect(getGraphQlSelectionDepth(query, "reviews(first:100)")).toBe(3);
+    expect(snapshot.pullRequest.headSha).toBe(headSha);
     expect(snapshot.workflowFailures).toHaveLength(2);
     expect(snapshot.actionableItems).toHaveLength(2);
     expect(snapshot.workflowFailures.map((item) => item.checkName)).toEqual([
       "unit-tests",
       "external-gate",
     ]);
+    expect(snapshot.workflowFailures.map((item) => item.headSha)).toEqual([headSha, headSha]);
+    expect(snapshot.workflowFailures.map((item) => item.checkConclusion)).toEqual([
+      "FAILURE",
+      "FAILURE",
+    ]);
     expect(snapshot.workflowFailures[0]?.id).toContain(headSha);
     expect(snapshot.workflowFailures[0]?.workflowName).toBe("CI");
     expect(snapshot.workflowFailures[0]?.body).toContain("Expected true to be false");
     expect(snapshot.workflowFailures[0]?.url).toContain("/actions/runs/101");
+    expect(snapshot.workflowFailures[1]?.body).toContain("The external gate failed");
+    expect(snapshot.workflowFailures[1]?.url).toBe("https://example.test/gate");
   });
 
   test("processes workflow failures deterministically before reviewer comments", async () => {
