@@ -156,15 +156,16 @@ export function isChatBusyStatus(status: ChatStatus): boolean {
   return status === "starting" || status === "streaming" || status === "interrupting";
 }
 
-export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
-  return "config" in chat ? chat.config.scope === "task" : chat.scope === "task";
+export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
+  const config = "config" in chat ? chat.config : chat;
+  return config.scope === "task" || config.taskId !== undefined;
 }
 
 export function isAgentChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
   return "config" in chat ? chat.config.scope === "agent" : chat.scope === "agent";
 }
 
-export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
   return !isTaskChat(chat) && !isAgentChat(chat);
 }
 

@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { ensureDataDirectories } from "../../src/persistence/database";
-import { loadChat, updateChatState } from "../../src/persistence/chats";
+import { loadChat, saveChat, updateChatState } from "../../src/persistence/chats";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
@@ -1784,7 +1784,22 @@ describe("Chats API Integration", () => {
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
     const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
+
+    const standaloneCreateResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Standalone chat beside task chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: currentBranch,
+      }),
+    });
+    expect(standaloneCreateResponse.status).toBe(201);
+    const standalone = await standaloneCreateResponse.json();
 
     const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {
       method: "POST",
@@ -1814,14 +1829,21 @@ describe("Chats API Integration", () => {
     const loaded = await getResponse.json();
     expect(loaded.config.id).toBe(created.config.id);
 
+    const directGetResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+    expect(directGetResponse.status).toBe(200);
+    const directlyLoaded = await directGetResponse.json();
+    expect(directlyLoaded.config.id).toBe(created.config.id);
+
     const allStandaloneListResponse = await fetch(`${baseUrl}/api/chats`);
     expect(allStandaloneListResponse.status).toBe(200);
     const allStandaloneChats = await allStandaloneListResponse.json();
+    expect(allStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === standalone.config.id)).toBe(true);
     expect(allStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
 
     const workspaceStandaloneListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
     expect(workspaceStandaloneListResponse.status).toBe(200);
     const workspaceStandaloneChats = await workspaceStandaloneListResponse.json();
+    expect(workspaceStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === standalone.config.id)).toBe(true);
     expect(workspaceStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
 
     const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
@@ -1835,6 +1857,53 @@ describe("Chats API Integration", () => {
       method: "DELETE",
     });
     expect(deleteResponse.status).toBe(409);
+  });
+
+  test("keeps task-owned chats out of standalone APIs when persisted scope is stale", async () => {
+    const taskId = "task-chat-stale-scope-api-test";
+    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    await saveTask(createTestTask(taskId, taskWorkingDirectory));
+
+    const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+
+    await saveChat({
+      ...created,
+      config: {
+        ...created.config,
+        scope: "workspace",
+      },
+    });
+
+    const allStandaloneListResponse = await fetch(`${baseUrl}/api/chats`);
+    expect(allStandaloneListResponse.status).toBe(200);
+    const allStandaloneChats = await allStandaloneListResponse.json();
+    expect(allStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
+
+    const workspaceStandaloneListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(workspaceStandaloneListResponse.status).toBe(200);
+    const workspaceStandaloneChats = await workspaceStandaloneListResponse.json();
+    expect(workspaceStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
+
+    const taskChatResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`);
+    expect(taskChatResponse.status).toBe(200);
+    const taskChat = await taskChatResponse.json();
+    expect(taskChat.config.id).toBe(created.config.id);
+
+    const directChatResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+    expect(directChatResponse.status).toBe(200);
+    const directChat = await directChatResponse.json();
+    expect(directChat.config.id).toBe(created.config.id);
+
+    const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Should still fail" }),
+    });
+    expect(renameResponse.status).toBe(409);
   });
 
   test("spawns a plan-mode task from an existing chat without deleting the chat", async () => {

@@ -10,6 +10,7 @@ import { requirePersistenceUserId } from "../ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 
 const log = createLogger("persistence:chats");
+const STANDALONE_CHAT_CONDITION = "scope = 'workspace' AND task_id IS NULL";
 
 const CHAT_LIST_COLUMNS = [
   "id",
@@ -107,7 +108,7 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
 
 export async function loadTaskChat(taskId: string): Promise<Chat | null> {
   const row = getDatabase()
-    .prepare("SELECT * FROM chats WHERE task_id = ? AND scope = 'task' AND user_id = ? LIMIT 1")
+    .prepare("SELECT * FROM chats WHERE task_id = ? AND user_id = ? LIMIT 1")
     .get(taskId, requirePersistenceUserId()) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;
@@ -129,7 +130,7 @@ export async function listChats(): Promise<Chat[]> {
 
 export async function listChatSummaries(): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
     .all(requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
@@ -140,7 +141,7 @@ export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]>
 
 export async function listChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
     .all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
@@ -151,7 +152,7 @@ export async function listChatsBySshServer(sshServerId: string): Promise<Chat[]>
 
 export async function listChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
     .all(sshServerId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
@@ -175,7 +176,7 @@ export async function getWorkspaceChatNameStats(
           END
         ), 0) AS max_generated_suffix
       FROM chats
-      WHERE workspace_id = ? AND scope = 'workspace' AND user_id = ?
+      WHERE workspace_id = ? AND ${STANDALONE_CHAT_CONDITION} AND user_id = ?
     `)
     .get(
       generatedNamePrefix.length,
