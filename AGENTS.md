@@ -615,7 +615,7 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 
 ### Test Signal
 
-- **Do not keep removal-only regression tests.** If a test mainly checks that an old label, workflow, or behavior is "not there anymore," remove or replace it with coverage that proves the current supported behavior works. Keep absence-focused assertions only when the absence itself is part of the product contract, such as security, validation, or explicit UX requirements.
+- **Do not add tests whose main purpose is proving an old table, field, route, label, or implementation is gone.** Absence assertions are reserved for explicit security/validation contracts; schema tests should cover current runtime requirements and real upgrade paths.
 
 ## Common Patterns
 
