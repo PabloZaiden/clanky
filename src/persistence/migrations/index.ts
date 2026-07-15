@@ -38,7 +38,7 @@
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "../../core/logger";
-import { AGENT_PROVIDER_IDS } from "../../shared/settings";
+import { AGENT_PROVIDER_IDS, getDefaultServerSettings, parseServerSettings } from "../../shared/settings";
 
 const log = createLogger("persistence:migrations");
 
@@ -214,6 +214,7 @@ export const migrations: Migration[] = [
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
+const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -236,16 +237,25 @@ function migrateWorkspaceSettings(db: Database): void {
 
   for (const row of rows) {
     if (typeof row.server_settings !== "string") {
+      log.warn("Normalizing missing persisted workspace server settings", { workspaceId: row.id });
+      update.run(DEFAULT_SERVER_SETTINGS_JSON, row.id);
       continue;
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(row.server_settings);
-    } catch {
+    } catch (error) {
+      log.warn("Normalizing invalid persisted workspace server settings", {
+        workspaceId: row.id,
+        error: String(error),
+      });
+      update.run(DEFAULT_SERVER_SETTINGS_JSON, row.id);
       continue;
     }
     if (!isRecord(parsed)) {
+      log.warn("Normalizing non-object persisted workspace server settings", { workspaceId: row.id });
+      update.run(DEFAULT_SERVER_SETTINGS_JSON, row.id);
       continue;
     }
 
@@ -314,6 +324,14 @@ function migrateWorkspaceSettings(db: Database): void {
 
     if (migrated) {
       update.run(JSON.stringify(migrated), row.id);
+      continue;
+    }
+
+    try {
+      parseServerSettings(row.server_settings);
+    } catch {
+      log.warn("Normalizing non-canonical persisted workspace server settings", { workspaceId: row.id });
+      update.run(DEFAULT_SERVER_SETTINGS_JSON, row.id);
     }
   }
 }

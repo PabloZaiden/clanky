@@ -240,9 +240,14 @@ describe("database schema", () => {
           execution: { host: "runner.example", port: 2200, user: "runner" },
         }),
       ]);
+      const currentServerSettings = JSON.stringify({ agent: { provider: "codex", transport: "stdio" } });
       db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
         "current",
-        JSON.stringify({ agent: { provider: "codex", transport: "stdio" } }),
+        currentServerSettings,
+      ]);
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "default-settings",
+        JSON.stringify({}),
       ]);
       db.run("CREATE TABLE tasks (id TEXT PRIMARY KEY, mode TEXT)");
       db.run("INSERT INTO tasks (id, mode) VALUES (?, ?)", ["legacy-task", "agent"]);
@@ -280,8 +285,13 @@ describe("database schema", () => {
       const current = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("current") as {
         server_settings: string;
       };
-      expect(JSON.parse(current.server_settings)).toEqual({
-        agent: { provider: "codex", transport: "stdio" },
+      expect(current.server_settings).toBe(currentServerSettings);
+
+      const defaultSettings = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("default-settings") as {
+        server_settings: string;
+      };
+      expect(JSON.parse(defaultSettings.server_settings)).toEqual({
+        agent: { provider: "opencode", transport: "stdio" },
       });
 
       const taskModes = db.query("SELECT id, mode FROM tasks ORDER BY id").all() as Array<{
