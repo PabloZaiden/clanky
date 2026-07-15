@@ -575,6 +575,7 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 ### Component & Method Decomposition
 
 - **Components over 300 LOC should be decomposed.** Extract sub-components (`DashboardHeader`, `TaskGrid`, `DashboardModals`) and custom hooks (`useDashboardData`, `useTaskGrouping`).
+- **Large interactive views must separate server lifecycle/realtime state, transcript/display state, and form/composer state.** Effects must be abortable, stale responses must be guarded, and user-facing failures must remain visible. Do not add component tests that lock behavior to the internal decomposition.
 - **Methods over 100 LOC should be broken into named sub-methods** with clear single responsibilities (e.g., `buildPrompt()`, `evaluateOutcome()`, `commitIteration()`).
 - **Bundle functions with 4+ parameters** into a context/options object (e.g., `TranslateEventContext`).
 
