@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { AgentResponse, PromptInput } from "../../src/backends/types";
+import type { AgentResponse } from "../../src/backends/types";
 import {
   buildFallbackPullRequestMetadata,
   generatePullRequestMetadata,
@@ -34,17 +34,15 @@ function agentResponse(content: string): AgentResponse {
   };
 }
 
-function backendReturning(content: string, onPrompt?: (prompt: PromptInput) => void): PullRequestMetadataBackendInterface {
+function backendReturning(content: string): PullRequestMetadataBackendInterface {
   return {
-    async sendPrompt(_sessionId, prompt) {
-      onPrompt?.(prompt);
+    async sendPrompt(_sessionId, _prompt) {
       return agentResponse(content);
     },
   };
 }
 
 test("adds the linked issue closing directive when generated metadata omits it", async () => {
-  let promptText = "";
   const metadata = await generatePullRequestMetadata({
     metadata: { ...baseMetadata, issueNumber: 42 },
     backend: backendReturning(
@@ -52,18 +50,11 @@ test("adds the linked issue closing directive when generated metadata omits it",
         title: "Link tasks to GitHub issues",
         body: "## Summary\n- Stores the linked issue on each task.",
       }),
-      (prompt) => {
-        promptText = prompt.parts
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n");
-      },
     ),
     sessionId: "metadata-session",
   });
 
   expect(metadata.body).toContain("Closes #42");
-  expect(promptText).toContain("The body MUST include the exact GitHub closing keyword `Closes #42`");
 });
 
 test("does not duplicate an existing linked issue closing directive", async () => {

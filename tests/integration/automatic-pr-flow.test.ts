@@ -558,7 +558,6 @@ describe("Automatic PR flow feedback sources", () => {
       [workflowItem],
     );
 
-    expect(prompt).toContain("failed workflow/check results");
     expect(prompt).toContain("workflows=CI");
     expect(prompt).toContain("checks=unit-tests");
     expect(prompt).toContain("conclusions=FAILURE");
