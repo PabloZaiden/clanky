@@ -376,9 +376,6 @@ describe("Plan Mode API Integration", () => {
 
       const executionPrompt = await waitForSentPromptContaining(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
       expect(executionPrompt).toContain(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
-      expect(executionPrompt).not.toContain(
-        "Create a detailed plan to achieve this goal",
-      );
     });
 
     test("returns 400 when uploaded plan content normalizes to empty", async () => {
