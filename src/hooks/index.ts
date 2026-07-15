@@ -20,7 +20,6 @@ export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWorkspacePreviews";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
-export { useResolvedTheme, type ResolvedTheme } from "./useResolvedTheme";
 export {
   useFileExplorerFullTreePreference,
   type UseFileExplorerFullTreePreferenceResult,
