@@ -8,7 +8,7 @@ import {
   type SidebarNode,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { setLogLevel } from "../../lib/logger";
+import { DEFAULT_LOG_LEVEL, setLogLevel } from "../../lib/logger";
 import {
   useChats,
   useAgents,
@@ -65,8 +65,10 @@ function RouteHeaderTitle({ model }: { model: HeaderModel }) {
   const { level } = useLogLevel();
 
   useEffect(() => {
-    if (level !== undefined) {
-      setLogLevel(level);
+    try {
+      setLogLevel(level ?? DEFAULT_LOG_LEVEL);
+    } catch {
+      setLogLevel(DEFAULT_LOG_LEVEL);
     }
   }, [level]);
 
