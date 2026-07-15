@@ -15,7 +15,7 @@ const log = createLogger("persistence:tasks");
 /**
  * Allowed column names for the tasks table.
  * This list must match the effective tasks schema (the base schema in
- * database.ts plus any startup compatibility repairs and post-reset migrations).
+ * database.ts plus post-reset migrations).
  * Used to validate column names before SQL interpolation to prevent injection.
  */
 export const ALLOWED_TASK_COLUMNS = new Set([
@@ -114,9 +114,9 @@ export function taskToRow(task: Task): Record<string, unknown> {
     updated_at: config.updatedAt,
     is_private: config.isPrivate ? 1 : 0,
     workspace_id: config.workspaceId || null,
-    model_provider_id: config.model?.providerID ?? null,
-    model_model_id: config.model?.modelID ?? null,
-    model_variant: config.model?.variant ?? null,
+    model_provider_id: config.model.providerID,
+    model_model_id: config.model.modelID,
+    model_variant: config.model.variant,
     cheap_model: JSON.stringify(config.cheapModel ?? DEFAULT_TASK_CONFIG.cheapModel),
     max_iterations: config.maxIterations ?? null,
     max_consecutive_errors: config.maxConsecutiveErrors ?? null,
@@ -130,7 +130,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     plan_mode: config.planMode ? 1 : 0,
     auto_accept_plan: (config.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan) ? 1 : 0,
     fully_autonomous: config.fullyAutonomous ? 1 : 0,
-    mode: config.mode ?? "task",
+    mode: config.mode,
     // State fields
     status: state.status,
     current_iteration: state.currentIteration,
@@ -185,36 +185,23 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
 }
 
 /**
- * Normalize persisted task modes to the task-only contract.
- */
-export function normalizeTaskMode(mode: unknown, rowId: unknown): TaskConfig["mode"] {
-  if (mode === "task" || mode === null || mode === undefined) {
-    return "task";
-  }
-  log.warn(`Normalizing legacy task mode for task ${String(rowId)}`, { rawMode: String(mode) });
-  return "task";
-}
-
-/**
  * Convert a database row to a Task object.
  */
 export function rowToTask(row: Record<string, unknown>): Task {
-  // Handle model - required field, but may be missing in legacy data
-  let model: { providerID: string; modelID: string; variant: string };
-  if (row["model_provider_id"] && row["model_model_id"]) {
-    model = {
-      providerID: row["model_provider_id"] as string,
-      modelID: row["model_model_id"] as string,
-      variant: (row["model_variant"] as string | null) ?? "",
-    };
-  } else {
-    // Legacy tasks without model - provide a placeholder that indicates missing config
-    model = {
-      providerID: "unknown",
-      modelID: "not-configured",
-      variant: "",
-    };
+  if (row["mode"] !== "task") {
+    throw new Error(`Invalid persisted task mode for task ${String(row["id"])}`);
   }
+
+  const modelProviderID = row["model_provider_id"];
+  const modelID = row["model_model_id"];
+  if (typeof modelProviderID !== "string" || typeof modelID !== "string") {
+    throw new Error(`Persisted task ${String(row["id"])} is missing its model configuration`);
+  }
+  const model = {
+    providerID: modelProviderID,
+    modelID,
+    variant: (row["model_variant"] as string | null) ?? "",
+  };
 
   const config: TaskConfig = {
     id: row["id"] as string,
@@ -233,7 +220,6 @@ export function rowToTask(row: Record<string, unknown>): Task {
       ) ?? "",
     },
     model,
-    // Mandatory fields with defaults for backward compatibility with old data
     maxIterations: (row["max_iterations"] as number | null) ?? Infinity,
     maxConsecutiveErrors: (row["max_consecutive_errors"] as number | null) ?? 10,
     activityTimeoutSeconds:
@@ -244,7 +230,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
     planMode: row["plan_mode"] === 1,
     autoAcceptPlan: row["auto_accept_plan"] === 1,
     fullyAutonomous: row["fully_autonomous"] === 1,
-    mode: normalizeTaskMode(row["mode"], row["id"]),
+    mode: "task",
     cheapModel: DEFAULT_TASK_CONFIG.cheapModel,
   };
 

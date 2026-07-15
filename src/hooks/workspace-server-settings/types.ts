@@ -5,7 +5,7 @@ import type { ConnectionStatus } from "@/shared/settings";
 export interface UseWorkspaceServerSettingsResult {
   /** Full workspace data (name, directory, serverSettings) - fetched fresh from API */
   workspace: Workspace | null;
-  /** Current server settings for the workspace (alias for workspace.serverSettings) */
+  /** Current server settings for the workspace */
   settings: ServerSettings | null;
   /** Current connection status for the workspace */
   status: ConnectionStatus | null;

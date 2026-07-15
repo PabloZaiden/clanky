@@ -7,10 +7,10 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { AcpBackend } from "../src/backends/acp";
 import { SimpleEventEmitter } from "../src/core/event-emitter";
-import { GitService } from "../src/core/git-service";
+import { GitService } from "../src/core/git";
 import { TaskManager } from "../src/core/task-manager";
 import { backendManager } from "../src/core/backend-manager";
-import { ensureDataDirectories } from "../src/persistence/database";
+import { initializeDatabase } from "../src/persistence/database";
 import { closeDatabase, getDatabase } from "../src/persistence/database";
 import { createWorkspace } from "../src/persistence/workspaces";
 import { loadTask } from "../src/persistence/tasks";
@@ -125,7 +125,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
 
   // Set env var for persistence
   process.env["CLANKY_DATA_DIR"] = dataDir;
-  await ensureDataDirectories();
+  await initializeDatabase();
   seedTestOwnerUser();
 
   // Create the default test workspace (required for tasks with workspaceId)

@@ -105,7 +105,7 @@ export async function initializeDatabase(): Promise<void> {
  * Uses a transaction to ensure atomicity of schema creation.
  *
  * This base schema is the Clanky reset baseline. Historical migrations and
- * legacy compatibility repairs are intentionally not preserved.
+ * Historical migrations remain separate from this current baseline.
  */
 function createFrameworkAuthTables(database: Database): void {
   database.exec(`
@@ -570,7 +570,7 @@ function createTables(database: Database): void {
       ON workspaces(user_id, directory, server_fingerprint)
     `);
 
-    // Drop legacy single-column index that is now redundant with the composite index.
+    // Drop the redundant single-column index now covered by the composite index.
     database.run(`
       DROP INDEX IF EXISTS idx_workspaces_directory
     `);
@@ -797,7 +797,3 @@ export async function deleteAndReinitializeDatabase(): Promise<void> {
   await initializeDatabase();
   log.info("Database deleted and reinitialized");
 }
-
-// Aliases for backward compatibility (previously in paths.ts)
-export { initializeDatabase as ensureDataDirectories };
-export { isDatabaseReady as isDataDirectoryReady };

@@ -10,7 +10,7 @@ import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "f
 import { createWebAppServer, defineRoutes, getRequestOriginInfo, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
-import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
+import { getDataDir, initializeDatabase } from "./persistence/database";
 import { resetStaleTasks } from "./persistence/tasks";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
@@ -148,7 +148,6 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) return app;
-  await ensureDataDirectories();
   await initializeDatabase();
   const dataDir = getDataDir();
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });

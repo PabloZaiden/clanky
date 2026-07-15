@@ -9,15 +9,14 @@
  * - {@link RpcClient} owns JSON-RPC request bookkeeping and dispatch.
  * - {@link SessionStateStore} is the single owner of per-session/run state.
  * - {@link SessionService} owns session CRUD and prompt orchestration.
- * - {@link AcpEventTranslator} owns ACP/legacy event translation.
+ * - {@link AcpEventTranslator} owns ACP event translation.
  * - {@link SubscriptionService} owns event-stream/subscription lifecycle.
  * - {@link PermissionCoordinator} owns permission/question coordination.
  * - {@link CapabilityService} owns model discovery and provider adaptation.
  *
  * The facade only wires collaborators, orchestrates connection-level teardown,
- * routes inbound notifications, and preserves the public delegation and
- * compatibility surface. It owns no protocol maps, process handles, or
- * per-session state of its own.
+ * routes inbound notifications, and preserves the public delegation surface.
+ * It owns no protocol maps, process handles, or per-session state of its own.
  */
 
 import { log } from "../../core/logger";
@@ -41,7 +40,7 @@ import type { EventStream } from "../../utils/event-stream";
 
 import { isRecord } from "./json-helpers";
 import { AcpError } from "./errors";
-import type { AcpEvent, JsonRpcMessage, TranslateEventContext } from "./types";
+import type { JsonRpcMessage } from "./types";
 
 import { AcpTransportLifecycle } from "./transport-lifecycle";
 import { RpcClient } from "./rpc-client";
@@ -264,13 +263,5 @@ export class AcpBackend implements Backend {
   async replyToQuestion(requestId: string, answers: string[][]): Promise<void> {
     this.lifecycle.ensureConnected();
     await this.permissions.replyToQuestion(requestId, answers);
-  }
-
-  /**
-   * Translate a legacy SDK ACP event to our AgentEvent type.
-   * Retained for backward compatibility; delegates to the event translator.
-   */
-  translateEvent(event: AcpEvent, ctx: TranslateEventContext): AgentEvent | null {
-    return this.translator.translateEvent(event, ctx);
   }
 }

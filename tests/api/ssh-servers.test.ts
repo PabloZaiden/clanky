@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -166,7 +166,7 @@ describe("Standalone SSH servers API integration", () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-servers-api-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
-    await ensureDataDirectories();
+    await initializeDatabase();
     executorFactory = () => new SshServerApiExecutor();
     sshServerManager.setExecutorFactoryForTesting(() => executorFactory());
 

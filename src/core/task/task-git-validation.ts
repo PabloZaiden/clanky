@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { getActiveTaskByDirectory } from "../../persistence/tasks";
 import { TaskOperationError } from "./task-errors";
 

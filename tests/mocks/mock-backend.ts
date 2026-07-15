@@ -1,6 +1,6 @@
 /**
  * Mock AcpBackend for testing.
- * Implements the Backend interface to ensure type safety and API compatibility.
+ * Implements the Backend interface to ensure type safety.
  */
 
 import type {

@@ -25,7 +25,7 @@ export const AgentTransportSchema = z.enum(["stdio", "ssh"]);
 const StdioAgentSettingsSchema = z.object({
   provider: AgentProviderSchema,
   transport: z.literal("stdio"),
-});
+}).strict();
 
 const SshAgentSettingsSchema = z.object({
   provider: AgentProviderSchema,
@@ -35,7 +35,7 @@ const SshAgentSettingsSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   identityFile: z.string().min(1).optional(),
-});
+}).strict();
 
 /**
  * Schema for the agent settings.
@@ -57,7 +57,7 @@ export const AgentSettingsSchema = z.discriminatedUnion("transport", [
  */
 export const ServerSettingsSchema = z.object({
   agent: AgentSettingsSchema,
-});
+}).strict();
 
 /**
  * Schema for CreateWorkspaceRequest - POST /api/workspaces

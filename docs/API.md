@@ -194,7 +194,7 @@ Create a new task.
 | `stopPattern` | string | No | Completion regex (default: `<promise>COMPLETE</promise>$`). A trailing `<promise>BLOCKED</promise>` always stops safely without completion or automatic push. |
 | `git` | object | No | Git configuration |
 | `git.branchPrefix` | string | No | Optional prefix prepended before the generated `title-hash` branch name (default: empty string). Non-empty values are normalized to git-safe path segments and stored with a trailing `/`. |
-| `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"clanky"` are treated as empty. The deprecated `git.commitPrefix` is still accepted and converted the same way. |
+| `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"clanky"` are treated as empty. |
 | `baseBranch` | string | No | Base branch to create the task from (default: auto-detected default branch) |
 | `clearPlanningFolder` | boolean | No | Clear .clanky-planning folder before starting (default: false) |
 | `draft` | boolean | No | Save as draft without starting (default: false) |
@@ -579,7 +579,7 @@ Set or clear pending message and/or model for the next iteration. This is the pr
 
 #### POST /api/tasks/:id/pending
 
-Set pending message and/or model for next iteration. By default (`immediate: true`), running ACP-backed tasks prefer staying on the active session and applying the pending values on the very next iteration without interrupting the current turn. If the backend cannot support that flow, it falls back to interrupting the current iteration. Set `immediate: false` to wait for the current iteration to complete naturally.
+Set a pending message and/or model for the next iteration. Running tasks use the interrupt-first flow so the pending values are applied on the next iteration.
 
 Works for active tasks (running, waiting, planning, starting) and can also jumpstart tasks in supported stopped states (completed, stopped, failed, max_iterations).
 
@@ -587,9 +587,8 @@ Works for active tasks (running, waiting, planning, starting) and can also jumps
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `message` | string | No | Message to queue for next iteration |
+| `message` | string | No | Message to apply on the next iteration |
 | `model` | object | No | Model change: `{ providerID, modelID }` |
-| `immediate` | boolean | No | If true (default), prefer queueing on the active ACP session for running tasks and fall back to interruption when unsupported. If false, wait for the current iteration to complete. |
 
 At least one of `message` or `model` must be provided.
 

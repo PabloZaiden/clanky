@@ -171,8 +171,8 @@ describe("Update Branch User Scenarios", () => {
       // Try to update-branch on a completed (not pushed) task — returns 400
       const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, task.config.id);
       expect(updateStatus).toBe(400);
-      expect(updateBody.error).toBe("update_branch_failed");
-      expect(updateBody.message).toContain("Cannot update branch for task in status");
+      expect(updateBody.error).toBe("invalid_state");
+      expect(updateBody.message).toBe("Task is in an invalid state for this operation");
     });
 
     test("update-branch rejects non-existent task", async () => {

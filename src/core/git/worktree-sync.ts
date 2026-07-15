@@ -1,4 +1,4 @@
-import type { GitService } from "../git-service";
+import type { GitService } from "../git";
 
 interface SyncMainCheckoutBeforeWorktreeOptions {
   git: Pick<GitService, "getCurrentBranch" | "checkoutBranch" | "pull">;

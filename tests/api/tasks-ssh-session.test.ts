@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { closeDatabase, ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -46,7 +46,7 @@ describe("Task SSH session API integration", () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-task-ssh-data-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     backendManager.setBackendForTesting(createMockBackend());
     executor = new TaskSshExecutor();

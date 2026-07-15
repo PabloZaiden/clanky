@@ -61,8 +61,8 @@ const nativeApiRoutes = {
 const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 /**
- * Establish Clanky's compatibility user context around native webapp route
- * handlers. Authorization and same-origin policy remain on each route.
+ * Establish Clanky's current-user context around native webapp route handlers.
+ * Authorization and same-origin policy remain on each route.
  */
 function withApiUserContext(routes: Record<string, RouteDefinition>): RouteTable {
   return Object.fromEntries(Object.entries(routes).map(([path, route]) => {

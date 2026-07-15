@@ -7,7 +7,7 @@ import { createInitialState, DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { createTaskListSnapshot, saveTask, loadTask, listTasks, listTaskSummaries } from "../../persistence/tasks";
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { generateTaskName } from "../../utils/name-generator";
 import { normalizeCommitScope } from "../../utils/commit-scope";

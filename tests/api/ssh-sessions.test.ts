@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -70,7 +70,7 @@ describe("SSH sessions API integration", () => {
     workDir = await mkdtemp(join(tmpdir(), "clanky-ssh-sessions-work-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
-    await ensureDataDirectories();
+    await initializeDatabase();
     await Bun.$`git init ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();

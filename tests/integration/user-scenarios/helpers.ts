@@ -8,7 +8,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../../native-api-server";
-import { ensureDataDirectories } from "../../../src/persistence/database";
+import { initializeDatabase } from "../../../src/persistence/database";
 import { backendManager } from "../../../src/core/backend-manager";
 import { taskManager } from "../../../src/core/task-manager";
 import { closeDatabase } from "../../../src/persistence/database";
@@ -335,7 +335,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
 
   // Set env var for persistence
   process.env["CLANKY_DATA_DIR"] = dataDir;
-  await ensureDataDirectories();
+  await initializeDatabase();
 
   // Create initial files
   for (const [path, content] of Object.entries(initialFiles)) {

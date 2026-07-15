@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { closeDatabase, ensureDataDirectories, getDatabase, initializeDatabase } from "../../src/persistence/database";
+import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { previewSessionManager } from "../../src/core/preview-session-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
@@ -55,7 +55,6 @@ describe("workspace previews", () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-previews-data-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
-    await ensureDataDirectories();
     await initializeDatabase();
     seedTestOwnerUser();
   });

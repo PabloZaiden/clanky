@@ -6,7 +6,7 @@ import type { SimpleEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { GitService } from "../git-service";
+import type { GitService } from "../git";
 import type { CommandExecutor } from "../command-executor";
 import type { SendFollowUpResult, TaskResult } from "./task-types";
 import type { AcceptPlanResult, AcceptPlanOptions } from "./task-types";

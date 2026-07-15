@@ -4,7 +4,7 @@ import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
 import { insertReviewComment, } from "../../persistence/review-comments";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { saveTask, updateTaskState } from "../../persistence/tasks";

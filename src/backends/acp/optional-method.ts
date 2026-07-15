@@ -30,24 +30,3 @@ export async function invokeOptionalMethod<T>(
     throw error;
   }
 }
-
-/**
- * Try an ordered list of optional method names, stopping at the first one the
- * provider supports. Returns the successful outcome, or `method-not-found`
- * when every candidate reports the method is not found. Any non
- * method-not-found failure propagates immediately.
- */
-export async function tryOptionalMethods<T>(
-  requester: RpcRequester,
-  methods: string[],
-  params: Record<string, unknown>,
-  timeoutMs?: number,
-): Promise<OptionalMethodOutcome<T>> {
-  for (const method of methods) {
-    const outcome = await invokeOptionalMethod<T>(requester, method, params, timeoutMs);
-    if (outcome.kind === "supported") {
-      return outcome;
-    }
-  }
-  return { kind: "method-not-found" };
-}

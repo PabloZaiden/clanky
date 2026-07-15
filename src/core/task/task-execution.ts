@@ -5,7 +5,7 @@ import { TaskEngine } from "../task-engine";
 import { createTimestamp } from "@/shared/events";
 import { loadTask, updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { startStatePersistenceImpl } from "./task-state-persistence";

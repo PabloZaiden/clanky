@@ -10,7 +10,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { agentScheduler } from "../../src/core/agent-scheduler";
 import { backendManager } from "../../src/core/backend-manager";
-import { closeDatabase, ensureDataDirectories } from "../../src/persistence/database";
+import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { listAgentRuns, loadAgent, saveAgent, saveAgentRun } from "../../src/persistence/agents";
 import { listTasks } from "../../src/persistence/tasks";
 import type { AgentRun } from "@/shared/agent";
@@ -95,7 +95,7 @@ describe("Agents API Integration", () => {
     testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-agents-test-work-"));
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = testDataDir;
-    await ensureDataDirectories();
+    await initializeDatabase();
     seedTestOwnerUser();
 
     await Bun.$`git init ${testWorkDir}`.quiet();

@@ -35,10 +35,7 @@ export async function clearPendingPromptApi(taskId: string): Promise<boolean> {
   return apiAction(`/api/tasks/${taskId}/pending-prompt`, "DELETE", "Clear pending prompt");
 }
 
-/**
- * Set pending message and/or model for a task via the API.
- * Queueing is unsupported; the API now requires the interrupt-first path.
- */
+/** Set pending message and/or model for a task via the API. */
 export async function setPendingApi(
   taskId: string,
   options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageImageAttachment[] },
@@ -48,12 +45,11 @@ export async function setPendingApi(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: options.message ?? null,
-          model: options.model ? { ...options.model, variant: "" } : null,
-          immediate: true,
-          attachments: options.attachments ?? [],
-        }),
+      body: JSON.stringify({
+        message: options.message ?? null,
+        model: options.model ? { ...options.model, variant: "" } : null,
+        attachments: options.attachments ?? [],
+      }),
     },
     "Set pending values",
   );

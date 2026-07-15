@@ -83,10 +83,7 @@ export const tasksPendingRoutes = defineRoutes({
     /**
      * POST /api/tasks/:id/pending - Apply a message and/or model override for the next iteration.
      *
-     * Backend queueing is intentionally unsupported. Requests always use the
-     * interrupt-first path (`immediate: true`) when a task is actively generating.
-     * Set `immediate: false` requests are rejected so callers follow the explicit
-     * stop-then-send flow instead of relying on queued backend behavior.
+     * Requests use the interrupt-first path when a task is actively generating.
      *
      * Works for active tasks (running, waiting, planning, starting) and can also
      * jumpstart tasks in supported stopped states (completed, stopped, failed, max_iterations).
@@ -94,8 +91,6 @@ export const tasksPendingRoutes = defineRoutes({
      * Request Body:
      * - message (optional): Message for the next iteration
      * - model (optional): { providerID, modelID } for model change
-     * - immediate (optional, default: true): Must be true. False is rejected.
-     *
      * At least one of message or model must be provided.
      *
      * @returns Success response
@@ -130,21 +125,11 @@ export const tasksPendingRoutes = defineRoutes({
         }
       }
 
-      const immediate = body.immediate;
-
-       if (!immediate) {
-         return errorResponse(
-           "queue_not_supported",
-           "Queued pending input is no longer supported. Stop the task first, then send the new message.",
-           409,
-         );
-       }
-
-        const result = await taskManager.injectPending(ctx.params["id"]!, {
-          message: trimmedMessage,
-          model: body.model ?? undefined,
-          attachments: body.attachments,
-        });
+      const result = await taskManager.injectPending(ctx.params["id"]!, {
+        message: trimmedMessage,
+        model: body.model ?? undefined,
+        attachments: body.attachments,
+      });
 
       if (!result.success) {
         return taskErrorResponse(result.error, {
@@ -160,7 +145,7 @@ export const tasksPendingRoutes = defineRoutes({
     /**
      * DELETE /api/tasks/:id/pending - Clear all pending values (message and model).
      *
-      * Removes any pending message and model change. Only works for active tasks.
+     * Removes any pending message and model change. Only works for active tasks.
      *
      * @returns Success response
      */

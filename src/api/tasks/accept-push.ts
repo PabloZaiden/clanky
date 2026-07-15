@@ -14,7 +14,7 @@ import { taskManager } from "../../core/task-manager";
 import { createLogger } from "../../core/logger";
 import { successResponse } from "../helpers";
 import type { AcceptResponse, PushResponse } from "@/contracts";
-import { taskActionErrorResponse } from "./helpers";
+import { taskErrorResponse } from "./helpers";
 
 const log = createLogger("api:tasks");
 
@@ -41,7 +41,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           errorCode: result.error.code,
         });
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "accept_failed",
           message: "Failed to accept task",
           status: 400,
@@ -78,7 +78,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           errorCode: result.error.code,
         });
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "push_failed",
           message: "Failed to push task",
           status: 400,
@@ -120,7 +120,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
           taskId: ctx.params["id"]!,
           errorCode: result.error.code,
         });
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "update_branch_failed",
           message: "Failed to update task branch",
           status: 400,
@@ -162,7 +162,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.markMerged(ctx.params["id"]!);
 
       if (!result.success) {
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "mark_merged_failed",
           message: "Failed to mark task as merged",
           status: 400,
@@ -190,7 +190,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.closeLocalTask(ctx.params["id"]!);
 
       if (!result.success) {
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "close_local_failed",
           message: "Failed to close local task",
           status: 400,
@@ -217,7 +217,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
       const result = await taskManager.manualCompleteTask(ctx.params["id"]!);
 
       if (!result.success) {
-        return taskActionErrorResponse(result.error, {
+        return taskErrorResponse(result.error, {
           error: "manual_complete_failed",
           message: "Failed to manually complete task",
           status: 400,

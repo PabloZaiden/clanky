@@ -52,14 +52,11 @@ export const MessageImageAttachmentsSchema = z
 /**
  * Schema for GitConfig - git integration settings.
  * Used as a partial in CreateTaskRequest and UpdateTaskRequest.
- *
- * Accepts `commitScope` (preferred) or `commitPrefix` (deprecated alias).
- * If both are provided, `commitScope` takes precedence.
  */
 export const GitConfigSchema = z.object({
   branchPrefix: z.string(),
   commitScope: z.string(),
-}).transform((val) => {
+}).strict().transform((val) => {
   const toConfiguredCommitScope = (scope: string): string => {
     return normalizeCommitScope(scope) ?? "";
   };
@@ -198,18 +195,12 @@ export const PendingPromptRequestSchema = z.object({
   attachments: MessageImageAttachmentsSchema,
 });
 
-/**
- * Schema for set pending - POST /api/tasks/:id/pending
- * Queueing is no longer supported. The endpoint accepts the legacy
- * `immediate` field for validation/backward compatibility, but callers must
- * send `true` or omit it entirely.
- */
+/** Schema for set pending - POST /api/tasks/:id/pending. */
 export const SetPendingRequestSchema = z.object({
   message: z.string().nullable(),
   model: ModelConfigSchema.nullable(),
-  immediate: z.boolean(),
   attachments: MessageImageAttachmentsSchema,
-});
+}).strict();
 
 /**
  * Schema for starting a draft - POST /api/tasks/:id/draft/start

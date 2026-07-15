@@ -6,7 +6,7 @@ import type { AutomaticPrFlowFeedbackItem } from "../automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
 import { loadTask, saveTask } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { getTaskWorkingDirectory } from "./task-types";
 import { constructReviewPrompt, transitionToFeedbackCycleAndStart } from "./review-engine";
 import {

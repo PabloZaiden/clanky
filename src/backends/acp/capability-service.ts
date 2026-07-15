@@ -1,12 +1,12 @@
 /**
  * Capability, model discovery, and provider adaptation service.
  *
- * Owns config-option parsing, model extraction from config/legacy response
- * shapes, model and reasoning-effort caches, variant discovery, temporary
- * discovery-session cleanup, provider labels, and provider capability checks.
- * Provider-specific behavior lives behind a narrow capability table rather than
- * being scattered through transport or session code. Optional discovery methods
- * flow through the typed optional-method helper so real failures propagate.
+ * Owns config-option parsing, model extraction from config options, model and
+ * reasoning-effort caches, variant discovery, temporary discovery-session
+ * cleanup, provider labels, and provider capability checks. Provider-specific
+ * behavior lives behind a narrow capability table rather than being scattered
+ * through transport or session code. Optional discovery methods flow through
+ * the typed optional-method helper so real failures propagate.
  */
 
 import { log } from "../../core/logger";
@@ -204,53 +204,6 @@ export class CapabilityService {
 
   // ---- Model extraction ----
 
-  parseModelsFromSessionResult(result: unknown): ModelInfo[] {
-    if (!isRecord(result)) {
-      return [];
-    }
-
-    const modelsRaw = result["models"];
-    const modelEntries = Array.isArray(modelsRaw)
-      ? modelsRaw
-      : isRecord(modelsRaw) && Array.isArray(modelsRaw["availableModels"])
-        ? modelsRaw["availableModels"]
-        : [];
-
-    const mapped: ModelInfo[] = [];
-    for (const item of modelEntries) {
-      if (!isRecord(item)) {
-        continue;
-      }
-
-      const modelID = getString(item["id"]) ?? getString(item["modelId"]);
-      if (!modelID) {
-        continue;
-      }
-
-      const name = getString(item["name"]) ?? modelID;
-      const providerID = this.getDiscoveredModelProviderID(getString(item["provider"]));
-
-      mapped.push({
-        providerID,
-        providerName: this.getDiscoveredModelProviderName(providerID),
-        modelID,
-        modelName: name,
-        connected: true,
-        variants: [""],
-      });
-    }
-
-    const seen = new Set<string>();
-    return mapped.filter((model) => {
-      const key = `${model.providerID}:${model.modelID}`;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }
-
   parseModelsFromConfigOptions(configOptions: ConfigOption[]): ModelInfo[] {
     const modelOption = this.getModelConfigOption(configOptions);
     if (!modelOption) {
@@ -289,12 +242,6 @@ export class CapabilityService {
       if (configModels.length > 0) {
         this.setCachedModels(directory, configModels, true);
         return configModels;
-      }
-
-      const models = this.parseModelsFromSessionResult(result);
-      if (models.length > 0) {
-        this.setCachedModels(directory, models, true);
-        return models;
       }
       return [];
     } finally {

@@ -1,7 +1,7 @@
 import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
-import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
+import { WorkspaceSettingsForm } from "../workspace-settings";
 import { ProvisioningActionsSection } from "../workspace-settings";
 import { ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";

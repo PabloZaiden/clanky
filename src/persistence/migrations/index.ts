@@ -38,6 +38,7 @@
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "../../core/logger";
+import { AGENT_PROVIDER_IDS } from "../../shared/settings";
 
 const log = createLogger("persistence:migrations");
 
@@ -105,7 +106,7 @@ export function tableExists(db: Database, tableName: string): boolean {
 
 /**
  * All migrations in order. Versions 1-4 are historical markers for the clean
- * Clanky reset baseline. Future schema changes should append version 5+.
+ * Clanky reset baseline. Future schema changes append to this list.
  */
 export const migrations: Migration[] = [
   { version: 1, name: "add_chat_source_fields", up: () => {} },
@@ -202,7 +203,132 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 10,
+    name: "normalize_legacy_persisted_formats",
+    up: (db) => {
+      migrateWorkspaceSettings(db);
+      migrateTaskModes(db);
+    },
+  },
 ];
+
+const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAgentProvider(value: unknown): value is string {
+  return typeof value === "string" && AGENT_PROVIDERS.has(value);
+}
+
+function migrateWorkspaceSettings(db: Database): void {
+  if (!tableExists(db, "workspaces")) {
+    return;
+  }
+
+  const rows = db.query("SELECT id, server_settings FROM workspaces").all() as Array<{
+    id: string;
+    server_settings: string | null;
+  }>;
+  const update = db.query("UPDATE workspaces SET server_settings = ? WHERE id = ?");
+
+  for (const row of rows) {
+    if (typeof row.server_settings !== "string") {
+      continue;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.server_settings);
+    } catch {
+      continue;
+    }
+    if (!isRecord(parsed)) {
+      continue;
+    }
+
+    const mode = parsed["mode"];
+    const agent = isRecord(parsed["agent"]) ? parsed["agent"] : undefined;
+    const agentRecord = agent ?? {};
+    const execution = isRecord(parsed["execution"]) ? parsed["execution"] : undefined;
+    let migrated: Record<string, unknown> | undefined;
+
+    if (typeof mode === "string") {
+      const transport = mode === "connect" ? "ssh" : "stdio";
+      migrated = {
+        agent: transport === "ssh"
+          ? {
+              provider: "opencode",
+              transport,
+              hostname: typeof parsed["hostname"] === "string" ? parsed["hostname"] : "127.0.0.1",
+              ...(typeof parsed["port"] === "number" ? { port: parsed["port"] } : {}),
+              ...(typeof parsed["password"] === "string" ? { password: parsed["password"] } : {}),
+            }
+          : {
+              provider: "opencode",
+              transport,
+            },
+      };
+    } else if (execution) {
+      const transport = agentRecord["transport"] === "ssh" ? "ssh" : "stdio";
+      const provider = isAgentProvider(agentRecord["provider"]) ? agentRecord["provider"] : "opencode";
+      if (transport === "ssh") {
+        migrated = {
+          agent: {
+            provider,
+            transport,
+            hostname:
+              typeof agentRecord["hostname"] === "string" && agentRecord["hostname"].trim().length > 0
+                ? agentRecord["hostname"]
+                : typeof execution["host"] === "string" && execution["host"].trim().length > 0
+                  ? execution["host"]
+                  : "127.0.0.1",
+            port:
+              typeof execution["port"] === "number"
+                ? execution["port"]
+                : typeof agentRecord["port"] === "number"
+                  ? agentRecord["port"]
+                  : 22,
+            ...(typeof agentRecord["username"] === "string"
+              ? { username: agentRecord["username"] }
+              : typeof execution["user"] === "string"
+                ? { username: execution["user"] }
+                : {}),
+            ...(typeof agentRecord["password"] === "string" ? { password: agentRecord["password"] } : {}),
+            ...(typeof agentRecord["identityFile"] === "string" && agentRecord["identityFile"].trim().length > 0
+              ? { identityFile: agentRecord["identityFile"] }
+              : {}),
+          },
+        };
+      } else {
+        migrated = {
+          agent: {
+            provider,
+            transport,
+          },
+        };
+      }
+    }
+
+    if (migrated) {
+      update.run(JSON.stringify(migrated), row.id);
+    }
+  }
+}
+
+function migrateTaskModes(db: Database): void {
+  if (!tableExists(db, "tasks")) {
+    return;
+  }
+
+  const columns = getTableColumns(db, "tasks");
+  if (!columns.includes("mode")) {
+    db.run("ALTER TABLE tasks ADD COLUMN mode TEXT NOT NULL DEFAULT 'task'");
+  }
+  db.run("UPDATE tasks SET mode = 'task' WHERE mode IS NULL OR mode <> 'task'");
+}
 
 /**
  * Create the schema_migrations table if it doesn't exist.

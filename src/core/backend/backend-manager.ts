@@ -14,7 +14,7 @@ import { taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { buildConnectionConfig } from "./backend-connection-pool";
 import {

@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -23,7 +23,7 @@ describe("Standalone SSH server files API integration", () => {
     alternateRootDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-files-alt-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
-    await ensureDataDirectories();
+    await initializeDatabase();
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "README.md"), "# Server files\n");
     await writeFile(join(workDir, "src", "index.ts"), "export const serverValue = 1;\n");

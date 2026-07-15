@@ -215,17 +215,3 @@ export function taskErrorResponse(
     fallback,
   });
 }
-
-/**
- * Preserve the legacy action-specific response contract while narrowing by
- * the typed task failure code.
- */
-export function taskActionErrorResponse(
-  error: TaskOperationError,
-  fallback: { error: string; message: string; status?: number },
-): Response {
-  if (error.code === "task_not_found") {
-    return errorResponse("not_found", "Task not found", 404);
-  }
-  return errorResponse(fallback.error, error.message, fallback.status ?? 500);
-}
