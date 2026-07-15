@@ -236,10 +236,9 @@ describe("Plan + Task User Scenarios", () => {
         })
       );
 
-      // Wait for any pending operations from previous test to complete
-      // This includes git operations and async cleanup
+      // The discard API awaits engine cleanup; confirm the source checkout is
+      // also free of an active git lock before starting the next task.
       await waitForGitAvailable(ctx.workDir);
-      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Add an ignored file to the main checkout's managed planning directory.
       // Plan-mode clearing happens in the worktree, not in the source checkout.

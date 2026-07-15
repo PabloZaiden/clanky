@@ -485,7 +485,12 @@ await Bun.$`git -C ${workDir} push origin ${currentBranch}`.quiet();
 
 ### Avoiding Flaky Tests with Polling
 
-**CRITICAL:** Never use fixed delays (`delay()`, `setTimeout`) to wait for async operations in tests. Fixed delays are inherently flaky because execution time varies across environments.
+**CRITICAL:** Fixed delays are not synchronization. Never use fixed delays
+(`delay()`, `setTimeout`) to wait for async operations in tests. Teardown must
+await the cleanup it starts; otherwise, poll a named observable condition with
+a bounded timeout, short interval, and last-observed-state diagnostics. Never
+lengthen a sleep to hide a race. Fixed delays are inherently flaky because
+execution time varies across environments.
 
 Instead, use polling helpers that wait for a specific condition to be met:
 

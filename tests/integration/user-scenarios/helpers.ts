@@ -843,21 +843,20 @@ export async function getCurrentBranch(workDir: string): Promise<string> {
 export async function waitForGitAvailable(workDir: string, timeoutMs = 5000): Promise<void> {
   const startTime = Date.now();
   const lockFile = join(workDir, ".git/index.lock");
-  
+  let lastLockExists = false;
+
   while (Date.now() - startTime < timeoutMs) {
     const lockExists = await Bun.file(lockFile).exists();
+    lastLockExists = lockExists;
     if (!lockExists) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  
-  // If we get here, try to remove the stale lock file
-  try {
-    await rm(lockFile, { force: true });
-  } catch {
-    // Ignore errors removing lock file
-  }
+
+  throw new Error(
+    `Git remained locked at ${lockFile} for ${timeoutMs}ms. Last observed lock state: ${lastLockExists ? "present" : "absent"}.`,
+  );
 }
 
 /**
