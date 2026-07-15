@@ -2,7 +2,7 @@
  * Form fields for manual workspace creation (directory + server settings).
  */
 
-import { ServerSettingsForm } from "../ServerSettingsForm";
+import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings, SshServer } from "@/shared";
 
 interface ManualWorkspaceFormProps {

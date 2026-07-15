@@ -16,7 +16,7 @@ import type { PushTaskResult, SendFollowUpResult, TaskResult } from "./task-mana
 import { listTasks, loadTask, updateTaskState } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { taskEventEmitter, SimpleEventEmitter } from "./event-emitter";
-import { GitService } from "./git-service";
+import { GitService } from "./git";
 import { createLogger } from "./logger";
 import { getTaskWorkingDirectory, taskManager } from "./task-manager";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task/task-automatic-pr-flow-events";

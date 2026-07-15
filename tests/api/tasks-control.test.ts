@@ -9,7 +9,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { saveTask } from "../../src/persistence/tasks";
@@ -118,7 +118,7 @@ describe("Tasks Control API Integration", () => {
     process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     // Initialize git repo
     await Bun.$`git init -b main ${testWorkDir}`.quiet();

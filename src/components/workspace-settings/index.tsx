@@ -2,9 +2,8 @@
  * Workspace settings sub-components barrel export.
  */
 
-export type { WorkspaceSettingsModalProps, WorkspaceSettingsFormProps } from "./types";
+export type { WorkspaceSettingsFormProps } from "./types";
 export { WorkspaceSettingsForm } from "./workspace-settings-form";
-export { WorkspaceSettingsModal } from "./workspace-settings-modal";
 export { AgentsMdSection } from "./agents-md-section";
 export { PurgeTasksSection } from "./purge-tasks-section";
 export { DeleteWorkspaceSection } from "./delete-workspace-section";

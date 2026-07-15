@@ -5,7 +5,6 @@ import type { RpcRequester } from "../../src/backends/acp/contracts";
 import { SessionStateStore } from "../../src/backends/acp/session-state";
 import { SubscriptionService } from "../../src/backends/acp/subscription-service";
 import { PermissionCoordinator } from "../../src/backends/acp/permission-coordinator";
-import { AcpError } from "../../src/backends/acp/errors";
 
 function createRequester(overrides: {
   sendRequest?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
@@ -97,40 +96,7 @@ describe("PermissionCoordinator", () => {
     ]);
   });
 
-  test("falls back to legacy reply methods and stops at the first supported one", async () => {
-    const state = new SessionStateStore();
-    const attempted: string[] = [];
-    const { requester } = createRequester({
-      async sendRequest(method: string): Promise<unknown> {
-        attempted.push(method);
-        if (method === "session/reply_permission") {
-          throw new AcpError("acp_method_not_found", "Method not found");
-        }
-        return {};
-      },
-    });
-    const permissions = new PermissionCoordinator(requester, state);
-
-    await permissions.replyToPermission("unknown-request", "allow");
-
-    expect(attempted).toEqual(["session/reply_permission", "session/permission_reply"]);
-  });
-
-  test("propagates non method-not-found failures from legacy reply attempts", async () => {
-    const state = new SessionStateStore();
-    const { requester } = createRequester({
-      async sendRequest(): Promise<unknown> {
-        throw new AcpError("acp_request_timed_out", "timed out");
-      },
-    });
-    const permissions = new PermissionCoordinator(requester, state);
-
-    await expect(permissions.replyToPermission("unknown-request", "allow")).rejects.toMatchObject({
-      code: "acp_request_timed_out",
-    });
-  });
-
-  test("clearAll discards pending permission requests so replies fall back to legacy methods", async () => {
+  test("clearAll discards pending permission requests and subsequent replies are no-ops", async () => {
     const state = new SessionStateStore();
     const attempted: string[] = [];
     const { requester } = createRequester({
@@ -154,7 +120,22 @@ describe("PermissionCoordinator", () => {
     permissions.clearAll();
 
     await permissions.replyToPermission("req-1", "allow");
-    expect(attempted).toEqual(["session/reply_permission"]);
+    expect(attempted).toEqual([]);
+  });
+
+  test("reply to unknown request id is a no-op without making an rpc call", async () => {
+    const state = new SessionStateStore();
+    const attempted: string[] = [];
+    const { requester } = createRequester({
+      async sendRequest(method: string): Promise<unknown> {
+        attempted.push(method);
+        return {};
+      },
+    });
+    const permissions = new PermissionCoordinator(requester, state);
+
+    await permissions.replyToPermission("completely-unknown-id", "allow");
+    expect(attempted).toEqual([]);
   });
 
   test("clears session-owned permission requests and subscriptions", async () => {
@@ -180,5 +161,20 @@ describe("PermissionCoordinator", () => {
     await permissions.replyToPermission("req-1", "allow");
     expect(written).toEqual([]);
     await expect(stream.next()).resolves.toBeNull();
+  });
+
+  test("replyToQuestion sends only session/reply_question", async () => {
+    const state = new SessionStateStore();
+    const attempted: string[] = [];
+    const { requester } = createRequester({
+      async sendRequest(method: string): Promise<unknown> {
+        attempted.push(method);
+        return {};
+      },
+    });
+    const permissions = new PermissionCoordinator(requester, state);
+
+    await permissions.replyToQuestion("req-q1", [["option-a"]]);
+    expect(attempted).toEqual(["session/reply_question"]);
   });
 });

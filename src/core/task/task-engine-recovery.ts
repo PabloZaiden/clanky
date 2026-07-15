@@ -2,7 +2,7 @@ import type { TaskCtx } from "./context";
 import { TaskEngine } from "../task-engine";
 import { loadTask, updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { getTaskWorkingDirectory } from "./task-types";
 import { ensureTaskBranchCheckedOutImpl } from "./task-git-validation";
 import { startStatePersistenceImpl } from "./task-state-persistence";

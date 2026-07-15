@@ -3,8 +3,8 @@
  *
  * Owns inbound permission-request state (the JSON-RPC response ID and the
  * available options), permission event emission, response normalization, and
- * the construction of selected/cancelled outcomes. Legacy permission and
- * question reply method attempts flow through the typed optional-method helper.
+ * the construction of selected/cancelled outcomes. Question replies use the
+ * current optional ACP method boundary.
  * Pending permission requests are cleared on disconnect so no request is left
  * waiting on a dead process.
  */
@@ -12,7 +12,7 @@
 import { log } from "../../core/logger";
 
 import { isRecord, getString, firstString } from "./json-helpers";
-import { tryOptionalMethods } from "./optional-method";
+import { invokeOptionalMethod } from "./optional-method";
 import type { JsonRpcMessage, PendingPermissionRequest } from "./types";
 import type { RpcRequester } from "./contracts";
 import type { SessionStateStore } from "./session-state";
@@ -141,25 +141,15 @@ export class PermissionCoordinator {
       return;
     }
 
-    const outcome = await tryOptionalMethods(
-      this.rpc,
-      ["session/reply_permission", "session/permission_reply"],
-      { requestId, response },
-      10_000,
-    );
-
-    if (outcome.kind === "method-not-found") {
-      log.debug("[AcpBackend] Permission reply is not supported by current ACP provider", {
-        requestId,
-        response,
-      });
-    }
+    log.debug("[AcpBackend] Permission reply received for unknown request; no pending state found", {
+      requestId,
+    });
   }
 
   async replyToQuestion(requestId: string, answers: string[][]): Promise<void> {
-    const outcome = await tryOptionalMethods(
+    const outcome = await invokeOptionalMethod(
       this.rpc,
-      ["session/reply_question", "session/question_reply"],
+      "session/reply_question",
       { requestId, answers },
       10_000,
     );

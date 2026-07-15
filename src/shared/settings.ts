@@ -69,100 +69,63 @@ export function getCreateWorkspaceDefaultServerSettings(): ServerSettings {
   };
 }
 
-/**
- * Parse persisted server settings with backward compatibility for legacy rows.
- */
+/** Parse persisted server settings in the current canonical shape. */
 export function parseServerSettings(jsonString: string | null): ServerSettings {
-  const defaults = getDefaultServerSettings();
   if (!jsonString) {
-    return defaults;
+    throw new Error("Persisted server settings are missing");
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(jsonString) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return defaults;
-    }
-
-    const parsedRecord = parsed as Record<string, unknown>;
-
-    if (typeof parsedRecord["mode"] === "string") {
-      const mode = parsedRecord["mode"] === "connect" ? "ssh" : "stdio";
-      if (mode === "ssh") {
-        return {
-          agent: {
-            provider: "opencode",
-            transport: "ssh",
-            hostname: typeof parsedRecord["hostname"] === "string" ? parsedRecord["hostname"] : "127.0.0.1",
-            port: typeof parsedRecord["port"] === "number" ? parsedRecord["port"] : 22,
-            password: typeof parsedRecord["password"] === "string" ? parsedRecord["password"] : undefined,
-          },
-        };
-      }
-
-      return {
-        agent: {
-          provider: "opencode",
-          transport: mode,
-        },
-      };
-    }
-
-    const parsedAgent = parsedRecord["agent"];
-    const parsedExecution = parsedRecord["execution"];
-    const agent = (parsedAgent && typeof parsedAgent === "object")
-      ? parsedAgent as Record<string, unknown>
-      : {};
-    const execution = (parsedExecution && typeof parsedExecution === "object")
-      ? parsedExecution as Record<string, unknown>
-      : {};
-
-    const provider = typeof agent["provider"] === "string"
-      ? agent["provider"] as ServerSettings["agent"]["provider"]
-      : defaults.agent.provider;
-    const rawTransport = typeof agent["transport"] === "string" ? agent["transport"] : "stdio";
-
-    if (rawTransport === "ssh") {
-      return {
-        agent: {
-          provider,
-          transport: "ssh",
-          hostname:
-            (typeof agent["hostname"] === "string" && agent["hostname"].trim().length > 0
-              ? agent["hostname"]
-              : typeof execution["host"] === "string" && execution["host"].trim().length > 0
-                ? execution["host"]
-                : "127.0.0.1"),
-          port:
-            typeof execution["port"] === "number"
-              ? execution["port"]
-              : typeof agent["port"] === "number"
-                ? agent["port"]
-                : 22,
-          username:
-            typeof agent["username"] === "string"
-              ? agent["username"]
-              : typeof execution["user"] === "string"
-                ? execution["user"]
-                : undefined,
-          password: typeof agent["password"] === "string" ? agent["password"] : undefined,
-          identityFile:
-            typeof agent["identityFile"] === "string" && agent["identityFile"].trim().length > 0
-              ? agent["identityFile"]
-              : undefined,
-        },
-      };
-    }
-
-    return {
-      agent: {
-        provider,
-        transport: "stdio",
-      },
-    };
-  } catch {
-    return defaults;
+    parsed = JSON.parse(jsonString);
+  } catch (error) {
+    throw new Error("Persisted server settings contain invalid JSON", { cause: error });
   }
+
+  if (!isServerSettings(parsed)) {
+    throw new Error("Persisted server settings do not match the current shape");
+  }
+  return parsed;
+}
+
+function isServerSettings(value: unknown): value is ServerSettings {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const agent = (value as Record<string, unknown>)["agent"];
+  if (!agent || typeof agent !== "object") {
+    return false;
+  }
+  const agentRecord = agent as Record<string, unknown>;
+  if (
+    typeof agentRecord["provider"] !== "string"
+    || !AGENT_PROVIDER_IDS.includes(agentRecord["provider"] as AgentProvider)
+  ) {
+    return false;
+  }
+
+  if (agentRecord["transport"] === "stdio") {
+    return true;
+  }
+  if (
+    agentRecord["transport"] !== "ssh"
+    || typeof agentRecord["hostname"] !== "string"
+    || agentRecord["hostname"].trim().length === 0
+  ) {
+    return false;
+  }
+  if (
+    agentRecord["port"] !== undefined
+    && (typeof agentRecord["port"] !== "number"
+      || !Number.isInteger(agentRecord["port"])
+      || agentRecord["port"] < 1
+      || agentRecord["port"] > 65535)
+  ) {
+    return false;
+  }
+  return ["username", "password", "identityFile"].every(
+    (key) => agentRecord[key] === undefined || typeof agentRecord[key] === "string",
+  );
 }
 
 function getComparableServerSettings(settings: ServerSettings): ServerSettings {

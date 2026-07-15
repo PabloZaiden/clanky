@@ -23,7 +23,7 @@ import type {
   AgentEvent,
 } from "../../backends/types";
 import { backendManager } from "../backend-manager";
-import type { GitService } from "../git-service";
+import type { GitService } from "../git";
 import { SimpleEventEmitter, taskEventEmitter } from "../event-emitter";
 import { log } from "../logger";
 import { markCommentsAsAddressed } from "../../persistence/review-comments";

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
@@ -25,7 +25,7 @@ describe("workspace files API integration", () => {
     alternateRootDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-alt-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
-    await ensureDataDirectories();
+    await initializeDatabase();
     await Bun.$`git init ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();

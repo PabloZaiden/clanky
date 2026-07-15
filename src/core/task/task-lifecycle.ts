@@ -9,7 +9,7 @@ import {
 } from "../../persistence/tasks";
 import { getWorkspace } from "../../persistence/workspaces";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";

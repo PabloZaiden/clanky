@@ -14,7 +14,7 @@ export * from "./agent-runner";
 export * from "./agent-schedule";
 export * from "./agent-scheduler";
 export * from "./event-emitter";
-export * from "./git-service";
+export * from "./git";
 export * from "./local-port-allocator";
 export * from "./process-lifecycle";
 export * from "./branch-name";

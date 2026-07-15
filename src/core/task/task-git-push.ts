@@ -1,7 +1,7 @@
 import type { TaskCtx } from "./context";
 import type { PushTaskResult } from "./task-types";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { log } from "../logger";
 import { syncWorkingBranch, syncBaseBranchAndPush } from "./task-git-push-helpers";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";

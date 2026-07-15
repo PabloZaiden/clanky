@@ -9,7 +9,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -29,7 +29,7 @@ describe("Git API Integration", () => {
 
     // Set env var for persistence
     process.env["CLANKY_DATA_DIR"] = testDataDir;
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     // Initialize git repo with a couple branches
     await Bun.$`git init ${testWorkDir}`.quiet();

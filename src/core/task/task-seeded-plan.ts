@@ -4,7 +4,7 @@ import type { SeedPlanFilesOptions } from "./task-types";
 import { createTimestamp } from "@/shared/events";
 import { loadTask, saveTask } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { TaskEngine } from "../task-engine";
 import { writePlanningFiles } from "../planning-file-service";
 import { TaskOperationError } from "./task-errors";

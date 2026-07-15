@@ -1,10 +1,10 @@
 /**
- * Shared workspace settings form used by both the shell page and the legacy modal wrapper.
+ * Shared workspace settings form used by the shell workspace settings page.
  */
 
 import { useState, useEffect, type FormEvent } from "react";
 import { Badge } from "../common";
-import { ServerSettingsForm } from "../ServerSettingsForm";
+import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import { createLogger } from "../../lib/logger";
 import { AgentsMdSection } from "./agents-md-section";

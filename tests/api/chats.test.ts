@@ -8,7 +8,7 @@ import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { loadChat, saveChat, updateChatState } from "../../src/persistence/chats";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
@@ -189,7 +189,7 @@ describe("Chats API Integration", () => {
 
     process.env["CLANKY_DATA_DIR"] = testDataDir;
 
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     await Bun.$`git init -b main ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
@@ -1166,7 +1166,7 @@ describe("Chats API Integration", () => {
     expect(persisted?.state.worktree).toBeUndefined();
   });
 
-  test("persists quick chat worktree preference and defaults legacy settings to disabled", async () => {
+  test("persists quick chat worktree preference and defaults unset settings to disabled", async () => {
     await setQuickChatSettings(DEFAULT_QUICK_CHAT_SETTINGS);
 
     const defaultResponse = await fetch(`${baseUrl}/api/preferences/quick-chat`);

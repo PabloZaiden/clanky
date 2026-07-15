@@ -2,9 +2,6 @@
  * ACP backend barrel re-export.
  */
 
-// Re-export ConnectionInfo for backward compatibility
-export type { ConnectionInfo } from "../types";
-
 export {
   AcpError,
   createAcpProcessError,

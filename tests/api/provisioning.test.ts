@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
-import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import type { ProvisioningJobSnapshot } from "@/shared";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
@@ -74,7 +74,7 @@ describe("Provisioning API integration", () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-provisioning-api-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     backendManager.setBackendForTesting(createMockBackend());
 

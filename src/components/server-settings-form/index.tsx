@@ -1,6 +1,6 @@
 /**
  * ServerSettingsForm component for configuring workspace connection settings.
- * This component is shared between CreateWorkspaceModal and WorkspaceSettingsModal.
+ * This component is shared between workspace creation and settings forms.
  */
 
 import { useEffect, useState } from "react";

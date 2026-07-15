@@ -404,16 +404,10 @@ class MockAcpServer {
       case "session/prompt":
         return await this.handlePrompt(params, requestId);
       case "session/cancel":
-      case "session/abort":
-      case "session/stop":
         this.handleSessionCancelNotification(params);
         return {};
       case "session/reply_question":
-      case "session/question_reply":
         return this.handleQuestionReply(params);
-      case "session/reply_permission":
-      case "session/permission_reply":
-        return {};
       default:
         throw this.rpcError(METHOD_NOT_FOUND_ERROR_CODE, `Method not found: ${method}`);
     }

@@ -9,7 +9,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { getManagedWorktreePath } from "../../src/core/git";
 import { taskManager } from "../../src/core/task-manager";
@@ -97,7 +97,7 @@ describe("Tasks CRUD API Integration", () => {
     process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     // Initialize git repo in test work directory
     await Bun.$`git init -b main ${testWorkDir}`.quiet();
@@ -1920,8 +1920,8 @@ Updated line 3`;
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.error).toBe("mark_merged_failed");
-      expect(body.message).toContain("Cannot mark task as merged");
+      expect(body.error).toBe("invalid_state");
+      expect(body.message).toBe("Task is in an invalid state for this operation");
     });
 
     test("returns 400 for task without git state", async () => {
@@ -1966,8 +1966,8 @@ Updated line 3`;
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.error).toBe("mark_merged_failed");
-      expect(body.message).toContain("No git branch");
+      expect(body.error).toBe("no_git_branch");
+      expect(body.message).toBe("No git branch was created for this task");
     });
 
     test("marks a pushed task as merged and preserves merged status", async () => {
@@ -2054,8 +2054,8 @@ Updated line 3`;
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.error).toBe("manual_complete_failed");
-      expect(body.message).toContain("Cannot manually complete task");
+      expect(body.error).toBe("invalid_state");
+      expect(body.message).toBe("Task is in an invalid state for this operation");
     });
 
     test("returns 400 when the halted task has no git state", async () => {
@@ -2096,8 +2096,8 @@ Updated line 3`;
       expect(response.status).toBe(400);
 
       const body = await response.json();
-      expect(body.error).toBe("manual_complete_failed");
-      expect(body.message).toContain("No git branch was created for this task");
+      expect(body.error).toBe("no_git_branch");
+      expect(body.message).toBe("No git branch was created for this task");
     });
 
     test("promotes a failed task to completed and clears the persisted error", async () => {

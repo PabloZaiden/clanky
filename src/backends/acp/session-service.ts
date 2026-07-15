@@ -26,9 +26,9 @@ import type {
 
 import { isRecord, getString } from "./json-helpers";
 import { AcpError, getAcpErrorMessage, isAcpErrorCode } from "./errors";
-import { invokeOptionalMethod, tryOptionalMethods } from "./optional-method";
+import { invokeOptionalMethod } from "./optional-method";
 import { PROMPT_REQUEST_TIMEOUT_MS } from "./types";
-import type { AcpSession, AssistantMessage, Part, SessionSubscriber } from "./types";
+import type { SessionSubscriber } from "./types";
 import type { RpcRequester, ConfigOptionSetter } from "./contracts";
 import type { SessionStateStore, ReplaySubscriber } from "./session-state";
 import type { CapabilityService } from "./capability-service";
@@ -97,28 +97,8 @@ export class SessionService {
       }
     }
 
-    if (!session.model) {
-      const modelsObj = isRecord(result["models"]) ? result["models"] : null;
-      const currentModelId = modelsObj ? getString(modelsObj["currentModelId"]) : null;
-      const responseModel = currentModelId ?? getString(result["model"]) ?? getString(result["defaultModel"]);
-      if (responseModel) {
-        session.model = responseModel;
-      }
-    }
-
     this.state.setSessionDirectory(id, sessionDirectory);
     this.state.setCachedSession(id, session);
-
-    if (!this.capability.hasCachedModels(sessionDirectory)) {
-      const models = this.capability.parseModelsFromSessionResult(result);
-      if (models.length > 0) {
-        this.capability.setCachedModels(
-          sessionDirectory,
-          models,
-          this.capability.shouldTreatCachedModelsAsComplete(),
-        );
-      }
-    }
 
     log.debug("[AcpBackend] Session created", {
       sessionId: session.id,
@@ -227,7 +207,7 @@ export class SessionService {
         if (!isRecord(rawSession)) {
           continue;
         }
-        const sessionId = getString(rawSession["sessionId"]) ?? getString(rawSession["id"]);
+        const sessionId = getString(rawSession["sessionId"]);
         if (!sessionId) {
           continue;
         }
@@ -236,8 +216,8 @@ export class SessionService {
           id: sessionId,
           title: getString(rawSession["title"]),
           cwd,
-          updatedAt: getString(rawSession["updatedAt"]) ?? getString(rawSession["lastUpdatedAt"]),
-          model: getString(rawSession["model"]) ?? getString(rawSession["defaultModel"]),
+          updatedAt: getString(rawSession["updatedAt"]),
+          model: getString(rawSession["model"]),
         });
       }
 
@@ -355,7 +335,7 @@ export class SessionService {
       responseContent = chunks.join("");
     }
 
-    const mappedParts: Part[] = [];
+    const mappedParts: Array<{ type: "text"; text: string } | { type: "tool"; tool: string; state: { status: string; input?: unknown; output?: unknown } }> = [];
     if (responseContent.length > 0) {
       mappedParts.push({
         type: "text",
@@ -476,9 +456,9 @@ export class SessionService {
 
   async abortSession(sessionId: string): Promise<void> {
     this.ensureConnected();
-    const outcome = await tryOptionalMethods(
+    const outcome = await invokeOptionalMethod(
       this.rpc,
-      ["session/cancel", "session/abort", "session/stop"],
+      "session/cancel",
       { sessionId },
       5_000,
     );
@@ -572,7 +552,7 @@ export class SessionService {
     await this.setConfigOption(sessionId, reasoningOption.id, desiredEffort);
   }
 
-  private mapSession(session: AcpSession): AgentSession {
+  private mapSession(session: { id: string; title?: string; time: { created: number } }): AgentSession {
     return {
       id: session.id,
       title: session.title,
@@ -610,26 +590,10 @@ export class SessionService {
         );
       }
     }
-    if (!session.model && isRecord(result)) {
-      const responseModel = getString(result["model"]) ?? getString(result["defaultModel"]);
-      if (responseModel) {
-        session.model = responseModel;
-      }
-    }
-    if (!this.capability.hasCachedModels(sessionDirectory)) {
-      const models = this.capability.parseModelsFromSessionResult(result);
-      if (models.length > 0) {
-        this.capability.setCachedModels(
-          sessionDirectory,
-          models,
-          this.capability.shouldTreatCachedModelsAsComplete(),
-        );
-      }
-    }
     return session;
   }
 
-  private mapResponse(response: { info: AssistantMessage; parts: Part[] }): AgentResponse {
+  private mapResponse(response: { info: { id: string; tokens: { input: number; output: number } }; parts: Array<{ type: "text"; text: string } | { type: "tool"; tool: string; state: { status: string; input?: unknown; output?: unknown } }> }): AgentResponse {
     const parts: AgentPart[] = [];
     let fullContent = "";
 

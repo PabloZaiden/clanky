@@ -22,9 +22,9 @@ import type {
   SshServerFileUploadCompleteResponse,
   SshServerFileUploadCreateResponse,
   SshServerFileWriteResponse,
-  DeleteWorkspaceFileRequest,
-  RenameWorkspaceFileRequest,
-  CreateWorkspaceFileUploadRequest,
+  DeleteFileExplorerRequest,
+  RenameFileExplorerRequest,
+  CreateFileExplorerUploadRequest,
   WorkspaceFileListResponse,
   WorkspaceFileMetadataResponse,
   WorkspaceFileRenameResponse,
@@ -36,7 +36,7 @@ import type {
   WorkspaceFileUploadCompleteResponse,
   WorkspaceFileUploadCreateResponse,
   WorkspaceFileWriteResponse,
-  WriteWorkspaceFileRequest,
+  WriteFileExplorerRequest,
 } from "@/contracts";
 
 interface ApiErrorBody {
@@ -353,7 +353,7 @@ export async function downloadFileExplorerFileApi(
 
 export async function writeFileExplorerFileApi(
   target: FileExplorerTarget,
-  request: WriteWorkspaceFileRequest,
+  request: WriteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileWriteResponse | SshServerFileWriteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
@@ -376,7 +376,7 @@ export async function writeFileExplorerFileApi(
 
 export async function renameFileExplorerNodeApi(
   target: FileExplorerTarget,
-  request: RenameWorkspaceFileRequest,
+  request: RenameFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileRenameResponse | SshServerFileRenameResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
@@ -398,7 +398,7 @@ export async function renameFileExplorerNodeApi(
 
 export async function deleteFileExplorerNodeApi(
   target: FileExplorerTarget,
-  request: DeleteWorkspaceFileRequest,
+  request: DeleteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileDeleteResponse | SshServerFileDeleteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
@@ -420,7 +420,7 @@ export async function deleteFileExplorerNodeApi(
 
 async function createFileExplorerUploadApi(
   target: FileExplorerTarget,
-  request: CreateWorkspaceFileUploadRequest,
+  request: CreateFileExplorerUploadRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileUploadCreateResponse | SshServerFileUploadCreateResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
@@ -617,7 +617,7 @@ export async function loadWorkspaceFileTreeApi(
 
 export async function writeWorkspaceFileApi(
   workspaceId: string,
-  request: WriteWorkspaceFileRequest,
+  request: WriteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileWriteResponse> {
   const response = await writeFileExplorerFileApi({ type: "workspace", id: workspaceId }, request, options);
@@ -669,7 +669,7 @@ export async function loadServerFileTreeApi(
 
 export async function writeServerFileApi(
   serverId: string,
-  request: WriteWorkspaceFileRequest,
+  request: WriteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<SshServerFileWriteResponse> {
   const response = await writeFileExplorerFileApi({ type: "server", id: serverId }, request, options);

@@ -9,7 +9,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { closeDatabase } from "../../src/persistence/database";
@@ -86,7 +86,7 @@ describe("POST /api/tasks/:id/pending", () => {
     process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     // Set up backend manager before starting server
     // Configure models that tests will use
@@ -218,7 +218,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Please focus on the login feature",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -278,7 +277,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: null,
           model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
-          immediate: true,
           attachments: [],
         }),
       });
@@ -339,7 +337,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Use the new API",
           model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
-          immediate: true,
           attachments: [],
         }),
       });
@@ -401,7 +398,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "To be cleared",
           model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
-          immediate: true,
           attachments: [],
         }),
       });
@@ -463,7 +459,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "This should fail",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -524,7 +519,6 @@ describe("POST /api/tasks/:id/pending", () => {
       body: JSON.stringify({
         message: "Test",
         model: null,
-        immediate: true,
         attachments: [],
       }),
     });
@@ -629,7 +623,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: null,
           model: { providerID: "openai" },  // Missing modelID
-          immediate: true,
           attachments: [],
         }),
       });
@@ -684,7 +677,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: 12345,  // Should be string
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -700,7 +692,7 @@ describe("POST /api/tasks/:id/pending", () => {
     }
   });
 
-  test("POST with immediate: true (default) calls injectPending", async () => {
+  test("POST with message uses the interrupt-first pending flow", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {
       const createRes = await fetch(`${baseUrl}/api/tasks`, {
@@ -733,14 +725,13 @@ describe("POST /api/tasks/:id/pending", () => {
 
       await waitForTaskStatus(taskId, ["running"]);
 
-      // Set pending message with default immediate (true)
+      // Set pending message through the current interrupt-first flow.
       const pendingRes = await fetch(`${baseUrl}/api/tasks/${taskId}/pending`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Immediate injection",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -757,7 +748,7 @@ describe("POST /api/tasks/:id/pending", () => {
     }
   });
 
-  test("POST with immediate: false rejects backend queueing", async () => {
+  test("POST with message and model works correctly", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {
       const createRes = await fetch(`${baseUrl}/api/tasks`, {
@@ -790,69 +781,13 @@ describe("POST /api/tasks/:id/pending", () => {
 
       await waitForTaskStatus(taskId, ["running"]);
 
-      // Set pending message with immediate: false
-      const pendingRes = await fetch(`${baseUrl}/api/tasks/${taskId}/pending`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "Queued for later",
-          model: null,
-          immediate: false,
-          attachments: [],
-        }),
-      });
-      expect(pendingRes.status).toBe(409);
-      const body = await pendingRes.json();
-      expect(body.error).toBe("queue_not_supported");
-      expect(body.message).toContain("Stop the task first");
-
-      await fetch(`${baseUrl}/api/tasks/${taskId}/stop`, { method: "POST" });
-    } finally {
-      await rm(workDir, { recursive: true, force: true });
-    }
-  });
-
-  test("POST with immediate: true and model works correctly", async () => {
-    const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
-    try {
-      const createRes = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Task",
-          workspaceId,
-          prompt: "Test prompt",
-          attachments: [],
-          cheapModel: { mode: "same-as-task" },
-          maxIterations: null,
-          maxConsecutiveErrors: 10,
-          activityTimeoutSeconds: 300,
-          stopPattern: "<promise>COMPLETE</promise>$",
-          git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
-          clearPlanningFolder: false,
-          autoAcceptPlan: false,
-          fullyAutonomous: false,
-          draft: false,
-          planMode: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-      expect(createRes.status).toBe(201);
-      const created = await createRes.json();
-      const taskId = created.config.id;
-
-      await waitForTaskStatus(taskId, ["running"]);
-
-      // Set both message and model with immediate: true
+      // Set both message and model.
       const pendingRes = await fetch(`${baseUrl}/api/tasks/${taskId}/pending`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Immediate with model",
           model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
-          immediate: true,
           attachments: [],
         }),
       });
@@ -867,60 +802,6 @@ describe("POST /api/tasks/:id/pending", () => {
         modelID: "gpt-4o",
         variant: "",
       });
-
-      await fetch(`${baseUrl}/api/tasks/${taskId}/stop`, { method: "POST" });
-    } finally {
-      await rm(workDir, { recursive: true, force: true });
-    }
-  });
-
-  test("POST validates immediate must be boolean", async () => {
-    const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
-    try {
-      const createRes = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Task",
-          workspaceId,
-          prompt: "Test prompt",
-          attachments: [],
-          cheapModel: { mode: "same-as-task" },
-          maxIterations: null,
-          maxConsecutiveErrors: 10,
-          activityTimeoutSeconds: 300,
-          stopPattern: "<promise>COMPLETE</promise>$",
-          git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
-          clearPlanningFolder: false,
-          autoAcceptPlan: false,
-          fullyAutonomous: false,
-          draft: false,
-          planMode: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-      expect(createRes.status).toBe(201);
-      const created = await createRes.json();
-      const taskId = created.config.id;
-
-      await waitForTaskStatus(taskId, ["running"]);
-
-      // Try with invalid immediate type
-      const pendingRes = await fetch(`${baseUrl}/api/tasks/${taskId}/pending`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "Test",
-          immediate: "yes",  // Should be boolean
-        }),
-      });
-      expect(pendingRes.status).toBe(400);
-      const data = await pendingRes.json();
-      expect(data.error).toBe("validation_error");
-      expect(data.message).toContain("immediate");
-      expect(data.message).toContain("boolean");
 
       await fetch(`${baseUrl}/api/tasks/${taskId}/stop`, { method: "POST" });
     } finally {
@@ -976,7 +857,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Please continue working on the feature",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -1051,7 +931,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Please continue after restart",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });
@@ -1111,7 +990,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Continue with new model",
           model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
-          immediate: true,
           attachments: [],
         }),
       });
@@ -1189,7 +1067,6 @@ describe("POST /api/tasks/:id/pending", () => {
         body: JSON.stringify({
           message: "Continue on the same branch",
           model: null,
-          immediate: true,
           attachments: [],
         }),
       });

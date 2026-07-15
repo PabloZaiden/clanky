@@ -15,7 +15,7 @@ import {
 } from "./planning-file-service";
 import { backendManager } from "./backend-manager";
 import { DomainError } from "./domain-error";
-import { GitService } from "./git-service";
+import { GitService } from "./git";
 import { createLogger } from "./logger";
 import { isModelEnabled } from "./model-discovery";
 import { taskManager } from "./task-manager";

@@ -135,7 +135,16 @@ describe("CapabilityService", () => {
       if (method === "session/new") {
         return {
           sessionId: "disco-cleanup-failure",
-          models: [{ id: "gpt-5", name: "GPT-5", provider: "copilot" }],
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              category: "model",
+              currentValue: "gpt-5",
+              options: [{ value: "gpt-5", name: "GPT-5" }],
+            },
+          ],
         };
       }
       throw new AcpError("acp_request_timed_out", "cleanup timed out");

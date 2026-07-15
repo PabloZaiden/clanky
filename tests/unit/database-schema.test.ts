@@ -215,4 +215,117 @@ describe("database schema", () => {
       db.close();
     }
   });
+
+  test("migration v10 converts legacy settings and task modes idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 10);
+    if (!migration) {
+      throw new Error("Migration v10 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run(`
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          server_settings TEXT
+        )
+      `);
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "legacy-ssh",
+        JSON.stringify({ mode: "connect", hostname: "agent.example", port: 2222, password: "secret" }),
+      ]);
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "legacy-agent",
+        JSON.stringify({
+          agent: { provider: "copilot", transport: "ssh" },
+          execution: { host: "runner.example", port: 2200, user: "runner" },
+        }),
+      ]);
+      const currentServerSettings = JSON.stringify({ agent: { provider: "codex", transport: "stdio" } });
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "current",
+        currentServerSettings,
+      ]);
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "default-settings",
+        JSON.stringify({}),
+      ]);
+      db.run("CREATE TABLE tasks (id TEXT PRIMARY KEY, mode TEXT)");
+      db.run("INSERT INTO tasks (id, mode) VALUES (?, ?)", ["legacy-task", "agent"]);
+      db.run("INSERT INTO tasks (id, mode) VALUES (?, ?)", ["current-task", "task"]);
+
+      migration.up(db);
+      migration.up(db);
+
+      const legacySsh = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("legacy-ssh") as {
+        server_settings: string;
+      };
+      expect(JSON.parse(legacySsh.server_settings)).toEqual({
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "agent.example",
+          port: 2222,
+          password: "secret",
+        },
+      });
+
+      const legacyAgent = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("legacy-agent") as {
+        server_settings: string;
+      };
+      expect(JSON.parse(legacyAgent.server_settings)).toEqual({
+        agent: {
+          provider: "copilot",
+          transport: "ssh",
+          hostname: "runner.example",
+          port: 2200,
+          username: "runner",
+        },
+      });
+
+      const current = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("current") as {
+        server_settings: string;
+      };
+      expect(current.server_settings).toBe(currentServerSettings);
+
+      const defaultSettings = db.query("SELECT server_settings FROM workspaces WHERE id = ?").get("default-settings") as {
+        server_settings: string;
+      };
+      expect(JSON.parse(defaultSettings.server_settings)).toEqual({
+        agent: { provider: "opencode", transport: "stdio" },
+      });
+
+      const taskModes = db.query("SELECT id, mode FROM tasks ORDER BY id").all() as Array<{
+        id: string;
+        mode: string;
+      }>;
+      expect(taskModes).toEqual([
+        { id: "current-task", mode: "task" },
+        { id: "legacy-task", mode: "task" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v10 adds a missing task mode column", () => {
+    const migration = migrations.find((candidate) => candidate.version === 10);
+    if (!migration) {
+      throw new Error("Migration v10 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE tasks (id TEXT PRIMARY KEY)");
+      db.run("INSERT INTO tasks (id) VALUES (?)", ["missing-mode"]);
+
+      migration.up(db);
+      migration.up(db);
+
+      const task = db.query("SELECT mode FROM tasks WHERE id = ?").get("missing-mode") as { mode: string };
+      expect(task.mode).toBe("task");
+      const columns = db.query("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
+      expect(columns.some((column) => column.name === "mode")).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
 });

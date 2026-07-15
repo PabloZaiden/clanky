@@ -6,7 +6,7 @@ import type { AcpBackend } from "../../backends/acp";
 import type { TaskConfig, TaskState, Task, TaskLogEntry, ModelConfig } from "@/shared/task";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { GitService } from "../git-service";
+import type { GitService } from "../git";
 import type { SimpleEventEmitter } from "../event-emitter";
 
 /**

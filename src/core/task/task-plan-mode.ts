@@ -3,7 +3,7 @@ import type { AcceptPlanOptions, AcceptPlanResult } from "./task-types";
 import { createTimestamp } from "@/shared/events";
 import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
+import { GitService } from "../git";
 import { sshSessionManager } from "../ssh-session-manager";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";

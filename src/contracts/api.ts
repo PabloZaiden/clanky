@@ -211,16 +211,16 @@ export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobR
 
 export type ListChatsResponse = Chat[];
 
-export type ListWorkspaceFilesRequest = z.input<typeof ListFileExplorerRequestSchema>;
-export type GetWorkspaceFileTreeRequest = z.input<typeof GetFileExplorerTreeRequestSchema>;
-export type GetWorkspaceFileRequest = z.input<typeof GetFileExplorerFileRequestSchema>;
-export type WriteWorkspaceFileRequest = z.input<typeof WriteFileExplorerRequestSchema>;
-export type RenameWorkspaceFileRequest = z.input<typeof RenameFileExplorerRequestSchema>;
-export type DeleteWorkspaceFileRequest = z.input<typeof DeleteFileExplorerRequestSchema>;
-export type CreateWorkspaceFileUploadRequest = z.input<typeof CreateFileExplorerUploadRequestSchema>;
-export type UploadWorkspaceFileChunkRequest = z.input<typeof UploadFileExplorerChunkRequestSchema>;
-export type CompleteWorkspaceFileUploadRequest = z.input<typeof CompleteFileExplorerUploadRequestSchema>;
-export type CancelWorkspaceFileUploadRequest = z.input<typeof CancelFileExplorerUploadRequestSchema>;
+export type ListFileExplorerRequest = z.input<typeof ListFileExplorerRequestSchema>;
+export type GetFileExplorerTreeRequest = z.input<typeof GetFileExplorerTreeRequestSchema>;
+export type GetFileExplorerFileRequest = z.input<typeof GetFileExplorerFileRequestSchema>;
+export type WriteFileExplorerRequest = z.input<typeof WriteFileExplorerRequestSchema>;
+export type RenameFileExplorerRequest = z.input<typeof RenameFileExplorerRequestSchema>;
+export type DeleteFileExplorerRequest = z.input<typeof DeleteFileExplorerRequestSchema>;
+export type CreateFileExplorerUploadRequest = z.input<typeof CreateFileExplorerUploadRequestSchema>;
+export type UploadFileExplorerChunkRequest = z.input<typeof UploadFileExplorerChunkRequestSchema>;
+export type CompleteFileExplorerUploadRequest = z.input<typeof CompleteFileExplorerUploadRequestSchema>;
+export type CancelFileExplorerUploadRequest = z.input<typeof CancelFileExplorerUploadRequestSchema>;
 
 export interface FileExplorerListData {
   directory: string;

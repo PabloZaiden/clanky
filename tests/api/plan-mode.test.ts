@@ -9,7 +9,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { ensureDataDirectories } from "../../src/persistence/database";
+import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { closeDatabase } from "../../src/persistence/database";
@@ -144,7 +144,7 @@ describe("Plan Mode API Integration", () => {
 
     // Set env var for persistence
     process.env["CLANKY_DATA_DIR"] = testDataDir;
-    await ensureDataDirectories();
+    await initializeDatabase();
 
     // Set up backend manager with class-based mock
     mockBackend = new PlanModeMockBackend();

@@ -17,7 +17,7 @@ import { tabs, formatDateTime } from "./types";
 import { useTabState } from "./use-tab-state";
 import { useTaskContent } from "./use-task-content";
 import { useTaskActions } from "./use-task-actions";
-import { useModels } from "./use-models";
+import { useAvailableModels } from "../../hooks/useAvailableModels";
 import { useLogDisplayState } from "./use-log-display-state";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
@@ -82,7 +82,7 @@ export function TaskDetails({
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
       fetchReviewComments: content.fetchReviewComments,
     });
-  const { models, modelsLoading } = useModels({ workspaceId: task?.config.workspaceId });
+  const { models, modelsLoading } = useAvailableModels({ workspaceId: task?.config.workspaceId });
   const remoteStatus = useTaskRemoteStatus({
     workspaceId: task?.config.workspaceId,
   });

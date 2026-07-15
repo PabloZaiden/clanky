@@ -50,8 +50,7 @@ export interface TaskConfig {
    * Optional helper-model configuration for lightweight operations such as
    * title and PR metadata generation.
    *
-   * New tasks persist this explicitly; legacy tasks may omit it and should be
-   * treated as "same as task model".
+   * When omitted, the task model is used.
    */
   cheapModel?: CheapModelSelection;
 
@@ -109,8 +108,6 @@ export interface GitConfig {
    *
    * Leave empty to omit the scope entirely. Generic placeholder values such as
    * `clanky` are treated as empty and omitted from generated commit messages.
-   *
-   * @deprecated The old `commitPrefix` field (e.g., "[Clanky]") is no longer used.
    */
   commitScope: string;
 }

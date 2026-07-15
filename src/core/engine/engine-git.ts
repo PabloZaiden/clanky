@@ -6,7 +6,7 @@ import type { TaskConfig, TaskState, GitCommit } from "@/shared/task";
 import type { LogLevel, TaskEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
-import type { GitService } from "../git-service";
+import type { GitService } from "../git";
 import type { TaskBackend } from "./engine-types";
 import { buildTaskBranchName } from "../branch-name";
 import { backendManager } from "../backend-manager";

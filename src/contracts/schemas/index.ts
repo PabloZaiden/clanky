@@ -121,22 +121,6 @@ export {
   CancelFileExplorerUploadRequestSchema,
 } from "./file-explorer";
 
-// Backward-compatible workspace file explorer schema names
-export {
-  WorkspaceRelativePathSchema,
-  WorkspaceStartDirectorySchema,
-  ListWorkspaceFilesRequestSchema,
-  GetWorkspaceFileTreeRequestSchema,
-  GetWorkspaceFileRequestSchema,
-  WriteWorkspaceFileRequestSchema,
-  RenameWorkspaceFileRequestSchema,
-  DeleteWorkspaceFileRequestSchema,
-  CreateWorkspaceFileUploadRequestSchema,
-  UploadWorkspaceFileChunkRequestSchema,
-  CompleteWorkspaceFileUploadRequestSchema,
-  CancelWorkspaceFileUploadRequestSchema,
-} from "./workspace-files";
-
 // Standalone SSH server schemas
 export {
   SshKeyAlgorithmSchema,

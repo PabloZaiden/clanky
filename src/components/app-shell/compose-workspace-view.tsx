@@ -5,7 +5,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ProvisioningJobView } from "../ProvisioningJobView";
-import { ServerSettingsForm } from "../ServerSettingsForm";
+import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import type { AgentProvider } from "@/shared/settings";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
