@@ -22,8 +22,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  variant = "primary",
-  size = "md",
+  variant,
+  size,
   loading = false,
   icon,
   children,
@@ -34,9 +34,10 @@ export function Button({
   return (
     <FrameworkButton
       variant={variant === "secondary" ? "default" : variant}
+      size={size}
       loading={loading}
       disabled={disabled || loading}
-      className={`clanky-button-${size} ${className}`.trim()}
+      className={className}
       {...props}
     >
       {!loading && icon ? (

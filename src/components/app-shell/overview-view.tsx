@@ -9,7 +9,7 @@ import {
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
-import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 
@@ -128,8 +128,7 @@ export function OverviewView({
   return (
     <div className="space-y-6">
       {activeWorkItems.length > 0 && (
-        <section data-testid="active-work-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
+        <Panel data-testid="active-work-card" title="Active Work">
           <div className="space-y-2">
             {activeWorkItems.map((item) => {
               const badge = getActiveWorkBadge(item);
@@ -146,7 +145,7 @@ export function OverviewView({
               );
             })}
           </div>
-        </section>
+        </Panel>
       )}
 
       <ConfiguredAgentsSection
@@ -162,8 +161,7 @@ export function OverviewView({
         }}
       />
 
-      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces</h2>
+      <Panel title="Workspaces">
         <div>
           {workspaceGroups.length === 0 ? (
             <EmptyState title="No workspaces yet" description="Start by creating one." />
@@ -185,10 +183,9 @@ export function OverviewView({
             </div>
           )}
         </div>
-      </section>
+      </Panel>
 
-      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Servers</h2>
+      <Panel title="Servers">
         <div>
           {serverMapItems.length === 0 ? (
             <EmptyState title="No SSH servers yet" description="Register one to see it here." />
@@ -210,7 +207,7 @@ export function OverviewView({
             </div>
           )}
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

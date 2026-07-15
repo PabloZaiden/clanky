@@ -14,6 +14,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  Panel,
   useToast,
   useRealtimeRefresh,
   type WebAppRoute,
@@ -511,7 +512,7 @@ function AgentWorkspaceList({
   onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+    <Panel>
       {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
       {loading ? <LoadingState title="Loading agents" /> : null}
       <div className="space-y-2">
@@ -531,7 +532,7 @@ function AgentWorkspaceList({
           <EmptyState title="No agents yet" description="Create one to automate tasks on a schedule." />
         )}
       </div>
-    </section>
+    </Panel>
   );
 }
 

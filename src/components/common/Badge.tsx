@@ -18,8 +18,8 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 export function Badge({
-  variant = "default",
-  size = "sm",
+  variant,
+  size,
   children,
   className = "",
   ...props
@@ -28,7 +28,8 @@ export function Badge({
     <FrameworkBadge
       data-badge-variant={variant}
       variant={variant}
-      className={size === "md" ? `clanky-badge-md ${className}`.trim() : className}
+      size={size}
+      className={className}
       {...props}
     >
       {children}
