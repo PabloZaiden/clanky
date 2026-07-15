@@ -85,10 +85,13 @@ export async function stopTaskImpl(ctx: TaskCtx, taskId: string, reason = "User 
   }
 
   log.info("Stopping task execution", { taskId, reason });
-  await engine.stop(reason);
-  ctx.engines.delete(taskId);
-
-  await backendManager.disconnectTask(taskId);
+  try {
+    await engine.stop(reason);
+    await engine.waitForTaskIdle();
+  } finally {
+    ctx.engines.delete(taskId);
+    await backendManager.disconnectTask(taskId);
+  }
 
   if (engine.state.syncState?.autoPushOnComplete) {
     engine.state.syncState.autoPushOnComplete = false;
