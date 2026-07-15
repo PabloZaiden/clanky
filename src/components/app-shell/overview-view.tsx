@@ -9,7 +9,7 @@ import {
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
-import { DataList, DataListRow, EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { DataList, DataListRow, EmptyState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
@@ -125,82 +125,89 @@ export function OverviewView({
   );
 
   return (
-    <div className="space-y-6">
-        {activeWorkItems.length > 0 && (
-          <div data-testid="active-work-card">
-            <Panel title="Active Work">
-              <DataList>
+    <Page layout="stack">
+      {activeWorkItems.length > 0 && (
+        <div data-testid="active-work-card">
+          <Panel title="Active Work">
+            <DataList>
               {activeWorkItems.map((item) => {
                 const badge = getActiveWorkBadge(item);
                 const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
                 return (
-                  <div key={item.key} className={getPrivateContainerClassName(privateHidden)}>
-                    <DataListRow
-                      title={getActiveWorkTitle(item)}
-                      description={getActiveWorkSubtitle(item)}
-                      badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
-                      onClick={privateHidden ? undefined : () => onNavigate(getActiveWorkRoute(item))}
-                    />
-                  </div>
+                  <DataListRow
+                    key={item.key}
+                    title={getActiveWorkTitle(item)}
+                    description={getActiveWorkSubtitle(item)}
+                    badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
+                    onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
+                    disabled={privateHidden}
+                    className={getPrivateContainerClassName(privateHidden)}
+                  />
                 );
               })}
-              </DataList>
-            </Panel>
-          </div>
-        )}
+            </DataList>
+          </Panel>
+        </div>
+      )}
 
-        <ConfiguredAgentsSection
-          agents={visibleAgents}
-          loading={agentsLoading}
-          error={agentsError}
-          description="Scheduled automations configured across your workspaces."
-          workspaceNamesById={workspaceNamesById}
-          onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
-          isAgentPrivateHidden={(agent) => {
-            const workspace = workspaceGroups.find((group) => group.workspace.id === agent.config.workspaceId)?.workspace ?? null;
-            return shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems);
-          }}
-        />
+      <ConfiguredAgentsSection
+        agents={visibleAgents}
+        loading={agentsLoading}
+        error={agentsError}
+        description="Scheduled automations configured across your workspaces."
+        workspaceNamesById={workspaceNamesById}
+        onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
+        isAgentPrivateHidden={(agent) => {
+          const workspace = workspaceGroups.find((group) => group.workspace.id === agent.config.workspaceId)?.workspace ?? null;
+          return shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems);
+        }}
+      />
 
-        <Panel title="Workspaces">
-          <DataList>
-            {workspaceGroups.length === 0 ? (
-              <EmptyState title="No workspaces yet" description="Start by creating one." />
-            ) : workspaceGroups.map((group) => {
+      <Panel title="Workspaces">
+        <DataList>
+          {workspaceGroups.length === 0 ? (
+            <EmptyState title="No workspaces yet" description="Start by creating one." />
+          ) : (
+            workspaceGroups.map((group) => {
               const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
               return (
-                <div key={group.workspace.id} className={getPrivateContainerClassName(privateHidden)}>
-                  <DataListRow
-                    title={group.workspace.name}
-                    description={group.workspace.directory}
-                    meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
-                  />
-                </div>
+                <DataListRow
+                  key={group.workspace.id}
+                  title={group.workspace.name}
+                  description={group.workspace.directory}
+                  meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
+                  onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}
+                  disabled={privateHidden}
+                  className={getPrivateContainerClassName(privateHidden)}
+                />
               );
-            })}
-          </DataList>
-        </Panel>
+            })
+          )}
+        </DataList>
+      </Panel>
 
-        <Panel title="Servers">
-          <DataList>
-            {serverMapItems.length === 0 ? (
-              <EmptyState title="No SSH servers yet" description="Register one to see it here." />
-            ) : serverMapItems.map(({ server, sessionCount }) => {
+      <Panel title="Servers">
+        <DataList>
+          {serverMapItems.length === 0 ? (
+            <EmptyState title="No SSH servers yet" description="Register one to see it here." />
+          ) : (
+            serverMapItems.map(({ server, sessionCount }) => {
               const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
               return (
-                <div key={server.config.id} className={getPrivateContainerClassName(privateHidden)}>
-                  <DataListRow
-                    title={server.config.name}
-                    description={`${server.config.username}@${server.config.address}`}
-                    meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
-                    onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh-server", serverId: server.config.id })}
-                  />
-                </div>
+                <DataListRow
+                  key={server.config.id}
+                  title={server.config.name}
+                  description={`${server.config.username}@${server.config.address}`}
+                  meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+                  onClick={!privateHidden ? () => onNavigate({ view: "ssh-server", serverId: server.config.id }) : undefined}
+                  disabled={privateHidden}
+                  className={getPrivateContainerClassName(privateHidden)}
+                />
               );
-            })}
-          </DataList>
-        </Panel>
-      </div>
+            })
+          )}
+        </DataList>
+      </Panel>
+    </Page>
   );
 }

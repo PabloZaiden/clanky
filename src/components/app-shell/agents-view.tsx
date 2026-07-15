@@ -13,6 +13,7 @@ import {
   ConfirmModal,
   DataList,
   DataListRow,
+  EmptyState,
   ErrorState,
   LoadingState,
   Panel,
@@ -22,6 +23,7 @@ import {
 } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { getRouteString } from "./route-fields";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
 const compactInputClassName = "mt-1 block rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -249,35 +251,34 @@ function AgentForm({
     }
   }
 
+  const canSubmit = !isSubmitting
+    && !branchesLoading
+    && !modelsLoading
+    && Boolean(selectedWorkspace)
+    && Boolean(modelKey)
+    && Boolean(name.trim())
+    && Boolean(prompt.trim())
+    && intervalValue >= 1;
+  const headerActions = useMemo(() => (
+    <>
+      <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSubmitting}>
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => void handleSubmit()}
+        disabled={!canSubmit}
+        loading={isSubmitting}
+      >
+        {mode === "edit" ? "Save agent" : "Create agent"}
+      </Button>
+    </>
+  ), [canSubmit, isSubmitting, mode, onCancel]);
+  useShellHeaderActions(headerActions);
+
   return (
-    <Panel
-      actions={(
-        <>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void handleSubmit()}
-            disabled={
-              isSubmitting
-              || branchesLoading
-              || modelsLoading
-              || !selectedWorkspace
-              || !modelKey
-              || !name.trim()
-              || !prompt.trim()
-              || intervalValue < 1
-            }
-            loading={isSubmitting}
-          >
-            {mode === "edit" ? "Save agent" : "Create agent"}
-          </Button>
-        </>
-      )}
-    >
-      <div className="space-y-5">
+    <div className="space-y-5">
         <div>
           <label htmlFor="agent-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Name
@@ -413,8 +414,7 @@ function AgentForm({
             className={`${inputClassName} min-h-32 resize-y`}
           />
         </div>
-      </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -514,8 +514,8 @@ function AgentWorkspaceList({
 }) {
   return (
     <Panel>
-      {error && <ErrorState title="Unable to load agents" description={error} />}
-      {loading && <LoadingState title="Loading agents" />}
+      {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
+      {loading ? <LoadingState title="Loading agents" /> : null}
       <DataList>
         {agents.map((agent) => (
           <DataListRow
@@ -528,7 +528,7 @@ function AgentWorkspaceList({
           />
         ))}
         {!loading && agents.length === 0 && (
-          <p className="p-4 text-sm text-gray-500 dark:text-gray-400">No agents yet.</p>
+          <EmptyState title="No agents yet" description="Create one to automate tasks on a schedule." />
         )}
       </DataList>
     </Panel>
@@ -615,32 +615,25 @@ function AgentDetail({
   }
 
   return (
-    <>
-      <Panel
-        actions={<AgentStatusPill status={agent.state.status} />}
-      >
-        <div className="space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950">
-            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{agent.config.prompt}</p>
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
-              <span>Next run: {formatDate(agent.state.nextRunAt)}</span>
-              <span>Every {agent.config.schedule.interval.value} {agent.config.schedule.interval.unit}</span>
-              <span>Base branch: {agent.config.baseBranch ?? "default"}</span>
-              <span>Worktree: {agent.config.useWorktree ? "yes" : "no"}</span>
-            </div>
-          </div>
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Runs</h2>
-            <AgentRunsList
-              agent={agent}
-              runs={runs}
-              onDeleteRun={onDeleteRun}
-              onNavigate={onNavigate}
-            />
-          </section>
+    <div className="space-y-6">
+      <Panel variant="surface">
+        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{agent.config.prompt}</p>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+          <span>Next run: {formatDate(agent.state.nextRunAt)}</span>
+          <span>Every {agent.config.schedule.interval.value} {agent.config.schedule.interval.unit}</span>
+          <span>Base branch: {agent.config.baseBranch ?? "default"}</span>
+          <span>Worktree: {agent.config.useWorktree ? "yes" : "no"}</span>
         </div>
       </Panel>
-    </>
+      <Panel title="Runs">
+        <AgentRunsList
+          agent={agent}
+          runs={runs}
+          onDeleteRun={onDeleteRun}
+          onNavigate={onNavigate}
+        />
+      </Panel>
+    </div>
   );
 }
 

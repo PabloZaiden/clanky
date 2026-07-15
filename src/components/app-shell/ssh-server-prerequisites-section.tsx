@@ -1,6 +1,7 @@
 import type { BadgeVariant } from "../common";
 import { Badge, Button } from "../common";
 import type { SshServerPrerequisiteReport } from "@/shared";
+import { ErrorState, Panel } from "@pablozaiden/webapp/web";
 
 interface SshServerPrerequisitesSectionProps {
   checking: boolean;
@@ -65,19 +66,15 @@ export function SshServerPrerequisitesSection({
   onCheck,
 }: SshServerPrerequisitesSectionProps) {
   return (
-    <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Server prerequisites</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Check whether this host exposes the tools Clanky expects for standalone SSH,
-            persistent sessions, and automatic provisioning.
-          </p>
-        </div>
+    <Panel
+      title="Server prerequisites"
+      description="Check whether this host exposes the tools Clanky expects for standalone SSH, persistent sessions, and automatic provisioning."
+      actions={(
         <Button type="button" size="sm" variant="secondary" loading={checking} onClick={() => void onCheck()}>
           Check prerequisites
         </Button>
-      </div>
+      )}
+    >
 
       {!report && !error && (
         <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -88,9 +85,7 @@ export function SshServerPrerequisitesSection({
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-          {error}
-        </div>
+        <ErrorState title="Unable to check prerequisites" description={error} />
       )}
 
       {report && (
@@ -145,6 +140,6 @@ export function SshServerPrerequisitesSection({
           </div>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

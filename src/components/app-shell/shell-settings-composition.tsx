@@ -61,7 +61,6 @@ export function buildShellSettingsSections({
         {
           id: "quick-chat-workspace",
           title: "Workspace",
-          description: "Workspace used by the Quick Chat shortcut.",
           content: (
             <div className="space-y-2">
               <SettingsSelect
@@ -91,7 +90,6 @@ export function buildShellSettingsSections({
         {
           id: "quick-chat-model",
           title: "Model",
-          description: "Model used by the Quick Chat shortcut.",
           content: (
             <QuickChatModelRowContent
               workspace={selectedQuickChatWorkspace}
@@ -105,7 +103,6 @@ export function buildShellSettingsSections({
         {
           id: "quick-chat-worktree",
           title: "Use worktrees for quick chats",
-          description: "Create quick chats in a separate git worktree when enabled.",
           content: (
             <SettingsCheckbox
               id="quick-chat-worktree"
@@ -119,11 +116,11 @@ export function buildShellSettingsSections({
               disabled={quickChatSettings.loading || quickChatSettings.saving}
             />
           ),
+          contentPlacement: "inline",
         },
         {
           id: "quick-chat-clear",
           title: "Reset Quick Chat",
-          description: "Clear the saved Quick Chat workspace, model, and worktree preferences.",
           actions: [{
             id: "clear-quick-chat",
             label: "Clear",
@@ -148,7 +145,6 @@ export function buildShellSettingsSections({
       rows: [{
         id: "scheduler-timezone",
         title: "Timezone",
-        description: "Timezone used when scheduling agents.",
         content: (
           <SchedulerTimezoneRowContent
             timezone={schedulerTimezone.timezone}
@@ -168,7 +164,6 @@ export function buildShellSettingsSections({
       rows: [{
         id: "show-private-items",
         title: "Show private items",
-        description: "When enabled, private items are shown normally in this browser. When disabled, they remain visible but are blurred, excluded from sidebar search, and cannot be opened from lists.",
         content: (
           <SettingsCheckbox
             id="show-private-items"
@@ -177,6 +172,7 @@ export function buildShellSettingsSections({
             onChange={(event) => privateItemsPreference.setShowPrivateItems(event.currentTarget.checked)}
           />
         ),
+        contentPlacement: "inline",
       }],
     },
     {
@@ -188,7 +184,6 @@ export function buildShellSettingsSections({
         {
           id: "markdown-rendering",
           title: "Render markdown",
-          description: "Show task, chat, and agent markdown as rich content instead of plain text.",
           content: (
             <SettingsCheckbox
               id="markdown-rendering"
@@ -199,11 +194,11 @@ export function buildShellSettingsSections({
               onChange={(event) => void markdownPreference.setEnabled(event.currentTarget.checked)}
             />
           ),
+          contentPlacement: "inline",
         },
         {
           id: "file-explorer-full-tree",
           title: "Load full file tree",
-          description: "Load the complete workspace file tree up front instead of expanding directories lazily.",
           content: (
             <SettingsCheckbox
               id="file-explorer-full-tree"
@@ -214,6 +209,7 @@ export function buildShellSettingsSections({
               onChange={(event) => void fullTreePreference.setEnabled(event.currentTarget.checked)}
             />
           ),
+          contentPlacement: "inline",
         },
       ],
     },
@@ -243,4 +239,3 @@ export function buildShellSettingsSections({
     },
   ];
 }
-

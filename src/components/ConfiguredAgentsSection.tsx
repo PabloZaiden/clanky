@@ -1,11 +1,5 @@
 import type { Agent } from "@/shared";
-import {
-  DataList,
-  DataListRow,
-  ErrorState,
-  LoadingState,
-  Panel,
-} from "@pablozaiden/webapp/web";
+import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName } from "../lib/private-items";
 
 function formatDate(value?: string): string {
@@ -80,21 +74,22 @@ export function ConfiguredAgentsSection({
         {loading ? <LoadingState title="Loading agents" /> : null}
         {agents.length > 0 ? (
           <DataList>
-          {agents.map((agent) => {
-            const workspaceName = workspaceNamesById[agent.config.workspaceId];
-            const privateHidden = isAgentPrivateHidden(agent);
-            return (
-              <div key={agent.config.id} className={getPrivateContainerClassName(privateHidden)}>
+            {agents.map((agent) => {
+              const workspaceName = workspaceNamesById[agent.config.workspaceId];
+              const privateHidden = isAgentPrivateHidden(agent);
+              return (
                 <DataListRow
+                  key={agent.config.id}
                   title={agent.config.name}
                   description={agent.config.prompt}
                   meta={`${workspaceName ? `${workspaceName} · ` : ""}Next run: ${formatDate(agent.state.nextRunAt)} · ${getScheduleText(agent)}`}
                   badge={<AgentStatusPill status={agent.state.status} />}
                   onClick={onSelectAgent && !privateHidden ? () => onSelectAgent(agent.config.id) : undefined}
+                  disabled={privateHidden}
+                  className={getPrivateContainerClassName(privateHidden)}
                 />
-              </div>
-            );
-          })}
+              );
+            })}
           </DataList>
         ) : null}
       </Panel>

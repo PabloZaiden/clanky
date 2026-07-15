@@ -2,12 +2,13 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, Panel, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, Page, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 interface RebuildWorkspaceViewProps {
   mode: Extract<ProvisioningJobMode, "rebuild" | "restart">;
@@ -80,68 +81,68 @@ export function RebuildWorkspaceView({
       )}
     </>
   );
-
-  return (
-    <Panel
-      actions={(
+  const headerActions = (
+    <>
+      {statusBadges}
+      {provisioning.activeJobId ? (
         <>
-          {statusBadges}
-          {provisioning.activeJobId ? (
-          <>
-            {canReturnToForm && (
-              <Button type="button" size="sm" onClick={handleBackToForm}>
-                {`Back to ${actionLabel} Form`}
-              </Button>
-            )}
-            {isCompleted && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  void refreshWorkspaces();
-                  navigateWithinShell({ view: "workspace", workspaceId: workspace.id });
-                }}
-              >
-                Open Workspace
-              </Button>
-            )}
-            {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                onClick={() => {
-                  void provisioning.cancelJob();
-                }}
-              >
-                {`Cancel ${actionLabel}`}
-              </Button>
-            )}
-          </>
-          ) : (
-          <>
+          {canReturnToForm && (
+            <Button type="button" size="sm" onClick={handleBackToForm}>
+              {`Back to ${actionLabel} Form`}
+            </Button>
+          )}
+          {isCompleted && (
             <Button
               type="button"
-              variant="ghost"
               size="sm"
-              onClick={() => navigateWithinShell({ view: "workspace", workspaceId: workspace.id })}
+              onClick={() => {
+                void refreshWorkspaces();
+                navigateWithinShell({ view: "workspace", workspaceId: workspace.id });
+              }}
             >
-              Cancel
+              Open Workspace
             </Button>
+          )}
+          {(provisioningStatus === "running" || provisioningStatus === "pending") && (
             <Button
-              type="submit"
-              form={formId}
+              type="button"
               size="sm"
-              loading={provisioning.starting}
-              disabled={!sshServerId || (!!sshServerId && !selectedServer)}
+              variant="danger"
+              onClick={() => {
+                void provisioning.cancelJob();
+              }}
             >
-              {`${actionLabel} Devbox`}
+              {`Cancel ${actionLabel}`}
             </Button>
-          </>
           )}
         </>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => navigateWithinShell({ view: "workspace", workspaceId: workspace.id })}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            size="sm"
+            loading={provisioning.starting}
+            disabled={!sshServerId || (!!sshServerId && !selectedServer)}
+          >
+            {`${actionLabel} Devbox`}
+          </Button>
+        </>
       )}
-    >
+    </>
+  );
+  useShellHeaderActions(headerActions);
+
+  return (
+    <Page layout="stack">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
           <ProvisioningJobView
@@ -245,6 +246,6 @@ export function RebuildWorkspaceView({
           )}
         </form>
       )}
-    </Panel>
+    </Page>
   );
 }

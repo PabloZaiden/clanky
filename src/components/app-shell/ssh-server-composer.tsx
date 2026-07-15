@@ -2,8 +2,9 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { Badge, Button } from "../common";
-import { Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useToast, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerFields } from "./ssh-server-fields";
+import { useShellHeaderActions } from "./shell-header-actions";
 import {
   buildSshServerUpdateRequest,
   createSshServerFormValues,
@@ -99,20 +100,20 @@ export function SshServerComposer({
     }
   }
 
+  useShellHeaderActions(
+    <>
+      <Badge variant="info" size="sm">Standalone SSH</Badge>
+      <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
+        Cancel
+      </Button>
+      <Button type="submit" form={formId} size="sm" loading={submitting}>
+        {isEditing ? "Save Changes" : "Create SSH Server"}
+      </Button>
+    </>,
+  );
+
   return (
-    <Panel
-      actions={(
-        <>
-          <Badge variant="info" size="sm">Standalone SSH</Badge>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button type="submit" form={formId} size="sm" loading={submitting}>
-            {isEditing ? "Save Changes" : "Create SSH Server"}
-          </Button>
-        </>
-      )}
-    >
+    <Page layout="stack">
       <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
         <SshServerFields
           values={values}
@@ -122,6 +123,6 @@ export function SshServerComposer({
           disabled={submitting}
         />
       </form>
-    </Panel>
+    </Page>
   );
 }

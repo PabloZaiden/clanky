@@ -74,7 +74,6 @@ export function ComposeView(props: ComposeViewProps) {
     composeWorkspace,
     composeServer,
     navigateWithinShell,
-    composeActionState,
     setComposeActionState,
     handleTaskSubmit,
     createChat,
@@ -107,7 +106,6 @@ export function ComposeView(props: ComposeViewProps) {
       <ComposeTaskView
         composeWorkspace={composeWorkspace}
         navigateWithinShell={navigateWithinShell}
-        composeActionState={composeActionState}
         setComposeActionState={setComposeActionState}
         handleTaskSubmit={handleTaskSubmit}
         dashboardData={dashboardData}

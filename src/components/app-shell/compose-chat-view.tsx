@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, SshServer, Workspace } from "@/shared";
 import type { CreateSshServerChatRequest, ModelInfo } from "@/contracts";
 import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
@@ -20,15 +20,15 @@ import {
 import { BranchSelector } from "../create-task/branch-selector";
 import {
   ErrorState,
-  FormGroup,
   Modal,
-  Panel,
+  Page,
   SelectField,
   TextField,
   useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ImportableChatSession {
   id: string;
@@ -481,12 +481,13 @@ export function ComposeChatView({
     }
   }
 
-  const handleCancel = () =>
+  const handleCancel = useCallback(() => {
     navigateWithinShell(
       composeServer
         ? { view: "ssh-server", serverId: composeServer.config.id }
         : composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : { view: "home" },
     );
+  }, [composeServer, composeWorkspace, navigateWithinShell]);
 
   const modelOptions = isServerChat ? remoteModels : models;
   const modelOptionsLoading = isServerChat ? remoteModelsLoading : modelsLoading;
@@ -495,37 +496,35 @@ export function ComposeChatView({
       ? getPreferredModelKey(models, storedChatModel, lastModel)
       : ""
   );
+  const canSubmit = !isSubmitting
+    && (isServerChat || !branchesLoading)
+    && !modelOptionsLoading
+    && !importSessionsLoading
+    && (isServerChat || Boolean(selectedWorkspace))
+    && (!isServerChat || Boolean(remoteDirectory.trim() && remoteCredentialToken))
+    && Boolean(effectiveSelectedModel)
+    && (!isServerChat && importExistingSession ? Boolean(selectedImportSessionId.trim()) : true);
+  const headerActions = useMemo(() => (
+    <>
+      <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => void handleSubmit()}
+        disabled={!canSubmit}
+        loading={isSubmitting}
+      >
+        {importExistingSession ? "Import chat" : "Create chat"}
+      </Button>
+    </>
+  ), [canSubmit, handleCancel, importExistingSession, isSubmitting]);
+  useShellHeaderActions(headerActions);
 
   return (
     <>
-      <Panel
-      actions={(
-        <>
-          <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void handleSubmit()}
-            disabled={
-              isSubmitting
-              || (!isServerChat && branchesLoading)
-              || modelOptionsLoading
-              || importSessionsLoading
-              || (!isServerChat && !selectedWorkspace)
-              || (isServerChat && (!remoteDirectory.trim() || !remoteCredentialToken))
-              || !effectiveSelectedModel
-              || (!isServerChat && importExistingSession && !selectedImportSessionId.trim())
-            }
-            loading={isSubmitting}
-          >
-            {importExistingSession ? "Import chat" : "Create chat"}
-          </Button>
-        </>
-      )}
-    >
-      <FormGroup title="Chat details">
+      <Page layout="stack">
         <div className="space-y-5">
           <TextField
             id="chat-name"
@@ -697,8 +696,7 @@ export function ComposeChatView({
           </label>
         </div>
         </div>
-      </FormGroup>
-      </Panel>
+      </Page>
 
       <Modal
         isOpen={passwordModalOpen}
