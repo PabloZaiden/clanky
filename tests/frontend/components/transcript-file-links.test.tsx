@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
+import { render, waitFor } from "@testing-library/react";
 import { routeToHash } from "@pablozaiden/webapp/web";
-import { render, waitFor } from "../helpers/render";
 import { TranscriptTextContent } from "../../../src/components/log-viewer/transcript-file-links";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "../../../src/components/log-viewer/types";
 
