@@ -11,7 +11,7 @@ import {
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
-import { ConfirmModal, Modal, Panel } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
@@ -83,9 +83,7 @@ function triggerBrowserDownload(url: string, fileName: string): void {
 
 interface FileExplorerViewProps {
   title: string;
-  description: string;
   defaultRootDirectory: string;
-  backLabel: string;
   backRoute: WebAppRoute;
   onNavigate: (route: WebAppRoute) => void;
   target: { type: "workspace" | "server"; id: string; startDirectory?: string };
@@ -99,15 +97,12 @@ interface FileExplorerViewProps {
   credentialPromptName?: string;
   initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => WebAppRoute;
-  headerActions?: React.ReactNode;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function FileExplorerView({
   title,
-  description,
   defaultRootDirectory,
-  backLabel,
   backRoute,
   onNavigate,
   target,
@@ -121,7 +116,6 @@ export function FileExplorerView({
   credentialPromptName,
   initialFilePath,
   buildRoute,
-  headerActions,
   sshSessionDetailsComponent: SshSessionDetailsComponent = SshSessionDetails,
 }: FileExplorerViewProps) {
   const toast = useToast();
@@ -605,25 +599,7 @@ export function FileExplorerView({
   ]);
 
   return (
-    <Panel
-      className="flex h-full min-h-0 flex-col overflow-hidden !border-0 !bg-transparent !p-0"
-      description={description}
-      actions={(
-        <>
-          {headerActions}
-          <div className="hidden flex-shrink-0 sm:block">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="whitespace-nowrap"
-              onClick={() => onNavigate(backRoute)}
-            >
-              {backLabel}
-            </Button>
-          </div>
-        </>
-      )}
-    >
+    <>
       <div
         data-testid={`${testIdPrefix}-shell-body`}
         className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
@@ -993,6 +969,6 @@ export function FileExplorerView({
         onClose={handleCloseServerPasswordModal}
         onSubmit={handleSubmitServerPassword}
       />
-    </Panel>
+    </>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Button } from "../common";
 import type { SshServer } from "@/shared";
-import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 interface SshServerSettingsViewProps {
   server: SshServer;
@@ -26,44 +27,42 @@ export function SshServerSettingsView({
   const [formValid, setFormValid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  return (
-    <Panel
-      actions={(
-        <>
-          {server.config.repositoriesBasePath && (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => navigateWithinShell({ view: "server-arise", serverId: server.config.id })}
-            >
-              Arise
-            </Button>
-          )}
-          <Button
-            type="submit"
-            form="ssh-server-settings-shell-form"
-            size="sm"
-            loading={submitting}
-            disabled={!formValid || submitting}
-          >
-            <span className="sm:hidden">Save</span>
-            <span className="hidden sm:inline">Save Changes</span>
-          </Button>
-        </>
+  useShellHeaderActions(
+    <>
+      {server.config.repositoriesBasePath && (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => navigateWithinShell({ view: "server-arise", serverId: server.config.id })}
+        >
+          Arise
+        </Button>
       )}
-    >
-      <SshServerSettingsForm
-        server={server}
-        relatedSessionCount={relatedSessionCount}
-        formId="ssh-server-settings-shell-form"
-        onSave={updateServer}
-        onDeleteServer={deleteServer}
-        onSaved={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
-        onDeleted={() => navigateWithinShell({ view: "home" })}
-        onValidityChange={setFormValid}
-        onSubmittingChange={setSubmitting}
-      />
-    </Panel>
+      <Button
+        type="submit"
+        form="ssh-server-settings-shell-form"
+        size="sm"
+        loading={submitting}
+        disabled={!formValid || submitting}
+      >
+        <span className="sm:hidden">Save</span>
+        <span className="hidden sm:inline">Save Changes</span>
+      </Button>
+    </>,
+  );
+
+  return (
+    <SshServerSettingsForm
+      server={server}
+      relatedSessionCount={relatedSessionCount}
+      formId="ssh-server-settings-shell-form"
+      onSave={updateServer}
+      onDeleteServer={deleteServer}
+      onSaved={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
+      onDeleted={() => navigateWithinShell({ view: "home" })}
+      onValidityChange={setFormValid}
+      onSubmittingChange={setSubmitting}
+    />
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   replaceWebAppRoute,
   useLogLevel,
@@ -42,6 +42,10 @@ import {
   type ShellSidebarActionHandlers,
 } from "./shell-sidebar-composition";
 import { getRouteString } from "./route-fields";
+import {
+  getChatCodeExplorerRootDirectory,
+  getTaskCodeExplorerRootDirectory,
+} from "./code-explorer-targets";
 import { getShellShortcutForKeyboardEvent, isEditableShortcutTarget } from "./shell-shortcuts";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
@@ -49,19 +53,39 @@ import { useComposeState } from "./use-compose-state";
 import { useChatActions } from "./chat-actions";
 import { buildShellSettingsSections } from "./shell-settings-composition";
 import { useShellDialogComposition } from "./shell-dialog-composition";
+import { ShellHeaderActionsContext } from "./shell-header-actions";
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
-import { StatusBadge } from "../common";
+import { findRegisteredSshServer } from "@/shared";
+import { Badge, Button, StatusBadge } from "../common";
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
 
 interface HeaderModel {
-  title: string;
+  title?: string;
   subtitle?: string;
   badge?: string;
   badgeVariant?: SidebarNode["badgeVariant"];
+  badgeIsStatus?: boolean;
+  subtitleMobileHidden?: boolean;
 }
 
-function RouteHeaderTitle({ model }: { model: HeaderModel }) {
+function getAgentHeaderBadgeVariant(status: string): SidebarNode["badgeVariant"] {
+  if (status === "enabled" || status === "completed") {
+    return "success";
+  }
+  if (status === "running" || status === "starting" || status === "scheduled") {
+    return "info";
+  }
+  if (status === "failed" || status === "error") {
+    return "error";
+  }
+  if (status === "paused" || status === "skipped" || status === "interrupted") {
+    return "warning";
+  }
+  return "default";
+}
+
+function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; defaultTitle: string }) {
   const { level } = useLogLevel();
 
   useEffect(() => {
@@ -75,15 +99,21 @@ function RouteHeaderTitle({ model }: { model: HeaderModel }) {
   return (
     <span className="flex min-w-0 max-w-full flex-1 items-center gap-1.5 overflow-hidden">
       <span className="min-w-0 flex-shrink truncate text-lg font-bold text-gray-900 dark:text-gray-100">
-        {model.title}
+        {model.title ?? defaultTitle}
       </span>
       {model.badge ? (
-        <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
-          {model.badge}
-        </StatusBadge>
+        model.badgeIsStatus === false ? (
+          <Badge variant={model.badgeVariant} size="sm" className="shrink-0">
+            {model.badge}
+          </Badge>
+        ) : (
+          <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
+            {model.badge}
+          </StatusBadge>
+        )
       ) : null}
       {model.subtitle ? (
-        <span className="min-w-0 flex-shrink truncate text-xs font-normal text-gray-500 dark:text-gray-400">
+        <span className={`min-w-0 flex-shrink truncate text-xs font-normal text-gray-500 dark:text-gray-400 ${model.subtitleMobileHidden ? "hidden sm:inline" : ""}`}>
           {model.subtitle}
         </span>
       ) : null}
@@ -94,7 +124,21 @@ function RouteHeaderTitle({ model }: { model: HeaderModel }) {
 export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
+  const [registeredHeaderActions, setRegisteredHeaderActions] = useState<{
+    owner: symbol;
+    actions: ReactNode;
+  } | null>(null);
   const handleWebRouteChange = useCallback((nextRoute: WebAppRoute) => setRoute(nextRoute), []);
+  const registerHeaderActions = useCallback((owner: symbol, actions: ReactNode) => {
+    setRegisteredHeaderActions({ owner, actions });
+  }, []);
+  const unregisterHeaderActions = useCallback((owner: symbol) => {
+    setRegisteredHeaderActions((current) => current?.owner === owner ? null : current);
+  }, []);
+  const shellHeaderActionsContextValue = useMemo(
+    () => ({ register: registerHeaderActions, unregister: unregisterHeaderActions }),
+    [registerHeaderActions, unregisterHeaderActions],
+  );
   const {
     chats,
     loading: chatsLoading,
@@ -304,6 +348,7 @@ export function AppShell() {
     selectedTask,
     selectedChat,
     selectedWorkspace,
+    selectedServer,
     composeWorkspace,
     composeServer,
     selectedAgent,
@@ -638,9 +683,12 @@ export function AppShell() {
         if (taskId && !selectedTask && !tasksLoading) {
           return { title: "Task not found" };
         }
-        return selectedTask?.state.status === "draft" && nodeModel
-          ? { ...nodeModel, title: `Edit ${nodeModel.title}` }
-          : nodeModel ?? { title: "Task" };
+        if (!nodeModel) {
+          return { title: "Task" };
+        }
+        return selectedTask?.state.status === "draft"
+          ? { ...nodeModel, title: `Edit ${nodeModel.title}`, subtitle: undefined }
+          : { ...nodeModel, subtitle: undefined };
       case "task-files":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -649,7 +697,7 @@ export function AppShell() {
         if (chatId && !selectedChat && !chatsLoading) {
           return { title: "Chat not found" };
         }
-        return nodeModel ?? { title: "Chat" };
+        return nodeModel ? { ...nodeModel, subtitle: undefined } : { title: "Chat" };
       case "chat-transcript":
         return nodeModel
           ? { title: nodeModel.title, subtitle: "Transcript" }
@@ -657,7 +705,24 @@ export function AppShell() {
       case "ssh":
         return nodeModel ?? { title: "SSH session" };
       case "workspace":
-        return nodeModel ?? { title: "Workspace" };
+        if (!nodeModel) {
+          return { title: "Workspace" };
+        }
+        if (!selectedWorkspace) {
+          return nodeModel;
+        }
+        const workspaceAgent = selectedWorkspace.serverSettings.agent;
+        if (workspaceAgent.transport === "stdio") {
+          return { ...nodeModel, subtitle: "stdio" };
+        }
+        const workspaceHostname = workspaceAgent.hostname.trim() || "127.0.0.1";
+        const workspacePort = workspaceAgent.port ?? 22;
+        const registeredServer = findRegisteredSshServer(workspaceHostname, servers);
+        const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
+        return {
+          ...nodeModel,
+          subtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
+        };
       case "workspace-files":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -671,7 +736,17 @@ export function AppShell() {
           ? { title: nodeModel.title, subtitle: `Workspace settings${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
           : { title: "Workspace settings" };
       case "ssh-server":
-        return nodeModel ?? { title: "SSH server" };
+        if (!selectedServer) {
+          return nodeModel ?? { title: "SSH server" };
+        }
+        const standaloneSessions = sessionsByServerId[selectedServer.config.id] ?? [];
+        return {
+          title: selectedServer.config.name,
+          subtitle: `${selectedServer.config.username}@${selectedServer.config.address}`,
+          badge: `${standaloneSessions.length} session${standaloneSessions.length === 1 ? "" : "s"}`,
+          badgeVariant: "default",
+          badgeIsStatus: false,
+        };
       case "vnc-session":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `VNC session${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -692,9 +767,21 @@ export function AppShell() {
           return { title: "Agent not found" };
         }
         const agent = selectedAgent;
+        const agentWorkspace = agent
+          ? workspaces.find((workspace) => workspace.id === agent.config.workspaceId)
+          : undefined;
         return dialogs.editingAgentId && dialogs.editingAgentId === agentId
           ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim() }
-          : nodeModel ?? { title: "Agent" };
+          : agent
+            ? {
+                title: agent.config.name,
+                subtitle: agentWorkspace?.directory,
+                badge: agent.state.status,
+                badgeVariant: getAgentHeaderBadgeVariant(agent.state.status),
+                badgeIsStatus: false,
+                subtitleMobileHidden: true,
+              }
+            : nodeModel ?? { title: "Agent" };
       }
       case "agent-run": {
         const agentId = getRouteString(route, "agentId");
@@ -716,11 +803,25 @@ export function AppShell() {
           subtitle: workspace?.directory,
         };
       }
-      case "code-explorer":
+      case "code-explorer": {
+        const contentType = getRouteString(route, "contentType");
+        const startDirectory = getRouteString(route, "startDirectory")?.trim();
+        const explorerDirectory = startDirectory || (
+          contentType === "workspace"
+            ? selectedWorkspace?.directory
+            : contentType === "task" && selectedTask
+              ? getTaskCodeExplorerRootDirectory(selectedTask)
+              : contentType === "chat" && selectedChat
+                ? getChatCodeExplorerRootDirectory(selectedChat)
+                : contentType === "server"
+                  ? selectedServer?.config.repositoriesBasePath?.trim() || "/"
+                  : undefined
+        );
         return {
-          title: "Code Explorer",
-          subtitle: headerNode?.title,
+          title: headerNode ? `${headerNode.title} code explorer` : "Code Explorer",
+          subtitle: explorerDirectory || headerNode?.subtitle,
         };
+      }
       case "compose": {
         const kind = composeKind;
         if (kind === "task") {
@@ -764,7 +865,7 @@ export function AppShell() {
       case "restart-workspace":
         return selectedWorkspace ? { title: `Restart ${selectedWorkspace.name}` } : { title: "Restart workspace" };
       default:
-        return { title: route.view.replace(/-/g, " ") };
+        return {};
     }
   }, [
     agents.agents,
@@ -780,14 +881,20 @@ export function AppShell() {
     route,
     selectedAgent,
     selectedChat,
+    selectedServer,
     selectedTask,
     selectedWorkspace,
+    servers,
+    sessionsByServerId,
     taskId,
     tasksLoading,
     workspaces,
   ]);
   const headerActions = useMemo<ActionMenuItem[]>(() => {
     const ownerActions = headerNode?.actions ?? [];
+    if (route.view === "code-explorer") {
+      return [];
+    }
     if (route.view === "agent-run") {
       const agentId = getRouteString(route, "agentId");
       return [
@@ -804,9 +911,85 @@ export function AppShell() {
     }
     return [];
   }, [headerNode, headerOwnerRoute, navigateWithinShell, route]);
+  const directHeaderActions = useMemo<ReactNode>(() => {
+    if (route.view === "code-explorer") {
+      if (!headerOwnerRoute) {
+        return null;
+      }
+      const contentType = getRouteString(route, "contentType");
+      const backLabel = contentType === "task"
+        ? "Back to task"
+        : contentType === "chat"
+          ? "Back to chat"
+          : contentType === "server"
+            ? "Back to server"
+            : "Back to workspace";
+      return (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => navigateWithinShell(headerOwnerRoute ?? HOME_ROUTE)}
+        >
+          {backLabel}
+        </Button>
+      );
+    }
+
+    if (route.view === "compose" && composeKind === "task") {
+      return (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={composeState.composeActionState?.onCancel ?? (() => navigateWithinShell(
+              composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : HOME_ROUTE,
+            ))}
+            disabled={composeState.composeActionState?.isSubmitting}
+          >
+            Cancel
+          </Button>
+          {composeState.composeActionState
+            && (!composeState.composeActionState.isEditing || composeState.composeActionState.isEditingDraft) && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={composeState.composeActionState.onSaveAsDraft}
+                disabled={!composeState.composeActionState.canSaveDraft}
+                loading={composeState.composeActionState.isSubmitting}
+              >
+                {composeState.composeActionState.isEditingDraft ? "Update" : "Save as Draft"}
+              </Button>
+            )}
+          {composeState.composeActionState ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={composeState.composeActionState.onSubmit}
+              disabled={!composeState.composeActionState.canSubmit}
+              loading={composeState.composeActionState.isSubmitting}
+            >
+              {composeState.composeActionState.isEditing ? "Start" : "Create"}
+            </Button>
+          ) : null}
+        </>
+      );
+    }
+
+    return registeredHeaderActions?.actions ?? null;
+  }, [
+    composeState.composeActionState,
+    composeWorkspace,
+    headerOwnerRoute,
+    navigateWithinShell,
+    registeredHeaderActions,
+    route,
+  ]);
 
   return (
-    <>
+    <ShellHeaderActionsContext.Provider value={shellHeaderActionsContextValue}>
       <WebAppRoot
         appName="Clanky"
         homeRoute={HOME_ROUTE}
@@ -814,14 +997,15 @@ export function AppShell() {
         routes={routes}
         onRouteChange={handleWebRouteChange}
         header={{
-          renderTitle: () => <RouteHeaderTitle model={headerModel} />,
+          renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={headerModel} defaultTitle={defaultTitle} />,
+          renderActions: () => directHeaderActions,
           getActions: () => headerActions,
         }}
         settings={{ sections: settingsSections }}
         version={dashboardData.version ?? undefined}
       />
       {dialogs.modals}
-    </>
+    </ShellHeaderActionsContext.Provider>
   );
 }
 

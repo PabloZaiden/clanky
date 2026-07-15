@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Task, Workspace } from "@/shared";
 import { useDashboardData } from "../../hooks";
 import {
@@ -8,9 +8,10 @@ import {
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { ConfirmModal, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ConfirmModal, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 export function DraftTaskComposer({
   task,
@@ -59,14 +60,17 @@ export function DraftTaskComposer({
   const [actionState, setActionState] = useState<CreateTaskFormActionState | null>(null);
 
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === task.config.workspaceId) ?? null;
-  const exitRoute = selectedWorkspace
-    ? { view: "workspace", workspaceId: selectedWorkspace.id } satisfies WebAppRoute
-    : { view: "home" } satisfies WebAppRoute;
+  const exitRoute = useMemo(
+    () => selectedWorkspace
+      ? { view: "workspace", workspaceId: selectedWorkspace.id } satisfies WebAppRoute
+      : { view: "home" } satisfies WebAppRoute,
+    [selectedWorkspace],
+  );
 
-  function handleCancel() {
+  const handleCancel = useCallback(() => {
     setDeleteConfirmOpen(false);
     onNavigate(exitRoute);
-  }
+  }, [exitRoute, onNavigate]);
 
   async function handleDraftSubmit(request: CreateTaskFormSubmitRequest): Promise<boolean> {
     if (!("name" in request)) {
@@ -138,52 +142,51 @@ export function DraftTaskComposer({
     }
   }
 
+  const headerActions = useMemo(() => (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={actionState?.onCancel ?? handleCancel}
+        disabled={deleteSubmitting || actionState?.isSubmitting}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        variant="danger"
+        size="sm"
+        onClick={() => setDeleteConfirmOpen(true)}
+        disabled={deleteSubmitting || actionState?.isSubmitting}
+      >
+        Delete
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={actionState?.onSaveAsDraft}
+        disabled={deleteSubmitting || !actionState?.canSaveDraft}
+        loading={actionState?.isSubmitting ?? false}
+      >
+        {getComposeDraftActionLabel(true)}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={actionState?.onSubmit}
+        disabled={deleteSubmitting || !actionState?.canSubmit}
+        loading={actionState?.isSubmitting ?? false}
+      >
+        {getComposeSubmitActionLabel({ isEditing: true })}
+      </Button>
+    </>
+  ), [actionState, deleteSubmitting, handleCancel]);
+  useShellHeaderActions(headerActions);
+
   return (
-    <Panel
-      actions={(
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={actionState?.onCancel ?? handleCancel}
-            disabled={deleteSubmitting || actionState?.isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={() => setDeleteConfirmOpen(true)}
-            disabled={deleteSubmitting || actionState?.isSubmitting}
-          >
-            Delete
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={actionState?.onSaveAsDraft}
-            disabled={deleteSubmitting || !actionState?.canSaveDraft}
-            loading={actionState?.isSubmitting ?? false}
-          >
-            {getComposeDraftActionLabel(true)}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={actionState?.onSubmit}
-            disabled={deleteSubmitting || !actionState?.canSubmit}
-            loading={actionState?.isSubmitting ?? false}
-          >
-            {getComposeSubmitActionLabel({
-              isEditing: true,
-            })}
-          </Button>
-        </>
-      )}
-    >
+    <>
       <CreateTaskForm
         onSubmit={handleDraftSubmit}
         onCancel={handleCancel}
@@ -233,6 +236,6 @@ export function DraftTaskComposer({
         loading={deleteSubmitting}
         variant="danger"
       />
-    </Panel>
+    </>
   );
 }

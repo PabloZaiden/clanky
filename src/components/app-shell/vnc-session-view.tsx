@@ -9,6 +9,7 @@ import { ErrorState, FormGroup, Panel, TextField, useToast, type WebAppRoute } f
 import { EmptySection } from "./shell-sidebar";
 import { VncViewer } from "./VncViewer";
 import { ServerPasswordModal } from "./server-password-modal";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 const DEFAULT_VNC_PORT = 5900;
 
@@ -226,14 +227,15 @@ export function VncSessionView({
     vncPasswordInputRef.current?.focus();
   }, []);
 
+  useShellHeaderActions(
+    <Button variant="secondary" size="sm" onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}>
+      Back to server
+    </Button>,
+  );
+
   return (
     <Panel
       className="flex h-full min-h-0 flex-col overflow-hidden !border-0 !bg-transparent !p-0"
-      actions={(
-        <Button variant="secondary" size="sm" onClick={() => onNavigate({ view: "ssh-server", serverId: server.config.id })}>
-          Back to server
-        </Button>
-      )}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
       <form onSubmit={(event) => void handleSubmit(event)} className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-900">

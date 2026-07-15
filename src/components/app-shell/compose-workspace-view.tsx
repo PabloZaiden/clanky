@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
@@ -12,7 +12,6 @@ import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
   ErrorState,
   FormGroup,
-  Panel,
   SelectField,
   TextField,
   type WebAppRoute,
@@ -24,6 +23,7 @@ import {
   getAutomaticWorkspaceBasePath,
   saveLastAutomaticWorkspaceSshServerId,
 } from "../../lib/automatic-workspace-preferences";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -164,69 +164,73 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     </>
   );
 
-  const createHeaderAction = (
-    <Button
-      type="submit"
-      form={workspaceCreateFormId}
-      size="sm"
-      loading={createActionLoading}
-      disabled={createActionDisabled}
-    >
-      {createActionLabel}
-    </Button>
-  );
-
-  const provisioningActions = (
+  const headerActions = useMemo(() => (
     <>
-      {canReturnToAutomaticForm && (
-        <Button type="button" size="sm" onClick={handleBackToAutomaticWorkspaceForm}>
-          Back to Automatic Form
-        </Button>
-      )}
-      {provisionedWorkspaceId && provisioningStatus === "completed" && (
+      {provisioningStatus ? (
+        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+          {provisioningStatus}
+        </Badge>
+      ) : null}
+      {provisioning.activeJobId ? (
+        <>
+          {canReturnToAutomaticForm && (
+            <Button type="button" size="sm" onClick={handleBackToAutomaticWorkspaceForm}>
+              Back to Automatic Form
+            </Button>
+          )}
+          {provisionedWorkspaceId && provisioningStatus === "completed" && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => navigateWithinShell({ view: "workspace", workspaceId: provisionedWorkspaceId })}
+            >
+              Open Workspace
+            </Button>
+          )}
+          {(provisioningStatus === "running" || provisioningStatus === "pending") && (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                void provisioning.cancelJob();
+              }}
+            >
+              Cancel Job
+            </Button>
+          )}
+        </>
+      ) : (
         <Button
-          type="button"
+          type="submit"
+          form={workspaceCreateFormId}
           size="sm"
-          onClick={() =>
-            navigateWithinShell({ view: "workspace", workspaceId: provisionedWorkspaceId })
-          }
+          loading={createActionLoading}
+          disabled={createActionDisabled}
         >
-          Open Workspace
-        </Button>
-      )}
-      {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-        <Button
-          type="button"
-          size="sm"
-          variant="danger"
-          onClick={() => {
-            void provisioning.cancelJob();
-          }}
-        >
-          Cancel Job
+          {createActionLabel}
         </Button>
       )}
     </>
-  );
+  ), [
+    canReturnToAutomaticForm,
+    createActionDisabled,
+    createActionLabel,
+    createActionLoading,
+    handleBackToAutomaticWorkspaceForm,
+    navigateWithinShell,
+    provisionedWorkspaceId,
+    provisioning.activeJobId,
+    provisioning.cancelJob,
+    provisioningStatus,
+    workspaceCreateFormId,
+  ]);
+  useShellHeaderActions(headerActions);
 
   return (
-    <Panel
-      actions={(
-        <>
-          {provisioningStatus ? (
-            <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-              {provisioningStatus}
-            </Badge>
-          ) : null}
-          {!provisioning.activeJobId ? createHeaderAction : null}
-        </>
-      )}
-    >
+    <div className="space-y-6">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
-          <div className="flex flex-wrap justify-end gap-2">
-            {provisioningActions}
-          </div>
           <ProvisioningJobView
             snapshot={provisioning.snapshot}
             logs={provisioning.logs}
@@ -468,6 +472,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           )}
         </form>
       )}
-    </Panel>
+    </div>
   );
 }

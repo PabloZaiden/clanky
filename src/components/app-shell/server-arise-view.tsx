@@ -4,8 +4,9 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, Panel, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
+import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ServerAriseViewProps {
   server: SshServer;
@@ -52,68 +53,69 @@ export function ServerAriseView({
     setPassword("");
   }
 
-  return (
-    <Panel
-      actions={(
+  const headerActions = (
+    <>
+      <Badge variant="info" size="sm">Arise</Badge>
+      {provisioningStatus && (
+        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+          {provisioningStatus}
+        </Badge>
+      )}
+      {provisioning.activeJobId ? (
         <>
-          <Badge variant="info" size="sm">Arise</Badge>
-          {provisioningStatus && (
-            <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-              {provisioningStatus}
-            </Badge>
+          {canReturnToForm && (
+            <Button type="button" size="sm" onClick={handleBackToForm}>
+              Back to Arise Form
+            </Button>
           )}
-          {provisioning.activeJobId ? (
-          <>
-            {canReturnToForm && (
-              <Button type="button" size="sm" onClick={handleBackToForm}>
-                Back to Arise Form
-              </Button>
-            )}
-            {provisioningStatus === "completed" && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
-              >
-                Back to Settings
-              </Button>
-            )}
-            {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                onClick={() => {
-                  void provisioning.cancelJob();
-                }}
-              >
-                Cancel Arise
-              </Button>
-            )}
-          </>
-          ) : (
-          <>
+          {provisioningStatus === "completed" && (
             <Button
               type="button"
-              variant="ghost"
               size="sm"
               onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
             >
-              Cancel
+              Back to Settings
             </Button>
+          )}
+          {(provisioningStatus === "running" || provisioningStatus === "pending") && (
             <Button
-              type="submit"
-              form={formId}
+              type="button"
               size="sm"
-              loading={provisioning.starting}
+              variant="danger"
+              onClick={() => {
+                void provisioning.cancelJob();
+              }}
             >
-              Run devbox arise
+              Cancel Arise
             </Button>
-          </>
           )}
         </>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            size="sm"
+            loading={provisioning.starting}
+          >
+            Run devbox arise
+          </Button>
+        </>
       )}
-    >
+    </>
+  );
+  useShellHeaderActions(headerActions);
+
+  return (
+    <div className="space-y-6">
       {provisioning.activeJobId ? (
         <div className="space-y-6">
           <ProvisioningJobView
@@ -181,6 +183,6 @@ export function ServerAriseView({
           )}
         </form>
       )}
-    </Panel>
+    </div>
   );
 }

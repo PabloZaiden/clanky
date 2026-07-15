@@ -2,19 +2,14 @@ import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import {
   CreateTaskForm,
-  getComposeDraftActionLabel,
-  getComposeSubmitActionLabel,
-  type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { Button } from "../common";
-import { Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
   navigateWithinShell: (route: WebAppRoute) => void;
-  composeActionState: CreateTaskFormActionState | null;
-  setComposeActionState: (state: CreateTaskFormActionState | null) => void;
+  setComposeActionState: (state: import("../CreateTaskForm").CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   dashboardData: UseDashboardDataResult;
   workspaces: Workspace[];
@@ -26,7 +21,6 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
   const {
     composeWorkspace,
     navigateWithinShell,
-    composeActionState,
     setComposeActionState,
     handleTaskSubmit,
     dashboardData,
@@ -41,48 +35,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     );
 
   return (
-    <Panel
-      actions={
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={composeActionState?.onCancel ?? handleComposeCancel}
-            disabled={composeActionState?.isSubmitting}
-          >
-            Cancel
-          </Button>
-          {composeActionState &&
-            (!composeActionState.isEditing || composeActionState.isEditingDraft) && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={composeActionState.onSaveAsDraft}
-                aria-label={getComposeDraftActionLabel(composeActionState.isEditingDraft)}
-                disabled={!composeActionState.canSaveDraft}
-                loading={composeActionState.isSubmitting}
-              >
-                {getComposeDraftActionLabel(composeActionState.isEditingDraft)}
-              </Button>
-            )}
-          {composeActionState && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={composeActionState.onSubmit}
-              disabled={!composeActionState.canSubmit}
-              loading={composeActionState.isSubmitting}
-            >
-              {getComposeSubmitActionLabel({
-                isEditing: composeActionState.isEditing,
-              })}
-            </Button>
-          )}
-        </>
-      }
-    >
+    <>
       <CreateTaskForm
         key={`task:${composeWorkspace?.id ?? "none"}`}
         onSubmit={handleTaskSubmit}
@@ -112,6 +65,6 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
         workspaceError={workspaceError}
         renderActions={setComposeActionState}
       />
-    </Panel>
+    </>
   );
 }

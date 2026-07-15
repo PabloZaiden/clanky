@@ -3,7 +3,7 @@ import type { Workspace } from "@/shared";
 import { useWorkspacePreviews } from "../../hooks";
 import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";
-import { EmptyState, ErrorState, LoadingState, Panel, TextField, useToast } from "@pablozaiden/webapp/web";
+import { EmptyState, ErrorState, LoadingState, TextField, useToast } from "@pablozaiden/webapp/web";
 
 function formatDateTime(value?: string): string {
   if (!value) {
@@ -47,10 +47,13 @@ export function WorkspacePreviewsView({
 
   return (
     <div className="min-w-0 space-y-6">
-      <Panel
-        title="Start from the CLI"
-        description="Run this command locally. The port must match your app&apos;s dev server inside the workspace."
-      >
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <div>
+          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Start from the CLI</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Run this command locally. The port must match your app's dev server inside the workspace.
+          </p>
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <TextField
             label="Remote port"
@@ -61,72 +64,73 @@ export function WorkspacePreviewsView({
             onChange={(event) => setPort(event.target.value)}
             className="w-28"
           />
-            <code className="min-w-0 basis-full flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 sm:basis-0 dark:bg-neutral-900 dark:text-gray-100">
-              {command}
-            </code>
-            <Button size="sm" onClick={copyCommand}>Copy</Button>
+          <code className="min-w-0 basis-full flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 sm:basis-0 dark:bg-neutral-900 dark:text-gray-100">
+            {command}
+          </code>
+          <Button size="sm" onClick={copyCommand}>Copy</Button>
         </div>
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Add <code>--host 0.0.0.0</code> for LAN/mobile testing. The CLI will print a network exposure warning.
         </p>
-      </Panel>
+      </section>
 
-      <Panel title="Active previews">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Active previews</h2>
         {loading && previews.length === 0 ? (
           <LoadingState title="Refreshing previews" />
         ) : error ? (
           <ErrorState title="Unable to load previews" description={error} />
         ) : previews.length === 0 ? (
-            <EmptyState
-              title="No active previews"
-              description="Previews only exist while the CLI command is connected."
-            />
-          ) : (
-            <div className="space-y-3">
-              {previews.map((preview) => (
-                <div
-                  key={preview.config.id}
-                  className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-neutral-900"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge variant={preview.state.status === "active" ? "success" : "default"}>
-                          {preview.state.status}
-                        </StatusBadge>
-                        <span className="font-mono text-sm text-gray-900 dark:text-gray-100">
-                          {preview.config.remoteHost}:{preview.config.remotePort}
-                        </span>
-                      </div>
-                      <div className="break-all font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {preview.config.localUrl}
-                      </div>
+          <EmptyState
+            title="No active previews"
+            description="Previews only exist while the CLI command is connected."
+          />
+        ) : (
+          <div className="space-y-3">
+            {previews.map((preview) => (
+              <div
+                key={preview.config.id}
+                className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-neutral-900"
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge variant={preview.state.status === "active" ? "success" : "default"}>
+                        {preview.state.status}
+                      </StatusBadge>
+                      <span className="font-mono text-sm text-gray-900 dark:text-gray-100">
+                        {preview.config.remoteHost}:{preview.config.remotePort}
+                      </span>
+                    </div>
+                    <div className="break-all font-mono text-xs text-gray-500 dark:text-gray-400">
+                      {preview.config.localUrl}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      Bound to {preview.config.localHost}:{preview.config.localPort} · Path {preview.config.initialPath} · Connected {formatDateTime(preview.state.connectedAt)}
+                    </div>
+                    {preview.config.cliHostname ? (
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Bound to {preview.config.localHost}:{preview.config.localPort} · Path {preview.config.initialPath} · Connected {formatDateTime(preview.state.connectedAt)}
+                        CLI host: {preview.config.cliHostname}
                       </div>
-                      {preview.config.cliHostname ? (
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          CLI host: {preview.config.cliHostname}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => window.open(preview.config.localUrl, "_blank", "noopener,noreferrer")}>
-                        Open
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => void copyUrl(preview.config.localUrl)}>
-                        Copy URL
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => void closePreview(preview.config.id)}>
-                        Close
-                      </Button>
-                    </div>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => window.open(preview.config.localUrl, "_blank", "noopener,noreferrer")}>
+                      Open
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => void copyUrl(preview.config.localUrl)}>
+                      Copy URL
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => void closePreview(preview.config.id)}>
+                      Close
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-      </Panel>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

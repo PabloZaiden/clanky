@@ -1,5 +1,4 @@
 import type { Agent, Chat, SshServer, Workspace } from "@/shared";
-import { findRegisteredSshServer } from "@/shared/settings";
 import type { useChats, useTasks, useSshSessions } from "../../hooks";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
@@ -8,25 +7,10 @@ import {
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
-import { DataList, DataListRow, EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
-import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
-
-function getWorkspaceHeaderServerLabel(
-  workspace: Workspace,
-  registeredSshServers: readonly SshServer[],
-): string {
-  if (workspace.serverSettings.agent.transport === "stdio") {
-    return "stdio";
-  }
-
-  const hostname = workspace.serverSettings.agent.hostname.trim() || "127.0.0.1";
-  const port = workspace.serverSettings.agent.port ?? 22;
-  const registeredServer = findRegisteredSshServer(hostname, registeredSshServers);
-  const serverLabel = registeredServer?.config.name ?? hostname;
-
-  return port === 22 ? serverLabel : `${serverLabel}:${port}`;
-}
+import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { ClankyListRow } from "./clanky-list-row";
 
 export function WorkspaceView({
   workspace,
@@ -36,7 +20,6 @@ export function WorkspaceView({
   relatedAgents,
   agentsLoading,
   agentsError,
-  registeredSshServers,
   onNavigate,
   showPrivateItems = false,
 }: {
@@ -51,84 +34,67 @@ export function WorkspaceView({
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
-  const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
   const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
   const hasActivity = activityTasks.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const historyDescription = "Merged and deleted tasks from this workspace.";
+
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: WebAppRoute = { view: "task", taskId: task.config.id };
     const statusPill = getTaskStatusPill(task);
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
     return (
-      <div
+      <ClankyListRow
         key={task.config.id}
-        className={getPrivateContainerClassName(privateHidden)}
-      >
-        <DataListRow
-          title={task.config.name}
-          description="Task"
-          badge={<StatusBadge variant={statusPill.variant}>{statusPill.label}</StatusBadge>}
-          onClick={privateHidden ? undefined : () => onNavigate(route)}
-        />
-      </div>
+        title={task.config.name}
+        description="Task"
+        badge={<StatusBadge variant={statusPill.variant}>{statusPill.label}</StatusBadge>}
+        onClick={!privateHidden ? () => onNavigate(route) : undefined}
+        privateHidden={privateHidden}
+      />
     );
   }
 
   return (
     <div className="min-w-0 space-y-6">
-      <div data-testid="workspace-activity-card">
-        <Panel title="Activity" description={serverLabel}>
-          <DataList>
-            {hasActivity ? (
-              <>
+      <section data-testid="workspace-activity-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
+        <div>
+          {hasActivity ? (
+            <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
               {relatedChats.map((chat: Chat) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
                 return (
-                  <div
+                  <ClankyListRow
                     key={chat.config.id}
-                    className={getPrivateContainerClassName(privateHidden)}
-                  >
-                    <DataListRow
-                      title={chat.config.name}
-                      description="Chat"
-                      badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{chat.state.status}</StatusBadge>}
-                      onClick={privateHidden ? undefined : () => onNavigate({ view: "chat", chatId: chat.config.id })}
-                    />
-                  </div>
+                    title={chat.config.name}
+                    description="Chat"
+                    badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{chat.state.status}</StatusBadge>}
+                    onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
+                    privateHidden={privateHidden}
+                  />
                 );
               })}
               {relatedSessions.map((session) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
                 return (
-                  <div
+                  <ClankyListRow
                     key={session.config.id}
-                    className={getPrivateContainerClassName(privateHidden)}
-                  >
-                    <DataListRow
-                      title={session.config.name}
-                      description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
-                      badge={(
-                        <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>
-                          {getSshSessionStatusLabel(session.state.status)}
-                        </StatusBadge>
-                      )}
-                      onClick={privateHidden ? undefined : () => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
-                    />
-                  </div>
+                    title={session.config.name}
+                    description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
+                    badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
+                    onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
+                    privateHidden={privateHidden}
+                  />
                 );
               })}
-              </>
-            ) : (
-              <EmptyState
-                title="No active items"
-                description="There are no active tasks, chats, or sessions in this workspace right now."
-              />
-            )}
-          </DataList>
-        </Panel>
-      </div>
+            </div>
+          ) : (
+            <EmptyState title="No active items" description="There are no active tasks, chats, or sessions in this workspace right now." />
+          )}
+        </div>
+      </section>
 
       <ConfiguredAgentsSection
         agents={relatedAgents}
@@ -140,13 +106,11 @@ export function WorkspaceView({
       />
 
       {historyTasks.length > 0 ? (
-        <div data-testid="workspace-history-card">
-          <Panel title="History" description={historyDescription}>
-            <DataList>
-              {historyTasks.map((task) => renderTaskRow(task))}
-            </DataList>
-          </Panel>
-        </div>
+        <section data-testid="workspace-history-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">History</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{historyDescription}</p>
+          <div className="space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
+        </section>
       ) : null}
     </div>
   );
