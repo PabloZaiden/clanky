@@ -4,6 +4,26 @@ import { EmptyState, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 
+function SummaryCard({
+  label,
+  value,
+  meta,
+  className = "",
+}: {
+  label: string;
+  value: string | number;
+  meta: string;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50 ${className}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-2 overflow-hidden break-words text-2xl font-semibold text-gray-950 [overflow-wrap:anywhere] sm:text-3xl dark:text-gray-100">{value}</p>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{meta}</p>
+    </div>
+  );
+}
+
 export function SshServerView({
   server,
   sessions,
@@ -19,33 +39,17 @@ export function SshServerView({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950 ${getPrivateContainerClassName(serverPrivateHidden)}`}>
-          <div className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Address</div>
-          <div className="mt-2 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{server.config.address}</div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Stored without credentials on the server.</div>
-        </div>
-        <div className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950 ${getPrivateContainerClassName(serverPrivateHidden)}`}>
-          <div className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Username</div>
-          <div className="mt-2 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{server.config.username}</div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Used for standalone SSH sessions.</div>
-        </div>
-        <div className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950 ${getPrivateContainerClassName(serverPrivateHidden)}`}>
-          <div className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Saved sessions</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{sessions.length}</div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Standalone terminals attached to this host.</div>
-        </div>
+        <SummaryCard label="Address" value={server.config.address} meta="Stored without credentials on the server." className={getPrivateContainerClassName(serverPrivateHidden)} />
+        <SummaryCard label="Username" value={server.config.username} meta="Used for standalone SSH sessions." className={getPrivateContainerClassName(serverPrivateHidden)} />
+        <SummaryCard label="Saved sessions" value={sessions.length} meta="Standalone terminals attached to this host." className={getPrivateContainerClassName(serverPrivateHidden)} />
         {server.config.repositoriesBasePath ? (
-          <div className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950 ${getPrivateContainerClassName(serverPrivateHidden)}`}>
-            <div className="text-xs font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repositories base path</div>
-            <div className="mt-2 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{server.config.repositoriesBasePath}</div>
-            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Default base path for automatic provisioning.</div>
-          </div>
+          <SummaryCard label="Repositories base path" value={server.config.repositoriesBasePath} meta="Default base path for automatic provisioning." className={getPrivateContainerClassName(serverPrivateHidden)} />
         ) : null}
       </div>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Standalone sessions</h2>
-        <div className="mt-4">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Standalone sessions</h2>
+        <div>
           {sessions.length === 0 ? (
             <EmptyState title="No standalone sessions yet" description="Create one to connect to this SSH server." />
           ) : (

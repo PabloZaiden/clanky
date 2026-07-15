@@ -55,7 +55,8 @@ import { buildShellSettingsSections } from "./shell-settings-composition";
 import { useShellDialogComposition } from "./shell-dialog-composition";
 import { ShellHeaderActionsContext } from "./shell-header-actions";
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
-import { Button, StatusBadge } from "../common";
+import { findRegisteredSshServer } from "@/shared";
+import { Badge, Button, StatusBadge } from "../common";
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
 
@@ -64,6 +65,24 @@ interface HeaderModel {
   subtitle?: string;
   badge?: string;
   badgeVariant?: SidebarNode["badgeVariant"];
+  badgeIsStatus?: boolean;
+  subtitleMobileHidden?: boolean;
+}
+
+function getAgentHeaderBadgeVariant(status: string): SidebarNode["badgeVariant"] {
+  if (status === "enabled" || status === "completed") {
+    return "success";
+  }
+  if (status === "running" || status === "starting" || status === "scheduled") {
+    return "info";
+  }
+  if (status === "failed" || status === "error") {
+    return "error";
+  }
+  if (status === "paused" || status === "skipped" || status === "interrupted") {
+    return "warning";
+  }
+  return "default";
 }
 
 function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; defaultTitle: string }) {
@@ -83,12 +102,18 @@ function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; default
         {model.title ?? defaultTitle}
       </span>
       {model.badge ? (
-        <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
-          {model.badge}
-        </StatusBadge>
+        model.badgeIsStatus === false ? (
+          <Badge variant={model.badgeVariant} size="sm" className="shrink-0">
+            {model.badge}
+          </Badge>
+        ) : (
+          <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
+            {model.badge}
+          </StatusBadge>
+        )
       ) : null}
       {model.subtitle ? (
-        <span className="min-w-0 flex-shrink truncate text-xs font-normal text-gray-500 dark:text-gray-400">
+        <span className={`min-w-0 flex-shrink truncate text-xs font-normal text-gray-500 dark:text-gray-400 ${model.subtitleMobileHidden ? "hidden sm:inline" : ""}`}>
           {model.subtitle}
         </span>
       ) : null}
@@ -658,9 +683,12 @@ export function AppShell() {
         if (taskId && !selectedTask && !tasksLoading) {
           return { title: "Task not found" };
         }
-        return selectedTask?.state.status === "draft" && nodeModel
-          ? { ...nodeModel, title: `Edit ${nodeModel.title}` }
-          : nodeModel ?? { title: "Task" };
+        if (!nodeModel) {
+          return { title: "Task" };
+        }
+        return selectedTask?.state.status === "draft"
+          ? { ...nodeModel, title: `Edit ${nodeModel.title}`, subtitle: undefined }
+          : { ...nodeModel, subtitle: undefined };
       case "task-files":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -669,7 +697,7 @@ export function AppShell() {
         if (chatId && !selectedChat && !chatsLoading) {
           return { title: "Chat not found" };
         }
-        return nodeModel ?? { title: "Chat" };
+        return nodeModel ? { ...nodeModel, subtitle: undefined } : { title: "Chat" };
       case "chat-transcript":
         return nodeModel
           ? { title: nodeModel.title, subtitle: "Transcript" }
@@ -677,7 +705,24 @@ export function AppShell() {
       case "ssh":
         return nodeModel ?? { title: "SSH session" };
       case "workspace":
-        return nodeModel ?? { title: "Workspace" };
+        if (!nodeModel) {
+          return { title: "Workspace" };
+        }
+        if (!selectedWorkspace) {
+          return nodeModel;
+        }
+        const workspaceAgent = selectedWorkspace.serverSettings.agent;
+        if (workspaceAgent.transport === "stdio") {
+          return { ...nodeModel, subtitle: "stdio" };
+        }
+        const workspaceHostname = workspaceAgent.hostname.trim() || "127.0.0.1";
+        const workspacePort = workspaceAgent.port ?? 22;
+        const registeredServer = findRegisteredSshServer(workspaceHostname, servers);
+        const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
+        return {
+          ...nodeModel,
+          subtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
+        };
       case "workspace-files":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `Files${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -691,7 +736,17 @@ export function AppShell() {
           ? { title: nodeModel.title, subtitle: `Workspace settings${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
           : { title: "Workspace settings" };
       case "ssh-server":
-        return nodeModel ?? { title: "SSH server" };
+        if (!selectedServer) {
+          return nodeModel ?? { title: "SSH server" };
+        }
+        const standaloneSessions = sessionsByServerId[selectedServer.config.id] ?? [];
+        return {
+          title: selectedServer.config.name,
+          subtitle: `${selectedServer.config.username}@${selectedServer.config.address}`,
+          badge: `${standaloneSessions.length} session${standaloneSessions.length === 1 ? "" : "s"}`,
+          badgeVariant: "default",
+          badgeIsStatus: false,
+        };
       case "vnc-session":
         return nodeModel
           ? { title: nodeModel.title, subtitle: `VNC session${nodeModel.subtitle ? ` · ${nodeModel.subtitle}` : ""}` }
@@ -712,9 +767,21 @@ export function AppShell() {
           return { title: "Agent not found" };
         }
         const agent = selectedAgent;
+        const agentWorkspace = agent
+          ? workspaces.find((workspace) => workspace.id === agent.config.workspaceId)
+          : undefined;
         return dialogs.editingAgentId && dialogs.editingAgentId === agentId
           ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim() }
-          : nodeModel ?? { title: "Agent" };
+          : agent
+            ? {
+                title: agent.config.name,
+                subtitle: agentWorkspace?.directory,
+                badge: agent.state.status,
+                badgeVariant: getAgentHeaderBadgeVariant(agent.state.status),
+                badgeIsStatus: false,
+                subtitleMobileHidden: true,
+              }
+            : nodeModel ?? { title: "Agent" };
       }
       case "agent-run": {
         const agentId = getRouteString(route, "agentId");
@@ -817,6 +884,8 @@ export function AppShell() {
     selectedServer,
     selectedTask,
     selectedWorkspace,
+    servers,
+    sessionsByServerId,
     taskId,
     tasksLoading,
     workspaces,

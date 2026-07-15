@@ -57,9 +57,9 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
-      <section data-testid="workspace-activity-card" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
-        <div className="mt-4">
+      <section data-testid="workspace-activity-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
+        <div>
           {hasActivity ? (
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
@@ -106,10 +106,10 @@ export function WorkspaceView({
       />
 
       {historyTasks.length > 0 ? (
-        <section data-testid="workspace-history-card" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">History</h2>
+        <section data-testid="workspace-history-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">History</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{historyDescription}</p>
-          <div className="mt-4 space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
+          <div className="space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
         </section>
       ) : null}
     </div>

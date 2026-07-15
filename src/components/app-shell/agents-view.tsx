@@ -511,7 +511,7 @@ function AgentWorkspaceList({
   onNavigate: (route: WebAppRoute) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+    <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
       {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
       {loading ? <LoadingState title="Loading agents" /> : null}
       <div className="space-y-2">
@@ -520,7 +520,9 @@ function AgentWorkspaceList({
             key={agent.config.id}
             title={agent.config.name}
             description={agent.config.prompt}
+            descriptionClassName="line-clamp-2"
             meta={`Next run: ${formatDate(agent.state.nextRunAt)} · Every ${agent.config.schedule.interval.value} ${agent.config.schedule.interval.unit}`}
+            metaPlacement="below"
             badge={<AgentStatusPill status={agent.state.status} />}
             onClick={() => onNavigate({ view: "agent", agentId: agent.config.id })}
           />
@@ -614,7 +616,7 @@ function AgentDetail({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950">
         <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">{agent.config.prompt}</p>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
           <span>Next run: {formatDate(agent.state.nextRunAt)}</span>
@@ -623,9 +625,9 @@ function AgentDetail({
           <span>Worktree: {agent.config.useWorktree ? "yes" : "no"}</span>
         </div>
       </section>
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Runs</h2>
-        <div className="mt-4">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Runs</h2>
+        <div>
         <AgentRunsList
           agent={agent}
           runs={runs}

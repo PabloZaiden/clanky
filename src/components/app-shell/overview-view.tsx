@@ -128,9 +128,9 @@ export function OverviewView({
   return (
     <div className="space-y-6">
       {activeWorkItems.length > 0 && (
-        <section data-testid="active-work-card" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
-          <div className="mt-4 space-y-2">
+        <section data-testid="active-work-card" className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
+          <div className="space-y-2">
             {activeWorkItems.map((item) => {
               const badge = getActiveWorkBadge(item);
               const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
@@ -162,9 +162,9 @@ export function OverviewView({
         }}
       />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Workspaces</h2>
-        <div className="mt-4">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces</h2>
+        <div>
           {workspaceGroups.length === 0 ? (
             <EmptyState title="No workspaces yet" description="Start by creating one." />
           ) : (
@@ -187,9 +187,9 @@ export function OverviewView({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Servers</h2>
-        <div className="mt-4">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Servers</h2>
+        <div>
           {serverMapItems.length === 0 ? (
             <EmptyState title="No SSH servers yet" description="Register one to see it here." />
           ) : (
