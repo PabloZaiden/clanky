@@ -1,94 +1,106 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { join } from "path";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
-  setupTestContext,
-  teardownTestContext,
-  waitForTaskStatus,
+  acceptPlanViaAPI,
+  createTaskViaAPI,
+  discardTaskViaAPI,
+  setupTestServer,
+  teardownTestServer,
   waitForPlanReady,
-  testModelFields,
-  type TestContext,
-} from "../setup";
+  waitForTaskStatus,
+  type TestServerContext,
+} from "../integration/user-scenarios/helpers";
+import type { Task } from "@/shared/task";
 
-async function setupRemote(ctx: TestContext): Promise<void> {
-  const remoteDir = join(ctx.dataDir, `remote-${Date.now()}.git`);
-  await Bun.$`git init --bare ${remoteDir}`.quiet();
-  await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
-  const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
-  await Bun.$`git -C ${ctx.workDir} push -u origin ${currentBranch}`.quiet();
-  await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
-}
+const mockAcpModel = {
+  providerID: "opencode",
+  modelID: "mock-model",
+  variant: "",
+};
 
 describe("Mock ACP runtime integration", () => {
-  let ctx: TestContext;
+  let ctx: TestServerContext;
 
-  beforeEach(async () => {
-    ctx = await setupTestContext({
-      useMockBackend: false,
+  beforeAll(async () => {
+    ctx = await setupTestServer({
       useMockAcpProcess: true,
-      initGit: true,
+      withPlanningDir: true,
     });
-    await setupRemote(ctx);
   });
 
-  afterEach(async () => {
-    await teardownTestContext(ctx);
+  afterAll(async () => {
+    await teardownTestServer(ctx);
   });
 
   test("completes a standard task through the real ACP transport", async () => {
-    const task = await ctx.manager.createTask({
-      ...testModelFields,
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
       directory: ctx.workDir,
       prompt: "Implement the requested mock ACP changes",
       name: "Mock ACP Execution Task",
-      workspaceId: "test-workspace-id",
       planMode: false,
+      model: mockAcpModel,
     });
 
-    await ctx.manager.startTask(task.config.id);
-    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+    expect(status).toBe(201);
+    const task = body as Task;
+    const completed = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
     expect(completed.state.status).toBe("completed");
-    expect(completed.state.currentIteration).toBe(1);
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   }, { timeout: 60_000 });
 
   test("reaches PLAN_READY and then completes accepted-plan execution", async () => {
-    const task = await ctx.manager.createTask({
-      ...testModelFields,
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
       directory: ctx.workDir,
       prompt: "Plan and then execute the mock ACP work",
       name: "Mock ACP Plan Task",
-      workspaceId: "test-workspace-id",
       planMode: true,
+      autoAcceptPlan: false,
+      model: mockAcpModel,
     });
 
-    await ctx.manager.startPlanMode(task.config.id);
-    const readyTask = await waitForPlanReady(ctx.manager, task.config.id);
+    expect(status).toBe(201);
+    const task = body as Task;
+    const readyTask = await waitForPlanReady(ctx.baseUrl, task.config.id);
     expect(readyTask.state.planMode?.isPlanReady).toBe(true);
 
-    await ctx.manager.acceptPlan(task.config.id);
-    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+    const acceptResponse = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
+    expect(acceptResponse.status).toBe(200);
+    expect(acceptResponse.body.success).toBe(true);
+
+    const completed = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
     expect(completed.state.status).toBe("completed");
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   }, { timeout: 60_000 });
 
   test("accepts and executes a ready plan in a local-only repository", async () => {
+    const originUrl = (await Bun.$`git -C ${ctx.workDir} remote get-url origin`.text()).trim();
     await Bun.$`git -C ${ctx.workDir} remote remove origin`.quiet();
 
-    const task = await ctx.manager.createTask({
-      ...testModelFields,
-      directory: ctx.workDir,
-      prompt: "Plan and then execute mock ACP work without a remote",
-      name: "Mock ACP Local Plan Task",
-      workspaceId: "test-workspace-id",
-      planMode: true,
-    });
+    try {
+      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+        directory: ctx.workDir,
+        prompt: "Plan and then execute mock ACP work without a remote",
+        name: "Mock ACP Local Plan Task",
+        planMode: true,
+        autoAcceptPlan: false,
+        model: mockAcpModel,
+      });
 
-    await ctx.manager.startPlanMode(task.config.id);
-    const readyTask = await waitForPlanReady(ctx.manager, task.config.id);
-    expect(readyTask.state.planMode?.isPlanReady).toBe(true);
+      expect(status).toBe(201);
+      const task = body as Task;
+      const readyTask = await waitForPlanReady(ctx.baseUrl, task.config.id);
+      expect(readyTask.state.planMode?.isPlanReady).toBe(true);
 
-    await ctx.manager.acceptPlan(task.config.id);
-    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
-    expect(completed.state.status).toBe("completed");
+      const acceptResponse = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
+      expect(acceptResponse.status).toBe(200);
+      expect(acceptResponse.body.success).toBe(true);
+
+      const completed = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      expect(completed.state.status).toBe("completed");
+      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+    } finally {
+      await Bun.$`git -C ${ctx.workDir} remote add origin ${originUrl}`.quiet();
+    }
   }, { timeout: 60_000 });
 });

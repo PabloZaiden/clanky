@@ -12,6 +12,7 @@ import { ensureDataDirectories } from "../../../src/persistence/database";
 import { backendManager } from "../../../src/core/backend-manager";
 import { taskManager } from "../../../src/core/task-manager";
 import { closeDatabase } from "../../../src/persistence/database";
+import { AcpBackend } from "../../../src/backends/acp";
 import { TestCommandExecutor } from "../../mocks/mock-executor";
 import type { TaskBackend } from "../../../src/core/task-engine";
 import type {
@@ -42,8 +43,14 @@ export interface TestServerContext {
   server: Server<unknown>;
   /** Base URL for API calls */
   baseUrl: string;
-  /** Mock backend instance */
+  /**
+   * In-memory configurable backend used when useMockAcpProcess is false.
+   * Process-backed setups register AcpBackend instead, so this instance is
+   * inactive and reset() does not affect those tests.
+   */
   mockBackend: ConfigurableMockBackend;
+  /** Original mock ACP environment value before test setup */
+  originalMockAcpEnv?: string;
   /** Local git remote path (for push tests) */
   remoteDir?: string;
   /** Default workspace ID for this test context */
@@ -295,6 +302,12 @@ export class ConfigurableMockBackend implements TaskBackend {
 export interface SetupServerOptions {
   /** Initial responses for the mock backend */
   mockResponses?: string[];
+  /**
+   * Use the process-backed mock ACP runtime instead of the in-memory backend.
+   * When enabled, backendManager uses AcpBackend and does not register
+   * ConfigurableMockBackend.
+   */
+  useMockAcpProcess?: boolean;
   /** Create a local git remote for push tests */
   withRemote?: boolean;
   /** Initial files to create in the work directory */
@@ -309,6 +322,7 @@ export interface SetupServerOptions {
 export async function setupTestServer(options: SetupServerOptions = {}): Promise<TestServerContext> {
   const {
     mockResponses = ["<promise>COMPLETE</promise>"],
+    useMockAcpProcess = false,
     withRemote = true,
     initialFiles = {},
     withPlanningDir = false,
@@ -369,7 +383,13 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
 
   // Set up mock backend
   const mockBackend = new ConfigurableMockBackend(mockResponses);
-  backendManager.setBackendForTesting(mockBackend);
+  const originalMockAcpEnv = process.env["CLANKY_MOCK_ACP"];
+  if (useMockAcpProcess) {
+    process.env["CLANKY_MOCK_ACP"] = "true";
+    backendManager.setBackendForTesting(new AcpBackend());
+  } else {
+    backendManager.setBackendForTesting(mockBackend);
+  }
   backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
   // Start test server
@@ -387,6 +407,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     server,
     baseUrl,
     mockBackend,
+    originalMockAcpEnv,
     remoteDir,
     workspaceId,
   };
@@ -414,6 +435,11 @@ export async function teardownTestServer(ctx?: TestServerContext | null): Promis
 
   // Clean up env
   delete process.env["CLANKY_DATA_DIR"];
+  if (ctx.originalMockAcpEnv === undefined) {
+    delete process.env["CLANKY_MOCK_ACP"];
+  } else {
+    process.env["CLANKY_MOCK_ACP"] = ctx.originalMockAcpEnv;
+  }
 
   // Remove temp directories
   await rm(ctx.dataDir, { recursive: true, force: true });
@@ -478,6 +504,7 @@ export async function createTaskViaAPI(
     useWorktree?: boolean;
     model?: { providerID: string; modelID: string; variant?: string };
     maxIterations?: number;
+    maxConsecutiveErrors?: number;
     clearPlanningFolder?: boolean;
     autoAcceptPlan?: boolean;
     fullyAutonomous?: boolean;
@@ -504,7 +531,7 @@ export async function createTaskViaAPI(
       attachments: [],
       cheapModel: { mode: "same-as-task" },
       maxIterations: restOptions.maxIterations ?? null,
-      maxConsecutiveErrors: 10,
+      maxConsecutiveErrors: restOptions.maxConsecutiveErrors ?? 10,
       activityTimeoutSeconds: 300,
       stopPattern: "<promise>COMPLETE</promise>$",
       git: {
@@ -698,6 +725,20 @@ export async function discardTaskViaAPI(
   taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
   const response = await fetch(`${baseUrl}/api/tasks/${taskId}/discard`, {
+    method: "POST",
+  });
+  const body = await response.json();
+  return { status: response.status, body };
+}
+
+/**
+ * Stop an active task via the API.
+ */
+export async function stopTaskViaAPI(
+  baseUrl: string,
+  taskId: string,
+): Promise<{ status: number; body: { success?: boolean; error?: string; message?: string } }> {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/stop`, {
     method: "POST",
   });
   const body = await response.json();
