@@ -6,9 +6,9 @@ import { getPrivateContainerClassName } from "../lib/private-items";
 const MAX_CONFIGURED_AGENT_PROMPT_WORDS = 20;
 
 function summarizeAgentPrompt(prompt: string): string {
-  const words = prompt.trim().split(/\s+/).filter(Boolean);
+  const words = prompt.trim().split(/\s+/, MAX_CONFIGURED_AGENT_PROMPT_WORDS + 1);
   if (words.length <= MAX_CONFIGURED_AGENT_PROMPT_WORDS) {
-    return prompt;
+    return words.join(" ");
   }
   return `${words.slice(0, MAX_CONFIGURED_AGENT_PROMPT_WORDS).join(" ")}…`;
 }
