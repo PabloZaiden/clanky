@@ -3,7 +3,7 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import type { SshServer } from "@/shared";
 import { ProvisioningJobView } from "../ProvisioningJobView";
-import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Badge, Button, PASSWORD_INPUT_PROPS, StatusBadge } from "../common";
 import { ErrorState, FormGroup, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import { useShellHeaderActions } from "./shell-header-actions";
@@ -57,9 +57,9 @@ export function ServerAriseView({
     <>
       <Badge variant="info" size="sm">Arise</Badge>
       {provisioningStatus && (
-        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
           {provisioningStatus}
-        </Badge>
+        </StatusBadge>
       )}
       {provisioning.activeJobId ? (
         <>

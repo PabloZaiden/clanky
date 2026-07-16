@@ -1,5 +1,9 @@
 import type { SshServer, SshServerSession } from "@/shared";
-import { Badge } from "../common";
+import {
+  getSshSessionStatusBadgeVariant,
+  getSshSessionStatusLabel,
+  StatusBadge,
+} from "../common";
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
@@ -60,17 +64,9 @@ export function SshServerView({
                   title={session.config.name}
                   description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
                   badge={(
-                    <Badge
-                      variant={
-                        session.state.status === "connected"
-                          ? "success"
-                          : session.state.status === "failed"
-                            ? "error"
-                            : "default"
-                      }
-                    >
-                      {session.state.status}
-                    </Badge>
+                    <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>
+                      {getSshSessionStatusLabel(session.state.status)}
+                    </StatusBadge>
                   )}
                   onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
                   privateHidden={privateHidden}

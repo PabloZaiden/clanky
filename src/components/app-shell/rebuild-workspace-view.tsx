@@ -1,7 +1,7 @@
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { ProvisioningJobView } from "../ProvisioningJobView";
-import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Badge, Button, PASSWORD_INPUT_PROPS, StatusBadge } from "../common";
 import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "@/shared/workspace";
@@ -75,9 +75,9 @@ export function RebuildWorkspaceView({
     <>
       <Badge variant="info" size="sm">{actionLabel}</Badge>
       {provisioningStatus && (
-        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
           {provisioningStatus}
-        </Badge>
+        </StatusBadge>
       )}
     </>
   );

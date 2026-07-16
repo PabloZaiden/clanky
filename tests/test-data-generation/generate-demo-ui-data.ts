@@ -30,6 +30,7 @@ const USER_OWNED_SEED_TABLES = [
   "ssh_sessions",
   "tasks",
   "chats",
+  "agents",
   "review_comments",
   "preview_sessions",
 ] as const;

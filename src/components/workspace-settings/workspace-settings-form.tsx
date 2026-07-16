@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, type FormEvent } from "react";
-import { Badge } from "../common";
+import { StatusBadge } from "../common";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import { createLogger } from "../../lib/logger";
@@ -124,11 +124,11 @@ export function WorkspaceSettingsForm({
           <div className="flex items-center gap-2 rounded-md bg-gray-50 p-3 dark:bg-neutral-900">
             <span className="text-sm text-gray-600 dark:text-gray-400">Connection Status:</span>
             {status?.connected ? (
-              <Badge variant="success">Connected</Badge>
+              <StatusBadge variant="success">Connected</StatusBadge>
             ) : status?.error ? (
-              <Badge variant="error">Error</Badge>
+              <StatusBadge variant="error">Error</StatusBadge>
             ) : (
-              <Badge variant="warning">Idle</Badge>
+              <StatusBadge variant="warning">Idle</StatusBadge>
             )}
             {status && (
               <span className="text-xs text-gray-500 dark:text-gray-400">

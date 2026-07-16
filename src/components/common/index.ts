@@ -12,16 +12,19 @@ export {
 export { Card, type CardProps } from "./Card";
 export {
   Badge,
+  StatusBadge,
+  type BadgeProps,
+} from "@pablozaiden/webapp/web";
+export type { BadgeVariant } from "@pablozaiden/webapp/web";
+export {
+  getAgentStatusBadgeVariant,
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
   getStatusBadgeVariant,
-  type BadgeProps,
-  type BadgeVariant,
-} from "./Badge";
-export { StatusBadge } from "./StatusBadge";
+} from "./status-variants";
 export {
   ChatIcon,
   ClipboardPasteIcon,

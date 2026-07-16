@@ -1,6 +1,6 @@
 import type { SshServer, SshServerSession } from "@/shared";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Badge, Button, Card, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
+import { Button, Card, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshServerSectionProps {
   servers: SshServer[];
@@ -61,9 +61,9 @@ export function SshServerSection({
                       <h4 className="break-words text-sm font-semibold text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
                         {server.config.name}
                       </h4>
-                      <Badge variant={hasStoredCredential(server.config.id) ? "success" : "warning"}>
+                      <StatusBadge variant={hasStoredCredential(server.config.id) ? "success" : "warning"}>
                         {hasStoredCredential(server.config.id) ? "password saved" : "password needed"}
-                      </Badge>
+                      </StatusBadge>
                     </div>
                     <p className="mt-1 break-words text-xs font-mono text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                       {server.config.username}@{server.config.address}

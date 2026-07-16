@@ -1,6 +1,6 @@
 import { memo, useCallback } from "react";
-import { Badge } from "../common/Badge";
-import type { BadgeVariant } from "../common/Badge";
+import { StatusBadge } from "../common";
+import type { BadgeVariant } from "../common";
 import { LazyDetails } from "./lazy-details";
 import { StreamingTextContent } from "./streaming-text-content";
 import type { LogEntry, TranscriptFileLinkContext } from "./types";
@@ -120,9 +120,9 @@ export const LogEntryItem = memo(function LogEntryItem({
             data-response-outcome={finalizedResponseIndicator.kind}
             data-promise-marker={finalizedResponseIndicator.marker}
           >
-            <Badge variant={getFinalizedResponseBadgeVariant(log)} size="sm">
+            <StatusBadge variant={getFinalizedResponseBadgeVariant(log)} size="sm">
               {finalizedResponseIndicator.label}
-            </Badge>
+            </StatusBadge>
           </div>
         )}
         {hasOtherDetails && (

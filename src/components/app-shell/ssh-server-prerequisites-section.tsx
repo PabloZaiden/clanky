@@ -1,5 +1,5 @@
 import type { BadgeVariant } from "../common";
-import { Badge, Button } from "../common";
+import { Button, StatusBadge } from "../common";
 import type { SshServerPrerequisiteReport } from "@/shared";
 import { ErrorState, Panel } from "@pablozaiden/webapp/web";
 
@@ -92,20 +92,20 @@ export function SshServerPrerequisitesSection({
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={getSummaryVariant(report.summary.status)}>
+              <StatusBadge variant={getSummaryVariant(report.summary.status)}>
                 {getSummaryLabel(report.summary.status)}
-              </Badge>
-              <Badge variant="default">
+              </StatusBadge>
+              <StatusBadge variant="default">
                 {report.summary.availableCount} available
-              </Badge>
+              </StatusBadge>
               {report.summary.missingCount > 0 && (
-                <Badge variant="error">{report.summary.missingCount} missing</Badge>
+                <StatusBadge variant="error">{report.summary.missingCount} missing</StatusBadge>
               )}
               {report.summary.unknownCount > 0 && (
-                <Badge variant="warning">{report.summary.unknownCount} unknown</Badge>
+                <StatusBadge variant="warning">{report.summary.unknownCount} unknown</StatusBadge>
               )}
               {report.summary.notApplicableCount > 0 && (
-                <Badge variant="default">{report.summary.notApplicableCount} not applicable</Badge>
+                <StatusBadge variant="default">{report.summary.notApplicableCount} not applicable</StatusBadge>
               )}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -126,7 +126,7 @@ export function SshServerPrerequisitesSection({
                       Used for {check.requiredFor.join(", ")}.
                     </p>
                   </div>
-                  <Badge variant={getCheckVariant(check.status)}>{getCheckLabel(check.status)}</Badge>
+                  <StatusBadge variant={getCheckVariant(check.status)}>{getCheckLabel(check.status)}</StatusBadge>
                 </div>
                 <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">{check.details}</p>
                 {check.installHint && (
