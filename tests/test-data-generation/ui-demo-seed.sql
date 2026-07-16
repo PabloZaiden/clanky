@@ -275,8 +275,7 @@ INSERT INTO agents (
   last_error_message,
   last_error_timestamp,
   last_error_code,
-  active_run_id,
-  is_private
+  active_run_id
 ) VALUES (
   'demo-agent-billing-review',
   'Billing risk review',
@@ -304,8 +303,7 @@ INSERT INTO agents (
   NULL,
   NULL,
   NULL,
-  NULL,
-  0
+  NULL
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -333,8 +331,7 @@ ON CONFLICT(id) DO UPDATE SET
   last_error_message = excluded.last_error_message,
   last_error_timestamp = excluded.last_error_timestamp,
   last_error_code = excluded.last_error_code,
-  active_run_id = excluded.active_run_id,
-  is_private = excluded.is_private;
+  active_run_id = excluded.active_run_id;
 
 INSERT INTO agents (
   id,
@@ -363,8 +360,7 @@ INSERT INTO agents (
   last_error_message,
   last_error_timestamp,
   last_error_code,
-  active_run_id,
-  is_private
+  active_run_id
 ) VALUES (
   'demo-agent-storefront-a11y',
   'Storefront accessibility sweep',
@@ -392,8 +388,7 @@ INSERT INTO agents (
   NULL,
   NULL,
   NULL,
-  NULL,
-  0
+  NULL
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -421,8 +416,7 @@ ON CONFLICT(id) DO UPDATE SET
   last_error_message = excluded.last_error_message,
   last_error_timestamp = excluded.last_error_timestamp,
   last_error_code = excluded.last_error_code,
-  active_run_id = excluded.active_run_id,
-  is_private = excluded.is_private;
+  active_run_id = excluded.active_run_id;
 
 INSERT INTO agents (
   id,
@@ -451,8 +445,7 @@ INSERT INTO agents (
   last_error_message,
   last_error_timestamp,
   last_error_code,
-  active_run_id,
-  is_private
+  active_run_id
 ) VALUES (
   'demo-agent-release-notes',
   'Release notes watcher',
@@ -480,8 +473,7 @@ INSERT INTO agents (
   NULL,
   NULL,
   NULL,
-  NULL,
-  0
+  NULL
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -509,8 +501,7 @@ ON CONFLICT(id) DO UPDATE SET
   last_error_message = excluded.last_error_message,
   last_error_timestamp = excluded.last_error_timestamp,
   last_error_code = excluded.last_error_code,
-  active_run_id = excluded.active_run_id,
-  is_private = excluded.is_private;
+  active_run_id = excluded.active_run_id;
 
 INSERT INTO ssh_sessions (
   id,
