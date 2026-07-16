@@ -1,51 +1,11 @@
-/**
- * Badge component for displaying status or labels.
- */
+import type { AgentStatus, ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
+import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
-import type { HTMLAttributes } from "react";
-import { Badge as FrameworkBadge } from "@pablozaiden/webapp/web";
-import type { ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
-
-export type BadgeVariant = import("@pablozaiden/webapp/web").BadgeVariant;
-
-export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  /** Visual variant */
-  variant?: BadgeVariant;
-  /** Size */
-  size?: "sm" | "md";
-  /** Badge text */
-  children: React.ReactNode;
-}
-
-export function Badge({
-  variant,
-  size,
-  children,
-  className = "",
-  ...props
-}: BadgeProps) {
-  return (
-    <FrameworkBadge
-      data-badge-variant={variant}
-      variant={variant}
-      size={size}
-      className={className}
-      {...props}
-    >
-      {children}
-    </FrameworkBadge>
-  );
-}
-
-/**
- * Get the badge variant for a task status.
- */
 export function getStatusBadgeVariant(status: string): BadgeVariant {
   switch (status) {
     case "idle":
       return "idle";
     case "planning":
-      return "planning";
     case "starting":
     case "running":
     case "waiting":
@@ -84,6 +44,28 @@ export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
     case "idle":
     default:
       return "success";
+  }
+}
+
+export function getAgentStatusBadgeVariant(status: AgentStatus | string): BadgeVariant {
+  switch (status) {
+    case "enabled":
+    case "completed":
+      return "success";
+    case "running":
+    case "starting":
+    case "scheduled":
+      return "info";
+    case "failed":
+    case "error":
+      return "error";
+    case "paused":
+    case "skipped":
+    case "interrupted":
+    case "cancelled":
+      return "warning";
+    default:
+      return "default";
   }
 }
 
@@ -132,5 +114,3 @@ export function getProvisioningStatusLabel(status: ProvisioningJobStatus): strin
     case "cancelled": return "Cancelled";
   }
 }
-
-export default Badge;

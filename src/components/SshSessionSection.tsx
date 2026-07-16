@@ -4,7 +4,7 @@
 
 import type { SshSession, Workspace } from "@/shared";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
+import { Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshSessionSectionProps {
   sessions: SshSession[];
@@ -64,7 +64,7 @@ export function SshSessionSection({
                       </h3>
                       {workspaceMissing && (
                         <div className="mt-1">
-                          <Badge variant="warning" size="sm">Workspace missing</Badge>
+                          <StatusBadge variant="warning" size="sm">Workspace missing</StatusBadge>
                         </div>
                       )}
                       <p className="mt-1 break-words text-xs font-mono text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">

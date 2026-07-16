@@ -8,7 +8,7 @@ import { ProvisioningJobView } from "../ProvisioningJobView";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import type { AgentProvider } from "@/shared/settings";
-import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Button, PASSWORD_INPUT_PROPS, StatusBadge } from "../common";
 import {
   ErrorState,
   FormGroup,
@@ -167,9 +167,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const headerActions = useMemo(() => (
     <>
       {provisioningStatus ? (
-        <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
           {provisioningStatus}
-        </Badge>
+        </StatusBadge>
       ) : null}
       {provisioning.activeJobId ? (
         <>

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Button, Badge } from "../common";
+import { Button, StatusBadge } from "../common";
 import { useAgentsMdOptimizer } from "../../hooks/useAgentsMdOptimizer";
 import type { Workspace } from "@/shared/workspace";
 import { LoadingSpinner, DocumentIcon, OptimizeIcon } from "./icons";
@@ -49,7 +49,7 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
           AGENTS.md Optimization
         </h3>
         {optimizerStatus?.analysis.isOptimized && (
-          <Badge variant="success" size="sm">Optimized</Badge>
+          <StatusBadge variant="success" size="sm">Optimized</StatusBadge>
         )}
       </div>
       {optimizerLoading && !optimizerStatus && (

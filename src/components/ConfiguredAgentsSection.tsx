@@ -1,6 +1,6 @@
 import type { Agent } from "@/shared";
 import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
-import { Badge, type BadgeVariant } from "./common";
+import { getAgentStatusBadgeVariant, StatusBadge } from "./common";
 import { getPrivateContainerClassName } from "../lib/private-items";
 
 const MAX_CONFIGURED_AGENT_PROMPT_WORDS = 20;
@@ -23,24 +23,12 @@ function formatDate(value?: string): string {
   }).format(new Date(value));
 }
 
-function statusVariant(status: string): BadgeVariant {
-  if (status === "enabled" || status === "completed") {
-    return "success";
-  }
-  if (status === "running" || status === "starting" || status === "scheduled") {
-    return "info";
-  }
-  if (status === "failed" || status === "error") {
-    return "error";
-  }
-  if (status === "paused" || status === "skipped" || status === "interrupted") {
-    return "warning";
-  }
-  return "default";
-}
-
 function AgentStatusPill({ status }: { status: string }) {
-  return <Badge variant={statusVariant(status)} size="md" className="font-medium">{status}</Badge>;
+  return (
+    <StatusBadge variant={getAgentStatusBadgeVariant(status)} size="md">
+      {status}
+    </StatusBadge>
+  );
 }
 
 function getScheduleText(agent: Agent): string {
