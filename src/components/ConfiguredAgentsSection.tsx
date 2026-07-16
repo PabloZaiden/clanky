@@ -3,6 +3,16 @@ import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pabloza
 import { Badge, type BadgeVariant } from "./common";
 import { getPrivateContainerClassName } from "../lib/private-items";
 
+const MAX_CONFIGURED_AGENT_PROMPT_WORDS = 20;
+
+function summarizeAgentPrompt(prompt: string): string {
+  const words = prompt.trim().split(/\s+/, MAX_CONFIGURED_AGENT_PROMPT_WORDS + 1);
+  if (words.length <= MAX_CONFIGURED_AGENT_PROMPT_WORDS) {
+    return words.join(" ");
+  }
+  return `${words.slice(0, MAX_CONFIGURED_AGENT_PROMPT_WORDS).join(" ")}…`;
+}
+
 function formatDate(value?: string): string {
   if (!value) {
     return "Not scheduled";
@@ -81,7 +91,7 @@ export function ConfiguredAgentsSection({
               <DataListRow
                 key={agent.config.id}
                 title={agent.config.name}
-                description={agent.config.prompt}
+                description={summarizeAgentPrompt(agent.config.prompt)}
                 descriptionClassName="line-clamp-2"
                 meta={`${workspaceName ? `${workspaceName} · ` : ""}Next run: ${formatDate(agent.state.nextRunAt)} · ${getScheduleText(agent)}`}
                 metaPlacement="below"
