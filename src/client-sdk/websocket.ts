@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import {
-  getAuthorizedHeaders,
+  getAuthContextHeaders,
   getCliRequestAuthContext,
   type CliRequestAuthContext,
   type StatusCommandOptions,
@@ -218,9 +218,7 @@ export async function connectWsCommand(
   }
 
   const url = buildWebSocketUrl(authContext.baseUrl, command);
-  const headers = authContext.kind === "bearer"
-    ? getAuthorizedHeaders(authContext.credentials)
-    : new Headers();
+  const headers = getAuthContextHeaders(authContext);
   headers.set("origin", new URL(authContext.baseUrl).origin);
 
   const createSocket = dependencies.createSocket ?? createDefaultSocket;

@@ -4,7 +4,9 @@ import {
   normalizeBaseUrl,
   parseStoredDeviceCredentials,
   refreshDeviceCredentials,
+  resolveEnvironmentApiKeyAuth,
   runDeviceAuthCommand,
+  type CliEnvironment,
   type JsonFileStore,
   type StoredDeviceCredentials,
 } from "@pablozaiden/webapp/cli";
@@ -50,6 +52,11 @@ export type CliRequestAuthContext =
     baseUrl: string;
   }
   | {
+    kind: "environment";
+    apiKey: string;
+    baseUrl: string;
+  }
+  | {
     kind: "anonymous-local";
     baseUrl: string;
   };
@@ -65,6 +72,7 @@ export interface CliStatusDependencies {
   fetchFn: typeof fetch;
   out: (message: string) => void;
   now: () => Date;
+  environment?: CliEnvironment;
 }
 
 export interface CliCredentialsStore extends JsonFileStore<FrameworkCredentials> {
@@ -176,6 +184,21 @@ export function getAuthorizedHeaders(
   return authorizedHeaders;
 }
 
+export function getAuthContextHeaders(
+  authContext: CliRequestAuthContext,
+  headers?: HeadersInit,
+): Headers {
+  if (authContext.kind === "bearer") {
+    return getAuthorizedHeaders(authContext.credentials, headers);
+  }
+
+  const authorizedHeaders = new Headers(headers);
+  if (authContext.kind === "environment") {
+    authorizedHeaders.set("authorization", `Bearer ${authContext.apiKey}`);
+  }
+  return authorizedHeaders;
+}
+
 function withRequestHeaders(
   fetchFn: typeof fetch,
   cookies?: string,
@@ -270,6 +293,21 @@ export async function refreshStoredCredentials(
     : null;
 }
 
+async function validateStoredCredentials(
+  storedCredentials: StoredCliCredentials,
+  command: StatusCommandOptions,
+  dependencies: {
+    fetchFn: typeof fetch;
+    now: () => Date;
+  },
+): Promise<StoredCliCredentials | null> {
+  if (!command.baseUrl && new Date(storedCredentials.accessTokenExpiresAt).getTime() > dependencies.now().getTime()) {
+    return storedCredentials;
+  }
+
+  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl);
+}
+
 export async function getValidatedCredentials(
   command: StatusCommandOptions,
   dependencies: {
@@ -282,11 +320,7 @@ export async function getValidatedCredentials(
     return null;
   }
 
-  if (!command.baseUrl && new Date(storedCredentials.accessTokenExpiresAt).getTime() > dependencies.now().getTime()) {
-    return storedCredentials;
-  }
-
-  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl);
+  return await validateStoredCredentials(storedCredentials, command, dependencies);
 }
 
 async function probeAnonymousLocalAuthStatus(
@@ -311,20 +345,55 @@ async function probeAnonymousLocalAuthStatus(
   return parsed.success && parsed.data.authKind === "anonymous";
 }
 
+type CliCredentialAuthContext = Exclude<CliRequestAuthContext, { kind: "anonymous-local" }>;
+
+async function getCliCredentialAuthContext(
+  command: StatusCommandOptions,
+  dependencies: {
+    fetchFn: typeof fetch;
+    now: () => Date;
+    environment?: CliEnvironment;
+  },
+): Promise<CliCredentialAuthContext | null> {
+  const storedCredentials = await loadStoredCliCredentials();
+  if (storedCredentials) {
+    const credentials = await validateStoredCredentials(storedCredentials, command, dependencies);
+    return credentials
+      ? {
+        kind: "bearer",
+        credentials,
+        baseUrl: credentials.baseUrl,
+      }
+      : null;
+  }
+
+  const environmentAuth = resolveEnvironmentApiKeyAuth({
+    envPrefix: "CLANKY",
+    explicitBaseUrl: command.baseUrl,
+    environment: dependencies.environment,
+  });
+  if (!environmentAuth) {
+    return null;
+  }
+
+  return {
+    kind: "environment",
+    apiKey: environmentAuth.apiKey,
+    baseUrl: environmentAuth.baseUrl,
+  };
+}
+
 export async function getCliRequestAuthContext(
   command: StatusCommandOptions,
   dependencies: {
     fetchFn: typeof fetch;
     now: () => Date;
+    environment?: CliEnvironment;
   },
 ): Promise<CliRequestAuthContext | null> {
-  const credentials = await getValidatedCredentials(command, dependencies);
-  if (credentials) {
-    return {
-      kind: "bearer",
-      credentials,
-      baseUrl: credentials.baseUrl,
-    };
+  const credentialContext = await getCliCredentialAuthContext(command, dependencies);
+  if (credentialContext) {
+    return credentialContext;
   }
 
   const baseUrl = command.baseUrl ?? DEFAULT_LOCAL_BASE_URL;
@@ -339,18 +408,18 @@ export async function getCliRequestAuthContext(
 }
 
 async function probeAuthStatus(
-  credentials: StoredCliCredentials,
+  authContext: CliCredentialAuthContext,
   dependencies: {
     fetchFn: typeof fetch;
   },
 ): Promise<{ response: Response; body: unknown }> {
   return await requestJson(
     dependencies.fetchFn,
-    `${credentials.baseUrl}/api/auth/status`,
+    `${authContext.baseUrl}/api/auth/status`,
     {
-      headers: getAuthorizedHeaders(credentials),
+      headers: getAuthContextHeaders(authContext),
     },
-    credentials.cookies,
+    authContext.kind === "bearer" ? authContext.credentials.cookies : undefined,
   );
 }
 
@@ -358,21 +427,25 @@ export async function runStatusCommand(
   command: StatusCommandOptions,
   dependencies: CliStatusDependencies,
 ): Promise<number> {
-  let credentials = await getValidatedCredentials(command, dependencies);
-  if (!credentials) {
+  let authContext = await getCliCredentialAuthContext(command, dependencies);
+  if (!authContext) {
     dependencies.out("Not logged in.");
     return 1;
   }
 
-  let probe = await probeAuthStatus(credentials, dependencies);
-  if (probe.response.status === 401) {
-    const refreshedCredentials = await refreshStoredCredentials(credentials, dependencies, command.baseUrl);
+  let probe = await probeAuthStatus(authContext, dependencies);
+  if (probe.response.status === 401 && authContext.kind === "bearer") {
+    const refreshedCredentials = await refreshStoredCredentials(authContext.credentials, dependencies, command.baseUrl);
     if (!refreshedCredentials) {
       dependencies.out("Stored credentials are invalid.");
       return 1;
     }
-    credentials = refreshedCredentials;
-    probe = await probeAuthStatus(credentials, dependencies);
+    authContext = {
+      kind: "bearer",
+      credentials: refreshedCredentials,
+      baseUrl: refreshedCredentials.baseUrl,
+    };
+    probe = await probeAuthStatus(authContext, dependencies);
   }
 
   if (!probe.response.ok) {
@@ -380,8 +453,18 @@ export async function runStatusCommand(
   }
 
   const authStatus = AuthStatusResponseSchema.parse(probe.body);
-  const clientId = authStatus.clientId ?? credentials.clientId;
-  dependencies.out(`Logged in to ${credentials.baseUrl} as ${clientId}.`);
+  if (!authStatus.authenticated) {
+    dependencies.out("Authentication was not accepted.");
+    return 1;
+  }
+
+  if (authContext.kind === "environment") {
+    dependencies.out(`Authenticated via environment variables at ${authContext.baseUrl}.`);
+    return 0;
+  }
+
+  const clientId = authStatus.clientId ?? authContext.credentials.clientId;
+  dependencies.out(`Logged in to ${authContext.baseUrl} as ${clientId}.`);
   return 0;
 }
 

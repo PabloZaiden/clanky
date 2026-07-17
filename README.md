@@ -163,6 +163,7 @@ clanky ws --task-id my-task
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
 - `clanky auth` stores bearer credentials in per-user CLI state under the home directory, `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
+- Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, `clanky api` and `clanky status` use this pair; `clanky status` reports that authentication came from environment variables without printing the key. A positional status base URL can be used with `CLANKY_API_KEY` when the server URL should be overridden.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
