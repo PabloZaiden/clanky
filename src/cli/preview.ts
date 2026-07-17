@@ -1,7 +1,7 @@
 import { hostname, networkInterfaces } from "node:os";
 import { spawn } from "node:child_process";
 import {
-  getAuthorizedHeaders,
+  getAuthContextHeaders,
   getCliRequestAuthContext,
   type CliRequestAuthContext,
   type StatusCommandOptions,
@@ -201,9 +201,7 @@ export async function runPreviewCommand(
   }
 
   const bridgeUrl = buildPreviewBridgeUrl(authContext.baseUrl);
-  const headers = authContext.kind === "bearer"
-    ? getAuthorizedHeaders(authContext.credentials)
-    : new Headers();
+  const headers = getAuthContextHeaders(authContext);
   headers.set("origin", new URL(authContext.baseUrl).origin);
 
   const createSocket = dependencies.createSocket ?? createDefaultSocket;

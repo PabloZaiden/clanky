@@ -15,6 +15,7 @@ export {
 
 export {
   createCliCredentialsStore,
+  getAuthContextHeaders,
   getAuthorizedHeaders,
   getCliRequestAuthContext,
   getTokenErrorMessage,
