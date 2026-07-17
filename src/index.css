@@ -134,6 +134,26 @@
   cursor: default;
 }
 
+/* Stack the purge danger zone before its fixed-width action can overflow on mobile. */
+:root[data-wapp-mobile] .wapp-danger-zone:has(.clanky-purge-terminal-tasks-action) {
+  display: block;
+}
+
+:root[data-wapp-mobile] .wapp-danger-zone:has(.clanky-purge-terminal-tasks-action) .wapp-danger-zone-actions {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+:root[data-wapp-mobile] .clanky-purge-terminal-tasks-action {
+  width: 100%;
+  min-width: 0;
+}
+
+:root[data-wapp-mobile] .clanky-purge-terminal-tasks-action > .clanky-purge-terminal-tasks-button {
+  width: 100%;
+  max-width: 100%;
+}
+
 .tool-json-highlight .hljs {
   color: inherit;
 }
