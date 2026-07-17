@@ -35,11 +35,12 @@ export function PurgeTerminalTasksAction({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="clanky-purge-terminal-tasks-action space-y-2">
       <Button
         type="button"
         variant="danger"
         size="sm"
+        className="clanky-purge-terminal-tasks-button"
         onClick={() => {
           setPurgeResult(null);
           setPurgeError(false);
