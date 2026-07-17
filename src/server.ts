@@ -20,6 +20,7 @@ import { log, setLogLevel } from "./core/logger";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
 import { getAppConfig } from "./core/config";
+import { managedCredentialService } from "./core/managed-credential-service";
 import {
   agentEventEmitter,
   chatEventEmitter,
@@ -182,12 +183,14 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       };
     },
   });
+  managedCredentialService.configure(app.store, app.config);
   registerClankyRealtimeBridge(app);
   return app;
 }
 
 export function resetWebAppServerForTests(): void {
   unregisterClankyRealtimeBridge();
+  managedCredentialService.resetForTests();
   app = undefined;
 }
 
@@ -197,11 +200,16 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   await backendManager.initialize();
 
   let staleTasksReset = 0;
+  let staleManagedContextsRevoked = 0;
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
+    staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
+  }
+  if (staleManagedContextsRevoked > 0) {
+    log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
   }
 
   const server = await appServer.start();

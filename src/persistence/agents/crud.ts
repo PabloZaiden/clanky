@@ -106,6 +106,19 @@ export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
   return row ? rowToAgentRun(row) : null;
 }
 
+export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | null> {
+  const userId = requirePersistenceUserId();
+  const row = getDatabase()
+    .prepare(`
+      SELECT * FROM agent_runs
+      WHERE chat_id = ? AND user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `)
+    .get(chatId, userId) as Record<string, unknown> | null;
+  return row ? rowToAgentRun(row) : null;
+}
+
 export async function listAgentRuns(
   agentId: string,
   options: AgentRunListOptions = {},

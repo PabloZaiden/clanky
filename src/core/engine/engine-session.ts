@@ -9,6 +9,9 @@ import { AcpBackend, getAcpErrorMessage, isAcpErrorCode } from "../../backends/a
 import { backendManager, buildConnectionConfig } from "../backend-manager";
 import { log } from "../logger";
 import type { TaskBackend, IterationContext } from "./engine-types";
+import { managedContextIdentityResolver } from "../managed-context-identity";
+import { managedCredentialService } from "../managed-credential-service";
+import { buildManagedContextEnvironment } from "../managed-context-environment";
 
 export interface SessionOperationContext {
   backend: TaskBackend;
@@ -34,6 +37,15 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
   const isConnected = ctx.backend.isConnected();
   log.debug("[TaskEngine] setupSession: Backend connected?", { isConnected });
   if (!isConnected) {
+    const identity = await managedContextIdentityResolver.forTask(
+      ctx.config.id,
+      ctx.config.workspaceId,
+    );
+    const credential = await managedCredentialService.ensureCredentialForRuntime(
+      identity,
+      ctx.state.session?.id ? "recreate" : "reuse",
+    );
+    const runtimeEnvironment = buildManagedContextEnvironment(credential);
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
       transport: settings.agent.transport,
@@ -41,7 +53,11 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
       port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
     });
     log.debug("[TaskEngine] setupSession: About to call backend.connect");
-    await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory));
+    try {
+      await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory, runtimeEnvironment));
+    } catch (error) {
+      await managedCredentialService.cleanupFailedLaunch(credential, error);
+    }
     log.debug("[TaskEngine] setupSession: backend.connect completed");
     ctx.emitLog("info", "Backend connection established");
   } else {
@@ -112,13 +128,23 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
     const isConnected = ctx.backend.isConnected();
 
     if (!isConnected) {
+      const identity = await managedContextIdentityResolver.forTask(
+        ctx.config.id,
+        ctx.config.workspaceId,
+      );
+      const credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
+      const runtimeEnvironment = buildManagedContextEnvironment(credential);
       ctx.emitLog("info", "Reconnecting to backend...", {
         provider: settings.agent.provider,
         transport: settings.agent.transport,
         hostname: settings.agent.transport === "ssh" ? settings.agent.hostname : undefined,
         port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
       });
-      await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory));
+      try {
+        await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory, runtimeEnvironment));
+      } catch (error) {
+        await managedCredentialService.cleanupFailedLaunch(credential, error);
+      }
       ctx.emitLog("info", "Backend connection re-established");
     }
 

@@ -3,6 +3,7 @@
  */
 
 import { buildShellBootstrapCommand } from "./ssh-shell-bootstrap";
+import { buildManagedContextShellBootstrap } from "./managed-context-environment";
 
 const DTACH_INSTALL_HINT = [
   "dtach is not available on the remote host.",
@@ -11,6 +12,8 @@ const DTACH_INSTALL_HINT = [
   "(for example: sudo apt install dtach, sudo dnf install dtach, or sudo pacman -S dtach)",
   "or on macOS with brew install dtach.",
 ].join(" ");
+
+export const PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE = 42;
 
 export interface PersistentSshSessionConfigLike {
   id: string;
@@ -25,6 +28,10 @@ function quoteShell(value: string): string {
 
 function buildPersistentSessionSocketPath(remoteSessionName: string): string {
   return `/tmp/${remoteSessionName}.dtach.sock`;
+}
+
+function buildPersistentSessionLockPath(remoteSessionName: string): string {
+  return `/tmp/${remoteSessionName}.dtach.lock`;
 }
 
 function buildPersistentSessionClientTtyFilePath(sessionId: string): string {
@@ -43,16 +50,21 @@ function buildPersistentSessionMasterPidFilePath(sessionId: string): string {
   return `/tmp/clanky-terminal-${sessionId}.master.pid`;
 }
 
-function buildPersistentSessionShellCommand(session: { config: PersistentSshSessionConfigLike }): string {
+function buildPersistentSessionShellCommand(
+  session: { config: PersistentSshSessionConfigLike },
+): string {
   const sessionTtyFile = quoteShell(buildPersistentSessionTtyFilePath(session.config.id));
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
   const sessionMasterPidFile = quoteShell(buildPersistentSessionMasterPidFilePath(session.config.id));
   const sessionSocket = quoteShell(buildPersistentSessionSocketPath(session.config.remoteSessionName));
+  const sessionLock = quoteShell(buildPersistentSessionLockPath(session.config.remoteSessionName));
   return [
     `session_tty_file=${sessionTtyFile}`,
     `session_pid_file=${sessionPidFile}`,
     `session_master_pid_file=${sessionMasterPidFile}`,
     `session_socket=${sessionSocket}`,
+    `session_lock_dir=${sessionLock}`,
+    "session_lock_held=0",
     "session_tty_path=$(tty);",
     "if [ -z \"$session_tty_path\" ] || [ \"$session_tty_path\" = \"not a tty\" ]; then",
     "echo 'Failed to determine persistent session tty.' >&2;",
@@ -69,14 +81,20 @@ function buildPersistentSessionShellCommand(session: { config: PersistentSshSess
   ].filter((part) => part.length > 0).join(" ");
 }
 
-export function buildPersistentSessionAttachCommand(session: { config: PersistentSshSessionConfigLike }): string {
+export function buildPersistentSessionAttachCommand(
+  session: { config: PersistentSshSessionConfigLike },
+  runtimeEnvironment?: Record<string, string>,
+  options?: { allowCreate?: boolean },
+): string {
   const clientTtyFile = quoteShell(buildPersistentSessionClientTtyFilePath(session.config.id));
   const sessionTtyFile = quoteShell(buildPersistentSessionTtyFilePath(session.config.id));
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
   const sessionMasterPidFile = quoteShell(buildPersistentSessionMasterPidFilePath(session.config.id));
   const sessionSocket = quoteShell(buildPersistentSessionSocketPath(session.config.remoteSessionName));
+  const sessionLock = quoteShell(buildPersistentSessionLockPath(session.config.remoteSessionName));
   const sessionShellCommand = quoteShell(buildPersistentSessionShellCommand(session));
-  return [
+  const allowCreate = options?.allowCreate ?? true;
+  const command = [
     "if ! command -v dtach >/dev/null 2>&1; then",
     "echo 'dtach is not installed on the remote host.' >&2;",
     "exit 127;",
@@ -86,6 +104,7 @@ export function buildPersistentSessionAttachCommand(session: { config: Persisten
     `session_pid_file=${sessionPidFile}`,
     `session_master_pid_file=${sessionMasterPidFile}`,
     `session_socket=${sessionSocket}`,
+    `session_lock_dir=${sessionLock}`,
     "is_live_pid_file() {",
     "pid_file=$1",
     "if [ ! -r \"$pid_file\" ]; then",
@@ -128,30 +147,78 @@ export function buildPersistentSessionAttachCommand(session: { config: Persisten
     "printf '%s\\n' \"$client_tty_path\" > \"$client_tty_file\";",
     "cleanup_client_tty() { rm -f \"$client_tty_file\"; };",
     "trap cleanup_client_tty EXIT HUP INT TERM;",
-    "if [ -S \"$session_socket\" ] && ! is_live_pid_file \"$session_master_pid_file\"; then",
-    "rm -f \"$session_socket\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
-    "fi;",
-    "if [ -S \"$session_socket\" ] && ! is_live_pid_file \"$session_pid_file\"; then",
-    "rm -f \"$session_socket\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
-    "fi;",
-    "if [ ! -S \"$session_socket\" ]; then",
-    "terminate_stale_session \"$session_master_pid_file\" \"$session_pid_file\"",
-    "rm -f \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
-    `dtach -N "$session_socket" -Ez bash -lc ${sessionShellCommand} &`,
-    "session_master_pid=$!;",
-    "printf '%s\\n' \"$session_master_pid\" > \"$session_master_pid_file\";",
-    "fi;",
-    "wait_attempt=0",
-    "while [ ! -S \"$session_socket\" ] && [ \"$wait_attempt\" -lt 50 ]; do",
-    "sleep 0.1",
-    "wait_attempt=$((wait_attempt + 1))",
-    "done",
+    ...(allowCreate
+      ? [
+        "acquire_session_lock() {",
+        "lock_attempt=0",
+        "while ! mkdir \"$session_lock_dir\" 2>/dev/null; do",
+        "lock_pid=$(cat \"$session_lock_dir/pid\" 2>/dev/null || true)",
+        "if [ -n \"$lock_pid\" ] && ! kill -0 \"$lock_pid\" 2>/dev/null; then",
+        "rm -rf \"$session_lock_dir\";",
+        "continue;",
+        "fi;",
+        "if [ \"$lock_attempt\" -ge 50 ]; then",
+        "echo 'Timed out waiting for persistent SSH session lock.' >&2;",
+        "return 1;",
+        "fi;",
+        "sleep 0.1;",
+        "lock_attempt=$((lock_attempt + 1));",
+        "done",
+        "printf '%s\\n' \"$$\" > \"$session_lock_dir/pid\";",
+        "session_lock_held=1;",
+        "}",
+        "release_session_lock() {",
+        "if [ \"$session_lock_held\" = \"1\" ]; then",
+        "rm -rf \"$session_lock_dir\";",
+        "session_lock_held=0;",
+        "fi;",
+        "}",
+        "cleanup_client_tty() { rm -f \"$client_tty_file\"; release_session_lock; };",
+        "trap cleanup_client_tty EXIT HUP INT TERM;",
+        "if ! acquire_session_lock; then exit 1; fi;",
+        "if [ -S \"$session_socket\" ] && ! is_live_pid_file \"$session_master_pid_file\"; then",
+        "rm -f \"$session_socket\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
+        "fi;",
+        "if [ -S \"$session_socket\" ] && ! is_live_pid_file \"$session_pid_file\"; then",
+        "rm -f \"$session_socket\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
+        "fi;",
+        "if [ ! -S \"$session_socket\" ]; then",
+        "terminate_stale_session \"$session_master_pid_file\" \"$session_pid_file\"",
+        "rm -f \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\";",
+        `dtach -N "$session_socket" -Ez bash -lc ${sessionShellCommand} &`,
+        "session_master_pid=$!;",
+        "printf '%s\\n' \"$session_master_pid\" > \"$session_master_pid_file\";",
+        "wait_attempt=0",
+        "while [ ! -S \"$session_socket\" ] && [ \"$wait_attempt\" -lt 50 ]; do",
+        "sleep 0.1;",
+        "wait_attempt=$((wait_attempt + 1));",
+        "done;",
+        "if [ ! -S \"$session_socket\" ]; then",
+        "echo 'Persistent SSH session socket was not created.' >&2;",
+        "exit 1;",
+        "fi;",
+        "release_session_lock;",
+        "fi;",
+      ]
+      : [
+        "if [ ! -S \"$session_socket\" ] || [ ! -r \"$session_tty_file\" ] || ! is_live_pid_file \"$session_pid_file\" || ! is_live_pid_file \"$session_master_pid_file\"; then",
+        "echo 'Persistent SSH session is no longer available for attach.' >&2;",
+        `exit ${String(PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE)};`,
+        "fi;",
+      ]),
     "if [ ! -S \"$session_socket\" ]; then",
     "echo 'Persistent SSH session socket was not created.' >&2;",
     "exit 1;",
     "fi;",
-    "dtach -a \"$session_socket\" -E -z -r winch",
+    ...(allowCreate
+      ? [
+        "dtach -a \"$session_socket\" -E -z -r winch",
+      ]
+      : [
+        `if ! dtach -a "$session_socket" -E -z -r winch; then exit ${String(PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE)}; fi;`,
+      ]),
   ].join("\n");
+  return buildManagedContextShellBootstrap(runtimeEnvironment, command);
 }
 
 export function buildPersistentSessionReadyCommand(session: {
@@ -161,11 +228,13 @@ export function buildPersistentSessionReadyCommand(session: {
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
   const sessionMasterPidFile = quoteShell(buildPersistentSessionMasterPidFilePath(session.config.id));
   const sessionSocket = quoteShell(buildPersistentSessionSocketPath(session.config.remoteSessionName));
+  const sessionLock = quoteShell(buildPersistentSessionLockPath(session.config.remoteSessionName));
   return [
     `session_tty_file=${sessionTtyFile}`,
     `session_pid_file=${sessionPidFile}`,
     `session_master_pid_file=${sessionMasterPidFile}`,
     `session_socket=${sessionSocket}`,
+    `session_lock_dir=${sessionLock}`,
     "require_live_pid_file() {",
     "pid_file=$1",
     "if [ ! -r \"$pid_file\" ]; then",
@@ -267,7 +336,7 @@ export function buildPersistentSessionDeleteCommand(session: {
     "if [ -n \"$master_pid\" ] && kill -0 \"$master_pid\" 2>/dev/null; then",
     "kill -9 \"$master_pid\" 2>/dev/null || true",
     "fi",
-    "rm -f \"$client_tty_file\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\" \"$session_socket\"",
+    "rm -f \"$client_tty_file\" \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\" \"$session_socket\"; rm -rf \"$session_lock_dir\"",
   ].join("\n");
 }
 

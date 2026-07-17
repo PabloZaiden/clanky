@@ -306,6 +306,27 @@ describe("Workspace API Integration", () => {
       expect(data.directory).toBe(testWorkDir);
       expect(data.createdAt).toBeDefined();
       expect(data.updatedAt).toBeDefined();
+      expect(data.allowClankyContext).toBe(false);
+    });
+
+    test("persists an opted-in Clanky context setting", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Opted-in Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings(),
+          allowClankyContext: true,
+        }),
+      });
+
+      expect(response.ok).toBe(true);
+      const created = await response.json() as { id: string; allowClankyContext?: boolean };
+      expect(created.allowClankyContext).toBe(true);
+
+      const persisted = await getWorkspace(created.id);
+      expect(persisted?.allowClankyContext).toBe(true);
     });
 
     test("fails if name is missing", async () => {
@@ -496,36 +517,53 @@ describe("Workspace API Integration", () => {
         }),
       });
       expect(createResponse.ok).toBe(true);
-      const workspace = await createResponse.json() as { id: string; archived?: boolean };
+      const workspace = await createResponse.json() as {
+        id: string;
+        archived?: boolean;
+        allowClankyContext?: boolean;
+      };
       expect(workspace.archived).toBe(false);
+      expect(workspace.allowClankyContext).toBe(false);
 
       const archiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           archived: true,
+          allowClankyContext: true,
         }),
       });
       expect(archiveResponse.ok).toBe(true);
-      const archivedWorkspace = await archiveResponse.json() as { archived?: boolean };
+      const archivedWorkspace = await archiveResponse.json() as {
+        archived?: boolean;
+        allowClankyContext?: boolean;
+      };
       expect(archivedWorkspace.archived).toBe(true);
+      expect(archivedWorkspace.allowClankyContext).toBe(true);
 
       const persistedArchivedWorkspace = await getWorkspace(workspace.id);
       expect(persistedArchivedWorkspace?.archived).toBe(true);
+      expect(persistedArchivedWorkspace?.allowClankyContext).toBe(true);
 
       const unarchiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           archived: false,
+          allowClankyContext: false,
         }),
       });
       expect(unarchiveResponse.ok).toBe(true);
-      const unarchivedWorkspace = await unarchiveResponse.json() as { archived?: boolean };
+      const unarchivedWorkspace = await unarchiveResponse.json() as {
+        archived?: boolean;
+        allowClankyContext?: boolean;
+      };
       expect(unarchivedWorkspace.archived).toBe(false);
+      expect(unarchivedWorkspace.allowClankyContext).toBe(false);
 
       const persistedUnarchivedWorkspace = await getWorkspace(workspace.id);
       expect(persistedUnarchivedWorkspace?.archived).toBe(false);
+      expect(persistedUnarchivedWorkspace?.allowClankyContext).toBe(false);
     });
 
     test("redacts workspace secrets by default and includes them with sensitive=true", async () => {

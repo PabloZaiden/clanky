@@ -68,8 +68,8 @@ export function WorkspaceSettingsView({
           <WorkspaceSettingsForm
             workspace={workspaceFromHook}
             status={workspaceStatus}
-            onSave={async (name, settings, archived) => {
-              const success = await updateWorkspaceSettings(name, settings, archived);
+            onSave={async (name, settings, archived, allowClankyContext) => {
+              const success = await updateWorkspaceSettings(name, settings, archived, allowClankyContext);
               if (success) {
                 await refreshWorkspaces();
               }

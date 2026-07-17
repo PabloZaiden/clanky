@@ -18,6 +18,8 @@ import {
 } from "../persistence/agents";
 import { chatManager } from "./chat-manager";
 import { agentRunner } from "./agent-runner";
+import { managedContextIdentityResolver } from "./managed-context-identity";
+import { managedCredentialService } from "./managed-credential-service";
 import { calculateNextRunAt } from "./agent-schedule";
 import { agentEventEmitter } from "./event-emitter";
 
@@ -261,6 +263,11 @@ export class AgentManager {
     if (!run) {
       return false;
     }
+    const identity = await managedContextIdentityResolver.forAgentRun(
+      run.id,
+      run.configSnapshot.workspaceId,
+    );
+    await managedCredentialService.revokeContextIfConfigured(identity);
     await chatManager.deleteChat(run.chatId ?? run.id);
     const deleted = await deleteAgentRun(runId);
     if (deleted) {
@@ -286,6 +293,11 @@ export class AgentManager {
       return run.status !== "starting" && run.status !== "running" && run.status !== "scheduled";
     });
     for (const run of selectedRuns) {
+      const identity = await managedContextIdentityResolver.forAgentRun(
+        run.id,
+        run.configSnapshot.workspaceId,
+      );
+      await managedCredentialService.revokeContextIfConfigured(identity);
       await chatManager.deleteChat(run.chatId ?? run.id);
     }
     const deletedRunIds = await deleteAgentRuns(agentId, {
@@ -309,6 +321,11 @@ export class AgentManager {
       if (run.status === "starting" || run.status === "running" || run.status === "scheduled") {
         await agentRunner.interruptRun(run, "Agent deleted");
       }
+      const identity = await managedContextIdentityResolver.forAgentRun(
+        run.id,
+        run.configSnapshot.workspaceId,
+      );
+      await managedCredentialService.revokeContextIfConfigured(identity);
       await chatManager.deleteChat(run.chatId ?? run.id);
     }
     const deleted = await deleteAgent(agentId);

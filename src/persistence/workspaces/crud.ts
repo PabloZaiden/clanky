@@ -57,7 +57,7 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
  */
 export async function updateWorkspace(
   id: string,
-  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath" | "isPrivate" | "archived">>
+  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext">>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
@@ -66,6 +66,7 @@ export async function updateWorkspace(
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
     hasPrivateUpdate: updates.isPrivate !== undefined,
     hasArchivedUpdate: updates.archived !== undefined,
+    hasClankyContextUpdate: updates.allowClankyContext !== undefined,
   });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
@@ -98,6 +99,11 @@ export async function updateWorkspace(
   if (updates.archived !== undefined) {
     setClauses.push("archived = ?");
     values.push(updates.archived ? 1 : 0);
+  }
+
+  if (updates.allowClankyContext !== undefined) {
+    setClauses.push("allow_clanky_context = ?");
+    values.push(updates.allowClankyContext ? 1 : 0);
   }
 
   if (setClauses.length === 0) {

@@ -94,8 +94,10 @@ describe("database schema", () => {
         expect(columnNames(tableName)).toContain("is_private");
       }
       expect(columnNames("workspaces")).toContain("archived");
+      expect(columnNames("workspaces")).toContain("allow_clanky_context");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
+      expect(tableNames()).toContain("clanky_context_api_keys");
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
@@ -324,6 +326,82 @@ describe("database schema", () => {
       expect(task.mode).toBe("task");
       const columns = db.query("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
       expect(columns.some((column) => column.name === "mode")).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v11 adds the Clanky context toggle idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 11);
+    if (!migration) {
+      throw new Error("Migration v11 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
+      db.run("INSERT INTO workspaces (id) VALUES (?)", ["legacy-workspace"]);
+
+      migration.up(db);
+      migration.up(db);
+
+      const column = (db.query("PRAGMA table_info(workspaces)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>).find((candidate) => candidate.name === "allow_clanky_context");
+      expect(column?.notnull).toBe(1);
+      expect(column?.dflt_value).toBe("0");
+      expect(
+        (db.query("SELECT allow_clanky_context FROM workspaces WHERE id = ?").get("legacy-workspace") as {
+          allow_clanky_context: number;
+        }).allow_clanky_context,
+      ).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v12 creates managed context-key associations idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 12);
+    if (!migration) {
+      throw new Error("Migration v12 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      migration.up(db);
+      migration.up(db);
+
+      const columns = db.query("PRAGMA table_info(clanky_context_api_keys)").all() as Array<{
+        name: string;
+        pk: number;
+      }>;
+      expect(columns.map((column) => column.name)).toEqual([
+        "user_id",
+        "workspace_id",
+        "context_type",
+        "context_id",
+        "api_key_id",
+        "generation",
+        "created_at",
+        "revoked_at",
+      ]);
+      expect(columns.map((column) => column.pk)).toEqual([1, 2, 3, 4, 0, 5, 0, 0]);
+      const insert = db.prepare(`
+        INSERT INTO clanky_context_api_keys (
+          user_id, workspace_id, context_type, context_id, api_key_id,
+          generation, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      insert.run("user-1", "workspace-a", "chat", "context-1", "key-a", 1, "2026-01-01T00:00:00.000Z");
+      insert.run("user-1", "workspace-b", "chat", "context-1", "key-b", 1, "2026-01-01T00:00:00.000Z");
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM clanky_context_api_keys").get() as { count: number }).count,
+      ).toBe(2);
+      const indexes = db.query("PRAGMA index_list(clanky_context_api_keys)").all() as Array<{ name: string }>;
+      expect(indexes.map((index) => index.name)).toEqual(expect.arrayContaining([
+        "idx_clanky_context_api_keys_context",
+        "idx_clanky_context_api_keys_workspace",
+      ]));
     } finally {
       db.close();
     }

@@ -37,6 +37,8 @@ export interface Workspace {
   isPrivate?: boolean;
   /** Whether activity from this workspace should be hidden from active-work surfaces */
   archived?: boolean;
+  /** Whether new execution contexts may receive authenticated Clanky CLI access */
+  allowClankyContext?: boolean;
   /** Directory on the remote host where the repo was cloned (for auto-provisioned workspaces) */
   sourceDirectory?: string;
   /** ID of the SSH server used for provisioning */

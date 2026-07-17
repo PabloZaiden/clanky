@@ -13,6 +13,8 @@ import { GitService } from "../git";
 import { log } from "../logger";
 import { assertValidTransition } from "../task-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
+import { managedContextIdentityResolver } from "../managed-context-identity";
+import { managedCredentialService } from "../managed-credential-service";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 
 async function deleteLinkedTaskChat(taskId: string): Promise<void> {
@@ -23,6 +25,11 @@ async function deleteLinkedTaskChat(taskId: string): Promise<void> {
 async function disconnectTaskEngine(ctx: TaskCtx, taskId: string): Promise<void> {
   ctx.engines.delete(taskId);
   await backendManager.disconnectTask(taskId);
+}
+
+async function revokeTaskContext(taskId: string, workspaceId: string): Promise<void> {
+  const identity = await managedContextIdentityResolver.forTask(taskId, workspaceId);
+  await managedCredentialService.revokeContextIfConfigured(identity);
 }
 
 async function detachTaskFromMissingWorkspace(taskId: string): Promise<void> {
@@ -92,6 +99,7 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
     return false;
   }
   log.debug(`[TaskManager] deleteTask: Loaded task ${taskId}, status: ${task.state.status}, hasGitBranch: ${!!task.state.git?.workingBranch}`);
+  await revokeTaskContext(taskId, task.config.workspaceId);
 
   if (task.state.git?.workingBranch) {
     log.debug(`[TaskManager] deleteTask: Discarding git branch for task ${taskId}`);
@@ -151,6 +159,7 @@ export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<Tas
   }
 
   try {
+    await revokeTaskContext(taskId, task.config.workspaceId);
     await detachTaskFromMissingWorkspace(taskId);
 
     if (!task.config.useWorktree) {
@@ -207,6 +216,16 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
       "invalid_task_state",
       `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.`,
       { details: { taskId, status: task.state.status } },
+    );
+  }
+
+  try {
+    await revokeTaskContext(taskId, task.config.workspaceId);
+  } catch (error) {
+    return taskFailure(
+      "task_operation_failed",
+      "Failed to revoke managed execution credentials during purge",
+      { cause: error, details: { taskId } },
     );
   }
 

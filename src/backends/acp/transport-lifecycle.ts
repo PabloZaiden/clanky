@@ -174,6 +174,12 @@ export class AcpTransportLifecycle {
       }
 
       this.process = process;
+      if (config.startupStdin) {
+        if (!process.stdin || typeof process.stdin === "number") {
+          throw new Error("ACP process stdin is not writable for runtime bootstrap");
+        }
+        process.stdin.write(config.startupStdin);
+      }
       this.startProcessReaders(command);
 
       try {

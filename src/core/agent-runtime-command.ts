@@ -1,6 +1,7 @@
 import type { AgentProvider, AgentTransport } from "@/shared/settings";
 import { getMockAcpCommand } from "../backends/acp/mock-acp-command";
 import { isMockAcpEnabled } from "./config";
+import { mergeRuntimeEnvironment } from "./managed-context-environment";
 import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";
 
 export interface AgentRuntimeCommand {
@@ -191,9 +192,13 @@ export function getProviderAcpCommand(
   return AGENT_PROVIDER_RUNTIMES[provider].getAcpCommand();
 }
 
-export function buildProviderShellInvocation(providerCommand: AgentRuntimeCommand): string {
+export function buildProviderShellInvocation(
+  providerCommand: AgentRuntimeCommand,
+  runtimeEnvironment?: Record<string, string>,
+): string {
+  const environment = mergeRuntimeEnvironment(providerCommand.env, runtimeEnvironment);
   return [
-    ...buildEnvAssignments(providerCommand.env),
+    ...buildEnvAssignments(environment),
     quoteShell(providerCommand.command),
     ...providerCommand.args.map((value) => quoteShell(value)),
   ].join(" ");
@@ -204,14 +209,14 @@ export function buildProviderSpawnEnvironment(
   baseEnv: NodeJS.ProcessEnv = process.env,
   overrides?: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv | undefined {
-  if (!providerCommand.env && !overrides) {
+  const runtimeEnvironment = mergeRuntimeEnvironment(providerCommand.env, overrides);
+  if (!runtimeEnvironment) {
     return undefined;
   }
 
   return {
     ...baseEnv,
-    ...(providerCommand.env ?? {}),
-    ...(overrides ?? {}),
+    ...runtimeEnvironment,
   };
 }
 

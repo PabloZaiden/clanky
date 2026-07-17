@@ -5,6 +5,7 @@ import { sshServerManager } from "./ssh-server-manager";
 import { DomainError } from "./domain-error";
 import { createLogger } from "./logger";
 import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
+import { managedCredentialService } from "./managed-credential-service";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -135,6 +136,7 @@ export async function deleteWorkspaceWithOptions(
       await deleteProvisionedServerDirectory(workspace, options.credentialToken);
     }
 
+    await managedCredentialService.revokeWorkspace(id);
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {
       return { success: true };

@@ -2,6 +2,7 @@
  * Main binary entrypoint for the Clanky CLI.
  */
 
+import "reflect-metadata";
 import { runMain } from "./cli/runtime";
 
 try {

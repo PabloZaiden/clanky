@@ -7,6 +7,7 @@ export {
   deleteAgent,
   saveAgentRun,
   loadAgentRun,
+  loadAgentRunByChatId,
   listAgentRuns,
   listActiveAgentRuns,
   deleteAgentRun,
@@ -14,4 +15,3 @@ export {
   type AgentRunListOptions,
   type AgentRunPurgeOptions,
 } from "./crud";
-
