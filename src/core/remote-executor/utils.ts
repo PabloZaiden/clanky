@@ -22,6 +22,10 @@ export function buildEnvAssignments(env?: Record<string, string>): string[] {
   return assignments;
 }
 
+export function buildExportAssignments(env?: Record<string, string>): string[] {
+  return buildEnvAssignments(env).map((assignment) => `export ${assignment};`);
+}
+
 export async function readProcessStream(
   stream: ReadableStream<Uint8Array> | null | undefined,
   onChunk?: (chunk: string) => void,

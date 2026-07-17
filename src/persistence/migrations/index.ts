@@ -105,8 +105,9 @@ export function tableExists(db: Database, tableName: string): boolean {
 }
 
 /**
- * All migrations in order. Versions 1-4 are historical markers for the clean
- * Clanky reset baseline. Future schema changes append to this list.
+ * All migrations in order. Versions 1-10 are historical markers or upgrades
+ * for the clean Clanky reset baseline. Future schema changes append to this
+ * list.
  */
 export const migrations: Migration[] = [
   { version: 1, name: "add_chat_source_fields", up: () => {} },
@@ -209,6 +210,43 @@ export const migrations: Migration[] = [
     up: (db) => {
       migrateWorkspaceSettings(db);
       migrateTaskModes(db);
+    },
+  },
+  {
+    version: 11,
+    name: "add_workspace_clanky_context",
+    up: (db) => {
+      const columns = getTableColumns(db, "workspaces");
+      if (!columns.includes("allow_clanky_context")) {
+        db.run("ALTER TABLE workspaces ADD COLUMN allow_clanky_context INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
+  {
+    version: 12,
+    name: "add_clanky_context_api_keys",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS clanky_context_api_keys (
+          user_id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          context_type TEXT NOT NULL,
+          context_id TEXT NOT NULL,
+          api_key_id TEXT NOT NULL UNIQUE,
+          generation INTEGER NOT NULL CHECK (generation > 0),
+          created_at TEXT NOT NULL,
+          revoked_at TEXT,
+          PRIMARY KEY (user_id, context_type, context_id, generation)
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_clanky_context_api_keys_context
+        ON clanky_context_api_keys(user_id, workspace_id, context_type, context_id)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_clanky_context_api_keys_workspace
+        ON clanky_context_api_keys(user_id, workspace_id)
+      `);
     },
   },
 ];

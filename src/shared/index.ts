@@ -1,6 +1,7 @@
 export * from "./agent";
 export * from "./chat";
 export * from "./commit-scope";
+export * from "./context-api-key";
 export * from "./events";
 export * from "./task";
 export * from "./message-attachments";

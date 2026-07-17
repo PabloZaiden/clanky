@@ -43,6 +43,8 @@ export interface BackendConnectionConfig {
   args?: string[];
   /** Environment for the spawned ACP runtime */
   env?: NodeJS.ProcessEnv;
+  /** Secret-free process bootstrap data written to the spawned runtime stdin */
+  startupStdin?: string;
   /** Working directory for the backend */
   directory: string;
 }

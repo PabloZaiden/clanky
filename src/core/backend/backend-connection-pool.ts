@@ -9,23 +9,41 @@ import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {
   buildProviderShellInvocation,
+  buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "../agent-runtime-command";
+import {
+  buildManagedContextShellBootstrap,
+  buildManagedContextStdinPayload,
+  withoutManagedContextEnvironment,
+} from "../managed-context-environment";
 
-function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
+function buildAgentRuntimeCommand(
+  settings: ServerSettings,
+  directory: string,
+  runtimeEnvironment?: Record<string, string>,
+): { command: string; args: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
   const provider = settings.agent.provider;
   const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
-  const providerInvocation = buildProviderShellInvocation(providerCommand);
-  const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
 
   if (settings.agent.transport === "stdio") {
-    return providerCommand;
+    return {
+      ...providerCommand,
+      env: buildProviderSpawnEnvironment(providerCommand, process.env, runtimeEnvironment),
+    };
   }
 
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   if (!sshTarget) {
     return providerCommand;
   }
+  const providerInvocation = buildProviderShellInvocation(
+    providerCommand,
+    withoutManagedContextEnvironment(runtimeEnvironment),
+  );
+  const remoteCommand = buildSshRemoteShellCommand(
+    buildManagedContextShellBootstrap(runtimeEnvironment, providerInvocation),
+  );
   const sshProcess = buildSshProcessConfig({
     target: sshTarget,
     remoteCommand,
@@ -36,6 +54,7 @@ function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): 
     command: sshProcess.command,
     args: sshProcess.args,
     env: sshProcess.env,
+    startupStdin: buildManagedContextStdinPayload(runtimeEnvironment),
   };
 }
 
@@ -48,8 +67,12 @@ function buildAgentRuntimeCommand(settings: ServerSettings, directory: string): 
  * @param directory - Working directory for the connection
  * @returns A complete BackendConnectionConfig
  */
-export function buildConnectionConfig(settings: ServerSettings, directory: string): BackendConnectionConfig {
-  const derivedCommand = buildAgentRuntimeCommand(settings, directory);
+export function buildConnectionConfig(
+  settings: ServerSettings,
+  directory: string,
+  runtimeEnvironment?: Record<string, string>,
+): BackendConnectionConfig {
+  const derivedCommand = buildAgentRuntimeCommand(settings, directory, runtimeEnvironment);
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   return {
     mode: "spawn",
@@ -63,6 +86,7 @@ export function buildConnectionConfig(settings: ServerSettings, directory: strin
     command: derivedCommand.command,
     args: derivedCommand.args,
     env: derivedCommand.env,
+    startupStdin: derivedCommand.startupStdin,
     directory,
   };
 }

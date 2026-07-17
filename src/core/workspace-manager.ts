@@ -32,10 +32,11 @@ export interface CreateWorkspaceInput {
   serverSettings?: ServerSettings;
   archived?: boolean;
   isPrivate?: boolean;
+  allowClankyContext?: boolean;
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "serverSettings" | "isPrivate" | "archived">
+  Pick<Workspace, "name" | "serverSettings" | "isPrivate" | "archived" | "allowClankyContext">
 >;
 
 export type WorkspaceDirectoryValidation = Awaited<
@@ -43,7 +44,7 @@ export type WorkspaceDirectoryValidation = Awaited<
 >;
 
 function normalizeCreateInput(input: CreateWorkspaceInput): Required<
-  Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings">
+  Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings" | "allowClankyContext">
 > & Pick<CreateWorkspaceInput, "archived" | "isPrivate"> {
   return {
     name: input.name.trim(),
@@ -51,6 +52,7 @@ function normalizeCreateInput(input: CreateWorkspaceInput): Required<
     serverSettings: input.serverSettings ?? getDefaultServerSettings(),
     archived: input.archived,
     isPrivate: input.isPrivate,
+    allowClankyContext: input.allowClankyContext === true,
   };
 }
 
@@ -82,7 +84,7 @@ function getValidationFailure(
 }
 
 function createWorkspaceRecordFromInput(
-  input: Required<Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings">>
+  input: Required<Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings" | "allowClankyContext">>
     & Pick<CreateWorkspaceInput, "archived" | "isPrivate">,
 ): Workspace {
   const now = new Date().toISOString();
@@ -95,6 +97,7 @@ function createWorkspaceRecordFromInput(
     updatedAt: now,
     ...(input.archived !== undefined ? { archived: input.archived } : { archived: false }),
     ...(input.isPrivate !== undefined ? { isPrivate: input.isPrivate } : {}),
+    allowClankyContext: input.allowClankyContext,
   };
 }
 
@@ -173,8 +176,10 @@ export class WorkspaceManager {
       && updates.isPrivate !== (current.isPrivate === true);
     const archivedChanged = updates.archived !== undefined
       && updates.archived !== (current.archived === true);
+    const allowClankyContextChanged = updates.allowClankyContext !== undefined
+      && updates.allowClankyContext !== (current.allowClankyContext === true);
 
-    if (!nameChanged && !serverSettingsChanged && !privateChanged && !archivedChanged) {
+    if (!nameChanged && !serverSettingsChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged) {
       return current;
     }
 
@@ -190,6 +195,9 @@ export class WorkspaceManager {
     }
     if (archivedChanged) {
       normalizedUpdates.archived = updates.archived;
+    }
+    if (allowClankyContextChanged) {
+      normalizedUpdates.allowClankyContext = updates.allowClankyContext;
     }
 
     const workspace = await updateWorkspaceRecord(id, normalizedUpdates);

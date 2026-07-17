@@ -15,6 +15,10 @@ import {
   getSshConnectionTargetFromWorkspace,
 } from "../ssh-connection-target";
 import { getEffectiveSshConnectionMode } from "../../utils";
+import {
+  buildManagedContextShellBootstrap,
+  buildManagedContextStdinPayload,
+} from "../managed-context-environment";
 
 function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -30,9 +34,12 @@ export function buildDirectTtyFilePath(sessionId: string): string {
   return `/tmp/clanky-terminal-${sessionId}.tty`;
 }
 
-export function buildDirectShellCommand(session: { config: { id: string; directory?: string; useTmux?: boolean } }): string {
+export function buildDirectShellCommand(
+  session: { config: { id: string; directory?: string; useTmux?: boolean } },
+  runtimeEnvironment?: Record<string, string>,
+): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(session.config.id));
-  return [
+  const command = [
     `tty_file=${ttyFile}`,
     "tty_path=$(tty);",
     "if [ -z \"$tty_path\" ] || [ \"$tty_path\" = \"not a tty\" ]; then",
@@ -46,6 +53,7 @@ export function buildDirectShellCommand(session: { config: { id: string; directo
       useTmux: session.config.useTmux,
     }),
   ].filter((part) => part.length > 0).join(" ");
+  return buildManagedContextShellBootstrap(runtimeEnvironment, command);
 }
 
 function buildSessionStartupCommand(
@@ -59,10 +67,14 @@ function buildSessionStartupCommand(
     };
     state?: { runtimeConnectionMode?: SshConnectionMode };
   },
+  runtimeEnvironment?: Record<string, string>,
+  allowPersistentSessionCreate = true,
 ): string {
   return getEffectiveSshConnectionMode(session) === "direct"
-    ? buildDirectShellCommand(session)
-    : buildPersistentSessionAttachCommand(session);
+    ? buildDirectShellCommand(session, runtimeEnvironment)
+    : buildPersistentSessionAttachCommand(session, runtimeEnvironment, {
+      allowCreate: allowPersistentSessionCreate,
+    });
 }
 
 function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
@@ -76,21 +88,32 @@ function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
   };
 }
 
-export function buildSshSpawnConfig(workspace: Workspace, session: SshSession): {
+export function buildSshSpawnConfig(
+  workspace: Workspace,
+  session: SshSession,
+  runtimeEnvironment?: Record<string, string>,
+  allowPersistentSessionCreate = true,
+): {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
+  startupStdin?: string;
 } {
   const target = getSshConnectionTargetFromWorkspace(workspace);
-  const remoteCommand = buildSshRemoteShellCommand(buildSessionStartupCommand(session));
-  return buildSshProcessConfig({
-    target,
-    remoteCommand,
-    connectionScope: workspace.directory,
-    extraArgs: ["-tt"],
-    passwordHandling: "environment",
-    baseEnv: buildSpawnEnv(),
-  });
+  const remoteCommand = buildSshRemoteShellCommand(
+    buildSessionStartupCommand(session, runtimeEnvironment, allowPersistentSessionCreate),
+  );
+  return {
+    ...buildSshProcessConfig({
+      target,
+      remoteCommand,
+      connectionScope: workspace.directory,
+      extraArgs: ["-tt"],
+      passwordHandling: "environment",
+      baseEnv: buildSpawnEnv(),
+    }),
+    startupStdin: buildManagedContextStdinPayload(runtimeEnvironment),
+  };
 }
 
 export function buildStandaloneSshSpawnConfig(target: SshConnectionTarget, session: SshServerSession): {

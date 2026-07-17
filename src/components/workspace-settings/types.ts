@@ -14,7 +14,12 @@ export interface WorkspaceSettingsFormProps {
   /** Current connection status for the workspace */
   status: ConnectionStatus | null;
   /** Callback to save workspace settings */
-  onSave: (name: string, settings: ServerSettings, archived: boolean) => Promise<boolean>;
+  onSave: (
+    name: string,
+    settings: ServerSettings,
+    archived: boolean,
+    allowClankyContext: boolean,
+  ) => Promise<boolean>;
   /** Callback to test connection */
   onTest: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
   /** Callback to purge the workspace tasks covered by the terminal-state settings action */

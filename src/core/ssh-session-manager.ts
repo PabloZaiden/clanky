@@ -23,6 +23,8 @@ import { isPersistentSshSession } from "../utils";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { isUniqueConstraint } from "../persistence/errors";
 import { DomainError } from "./domain-error";
+import { managedContextIdentityResolver } from "./managed-context-identity";
+import { managedCredentialService } from "./managed-credential-service";
 
 const log = createLogger("core:ssh-session-manager");
 
@@ -106,6 +108,11 @@ export class SshSessionManager {
   async deleteSession(id: string): Promise<boolean> {
     const session = await this.requireSession(id);
     await this.deletePersistentSessionBestEffort(session);
+    const identity = await managedContextIdentityResolver.forSshSession(
+      session.config.id,
+      session.config.workspaceId,
+    );
+    await managedCredentialService.revokeContextIfConfigured(identity);
 
     const deleted = await deleteSshSession(id);
     if (deleted) {

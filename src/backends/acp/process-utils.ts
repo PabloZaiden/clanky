@@ -10,16 +10,18 @@ import { isAcpErrorCode } from "./errors";
  * Masks sshpass password values while keeping other args visible.
  */
 export function sanitizeSpawnArgsForLogging(command: string, args: string[]): string[] {
-  if (command !== "sshpass") {
-    return args;
+  const sanitizedArgs = [...args];
+  if (command === "sshpass") {
+    for (let i = 0; i < sanitizedArgs.length - 1; i++) {
+      if (sanitizedArgs[i] === "-p") {
+        sanitizedArgs[i + 1] = "***";
+        break;
+      }
+    }
   }
 
-  const sanitizedArgs = [...args];
-  for (let i = 0; i < sanitizedArgs.length - 1; i++) {
-    if (sanitizedArgs[i] === "-p") {
-      sanitizedArgs[i + 1] = "***";
-      break;
-    }
+  if (sanitizedArgs.some((arg) => arg.includes("CLANKY_API_KEY="))) {
+    return ["[managed runtime command redacted]"];
   }
 
   return sanitizedArgs;

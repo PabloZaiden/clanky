@@ -16,6 +16,8 @@ import { sshServerManager, type SshServerManager } from "./ssh-server-manager";
 import { isUniqueConstraint } from "../persistence/errors";
 import { createLogger } from "./logger";
 import { buildGeneratedChatName } from "./chat-name";
+import { managedContextIdentityResolver } from "./managed-context-identity";
+import { managedCredentialService } from "./managed-credential-service";
 import type {
   ChatConfigUpdates,
   ChatConversationPort,
@@ -396,6 +398,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     const internalSshServerSessionId = chat.config.source?.kind === "ssh_server"
       ? chat.config.source.sshServerSessionId
       : null;
+
+    if (chat.config.scope !== "task" && chat.config.source?.kind !== "ssh_server") {
+      const identity = await managedContextIdentityResolver.forChat(
+        chat.config.id,
+        chat.config.workspaceId,
+      );
+      await managedCredentialService.revokeContextIfConfigured(identity);
+    }
 
     this.conversation.closeActiveStream(chatId);
     await this.session.disconnectChat(chatId);

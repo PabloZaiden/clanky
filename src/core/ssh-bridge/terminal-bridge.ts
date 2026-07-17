@@ -12,6 +12,7 @@ import {
   buildPersistentSessionBackendProbeCommand,
   buildPersistentSessionReadyCommand,
   buildPersistentSessionResizeCommand,
+  PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../ssh-persistent-session";
 import { sshSessionManager } from "../ssh-session-manager";
 import { sshServerManager } from "../ssh-server-manager";
@@ -34,6 +35,9 @@ import {
 } from "./command-builders";
 import { extractClipboardSequences } from "./osc52";
 import { requireCurrentUser, runWithCurrentUser } from "../user-context";
+import { managedContextIdentityResolver } from "../managed-context-identity";
+import { managedCredentialService, type ManagedRuntimeCredential } from "../managed-credential-service";
+import { buildManagedContextEnvironment } from "../managed-context-environment";
 
 const log = createLogger("core:ssh-terminal-bridge");
 
@@ -53,6 +57,8 @@ export class SshTerminalBridge {
   private stdoutBuffer = "";
   private stderrBuffer = "";
   private user: CurrentUser | null = null;
+  private lastProcessExitCode: number | null = null;
+  private suppressNextExitNotification = false;
 
   constructor(
     private readonly sessionId: string,
@@ -87,9 +93,13 @@ export class SshTerminalBridge {
     this.startupError = undefined;
     this.stdoutBuffer = "";
     this.stderrBuffer = "";
+    this.lastProcessExitCode = null;
+    this.suppressNextExitNotification = false;
 
     this.session = await sshSessionManager.getSession(this.sessionId);
+    let managedCredential: ManagedRuntimeCredential | undefined;
     let spawnConfig: { command: string; args: string[]; env: NodeJS.ProcessEnv };
+    let persistentRuntimeAttachOnly = false;
     if (this.connectOptions.sessionKind === "standalone") {
       const connection = await sshServerManager.getTerminalConnection(
         this.sessionId,
@@ -119,13 +129,96 @@ export class SshTerminalBridge {
       this.session = await this.resolveWorkspaceSessionMode(this.session, this.workspace);
       await sshSessionManager.markStatus(this.sessionId, "connecting");
 
-      spawnConfig = buildSshSpawnConfig(this.workspace, this.session);
+      const runtime = await this.getWorkspaceRuntimeEnvironment(this.workspace, this.session);
+      managedCredential = runtime.credential;
+      persistentRuntimeAttachOnly = runtime.persistentRuntimeExists;
+      try {
+        spawnConfig = buildSshSpawnConfig(
+          this.workspace,
+          this.session,
+          runtime.environment,
+          !runtime.persistentRuntimeExists,
+        );
+      } catch (error) {
+        await managedCredentialService.cleanupFailedLaunch(managedCredential, error);
+        throw error;
+      }
     }
+
+    while (true) {
+      try {
+        await this.launchSshProcess(spawnConfig, persistentRuntimeAttachOnly);
+        return;
+      } catch (error) {
+        if (
+          persistentRuntimeAttachOnly
+          && this.lastProcessExitCode === PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE
+          && this.workspace
+          && this.session
+        ) {
+          persistentRuntimeAttachOnly = false;
+          try {
+            const identity = await managedContextIdentityResolver.forSshSession(
+              this.session.config.id,
+              this.workspace.id,
+            );
+            managedCredential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
+            spawnConfig = buildSshSpawnConfig(
+              this.workspace,
+              this.session,
+              buildManagedContextEnvironment(managedCredential),
+              true,
+            );
+            continue;
+          } catch (retryError) {
+            error = retryError;
+          }
+        }
+
+        const startupError = error instanceof Error ? error : new Error(String(error));
+        this.ready = false;
+        this.startupError = startupError.message;
+        log.error("SSH terminal failed before becoming ready", {
+          sessionId: this.sessionId,
+          trackedSessionId: this.getTrackedSessionId(),
+          connectionMode: this.getConnectionMode(),
+          error: startupError.message,
+        });
+
+        if (!this.closing) {
+          this.options.onError?.(startupError);
+          await this.markStatus("failed", startupError.message);
+          this.skipCloseStatusUpdate = true;
+        }
+
+        if (this.proc && this.proc.exitCode === null && this.proc.signalCode === null) {
+          this.proc.kill("SIGTERM");
+        }
+        await this.waitForClose();
+        if (managedCredential) {
+          await managedCredentialService.cleanupFailedLaunch(managedCredential, startupError);
+        }
+        throw startupError;
+      }
+    }
+  }
+
+  private async launchSshProcess(
+    spawnConfig: { command: string; args: string[]; env: NodeJS.ProcessEnv; startupStdin?: string },
+    suppressExitNotificationOnFailure: boolean,
+  ): Promise<void> {
+    this.lastProcessExitCode = null;
+    this.startupError = undefined;
+    this.skipCloseStatusUpdate = false;
+
     const proc = spawn(spawnConfig.command, spawnConfig.args, {
       env: spawnConfig.env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.proc = proc;
+    if (spawnConfig.startupStdin) {
+      proc.stdin.write(spawnConfig.startupStdin);
+    }
 
     proc.stdout.setEncoding("utf8");
     proc.stderr.setEncoding("utf8");
@@ -136,8 +229,12 @@ export class SshTerminalBridge {
           this.flushBufferedOutput();
           this.ready = false;
           this.proc = null;
+          this.lastProcessExitCode = code;
           const skipStatusUpdate = this.skipCloseStatusUpdate;
+          const suppressExitNotification = this.suppressNextExitNotification
+            && code === PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE;
           this.skipCloseStatusUpdate = false;
+          this.suppressNextExitNotification = false;
           const nextStatus = this.closing ? "disconnected" : code === 0 ? "disconnected" : "failed";
           const error = !this.closing && code !== 0
             ? `SSH terminal exited with code ${String(code)}${signal ? ` (${signal})` : ""}`
@@ -156,7 +253,9 @@ export class SshTerminalBridge {
               error: String(statusError),
             });
           } finally {
-            this.options.onExit?.(code, signal);
+            if (!suppressExitNotification) {
+              this.options.onExit?.(code, signal);
+            }
             this.closePromise = null;
             resolve();
           }
@@ -183,19 +282,10 @@ export class SshTerminalBridge {
       const startupError = error instanceof Error ? error : new Error(String(error));
       this.ready = false;
       this.startupError = startupError.message;
-      log.error("SSH terminal failed before becoming ready", {
-        sessionId: this.sessionId,
-        trackedSessionId: this.getTrackedSessionId(),
-        connectionMode: this.getConnectionMode(),
-        error: startupError.message,
-      });
-
-      if (!this.closing) {
-        this.options.onError?.(startupError);
-        await this.markStatus("failed", startupError.message);
-        this.skipCloseStatusUpdate = true;
+      if (suppressExitNotificationOnFailure) {
+        this.suppressNextExitNotification = true;
       }
-
+      this.skipCloseStatusUpdate = true;
       if (this.proc && this.proc.exitCode === null && this.proc.signalCode === null) {
         this.proc.kill("SIGTERM");
       }
@@ -426,6 +516,53 @@ export class SshTerminalBridge {
       executor,
       async (options) => await sshSessionManager.updateRuntimeConnectionState(session.config.id, options),
     );
+  }
+
+  private async getWorkspaceRuntimeEnvironment(
+    workspace: Workspace,
+    session: SshSession,
+  ): Promise<{
+    environment?: Record<string, string>;
+    credential?: ManagedRuntimeCredential;
+    persistentRuntimeExists: boolean;
+  }> {
+    const identity = await managedContextIdentityResolver.forSshSession(
+      session.config.id,
+      workspace.id,
+    );
+    const persistentRuntimeExists = getEffectiveSshConnectionMode(session) === "dtach"
+      && await this.hasPersistentRuntime(workspace, session);
+    if (persistentRuntimeExists) {
+      return { persistentRuntimeExists };
+    }
+
+    const credential = await managedCredentialService.ensureCredentialForRuntime(
+      identity,
+      "recreate",
+    );
+    return {
+      credential,
+      environment: buildManagedContextEnvironment(credential),
+      persistentRuntimeExists: false,
+    };
+  }
+
+  private async hasPersistentRuntime(workspace: Workspace, session: SshSession): Promise<boolean> {
+    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+    const result = await executor.exec("bash", [
+      "-lc",
+      buildPersistentSessionReadyCommand({
+        config: {
+          id: session.config.id,
+          remoteSessionName: session.config.remoteSessionName,
+        },
+      }),
+    ], {
+      cwd: workspace.directory,
+      timeout: DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
+      logFailures: false,
+    });
+    return result.success;
   }
 
   private async resolveStandaloneSessionMode(

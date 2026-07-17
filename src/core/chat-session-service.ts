@@ -27,6 +27,9 @@ import { sshServerManager } from "./ssh-server-manager";
 import { buildSshRemoteShellCommand } from "./remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-runtime-command";
+import { managedContextIdentityResolver } from "./managed-context-identity";
+import { managedCredentialService } from "./managed-credential-service";
+import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { createLogger } from "./logger";
 import type {
   ChatSessionPort,
@@ -118,7 +121,23 @@ export class ChatSessionService implements ChatSessionPort {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
-      await backend.connect(buildConnectionConfig(workspace.serverSettings, working.directory));
+      const identity = await managedContextIdentityResolver.forChat(
+        working.chat.config.id,
+        working.chat.config.workspaceId,
+      );
+      const credential = await managedCredentialService.ensureCredentialForRuntime(
+        identity,
+        working.chat.state.session?.id ? "recreate" : "reuse",
+      );
+      try {
+        await backend.connect(buildConnectionConfig(
+          workspace.serverSettings,
+          working.directory,
+          buildManagedContextEnvironment(credential),
+        ));
+      } catch (error) {
+        await managedCredentialService.cleanupFailedLaunch(credential, error);
+      }
     }
     return backend;
   }
