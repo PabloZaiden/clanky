@@ -56,7 +56,7 @@ import { useShellDialogComposition } from "./shell-dialog-composition";
 import { ShellHeaderActionsContext } from "./shell-header-actions";
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
 import { findRegisteredSshServer } from "@/shared";
-import { Badge, Button, StatusBadge } from "../common";
+import { Badge, Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
 
@@ -67,22 +67,6 @@ interface HeaderModel {
   badgeVariant?: SidebarNode["badgeVariant"];
   badgeIsStatus?: boolean;
   subtitleMobileHidden?: boolean;
-}
-
-function getAgentHeaderBadgeVariant(status: string): SidebarNode["badgeVariant"] {
-  if (status === "enabled" || status === "completed") {
-    return "success";
-  }
-  if (status === "running" || status === "starting" || status === "scheduled") {
-    return "info";
-  }
-  if (status === "failed" || status === "error") {
-    return "error";
-  }
-  if (status === "paused" || status === "skipped" || status === "interrupted") {
-    return "warning";
-  }
-  return "default";
 }
 
 function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; defaultTitle: string }) {
@@ -777,8 +761,7 @@ export function AppShell() {
                 title: agent.config.name,
                 subtitle: agentWorkspace?.directory,
                 badge: agent.state.status,
-                badgeVariant: getAgentHeaderBadgeVariant(agent.state.status),
-                badgeIsStatus: false,
+                badgeVariant: getAgentStatusBadgeVariant(agent.state.status),
                 subtitleMobileHidden: true,
               }
             : nodeModel ?? { title: "Agent" };
