@@ -373,6 +373,7 @@ describe("database schema", () => {
 
       const columns = db.query("PRAGMA table_info(clanky_context_api_keys)").all() as Array<{
         name: string;
+        pk: number;
       }>;
       expect(columns.map((column) => column.name)).toEqual([
         "user_id",
@@ -384,6 +385,18 @@ describe("database schema", () => {
         "created_at",
         "revoked_at",
       ]);
+      expect(columns.map((column) => column.pk)).toEqual([1, 2, 3, 4, 0, 5, 0, 0]);
+      const insert = db.prepare(`
+        INSERT INTO clanky_context_api_keys (
+          user_id, workspace_id, context_type, context_id, api_key_id,
+          generation, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      insert.run("user-1", "workspace-a", "chat", "context-1", "key-a", 1, "2026-01-01T00:00:00.000Z");
+      insert.run("user-1", "workspace-b", "chat", "context-1", "key-b", 1, "2026-01-01T00:00:00.000Z");
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM clanky_context_api_keys").get() as { count: number }).count,
+      ).toBe(2);
       const indexes = db.query("PRAGMA index_list(clanky_context_api_keys)").all() as Array<{ name: string }>;
       expect(indexes.map((index) => index.name)).toEqual(expect.arrayContaining([
         "idx_clanky_context_api_keys_context",

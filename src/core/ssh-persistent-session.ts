@@ -91,6 +91,7 @@ export function buildPersistentSessionAttachCommand(
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
   const sessionMasterPidFile = quoteShell(buildPersistentSessionMasterPidFilePath(session.config.id));
   const sessionSocket = quoteShell(buildPersistentSessionSocketPath(session.config.remoteSessionName));
+  const sessionLock = quoteShell(buildPersistentSessionLockPath(session.config.remoteSessionName));
   const sessionShellCommand = quoteShell(buildPersistentSessionShellCommand(session));
   const allowCreate = options?.allowCreate ?? true;
   const command = [
@@ -103,6 +104,7 @@ export function buildPersistentSessionAttachCommand(
     `session_pid_file=${sessionPidFile}`,
     `session_master_pid_file=${sessionMasterPidFile}`,
     `session_socket=${sessionSocket}`,
+    `session_lock_dir=${sessionLock}`,
     "is_live_pid_file() {",
     "pid_file=$1",
     "if [ ! -r \"$pid_file\" ]; then",

@@ -97,6 +97,10 @@ describe("managed runtime environment propagation", () => {
     expect(persistent).toContain("read -r clanky_base_url");
     expect(persistent).toContain("read -r clanky_api_key");
     expect(persistent).not.toContain("wapp_test_secret");
+    const lockDirectoryIndex = persistent.indexOf("session_lock_dir='/tmp/clanky-session.dtach.lock'");
+    const lockFunctionIndex = persistent.indexOf("acquire_session_lock()");
+    expect(lockDirectoryIndex).toBeGreaterThanOrEqual(0);
+    expect(lockFunctionIndex).toBeGreaterThan(lockDirectoryIndex);
 
     const sshSpawn = buildSshSpawnConfig(sshWorkspace, sshSession, managedEnvironment);
     expect(sshSpawn.args.join(" ")).not.toContain("wapp_test_secret");

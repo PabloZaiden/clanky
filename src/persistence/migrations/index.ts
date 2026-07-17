@@ -236,7 +236,7 @@ export const migrations: Migration[] = [
           generation INTEGER NOT NULL CHECK (generation > 0),
           created_at TEXT NOT NULL,
           revoked_at TEXT,
-          PRIMARY KEY (user_id, context_type, context_id, generation)
+          PRIMARY KEY (user_id, workspace_id, context_type, context_id, generation)
         )
       `);
       db.run(`
