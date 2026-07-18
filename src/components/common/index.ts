@@ -52,3 +52,8 @@ export {
   type ComposerPaddingClass,
   type ComposerRows,
 } from "./composer-rows";
+export {
+  isVisualViewportReduced,
+  useVisualViewport,
+  type VisualViewportState,
+} from "./use-visual-viewport";

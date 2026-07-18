@@ -15,7 +15,11 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import type { ImageAttachmentControlHandle } from "../ImageAttachmentControl";
-import { useComposerSizing } from "../common";
+import {
+  isVisualViewportReduced,
+  useComposerSizing,
+  useVisualViewport,
+} from "../common";
 import { insertDictationText } from "../dictation";
 import { useAvailableModels } from "../../hooks";
 import {
@@ -53,6 +57,11 @@ export function useChatComposer({
   const dictationPopoverRef = useRef<HTMLDivElement | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressActivatedRef = useRef(false);
+  const visualViewport = useVisualViewport(true);
+  const isKeyboardVisible = isVisualViewportReduced(
+    visualViewport,
+    typeof window === "undefined" ? 0 : window.innerHeight,
+  );
   const { models, modelsLoading } = useAvailableModels({
     workspaceId: isEmbedded || chat.config.source?.kind === "ssh_server"
       ? undefined
@@ -312,6 +321,7 @@ export function useChatComposer({
     composerFormRef,
     composerTextareaRef,
     dictationPopoverRef,
+    isKeyboardVisible,
     composerRef,
     composerRows,
     composerMinHeightClass,
