@@ -156,6 +156,10 @@ export function isChatBusyStatus(status: ChatStatus): boolean {
   return status === "starting" || status === "streaming" || status === "interrupting";
 }
 
+export function isChatTerminalStatus(status: ChatStatus): boolean {
+  return status === "idle" || status === "stopped" || status === "failed";
+}
+
 export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
   const config = "config" in chat ? chat.config : chat;
   return config.scope === "task" || config.taskId !== undefined;

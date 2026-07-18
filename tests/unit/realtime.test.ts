@@ -121,6 +121,31 @@ describe("Clanky realtime migration", () => {
     }]);
   });
 
+  test("retains chat status events while also invalidating authoritative chat state", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "chat.status",
+      chatId: "chat-1",
+      scope: "workspace",
+      status: "idle",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    expect(recording.streams).toEqual([{
+      ownerId: "user-1",
+      type: "chat.status",
+      target: { chatId: "chat-1" },
+    }]);
+    expect(recording.resources).toEqual([{
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.chats,
+      action: "changed",
+      id: "chat-1",
+      scope: undefined,
+    }]);
+  });
+
   test("invalidates the task resource when an iteration starts", () => {
     const recording = createRecordingPublisher();
 

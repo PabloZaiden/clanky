@@ -10,6 +10,7 @@ export type ChatStreamEvent = Extract<
   ChatEvent,
   {
     type:
+      | "chat.status"
       | "chat.message"
       | "chat.message.delta"
       | "chat.tool_call"

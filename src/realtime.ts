@@ -14,6 +14,7 @@ import type {
   SshSessionEvent,
   TaskEvent,
 } from "@/shared";
+import { isChatTerminalStatus } from "@/shared/chat";
 import type {
   RealtimeBus,
   RealtimeAction,
@@ -53,6 +54,7 @@ type RetainedChatEvent = Extract<
   ChatEvent,
   {
     type:
+      | "chat.status"
       | "chat.message"
       | "chat.message.delta"
       | "chat.tool_call"
@@ -269,8 +271,15 @@ export function publishClankyDomainEvent(
     case "chat.log.delta":
       publishStream(publisher, owner, event, { chatId: event.chatId });
       return;
-    case "chat.updated":
     case "chat.status":
+      // Terminal status also closes the incremental client state when the
+      // separate resource invalidation is missed.
+      if (isChatTerminalStatus(event.status)) {
+        publishStream(publisher, owner, event, { chatId: event.chatId });
+      }
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      return;
+    case "chat.updated":
     case "chat.interrupted":
     case "chat.error":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
