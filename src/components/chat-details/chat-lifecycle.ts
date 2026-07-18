@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtimeRefresh, useToast } from "@pablozaiden/webapp/web";
+import { useToast } from "@pablozaiden/webapp/web";
 import type {
   Chat,
   MessageData,
@@ -7,7 +7,7 @@ import type {
   ToolCallData,
 } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
-import { useRealtimeStream } from "../../hooks";
+import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../../utils/chat-snapshot";
@@ -359,7 +359,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     onReconnect: () => refreshChat({ showLoading: false }),
   });
 
-  useRealtimeRefresh({
+  useRealtimeRefreshWithRecovery({
     resources: ["chats"],
     ids: [chatId],
     filters: { resource: "chats", id: chatId },
@@ -371,6 +371,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       }
       return refreshChat({ showLoading: false });
     },
+    onReconnect: () => refreshChat({ showLoading: false }),
   });
 
   useEffect(() => {

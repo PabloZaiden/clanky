@@ -3,6 +3,18 @@ import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
 
+const TERMINAL_CHAT_STATUSES = new Set<Chat["state"]["status"]>([
+  "idle",
+  "stopped",
+  "failed",
+]);
+const BUSY_CHAT_STATUSES = new Set<Chat["state"]["status"]>([
+  "starting",
+  "streaming",
+  "interrupting",
+  "reconnecting",
+]);
+
 function toTimestamp(value?: string): number | null {
   if (!value) {
     return null;
@@ -22,11 +34,19 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
 
   const currentActivityAt = toTimestamp(current.state.lastActivityAt);
   const incomingActivityAt = toTimestamp(incoming.state.lastActivityAt);
+  const incomingActivityIsNotNewer = incomingActivityAt === null
+    || (currentActivityAt !== null && incomingActivityAt <= currentActivityAt);
+  const shouldPreserveCurrentTerminalState = TERMINAL_CHAT_STATUSES.has(current.state.status)
+    && BUSY_CHAT_STATUSES.has(incoming.state.status)
+    && incomingActivityIsNotNewer;
 
   if (
-    currentActivityAt !== null
-    && incomingActivityAt !== null
-    && incomingActivityAt < currentActivityAt
+    (
+      currentActivityAt !== null
+      && incomingActivityAt !== null
+      && incomingActivityAt < currentActivityAt
+    )
+    || shouldPreserveCurrentTerminalState
   ) {
     return {
       ...incoming,

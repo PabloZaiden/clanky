@@ -5,8 +5,7 @@ import type { Chat, ChatEvent } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
-import { useRealtimeStream } from "./useRealtimeStream";
-import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
+import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
 const log = createLogger("useChats");
 function sortChats(chats: Chat[]): Chat[] {
@@ -308,10 +307,11 @@ export function useChats(): UseChatsResult {
     }
   }, []);
 
-  useRealtimeRefresh({
+  useRealtimeRefreshWithRecovery({
     resources: ["chats"],
     filters: { resource: "chats" },
     refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
   });
 
   useRealtimeStream<ChatEvent>({
