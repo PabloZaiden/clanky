@@ -15,7 +15,7 @@ import type {
   PersistedToolCall,
   SessionInfo,
 } from "./task";
-import type { MessageImageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 
 export type { ModelConfig };
 
@@ -92,7 +92,7 @@ export interface ChatPermissionRequest {
 export interface QueuedChatMessage {
   id: string;
   content: string;
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
   createdAt: string;
 }
 

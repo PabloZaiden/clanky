@@ -25,6 +25,18 @@ type CachedModels = {
   complete: boolean;
 };
 
+export interface AcpPromptCapabilities {
+  image: boolean;
+  audio: boolean;
+  embeddedContext: boolean;
+}
+
+const DEFAULT_PROMPT_CAPABILITIES: AcpPromptCapabilities = {
+  image: false,
+  audio: false,
+  embeddedContext: false,
+};
+
 /** Providers that expose reasoning-effort variants via config options. */
 const VARIANT_DISCOVERY_PROVIDERS: ReadonlySet<AgentProvider> = new Set<AgentProvider>([
   "copilot",
@@ -34,6 +46,7 @@ const VARIANT_DISCOVERY_PROVIDERS: ReadonlySet<AgentProvider> = new Set<AgentPro
 
 export class CapabilityService {
   private provider: AgentProvider | null = null;
+  private promptCapabilities: AcpPromptCapabilities = { ...DEFAULT_PROMPT_CAPABILITIES };
 
   private readonly modelCache = new Map<string, CachedModels>();
   private readonly defaultReasoningEfforts = new Map<string, Map<string, string>>();
@@ -47,6 +60,30 @@ export class CapabilityService {
   clearCaches(): void {
     this.modelCache.clear();
     this.defaultReasoningEfforts.clear();
+    this.promptCapabilities = { ...DEFAULT_PROMPT_CAPABILITIES };
+  }
+
+  setInitializeResult(result: unknown): void {
+    const agentCapabilities = isRecord(result) && isRecord(result["agentCapabilities"])
+      ? result["agentCapabilities"]
+      : undefined;
+    const promptCapabilities = agentCapabilities && isRecord(agentCapabilities["promptCapabilities"])
+      ? agentCapabilities["promptCapabilities"]
+      : undefined;
+
+    this.promptCapabilities = {
+      image: promptCapabilities?.["image"] === true,
+      audio: promptCapabilities?.["audio"] === true,
+      embeddedContext: promptCapabilities?.["embeddedContext"] === true,
+    };
+  }
+
+  getPromptCapabilities(): AcpPromptCapabilities {
+    return { ...this.promptCapabilities };
+  }
+
+  supportsPromptCapability(capability: keyof AcpPromptCapabilities): boolean {
+    return this.promptCapabilities[capability];
   }
 
   // ---- Config option parsing ----

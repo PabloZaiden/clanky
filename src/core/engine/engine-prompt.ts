@@ -7,6 +7,7 @@ import type { TaskConfig, TaskState, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { LogLevel } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
+import { buildPromptParts } from "../../backends/prompt-parts";
 import type { IterationContext } from "./engine-types";
 import { StopPatternDetector } from "./engine-helpers";
 import { detectTrailingPromiseMarker } from "../../utils/promise-markers";
@@ -21,18 +22,6 @@ export interface PromptBuildContext {
   updateState: (update: Partial<TaskState>) => void;
   consumeInitialPromptAttachments: () => MessageImageAttachment[];
   consumePendingPromptAttachments: () => MessageImageAttachment[];
-}
-
-function buildPromptParts(text: string, attachments: MessageImageAttachment[]): PromptInput["parts"] {
-  return [
-    { type: "text", text },
-    ...attachments.map((attachment) => ({
-      type: "image" as const,
-      mimeType: attachment.mimeType,
-      data: attachment.data,
-      filename: attachment.filename,
-    })),
-  ];
 }
 
 const BLOCKED_OUTCOME_INSTRUCTION = `- If you are blocked by an external dependency, missing prerequisite, or issue you cannot safely work around, explain the blocker and end your response with:

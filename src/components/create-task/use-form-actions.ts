@@ -4,12 +4,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
-import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment } from "@/shared/message-attachments";
 import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CreateTaskFormProps } from "./types";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { toMessageImageAttachments } from "../../lib/image-attachments";
+import { toMessageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
@@ -89,7 +89,7 @@ export function useFormActions({
   generateTitle: () => Promise<string | null>;
   prompt: string;
   name: string;
-  attachments: ComposerImageAttachment[];
+  attachments: ComposerAttachment[];
   uploadedPlan: UploadedPlanFile | null;
 }): UseFormActionsReturn {
   const [submitting, setSubmitting] = useState(false);
@@ -179,7 +179,7 @@ export function useFormActions({
             && parsedIssueNumber > 0
             ? parsedIssueNumber
             : undefined,
-          attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageImageAttachments(attachments) : [],
+          attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageAttachments(attachments) : [],
           planMode: currentUploadedPlan ? true : planMode,
           autoAcceptPlan: currentUploadedPlan ? true : planMode ? autoAcceptPlan : false,
           fullyAutonomous: currentUploadedPlan ? fullyAutonomous : planMode ? fullyAutonomous : false,

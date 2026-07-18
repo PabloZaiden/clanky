@@ -2,7 +2,12 @@
  * Browser clipboard helper with a legacy execCommand fallback.
  */
 
+import {
+  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
+} from "@/shared/message-attachments";
+
 export interface ClipboardReadResult {
+  /** Files copied to the clipboard that can be sent as message attachments. */
   imageFiles: File[];
   text: string | null;
 }
@@ -23,11 +28,17 @@ function getClipboardReadError(error: unknown): Error {
   return new Error(`Unable to read the browser clipboard: ${String(error)}`, { cause: error });
 }
 
-function getClipboardImageExtension(mimeType: string): string {
-  const subtype = mimeType.slice("image/".length).split(/[;+]/, 1)[0]?.toLowerCase();
-  if (subtype === "jpeg") {
+function getClipboardFileExtension(mimeType: string): string {
+  const normalizedMimeType = getClipboardMimeTypeWithoutParameters(mimeType);
+  if (normalizedMimeType === "image/jpeg") {
     return "jpg";
   }
+  if (normalizedMimeType === "application/pdf") {
+    return "pdf";
+  }
+  const subtype = normalizedMimeType.startsWith("image/")
+    ? normalizedMimeType.slice("image/".length)
+    : normalizedMimeType.split("/", 2)[1];
   return subtype || "bin";
 }
 
@@ -42,6 +53,12 @@ function findClipboardType(
   return types.find((type) => predicate(getClipboardMimeTypeWithoutParameters(type)));
 }
 
+function isSupportedClipboardAttachmentType(mimeType: string): boolean {
+  const normalizedMimeType = getClipboardMimeTypeWithoutParameters(mimeType);
+  return (MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(normalizedMimeType)
+    || normalizedMimeType === "application/pdf";
+}
+
 async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadResult> {
   let items: ClipboardItems;
   try {
@@ -50,25 +67,25 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
     throw getClipboardReadError(error);
   }
 
-  const imageItems = items.flatMap((item) => {
-    const imageType = findClipboardType(item.types, (type) => type.startsWith("image/"));
-    return imageType ? [{ item, imageType }] : [];
+  const attachmentItems = items.flatMap((item) => {
+    const attachmentType = findClipboardType(item.types, isSupportedClipboardAttachmentType);
+    return attachmentType ? [{ item, attachmentType }] : [];
   });
 
-  if (imageItems.length > 0) {
+  if (attachmentItems.length > 0) {
     const imageFiles: File[] = [];
-    for (const [index, { item, imageType }] of imageItems.entries()) {
+    for (const [index, { item, attachmentType }] of attachmentItems.entries()) {
       let blob: Blob;
       try {
-        blob = await item.getType(imageType);
+        blob = await item.getType(attachmentType);
       } catch (error) {
         throw getClipboardReadError(error);
       }
 
-      const mimeType = blob.type || imageType;
+      const mimeType = blob.type || attachmentType;
       imageFiles.push(new File(
         [blob],
-        `clipboard-image-${index + 1}.${getClipboardImageExtension(mimeType)}`,
+        `clipboard-attachment-${index + 1}.${getClipboardFileExtension(mimeType)}`,
         { type: mimeType },
       ));
     }

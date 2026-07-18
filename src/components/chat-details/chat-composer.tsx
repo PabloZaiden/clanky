@@ -125,7 +125,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   disabled={secondaryActionsDisabled || attachmentLimitReached}
                   onClick={() => attachmentControlRef.current?.openFilePicker()}
                 >
-                  <span>{attachmentLimitReached ? "Image limit reached" : "Attach image"}</span>
+                  <span>{attachmentLimitReached ? "Attachment limit reached" : "Attach file"}</span>
                   <span aria-hidden="true">📎</span>
                 </ComposerActionsMenuButton>
               </ComposerActionsMenuSection>

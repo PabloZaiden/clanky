@@ -6,7 +6,7 @@ import { useState } from "react";
 import { replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
 import type { SshSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
   AcceptPlanResult,
   PushTaskResult,
@@ -29,7 +29,7 @@ interface UseTaskActionsOptions {
   markMerged: () => Promise<boolean>;
   closeLocalTask: () => Promise<boolean>;
   manualCompleteTask: () => Promise<boolean>;
-  addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  addressReviewComments: (comments: string, attachments?: MessageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
@@ -81,7 +81,7 @@ export interface UseTaskActionsResult {
   handleMarkMerged: () => Promise<void>;
   handleCloseLocal: () => Promise<void>;
   handleManualComplete: () => Promise<void>;
-  handleAddressComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
+  handleAddressComments: (comments: string, attachments?: MessageAttachment[]) => Promise<void>;
   handleOpenPullRequest: (destination: PullRequestDestinationResponse | null) => void;
   handleEnablePullRequestAutoMerge: () => Promise<void>;
   handleStartAutomaticPrFlow: () => Promise<void>;
@@ -192,7 +192,7 @@ export function useTaskActions({
     setManualCompleteModal(false);
   }
 
-  async function handleAddressComments(comments: string, attachments?: MessageImageAttachment[]) {
+  async function handleAddressComments(comments: string, attachments?: MessageAttachment[]) {
     try {
       const result = await addressReviewComments(comments, attachments);
       if (!result.success) {

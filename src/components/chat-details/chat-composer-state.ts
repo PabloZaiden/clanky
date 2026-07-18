@@ -19,12 +19,12 @@ import { useComposerSizing } from "../common";
 import { insertDictationText } from "../dictation";
 import { useAvailableModels } from "../../hooks";
 import {
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  toMessageImageAttachments,
+  MESSAGE_ATTACHMENT_LIMIT,
+  toMessageAttachments,
 } from "../../lib/image-attachments";
 import { appFetch } from "../../lib/public-path";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
-import type { Chat, ComposerImageAttachment } from "@/shared";
+import type { Chat, ComposerAttachment } from "@/shared";
 import { getChatErrorMessage, parseChatError } from "./chat-lifecycle";
 import type { ChatComposerProps } from "./types";
 import { useToast } from "@pablozaiden/webapp/web";
@@ -43,7 +43,7 @@ export function useChatComposer({
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
-  const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDictationPopover, setShowDictationPopover] = useState(false);
@@ -150,7 +150,7 @@ export function useChatComposer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmedMessage.length > 0 ? trimmedMessage : null,
-          attachments: attachments.length > 0 ? toMessageImageAttachments(attachments) : [],
+          attachments: attachments.length > 0 ? toMessageAttachments(attachments) : [],
         }),
       });
       if (!response.ok) {
@@ -225,7 +225,7 @@ export function useChatComposer({
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
   const secondaryActionsDisabled = isSubmitting || needsSshCredentials;
-  const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
+  const attachmentLimitReached = attachments.length >= MESSAGE_ATTACHMENT_LIMIT;
   const hasPendingComposerActions = attachments.length > 0
     || selectedTemplate.length > 0
     || (!isEmbedded && selectedModel.length > 0);

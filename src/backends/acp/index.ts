@@ -7,6 +7,7 @@ export {
   createAcpProcessError,
   createAcpRpcError,
   createAcpSessionNotFoundError,
+  createAcpUnsupportedPromptCapabilityError,
   getAcpErrorMessage,
   isAcpError,
   isAcpErrorCode,

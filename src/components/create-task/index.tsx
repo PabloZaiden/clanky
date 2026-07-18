@@ -21,7 +21,7 @@ import { FormActions } from "./form-actions";
 import { UploadedPlanField } from "./uploaded-plan-field";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
-import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment } from "@/shared/message-attachments";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { UploadedPlanFile } from "./types";
 
@@ -52,7 +52,7 @@ export function CreateTaskForm({
   renderActions,
   leadingActions,
 }: CreateTaskFormProps) {
-  const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [uploadedPlan, setUploadedPlan] = useState<UploadedPlanFile | null>(null);
   const [uploadedPlanError, setUploadedPlanError] = useState<string | null>(null);
   const {

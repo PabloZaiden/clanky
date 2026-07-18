@@ -9,9 +9,10 @@
 
 import { z } from "zod";
 import {
-  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
+  getMessageAttachmentKind,
+  MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES,
+  MESSAGE_ATTACHMENT_LIMIT,
+  MESSAGE_ATTACHMENT_MAX_BYTES,
   normalizeCommitScope,
 } from "@/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
@@ -26,28 +27,42 @@ function approximateBase64DecodedSize(base64: string): number {
   return Math.floor(((len * 3) / 4) - padding);
 }
 
-const allowedMimeTypes = MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[];
+const allowedMimeTypes = MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES as readonly string[];
 
-export const MessageImageAttachmentSchema = z.object({
+export const MessageAttachmentSchema = z.object({
   id: z.string().min(1, "attachment id is required"),
   filename: z.string().min(1, "attachment filename is required"),
-  mimeType: z.string().refine(
-    (mime) => allowedMimeTypes.includes(mime),
-    { message: `attachments must be one of: ${MESSAGE_IMAGE_ALLOWED_MIME_TYPES.join(", ")}` },
-  ),
+  mimeType: z.string().min(1, "attachment MIME type is required"),
   data: z.string().min(1, "attachment data is required").refine(
-    (data) => approximateBase64DecodedSize(data) <= MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-    { message: `attachment data exceeds ${MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES} bytes` },
+    (data) => approximateBase64DecodedSize(data) <= MESSAGE_ATTACHMENT_MAX_BYTES,
+    { message: `attachment data exceeds ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes` },
   ),
   size: z.number().int().positive().max(
-    MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-    `attachments must be ${MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES} bytes or smaller`,
+    MESSAGE_ATTACHMENT_MAX_BYTES,
+    `attachments must be ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes or smaller`,
   ),
+}).superRefine((attachment, ctx) => {
+  const kind = getMessageAttachmentKind(attachment);
+  const normalizedMimeType = attachment.mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (kind === null || (
+    !allowedMimeTypes.includes(normalizedMimeType)
+    && ![".txt", ".md", ".pdf"].some((extension) => attachment.filename.toLowerCase().endsWith(extension))
+  )) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["mimeType"],
+      message: "attachments must be supported images, .txt, .md, or .pdf files",
+    });
+  }
 });
 
-export const MessageImageAttachmentsSchema = z
-  .array(MessageImageAttachmentSchema)
-  .max(MESSAGE_IMAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_IMAGE_ATTACHMENT_LIMIT} images can be attached`);
+export const MessageAttachmentsSchema = z
+  .array(MessageAttachmentSchema)
+  .max(MESSAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_ATTACHMENT_LIMIT} attachments can be attached`);
+
+/** Compatibility exports retained for API consumers during the attachment migration. */
+export const MessageImageAttachmentSchema = MessageAttachmentSchema;
+export const MessageImageAttachmentsSchema = MessageAttachmentsSchema;
 
 /**
  * Schema for GitConfig - git integration settings.

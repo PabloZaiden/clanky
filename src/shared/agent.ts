@@ -6,7 +6,7 @@
  */
 
 import type { ChatPermissionRequest, ChatWorktreeState } from "./chat";
-import type { MessageImageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 import type { ModelConfig } from "./model";
 import type {
   PersistedMessage,
@@ -111,7 +111,7 @@ export interface AgentRun {
   logs: TaskLogEntry[];
   toolCalls: PersistedToolCall[];
   pendingPermissionRequests?: ChatPermissionRequest[];
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
   configSnapshot: AgentConfigSnapshot;
   createdAt: string;
   updatedAt: string;

@@ -144,7 +144,7 @@ export interface ImportSessionResult {
 /**
  * Part of a prompt message.
  */
-export type PromptPart = TextPromptPart | ImagePromptPart;
+export type PromptPart = TextPromptPart | ImagePromptPart | ResourcePromptPart;
 
 export interface TextPromptPart {
   /** Part type */
@@ -162,6 +162,36 @@ export interface ImagePromptPart {
   data: string;
   /** Original filename, used for debugging/UX only */
   filename?: string;
+}
+
+export type ResourcePromptPart = TextResourcePromptPart | BlobResourcePromptPart;
+
+export interface TextResourcePromptPart {
+  /** Part type */
+  type: "resource";
+  /** Embedded text resource contents */
+  resource: {
+    /** URI identifying the attachment */
+    uri: string;
+    /** MIME type of the text resource */
+    mimeType?: string;
+    /** Text content */
+    text: string;
+  };
+}
+
+export interface BlobResourcePromptPart {
+  /** Part type */
+  type: "resource";
+  /** Embedded binary resource contents */
+  resource: {
+    /** URI identifying the attachment */
+    uri: string;
+    /** MIME type of the binary resource */
+    mimeType?: string;
+    /** Base64-encoded binary content */
+    blob: string;
+  };
 }
 
 /**

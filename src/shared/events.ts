@@ -19,7 +19,7 @@
 import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig } from "./task";
-import type { MessageImageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
 
 /**
@@ -45,8 +45,8 @@ export interface MessageData {
   role: "user" | "assistant";
   /** The message content (may contain markdown) */
   content: string;
-  /** Inline image attachments carried with the message for live updates and refresh recovery */
-  attachments?: MessageImageAttachment[];
+  /** Inline attachments carried with the message for live updates and refresh recovery */
+  attachments?: MessageAttachment[];
   /** ISO 8601 timestamp when the message was created */
   timestamp: string;
 }

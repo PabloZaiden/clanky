@@ -12,7 +12,7 @@
 import { useState, useRef, useCallback, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { ModelConfig, TaskConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
-import type { ComposerImageAttachment, MessageImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import { ModelSelector, makeModelKey, parseModelKey, isModelEnabled, getModelDisplayName } from "./ModelSelector";
 import { createLogger } from "../lib/logger";
 import {
@@ -20,7 +20,7 @@ import {
   ImageAttachmentPreviewList,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
-import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
+import { MESSAGE_ATTACHMENT_LIMIT, toMessageAttachments } from "../lib/image-attachments";
 import { FocusPreservingButton, useComposerSizing } from "./common";
 import {
   ComposerActionsMenu,
@@ -48,7 +48,7 @@ export interface TaskActionBarProps {
     workspaceId: string;
   };
   /** Callback when user submits a message and/or model change */
-  onSubmit: (options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }) => Promise<boolean>;
+  onSubmit: (options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }) => Promise<boolean>;
   /** Callback when user stops the active agent without sending a message */
   onStop?: () => Promise<boolean>;
   /** Whether the action bar is disabled */
@@ -76,7 +76,7 @@ export function TaskActionBar({
 }: TaskActionBarProps) {
   const [message, setMessage] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const composerFormRef = useRef<HTMLFormElement>(null);
@@ -98,7 +98,7 @@ export function TaskActionBar({
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
   const secondaryActionsDisabled = disabled || isSubmitting;
-  const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
+  const attachmentLimitReached = attachments.length >= MESSAGE_ATTACHMENT_LIMIT;
   const hasPendingComposerActions = attachments.length > 0 || (!isPlanning && selectedModel !== "");
   const {
     composerRef,
@@ -131,14 +131,14 @@ export function TaskActionBar({
 
     try {
       // Build the pending update
-      const options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] } = {};
+      const options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] } = {};
       
       if (message.trim()) {
         options.message = message.trim();
       }
 
       if (attachments.length > 0) {
-        options.attachments = toMessageImageAttachments(attachments);
+        options.attachments = toMessageAttachments(attachments);
       }
       
       if (selectedModel) {
@@ -219,7 +219,7 @@ export function TaskActionBar({
                   disabled={secondaryActionsDisabled || attachmentLimitReached}
                   onClick={() => attachmentControlRef.current?.openFilePicker()}
                 >
-                  <span>{attachmentLimitReached ? "Image limit reached" : "Attach image"}</span>
+                  <span>{attachmentLimitReached ? "Attachment limit reached" : "Attach file"}</span>
                   <span aria-hidden="true">📎</span>
                 </ComposerActionsMenuButton>
               </ComposerActionsMenuSection>
@@ -308,7 +308,7 @@ export function TaskActionBar({
         )}
         {hasAttachmentWithoutMessage && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-            Add a message before sending images.
+          Add a message before sending attachments.
           </p>
         )}
       </form>

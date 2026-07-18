@@ -18,6 +18,8 @@ export {
   GitConfigSchema,
   TaskNameSchema,
   IssueNumberSchema,
+  MessageAttachmentSchema,
+  MessageAttachmentsSchema,
   MessageImageAttachmentSchema,
   MessageImageAttachmentsSchema,
   CreateTaskRequestSchema,

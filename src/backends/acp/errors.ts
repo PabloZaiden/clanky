@@ -7,7 +7,8 @@ export type AcpErrorCode =
   | "acp_session_not_found"
   | "acp_request_timed_out"
   | "acp_process_failed"
-  | "acp_ssh_authentication_failed";
+  | "acp_ssh_authentication_failed"
+  | "acp_unsupported_prompt_capability";
 
 export class AcpError<TCode extends AcpErrorCode = AcpErrorCode> extends DomainError<TCode> {
   constructor(code: TCode, message: string, options: DomainErrorOptions = {}) {
@@ -68,6 +69,16 @@ export function createAcpSessionNotFoundError(
   options: DomainErrorOptions = {},
 ): AcpError<"acp_session_not_found"> {
   return new AcpError("acp_session_not_found", `Session ${sessionId} not found`, options);
+}
+
+export function createAcpUnsupportedPromptCapabilityError(
+  capability: string,
+): AcpError<"acp_unsupported_prompt_capability"> {
+  return new AcpError(
+    "acp_unsupported_prompt_capability",
+    `The connected ACP agent does not support the '${capability}' prompt capability required for this attachment.`,
+    { details: { capability } },
+  );
 }
 
 export function createAcpProcessError(
