@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Chat } from "../../src/shared";
 import {
+  applyChatStatusEvent,
   mergeChatSnapshot,
   mergeChatSummarySnapshot,
 } from "../../src/utils/chat-snapshot";
@@ -42,6 +43,20 @@ function createChat(
 }
 
 describe("chat snapshot merging", () => {
+  test("applies a terminal status event and clears active response state", () => {
+    const current = createChat("streaming", "2026-07-18T01:00:01.000Z", {
+      activeMessageId: "message-1",
+      interruptRequested: true,
+    });
+
+    const updated = applyChatStatusEvent(current, "idle", "2026-07-18T01:00:02.000Z");
+
+    expect(updated.state.status).toBe("idle");
+    expect(updated.state.lastActivityAt).toBe("2026-07-18T01:00:02.000Z");
+    expect(updated.state.activeMessageId).toBeUndefined();
+    expect(updated.state.interruptRequested).toBe(false);
+  });
+
   test("applies a newer terminal snapshot over stale streaming state", () => {
     const current = createChat("streaming", "2026-07-18T01:00:01.000Z", {
       messages: [{

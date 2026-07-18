@@ -10,7 +10,11 @@ import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
-import { getStreamingActivityStatus, mergeChatSnapshot } from "../../utils/chat-snapshot";
+import {
+  applyChatStatusEvent,
+  getStreamingActivityStatus,
+  mergeChatSnapshot,
+} from "../../utils/chat-snapshot";
 import type {
   ChatLifecycleResult,
   ChatRefreshOptions,
@@ -54,6 +58,10 @@ interface ChatStreamUpdate {
 
 function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStreamUpdate {
   switch (event.type) {
+    case "chat.status":
+      return {
+        chat: applyChatStatusEvent(current, event.status, event.timestamp),
+      };
     case "chat.message":
       return {
         chat: {

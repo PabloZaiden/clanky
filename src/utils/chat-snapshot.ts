@@ -1,19 +1,35 @@
-import type { Chat } from "@/shared";
+import { isChatTerminalStatus, type Chat } from "@/shared";
 import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
 
-const TERMINAL_CHAT_STATUSES = new Set<Chat["state"]["status"]>([
-  "idle",
-  "stopped",
-  "failed",
-]);
 const BUSY_CHAT_STATUSES = new Set<Chat["state"]["status"]>([
   "starting",
   "streaming",
   "interrupting",
   "reconnecting",
 ]);
+
+export function applyChatStatusEvent(
+  current: Chat,
+  status: Chat["state"]["status"],
+  timestamp: string,
+): Chat {
+  return {
+    ...current,
+    state: {
+      ...current.state,
+      status,
+      lastActivityAt: timestamp,
+      ...(isChatTerminalStatus(status)
+        ? {
+            activeMessageId: undefined,
+            interruptRequested: false,
+          }
+        : {}),
+    },
+  };
+}
 
 function toTimestamp(value?: string): number | null {
   if (!value) {
@@ -36,7 +52,7 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
   const incomingActivityAt = toTimestamp(incoming.state.lastActivityAt);
   const incomingActivityIsNotNewer = incomingActivityAt === null
     || (currentActivityAt !== null && incomingActivityAt <= currentActivityAt);
-  const shouldPreserveCurrentTerminalState = TERMINAL_CHAT_STATUSES.has(current.state.status)
+  const shouldPreserveCurrentTerminalState = isChatTerminalStatus(current.state.status)
     && BUSY_CHAT_STATUSES.has(incoming.state.status)
     && incomingActivityIsNotNewer;
 
