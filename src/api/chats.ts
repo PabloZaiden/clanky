@@ -50,6 +50,11 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "SSH authentication failed",
         status: 401,
       },
+      acp_unsupported_prompt_capability: {
+        error: "unsupported_prompt_capability",
+        message: "The connected agent does not support embedded document attachments",
+        status: 422,
+      },
     } as const;
     const mapping = mappings[error.code as keyof typeof mappings];
     if (mapping) {

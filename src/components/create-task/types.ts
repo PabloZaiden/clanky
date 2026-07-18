@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ModelInfo, BranchInfo } from "@/contracts";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment } from "@/shared/message-attachments";
 import type { Workspace } from "@/shared/workspace";
 import type { CheapModelSelection } from "@/shared";
 
@@ -102,8 +102,8 @@ export interface CreateTaskFormProps {
   workspacesLoading?: boolean;
   /** Workspace-related error */
   workspaceError?: string | null;
-  /** Transient image attachments for the initial prompt */
-  attachments?: ComposerImageAttachment[];
+  /** Transient attachments for the initial prompt */
+  attachments?: ComposerAttachment[];
   /** 
    * Optional render prop for action buttons. When provided, action buttons 
    * are NOT rendered inside the form - caller is responsible for rendering them.

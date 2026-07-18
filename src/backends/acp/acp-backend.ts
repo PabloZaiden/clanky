@@ -91,9 +91,10 @@ export class AcpBackend implements Backend {
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     try {
-      await this.lifecycle.connect(config, signal, () => this.disconnect());
+      const initializeResult = await this.lifecycle.connect(config, signal, () => this.disconnect());
       this.state.setDefaultDirectory(this.lifecycle.getDirectory());
       this.capability.setProvider(this.lifecycle.getProvider());
+      this.capability.setInitializeResult(initializeResult);
     } catch (error) {
       await this.disconnect();
       throw error;

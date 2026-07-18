@@ -99,7 +99,7 @@ export class AcpTransportLifecycle {
     config: BackendConnectionConfig,
     signal: AbortSignal | undefined,
     teardown: () => Promise<void>,
-  ): Promise<void> {
+  ): Promise<unknown> {
     if (this.connected) {
       throw new Error("Already connected. Call disconnect() first.");
     }
@@ -125,7 +125,7 @@ export class AcpTransportLifecycle {
       }
 
       this.connected = true;
-      await this.connectSpawn(config, signal, teardown);
+      return await this.connectSpawn(config, signal, teardown);
     } catch (error) {
       const process = this.detachForShutdown();
       await this.terminateProcess(process);
@@ -137,7 +137,7 @@ export class AcpTransportLifecycle {
     config: BackendConnectionConfig,
     signal: AbortSignal | undefined,
     teardown: () => Promise<void>,
-  ): Promise<void> {
+  ): Promise<unknown> {
     const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
     const command = config.command ?? providerCommand.command;
     const args = config.args ?? providerCommand.args;
@@ -157,6 +157,7 @@ export class AcpTransportLifecycle {
     });
 
     const maxAttempts = config.transport === "ssh" ? ACP_SSH_INITIALIZE_ATTEMPTS : 1;
+    let initializeResult: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       this.throwIfAborted(signal);
       this.recentProcessLines = [];
@@ -183,7 +184,7 @@ export class AcpTransportLifecycle {
       this.startProcessReaders(command);
 
       try {
-        await this.rpc.sendRequest("initialize", {
+        initializeResult = await this.rpc.sendRequest("initialize", {
           protocolVersion: 1,
           clientInfo: {
             name: "clanky",
@@ -227,6 +228,7 @@ export class AcpTransportLifecycle {
       baseUrl: `acp://stdio/${command}`,
       authHeaders: {},
     };
+    return initializeResult;
   }
 
   private throwIfAborted(signal: AbortSignal | undefined): void {

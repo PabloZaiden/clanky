@@ -34,7 +34,7 @@ describe("browser clipboard helper", () => {
 
     const result = await readClipboardContent();
 
-    expect(result).toEqual({ imageFiles: [], text: "pasted text" });
+    expect(result).toEqual({ attachmentFiles: [], text: "pasted text" });
     expect(getType).toHaveBeenCalledWith(matchedType);
   });
 });

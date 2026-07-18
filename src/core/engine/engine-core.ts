@@ -1551,6 +1551,9 @@ export class TaskEngine {
         if (part.type === "image") {
           return `[image:${part.mimeType}]`;
         }
+        if (part.type === "resource") {
+          return `[resource:${part.resource.mimeType ?? "application/octet-stream"}]`;
+        }
         return part.text;
       })
       .join("\n---\n");

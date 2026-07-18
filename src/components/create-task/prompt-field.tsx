@@ -1,6 +1,6 @@
 import { useRef, type ClipboardEvent } from "react";
 import { getTemplateById } from "../../lib/prompt-templates";
-import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
@@ -10,8 +10,8 @@ import { DictationControls, insertDictationText } from "../dictation";
 interface PromptFieldProps {
   prompt: string;
   onChange: (value: string) => void;
-  attachments: ComposerImageAttachment[];
-  onAttachmentsChange: (attachments: ComposerImageAttachment[]) => void;
+  attachments: ComposerAttachment[];
+  onAttachmentsChange: (attachments: ComposerAttachment[]) => void;
   planMode: boolean;
   selectedTemplate: string;
   onTemplateClear: () => void;

@@ -25,7 +25,12 @@ import type {
 } from "../types";
 
 import { isRecord, getString } from "./json-helpers";
-import { AcpError, getAcpErrorMessage, isAcpErrorCode } from "./errors";
+import {
+  AcpError,
+  createAcpUnsupportedPromptCapabilityError,
+  getAcpErrorMessage,
+  isAcpErrorCode,
+} from "./errors";
 import { invokeOptionalMethod } from "./optional-method";
 import { PROMPT_REQUEST_TIMEOUT_MS } from "./types";
 import type { SessionSubscriber } from "./types";
@@ -273,6 +278,7 @@ export class SessionService {
 
   async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
     this.ensureConnected();
+    const promptParams = this.buildPromptParams(sessionId, prompt);
     await this.configurePromptSession(sessionId, prompt.model);
     log.debug("[AcpBackend] Sending synchronous prompt", {
       sessionId,
@@ -312,7 +318,7 @@ export class SessionService {
     try {
       const result = await this.rpc.sendRequest<unknown>(
         "session/prompt",
-        this.buildPromptParams(sessionId, prompt),
+        promptParams,
         PROMPT_REQUEST_TIMEOUT_MS,
       );
 
@@ -385,6 +391,7 @@ export class SessionService {
 
   async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
     this.ensureConnected();
+    const promptParams = this.buildPromptParams(sessionId, prompt);
     await this.configurePromptSession(sessionId, prompt.model);
     const sequence = this.state.beginPrompt(sessionId);
     log.debug("[AcpBackend] Sending async prompt", {
@@ -394,7 +401,7 @@ export class SessionService {
       model: prompt.model?.modelID ?? "default",
     });
 
-    void this.rpc.sendRequest<unknown>("session/prompt", this.buildPromptParams(sessionId, prompt), PROMPT_REQUEST_TIMEOUT_MS)
+    void this.rpc.sendRequest<unknown>("session/prompt", promptParams, PROMPT_REQUEST_TIMEOUT_MS)
       .then((result) => {
         if (this.state.getPromptSequence(sessionId) !== sequence) {
           return;
@@ -487,12 +494,25 @@ export class SessionService {
   }
 
   private buildPromptParts(prompt: PromptInput): Array<Record<string, unknown>> {
+    if (
+      prompt.parts.some((part) => part.type === "resource")
+      && !this.capability.supportsPromptCapability("embeddedContext")
+    ) {
+      throw createAcpUnsupportedPromptCapabilityError("embeddedContext");
+    }
+
     return prompt.parts.map((part) => {
       if (part.type === "image") {
         return {
           type: "image",
           mimeType: part.mimeType,
           data: part.data,
+        };
+      }
+      if (part.type === "resource") {
+        return {
+          type: "resource",
+          resource: part.resource,
         };
       }
       return {

@@ -11,7 +11,7 @@
 
 // Import and re-export model types from schema (single source of truth)
 import type { CheapModelSelection, ModelConfig } from "./model";
-import type { MessageImageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 import type { ToolCallRecord } from "./tool-call";
 export type { CheapModelSelection, ModelConfig };
 
@@ -244,8 +244,8 @@ export interface PersistedMessage {
   role: "user" | "assistant";
   /** The message content */
   content: string;
-  /** Inline image attachments persisted for refresh recovery when present */
-  attachments?: MessageImageAttachment[];
+  /** Inline attachments persisted for refresh recovery when present */
+  attachments?: MessageAttachment[];
   /** ISO 8601 timestamp when the message was created */
   timestamp: string;
 }

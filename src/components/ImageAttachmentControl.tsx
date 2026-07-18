@@ -10,21 +10,25 @@ import {
   type ClipboardEvent,
   type ForwardedRef,
 } from "react";
-import type { ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment, ComposerImageAttachment } from "@/shared/message-attachments";
 import {
-  MESSAGE_IMAGE_ACCEPT,
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  createComposerImageAttachments,
-  getClipboardImageFiles,
-  revokeComposerImageAttachments,
+  getMessageAttachmentExtension,
+  getMessageAttachmentKind,
+  MESSAGE_ATTACHMENT_ACCEPT,
+  MESSAGE_ATTACHMENT_LIMIT,
+} from "@/shared/message-attachments";
+import {
+  createComposerAttachments,
+  getClipboardAttachmentFiles,
+  revokeComposerAttachments,
 } from "../lib/image-attachments";
 import { readClipboardContent } from "../utils";
 import { ClipboardPasteIcon } from "./common";
 import { ImageViewerModal } from "./ImageViewerModal";
 
 interface ImageAttachmentControlProps {
-  attachments: ComposerImageAttachment[];
-  onChange: (attachments: ComposerImageAttachment[]) => void;
+  attachments: ComposerAttachment[];
+  onChange: (attachments: ComposerAttachment[]) => void;
   disabled?: boolean;
   compact?: boolean;
   hint?: string;
@@ -50,9 +54,13 @@ export interface ImageAttachmentControlHandle {
 }
 
 interface ImageAttachmentPreviewListProps {
-  attachments: ComposerImageAttachment[];
+  attachments: ComposerAttachment[];
   onRemoveAttachment: (attachmentId: string) => void;
   disabled?: boolean;
+}
+
+function isPreviewableImage(attachment: ComposerAttachment): attachment is ComposerImageAttachment {
+  return getMessageAttachmentKind(attachment) === "image" && typeof attachment.previewUrl === "string";
 }
 
 export function ImageAttachmentPreviewList({
@@ -82,42 +90,71 @@ export function ImageAttachmentPreviewList({
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        {attachments.map((attachment) => (
-          <div
-            key={attachment.id}
-            className="group relative flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-2 dark:border-gray-700 dark:bg-neutral-800"
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedAttachment(attachment)}
-              className="flex min-w-0 items-center gap-2 rounded text-left focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500"
-              aria-label={`View ${attachment.filename}`}
+        {attachments.map((attachment) => {
+          const imageAttachment = isPreviewableImage(attachment) ? attachment : null;
+          const extension = getMessageAttachmentExtension(attachment.filename)
+            .replace(".", "")
+            .toUpperCase();
+          const kind = getMessageAttachmentKind(attachment);
+          return (
+            <div
+              key={attachment.id}
+              className="group relative flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-2 dark:border-gray-700 dark:bg-neutral-800"
             >
-              <img
-                src={attachment.previewUrl}
-                alt={attachment.filename}
-                className="h-10 w-10 rounded object-cover"
-              />
-              <div className="min-w-0">
-                <p className="max-w-32 truncate text-xs text-gray-700 dark:text-gray-200">
-                  {attachment.filename}
-                </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  {Math.max(1, Math.round(attachment.size / 1024))} KB
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemoveAttachment(attachment.id)}
-              disabled={disabled}
-              className="rounded p-1 text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 disabled:opacity-50"
-              aria-label={`Remove ${attachment.filename}`}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+              {imageAttachment ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAttachment(imageAttachment)}
+                  className="flex min-w-0 items-center gap-2 rounded text-left focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500"
+                  aria-label={`View ${attachment.filename}`}
+                >
+                  <img
+                    src={attachment.previewUrl}
+                    alt={attachment.filename}
+                    className="h-10 w-10 rounded object-cover"
+                  />
+                  <div className="min-w-0">
+                    <p className="max-w-32 truncate text-xs text-gray-700 dark:text-gray-200">
+                      {attachment.filename}
+                    </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {Math.max(1, Math.round(attachment.size / 1024))} KB
+                    </p>
+                  </div>
+                </button>
+              ) : (
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-gray-200 text-[10px] font-semibold text-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                  >
+                    {extension || (kind === "pdf" ? "PDF" : "FILE")}
+                  </span>
+                  <div className="min-w-0">
+                    <p
+                      className="max-w-32 truncate text-xs text-gray-700 dark:text-gray-200"
+                      title={attachment.filename}
+                    >
+                      {attachment.filename}
+                    </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {Math.max(1, Math.round(attachment.size / 1024))} KB
+                    </p>
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+                disabled={disabled}
+                className="rounded p-1 text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 disabled:opacity-50"
+                aria-label={`Remove ${attachment.filename}`}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       <ImageViewerModal
@@ -144,7 +181,7 @@ function ImageAttachmentControlInner({
 }: ImageAttachmentControlProps, ref: ForwardedRef<ImageAttachmentControlHandle>) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const attachmentsRef = useRef(attachments);
+  const attachmentsRef = useRef<ComposerAttachment[]>(attachments);
   const clipboardReadInProgressRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [isReadingClipboard, setIsReadingClipboard] = useState(false);
@@ -157,14 +194,16 @@ function ImageAttachmentControlInner({
     const currentIds = new Set(attachments.map((a) => a.id));
     for (const prev of previous) {
       if (!currentIds.has(prev.id)) {
-        URL.revokeObjectURL(prev.previewUrl);
+        if (prev.previewUrl) {
+          URL.revokeObjectURL(prev.previewUrl);
+        }
       }
     }
   }, [attachments]);
 
   useEffect(() => {
     return () => {
-      revokeComposerImageAttachments(attachmentsRef.current);
+      revokeComposerAttachments(attachmentsRef.current);
     };
   }, []);
 
@@ -179,7 +218,7 @@ function ImageAttachmentControlInner({
     setError(null);
 
     try {
-      const nextAttachments = await createComposerImageAttachments(
+      const nextAttachments = await createComposerAttachments(
         files,
         attachmentsRef.current.length,
       );
@@ -203,7 +242,7 @@ function ImageAttachmentControlInner({
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const files = getClipboardImageFiles(event.clipboardData?.items);
+      const files = getClipboardAttachmentFiles(event.clipboardData?.items);
       if (files.length === 0 || disabled) {
         return;
       }
@@ -218,7 +257,7 @@ function ImageAttachmentControlInner({
   const handleClipboardPaste = useCallback(async () => {
     if (
       disabled
-      || attachmentsRef.current.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT
+      || attachmentsRef.current.length >= MESSAGE_ATTACHMENT_LIMIT
       || clipboardReadInProgressRef.current
     ) {
       return;
@@ -230,8 +269,8 @@ function ImageAttachmentControlInner({
 
     try {
       const clipboardContent = await readClipboardContent();
-      if (clipboardContent.imageFiles.length > 0) {
-        await addFiles(clipboardContent.imageFiles);
+      if (clipboardContent.attachmentFiles.length > 0) {
+        await addFiles(clipboardContent.attachmentFiles);
       } else if (clipboardContent.text !== null && clipboardContent.text.length > 0) {
         onClipboardText?.(clipboardContent.text);
       }
@@ -244,7 +283,7 @@ function ImageAttachmentControlInner({
   }, [addFiles, disabled, onClipboardText]);
 
   const openFilePicker = useCallback(() => {
-    if (disabled || attachmentsRef.current.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT) {
+    if (disabled || attachmentsRef.current.length >= MESSAGE_ATTACHMENT_LIMIT) {
       return;
     }
     inputRef.current?.click();
@@ -256,15 +295,17 @@ function ImageAttachmentControlInner({
     const nextAttachments = attachments.filter((attachment) => attachment.id !== attachmentId);
     const removedAttachment = attachments.find((attachment) => attachment.id === attachmentId);
     if (removedAttachment) {
-      URL.revokeObjectURL(removedAttachment.previewUrl);
+      if (removedAttachment.previewUrl) {
+        URL.revokeObjectURL(removedAttachment.previewUrl);
+      }
     }
     onChange(nextAttachments);
     setError(null);
   }
 
   const buttonLabel = attachments.length > 0
-    ? `Add image (${attachments.length}/${MESSAGE_IMAGE_ATTACHMENT_LIMIT})`
-    : "Add image";
+    ? `Add attachment (${attachments.length}/${MESSAGE_ATTACHMENT_LIMIT})`
+    : "Add attachment";
   const clipboardButtonLabel = isReadingClipboard
     ? "Pasting from clipboard..."
     : "Paste from clipboard";
@@ -277,7 +318,7 @@ function ImageAttachmentControlInner({
           ref={inputRef}
           id={inputId}
           type="file"
-          accept={MESSAGE_IMAGE_ACCEPT}
+          accept={MESSAGE_ATTACHMENT_ACCEPT}
           multiple
           className="hidden"
           disabled={disabled}
@@ -287,7 +328,7 @@ function ImageAttachmentControlInner({
           <button
             type="button"
             onClick={openFilePicker}
-            disabled={disabled || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT}
+            disabled={disabled || attachments.length >= MESSAGE_ATTACHMENT_LIMIT}
             className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-700 text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0"
             aria-label={buttonLabel}
             title={buttonLabel}
@@ -299,7 +340,7 @@ function ImageAttachmentControlInner({
             <button
               type="button"
               onClick={openFilePicker}
-              disabled={disabled || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT}
+              disabled={disabled || attachments.length >= MESSAGE_ATTACHMENT_LIMIT}
               className={`inline-flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "" : "text-sm"}`}
             >
               <span aria-hidden="true">📎</span>
@@ -319,7 +360,7 @@ function ImageAttachmentControlInner({
             disabled={
               disabled
               || isReadingClipboard
-              || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT
+              || attachments.length >= MESSAGE_ATTACHMENT_LIMIT
             }
             className={iconOnly
               ? "inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 hover:border-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:hover:border-gray-500"

@@ -7,12 +7,12 @@ import { useRef, useState, type ClipboardEvent } from "react";
 import { Modal } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
 import { log } from "../lib/logger";
-import type { ComposerImageAttachment, MessageImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
-import { toMessageImageAttachments } from "../lib/image-attachments";
+import { toMessageAttachments } from "../lib/image-attachments";
 
 const ADDRESS_UNRESOLVED_PR_COMMENTS_PROMPT =
   "Find the PR associated to this branch and address the unresolved comments";
@@ -23,7 +23,7 @@ export interface AddressCommentsModalProps {
   /** Callback when modal should close */
   onClose: () => void;
   /** Callback to submit comments */
-  onSubmit: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
+  onSubmit: (comments: string, attachments?: MessageAttachment[]) => Promise<void>;
   /** Name of the task */
   taskName: string;
   /** Current review cycle number */
@@ -41,7 +41,7 @@ export function AddressCommentsModal({
   reviewCycle,
 }: AddressCommentsModalProps) {
   const [comments, setComments] = useState("");
-  const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
 
@@ -65,7 +65,7 @@ export function AddressCommentsModal({
     setSubmitting(true);
     try {
       if (attachments.length > 0) {
-        await onSubmit(comments, toMessageImageAttachments(attachments));
+        await onSubmit(comments, toMessageAttachments(attachments));
       } else {
         await onSubmit(comments);
       }

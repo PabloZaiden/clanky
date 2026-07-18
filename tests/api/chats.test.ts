@@ -279,6 +279,73 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("accepts text and PDF attachments and sends ACP resource parts", async () => {
+    installMockBackend(["Document response"]);
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Document Attachment Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const markdown = "# Notes\n\nRead this.";
+    const pdf = "%PDF-test";
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Inspect the attachments",
+        attachments: [
+          {
+            id: "markdown-attachment",
+            filename: "notes.md",
+            mimeType: "text/markdown",
+            data: Buffer.from(markdown, "utf8").toString("base64"),
+            size: Buffer.byteLength(markdown, "utf8"),
+          },
+          {
+            id: "pdf-attachment",
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            data: Buffer.from(pdf, "utf8").toString("base64"),
+            size: Buffer.byteLength(pdf, "utf8"),
+          },
+        ],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settled = await waitForChatIdle(created.config.id) as Chat;
+    expect(settled.state.status).toBe("idle");
+    const prompt = mockBackend.getSentPrompts().at(-1);
+    expect(prompt?.parts).toEqual([
+      { type: "text", text: "Inspect the attachments" },
+      {
+        type: "resource",
+        resource: {
+          uri: "attachment://markdown-attachment/notes.md",
+          mimeType: "text/markdown",
+          text: markdown,
+        },
+      },
+      {
+        type: "resource",
+        resource: {
+          uri: "attachment://pdf-attachment/report.pdf",
+          mimeType: "application/pdf",
+          blob: Buffer.from(pdf, "utf8").toString("base64"),
+        },
+      },
+    ]);
+  });
+
   test("preserves the active assistant message when interrupting a chat", async () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],
