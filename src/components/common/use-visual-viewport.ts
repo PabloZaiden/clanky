@@ -61,6 +61,11 @@ export function useVisualViewport(enabled: boolean): VisualViewportState | null 
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setState(null);
+      return;
+    }
+
     const viewport = window.visualViewport;
     if (!enabled || !viewport) {
       setState(null);
