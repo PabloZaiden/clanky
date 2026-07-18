@@ -57,6 +57,18 @@ describe("chat snapshot merging", () => {
     expect(updated.state.interruptRequested).toBe(false);
   });
 
+  test("ignores a stale terminal status event", () => {
+    const current = createChat("streaming", CURRENT_ACTIVITY, {
+      activeMessageId: "message-1",
+    });
+
+    const updated = applyChatStatusEvent(current, "idle", "2026-07-18T01:00:01.000Z");
+
+    expect(updated).toBe(current);
+    expect(updated.state.status).toBe("streaming");
+    expect(updated.state.activeMessageId).toBe("message-1");
+  });
+
   test("applies a newer terminal snapshot over stale streaming state", () => {
     const current = createChat("streaming", "2026-07-18T01:00:01.000Z", {
       messages: [{

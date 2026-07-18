@@ -15,6 +15,15 @@ export function applyChatStatusEvent(
   status: Chat["state"]["status"],
   timestamp: string,
 ): Chat {
+  const currentActivityAt = toTimestamp(current.state.lastActivityAt);
+  const incomingActivityAt = toTimestamp(timestamp);
+  if (
+    currentActivityAt !== null
+    && (incomingActivityAt === null || incomingActivityAt < currentActivityAt)
+  ) {
+    return current;
+  }
+
   return {
     ...current,
     state: {
