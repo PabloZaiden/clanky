@@ -278,6 +278,7 @@ export class SessionService {
 
   async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
     this.ensureConnected();
+    const promptParams = this.buildPromptParams(sessionId, prompt);
     await this.configurePromptSession(sessionId, prompt.model);
     log.debug("[AcpBackend] Sending synchronous prompt", {
       sessionId,
@@ -317,7 +318,7 @@ export class SessionService {
     try {
       const result = await this.rpc.sendRequest<unknown>(
         "session/prompt",
-        this.buildPromptParams(sessionId, prompt),
+        promptParams,
         PROMPT_REQUEST_TIMEOUT_MS,
       );
 
@@ -390,8 +391,8 @@ export class SessionService {
 
   async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
     this.ensureConnected();
-    await this.configurePromptSession(sessionId, prompt.model);
     const promptParams = this.buildPromptParams(sessionId, prompt);
+    await this.configurePromptSession(sessionId, prompt.model);
     const sequence = this.state.beginPrompt(sessionId);
     log.debug("[AcpBackend] Sending async prompt", {
       sessionId,

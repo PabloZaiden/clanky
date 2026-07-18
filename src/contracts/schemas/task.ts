@@ -10,7 +10,6 @@
 import { z } from "zod";
 import {
   getMessageAttachmentKind,
-  MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   normalizeCommitScope,
@@ -27,8 +26,6 @@ function approximateBase64DecodedSize(base64: string): number {
   return Math.floor(((len * 3) / 4) - padding);
 }
 
-const allowedMimeTypes = MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES as readonly string[];
-
 export const MessageAttachmentSchema = z.object({
   id: z.string().min(1, "attachment id is required"),
   filename: z.string().min(1, "attachment filename is required"),
@@ -42,12 +39,7 @@ export const MessageAttachmentSchema = z.object({
     `attachments must be ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes or smaller`,
   ),
 }).superRefine((attachment, ctx) => {
-  const kind = getMessageAttachmentKind(attachment);
-  const normalizedMimeType = attachment.mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-  if (kind === null || (
-    !allowedMimeTypes.includes(normalizedMimeType)
-    && ![".txt", ".md", ".pdf"].some((extension) => attachment.filename.toLowerCase().endsWith(extension))
-  )) {
+  if (getMessageAttachmentKind(attachment) === null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["mimeType"],

@@ -269,8 +269,8 @@ function ImageAttachmentControlInner({
 
     try {
       const clipboardContent = await readClipboardContent();
-      if (clipboardContent.imageFiles.length > 0) {
-        await addFiles(clipboardContent.imageFiles);
+      if (clipboardContent.attachmentFiles.length > 0) {
+        await addFiles(clipboardContent.attachmentFiles);
       } else if (clipboardContent.text !== null && clipboardContent.text.length > 0) {
         onClipboardText?.(clipboardContent.text);
       }

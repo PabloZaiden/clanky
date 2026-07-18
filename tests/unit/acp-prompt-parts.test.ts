@@ -70,22 +70,44 @@ describe("ACP prompt attachments", () => {
     ]);
   });
 
-  test("rejects embedded resources before session/prompt when capability is absent", async () => {
+  test("rejects embedded resources before session configuration when capability is absent", async () => {
     const { requester, calls } = createRequester();
     const capability = new CapabilityService(requester);
+    const state = new SessionStateStore();
+    state.setCachedSession("session-1", {
+      id: "session-1",
+      createdAt: new Date(0).toISOString(),
+      configOptions: [{
+        id: "model",
+        name: "Model",
+        type: "select",
+        currentValue: "model-a",
+        options: [
+          { value: "model-a", name: "Model A" },
+          { value: "model-b", name: "Model B" },
+        ],
+      }],
+    });
     const sessions = new SessionService(
       requester,
-      new SessionStateStore(),
+      state,
       capability,
       () => {},
     );
 
     await expect(
-      sessions.sendPromptAsync("session-1", { parts: buildPromptParts("", [textAttachment()]) }),
+      sessions.sendPromptAsync("session-1", {
+        parts: buildPromptParts("", [textAttachment()]),
+        model: {
+          providerID: "copilot",
+          modelID: "model-b",
+        },
+      }),
     ).rejects.toMatchObject({
       code: "acp_unsupported_prompt_capability",
     });
     expect(calls).toEqual([]);
+    expect(state.getCachedSession("session-1")?.configOptions?.[0]?.currentValue).toBe("model-a");
   });
 
   test("serializes embedded resources after initialize advertises embeddedContext", async () => {

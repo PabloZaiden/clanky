@@ -8,7 +8,7 @@ import {
 
 export interface ClipboardReadResult {
   /** Files copied to the clipboard that can be sent as message attachments. */
-  imageFiles: File[];
+  attachmentFiles: File[];
   text: string | null;
 }
 
@@ -73,7 +73,7 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
   });
 
   if (attachmentItems.length > 0) {
-    const imageFiles: File[] = [];
+    const attachmentFiles: File[] = [];
     for (const [index, { item, attachmentType }] of attachmentItems.entries()) {
       let blob: Blob;
       try {
@@ -83,13 +83,13 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
       }
 
       const mimeType = blob.type || attachmentType;
-      imageFiles.push(new File(
+      attachmentFiles.push(new File(
         [blob],
         `clipboard-attachment-${index + 1}.${getClipboardFileExtension(mimeType)}`,
         { type: mimeType },
       ));
     }
-    return { imageFiles, text: null };
+    return { attachmentFiles, text: null };
   }
 
   let textItem: ClipboardItem | undefined;
@@ -103,12 +103,12 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
     }
   }
   if (textItem === undefined || textType === undefined) {
-    return { imageFiles: [], text: null };
+    return { attachmentFiles: [], text: null };
   }
 
   try {
     const textBlob = await textItem.getType(textType);
-    return { imageFiles: [], text: await textBlob.text() };
+    return { attachmentFiles: [], text: await textBlob.text() };
   } catch (error) {
     throw getClipboardReadError(error);
   }
@@ -130,7 +130,7 @@ export async function readClipboardContent(): Promise<ClipboardReadResult> {
 
   if (typeof clipboard.readText === "function") {
     try {
-      return { imageFiles: [], text: await clipboard.readText() };
+      return { attachmentFiles: [], text: await clipboard.readText() };
     } catch (error) {
       throw getClipboardReadError(error);
     }
