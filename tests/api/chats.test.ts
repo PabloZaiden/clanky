@@ -2,7 +2,7 @@
  * API integration tests for chat endpoints.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
@@ -824,6 +824,14 @@ describe("Chats API Integration", () => {
     const events: ChatEvent[] = [];
     const unsubscribe = chatEventEmitter.subscribe((event) => {
       events.push(event);
+      if (
+        event.type === "chat.message"
+        && event.chatId
+        && event.message.role === "assistant"
+        && event.message.content.length > 0
+      ) {
+        setSystemTime(Date.now() + 1_000);
+      }
     });
 
     try {
@@ -850,6 +858,30 @@ describe("Chats API Integration", () => {
       const settled = await waitForChatIdle(created.config.id) as Chat;
       const expectedContent = chunks.join("");
       expect(settled.state.messages.at(-1)?.content).toBe(expectedContent);
+      const completionLog = settled.state.logs.find((log) => log.message === "AI finished generating response");
+      expect(completionLog).toBeDefined();
+      if (!completionLog || !settled.state.lastActivityAt) {
+        throw new Error("Expected the settled chat to include completion activity timestamps");
+      }
+      expect(Date.parse(settled.state.lastActivityAt)).toBeGreaterThanOrEqual(Date.parse(completionLog.timestamp));
+      const completionLogEvent = events.find(
+        (event): event is Extract<ChatEvent, { type: "chat.log" }> =>
+          event.type === "chat.log"
+          && event.chatId === created.config.id
+          && event.log.message === "AI finished generating response",
+      );
+      const idleStatusEvent = events.findLast(
+        (event): event is Extract<ChatEvent, { type: "chat.status" }> =>
+          event.type === "chat.status"
+          && event.chatId === created.config.id
+          && event.status === "idle",
+      );
+      expect(completionLogEvent).toBeDefined();
+      expect(idleStatusEvent).toBeDefined();
+      if (!completionLogEvent || !idleStatusEvent) {
+        throw new Error("Expected completion and idle chat events");
+      }
+      expect(Date.parse(idleStatusEvent.timestamp)).toBeGreaterThanOrEqual(Date.parse(completionLogEvent.timestamp));
 
       const deltaEvents = events.filter(
         (event): event is Extract<ChatEvent, { type: "chat.message.delta" }> =>
@@ -872,6 +904,7 @@ describe("Chats API Integration", () => {
       expect(reloaded.state.messages.at(-1)?.content).toBe(expectedContent);
     } finally {
       unsubscribe();
+      setSystemTime();
     }
   });
 
