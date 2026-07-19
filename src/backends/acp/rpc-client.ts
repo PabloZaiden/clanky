@@ -9,7 +9,7 @@
  * numeric outbound response IDs are never confused with inbound string IDs.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import { isRecord } from "./json-helpers";
 import { AcpError, createAcpRpcError } from "./errors";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "./types";

@@ -8,7 +8,7 @@ import { TaskEngine } from "../task-engine";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { createTimestamp } from "@/shared/events";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { canReuseExistingBranch, jumpstartTaskFromEngine } from "./task-jumpstart";
 import { getTaskWorkingDirectory } from "./task-types";

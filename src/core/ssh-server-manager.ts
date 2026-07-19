@@ -29,7 +29,7 @@ import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
 import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 
-const log = createLogger("usePrivateItemsPreference");
+const log = createClientLogger("usePrivateItemsPreference");
 const PRIVATE_ITEMS_STORAGE_KEY = "clanky.showPrivateItems";
 
 export interface PrivateItemsPreference {

@@ -2,7 +2,7 @@ import type { TaskCtx } from "./context";
 import type { PushTaskResult } from "./task-types";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { syncWorkingBranch, syncBaseBranchAndPush } from "./task-git-push-helpers";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
 

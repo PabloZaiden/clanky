@@ -8,7 +8,7 @@ import type { Task, ModelConfig } from "@/shared/task";
 import type { AutomaticPrFlowFeedbackItem } from "./automatic-pr-flow-github";
 import { backendManager } from "./backend-manager";
 import { resolveEffectiveCheapModel } from "./cheap-model";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:automatic-pr-feedback");
 

@@ -3,13 +3,13 @@
  */
 
 import { useState, useCallback } from "react";
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import { generateTaskTitleApi } from "../../hooks/taskActions";
 import { parseModelKey } from "../ModelSelector";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { useToast } from "@pablozaiden/webapp/web";
 
-const log = createLogger("CreateTaskForm");
+const log = createClientLogger("CreateTaskForm");
 
 export interface UseTitleGenerationReturn {
   generatingTitle: boolean;

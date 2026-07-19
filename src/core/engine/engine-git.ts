@@ -12,7 +12,7 @@ import { buildTaskBranchName } from "../branch-name";
 import { backendManager } from "../backend-manager";
 import { formatConventionalCommit, normalizeAiCommitMessage } from "../conventional-commits";
 import { syncMainCheckoutBeforeWorktree } from "../git/worktree-sync";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { getPlanningDirectoryPath } from "../../lib/planning-files";
 
 export interface GitOperationContext {

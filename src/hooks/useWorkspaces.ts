@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { PublicWorkspace, Workspace } from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 import { appFetch } from "../lib/public-path";
 
 export interface UseWorkspacesResult {
@@ -38,7 +38,7 @@ export interface UseWorkspacesResult {
  * Provides CRUD operations for workspaces.
  */
 export function useWorkspaces(): UseWorkspacesResult {
-  const log = createLogger("useWorkspaces");
+  const log = createClientLogger("useWorkspaces");
   const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

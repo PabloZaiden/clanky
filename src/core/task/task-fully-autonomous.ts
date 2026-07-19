@@ -1,6 +1,6 @@
 import type { Task } from "@/shared/task";
 import { loadTask, updateTaskState } from "../../persistence/tasks";
-import { createLogger } from "../logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { TaskCtx } from "./context";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task-automatic-pr-flow-events";
 import type { TaskOperationError } from "./task-errors";

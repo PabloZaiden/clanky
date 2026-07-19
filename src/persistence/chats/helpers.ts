@@ -5,7 +5,7 @@
 import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
 import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");

@@ -10,7 +10,7 @@
 import type { Workspace } from "@/shared/workspace";
 import { getServerFingerprint } from "@/shared/settings";
 import { getDatabase } from "../database";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceToRow, rowToWorkspace } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 

@@ -3,7 +3,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Route handler for purging archived tasks within a workspace.
  */
 
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../core/domain-error";
 import { purgeArchivedWorkspaceTasks } from "../../core/settings-maintenance-service";
 import { errorResponse, internalErrorResponse, successResponse } from "../helpers";

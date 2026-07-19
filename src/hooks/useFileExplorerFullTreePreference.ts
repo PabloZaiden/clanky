@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 import { appFetch } from "../lib/public-path";
 
 export interface UseFileExplorerFullTreePreferenceResult {
@@ -16,7 +16,7 @@ export interface UseFileExplorerFullTreePreferenceResult {
 }
 
 export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePreferenceResult {
-  const log = createLogger("useFileExplorerFullTreePreference");
+  const log = createClientLogger("useFileExplorerFullTreePreference");
   const [enabled, setEnabledState] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

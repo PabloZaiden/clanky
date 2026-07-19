@@ -6,9 +6,9 @@
 import { useState } from "react";
 import { Modal } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 
-const log = createLogger("AcceptTaskModal");
+const log = createClientLogger("AcceptTaskModal");
 
 export interface AcceptTaskModalProps {
   /** Whether the modal is open */

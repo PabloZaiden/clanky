@@ -1,5 +1,5 @@
 import type { Agent, AgentConfig, AgentConfigSnapshot, AgentRun, AgentState } from "@/shared/agent";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:agents");

@@ -5,7 +5,7 @@ import { TaskEngine } from "../task-engine";
 import { insertReviewComment, } from "../../persistence/review-comments";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { saveTask, updateTaskState } from "../../persistence/tasks";
 import { startStatePersistenceImpl } from "./task-execution";

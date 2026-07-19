@@ -8,7 +8,7 @@ import { createTaskListSnapshot, saveTask, loadTask, listTasks, listTaskSummarie
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { generateTaskName } from "../../utils/name-generator";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { assertValidTransition, isActiveStatus } from "../task-state-machine";

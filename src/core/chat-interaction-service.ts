@@ -14,7 +14,7 @@ import {
   isChatBusyStatus,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   ChatConversationPort,
   ChatInteractionPort,

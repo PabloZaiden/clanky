@@ -15,7 +15,7 @@ import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
 import { GitService } from "../git";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
 import {
   DEFAULT_CONNECTION_TIMEOUT_MS,

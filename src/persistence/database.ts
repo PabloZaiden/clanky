@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdir, rm, unlink } from "fs/promises";
 import { runMigrations } from "./migrations";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DatabaseNotInitializedError } from "./errors";
 
 const log = createLogger("database");

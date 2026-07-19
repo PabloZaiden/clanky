@@ -3,7 +3,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * API endpoints for persistent SSH sessions.
  */
 
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { sshSessionManager } from "../core/ssh-session-manager";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";

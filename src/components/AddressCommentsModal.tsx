@@ -6,7 +6,7 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { Modal } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
-import { log } from "../lib/logger";
+import { clientLog as log } from "../lib/client-logger";
 import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,

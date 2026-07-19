@@ -6,7 +6,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { taskManager } from "../../core/task-manager";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import type { GetCommentsResponse } from "@/contracts";
 

@@ -2,7 +2,7 @@
  * Log and persistence helpers for TaskEngine.
  */
 
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { TaskLogEntry, PersistedMessage } from "@/shared/task";
 import type { MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { mergeToolCallRecord } from "@/shared/tool-call";

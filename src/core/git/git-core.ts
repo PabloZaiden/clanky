@@ -4,7 +4,7 @@
  */
 
 import type { CommandExecutor } from "../command-executor";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { GitCommandError } from "./git-types";
 import type { GitCommandResult } from "./git-types";
 import { resolve } from "node:path";

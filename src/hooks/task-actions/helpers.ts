@@ -3,11 +3,11 @@
  * Not re-exported from the barrel.
  */
 
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import { ApiError, parseApiError } from "../../lib/api-error";
 import { appFetch } from "../../lib/public-path";
 
-export const log = createLogger("taskActions");
+export const log = createClientLogger("taskActions");
 
 /**
  * Generic API call helper that eliminates boilerplate across task action functions.

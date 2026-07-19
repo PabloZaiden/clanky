@@ -5,7 +5,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { backendManager } from "../../core/backend-manager";
 import { GitCommandError, GitService } from "../../core/git";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 
 const log = createLogger("api:workspace-maintenance");

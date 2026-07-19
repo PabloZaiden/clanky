@@ -12,7 +12,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  * @module api/models/preferences-routes
  */
 
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../core/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";

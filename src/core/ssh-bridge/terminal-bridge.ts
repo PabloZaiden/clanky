@@ -16,7 +16,7 @@ import {
 } from "../ssh-persistent-session";
 import { sshSessionManager } from "../ssh-session-manager";
 import { sshServerManager } from "../ssh-server-manager";
-import { createLogger } from "../logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { backendManager } from "../backend-manager";
 import { getEffectiveSshConnectionMode } from "../../utils";
 import type { SshTerminalBridgeOptions, SshTerminalBridgeConnectOptions } from "./types";

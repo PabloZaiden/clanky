@@ -34,7 +34,7 @@ import { createTimestamp } from "@/shared/events";
 import type { EventStream } from "../utils/event-stream";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "./tool-call-image-preview";

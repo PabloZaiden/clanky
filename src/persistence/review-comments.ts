@@ -4,7 +4,7 @@
  */
 
 import { getDatabase } from "./database";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 
 const log = createLogger("persistence:review-comments");

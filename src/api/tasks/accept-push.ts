@@ -11,7 +11,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { taskManager } from "../../core/task-manager";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { successResponse } from "../helpers";
 import type { AcceptResponse, PushResponse } from "@/contracts";
 import { taskErrorResponse } from "./helpers";

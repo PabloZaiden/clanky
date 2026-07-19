@@ -5,7 +5,7 @@ import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { sshSessionManager } from "../ssh-session-manager";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
 import type { TaskState } from "@/shared/task";

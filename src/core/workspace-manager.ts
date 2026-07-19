@@ -22,7 +22,7 @@ import {
   type DeleteWorkspaceOptions,
   type DeleteWorkspaceResult,
 } from "./workspace-deletion";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:workspace-manager");
 

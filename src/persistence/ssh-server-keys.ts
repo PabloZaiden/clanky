@@ -5,7 +5,7 @@
 import { mkdir, rm, unlink } from "fs/promises";
 import { join } from "path";
 import type { SshKeyAlgorithm, SshServerPublicKey } from "@/shared";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getDataDir } from "./database";
 
 const log = createLogger("persistence:ssh-server-keys");

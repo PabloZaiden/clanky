@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import { isDomainError } from "../../core/domain-error";
 import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 

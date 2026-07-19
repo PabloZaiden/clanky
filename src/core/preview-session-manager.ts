@@ -13,7 +13,7 @@ import {
   listPreviewSessionsByStatuses,
   savePreviewSession,
 } from "../persistence/preview-sessions";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";

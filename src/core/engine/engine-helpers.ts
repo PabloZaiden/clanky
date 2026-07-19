@@ -3,7 +3,7 @@
  * These have no dependency on the TaskEngine class itself.
  */
 
-import { createLogger } from "../logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:engine");
 

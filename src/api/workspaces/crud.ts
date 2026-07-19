@@ -4,7 +4,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Covers list, create, get, update, and delete operations.
  */
 
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../core/domain-error";
 import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";

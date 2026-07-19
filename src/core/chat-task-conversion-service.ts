@@ -15,7 +15,7 @@ import {
   buildSpawnTaskNameFromCurrentPlan,
   buildSpawnTaskPrompt,
 } from "../utils/chat-to-task-prompt";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("chat-task-conversion-service");
 

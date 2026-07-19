@@ -25,7 +25,7 @@ import type {
 import { backendManager } from "../backend-manager";
 import type { GitService } from "../git";
 import { SimpleEventEmitter, taskEventEmitter } from "../event-emitter";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { markCommentsAsAddressed } from "../../persistence/review-comments";
 import { assertValidTransition } from "../task-state-machine";
 import { ensurePlanningDirectory } from "../planning-directory";
@@ -812,7 +812,7 @@ export class TaskEngine {
    * @param message - The log message
    * @param details - Optional additional details
    * @param id - Optional ID for updating existing log entries
-   * @param consoleLevel - Optional override for the server console log level (tslog).
+   * @param consoleLevel - Optional override for the server console log level.
    *                       When provided, this level is used for console output instead of deriving from `level`.
    *                       Useful for reducing console verbosity while keeping frontend events unchanged.
    * @returns The ID of the log entry (for updates)

@@ -3,7 +3,7 @@
  */
 
 import type { ChatConfig, ChatState } from "@/shared";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";

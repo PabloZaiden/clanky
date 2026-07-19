@@ -13,7 +13,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { getTaskWorkingDirectory, taskManager } from "../../core/task-manager";
 import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import { errorResponse, internalErrorResponse, requireWorkspace } from "../helpers";
 import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";

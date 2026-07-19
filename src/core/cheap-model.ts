@@ -1,4 +1,4 @@
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getModelsForSettings } from "./model-discovery";
 import { workspaceManager } from "./workspace-manager";
 import type { CheapModelSelection, ModelConfig } from "@/shared";

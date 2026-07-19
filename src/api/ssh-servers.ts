@@ -7,7 +7,7 @@ import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { chatManager } from "../core/chat-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { sshServerKeyManager } from "../core/ssh-server-key-manager";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { CheckSshServerPrerequisitesRequestSchema, CreateSshServerChatRequestSchema, CreateSshServerRequestSchema, CreateSshServerSessionRequestSchema, GetDevboxTemplatesRequestSchema, DiscoverSshServerChatProvidersRequestSchema, DiscoverSshServerChatModelsRequestSchema, DeleteSshServerSessionRequestSchema, SshCredentialExchangeRequestSchema, UpdateSshServerRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";

@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import type { BranchInfo } from "@/contracts";
 import { appFetch } from "../../lib/public-path";
 
@@ -18,7 +18,7 @@ export interface UseWorkspaceBranchesResult {
 }
 
 export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
-  const log = createLogger("useWorkspaceBranches");
+  const log = createClientLogger("useWorkspaceBranches");
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [currentBranch, setCurrentBranch] = useState("");

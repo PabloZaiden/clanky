@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import { appFetch } from "../../lib/public-path";
@@ -42,7 +42,7 @@ function normalizeLastModelPreference(value: unknown): ModelConfig | null {
 }
 
 export function useWorkspaceModels(): UseWorkspaceModelsResult {
-  const log = createLogger("useWorkspaceModels");
+  const log = createClientLogger("useWorkspaceModels");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [lastModel, setLastModel] = useState<ModelConfig | null>(null);

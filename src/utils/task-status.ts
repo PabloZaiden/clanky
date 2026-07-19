@@ -5,9 +5,9 @@
  */
 
 import type { Task, TaskConfig, TaskState, TaskStatus } from "@/shared";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 
-const log = createLogger("TaskStatus");
+const log = createClientLogger("TaskStatus");
 // The backend accepts `merged` for idempotency, but the UI only offers the
 // action for pushed tasks where marking an external PR merge is still useful.
 const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<TaskStatus> = new Set([

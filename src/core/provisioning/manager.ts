@@ -2,7 +2,7 @@ import { posix as pathPosix } from "node:path";
 import { backendManager } from "../backend-manager";
 import type { CommandExecutor } from "../command-executor";
 import { GitService } from "../git";
-import { createLogger } from "../logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { sshServerManager } from "../ssh-server-manager";
 import {
   createWorkspace,

@@ -7,12 +7,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 import { appFetch } from "../lib/public-path";
 
 // ─── Shared model utilities ───────────────────────────────────────────────────
 
-const log = createLogger("ModelSelector");
+const log = createClientLogger("ModelSelector");
 
 const REASONING_EFFORT_ORDER = new Map([
   ["low", 0],

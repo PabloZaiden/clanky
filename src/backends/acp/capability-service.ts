@@ -9,7 +9,7 @@
  * the typed optional-method helper so real failures propagate.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import type { AgentProvider } from "@/shared/settings";
 import type { ModelInfo } from "@/contracts";

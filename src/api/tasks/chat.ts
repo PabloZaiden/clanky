@@ -1,7 +1,7 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { taskManager } from "../../core/task-manager";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse } from "../helpers";
 
 const log = createLogger("api:tasks:chat");

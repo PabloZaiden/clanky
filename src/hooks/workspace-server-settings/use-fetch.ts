@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
-import { log } from "../../lib/logger";
+import { clientLog as log } from "../../lib/client-logger";
 import { appFetch } from "../../lib/public-path";
 
 export function useWorkspaceFetch(workspaceId: string | null) {

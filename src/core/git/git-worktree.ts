@@ -3,7 +3,7 @@
  */
 
 import type { CommandExecutor } from "../command-executor";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { runGitCommand, gitError } from "./git-core";
 import { posix } from "node:path";
 import { InvalidManagedWorktreePathError } from "./git-types";

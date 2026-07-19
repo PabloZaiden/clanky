@@ -12,7 +12,7 @@
  */
 
 import { getDatabase } from "./database";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type DashboardViewMode, type QuickChatSettings } from "@/shared/preferences";
 import { CheapModelSelectionSchema } from "@/contracts/schemas/model";
