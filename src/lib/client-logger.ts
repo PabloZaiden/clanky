@@ -31,10 +31,8 @@ function write(level: LogLevelName, scope: string, args: unknown[]): void {
   switch (level) {
     case "silly":
     case "debug":
-      console.debug(...values);
-      break;
     case "trace":
-      console.trace(...values);
+      console.debug(...values);
       break;
     case "info":
       console.info(...values);
