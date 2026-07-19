@@ -14,7 +14,7 @@ import type { ModelConfig, TaskConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import { ModelSelector, makeModelKey, parseModelKey, isModelEnabled, getModelDisplayName } from "./ModelSelector";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import {
   ImageAttachmentControl,
   ImageAttachmentPreviewList,
@@ -28,7 +28,7 @@ import {
   ComposerActionsMenuSection,
 } from "./ComposerActionsMenu";
 
-const log = createClientLogger("TaskActionBar");
+const log = createLogger("TaskActionBar");
 
 export interface TaskActionBarProps {
   /** Mode of the task */

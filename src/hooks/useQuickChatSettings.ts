@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 import { DEFAULT_QUICK_CHAT_SETTINGS, type QuickChatSettings } from "@/shared/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 
-const log = createClientLogger("useQuickChatSettings");
+const log = createLogger("useQuickChatSettings");
 
 async function parsePreferenceError(response: Response, fallback: string): Promise<string> {
   try {

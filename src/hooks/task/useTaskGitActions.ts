@@ -11,10 +11,10 @@ import {
   type AcceptTaskResult,
   type PushTaskResult,
 } from "../taskActions";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskGitActionsResult {
   accept: () => Promise<AcceptTaskResult>;

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
 import { appFetch } from "../../lib/public-path";
 
@@ -7,7 +7,7 @@ export function useWorkspaceConnection(
   workspaceId: string | null,
   setError: (error: string | null) => void,
 ) {
-  const log = createClientLogger("useWorkspaceConnection");
+  const log = createLogger("useWorkspaceConnection");
   const [testing, setTesting] = useState(false);
 
   const testConnection = useCallback(

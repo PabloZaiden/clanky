@@ -1,6 +1,6 @@
 import type { DevboxTemplateSummary, SshServer, SshConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
 import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { ApiError, isApiErrorCode, parseApiError } from "../lib/api-error";
 import { appFetch } from "../lib/public-path";
 import {
@@ -10,7 +10,7 @@ import {
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
 
-const log = createClientLogger("sshServerActions");
+const log = createLogger("sshServerActions");
 
 async function apiCall<T = unknown>(
   url: string,

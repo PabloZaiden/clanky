@@ -4,15 +4,16 @@
  */
 
 import { useRef, useState, type ClipboardEvent } from "react";
-import { Modal } from "@pablozaiden/webapp/web";
+import { createLogger, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
-import { clientLog as log } from "../lib/client-logger";
 import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { toMessageAttachments } from "../lib/image-attachments";
+
+const log = createLogger("AddressCommentsModal");
 
 const ADDRESS_UNRESOLVED_PR_COMMENTS_PROMPT =
   "Find the PR associated to this branch and address the unresolved comments";

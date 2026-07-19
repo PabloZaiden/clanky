@@ -13,13 +13,13 @@ import {
   closeLocalTaskApi,
   manualCompleteTaskApi,
 } from "../taskActions";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 import type { Task } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskLifecycleActionsResult {
   update: (request: UpdateTaskRequest) => Promise<boolean>;

@@ -7,12 +7,12 @@ import { useCallback, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Task, MessageData, ToolCallData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 /** Maximum number of log entries to keep in frontend state */
 export const MAX_FRONTEND_LOGS = 2000;

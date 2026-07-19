@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@/contracts";
-import { clientLog as log } from "../lib/client-logger";
+import { log } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 
 export interface UseAvailableModelsOptions {

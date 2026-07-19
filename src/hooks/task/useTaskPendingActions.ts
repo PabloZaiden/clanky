@@ -11,11 +11,11 @@ import {
   clearPendingApi,
   type SetPendingResult,
 } from "../taskActions";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskPendingActionsResult {
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;

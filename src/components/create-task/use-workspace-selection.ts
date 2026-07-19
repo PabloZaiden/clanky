@@ -6,10 +6,10 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { CreateTaskFormProps } from "./types";
 
-const log = createClientLogger("CreateTaskForm");
+const log = createLogger("CreateTaskForm");
 
 type InitialTaskData = CreateTaskFormProps["initialTaskData"];
 

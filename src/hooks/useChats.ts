@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 import type { Chat, ChatEvent } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
@@ -7,7 +7,7 @@ import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
-const log = createClientLogger("useChats");
+const log = createLogger("useChats");
 function sortChats(chats: Chat[]): Chat[] {
   return [...chats].sort((left, right) => {
     return right.config.updatedAt.localeCompare(left.config.updatedAt);

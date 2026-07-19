@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 
-const log = createClientLogger("useSchedulerTimezone");
+const log = createLogger("useSchedulerTimezone");
 const DEFAULT_SCHEDULER_TIMEZONE = "UTC";
 
 async function parsePreferenceError(response: Response, fallback: string): Promise<string> {

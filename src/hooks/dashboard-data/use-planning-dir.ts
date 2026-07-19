@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 
 export interface UsePlanningDirResult {
@@ -13,7 +13,7 @@ export interface UsePlanningDirResult {
 }
 
 export function usePlanningDir(): UsePlanningDirResult {
-  const log = createClientLogger("usePlanningDir");
+  const log = createLogger("usePlanningDir");
   const [planningWarning, setPlanningWarning] = useState<string | null>(null);
   const planningRequestIdRef = useRef(0);
 

@@ -17,7 +17,7 @@ import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { FollowUpPromptMode } from "@/shared/task";
 import type { LogEntry } from "../../components/LogViewer";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../useRealtimeStream";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type {
   AcceptTaskResult,
   AcceptPlanResult,
@@ -33,7 +33,7 @@ import { createTaskEventHandler } from "./useTaskEventHandler";
 import { useTaskActions } from "./useTaskActions";
 import { useTaskFileQueries } from "./useTaskFileQueries";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskResult {
   /** The task data */

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 
 export interface UseMarkdownPreferenceResult {
@@ -27,7 +27,7 @@ export interface UseMarkdownPreferenceResult {
  * The setting persists across browser sessions.
  */
 export function useMarkdownPreference(): UseMarkdownPreferenceResult {
-  const log = createClientLogger("useMarkdownPreference");
+  const log = createLogger("useMarkdownPreference");
   const [enabled, setEnabledState] = useState(true); // Default to true
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

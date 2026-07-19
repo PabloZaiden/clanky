@@ -7,9 +7,9 @@
  */
 
 import { Component, type ReactNode, type ErrorInfo } from "react";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 
-const log = createClientLogger("ErrorBoundary");
+const log = createLogger("ErrorBoundary");
 
 interface ErrorBoundaryProps {
   children: ReactNode;
