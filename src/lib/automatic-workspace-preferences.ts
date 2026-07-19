@@ -1,7 +1,7 @@
-import { createClientLogger } from "./client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { SshServer } from "@/shared";
 
-const log = createClientLogger("automaticWorkspacePreferences");
+const log = createLogger("automaticWorkspacePreferences");
 const LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY = "clanky:last-automatic-workspace-ssh-server-id";
 const DEFAULT_AUTOMATIC_WORKSPACE_BASE_PATH = "/workspaces";
 

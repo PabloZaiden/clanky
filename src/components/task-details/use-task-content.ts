@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/shared";
 import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { ReviewComment } from "@/shared/task";
-import { clientLog as log } from "../../lib/client-logger";
+import { log } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 import type { TabId } from "./types";
 

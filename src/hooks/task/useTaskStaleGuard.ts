@@ -4,9 +4,9 @@
  */
 
 import { useCallback, useRef } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskStaleGuardResult {
   activeTaskIdRef: React.MutableRefObject<string>;

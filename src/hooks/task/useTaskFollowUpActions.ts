@@ -15,13 +15,13 @@ import {
   stopAutomaticPrFlowApi,
   type AutomaticPrFlowResult,
 } from "../taskActions";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { FollowUpPromptMode } from "@/shared/task";
 import type { SshSession } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface UseTaskFollowUpActionsResult {
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;

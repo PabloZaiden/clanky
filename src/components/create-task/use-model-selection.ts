@@ -13,11 +13,11 @@ import {
   getPreferredModelVariant,
   parseModelKey,
 } from "../ModelSelector";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { CheapModelSelection } from "@/shared";
 import type { CreateTaskFormProps } from "./types";
 
-const log = createClientLogger("CreateTaskForm");
+const log = createLogger("CreateTaskForm");
 
 type InitialTaskData = CreateTaskFormProps["initialTaskData"];
 

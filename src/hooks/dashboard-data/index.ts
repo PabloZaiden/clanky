@@ -5,7 +5,7 @@
  */
 
 import { useCallback } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { useAppConfig } from "./use-app-config";
 import { useWorkspaceModels } from "./use-workspace-models";
 import { useWorkspaceBranches } from "./use-workspace-branches";
@@ -16,7 +16,7 @@ export type { UseWorkspaceModelsResult } from "./use-workspace-models";
 export type { UseWorkspaceBranchesResult } from "./use-workspace-branches";
 export type { UsePlanningDirResult } from "./use-planning-dir";
 
-const log = createClientLogger("useDashboardData");
+const log = createLogger("useDashboardData");
 
 export interface UseDashboardDataResult {
   // Config

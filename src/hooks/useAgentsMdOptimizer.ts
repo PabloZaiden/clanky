@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { OptimizationAnalysis, OptimizationPreview } from "../core/agents-md-optimizer";
 import { analyzeAgentsMd } from "../core/agents-md-optimizer";
 import { isApiErrorCode, parseApiError } from "../lib/api-error";
-import { clientLog as log } from "../lib/client-logger";
+import { log } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 
 /** Result of reading the current AGENTS.md state */

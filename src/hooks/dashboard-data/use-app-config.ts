@@ -4,12 +4,11 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { AppConfig, HealthResponse } from "@/contracts";
-import { useToast } from "@pablozaiden/webapp/web";
+import { createLogger, useToast } from "@pablozaiden/webapp/web";
 import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
-import { createClientLogger } from "../../lib/client-logger";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
-const log = createClientLogger("useAppConfig");
+const log = createLogger("useAppConfig");
 
 export interface UseAppConfigResult {
   remoteOnly: boolean;

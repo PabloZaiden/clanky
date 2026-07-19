@@ -6,13 +6,13 @@ import { useState, useEffect, type FormEvent } from "react";
 import { StatusBadge } from "../common";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
 import type { WorkspaceSettingsFormProps } from "./types";
 
-const log = createClientLogger("WorkspaceSettingsForm");
+const log = createLogger("WorkspaceSettingsForm");
 
 export function WorkspaceSettingsForm({
   workspace,

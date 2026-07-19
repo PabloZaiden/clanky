@@ -1,6 +1,9 @@
 import { Children, cloneElement, isValidElement, useMemo, type MouseEvent as ReactMouseEvent, type ReactElement, type ReactNode } from "react";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
+
+const log = createLogger("transcript-file-links");
 
 const EXTENSIONLESS_FILE_NAME_SET = new Set([
   "Brewfile",
@@ -364,7 +367,7 @@ function TranscriptPathLink({
               fileLinkContext.onFileOpenError(fallbackMessage);
               return;
             }
-            console.warn(fallbackMessage);
+            log.warn(fallbackMessage);
           });
       }}
       className="inline underline decoration-dotted underline-offset-2 hover:decoration-solid"

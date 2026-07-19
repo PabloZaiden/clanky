@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
 import type { GitRemoteStatusResponse } from "@/contracts";
 
-const log = createClientLogger("useTaskRemoteStatus");
+const log = createLogger("useTaskRemoteStatus");
 
 interface UseTaskRemoteStatusOptions {
   workspaceId?: string;

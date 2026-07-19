@@ -1,5 +1,8 @@
 import type { ProgressInfo } from "@huggingface/transformers";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { DictationLanguage } from "./use-dictation";
+
+const log = createLogger("dictation-transcriber");
 
 interface TranscriptionOutput {
   text?: string;
@@ -118,7 +121,7 @@ function scheduleIdleUnload(): void {
 
 function disposeTranscriber(transcriber: Transcriber | null): void {
   void transcriber?.dispose?.().catch((error: unknown) => {
-    console.warn("Failed to unload dictation model", error);
+    log.warn("Failed to unload dictation model", error);
   });
 }
 

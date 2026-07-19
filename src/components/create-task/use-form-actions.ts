@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import { parseModelKey } from "../ModelSelector";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { CreateTaskFormProps } from "./types";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { toMessageAttachments } from "../../lib/image-attachments";
@@ -15,7 +15,7 @@ import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { UploadedPlanFile } from "./types";
 
-const log = createClientLogger("CreateTaskForm");
+const log = createLogger("CreateTaskForm");
 
 export interface UseFormActionsReturn {
   formRef: React.RefObject<HTMLFormElement | null>;

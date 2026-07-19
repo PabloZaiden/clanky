@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import type React from "react";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { Terminal, type IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -14,6 +15,8 @@ import {
   TERMINAL_SCROLLBACK_LINES,
   TERMINAL_THEME,
 } from "./terminal-constants";
+
+const log = createLogger("terminal-renderer");
 
 interface UseTerminalRendererParams {
   sessionConfigId: string | undefined;
@@ -85,7 +88,7 @@ export function useTerminalRenderer({
         });
         nextTerminal.loadAddon(webglAddon);
       } catch (error) {
-        console.warn(`Terminal WebGL renderer unavailable, using default renderer: ${String(error)}`);
+        log.warn(`Terminal WebGL renderer unavailable, using default renderer: ${String(error)}`);
         webglContextLossDisposable?.dispose();
         webglContextLossDisposable = null;
         webglAddon?.dispose();

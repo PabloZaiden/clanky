@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { ConfirmModal } from "@pablozaiden/webapp/web";
-import { createClientLogger } from "../../lib/client-logger";
+import { ConfirmModal, createLogger } from "@pablozaiden/webapp/web";
 import type { PurgeTerminalTasksResult } from "../../hooks";
 import { Button } from "../common";
 
-const log = createClientLogger("PurgeTerminalTasksAction");
+const log = createLogger("PurgeTerminalTasksAction");
 
 export function PurgeTerminalTasksAction({
   onPurgeTerminalTasks,

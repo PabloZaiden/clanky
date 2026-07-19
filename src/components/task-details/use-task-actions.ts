@@ -3,7 +3,7 @@
  */
 
 import { useState } from "react";
-import { replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
+import { log, replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
 import type { SshSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
@@ -14,7 +14,6 @@ import type {
   AutomaticPrFlowResult,
   PullRequestAutoMergeResult,
 } from "../../hooks/taskActions";
-import { clientLog as log } from "../../lib/client-logger";
 
 interface UseTaskActionsOptions {
   onBack?: () => void;

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
 import { appFetch } from "../../lib/public-path";
 
@@ -9,7 +9,7 @@ export function useWorkspaceMutations(
   fetchStatus: () => Promise<void>,
   setError: (error: string | null) => void,
 ) {
-  const log = createClientLogger("useWorkspaceMutations");
+  const log = createLogger("useWorkspaceMutations");
   const [saving, setSaving] = useState(false);
 
   const updateSettings = useCallback(async (newSettings: ServerSettings): Promise<boolean> => {

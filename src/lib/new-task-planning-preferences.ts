@@ -1,6 +1,6 @@
-import { createClientLogger } from "./client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 
-const log = createClientLogger("newTaskPlanningPreferences");
+const log = createLogger("newTaskPlanningPreferences");
 
 const NEW_TASK_PLANNING_STORAGE_KEY = "clanky.newTaskPlanningPreferences";
 

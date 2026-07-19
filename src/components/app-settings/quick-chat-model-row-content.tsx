@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicWorkspace } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import type { QuickChatSettings } from "@/shared/preferences";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import {
   makeModelKey,
@@ -12,7 +12,7 @@ import {
 } from "../ModelSelector";
 import { SettingsError } from "./settings-row-controls";
 
-const log = createClientLogger("QuickChatModelRowContent");
+const log = createLogger("QuickChatModelRowContent");
 
 function getModelKey(settings: QuickChatSettings): string {
   if (!settings.model) {

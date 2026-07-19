@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appFetch } from "../lib/public-path";
-import { createClientLogger } from "../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { Agent, AgentRun } from "@/shared";
 import type { CreateAgentRequest, DeleteAgentRunsRequest, RunAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
-const log = createClientLogger("useAgents");
+const log = createLogger("useAgents");
 
 function sortAgents(agents: Agent[]): Agent[] {
   return [...agents].sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));

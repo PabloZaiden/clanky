@@ -6,12 +6,12 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { TaskEvent, MessageData, ToolCallData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
-import { createClientLogger } from "../../lib/client-logger";
+import { createLogger } from "@pablozaiden/webapp/web";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useTaskData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 
-const log = createClientLogger("useTask");
+const log = createLogger("useTask");
 
 export interface TaskEventHandlerParams {
   isActiveTask: (expectedTaskId: string) => boolean;
