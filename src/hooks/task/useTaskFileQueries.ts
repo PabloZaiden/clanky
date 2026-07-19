@@ -7,10 +7,10 @@ import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Task } from "@/shared";
 import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import { appFetch } from "../../lib/public-path";
 
-const log = createLogger("useTask");
+const log = createClientLogger("useTask");
 
 export interface UseTaskFileQueriesParams {
   taskId: string;

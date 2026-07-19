@@ -3,7 +3,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Route handlers for workspace server settings: CRUD, status, and test connection.
  */
 
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {

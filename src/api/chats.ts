@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { chatManager } from "../core/chat-manager";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat } from "@/shared/chat";
 import type { ChatConfig } from "@/shared/chat";
 import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";

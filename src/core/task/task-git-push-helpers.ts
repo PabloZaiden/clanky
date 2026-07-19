@@ -6,7 +6,7 @@ import { createTimestamp } from "@/shared/events";
 import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { startStatePersistenceImpl } from "./task-execution";
 import { finalizeFullyAutonomousPushImpl } from "./task-fully-autonomous";

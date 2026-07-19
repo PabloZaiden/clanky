@@ -9,7 +9,7 @@
  */
 
 import { isRemoteOnlyMode } from "../../core/config";
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import {
   buildProviderSpawnEnvironment,
   getProviderAcpCommand,

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 import type { DashboardViewMode } from "@/shared/preferences";
 import { appFetch } from "../lib/public-path";
 
@@ -33,7 +33,7 @@ export interface UseViewModePreferenceResult {
  * The setting persists across browser sessions via server-side storage.
  */
 export function useViewModePreference(): UseViewModePreferenceResult {
-  const log = createLogger("useViewModePreference");
+  const log = createClientLogger("useViewModePreference");
   const [viewMode, setViewModeState] = useState<DashboardViewMode>("rows"); // Default to rows
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -5,7 +5,7 @@
 import { useCallback } from "react";
 import type { Task } from "@/shared";
 import type { CreateTaskRequest, UpdateTaskRequest, UncommittedChangesError } from "@/contracts";
-import { createLogger } from "../../lib/logger";
+import { createClientLogger } from "../../lib/client-logger";
 import { appFetch } from "../../lib/public-path";
 import { deleteTaskApi } from "../taskActions";
 
@@ -28,7 +28,7 @@ export interface UseTaskMutationsResult {
 }
 
 export function useTaskMutations({ setError, setTasks }: UseTaskMutationsOptions): UseTaskMutationsResult {
-  const log = createLogger("useTaskMutations");
+  const log = createClientLogger("useTaskMutations");
   const createTask = useCallback(async (request: CreateTaskRequest): Promise<CreateTaskResult> => {
     try {
       const response = await appFetch("/api/tasks", {

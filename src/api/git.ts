@@ -17,7 +17,7 @@ import { GitCommandError, GitService } from "../core/git";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 import type { Workspace } from "@/shared";
 import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse } from "@/contracts";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse, requireWorkspace } from "./helpers";
 
 const log = createLogger("api:git");

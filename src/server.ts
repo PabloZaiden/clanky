@@ -7,7 +7,7 @@ import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, getRequestOriginInfo, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
@@ -16,7 +16,6 @@ import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
-import { log, setLogLevel } from "./core/logger";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
 import { getAppConfig } from "./core/config";
@@ -169,7 +168,6 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     version: CLANKY_VERSION,
     store,
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
-    logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
     routes,
     websockets: {

@@ -1,9 +1,9 @@
-import { createLogger } from "./logger";
+import { createClientLogger } from "./client-logger";
 import { isApiErrorCode, parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
-const log = createLogger("sshBrowserCredentials");
+const log = createClientLogger("sshBrowserCredentials");
 const SSH_CREDENTIAL_STORAGE_PREFIX = "clanky.sshServerCredential.";
 
 interface CachedSshCredentialToken {

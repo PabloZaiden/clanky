@@ -15,7 +15,7 @@
  * ```
  */
 
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("EventStream");
 

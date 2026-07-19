@@ -3,7 +3,7 @@
  */
 
 import { DEFAULT_SSH_CONNECTION_MODE, normalizeSshSessionUseTmux, normalizeSshConnectionMode, type SshServer, type SshServerConfig, type SshServerSession } from "@/shared";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
 import {
   deleteSshServerKeyPair,

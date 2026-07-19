@@ -9,7 +9,7 @@
  * waiting on a dead process.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 
 import { isRecord, getString, firstString } from "./json-helpers";
 import { invokeOptionalMethod } from "./optional-method";

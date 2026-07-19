@@ -7,7 +7,7 @@ import type { LogLevel } from "@/shared/events";
 import type { AgentSession } from "../../backends/types";
 import { AcpBackend, getAcpErrorMessage, isAcpErrorCode } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { TaskBackend, IterationContext } from "./engine-types";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";

@@ -30,7 +30,7 @@ import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-run
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { buildManagedContextEnvironment } from "./managed-context-environment";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   ChatSessionPort,
   ChatStatePort,

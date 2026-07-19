@@ -7,7 +7,7 @@
  */
 
 import type { CommandExecutor } from "../command-executor";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 
 // Re-export all public types so callers can import from this module
 export {

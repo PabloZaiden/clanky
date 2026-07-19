@@ -17,7 +17,7 @@ import type {
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../command-executor";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
 import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";

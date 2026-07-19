@@ -7,7 +7,7 @@ import type { AutomaticPrFlowFeedbackSource, AutomaticPrFlowMergeStateStatus, Ta
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import {
   buildFallbackPullRequestMetadata,

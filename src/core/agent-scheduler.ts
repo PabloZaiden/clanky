@@ -8,7 +8,7 @@ import {
   saveAgent,
   saveAgentRun,
 } from "../persistence/agents";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { agentEventEmitter } from "./event-emitter";
 import { agentRunner } from "./agent-runner";
 import { calculateNextRunAt } from "./agent-schedule";

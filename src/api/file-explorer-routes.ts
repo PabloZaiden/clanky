@@ -25,7 +25,7 @@ import {
   type FileExplorerTarget,
 } from "../core/file-explorer-service";
 import { isFileExplorerConflictError } from "../core/file-explorer-errors";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse } from "./helpers";
 import { createFileDownloadResponse, createInlineImageResponse } from "./file-download-response";
 import { parseAndValidate, validateRequest, type ValidationResult } from "./validation";

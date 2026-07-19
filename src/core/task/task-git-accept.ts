@@ -3,7 +3,7 @@ import type { AcceptTaskResult } from "./task-types";
 import { createTimestamp } from "@/shared/events";
 import { updateTaskState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
 

@@ -9,7 +9,7 @@
  * subscription lifecycle, or permission handling.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { AgentEvent, QuestionInfo, SessionReplayEvent } from "../types";
 
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";

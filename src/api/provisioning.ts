@@ -2,7 +2,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { provisioningManager } from "../core/provisioning-manager";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";

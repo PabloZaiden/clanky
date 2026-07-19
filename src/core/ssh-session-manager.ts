@@ -17,7 +17,7 @@ import {
 import { loadTask } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { sshSessionEventEmitter } from "./event-emitter";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { buildDefaultSshSessionName, buildTaskSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";

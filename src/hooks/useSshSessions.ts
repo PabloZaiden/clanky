@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SshSession } from "@/shared";
 import type { CreateSshSessionRequest, UpdateSshSessionRequest } from "@/contracts";
-import { createLogger } from "../lib/logger";
+import { createClientLogger } from "../lib/client-logger";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { appFetch } from "../lib/public-path";
 
@@ -21,7 +21,7 @@ export interface UseSshSessionsResult {
 }
 
 export function useSshSessions(): UseSshSessionsResult {
-  const log = createLogger("useSshSessions");
+  const log = createClientLogger("useSshSessions");
   const [sessions, setSessions] = useState<SshSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

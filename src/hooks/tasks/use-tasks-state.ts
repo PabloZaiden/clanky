@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/shared";
-import { log } from "../../lib/logger";
+import { clientLog as log } from "../../lib/client-logger";
 import { appFetch } from "../../lib/public-path";
 
 export interface UseTasksStateResult {

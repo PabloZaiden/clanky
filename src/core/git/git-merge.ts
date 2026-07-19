@@ -3,7 +3,7 @@
  */
 
 import type { CommandExecutor } from "../command-executor";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { runGitCommand, gitError } from "./git-core";
 import { verifyBranch, getConflictedFiles } from "./git-repo-query";
 import { checkoutBranch } from "./git-branch";

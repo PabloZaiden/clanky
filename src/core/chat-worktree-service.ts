@@ -10,7 +10,7 @@ import { backendManager } from "./backend";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { sanitizeBranchName } from "../utils";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
 import type {
   ChatDirectoryResolution,

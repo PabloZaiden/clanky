@@ -14,7 +14,7 @@ import { getTaskWorkingDirectory } from "./task/task-types";
 import { taskManager, type TaskManager } from "./task-manager";
 import { sshServerManager, type SshServerManager } from "./ssh-server-manager";
 import { isUniqueConstraint } from "../persistence/errors";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";

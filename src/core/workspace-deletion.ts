@@ -3,7 +3,7 @@ import type { Workspace } from "@/shared/workspace";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { DomainError } from "./domain-error";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
 import { managedCredentialService } from "./managed-credential-service";
 

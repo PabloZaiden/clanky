@@ -3,7 +3,7 @@
  */
 
 import type { CommandExecutor } from "./command-executor";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { Task, PullRequestMonitoringState } from "@/shared/task";
 import type { PullRequestDestinationResponse } from "@/contracts";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";

@@ -4,7 +4,7 @@
 
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential } from "@/shared";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 
 const log = createLogger("core:ssh-credential-manager");

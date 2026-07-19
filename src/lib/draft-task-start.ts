@@ -1,7 +1,7 @@
 import type { CheapModelSelection, ModelConfig, Workspace } from "@/shared";
 import type { UncommittedChangesError } from "@/contracts";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { createLogger } from "./logger";
+import { createClientLogger } from "./client-logger";
 import {
   saveStoredTaskCheapModelPreference,
   saveStoredTaskModelPreference,
@@ -9,7 +9,7 @@ import {
 import { toDraftTaskUpdateRequest } from "./task-request";
 import { appFetch } from "./public-path";
 
-const log = createLogger("DraftTaskStart");
+const log = createClientLogger("DraftTaskStart");
 
 interface PersistTaskPreferencesOptions {
   workspaces: Workspace[];

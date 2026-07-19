@@ -2,7 +2,7 @@
  * Prompt building helpers for TaskEngine.
  */
 
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { TaskConfig, TaskState, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { LogLevel } from "@/shared/events";

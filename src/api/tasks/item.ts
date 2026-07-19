@@ -10,7 +10,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { TaskUpdateError } from "../../core/task/task-errors";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { parseAndValidate } from "../validation";
 import { errorResponse, internalErrorResponse, successResponse } from "../helpers";
 import type { TaskConfig, Task } from "@/shared/task";

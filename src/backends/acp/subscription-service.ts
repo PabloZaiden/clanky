@@ -7,7 +7,7 @@
  * aborting all subscriptions detaches the subscriber and releases the stream.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { AgentEvent } from "../types";
 import { createEventStream, type EventStream } from "../../utils/event-stream";
 

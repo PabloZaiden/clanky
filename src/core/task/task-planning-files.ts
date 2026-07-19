@@ -2,7 +2,7 @@ import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
 import type { CommandExecutor } from "../command-executor";
 import { updateTaskState } from "../../persistence/tasks";
-import { log } from "../logger";
+import { log } from "@pablozaiden/webapp/server";
 import { ensurePlanningDirectory } from "../planning-directory";
 import { getPlanFilePath } from "../../lib/planning-files";
 

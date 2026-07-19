@@ -1,6 +1,6 @@
-import { createLogger } from "./logger";
+import { createClientLogger } from "./client-logger";
 
-const log = createLogger("vncBrowserCredentials");
+const log = createClientLogger("vncBrowserCredentials");
 
 const VNC_PASSWORD_STORAGE_PREFIX = "clanky.vncPassword.";
 const VNC_PASSWORD_KEY_STORAGE_PREFIX = "clanky.vncPasswordKey.";

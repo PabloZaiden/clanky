@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * @module api/models/models-routes
  */
 
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   getModelVariantsForWorkspace,
   getModelsForWorkspace,

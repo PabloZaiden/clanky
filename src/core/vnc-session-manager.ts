@@ -17,7 +17,7 @@ import { sshCredentialManager } from "./ssh-credential-manager";
 import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 import { DomainError, isDomainError } from "./domain-error";
 

@@ -9,7 +9,7 @@
  * process handles and no duplicated event parsing.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { ModelInfo } from "@/contracts";
 import type {
   AgentPart,

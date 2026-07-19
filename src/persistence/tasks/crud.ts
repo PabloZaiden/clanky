@@ -4,7 +4,7 @@
 
 import type { Task } from "@/shared";
 import { getDatabase } from "../database";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 

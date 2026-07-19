@@ -17,7 +17,7 @@ import {
   saveSshServerKeyPair,
   type PersistedSshServerKeyPair,
 } from "../persistence/ssh-server-keys";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 
 const log = createLogger("core:ssh-server-key-manager");

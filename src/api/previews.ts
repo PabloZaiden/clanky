@@ -4,7 +4,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  */
 
 import { previewSessionManager } from "../core/preview-session-manager";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 
 const log = createLogger("api:previews");

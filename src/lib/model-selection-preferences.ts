@@ -1,8 +1,8 @@
 import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schemas/model";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
-import { createLogger } from "./logger";
+import { createClientLogger } from "./client-logger";
 
-const log = createLogger("modelSelectionPreferences");
+const log = createClientLogger("modelSelectionPreferences");
 
 const TASK_MODEL_STORAGE_KEY = "clanky.taskModelPreference";
 const TASK_CHEAP_MODEL_STORAGE_KEY = "clanky.taskCheapModelPreference";

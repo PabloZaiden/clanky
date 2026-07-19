@@ -19,7 +19,7 @@
  * It owns no protocol maps, process handles, or per-session state of its own.
  */
 
-import { log } from "../../core/logger";
+import { log } from "@pablozaiden/webapp/server";
 import type { ModelInfo } from "@/contracts";
 
 import type {

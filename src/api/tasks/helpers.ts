@@ -3,7 +3,7 @@
  */
 
 import { taskManager } from "../../core/task-manager";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../../core/model-discovery";
 import { isTaskOperationError, type TaskOperationError, type TaskErrorCode } from "../../core/task/task-errors";
 import { domainErrorResponse, errorResponse } from "../helpers";

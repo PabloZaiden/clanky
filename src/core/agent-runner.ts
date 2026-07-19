@@ -9,7 +9,7 @@ import {
   saveAgent,
   saveAgentRun,
 } from "../persistence/agents";
-import { createLogger } from "./logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { agentEventEmitter, chatEventEmitter } from "./event-emitter";
 
 const log = createLogger("agent-runner");

@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { taskManager } from "../../core/task-manager";
 import { sshSessionManager } from "../../core/ssh-session-manager";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "../helpers";
 
 const log = createLogger("api:tasks");

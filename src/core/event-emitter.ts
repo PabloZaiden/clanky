@@ -5,7 +5,7 @@
  */
 
 import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
-import { log } from "./logger";
+import { log } from "@pablozaiden/webapp/server";
 import { getCurrentUserId } from "./user-context";
 
 export interface EventContext {

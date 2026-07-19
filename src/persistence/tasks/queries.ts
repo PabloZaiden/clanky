@@ -5,7 +5,7 @@
 
 import type { Task, TaskStatus } from "@/shared";
 import { getDatabase } from "../database";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToTask } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 

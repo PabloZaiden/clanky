@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";

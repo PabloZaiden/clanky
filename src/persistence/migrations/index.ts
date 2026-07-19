@@ -37,7 +37,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { createLogger } from "../../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { AGENT_PROVIDER_IDS, getDefaultServerSettings, parseServerSettings } from "../../shared/settings";
 
 const log = createLogger("persistence:migrations");

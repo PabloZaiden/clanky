@@ -14,7 +14,7 @@ import type {
   AutomaticPrFlowResult,
   PullRequestAutoMergeResult,
 } from "../../hooks/taskActions";
-import { log } from "../../lib/logger";
+import { clientLog as log } from "../../lib/client-logger";
 
 interface UseTaskActionsOptions {
   onBack?: () => void;

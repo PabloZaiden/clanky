@@ -6,7 +6,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import type { AgentRunStatus } from "@/shared/agent";
 import { AgentRunsQuerySchema, CreateAgentRequestSchema, DeleteAgentRunsRequestSchema, RunAgentRequestSchema, UpdateAgentRequestSchema } from "@/contracts/schemas";
 import { agentManager } from "../core/agent-manager";
-import { createLogger } from "../core/logger";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../core/model-discovery";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
