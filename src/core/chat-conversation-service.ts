@@ -771,12 +771,13 @@ export class ChatConversationService implements ChatConversationPort {
             if (chat.state.interruptRequested || chat.state.status === "interrupting") {
               chat = await this.completeInterruptedChat(chat);
             } else {
+              const completionTimestamp = createTimestamp();
               chat = await this.updateState(chat, {
                 ...chat.state,
                 status: "idle",
                 activeMessageId: undefined,
                 interruptRequested: false,
-                lastActivityAt: now,
+                lastActivityAt: completionTimestamp,
               });
             }
             this.clearActiveStream(chatId, generation);
