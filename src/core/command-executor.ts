@@ -20,8 +20,8 @@ export interface CommandResult {
 export interface CommandOptions {
   /** Working directory for the command */
   cwd?: string;
-  /** Timeout in milliseconds */
-  timeout?: number;
+  /** Timeout in milliseconds; null disables the executor timeout */
+  timeout?: number | null;
   /** Whether failed commands should be logged by the executor */
   logFailures?: boolean;
   /** Environment variable overrides for the command */

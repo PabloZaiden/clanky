@@ -8,11 +8,9 @@ import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
 const MAX_OUTPUT_ENTRY_LENGTH = 16_384;
 
 export type DeterministicOutputStream = "stdout" | "stderr";
-export type DeterministicOutputSource = "program" | "command";
 
 export interface DeterministicAgentOutputDetails {
   stream: DeterministicOutputStream;
-  source: DeterministicOutputSource;
 }
 
 export interface DeterministicAgentOutputOptions {
@@ -53,7 +51,7 @@ export class DeterministicAgentOutput {
     return this.currentRun;
   }
 
-  append(stream: DeterministicOutputStream, source: DeterministicOutputSource, text: string): void {
+  append(stream: DeterministicOutputStream, text: string): void {
     if (text.length === 0) {
       return;
     }
@@ -66,7 +64,6 @@ export class DeterministicAgentOutput {
       message: normalized.message,
       details: {
         stream,
-        source,
         ...(normalized.truncated ? { truncated: true } : {}),
       } satisfies DeterministicAgentOutputDetails & { truncated?: boolean },
       timestamp,

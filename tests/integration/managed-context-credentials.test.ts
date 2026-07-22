@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import {
   managedCredentialService,
+  DETERMINISTIC_AGENT_MANAGED_BY,
 } from "../../src/core/managed-credential-service";
 import { createInitialChatState } from "../../src/shared/chat";
 import { saveChat } from "../../src/persistence/chats";
@@ -133,6 +134,33 @@ describe("managed execution context credentials", () => {
       const rotated = await managedCredentialService.ensureCredentialForRuntime(existingIdentity, "recreate");
       expect(rotated?.generation).toBe(2);
       expect(listManagedApiKeys(store, testOwnerUser.id, "clanky.execution-context")).toHaveLength(2);
+    });
+  });
+
+  test("creates deterministic prompt credentials when CLI access is disabled", async () => {
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await updateWorkspace(workspace.id, { allowClankyContext: false });
+      const identity = {
+        userId: testOwnerUser.id,
+        workspaceId: workspace.id,
+        contextType: "agent_run" as const,
+        contextId: crypto.randomUUID(),
+      };
+
+      const credential = await managedCredentialService.ensureCredentialForRuntime(
+        identity,
+        "recreate",
+        {
+          managedBy: DETERMINISTIC_AGENT_MANAGED_BY,
+          name: "Clanky deterministic agent runtime",
+          scopes: ["clanky:agent-prompt"],
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          allowWhenWorkspaceDisabled: true,
+        },
+      );
+
+      expect(credential).toBeDefined();
+      await managedCredentialService.revokeCredential(credential!);
     });
   });
 

@@ -1,7 +1,4 @@
-import type {
-  DeterministicAgentContext,
-  DeterministicCodeDiagnostic,
-} from "@/shared/deterministic-agent";
+import type { DeterministicCodeDiagnostic } from "@/shared/deterministic-agent";
 
 const DEFAULT_EXPORT_PATTERN = /export\s+default\s+(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(/;
 
@@ -43,26 +40,4 @@ export function validateDeterministicAgentCode(code: string): DeterministicCodeD
   }
 
   return diagnostics;
-}
-
-export async function loadDeterministicAgentProgram(
-  code: string,
-): Promise<(context: DeterministicAgentContext) => Promise<unknown> | unknown> {
-  const diagnostics = validateDeterministicAgentCode(code);
-  if (diagnostics.length > 0) {
-    throw new Error(diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
-  }
-
-  const transpiler = new Bun.Transpiler({ loader: "ts" });
-  const javascript = transpiler.transformSync(code);
-  const moduleUrl = URL.createObjectURL(new Blob([javascript], { type: "text/javascript" }));
-  try {
-    const module = await import(moduleUrl);
-    if (typeof module.default !== "function") {
-      throw new Error("Deterministic agent code must export a callable default function.");
-    }
-    return module.default as (context: DeterministicAgentContext) => Promise<unknown> | unknown;
-  } finally {
-    URL.revokeObjectURL(moduleUrl);
-  }
 }

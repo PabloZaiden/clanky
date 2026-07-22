@@ -22,6 +22,9 @@ import type {
 export class TestCommandExecutor implements CommandExecutor {
   /**
    * Execute a shell command locally.
+   * Streams stdout chunks incrementally so long-running processes
+   * (e.g. the deterministic agent Node.js runner) can deliver output
+   * progressively while still running.
    */
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
     try {
@@ -44,14 +47,63 @@ export class TestCommandExecutor implements CommandExecutor {
         env: { ...process.env, ...(options?.env ?? {}) },
       });
 
+      // Support mid-execution signal-based kill so long-running commands
+      // (e.g. the deterministic agent Node.js runner) can be cancelled.
+      let killed = false;
+      let abortHandler: (() => void) | undefined;
+      if (options?.signal) {
+        abortHandler = () => {
+          killed = true;
+          try { proc.kill(); } catch { /* ignore */ }
+        };
+        options.signal.addEventListener("abort", abortHandler, { once: true });
+      }
+
+      // Stream stdout incrementally so runners can deliver output while running.
+      const stdoutChunks: string[] = [];
+      const stdoutPromise = (async () => {
+        const decoder = new TextDecoder();
+        const reader = proc.stdout.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            stdoutChunks.push(chunk);
+            options?.onStdoutChunk?.(chunk);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        return stdoutChunks.join("");
+      })();
+
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
+        stdoutPromise,
         new Response(proc.stderr).text(),
         proc.exited,
       ]);
-      options?.onStdoutChunk?.(stdout);
-      options?.onStderrChunk?.(stderr);
-      
+
+      if (abortHandler && options?.signal) {
+        options.signal.removeEventListener("abort", abortHandler);
+      }
+
+      if (!options?.onStdoutChunk) {
+        // Only call the batch callback if no streaming was done above.
+        options?.onStderrChunk?.(stderr);
+      } else {
+        options?.onStderrChunk?.(stderr);
+      }
+
+      if (killed || options?.signal?.aborted) {
+        return {
+          success: false,
+          stdout,
+          stderr: stderr || "Command aborted",
+          exitCode: 130,
+        };
+      }
+
       return {
         success: exitCode === 0,
         stdout,

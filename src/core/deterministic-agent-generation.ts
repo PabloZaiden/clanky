@@ -1,5 +1,5 @@
 import type { ModelConfig } from "@/shared/model";
-import type { Chat } from "@/shared/chat";
+import { isChatBusyStatus, type Chat } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 import { backendManager } from "./backend";
@@ -8,6 +8,9 @@ import type { CommandExecutor } from "./command-executor";
 import { validateDeterministicAgentCode } from "./deterministic-agent-code";
 
 const log = createLogger("deterministic-agent-generation");
+const GENERATION_SOURCE_POLL_INTERVAL_MS = 100;
+const GENERATION_SOURCE_TIMEOUT_MS = 15 * 60 * 1000;
+const GENERATION_COMPLETE_MARKER = "complete";
 
 export interface GenerateDeterministicAgentCodeOptions {
   name: string;
@@ -30,9 +33,14 @@ function createGenerationFilePath(directory: string): string {
   return directory.endsWith("/") ? `${directory}${filename}` : `${directory}/${filename}`;
 }
 
+function createGenerationCompletionFilePath(filePath: string): string {
+  return `${filePath}.complete`;
+}
+
 function buildGenerationPrompt(
   options: GenerateDeterministicAgentCodeOptions,
   outputFilePath: string,
+  completionFilePath: string,
 ): string {
   const previousCode = options.previousCode.trim() || "(no previous code)";
   const comments = options.comments.trim() || "(no additional comments)";
@@ -44,6 +52,12 @@ function buildGenerationPrompt(
     outputFilePath,
     "---",
     "Create or overwrite that file and verify that it contains the complete source before finishing.",
+    "Only after the source is complete and verified, write the exact text "
+      + `"${GENERATION_COMPLETE_MARKER}" to this separate marker file:`,
+    "---",
+    completionFilePath,
+    "---",
+    "Do not create or update the marker file until the source file is complete.",
     "Do not include Markdown fences, explanations, or any other text in the file.",
     "After writing and verifying the file, reply with a short confirmation only; do not paste the source in your response.",
     "The source must export a default function named run (ctx) or an anonymous default function.",
@@ -70,6 +84,83 @@ function buildGenerationPrompt(
     previousCode,
     "---",
   ].join("\n");
+}
+
+async function waitForGenerationPoll(signal?: AbortSignal): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await awaitWithAbort(
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, GENERATION_SOURCE_POLL_INTERVAL_MS);
+      }),
+      signal,
+    );
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function waitForGeneratedAgentSource(
+  executor: CommandExecutor,
+  chatId: string,
+  outputFilePath: string,
+  completionFilePath: string,
+  signal?: AbortSignal,
+): Promise<GeneratedDeterministicAgentCode> {
+  const startedAt = Date.now();
+  let previousSource: string | undefined;
+
+  while (true) {
+    const chat = await awaitWithAbort(chatManager.getChat(chatId), signal);
+    if (!chat) {
+      throw new DomainError(
+        "agent_code_generation_failed",
+        `Generation chat not found: ${chatId}`,
+      );
+    }
+    if (chat.state.status === "failed" || chat.state.error) {
+      throw new DomainError(
+        "agent_code_generation_failed",
+        chat.state.error?.message ?? "The code generation chat failed",
+      );
+    }
+
+    const source = await awaitWithAbort(executor.readFile(outputFilePath), signal);
+    const normalizedSource = source?.trim() || undefined;
+    const completionMarker = await awaitWithAbort(
+      executor.readFile(completionFilePath),
+      signal,
+    );
+    const markerComplete = completionMarker?.trim() === GENERATION_COMPLETE_MARKER;
+
+    if (normalizedSource) {
+      const diagnostics = validateDeterministicAgentCode(normalizedSource);
+      const chatIsIdle = !isChatBusyStatus(chat.state.status);
+      const sourceIsStable = previousSource === normalizedSource;
+      if (markerComplete || chatIsIdle || (diagnostics.length === 0 && sourceIsStable)) {
+        return { code: normalizedSource, diagnostics };
+      }
+      previousSource = normalizedSource;
+    } else {
+      previousSource = undefined;
+      if (!isChatBusyStatus(chat.state.status)) {
+        throw new DomainError(
+          "agent_code_generation_failed",
+          "The code generation provider did not create a non-empty source file",
+        );
+      }
+    }
+
+    if (Date.now() - startedAt > GENERATION_SOURCE_TIMEOUT_MS) {
+      throw new DomainError(
+        "agent_code_generation_failed",
+        "Timed out waiting for the code generation provider to finish writing the source file",
+      );
+    }
+    await waitForGenerationPoll(signal);
+  }
 }
 
 async function removeGenerationFile(
@@ -133,6 +224,7 @@ export async function generateDeterministicAgentCode(
   let chat: Chat | undefined;
   let executor: CommandExecutor | undefined;
   let outputFilePath: string | undefined;
+  let completionFilePath: string | undefined;
   chat = await chatManager.createChat({
     name: `Generate code: ${options.name}`,
     workspaceId: options.workspaceId,
@@ -153,8 +245,9 @@ export async function generateDeterministicAgentCode(
       options.signal,
     );
     outputFilePath = createGenerationFilePath(options.directory);
+    completionFilePath = createGenerationCompletionFilePath(outputFilePath);
     const clearResult = await awaitWithAbort(
-      executor.exec("rm", ["-f", "--", outputFilePath], {
+      executor.exec("rm", ["-f", "--", outputFilePath, completionFilePath], {
         cwd: options.directory,
         timeout: 10_000,
         logFailures: false,
@@ -170,37 +263,23 @@ export async function generateDeterministicAgentCode(
 
     await awaitWithAbort(
       chatManager.sendMessage(chat.config.id, {
-        message: buildGenerationPrompt(options, outputFilePath),
+        message: buildGenerationPrompt(options, outputFilePath, completionFilePath),
       }),
       options.signal,
     );
-    const completed = await awaitWithAbort(
-      chatManager.waitForChatIdle(chat.config.id),
+    return await waitForGeneratedAgentSource(
+      executor,
+      chat.config.id,
+      outputFilePath,
+      completionFilePath,
       options.signal,
     );
-    if (completed.state.status === "failed" || completed.state.error) {
-      throw new DomainError(
-        "agent_code_generation_failed",
-        completed.state.error?.message ?? "The code generation chat failed",
-      );
-    }
-    const code = await awaitWithAbort(
-      executor.readFile(outputFilePath),
-      options.signal,
-    );
-    if (!code?.trim()) {
-      throw new DomainError(
-        "agent_code_generation_failed",
-        "The code generation provider did not create a non-empty source file",
-      );
-    }
-
-    const normalizedCode = code.trim();
-    const diagnostics = validateDeterministicAgentCode(normalizedCode);
-    return { code: normalizedCode, diagnostics };
   } finally {
     if (executor && outputFilePath) {
       await removeGenerationFile(executor, options.directory, outputFilePath);
+    }
+    if (executor && completionFilePath) {
+      await removeGenerationFile(executor, options.directory, completionFilePath);
     }
     if (chat) {
       try {

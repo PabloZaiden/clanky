@@ -557,7 +557,8 @@ export const agentsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Generate an editable deterministic agent program before saving an agent.",
-    async POST(req: Request): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
+      ctx.server?.timeout(req, 0);
       return generateAgentCodeResponse(req, null);
     },
   },
@@ -650,6 +651,7 @@ export const agentsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Generate an editable deterministic agent program without saving it.",
     async POST(req: Request, ctx): Promise<Response> {
+      ctx.server?.timeout(req, 0);
       const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
         return errorResponse("agent_not_found", "Agent not found", 404);
@@ -663,6 +665,7 @@ export const agentsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Test deterministic agent code without saving an agent or run.",
     async POST(req: Request, ctx): Promise<Response> {
+      ctx.server?.timeout(req, 0);
       const prepared = await prepareDeterministicAgentTest(req);
       if (prepared instanceof Response) {
         return prepared;
@@ -676,6 +679,7 @@ export const agentsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Stream deterministic agent code test output without saving an agent or run.",
     async POST(req: Request, ctx): Promise<Response> {
+      ctx.server?.timeout(req, 0);
       const prepared = await prepareDeterministicAgentTest(req);
       if (prepared instanceof Response) {
         return prepared;

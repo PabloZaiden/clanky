@@ -42,6 +42,18 @@ const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 
+function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+function getLocalManagedCredentialBaseUrl(host: string, port: number): string | undefined {
+  if (!isLoopbackHost(host) || port <= 0) {
+    return undefined;
+  }
+  const formattedHost = host === "::1" ? `[${host}]` : host;
+  return `http://${formattedHost}:${String(port)}`;
+}
+
 function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): void {
   if (realtimeBridgeUnsubscribers) {
     return;
@@ -181,7 +193,10 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       };
     },
   });
-  managedCredentialService.configure(app.store, app.config);
+  managedCredentialService.configure(app.store, {
+    publicBaseUrl: app.config.publicBaseUrl
+      ?? getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
+  });
   registerClankyRealtimeBridge(app);
   return app;
 }
@@ -211,6 +226,11 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   }
 
   const server = await appServer.start();
+  if (!appServer.config.publicBaseUrl && isLoopbackHost(new URL(server.url).hostname)) {
+    managedCredentialService.configure(appServer.store, {
+      publicBaseUrl: new URL(server.url).origin,
+    });
+  }
   pushedTaskMonitor.start();
   agentScheduler.start();
 

@@ -1,15 +1,55 @@
-import type {
-  DeterministicAgentContext,
-  DeterministicCommandResult,
-  DeterministicExecOptions,
-} from "@/shared/deterministic-agent";
+/**
+ * Deterministic agent runtime.
+ *
+ * Executes user TypeScript code on the selected workspace host via Node.js 24+.
+ * The TypeScript source is written to a temp directory on the host and run by
+ * Node.js type stripping in an isolated child process. A JSON control protocol on the runner
+ * stdout delivers ctx.stdout/stderr writes; workspace.exec runs commands on the
+ * host and returns results to the program without appending them to visible output.
+ * workspace.prompt bridges to Clanky's chat via the /api/internal/agent-prompt
+ * route authenticated with a temporary managed API key.
+ */
+
 import type { AgentRun } from "@/shared/agent";
 import type { ManagedContextIdentity } from "@/shared/context-api-key";
-import { chatManager } from "./chat-manager";
 import { backendManager } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
-import { loadDeterministicAgentProgram } from "./deterministic-agent-code";
+import {
+  DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS,
+  DETERMINISTIC_AGENT_MANAGED_BY,
+  ManagedCredentialError,
+  managedCredentialService,
+  type ManagedRuntimeCredential,
+} from "./managed-credential-service";
+import { validateDeterministicAgentCode } from "./deterministic-agent-code";
 import { DeterministicAgentOutput } from "./deterministic-agent-output";
+import { assertNodeVersionOnHost, launchDeterministicAgentOnHost } from "./deterministic-agent-runner";
+import { createLogger } from "@pablozaiden/webapp/server";
+
+const log = createLogger("deterministic-agent-runtime");
+
+async function revokeCredentialWithRetry(credential: ManagedRuntimeCredential): Promise<void> {
+  try {
+    await managedCredentialService.revokeCredential(credential);
+  } catch (firstError) {
+    try {
+      await managedCredentialService.revokeCredential(credential);
+    } catch (secondError) {
+      throw new AggregateError(
+        [firstError, secondError],
+        "Failed to revoke deterministic agent runtime credential",
+      );
+    }
+  }
+}
+
+function isOptionalCredentialUnavailable(error: unknown): error is ManagedCredentialError {
+  return error instanceof ManagedCredentialError
+    && (
+      error.code === "managed_context_not_configured"
+      || error.code === "managed_context_base_url_missing"
+    );
+}
 
 export interface DeterministicAgentRuntimeOptions {
   run: AgentRun;
@@ -22,131 +62,87 @@ export interface DeterministicAgentRuntimeOptions {
   managedContextIdentity?: ManagedContextIdentity;
 }
 
-function createAbortError(): Error {
-  return new Error("Deterministic agent run interrupted", { cause: "aborted" });
-}
-
-function assertNotAborted(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw createAbortError();
-  }
-}
-
-async function getLatestAssistantMessage(chatId: string): Promise<string> {
-  const chat = await chatManager.getChat(chatId);
-  if (!chat) {
-    throw new Error(`Agent run chat was not found: ${chatId}`);
-  }
-  const message = [...chat.state.messages].reverse().find((entry) => entry.role === "assistant");
-  if (!message) {
-    throw new Error("Workspace prompt completed without an assistant response");
-  }
-  return message.content;
-}
-
 export async function executeDeterministicAgent(
   options: DeterministicAgentRuntimeOptions,
 ): Promise<AgentRun> {
-  const {
-    run,
-    code,
-    chatId,
-    workspaceId,
-    directory,
-    signal,
-    output,
-  } = options;
-  const identity = options.managedContextIdentity
-    ?? await managedContextIdentityResolver.forAgentRun(run.id, workspaceId);
-  const executor = await backendManager.getCommandExecutorForContextAsync(identity, directory);
-  const program = await loadDeterministicAgentProgram(code);
+  const { run, code, chatId, workspaceId, directory, signal, output } = options;
 
-  const exec = async (
-    command: string,
-    args: string[] = [],
-    execOptions?: DeterministicExecOptions,
-  ): Promise<DeterministicCommandResult> => {
-    assertNotAborted(signal);
-    let stdoutObserved = false;
-    let stderrObserved = false;
-    const result = await executor.exec(command, args, {
-      cwd: execOptions?.cwd,
-      timeout: execOptions?.timeout,
-      signal,
-      logFailures: false,
-      onStdoutChunk: (chunk) => {
-        stdoutObserved = true;
-        output.append("stdout", "command", chunk);
-      },
-      onStderrChunk: (chunk) => {
-        stderrObserved = true;
-        output.append("stderr", "command", chunk);
-      },
-    });
-    if (!stdoutObserved && result.stdout) {
-      output.append("stdout", "command", result.stdout);
-    }
-    if (!stderrObserved && result.stderr) {
-      output.append("stderr", "command", result.stderr);
-    }
-    return result;
-  };
+  const identity =
+    options.managedContextIdentity ??
+    (await managedContextIdentityResolver.forAgentRun(run.id, workspaceId));
 
-  const prompt = async (input: string): Promise<string> => {
-    assertNotAborted(signal);
-    let abortHandler: (() => void) | undefined;
-    const abortPromise = new Promise<never>((_, reject) => {
-      abortHandler = () => {
-        const interruptPromise = chatManager.interruptChat(
-          chatId,
-          "Deterministic agent run interrupted",
-        );
-        void interruptPromise.then(
-          () => reject(createAbortError()),
-          (error) => reject(error),
-        );
-      };
-      signal.addEventListener("abort", abortHandler, { once: true });
-    });
+  const diagnostics = validateDeterministicAgentCode(code);
+  if (diagnostics.length > 0) {
+    throw new Error(diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+  }
+
+  // Get the base executor (no managed env wrapping — env vars are passed explicitly).
+  const executor = await backendManager.getCommandExecutorAsync(workspaceId, directory);
+
+  // Verify that the workspace host has a supported Node.js version.
+  await assertNodeVersionOnHost(executor);
+
+  // Create a short-lived managed API key for this run so the runner can call
+  // the prompt bridge.  We use "recreate" to ensure a fresh token per run.
+  let credential: ManagedRuntimeCredential | undefined;
+  let executionError: unknown;
+  try {
     try {
-      await Promise.race([
-        chatManager.sendMessage(chatId, { message: input }),
-        abortPromise,
-      ]);
-      const completedChat = await Promise.race([
-        chatManager.waitForChatIdle(chatId),
-        abortPromise,
-      ]);
-      if (completedChat.state.status === "failed" || completedChat.state.error) {
-        throw new Error(
-          completedChat.state.error?.message ?? "Workspace prompt failed",
-          { cause: completedChat.state.error },
-        );
+      credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
+        managedBy: DETERMINISTIC_AGENT_MANAGED_BY,
+        name: "Clanky deterministic agent runtime",
+        scopes: ["clanky:agent-prompt"],
+        expiresAt: new Date(Date.now() + DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS).toISOString(),
+        // Deterministic prompt calls use a temporary, prompt-only key and do
+        // not depend on the workspace's general CLI-access toggle.
+        allowWhenWorkspaceDisabled: true,
+      });
+    } catch (error) {
+      if (!isOptionalCredentialUnavailable(error)) {
+        throw error;
       }
-      assertNotAborted(signal);
-      return await getLatestAssistantMessage(chatId);
-    } finally {
-      if (abortHandler) {
-        signal.removeEventListener("abort", abortHandler);
+      log.debug("Deterministic prompt bridge credentials are not configured", {
+        runId: run.id,
+        reason: error.code,
+      });
+    }
+    if (signal.aborted) {
+      throw Object.assign(
+        new Error("Deterministic agent run interrupted"),
+        { cause: "aborted" },
+      );
+    }
+
+    return await launchDeterministicAgentOnHost({
+      run,
+      sourceCode: code,
+      chatId,
+      credential,
+      directory,
+      signal,
+      output,
+      executor,
+    });
+  } catch (error) {
+    executionError = error;
+    throw error;
+  } finally {
+    if (credential) {
+      try {
+        await revokeCredentialWithRetry(credential);
+      } catch (revokeError) {
+        log.error("Failed to revoke deterministic agent runtime credential", {
+          runId: run.id,
+          error: String(revokeError),
+        });
+        if (executionError !== undefined) {
+          throw new AggregateError(
+            [executionError, revokeError],
+            "Deterministic agent execution and credential cleanup failed",
+          );
+        }
+        throw revokeError;
       }
     }
-  };
-
-  const context: DeterministicAgentContext = {
-    workspace: {
-      exec,
-      prompt,
-    },
-    stdout: {
-      write: (text: string) => output.append("stdout", "program", String(text)),
-    },
-    stderr: {
-      write: (text: string) => output.append("stderr", "program", String(text)),
-    },
-    signal,
-  };
-
-  await program(context);
-  assertNotAborted(signal);
-  return output.run;
+  }
 }

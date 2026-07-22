@@ -215,7 +215,9 @@ export class CommandExecutorImpl implements CommandExecutor {
     const cmdStr = `${command} ${args.join(" ")}`;
     const executeCommand = async (): Promise<CommandResult> => {
       const cwd = options?.cwd ?? this.directory;
-      const timeout = options?.timeout ?? this.defaultTimeoutMs;
+      const timeout = options?.timeout === null
+        ? undefined
+        : options?.timeout ?? this.defaultTimeoutMs;
       const env = options?.env;
       const signal = options?.signal;
       const onStdoutChunk = options?.onStdoutChunk;
@@ -268,7 +270,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     command: string,
     args: string[],
     cwd: string,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     env?: Record<string, string>,
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
@@ -304,17 +306,19 @@ export class CommandExecutorImpl implements CommandExecutor {
       let aborted = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let abortHandler: (() => void) | undefined;
-      const timeoutPromise = new Promise<number>((resolve) => {
-        timeoutId = setTimeout(() => {
-          timedOut = true;
-          try {
-            proc.kill();
-          } catch {
-            // Ignore kill errors during timeout cleanup
-          }
-          resolve(124);
-        }, timeoutMs);
-      });
+      const timeoutPromise = timeoutMs === undefined
+        ? undefined
+        : new Promise<number>((resolve) => {
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              try {
+                proc.kill();
+              } catch {
+                // Ignore kill errors during timeout cleanup
+              }
+              resolve(124);
+            }, timeoutMs);
+          });
 
       const abortPromise = new Promise<number>((resolve) => {
         if (!signal) {
@@ -345,12 +349,17 @@ export class CommandExecutorImpl implements CommandExecutor {
         signal.addEventListener("abort", abortHandler, { once: true });
       });
 
-      const racedExitCode = await Promise.race([
-        proc.exited,
-        timeoutPromise,
-        ...(signal ? [abortPromise] : []),
-      ]);
-      clearTimeout(timeoutId);
+      const racePromises: Promise<number>[] = [proc.exited];
+      if (timeoutPromise) {
+        racePromises.push(timeoutPromise);
+      }
+      if (signal) {
+        racePromises.push(abortPromise);
+      }
+      const racedExitCode = await Promise.race(racePromises);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (signal && abortHandler) {
         signal.removeEventListener("abort", abortHandler);
       }
@@ -395,7 +404,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     command: string,
     args: string[],
     cwd: string,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     env?: Record<string, string>,
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
@@ -479,7 +488,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   private async execBatchSshWithInitialGate(
     sshTarget: string,
     remoteShellCommand: string,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
@@ -516,7 +525,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   private async execBatchSshCommand(
     sshTarget: string,
     remoteShellCommand: string,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,

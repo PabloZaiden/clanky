@@ -921,10 +921,7 @@ function DeterministicOutputStreams({ logs }: { logs: AgentRun["logs"] }) {
 
   const renderStream = (stream: "stdout" | "stderr") => outputLogs
     .filter((log) => log.details?.["stream"] === stream)
-    .map((log) => {
-      const source = typeof log.details?.["source"] === "string" ? log.details["source"] : "output";
-      return `[${source}] ${log.message}`;
-    })
+    .map((log) => log.message)
     .join("");
 
   const stdout = renderStream("stdout");

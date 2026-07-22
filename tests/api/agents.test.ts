@@ -32,6 +32,7 @@ describe("Agents API Integration", () => {
   ctx.stdout.write("generated from temporary file\\n");
 }`;
   const generatedSourcePaths: string[] = [];
+  let writeGenerationSource = true;
 
   async function getOrCreateWorkspace(directory: string): Promise<string> {
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -146,7 +147,9 @@ describe("Agents API Integration", () => {
         }
         const outputPath = promptText.slice(pathStart, pathEnd).trim();
         generatedSourcePaths.push(outputPath);
-        await Bun.write(outputPath, generatedCode);
+        if (writeGenerationSource) {
+          await Bun.write(outputPath, generatedCode);
+        }
       },
     });
     backendManager.setBackendForTesting(mockBackend);
@@ -195,7 +198,7 @@ describe("Agents API Integration", () => {
     expect(chats).toHaveLength(0);
   });
 
-  test("runs saved deterministic code and persists program and command output", async () => {
+  test("runs saved deterministic code and persists program stdout and stderr", async () => {
     const agent = await createAgent(
       "Deterministic output agent",
       `export default async function run(ctx) {
@@ -217,10 +220,15 @@ describe("Agents API Integration", () => {
 
     expect(completedRun.status).toBe("completed");
     expect(completedRun.configSnapshot.code).toContain("program stdout");
+    // Only explicit ctx.stdout.write/ctx.stderr.write calls produce visible output.
+    // workspace.exec output is returned to the program but NOT appended to logs.
     expect(completedRun.logs.filter((entry) => entry.details?.["stream"] === "stdout").map((entry) => entry.message).join(""))
       .toContain("program stdout");
     expect(completedRun.logs.filter((entry) => entry.details?.["stream"] === "stderr").map((entry) => entry.message).join(""))
-      .toContain("command stderr");
+      .toContain("program stderr");
+    // Command output must NOT appear in logs.
+    expect(completedRun.logs.every((entry) => !entry.message.includes("command stdout"))).toBe(true);
+    expect(completedRun.logs.every((entry) => !entry.message.includes("command stderr"))).toBe(true);
   });
 
   test("generates an editable draft from the temporary file without persisting it", async () => {
@@ -325,6 +333,73 @@ describe("Agents API Integration", () => {
     }
   });
 
+  test("returns the file draft while the provider stream is still open", async () => {
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    mockBackend.setResponseGate(() => providerGate);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Streaming file generation draft",
+          prompt: "Generate code and write it to the temporary source file",
+          comments: "",
+          previousCode: "",
+          workspaceId,
+          model: testModel,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const generated = await response.json() as { code: string };
+      expect(generated.code).toContain("generated from temporary file");
+    } finally {
+      releaseProvider();
+      mockBackend.setResponseGate();
+    }
+  });
+
+  test("keeps generation alive past the HTTP idle timeout", async () => {
+    let releaseProvider!: () => void;
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    writeGenerationSource = false;
+    mockBackend.setResponseGate(() => providerGate);
+
+    // Deliberately cross Bun's default idle timeout to prove this request has
+    // an explicit unlimited timeout rather than relying only on heartbeats.
+    const releaseTimer = setTimeout(releaseProvider, 11_000);
+    try {
+      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Idle-timeout generation draft",
+          prompt: "Wait for the provider before generating code",
+          comments: "",
+          previousCode: "",
+          workspaceId,
+          model: testModel,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const generated = await response.json() as { error?: string; message?: string };
+      expect(generated.error).toBe("agent_code_generation_failed");
+      expect(generated.message).toContain("non-empty source file");
+    } finally {
+      clearTimeout(releaseTimer);
+      releaseProvider();
+      writeGenerationSource = true;
+      mockBackend.setResponseGate();
+    }
+  }, { timeout: 20_000 });
+
   test("cancels pending code generation when the client disconnects", async () => {
     let releaseProvider!: () => void;
     const providerGate = new Promise<void>((resolve) => {
@@ -363,7 +438,7 @@ describe("Agents API Integration", () => {
     }
   });
 
-  test("tests unsaved deterministic code and returns stdout and stderr without persisting a run", async () => {
+  test("tests unsaved deterministic code and returns program stdout and stderr without persisting a run", async () => {
     const beforeAgents = await fetch(`${baseUrl}/api/agents`).then((response) => response.json()) as unknown[];
     const response = await fetch(`${baseUrl}/api/agents/code/test`, {
       method: "POST",
@@ -390,10 +465,12 @@ describe("Agents API Integration", () => {
     };
     expect(result.status).toBe("completed");
     expect(result.diagnostics).toHaveLength(0);
+    // Only explicit ctx.stdout.write/ctx.stderr.write produce visible logs.
     expect(result.logs.some((entry) => entry.message.includes("test program stdout"))).toBe(true);
     expect(result.logs.some((entry) => entry.message.includes("test program stderr"))).toBe(true);
-    expect(result.logs.some((entry) => entry.message.includes("test command stdout"))).toBe(true);
-    expect(result.logs.some((entry) => entry.message.includes("test command stderr"))).toBe(true);
+    // workspace.exec output is returned to the program but NOT in visible logs.
+    expect(result.logs.every((entry) => !entry.message.includes("test command stdout"))).toBe(true);
+    expect(result.logs.every((entry) => !entry.message.includes("test command stderr"))).toBe(true);
 
     const afterAgents = await fetch(`${baseUrl}/api/agents`).then((response) => response.json()) as unknown[];
     expect(afterAgents).toHaveLength(beforeAgents.length);
@@ -444,14 +521,14 @@ describe("Agents API Integration", () => {
       expect(resultIndex).toBe(events.length - 1);
       expect(events[resultIndex]?.result?.status).toBe("completed");
       const logEvents = events.slice(0, resultIndex);
+      // Only explicit ctx.stdout/stderr.write calls produce log events.
       expect(logEvents.some((event) => event.log?.message.includes("streamed program stdout"))).toBe(true);
-      expect(logEvents.some((event) => event.log?.message.includes("streamed command stdout"))).toBe(true);
-      expect(logEvents.some((event) => event.log?.message.includes("streamed command stderr"))).toBe(true);
       expect(logEvents.some((event) => event.log?.message.includes("streamed program stderr"))).toBe(true);
+      // workspace.exec output is not in visible logs.
+      expect(logEvents.every((event) => !event.log?.message.includes("streamed command stdout"))).toBe(true);
+      expect(logEvents.every((event) => !event.log?.message.includes("streamed command stderr"))).toBe(true);
       expect(realtimeEvents.map((event) => event.message)).toEqual(expect.arrayContaining([
         "streamed program stdout\n",
-        "streamed command stdout",
-        "streamed command stderr",
         "streamed program stderr\n",
       ]));
       expect(realtimeEvents.every((event) => event.userId === "admin")).toBe(true);
@@ -548,8 +625,16 @@ describe("Agents API Integration", () => {
     expect(response.status).toBe(200);
     const reader = response.body?.getReader();
     expect(reader).toBeTruthy();
-    const firstChunk = await reader!.read();
-    expect(new TextDecoder().decode(firstChunk.value)).toContain("before cancellation");
+    const decoder = new TextDecoder();
+
+    // Keep reading until we see "before cancellation" (runner adds startup latency).
+    let accumulated = "";
+    while (!accumulated.includes("before cancellation")) {
+      const chunk = await reader!.read();
+      if (chunk.done) break;
+      accumulated += decoder.decode(chunk.value);
+    }
+    expect(accumulated).toContain("before cancellation");
 
     controller.abort();
     await expect(reader!.read()).rejects.toThrow();
