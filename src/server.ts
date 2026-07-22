@@ -42,15 +42,26 @@ const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 
-function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+function normalizeLocalManagedCredentialHost(host: string): string | undefined {
+  const normalizedHost = host.toLowerCase();
+  if (normalizedHost === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  if (normalizedHost === "127.0.0.1" || normalizedHost === "localhost") {
+    return normalizedHost;
+  }
+  if (normalizedHost === "::1" || normalizedHost === "[::1]") {
+    return "::1";
+  }
+  return undefined;
 }
 
-function getLocalManagedCredentialBaseUrl(host: string, port: number): string | undefined {
-  if (!isLoopbackHost(host) || port <= 0) {
+export function getLocalManagedCredentialBaseUrl(host: string, port: number): string | undefined {
+  const normalizedHost = normalizeLocalManagedCredentialHost(host);
+  if (!normalizedHost || port <= 0) {
     return undefined;
   }
-  const formattedHost = host === "::1" ? `[${host}]` : host;
+  const formattedHost = normalizedHost === "::1" ? `[${normalizedHost}]` : normalizedHost;
   return `http://${formattedHost}:${String(port)}`;
 }
 
@@ -226,9 +237,14 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   }
 
   const server = await appServer.start();
-  if (!appServer.config.publicBaseUrl && isLoopbackHost(new URL(server.url).hostname)) {
+  const serverUrl = new URL(server.url);
+  const localManagedCredentialBaseUrl = getLocalManagedCredentialBaseUrl(
+    serverUrl.hostname,
+    Number(serverUrl.port),
+  );
+  if (!appServer.config.publicBaseUrl && localManagedCredentialBaseUrl) {
     managedCredentialService.configure(appServer.store, {
-      publicBaseUrl: new URL(server.url).origin,
+      publicBaseUrl: localManagedCredentialBaseUrl,
     });
   }
   pushedTaskMonitor.start();
