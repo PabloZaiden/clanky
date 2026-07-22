@@ -22,6 +22,7 @@ import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { calculateNextRunAt } from "./agent-schedule";
 import { agentEventEmitter } from "./event-emitter";
+import { normalizeAgentCode, validateDeterministicAgentCode } from "./deterministic-agent-code";
 
 const INTERRUPT_CHAT_ID_WAIT_MS = 2000;
 const INTERRUPT_CHAT_ID_POLL_MS = 50;
@@ -34,6 +35,7 @@ export interface CreateAgentOptions {
   name: string;
   workspaceId: string;
   prompt: string;
+  code?: string | null;
   model: AgentConfig["model"];
   baseBranch?: string;
   useWorktree: boolean;
@@ -44,6 +46,7 @@ export interface CreateAgentOptions {
 export interface UpdateAgentOptions {
   name?: string;
   prompt?: string;
+  code?: string | null;
   model?: AgentConfig["model"];
   baseBranch?: string | null;
   useWorktree?: boolean;
@@ -83,11 +86,7 @@ export class AgentManager {
     if (run.chatId) {
       return run;
     }
-    throw new DomainError(
-      "agent_run_not_ready",
-      "Agent run cannot be interrupted until its chat has been created",
-      { details: { runId } },
-    );
+    return run;
   }
 
   async createAgent(options: CreateAgentOptions): Promise<Agent> {
@@ -101,12 +100,22 @@ export class AgentManager {
     const nextRunAt = options.schedule.nextRunAt
       ?? calculateNextRunAt(options.schedule);
     const enabled = options.enabled ?? true;
+    const code = normalizeAgentCode(options.code);
+    const codeDiagnostics = code ? validateDeterministicAgentCode(code) : [];
+    if (codeDiagnostics.length > 0) {
+      throw new DomainError(
+        "agent_code_invalid",
+        "Agent code is invalid",
+        { details: { diagnostics: codeDiagnostics } },
+      );
+    }
     const config: AgentConfig = {
       id: crypto.randomUUID(),
       name: options.name.trim(),
       workspaceId: options.workspaceId,
       directory: workspace.directory,
       prompt: options.prompt,
+      code,
       model: options.model,
       baseBranch: options.baseBranch,
       useWorktree: options.useWorktree,
@@ -157,11 +166,23 @@ export class AgentManager {
         }
       : agent.config.schedule;
     const enabled = updates.enabled ?? agent.config.enabled;
+    const code = updates.code === undefined
+      ? agent.config.code
+      : normalizeAgentCode(updates.code);
+    const codeDiagnostics = code ? validateDeterministicAgentCode(code) : [];
+    if (codeDiagnostics.length > 0) {
+      throw new DomainError(
+        "agent_code_invalid",
+        "Agent code is invalid",
+        { details: { diagnostics: codeDiagnostics } },
+      );
+    }
     const updated: Agent = {
       config: {
         ...agent.config,
         name: updates.name?.trim() ?? agent.config.name,
         prompt: updates.prompt ?? agent.config.prompt,
+        code,
         model: updates.model ?? agent.config.model,
         baseBranch: updates.baseBranch === null ? undefined : updates.baseBranch ?? agent.config.baseBranch,
         useWorktree: updates.useWorktree ?? agent.config.useWorktree,

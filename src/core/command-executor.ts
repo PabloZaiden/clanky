@@ -136,3 +136,77 @@ export interface CommandExecutor {
    */
   writeFile(path: string, content: string): Promise<boolean>;
 }
+
+/**
+ * Add a default environment to an executor without changing the shared
+ * workspace executor cache. Managed values are applied after per-command
+ * values so callers cannot accidentally replace the execution-context token.
+ */
+export function withCommandEnvironment(
+  executor: CommandExecutor,
+  environment?: Record<string, string>,
+): CommandExecutor {
+  if (!environment || Object.keys(environment).length === 0) {
+    return executor;
+  }
+  return new EnvironmentCommandExecutor(executor, environment);
+}
+
+class EnvironmentCommandExecutor implements CommandExecutor {
+  constructor(
+    private readonly delegate: CommandExecutor,
+    private readonly environment: Record<string, string>,
+  ) {}
+
+  exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+    return this.delegate.exec(command, args, {
+      ...options,
+      env: {
+        ...(options?.env ?? {}),
+        ...this.environment,
+      },
+    });
+  }
+
+  fileExists(path: string): Promise<boolean> {
+    return this.delegate.fileExists(path);
+  }
+
+  directoryExists(path: string): Promise<boolean> {
+    return this.delegate.directoryExists(path);
+  }
+
+  readFile(path: string): Promise<string | null> {
+    return this.delegate.readFile(path);
+  }
+
+  streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+    return this.delegate.streamFile(path, options);
+  }
+
+  writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    if (!this.delegate.writeFileStream) {
+      return Promise.reject(new Error("The command executor does not support streamed file writes"));
+    }
+    return this.delegate.writeFileStream(path, stream, options);
+  }
+
+  copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    if (!this.delegate.copyFile) {
+      return Promise.reject(new Error("The command executor does not support file copies"));
+    }
+    return this.delegate.copyFile(sourcePath, destinationPath);
+  }
+
+  listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
+    return this.delegate.listDirectory(path, options);
+  }
+
+  writeFile(path: string, content: string): Promise<boolean> {
+    return this.delegate.writeFile(path, content);
+  }
+}

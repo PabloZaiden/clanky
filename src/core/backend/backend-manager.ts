@@ -13,6 +13,7 @@ import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings
 import { taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
+import { withCommandEnvironment } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
@@ -26,6 +27,12 @@ import {
   type ServerEvent,
 } from "./backend-state";
 import type { CommandExecutorFactory } from "./backend-executor-factory";
+import type { ManagedContextIdentity } from "@/shared/context-api-key";
+import { buildManagedContextEnvironment } from "../managed-context-environment";
+import {
+  managedCredentialService,
+  type ManagedCredentialMode,
+} from "../managed-credential-service";
 
 /**
  * Backend manager supporting multiple workspace connections.
@@ -721,6 +728,21 @@ class BackendManager {
     await this.ensureWorkspaceState(workspaceId);
 
     return this.getCommandExecutor(workspaceId, directory);
+  }
+
+  /**
+   * Get an executor with the same managed context environment used by ACP,
+   * tasks, agents, and SSH sessions. The base executor remains shared, while
+   * the wrapper keeps credentials isolated to this execution context.
+   */
+  async getCommandExecutorForContextAsync(
+    identity: ManagedContextIdentity,
+    directory: string,
+    mode: ManagedCredentialMode = "reuse",
+  ): Promise<CommandExecutor> {
+    const executor = await this.getCommandExecutorAsync(identity.workspaceId, directory);
+    const credential = await managedCredentialService.ensureCredentialForRuntime(identity, mode);
+    return withCommandEnvironment(executor, buildManagedContextEnvironment(credential));
   }
 
   /**
