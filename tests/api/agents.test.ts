@@ -333,7 +333,7 @@ describe("Agents API Integration", () => {
     }
   });
 
-  test("returns the file draft while the provider stream is still open", async () => {
+  test("waits for the provider to finish before returning the file draft", async () => {
     let releaseProvider!: () => void;
     const providerGate = new Promise<void>((resolve) => {
       releaseProvider = resolve;
@@ -355,6 +355,7 @@ describe("Agents API Integration", () => {
       });
 
       expect(response.status).toBe(200);
+      releaseProvider();
       const generated = await response.json() as { code: string };
       expect(generated.code).toContain("generated from temporary file");
     } finally {
@@ -707,6 +708,40 @@ describe("Agents API Integration", () => {
         workspaceId,
         prompt: "Check the workspace and report status",
         code: "const invalid = ;",
+        model: testModel,
+        useWorktree: false,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "UTC",
+          interval: {
+            value: 1,
+            unit: "hours",
+          },
+        },
+        enabled: true,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json() as { error?: string }).error).toBe("agent_code_invalid");
+  });
+
+  test("rejects Node-incompatible TypeScript and ignores fake exports in comments", async () => {
+    const response = await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Node-incompatible deterministic agent",
+        workspaceId,
+        prompt: "Check the workspace and report status",
+        code: `// export default function run(ctx) {}
+enum Result {
+  Ok,
+}
+const result = Result.Ok;
+export default async function run(ctx) {
+  void result;
+}`,
         model: testModel,
         useWorktree: false,
         schedule: {

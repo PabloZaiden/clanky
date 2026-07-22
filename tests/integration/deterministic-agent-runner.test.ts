@@ -405,7 +405,9 @@ describe("deterministic agent runner — API key lifecycle", () => {
     // All managed keys for this workspace should be revoked
     const remainingKeys = managedCredentialService.listManagedKeysForCurrentUser
       ? await runWithCurrentUser(testOwnerUser, () =>
-          Promise.resolve(managedCredentialService.listManagedKeysForCurrentUser()),
+          Promise.resolve(
+            managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+          ),
         )
       : [];
     expect(remainingKeys).toHaveLength(0);
@@ -428,7 +430,9 @@ describe("deterministic agent runner — API key lifecycle", () => {
     expect(result.status).toBe("failed");
 
     const remainingKeys = await runWithCurrentUser(testOwnerUser, () =>
-      Promise.resolve(managedCredentialService.listManagedKeysForCurrentUser()),
+      Promise.resolve(
+        managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+      ),
     );
     expect(remainingKeys).toHaveLength(0);
   });
@@ -458,7 +462,9 @@ describe("deterministic agent runner — API key lifecycle", () => {
     await new Promise<void>((resolve) => {
       const checkInterval = setInterval(async () => {
         const keys = await runWithCurrentUser(testOwnerUser, () =>
-          Promise.resolve(managedCredentialService.listManagedKeysForCurrentUser()),
+          Promise.resolve(
+            managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+          ),
         );
         if (keys.length > 0) {
           clearInterval(checkInterval);
@@ -476,7 +482,9 @@ describe("deterministic agent runner — API key lifecycle", () => {
     expect(result.status).toBe("cancelled");
 
     const remainingKeys = await runWithCurrentUser(testOwnerUser, () =>
-      Promise.resolve(managedCredentialService.listManagedKeysForCurrentUser()),
+      Promise.resolve(
+        managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+      ),
     );
     expect(remainingKeys).toHaveLength(0);
   });
@@ -504,7 +512,9 @@ describe("deterministic agent runner — API key lifecycle", () => {
     );
     expect(revoked).toBeGreaterThan(0);
     expect(await runWithCurrentUser(testOwnerUser, () =>
-      Promise.resolve(managedCredentialService.listManagedKeysForCurrentUser()),
+      Promise.resolve(
+        managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+      ),
     )).toHaveLength(0);
     const associations = await runWithCurrentUser(testOwnerUser, () =>
       listContextApiKeyAssociationsForUser(testOwnerUser.id),

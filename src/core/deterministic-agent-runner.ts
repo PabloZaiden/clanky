@@ -17,6 +17,8 @@ const log = createLogger("deterministic-agent-runner");
 
 /** Minimum Node.js major version required on the workspace host. */
 const MIN_NODE_MAJOR_VERSION = 24;
+const RUNNER_CLEANUP_TIMEOUT_MS = 10_000;
+const HOST_TEMP_DIRECTORY_PATTERN = /^\/tmp\/clanky-agent\.[A-Za-z0-9_-]+$/;
 
 /** Runner control-message types emitted by the workspace-side Node.js process. */
 export type RunnerMessage =
@@ -49,7 +51,10 @@ import { pathToFileURL } from "node:url";
 const execFileAsync = promisify(execFile);
 const CONTROL_MODE = process.argv[2] !== "--worker";
 const codeFilePath = CONTROL_MODE ? process.argv[2] : process.argv[3];
-const MAX_BUFFER = 100 * 1024 * 1024;
+const MAX_BUFFER = 16 * 1024 * 1024;
+const MAX_EXPLICIT_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_EXPLICIT_OUTPUT_CHUNK = 16 * 1024;
+const MAX_PENDING_OUTPUT_BYTES = 256 * 1024;
 
 function sendControl(message) {
   process.stdout.write(JSON.stringify(message) + "\\n");
@@ -177,6 +182,10 @@ async function runWorker() {
   const abortController = new AbortController();
   const pending = new Map();
   let requestId = 0;
+  const outputQueue = [];
+  let outputQueueBytes = 0;
+  let outputDrainPromise;
+  let outputBytes = 0;
 
   process.on("message", (message) => {
     if (!isRecord(message)) return;
@@ -197,6 +206,9 @@ async function runWorker() {
     if (abortController.signal.aborted) {
       return Promise.reject(new Error("Aborted"));
     }
+    if (pending.size >= 128) {
+      return Promise.reject(new Error("Too many concurrent workspace context requests"));
+    }
     const id = ++requestId;
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
@@ -207,9 +219,47 @@ async function runWorker() {
     });
   };
 
+  const drainOutputQueue = () => {
+    if (outputDrainPromise) return outputDrainPromise;
+    outputDrainPromise = (async () => {
+      try {
+        while (outputQueue.length > 0) {
+          const item = outputQueue.shift();
+          if (!item) continue;
+          outputQueueBytes -= item.text.length;
+          await sendIpc({ type: "output", stream: item.stream, text: item.text });
+        }
+      } catch {
+        // The controller owns the output pipe and may exit during cancellation.
+        outputQueue.length = 0;
+        outputQueueBytes = 0;
+      }
+    })().finally(() => {
+      outputDrainPromise = undefined;
+    });
+    return outputDrainPromise;
+  };
+
   const sendOutput = (type, text) => {
-    if (typeof text !== "string" || text.length === 0) return;
-    void sendIpc({ type: "output", stream: type, text });
+    if (typeof text !== "string" || text.length === 0 || outputBytes >= MAX_EXPLICIT_OUTPUT_BYTES) {
+      return;
+    }
+    const remainingBytes = MAX_EXPLICIT_OUTPUT_BYTES - outputBytes;
+    const remainingQueueBytes = MAX_PENDING_OUTPUT_BYTES - outputQueueBytes;
+    const chunkLength = Math.min(
+      text.length,
+      MAX_EXPLICIT_OUTPUT_CHUNK,
+      remainingBytes,
+      remainingQueueBytes,
+    );
+    if (chunkLength <= 0) {
+      return;
+    }
+    const chunk = text.slice(0, chunkLength);
+    outputBytes += chunk.length;
+    outputQueueBytes += chunk.length;
+    outputQueue.push({ stream: type, text: chunk });
+    void drainOutputQueue();
   };
 
   const context = {
@@ -248,12 +298,14 @@ async function runWorker() {
       throw new Error("User code must export a default function");
     }
     await module.default(context);
+    await drainOutputQueue();
     if (abortController.signal.aborted) {
       await sendIpc({ type: "aborted" });
     } else {
       await sendIpc({ type: "done" });
     }
   } catch (error) {
+    await drainOutputQueue();
     if (abortController.signal.aborted) {
       await sendIpc({ type: "aborted" });
     } else {
@@ -440,6 +492,75 @@ export interface LaunchRunnerOptions {
   executor: CommandExecutor;
 }
 
+async function createHostTempDirectory(
+  executor: CommandExecutor,
+  directory: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const result = await executor.exec(
+    "mktemp",
+    ["-d", "/tmp/clanky-agent.XXXXXX"],
+    {
+      cwd: directory,
+      timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+      logFailures: false,
+      signal,
+    },
+  );
+  if (!result.success) {
+    throw new Error(
+      `Failed to create runner temp directory on workspace host: ${result.stderr || result.stdout || result.exitCode}`,
+    );
+  }
+
+  const tempDir = result.stdout.trim();
+  if (!HOST_TEMP_DIRECTORY_PATTERN.test(tempDir)) {
+    throw new Error("Workspace host returned an invalid deterministic runner temp directory");
+  }
+
+  try {
+    const chmodResult = await executor.exec(
+      "chmod",
+      ["700", "--", tempDir],
+      {
+        cwd: directory,
+        timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        logFailures: false,
+        signal,
+      },
+    );
+    if (!chmodResult.success) {
+      throw new Error(
+        `Failed to secure runner temp directory on workspace host: ${chmodResult.stderr || chmodResult.stdout || chmodResult.exitCode}`,
+      );
+    }
+  } catch (error) {
+    try {
+      const cleanupResult = await executor.exec("rm", ["-rf", "--", tempDir], {
+        cwd: directory,
+        timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        logFailures: false,
+      });
+      if (!cleanupResult.success) {
+        throw new Error(
+          cleanupResult.stderr || cleanupResult.stdout || `exit code ${cleanupResult.exitCode}`,
+        );
+      }
+    } catch (cleanupError) {
+      log.error("Failed to clean up deterministic runner directory after setup failure", {
+        tempDir,
+        error: String(cleanupError),
+      });
+      throw new AggregateError(
+        [error, cleanupError],
+        "Deterministic agent runner setup and workspace cleanup failed",
+      );
+    }
+    throw error;
+  }
+  return tempDir;
+}
+
 /**
  * Writes the runner and user code to a temporary directory on the workspace
  * host, launches Node.js without an execution timeout, and streams only the
@@ -459,17 +580,12 @@ export async function launchDeterministicAgentOnHost(
     executor,
   } = options;
 
-  const tempDir = `/tmp/clanky-agent-${run.id}`;
-  const runnerPath = `${tempDir}/runner.mjs`;
-  const codePath = `${tempDir}/code.ts`;
+  let tempDir: string | undefined;
   let executionError: unknown;
   try {
-    const mkdirResult = await executor.exec("mkdir", ["-p", tempDir], { logFailures: false });
-    if (!mkdirResult.success) {
-      throw new Error(
-        `Failed to create runner temp directory on workspace host: ${mkdirResult.stderr || mkdirResult.stdout}`,
-      );
-    }
+    tempDir = await createHostTempDirectory(executor, directory, signal);
+    const runnerPath = `${tempDir}/runner.mjs`;
+    const codePath = `${tempDir}/code.ts`;
 
     const [runnerOk, codeOk] = await Promise.all([
       executor.writeFile(runnerPath, DETERMINISTIC_AGENT_RUNNER_SCRIPT),
@@ -565,29 +681,31 @@ export async function launchDeterministicAgentOnHost(
     executionError = error;
     throw error;
   } finally {
-    try {
-      const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {
-        logFailures: false,
-        timeout: null,
-      });
-      if (!cleanupResult.success) {
-        throw new Error(
-          cleanupResult.stderr || cleanupResult.stdout || `exit code ${cleanupResult.exitCode}`,
-        );
+    if (tempDir) {
+      try {
+        const cleanupResult = await executor.exec("rm", ["-rf", "--", tempDir], {
+          logFailures: false,
+          timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        });
+        if (!cleanupResult.success) {
+          throw new Error(
+            cleanupResult.stderr || cleanupResult.stdout || `exit code ${cleanupResult.exitCode}`,
+          );
+        }
+      } catch (cleanupError) {
+        log.error("Failed to clean up deterministic agent runner directory", {
+          runId: run.id,
+          tempDir,
+          error: String(cleanupError),
+        });
+        if (executionError !== undefined) {
+          throw new AggregateError(
+            [executionError, cleanupError],
+            "Deterministic agent execution and workspace cleanup failed",
+          );
+        }
+        throw cleanupError;
       }
-    } catch (cleanupError) {
-      log.error("Failed to clean up deterministic agent runner directory", {
-        runId: run.id,
-        tempDir,
-        error: String(cleanupError),
-      });
-      if (executionError !== undefined) {
-        throw new AggregateError(
-          [executionError, cleanupError],
-          "Deterministic agent execution and workspace cleanup failed",
-        );
-      }
-      throw cleanupError;
     }
   }
 }

@@ -164,6 +164,36 @@ describe("managed execution context credentials", () => {
     });
   });
 
+  test("requires an explicit public base URL for SSH workspaces", async () => {
+    managedCredentialService.resetForTests();
+    managedCredentialService.configure(store, {
+      localBaseUrl: "http://127.0.0.1:3000",
+    });
+    await runWithCurrentUser(testOwnerUser, () => updateWorkspace(workspace.id, {
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "remote-workspace",
+        },
+      },
+    }));
+
+    const identity = {
+      userId: testOwnerUser.id,
+      workspaceId: workspace.id,
+      contextType: "agent_run" as const,
+      contextId: crypto.randomUUID(),
+    };
+    await expect(runWithCurrentUser(testOwnerUser, () =>
+      managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
+        managedBy: DETERMINISTIC_AGENT_MANAGED_BY,
+        scopes: ["clanky:agent-prompt"],
+        allowWhenWorkspaceDisabled: true,
+      }),
+    )).rejects.toMatchObject({ code: "managed_context_base_url_missing" });
+  });
+
   test("serializes concurrent generation creation for one context", async () => {
     await runWithCurrentUser(testOwnerUser, async () => {
       const identity = {

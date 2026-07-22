@@ -17,6 +17,7 @@ export interface DeterministicAgentOutputOptions {
   persist?: boolean;
   emit?: boolean;
   userId?: string;
+  eventAgentRunId?: string;
   onAppend?: (entry: TaskLogEntry) => void;
 }
 
@@ -37,6 +38,7 @@ export class DeterministicAgentOutput {
   private readonly persist: boolean;
   private readonly emit: boolean;
   private readonly userId?: string;
+  private readonly eventAgentRunId?: string;
   private readonly onAppend?: (entry: TaskLogEntry) => void;
 
   constructor(run: AgentRun, options: DeterministicAgentOutputOptions = {}) {
@@ -44,6 +46,7 @@ export class DeterministicAgentOutput {
     this.persist = options.persist ?? true;
     this.emit = options.emit ?? true;
     this.userId = options.userId;
+    this.eventAgentRunId = options.eventAgentRunId;
     this.onAppend = options.onAppend;
   }
 
@@ -83,7 +86,7 @@ export class DeterministicAgentOutput {
         {
           type: "agent.run.log",
           agentId: this.currentRun.agentId,
-          agentRunId: this.currentRun.id,
+          agentRunId: this.eventAgentRunId ?? this.currentRun.id,
           log: entry,
           timestamp,
         },

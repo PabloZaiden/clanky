@@ -30,7 +30,7 @@ export interface TestDeterministicAgentCodeOptions {
 function createTestRun(options: TestDeterministicAgentCodeOptions): AgentRun {
   const now = createTimestamp();
   return {
-    id: options.testRunId ?? crypto.randomUUID(),
+    id: crypto.randomUUID(),
     agentId: crypto.randomUUID(),
     status: "starting",
     trigger: "manual",
@@ -85,6 +85,7 @@ export async function testDeterministicAgentCode(
     persist: false,
     emit: Boolean(options.userId),
     userId: options.userId,
+    eventAgentRunId: options.testRunId,
     onAppend: options.onOutput,
   });
   const signal = options.signal ?? new AbortController().signal;

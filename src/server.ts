@@ -43,14 +43,19 @@ let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 
 function normalizeLocalManagedCredentialHost(host: string): string | undefined {
-  const normalizedHost = host.toLowerCase();
+  const normalizedHost = host.trim().toLowerCase();
   if (normalizedHost === "0.0.0.0") {
     return "127.0.0.1";
   }
   if (normalizedHost === "127.0.0.1" || normalizedHost === "localhost") {
     return normalizedHost;
   }
-  if (normalizedHost === "::1" || normalizedHost === "[::1]") {
+  if (
+    normalizedHost === "::"
+    || normalizedHost === "[::]"
+    || normalizedHost === "::1"
+    || normalizedHost === "[::1]"
+  ) {
     return "::1";
   }
   return undefined;
@@ -205,8 +210,8 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     },
   });
   managedCredentialService.configure(app.store, {
-    publicBaseUrl: app.config.publicBaseUrl
-      ?? getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
+    publicBaseUrl: app.config.publicBaseUrl,
+    localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
   });
   registerClankyRealtimeBridge(app);
   return app;
@@ -244,7 +249,7 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   );
   if (!appServer.config.publicBaseUrl && localManagedCredentialBaseUrl) {
     managedCredentialService.configure(appServer.store, {
-      publicBaseUrl: localManagedCredentialBaseUrl,
+      localBaseUrl: localManagedCredentialBaseUrl,
     });
   }
   pushedTaskMonitor.start();

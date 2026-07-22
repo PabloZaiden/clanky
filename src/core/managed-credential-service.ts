@@ -96,12 +96,17 @@ function contextDetails(identity: ManagedContextIdentity): Record<string, string
 export class ManagedCredentialService {
   private store: WebAppStore | undefined;
   private publicBaseUrl: string | undefined;
+  private localBaseUrl: string | undefined;
   private readonly activeCredentials = new Map<string, ManagedRuntimeCredential>();
   private readonly credentialLocks = new Map<string, Promise<void>>();
 
-  configure(store: WebAppStore, config: Pick<RuntimeConfig, "publicBaseUrl">): void {
+  configure(
+    store: WebAppStore,
+    config: Pick<RuntimeConfig, "publicBaseUrl"> & { localBaseUrl?: string },
+  ): void {
     this.store = store;
     this.publicBaseUrl = config.publicBaseUrl;
+    this.localBaseUrl = config.localBaseUrl;
     this.activeCredentials.clear();
     this.credentialLocks.clear();
   }
@@ -109,6 +114,7 @@ export class ManagedCredentialService {
   resetForTests(): void {
     this.store = undefined;
     this.publicBaseUrl = undefined;
+    this.localBaseUrl = undefined;
     this.activeCredentials.clear();
     this.credentialLocks.clear();
   }
@@ -149,14 +155,14 @@ export class ManagedCredentialService {
       if (mode === "reuse" && !options) {
         const cached = this.activeCredentials.get(cacheKey);
         if (cached) {
-          const baseUrl = this.requirePublicBaseUrl();
+          const baseUrl = await this.requirePublicBaseUrl(identity);
           this.activeCredentials.delete(cacheKey);
           this.activeCredentials.set(cacheKey, { ...cached, baseUrl });
           return { ...cached, baseUrl };
         }
       }
 
-      const baseUrl = this.requirePublicBaseUrl();
+      const baseUrl = await this.requirePublicBaseUrl(identity);
       const generation = await getNextContextApiKeyGenerationForUser(
         user.id,
         identity.workspaceId,
@@ -415,7 +421,7 @@ export class ManagedCredentialService {
 
   listManagedKeysForCurrentUser(managedBy?: string): ManagedApiKeySummary[] {
     const user = requireCurrentUser();
-    return listManagedApiKeys(this.requireStore(), user.id, managedBy);
+    return listManagedApiKeys(this.requireStore(), user.id, managedBy ?? MANAGED_BY);
   }
 
   private assertOwner(identity: ManagedContextIdentity, userId: string): void {
@@ -438,12 +444,18 @@ export class ManagedCredentialService {
     return this.store;
   }
 
-  private requirePublicBaseUrl(): string {
-    const rawValue = this.publicBaseUrl?.trim();
+  private async requirePublicBaseUrl(identity: ManagedContextIdentity): Promise<string> {
+    let rawValue = this.publicBaseUrl?.trim();
+    if (!rawValue) {
+      const workspace = await getWorkspace(identity.workspaceId);
+      if (workspace?.serverSettings.agent.transport === "stdio") {
+        rawValue = this.localBaseUrl?.trim();
+      }
+    }
     if (!rawValue) {
       throw new ManagedCredentialError(
         "managed_context_base_url_missing",
-        "CLANKY_PUBLIC_BASE_URL must be configured before starting a managed execution context",
+        "A reachable Clanky public base URL must be configured before starting a managed execution context on a remote workspace",
       );
     }
 

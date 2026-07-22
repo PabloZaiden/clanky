@@ -45,10 +45,7 @@ async function revokeCredentialWithRetry(credential: ManagedRuntimeCredential): 
 
 function isOptionalCredentialUnavailable(error: unknown): error is ManagedCredentialError {
   return error instanceof ManagedCredentialError
-    && (
-      error.code === "managed_context_not_configured"
-      || error.code === "managed_context_base_url_missing"
-    );
+    && error.code === "managed_context_not_configured";
 }
 
 export interface DeterministicAgentRuntimeOptions {

@@ -72,6 +72,11 @@ export class TestCommandExecutor implements CommandExecutor {
             stdoutChunks.push(chunk);
             options?.onStdoutChunk?.(chunk);
           }
+          const finalChunk = decoder.decode();
+          if (finalChunk) {
+            stdoutChunks.push(finalChunk);
+            options?.onStdoutChunk?.(finalChunk);
+          }
         } finally {
           reader.releaseLock();
         }
@@ -88,12 +93,7 @@ export class TestCommandExecutor implements CommandExecutor {
         options.signal.removeEventListener("abort", abortHandler);
       }
 
-      if (!options?.onStdoutChunk) {
-        // Only call the batch callback if no streaming was done above.
-        options?.onStderrChunk?.(stderr);
-      } else {
-        options?.onStderrChunk?.(stderr);
-      }
+      options?.onStderrChunk?.(stderr);
 
       if (killed || options?.signal?.aborted) {
         return {
@@ -143,13 +143,17 @@ export class TestCommandExecutor implements CommandExecutor {
   /**
    * Read a file's contents locally.
    */
-  async readFile(path: string): Promise<string | null> {
+  async readFile(path: string, options?: FileStreamOptions): Promise<string | null> {
+    if (options?.signal?.aborted) {
+      return null;
+    }
     try {
       const file = Bun.file(path);
       if (!(await file.exists())) {
         return null;
       }
-      return await file.text();
+      const content = await file.text();
+      return options?.signal?.aborted ? null : content;
     } catch {
       return null;
     }

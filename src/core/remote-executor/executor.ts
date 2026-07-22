@@ -559,20 +559,24 @@ export class CommandExecutorImpl implements CommandExecutor {
     return result.success;
   }
 
-  async readFile(path: string): Promise<string | null> {
+  async readFile(path: string, options?: FileStreamOptions): Promise<string | null> {
+    if (options?.signal?.aborted) {
+      return null;
+    }
     if (this.provider === "local") {
       try {
         const file = Bun.file(path);
         if (!(await file.exists())) {
           return null;
         }
-        return await file.text();
+        const content = await file.text();
+        return options?.signal?.aborted ? null : content;
       } catch {
         return null;
       }
     }
 
-    const result = await this.exec("cat", [path]);
+    const result = await this.exec("cat", [path], { signal: options?.signal });
     if (!result.success) {
       return null;
     }
