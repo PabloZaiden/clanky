@@ -64,7 +64,7 @@ function buildGenerationPrompt(
     "The source must export a default function named run (ctx) or an anonymous default function.",
     "The function may be async and must use only the provided context.",
     "The context API is:",
-    "  ctx.workspace.exec(command, args?, options?) -> Promise<{ exitCode, stdout, stderr }>",
+    "  ctx.workspace.exec(command, args?, options?) -> Promise<{ success, exitCode, stdout, stderr }>",
     "  ctx.workspace.prompt(message) -> Promise<string>",
     "  ctx.stdout.write(text) and ctx.stderr.write(text) for observable output.",
     "  ctx.signal for cancellation.",
