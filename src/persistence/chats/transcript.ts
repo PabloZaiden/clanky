@@ -287,12 +287,7 @@ export function syncChatTranscriptEntriesInTransaction(
     ) {
       continue;
     }
-    const existingRow = db.prepare(`
-      SELECT 1
-      FROM chat_transcript_entries
-      WHERE chat_id = ? AND user_id = ? AND entry_id = ?
-    `).get(chatId, userId, entryKey);
-    upsertEntry(db, chatId, userId, entry, existingRow ? 0 : nextSequence++, now);
+    upsertEntry(db, chatId, userId, entry, nextSequence++, now);
   }
 
   for (const entryKey of previousEntries.keys()) {

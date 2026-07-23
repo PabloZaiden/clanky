@@ -280,7 +280,7 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool, { includeSizes: false }),
+          tool: createToolCallSummary(event.tool),
         },
         { chatId: event.chatId },
       );

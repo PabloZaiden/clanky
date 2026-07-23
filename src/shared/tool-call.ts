@@ -35,16 +35,10 @@ export interface ToolCallSummary {
   outputType: "text" | "json";
   hasInput: boolean;
   hasOutput: boolean;
-  inputSize?: number;
-  outputSize?: number;
   detailAvailable: true;
 }
 
 export type ToolCallDisplayData = ToolCallRecord | ToolCallSummary;
-
-export interface ToolCallSummaryOptions {
-  includeSizes?: boolean;
-}
 
 export function isToolCallSummary(value: ToolCallDisplayData): value is ToolCallSummary {
   return "detailAvailable" in value && value.detailAvailable === true;
@@ -101,21 +95,7 @@ function inferToolKind(tool: ToolCallRecord): string {
   return "unknown";
 }
 
-function getJsonSize(value: unknown): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const serialized = typeof value === "string" ? value : JSON.stringify(value);
-  return serialized === undefined
-    ? undefined
-    : new TextEncoder().encode(serialized).byteLength;
-}
-
-export function createToolCallSummary(
-  tool: ToolCallRecord,
-  options: ToolCallSummaryOptions = {},
-): ToolCallSummary {
-  const includeSizes = options.includeSizes ?? true;
+export function createToolCallSummary(tool: ToolCallRecord): ToolCallSummary {
   return {
     id: tool.id,
     name: tool.name,
@@ -127,12 +107,6 @@ export function createToolCallSummary(
     outputType: typeof tool.output === "string" ? "text" : "json",
     hasInput: tool.input !== undefined,
     hasOutput: tool.output !== undefined,
-    ...(includeSizes
-      ? {
-          inputSize: getJsonSize(tool.input),
-          outputSize: getJsonSize(tool.output),
-        }
-      : {}),
     detailAvailable: true,
   };
 }
