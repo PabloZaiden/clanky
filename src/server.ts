@@ -11,6 +11,7 @@ import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebA
 import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
+import { migrateLegacyChatTranscripts } from "./persistence/chats";
 import { resetStaleTasks } from "./persistence/tasks";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
@@ -177,6 +178,12 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) return app;
   await initializeDatabase();
+  const transcriptMigration = migrateLegacyChatTranscripts();
+  if (transcriptMigration.migratedChats > 0) {
+    log.info("Migrated legacy chat transcripts during startup", {
+      migratedChats: transcriptMigration.migratedChats,
+    });
+  }
   const dataDir = getDataDir();
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({

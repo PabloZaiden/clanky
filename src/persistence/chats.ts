@@ -25,6 +25,7 @@ export {
 } from "./chats/index";
 export {
   getChatTranscriptMeta,
+  migrateLegacyChatTranscripts,
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,

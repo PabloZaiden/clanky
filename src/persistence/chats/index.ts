@@ -22,6 +22,7 @@ export {
 export { updateChatState, updateChatConfig } from "./updates";
 export {
   getChatTranscriptMeta,
+  migrateLegacyChatTranscripts,
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,

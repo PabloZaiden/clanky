@@ -5,9 +5,12 @@ import {
   type ChatTranscriptCursor,
   type ChatTranscriptStorageEntry,
 } from "@/shared";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
-import { safeJsonParse } from "./helpers";
+import { rowToChat, safeJsonParse } from "./helpers";
+
+const log = createLogger("persistence:chat-transcripts");
 
 export interface ChatTranscriptMeta {
   revision: string;
@@ -122,25 +125,8 @@ function updateMeta(
   `).run(chatId, userId, revision, entryCount, now);
 }
 
-export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null {
-  const row = getDatabase()
-    .prepare(`
-      SELECT revision, entry_count
-      FROM chat_transcript_meta
-      WHERE chat_id = ? AND user_id = ?
-    `)
-    .get(chatId, requirePersistenceUserId()) as {
-      revision: string;
-      entry_count: number;
-    } | null;
-  return row
-    ? { revision: row.revision, entryCount: row.entry_count }
-    : null;
-}
-
-export function replaceChatTranscriptEntries(chat: Chat): void {
+function replaceChatTranscriptEntriesForUser(chat: Chat, userId: string): void {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
   const entries = sortStateEntries(getStateEntries(chat.state));
   const now = new Date().toISOString();
 
@@ -166,6 +152,104 @@ export function replaceChatTranscriptEntries(chat: Chat): void {
     }
     updateMeta(db, chat.config.id, userId, getRevision(entries, now), entries.length, now);
   })();
+}
+
+export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null {
+  const row = getDatabase()
+    .prepare(`
+      SELECT revision, entry_count
+      FROM chat_transcript_meta
+      WHERE chat_id = ? AND user_id = ?
+    `)
+    .get(chatId, requirePersistenceUserId()) as {
+      revision: string;
+      entry_count: number;
+    } | null;
+  return row
+    ? { revision: row.revision, entryCount: row.entry_count }
+    : null;
+}
+
+export function replaceChatTranscriptEntries(chat: Chat): void {
+  replaceChatTranscriptEntriesForUser(chat, requirePersistenceUserId());
+}
+
+export interface LegacyChatTranscriptMigrationResult {
+  candidates: number;
+  migratedChats: number;
+  remainingChats: number;
+}
+
+/**
+ * Backfill every chat that has not yet received normalized transcript metadata.
+ *
+ * Each chat is migrated in its own transaction so an interrupted startup can
+ * resume without repeating completed work or leaving a partial transcript.
+ */
+export function migrateLegacyChatTranscripts(): LegacyChatTranscriptMigrationResult {
+  const db = getDatabase();
+  const candidates = db.prepare(`
+    SELECT chats.id, chats.user_id
+    FROM chats
+    LEFT JOIN chat_transcript_meta
+      ON chat_transcript_meta.chat_id = chats.id
+      AND chat_transcript_meta.user_id = chats.user_id
+    WHERE chat_transcript_meta.chat_id IS NULL
+    ORDER BY chats.updated_at ASC, chats.id ASC
+  `).all() as Array<{ id: string; user_id: string }>;
+
+  if (candidates.length === 0) {
+    return {
+      candidates: 0,
+      migratedChats: 0,
+      remainingChats: 0,
+    };
+  }
+
+  log.info("Starting legacy chat transcript backfill", {
+    chatCount: candidates.length,
+  });
+
+  const loadChatRow = db.prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?");
+  let migratedChats = 0;
+  for (const candidate of candidates) {
+    const row = loadChatRow.get(candidate.id, candidate.user_id) as Record<string, unknown> | null;
+    if (!row) {
+      throw new Error(`Chat disappeared during legacy transcript backfill: ${candidate.id}`);
+    }
+
+    try {
+      replaceChatTranscriptEntriesForUser(rowToChat(row), candidate.user_id);
+    } catch (error) {
+      log.error("Failed to backfill legacy chat transcript", {
+        chatId: candidate.id,
+        error: String(error),
+      });
+      throw new Error(`Failed to migrate legacy chat transcript ${candidate.id}`, { cause: error });
+    }
+    migratedChats += 1;
+  }
+
+  const remainingRow = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM chats
+    LEFT JOIN chat_transcript_meta
+      ON chat_transcript_meta.chat_id = chats.id
+      AND chat_transcript_meta.user_id = chats.user_id
+    WHERE chat_transcript_meta.chat_id IS NULL
+  `).get() as { count: number };
+  if (remainingRow.count > 0) {
+    throw new Error(`Legacy chat transcript backfill incomplete: ${remainingRow.count} chats remain`);
+  }
+
+  log.info("Completed legacy chat transcript backfill", {
+    migratedChats,
+  });
+  return {
+    candidates: candidates.length,
+    migratedChats,
+    remainingChats: remainingRow.count,
+  };
 }
 
 export function syncChatTranscriptEntriesInTransaction(
