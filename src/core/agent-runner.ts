@@ -1,4 +1,5 @@
 import type { Agent, AgentRun, AgentRunTrigger } from "@/shared/agent";
+import { isAgentCodeEnabled } from "@/shared/agent";
 import type { ChatEvent } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
@@ -11,6 +12,9 @@ import {
 } from "../persistence/agents";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { agentEventEmitter, chatEventEmitter } from "./event-emitter";
+import { executeDeterministicAgent } from "./deterministic-agent-runtime";
+import { DeterministicAgentOutput } from "./deterministic-agent-output";
+import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
 
 const log = createLogger("agent-runner");
 
@@ -50,6 +54,7 @@ function createRunFromAgent(
       workspaceId: agent.config.workspaceId,
       directory: agent.config.directory,
       prompt: agent.config.prompt,
+      code: agent.config.code,
       model: agent.config.model,
       baseBranch: agent.config.baseBranch,
       useWorktree: agent.config.useWorktree,
@@ -60,8 +65,19 @@ function createRunFromAgent(
   };
 }
 
+function mergeRunLogs(chatLogs: AgentRun["logs"], outputLogs: AgentRun["logs"]): AgentRun["logs"] {
+  const byId = new Map<string, AgentRun["logs"][number]>();
+  for (const logEntry of [...chatLogs, ...outputLogs]) {
+    byId.set(logEntry.id, logEntry);
+  }
+  return [...byId.values()]
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .slice(-MAX_PERSISTED_LOGS);
+}
+
 export class AgentRunner {
   private readonly activeRuns = new Map<string, Promise<AgentRun>>();
+  private readonly activeRunControllers = new Map<string, AbortController>();
 
   isRunActive(runId: string): boolean {
     return this.activeRuns.has(runId);
@@ -116,7 +132,24 @@ export class AgentRunner {
   }
 
   async interruptRun(run: AgentRun, reason = "Agent run interrupted"): Promise<AgentRun> {
+    this.activeRunControllers.get(run.id)?.abort();
     if (!run.chatId) {
+      if (this.activeRunControllers.has(run.id)) {
+        const now = createTimestamp();
+        const updated: AgentRun = {
+          ...run,
+          status: "interrupted",
+          completedAt: now,
+          error: {
+            message: reason,
+            timestamp: now,
+            code: "interrupted",
+          },
+          updatedAt: now,
+        };
+        await saveAgentRun(updated);
+        return updated;
+      }
       throw new DomainError(
         "agent_run_not_ready",
         "Agent run cannot be interrupted because its chat has not been created yet",
@@ -142,7 +175,7 @@ export class AgentRunner {
         code: "interrupted",
       },
       messages: chat?.state.messages ?? run.messages,
-      logs: chat?.state.logs ?? run.logs,
+      logs: isAgentCodeEnabled(run.configSnapshot) ? run.logs : chat?.state.logs ?? run.logs,
       toolCalls: chat?.state.toolCalls ?? run.toolCalls,
       pendingPermissionRequests: chat?.state.pendingPermissionRequests ?? run.pendingPermissionRequests,
       session: chat?.state.session ?? run.session,
@@ -192,6 +225,8 @@ export class AgentRunner {
   }
 
   private async executeRun(agent: Agent, run: AgentRun): Promise<AgentRun> {
+    const abortController = new AbortController();
+    this.activeRunControllers.set(run.id, abortController);
     await this.setAgentRunning(agent, run.id);
     let currentRun: AgentRun = {
       ...run,
@@ -203,7 +238,11 @@ export class AgentRunner {
 
     let chatId: string | null = null;
     let unsubscribeChatEvents: (() => void) | undefined;
+    let output: DeterministicAgentOutput | undefined;
     try {
+      if (abortController.signal.aborted) {
+        throw new Error("Agent run interrupted");
+      }
       const chat = await chatManager.createAgentRunChat({
         name: `Agent: ${agent.config.name}`,
         workspaceId: agent.config.workspaceId,
@@ -217,6 +256,11 @@ export class AgentRunner {
         prepareWorktreeOnCreate: true,
       });
       chatId = chat.config.id;
+      if (abortController.signal.aborted) {
+        await chatManager.deleteChat(chatId);
+        chatId = null;
+        throw new Error("Agent run interrupted");
+      }
       unsubscribeChatEvents = chatEventEmitter.subscribe((event: ChatEvent) => {
         if (event.chatId !== chatId || !isAgentChatEvent(event)) {
           return;
@@ -271,6 +315,9 @@ export class AgentRunner {
         updatedAt: createTimestamp(),
       };
       await saveAgentRun(currentRun);
+      if (abortController.signal.aborted) {
+        throw new Error("Agent run interrupted");
+      }
       agentEventEmitter.emit({
         type: "agent.run.started",
         agentId: agent.config.id,
@@ -286,13 +333,34 @@ export class AgentRunner {
         timestamp: createTimestamp(),
       });
 
-      await chatManager.sendMessage(chatId, {
-        message: agent.config.prompt,
-        attachments: currentRun.attachments,
-      });
+      const codeMode = isAgentCodeEnabled(currentRun.configSnapshot);
+      output = codeMode ? new DeterministicAgentOutput(currentRun) : undefined;
+      if (codeMode && output) {
+        if (abortController.signal.aborted) {
+          throw new Error("Agent run interrupted");
+        }
+        await executeDeterministicAgent({
+          run: currentRun,
+          code: currentRun.configSnapshot.code!,
+          chatId,
+          workspaceId: agent.config.workspaceId,
+          directory: chat.state.worktree?.worktreePath ?? chat.config.directory,
+          signal: abortController.signal,
+          output,
+        });
+        currentRun = await output.flush();
+      } else {
+        if (abortController.signal.aborted) {
+          throw new Error("Agent run interrupted");
+        }
+        await chatManager.sendMessage(chatId, {
+          message: agent.config.prompt,
+          attachments: currentRun.attachments,
+        });
+      }
       const completedChat = await chatManager.waitForChatIdle(chatId);
       const now = createTimestamp();
-      const interrupted = completedChat.state.error?.code === "interrupted";
+      const interrupted = abortController.signal.aborted || completedChat.state.error?.code === "interrupted";
       const failed = !interrupted && (completedChat.state.status === "failed" || completedChat.state.error !== undefined);
       const completedRun: AgentRun = {
         ...currentRun,
@@ -308,7 +376,7 @@ export class AgentRunner {
         session: completedChat.state.session,
         worktree: completedChat.state.worktree,
         messages: completedChat.state.messages,
-        logs: completedChat.state.logs,
+        logs: codeMode ? mergeRunLogs(completedChat.state.logs, currentRun.logs) : completedChat.state.logs,
         toolCalls: completedChat.state.toolCalls,
         pendingPermissionRequests: completedChat.state.pendingPermissionRequests,
         updatedAt: now,
@@ -355,24 +423,46 @@ export class AgentRunner {
         error: String(error),
       });
       const now = createTimestamp();
+      if (output) {
+        currentRun = output.run;
+        try {
+          await output.flush();
+        } catch (flushError) {
+          log.error("Failed to flush deterministic agent output", {
+            agentId: agent.config.id,
+            runId: currentRun.id,
+            error: String(flushError),
+          });
+        }
+      }
       const failedRun: AgentRun = {
         ...currentRun,
-        status: "failed",
+        status: abortController.signal.aborted ? "interrupted" : "failed",
         completedAt: now,
         error: {
-          message: String(error),
+          message: abortController.signal.aborted ? "Agent run interrupted" : String(error),
           timestamp: now,
+          ...(abortController.signal.aborted ? { code: "interrupted" } : {}),
         },
         updatedAt: now,
       };
       await saveAgentRun(failedRun);
-      agentEventEmitter.emit({
-        type: "agent.run.failed",
-        agentId: agent.config.id,
-        agentRunId: failedRun.id,
-        message: failedRun.error?.message ?? "Agent run failed",
-        timestamp: now,
-      });
+      if (failedRun.status === "interrupted") {
+        agentEventEmitter.emit({
+          type: "agent.run.interrupted",
+          agentId: agent.config.id,
+          agentRunId: failedRun.id,
+          timestamp: now,
+        });
+      } else {
+        agentEventEmitter.emit({
+          type: "agent.run.failed",
+          agentId: agent.config.id,
+          agentRunId: failedRun.id,
+          message: failedRun.error?.message ?? "Agent run failed",
+          timestamp: now,
+        });
+      }
       agentEventEmitter.emit({
         type: "agent.run.status",
         agentId: agent.config.id,
@@ -384,6 +474,7 @@ export class AgentRunner {
       return failedRun;
     } finally {
       unsubscribeChatEvents?.();
+      this.activeRunControllers.delete(run.id);
     }
   }
 }

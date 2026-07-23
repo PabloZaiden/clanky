@@ -249,6 +249,16 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    name: "add_agent_code",
+    up: (db) => {
+      const columns = getTableColumns(db, "agents");
+      if (!columns.includes("code")) {
+        db.run("ALTER TABLE agents ADD COLUMN code TEXT");
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

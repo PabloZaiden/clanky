@@ -20,8 +20,8 @@ export interface CommandResult {
 export interface CommandOptions {
   /** Working directory for the command */
   cwd?: string;
-  /** Timeout in milliseconds */
-  timeout?: number;
+  /** Timeout in milliseconds; null disables the executor timeout */
+  timeout?: number | null;
   /** Whether failed commands should be logged by the executor */
   logFailures?: boolean;
   /** Environment variable overrides for the command */
@@ -88,7 +88,7 @@ export interface CommandExecutor {
    * @param path - Absolute path to the file
    * @returns The file contents, or null if the file doesn't exist
    */
-  readFile(path: string): Promise<string | null>;
+  readFile(path: string, options?: FileStreamOptions): Promise<string | null>;
 
   /**
    * Stream a file's raw bytes without buffering the full file in memory.

@@ -867,15 +867,7 @@ export function AppShell() {
       return [];
     }
     if (route.view === "agent-run") {
-      const agentId = getRouteString(route, "agentId");
-      return [
-        {
-          id: "back-to-agent",
-          label: "Back",
-          onAction: () => navigateWithinShell(agentId ? { view: "agent", agentId } : HOME_ROUTE),
-        },
-        ...ownerActions,
-      ];
+      return [];
     }
     if (headerOwnerRoute && headerNode && !sidebarNodeMatchesRoute(headerNode, route)) {
       return ownerActions;
@@ -883,6 +875,20 @@ export function AppShell() {
     return [];
   }, [headerNode, headerOwnerRoute, navigateWithinShell, route]);
   const directHeaderActions = useMemo<ReactNode>(() => {
+    if (route.view === "agent-run") {
+      const agentId = getRouteString(route, "agentId");
+      return (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => navigateWithinShell(agentId ? { view: "agent", agentId } : HOME_ROUTE)}
+        >
+          Back
+        </Button>
+      );
+    }
+
     if (route.view === "code-explorer") {
       if (!headerOwnerRoute) {
         return null;
