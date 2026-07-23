@@ -12,11 +12,103 @@ export type ToolCallExtra = ToolCallImagePreviewExtra;
 export interface ToolCallRecord {
   id: string;
   name: string;
-  input: unknown;
+  input?: unknown;
   output?: unknown;
   status: "pending" | "running" | "completed" | "failed";
   timestamp: string;
   extras?: ToolCallExtra[];
+}
+
+/**
+ * Lightweight browser representation used by paginated chat transcripts.
+ * Tool inputs, outputs, and image bytes stay on the server until the row is
+ * expanded.
+ */
+export interface ToolCallSummary {
+  id: string;
+  name: string;
+  status: ToolCallRecord["status"];
+  timestamp: string;
+  summary: string;
+  kind: string;
+  outputLabel: string;
+  outputType: "text" | "json";
+  hasInput: boolean;
+  hasOutput: boolean;
+  detailAvailable: true;
+}
+
+export type ToolCallDisplayData = ToolCallRecord | ToolCallSummary;
+
+export function isToolCallSummary(value: ToolCallDisplayData): value is ToolCallSummary {
+  return "detailAvailable" in value && value.detailAvailable === true;
+}
+
+function truncateSummary(value: string, maxLength = 160): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 1)}…`
+    : normalized;
+}
+
+function getRecordString(input: Record<string, unknown>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getToolInputSummary(tool: ToolCallRecord): string {
+  if (typeof tool.input === "string") {
+    return truncateSummary(tool.input.split(/\r?\n/, 1)[0] ?? tool.input);
+  }
+
+  if (tool.input && typeof tool.input === "object" && !Array.isArray(tool.input)) {
+    const input = tool.input as Record<string, unknown>;
+    const value =
+      getRecordString(input, "path")
+      ?? getRecordString(input, "filePath")
+      ?? getRecordString(input, "command")
+      ?? getRecordString(input, "cmd")
+      ?? getRecordString(input, "query")
+      ?? getRecordString(input, "name");
+    if (value) {
+      return truncateSummary(value);
+    }
+
+    const paths = input["paths"];
+    if (Array.isArray(paths) && paths.every((path) => typeof path === "string")) {
+      return truncateSummary(paths.join(", "));
+    }
+  }
+
+  return tool.name.trim() || "Tool activity";
+}
+
+function inferToolKind(tool: ToolCallRecord): string {
+  const name = tool.name.trim().toLowerCase().replace(/^general tool:\s*/i, "");
+  if (name === "read" || name === "view") return "view";
+  if (name === "edit" || name === "write" || name === "multiedit") return "edit";
+  if (name === "execute" || name === "bash" || name === "shell") return "bash";
+  if (name === "grep" || name === "rg" || name === "search") return "rg";
+  if (name === "glob" || name === "ls") return "glob";
+  if (name === "fetch" || name === "webfetch") return "web_fetch";
+  if (name === "todowrite") return "todo";
+  return "unknown";
+}
+
+export function createToolCallSummary(tool: ToolCallRecord): ToolCallSummary {
+  return {
+    id: tool.id,
+    name: tool.name,
+    status: tool.status,
+    timestamp: tool.timestamp,
+    summary: getToolInputSummary(tool),
+    kind: inferToolKind(tool),
+    outputLabel: tool.status === "failed" ? "Error" : "Output",
+    outputType: typeof tool.output === "string" ? "text" : "json",
+    hasInput: tool.input !== undefined,
+    hasOutput: tool.output !== undefined,
+    detailAvailable: true,
+  };
 }
 
 function isNonNullObject(value: unknown): value is Record<string, unknown> {

@@ -14,6 +14,7 @@ import type {
   SshSessionEvent,
   TaskEvent,
 } from "@/shared";
+import { createToolCallSummary } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
 import type {
   RealtimeBus,
@@ -265,11 +266,24 @@ export function publishClankyDomainEvent(
       return;
     case "chat.message":
     case "chat.message.delta":
-    case "chat.tool_call":
-    case "chat.tool_call.extra":
     case "chat.log":
     case "chat.log.delta":
       publishStream(publisher, owner, event, { chatId: event.chatId });
+      return;
+    case "chat.tool_call.extra":
+      // Tool-call summaries are enough for the live transcript. The complete
+      // extra, which can contain image bytes, is fetched from the detail route.
+      return;
+    case "chat.tool_call":
+      publishStream(
+        publisher,
+        owner,
+        {
+          ...event,
+          tool: createToolCallSummary(event.tool),
+        },
+        { chatId: event.chatId },
+      );
       return;
     case "chat.status":
       // Terminal status also closes the incremental client state when the

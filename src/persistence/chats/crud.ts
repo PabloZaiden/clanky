@@ -30,6 +30,7 @@ const CHAT_LIST_COLUMNS = [
   "model_variant",
   "use_worktree",
   "auto_approve_permissions",
+  "skip_base_branch_sync",
   "base_branch",
   "mode",
   "status",
@@ -51,6 +52,47 @@ const CHAT_LIST_COLUMNS = [
   "connection_status",
   "CASE WHEN messages IS NOT NULL AND messages <> '[]' THEN 1 ELSE 0 END AS has_messages",
   "CASE WHEN (messages IS NOT NULL AND messages <> '[]') OR (tool_calls IS NOT NULL AND tool_calls <> '[]') THEN 1 ELSE 0 END AS has_transcript",
+].join(", ");
+const CHAT_METADATA_COLUMNS = [
+  "id",
+  "name",
+  "source_kind",
+  "workspace_id",
+  "ssh_server_id",
+  "ssh_server_session_id",
+  "scope",
+  "task_id",
+  "directory",
+  "created_at",
+  "updated_at",
+  "is_private",
+  "model_provider_id",
+  "model_model_id",
+  "model_variant",
+  "use_worktree",
+  "auto_approve_permissions",
+  "skip_base_branch_sync",
+  "base_branch",
+  "mode",
+  "status",
+  "started_at",
+  "completed_at",
+  "last_activity_at",
+  "session_id",
+  "session_server_url",
+  "error_message",
+  "error_timestamp",
+  "error_code",
+  "worktree_original_branch",
+  "worktree_working_branch",
+  "worktree_path",
+  "pending_permission_requests",
+  "queued_messages",
+  "active_message_id",
+  "interrupt_requested",
+  "connection_status",
+  "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id AND entry.kind = 'message') THEN 1 ELSE 0 END AS has_messages",
+  "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id) THEN 1 ELSE 0 END AS has_transcript",
 ].join(", ");
 
 export function createChatListSnapshot(chat: Chat): Chat {
@@ -101,6 +143,14 @@ export async function saveChat(chat: Chat): Promise<void> {
 export async function loadChat(chatId: string): Promise<Chat | null> {
   const row = getDatabase()
     .prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?")
+    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
+
+  return row ? rowToChat(row) : null;
+}
+
+export async function loadChatMetadata(chatId: string): Promise<Chat | null> {
+  const row = getDatabase()
+    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`)
     .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;

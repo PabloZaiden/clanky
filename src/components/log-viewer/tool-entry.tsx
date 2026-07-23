@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import type { ToolCallData } from "@/shared";
+import type { ToolCallData, ToolCallDisplayData } from "@/shared";
+import { isToolCallSummary } from "@/shared/tool-call";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
@@ -15,12 +16,13 @@ import {
 } from "./tool-inference";
 
 interface ToolEntryProps {
-  data: ToolCallData;
+  data: ToolCallDisplayData;
   timestamp: string;
   showTimestamp: boolean;
   spacingClass: string;
   toolPathDisplayRoot?: string;
   fullWidth?: boolean;
+  onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
 const toolPanelClassName = "space-y-3 text-gray-900 dark:text-gray-100";
@@ -223,11 +225,19 @@ export const ToolEntry = memo(function ToolEntry({
   spacingClass,
   toolPathDisplayRoot,
   fullWidth = false,
+  onLoadToolDetails,
 }: ToolEntryProps) {
-  const meta = getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot });
+  const isSummary = isToolCallSummary(tool);
+  const [details, setDetails] = useState<ToolCallData | null>(() => isSummary ? null : tool);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const activeTool = details ?? (isSummary ? null : tool);
+  const meta = getToolMeta(activeTool ?? tool, { pathDisplayRoot: toolPathDisplayRoot });
   const structuredDetails = useMemo(
-    () => getStructuredToolDetails(tool, { pathDisplayRoot: toolPathDisplayRoot }),
-    [tool, toolPathDisplayRoot]
+    () => activeTool
+      ? getStructuredToolDetails(activeTool, { pathDisplayRoot: toolPathDisplayRoot })
+      : null,
+    [activeTool, toolPathDisplayRoot]
   );
   const normalizedOutputBlocks = useMemo(() => {
     if (!structuredDetails || structuredDetails.outputBlocks.length !== 1) {
@@ -260,60 +270,88 @@ export const ToolEntry = memo(function ToolEntry({
       <span className="min-w-0 truncate">{meta.summary}</span>
     </span>
   );
-  const hasMeaningfulInput = hasMeaningfulToolValue(tool.input);
-  const hasOutput = hasMeaningfulToolValue(tool.output);
+  const hasMeaningfulInput = activeTool ? hasMeaningfulToolValue(activeTool.input) : false;
+  const hasOutput = activeTool ? hasMeaningfulToolValue(activeTool.output) : false;
 
-  const inputContent = structuredDetails && structuredDetails.inputBlocks.length > 0
-    ? <ToolDetailSection blocks={structuredDetails.inputBlocks} />
-    : <HighlightedJsonBlock value={tool.input} />;
+  const inputContent = activeTool
+    ? structuredDetails && structuredDetails.inputBlocks.length > 0
+      ? <ToolDetailSection blocks={structuredDetails.inputBlocks} />
+      : <HighlightedJsonBlock value={activeTool.input} />
+    : null;
 
-  const outputContent = normalizedOutputBlocks.length > 0
-    ? <ToolDetailSection blocks={normalizedOutputBlocks} />
-    : meta.outputType === "text"
-      ? <RenderedContent output={tool.output} />
-      : <HighlightedJsonBlock value={tool.output} />;
+  const outputContent = activeTool
+    ? normalizedOutputBlocks.length > 0
+      ? <ToolDetailSection blocks={normalizedOutputBlocks} />
+      : meta.outputType === "text"
+        ? <RenderedContent output={activeTool.output} />
+        : <HighlightedJsonBlock value={activeTool.output} />
+    : null;
 
-  const renderInputContent = useCallback(
-    () => (
-      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
-        <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Input</div>
-          {inputContent}
+  const loadDetails = useCallback(async () => {
+    if (!isSummary || details || detailsLoading) {
+      return;
+    }
+    if (!onLoadToolDetails) {
+      setDetailsError("Tool call details are unavailable");
+      return;
+    }
+
+    setDetailsLoading(true);
+    setDetailsError(null);
+    try {
+      const loaded = await onLoadToolDetails(tool.id);
+      if (!loaded) {
+        throw new Error("Tool call details were not found");
+      }
+      setDetails(loaded);
+    } catch (error) {
+      setDetailsError(String(error));
+    } finally {
+      setDetailsLoading(false);
+    }
+  }, [details, detailsLoading, isSummary, onLoadToolDetails, tool.id]);
+
+  const renderDetailsContent = useCallback(
+    () => {
+      if (!activeTool) {
+        return (
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            {detailsLoading ? "Loading tool details…" : detailsError ?? "Tool details are unavailable"}
+          </div>
+        );
+      }
+
+      return (
+        <div className={toolPanelClassName} data-tool-panel-tone="neutral">
+          {hasMeaningfulInput && (
+            <div>
+              <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Input</div>
+              {inputContent}
+            </div>
+          )}
+          {hasOutput && (
+            <div>
+              <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{meta.outputLabel}</div>
+              {outputContent}
+            </div>
+          )}
+          {!hasMeaningfulInput && !hasOutput && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">No additional details.</div>
+          )}
+          <ToolImagePreviewSection tool={activeTool} />
         </div>
-        <ToolImagePreviewSection tool={tool} />
-      </div>
-    ),
-    [inputContent, tool]
-  );
-
-  const renderOutputOnlyContent = useCallback(
-    () => (
-      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
-        <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{meta.outputLabel}</div>
-          {outputContent}
-        </div>
-        <ToolImagePreviewSection tool={tool} />
-      </div>
-    ),
-    [outputContent, meta.outputLabel, tool]
-  );
-
-  const renderCombinedContent = useCallback(
-    () => (
-      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
-        <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Input</div>
-          {inputContent}
-        </div>
-        <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{meta.outputLabel}</div>
-          {outputContent}
-        </div>
-        <ToolImagePreviewSection tool={tool} />
-      </div>
-    ),
-    [inputContent, outputContent, meta.outputLabel, tool]
+      );
+    },
+    [
+      activeTool,
+      detailsError,
+      detailsLoading,
+      hasMeaningfulInput,
+      hasOutput,
+      inputContent,
+      meta.outputLabel,
+      outputContent,
+    ],
   );
 
   return (
@@ -324,18 +362,11 @@ export const ToolEntry = memo(function ToolEntry({
         </time>
       )}
       <div className={fullWidth ? "min-w-0 w-full" : "min-w-0 max-w-[min(96%,72rem)]"}>
-        {hasMeaningfulInput ? (
+        {isSummary || hasMeaningfulInput || hasOutput ? (
           <LazyDetails
             summary={inputSummary}
-            renderContent={hasOutput ? renderCombinedContent : renderInputContent}
-            className="w-full"
-            triggerClassName="w-full text-left"
-            panelClassName="mt-2"
-          />
-        ) : hasOutput ? (
-          <LazyDetails
-            summary={inputSummary}
-            renderContent={renderOutputOnlyContent}
+            renderContent={renderDetailsContent}
+            onOpen={() => void loadDetails()}
             className="w-full"
             triggerClassName="w-full text-left"
             panelClassName="mt-2"

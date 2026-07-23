@@ -5,6 +5,7 @@
 export {
   saveChat,
   loadChat,
+  loadChatMetadata,
   loadTaskChat,
   deleteChat,
   deleteChatsByTaskId,
@@ -21,6 +22,14 @@ export {
 export {
   updateChatState,
   updateChatConfig,
+} from "./chats/index";
+export {
+  getChatTranscriptMeta,
+  migrateLegacyChatTranscripts,
+  replaceChatTranscriptEntries,
+  syncChatTranscriptEntries,
+  listChatTranscriptEntries,
+  getChatToolCallFromTranscript,
 } from "./chats/index";
 export {
   getActiveChatByDirectory,

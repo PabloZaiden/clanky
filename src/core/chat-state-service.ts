@@ -11,18 +11,31 @@ import {
   listChats,
   listChatsByWorkspace,
   loadChat,
+  loadChatMetadata,
   loadTaskChat,
+  getChatTranscriptMeta,
+  getChatToolCallFromTranscript,
+  listChatTranscriptEntries,
+  replaceChatTranscriptEntries,
   saveChat,
   updateChatConfig,
   updateChatState,
 } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import type { Chat, ChatConfig, ChatState, Workspace } from "@/shared";
+import type { ChatSnapshot, ChatTranscriptPage, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import { isStandaloneChat } from "@/shared/chat";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
+import {
+  createChatSnapshot,
+  createChatSnapshotFromPage,
+  createChatTranscriptPage,
+  createChatTranscriptPageFromStorageEntries,
+  parseChatTranscriptCursor,
+} from "./chat-transcript-service";
 
 export class ChatStateService implements ChatStatePort {
   constructor(
@@ -31,6 +44,78 @@ export class ChatStateService implements ChatStatePort {
 
   async getChat(chatId: string): Promise<Chat | null> {
     return loadChat(chatId);
+  }
+
+  async getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null> {
+    const chat = await loadChatMetadata(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const meta = getChatTranscriptMeta(chatId);
+    if (!meta) {
+      const fullChat = await loadChat(chatId);
+      if (!fullChat) {
+        return null;
+      }
+      replaceChatTranscriptEntries(fullChat);
+      return createChatSnapshot(fullChat, limit);
+    }
+
+    const entries = listChatTranscriptEntries(chatId, undefined, limit + 1);
+    return createChatSnapshotFromPage(
+      chat,
+      createChatTranscriptPageFromStorageEntries(entries, limit, undefined, {
+        revision: meta.revision,
+        totalEntries: meta.entryCount,
+      }),
+    );
+  }
+
+  async getChatTranscriptPage(
+    chatId: string,
+    limit: number,
+    before?: string,
+  ): Promise<ChatTranscriptPage | null> {
+    const chat = await loadChatMetadata(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const meta = getChatTranscriptMeta(chatId);
+    if (!meta) {
+      const fullChat = await loadChat(chatId);
+      if (!fullChat) {
+        return null;
+      }
+      replaceChatTranscriptEntries(fullChat);
+      return createChatTranscriptPage(fullChat, limit, before);
+    }
+
+    const cursor = before ? parseChatTranscriptCursor(before) : undefined;
+    const entries = listChatTranscriptEntries(chatId, cursor, limit + 1);
+    return createChatTranscriptPageFromStorageEntries(entries, limit, before, {
+      revision: meta.revision,
+      totalEntries: meta.entryCount,
+    });
+  }
+
+  async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
+    const chatMeta = await loadChatMetadata(chatId);
+    if (!chatMeta) {
+      return null;
+    }
+
+    const meta = getChatTranscriptMeta(chatId);
+    if (!meta) {
+      const chat = await loadChat(chatId);
+      return chat?.state.toolCalls.find((toolCall) => toolCall.id === toolCallId) ?? null;
+    }
+
+    const value = getChatToolCallFromTranscript(chatId, toolCallId);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as ToolCallRecord
+      : null;
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {
@@ -74,6 +159,7 @@ export class ChatStateService implements ChatStatePort {
 
   async saveNewChat(chat: Chat): Promise<void> {
     await saveChat(chat);
+    replaceChatTranscriptEntries(chat);
   }
 
   async updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null> {
@@ -86,7 +172,10 @@ export class ChatStateService implements ChatStatePort {
 
   async updateState(chat: Chat, state: ChatState): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
-    const saved = await updateChatState(chat.config.id, state, { preserveQueuedMessages });
+    const saved = await updateChatState(chat.config.id, state, {
+      preserveQueuedMessages,
+      previousState: chat.state,
+    });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }
