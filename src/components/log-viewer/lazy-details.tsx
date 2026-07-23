@@ -7,6 +7,8 @@ interface LazyDetailsProps {
   renderContent: () => ReactNode;
   /** Whether the details element starts open. Defaults to false. */
   defaultOpen?: boolean;
+  /** Runs when the details are opened for the first time or reopened. */
+  onOpen?: () => void;
   /** Additional classes applied to the root wrapper. */
   className?: string;
   /** Additional classes applied to the trigger button. */
@@ -19,6 +21,7 @@ export const LazyDetails = memo(function LazyDetails({
   summary,
   renderContent,
   defaultOpen = false,
+  onOpen,
   className,
   triggerClassName,
   panelClassName,
@@ -45,6 +48,7 @@ export const LazyDetails = memo(function LazyDetails({
           setIsOpen(nextOpen);
           if (nextOpen) {
             setHasOpened(true);
+            onOpen?.();
           }
         }}
       >

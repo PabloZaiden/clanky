@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { appFetch } from "../../lib/public-path";
-import type { Chat } from "@/shared";
 import { ChatDetails } from "../ChatDetails";
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -24,7 +23,7 @@ export function ChatTab({ taskId }: { taskId: string }) {
       try {
         setLoading(true);
         setError(null);
-        const response = await appFetch(`/api/tasks/${taskId}/chat`, {
+        const response = await appFetch(`/api/tasks/${taskId}/chat?summary=1`, {
           method: "POST",
           signal: controller.signal,
         });
@@ -34,8 +33,11 @@ export function ChatTab({ taskId }: { taskId: string }) {
         if (!response.ok) {
           throw new Error(await parseError(response, "Failed to load task chat"));
         }
-        const chat = await response.json() as Chat;
-        setChatId(chat.config.id);
+        const data = await response.json() as { chatId?: string };
+        if (!data.chatId) {
+          throw new Error("Task chat response did not include a chat ID");
+        }
+        setChatId(data.chatId);
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError") {
           return;

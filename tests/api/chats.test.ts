@@ -1398,6 +1398,179 @@ describe("Chats API Integration", () => {
     expect(detail.state.toolCalls).toEqual(toolCalls);
   });
 
+  test("loads long transcripts by cursor and lazy-loads tool call payloads", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Paginated Long Transcript",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+    const firstTimestamp = Date.parse("2025-01-01T00:00:00.000Z");
+    const messages: PersistedMessage[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `page-message-${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `Message ${index}`,
+      timestamp: new Date(firstTimestamp + index * 1_000).toISOString(),
+    }));
+    const toolCalls: PersistedToolCall[] = Array.from({ length: 250 }, (_, index) => ({
+      id: `page-tool-${index}`,
+      name: index % 2 === 0 ? "Read" : "Execute",
+      input: { filePath: `src/file-${index}.ts` },
+      output: {
+        content: `large-output-${index}-${"x".repeat(10_000)}`,
+        detailedContent: `large-output-${index}-${"y".repeat(10_000)}`,
+        binaryResultsForLlm: "base64-payload-that-must-stay-server-side",
+      },
+      status: "completed",
+      timestamp: new Date(firstTimestamp + (20 + index) * 1_000).toISOString(),
+    }));
+    const logs: TaskLogEntry[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `page-log-${index}`,
+      level: index % 5 === 0 ? "agent" : "debug",
+      message: `Log ${index}`,
+      details: index % 5 === 0 ? undefined : { logKind: "system" },
+      timestamp: new Date(firstTimestamp + (300 + index) * 1_000).toISOString(),
+    }));
+
+    await updateChatState(chatId, {
+      ...created.state,
+      messages,
+      logs,
+      toolCalls,
+      lastActivityAt: toolCalls.at(-1)!.timestamp,
+    });
+
+    const fullResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
+    expect(fullResponse.status).toBe(200);
+    const fullBody = await fullResponse.text();
+
+    const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?limit=100`);
+    expect(snapshotResponse.status).toBe(200);
+    const snapshotBody = await snapshotResponse.text();
+    const snapshot = JSON.parse(snapshotBody) as {
+      state: Record<string, unknown>;
+      transcript: {
+        messages: PersistedMessage[];
+        logs: TaskLogEntry[];
+        toolCalls: Array<Record<string, unknown>>;
+        hasOlder: boolean;
+        nextCursor?: string;
+        totalEntries: number;
+      };
+    };
+
+    expect(snapshotBody.length).toBeLessThan(fullBody.length / 10);
+    expect(snapshot.state["messages"]).toBeUndefined();
+    expect(snapshot.state["logs"]).toBeUndefined();
+    expect(snapshot.state["toolCalls"]).toBeUndefined();
+    expect(snapshot.transcript.hasOlder).toBe(true);
+    expect(snapshot.transcript.nextCursor).toBeString();
+    expect(snapshot.transcript.totalEntries).toBe(274);
+    expect(snapshot.transcript.toolCalls.length).toBe(96);
+    expect(snapshot.transcript.toolCalls.every((tool) => !("input" in tool) && !("output" in tool))).toBe(true);
+
+    const etag = snapshotResponse.headers.get("ETag");
+    expect(etag).toBeString();
+    const notModifiedResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?limit=100`, {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(notModifiedResponse.status).toBe(304);
+
+    const latestToolId = toolCalls.at(-1)!.id;
+    const detailResponse = await fetch(
+      `${baseUrl}/api/chats/${chatId}/tool-calls/${encodeURIComponent(latestToolId)}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json();
+    expect(detail.id).toBe(latestToolId);
+    expect(detail.output.content).toContain("large-output-249");
+    expect(JSON.stringify(snapshot)).not.toContain("large-output-249");
+
+    const olderResponse = await fetch(
+      `${baseUrl}/api/chats/${chatId}/transcript?limit=100&before=${encodeURIComponent(snapshot.transcript.nextCursor!)}`,
+    );
+    expect(olderResponse.status).toBe(200);
+    const older = await olderResponse.json();
+    const currentKeys = new Set([
+      ...snapshot.transcript.messages.map((entry) => `message:${entry.id}`),
+      ...snapshot.transcript.logs.map((entry) => `log:${entry.id}`),
+      ...snapshot.transcript.toolCalls.map((entry) => `tool:${entry["id"]}`),
+    ]);
+    const olderKeys = [
+      ...older.messages.map((entry: PersistedMessage) => `message:${entry.id}`),
+      ...older.logs.map((entry: TaskLogEntry) => `log:${entry.id}`),
+      ...older.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
+    ];
+    expect(olderKeys.every((key) => !currentKeys.has(key))).toBe(true);
+    expect(olderKeys.length).toBe(100);
+  });
+
+  test("backfills a legacy chat on its first paginated read", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Legacy Pagination Fallback",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const legacyChatId = `legacy-${crypto.randomUUID()}`;
+    const legacyChat: Chat = {
+      config: {
+        ...created.config,
+        id: legacyChatId,
+        name: "Legacy Pagination Fallback Copy",
+      },
+      state: {
+        ...created.state,
+        messages: [{
+          id: "legacy-message",
+          role: "user",
+          content: "Legacy message",
+          timestamp: "2025-02-01T00:00:00.000Z",
+        }],
+        logs: [],
+        toolCalls: [{
+          id: "legacy-tool",
+          name: "Read",
+          input: { filePath: "legacy.ts" },
+          output: { content: "legacy tool output" },
+          status: "completed",
+          timestamp: "2025-02-01T00:00:01.000Z",
+        }],
+      },
+    };
+    await saveChat(legacyChat);
+
+    const snapshotResponse = await fetch(`${baseUrl}/api/chats/${legacyChatId}/snapshot?limit=1`);
+    expect(snapshotResponse.status).toBe(200);
+    const snapshot = await snapshotResponse.json();
+    expect(snapshot.transcript.messages).toHaveLength(0);
+    expect(snapshot.transcript.toolCalls).toHaveLength(1);
+    expect(snapshot.transcript.toolCalls[0].output).toBeUndefined();
+
+    const olderResponse = await fetch(
+      `${baseUrl}/api/chats/${legacyChatId}/transcript?limit=1&before=${encodeURIComponent(snapshot.transcript.nextCursor)}`,
+    );
+    expect(olderResponse.status).toBe(200);
+    const older = await olderResponse.json();
+    expect(older.messages).toHaveLength(1);
+    expect(older.messages[0]["id"]).toBe("legacy-message");
+  });
+
   test("replies to pending chat permission requests", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

@@ -1,4 +1,9 @@
-import type { MessageData, ToolCallData, LogLevel } from "@/shared";
+import type {
+  MessageData,
+  ToolCallData,
+  ToolCallDisplayData,
+  LogLevel,
+} from "@/shared";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
 
@@ -62,7 +67,7 @@ export interface LogViewerProps {
   /** Messages to display (only user messages are rendered; assistant messages are filtered out) */
   messages: MessageData[];
   /** Tool calls to display. ToolEntry infers the concrete tool kind from the raw payload shape. */
-  toolCalls: ToolCallData[];
+  toolCalls: ToolCallDisplayData[];
   /** Application logs to display */
   logs?: LogEntry[];
   /** Maximum height */
@@ -93,6 +98,14 @@ export interface LogViewerProps {
   surfaceClassName?: string;
   /** Optional class override for the inner transcript wrapper. */
   transcriptClassName?: string;
+  /** Whether the server has older entries that can be fetched. */
+  hasOlderEntries?: boolean;
+  /** Whether an older-entry request is currently running. */
+  loadingOlderEntries?: boolean;
+  /** Fetches the next older transcript page. */
+  onLoadOlderEntries?: () => Promise<void>;
+  /** Fetches one full tool-call payload when its row is expanded. */
+  onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
 export interface ConversationViewerProps extends LogViewerProps {
@@ -113,7 +126,7 @@ export interface ConversationViewerProps extends LogViewerProps {
  */
 export type EntryBase =
   | { type: "message"; data: MessageData; timestamp: string }
-  | { type: "tool"; data: ToolCallData; timestamp: string }
+  | { type: "tool"; data: ToolCallDisplayData; timestamp: string }
   | { type: "log"; data: LogEntry; timestamp: string };
 
 export interface ToolGroupEntryBase {
@@ -121,7 +134,7 @@ export interface ToolGroupEntryBase {
   /** Stable identity for a consecutive run of tool calls. */
   id: string;
   /** Tool calls contained in this consecutive run. */
-  tools: ToolCallData[];
+  tools: ToolCallDisplayData[];
   /** Timestamp of the first tool call in the run. */
   timestamp: string;
   /** Timestamp of the last tool call in the run. */

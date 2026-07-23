@@ -146,6 +146,65 @@ describe("Clanky realtime migration", () => {
     }]);
   });
 
+  test("publishes chat tool events without tool payloads", () => {
+    const events: unknown[] = [];
+    const publisher: ClankyRealtimePublisher = {
+      publishResource() {},
+      publishStream(_owner, event) {
+        events.push(event);
+      },
+    };
+
+    publishClankyDomainEvent(publisher, {
+      type: "chat.tool_call",
+      chatId: "chat-1",
+      scope: "workspace",
+      tool: {
+        id: "tool-1",
+        name: "Read",
+        input: { filePath: "src/index.ts" },
+        output: { content: "x".repeat(10_000) },
+        status: "completed",
+        timestamp: "2026-01-01T00:00:00.000Z",
+      },
+      timestamp: "2026-01-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    const event = events[0] as {
+      tool: Record<string, unknown>;
+    };
+    expect(event.tool["id"]).toBe("tool-1");
+    expect(event.tool["detailAvailable"]).toBe(true);
+    expect(event.tool["input"]).toBeUndefined();
+    expect(event.tool["output"]).toBeUndefined();
+  });
+
+  test("does not stream chat tool extras containing image bytes", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "chat.tool_call.extra",
+      chatId: "chat-1",
+      scope: "workspace",
+      toolId: "tool-1",
+      extra: {
+        id: "preview-1",
+        type: "image_preview",
+        image: {
+          id: "image-1",
+          filename: "preview.png",
+          mimeType: "image/png",
+          data: "base64-image-data",
+          size: 17,
+        },
+      },
+      timestamp: "2026-01-01T00:00:01.000Z",
+    }, { userId: "user-1" });
+
+    expect(recording.streams).toEqual([]);
+    expect(recording.resources).toEqual([]);
+  });
+
   test("invalidates the task resource when an iteration starts", () => {
     const recording = createRecordingPublisher();
 

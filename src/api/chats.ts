@@ -17,6 +17,10 @@ import { isModelEnabled } from "../core/model-discovery";
 import { isDomainError } from "../core/domain-error";
 import { preferencesManager } from "../core/preferences-manager";
 import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
+import {
+  InvalidChatTranscriptCursorError,
+  normalizeTranscriptPageSize,
+} from "../core/chat-transcript-service";
 
 const log = createLogger("api:chats");
 
@@ -103,6 +107,23 @@ async function validateQuickChatRequestModel(body: {
     }
     throw error;
   }
+}
+
+function transcriptResponseHeaders(revision: string): Headers {
+  return new Headers({
+    "Cache-Control": "private, no-cache",
+    ETag: `"${revision}"`,
+  });
+}
+
+function isNotModified(request: Request, revision: string): boolean {
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  return ifNoneMatch === `"${revision}"` || ifNoneMatch === revision;
+}
+
+function isChatTranscriptPaginationDisabled(): boolean {
+  const value = process.env["CLANKY_DISABLE_CHAT_TRANSCRIPT_PAGINATION"]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
 }
 
 export const chatsRoutes = defineRoutes({
@@ -332,6 +353,124 @@ export const chatsRoutes = defineRoutes({
           status: 500,
         });
       }
+    },
+  },
+
+  "/api/chats/:id/snapshot": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the recent paginated transcript snapshot for a chat.",
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        if (isChatTranscriptPaginationDisabled()) {
+          return errorResponse(
+            "transcript_pagination_disabled",
+            "Paginated chat transcripts are disabled by server configuration",
+            501,
+          );
+        }
+        const url = new URL(req.url);
+        const limit = normalizeTranscriptPageSize(url.searchParams.get("limit"));
+        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!, limit);
+        if (!snapshot) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+
+        if (isNotModified(req, snapshot.transcript.revision)) {
+          return new Response(null, {
+            status: 304,
+            headers: transcriptResponseHeaders(snapshot.transcript.revision),
+          });
+        }
+
+        return Response.json(snapshot, {
+          headers: transcriptResponseHeaders(snapshot.transcript.revision),
+        });
+      } catch (error) {
+        if (error instanceof InvalidChatTranscriptCursorError) {
+          return errorResponse(error.code, error.message, error.status);
+        }
+        if (error instanceof Error && error.message.startsWith("Transcript limit")) {
+          return errorResponse("invalid_limit", error.message, 400);
+        }
+        log.error("Failed to load chat snapshot", {
+          chatId: ctx.params["id"]!,
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "snapshot_failed",
+          message: "Failed to load chat snapshot",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/chats/:id/transcript": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read an older page of a chat transcript.",
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        if (isChatTranscriptPaginationDisabled()) {
+          return errorResponse(
+            "transcript_pagination_disabled",
+            "Paginated chat transcripts are disabled by server configuration",
+            501,
+          );
+        }
+        const url = new URL(req.url);
+        const limit = normalizeTranscriptPageSize(url.searchParams.get("limit"));
+        const before = url.searchParams.get("before")?.trim() || undefined;
+        const page = await chatManager.getChatTranscriptPage(ctx.params["id"]!, limit, before);
+        if (!page) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+
+        const revision = `${page.revision}:${before ?? "latest"}:${limit}`;
+        if (isNotModified(req, revision)) {
+          return new Response(null, {
+            status: 304,
+            headers: transcriptResponseHeaders(revision),
+          });
+        }
+
+        return Response.json(page, {
+          headers: transcriptResponseHeaders(revision),
+        });
+      } catch (error) {
+        if (error instanceof InvalidChatTranscriptCursorError) {
+          return errorResponse(error.code, error.message, error.status);
+        }
+        if (error instanceof Error && error.message.startsWith("Transcript limit")) {
+          return errorResponse("invalid_limit", error.message, 400);
+        }
+        log.error("Failed to load chat transcript page", {
+          chatId: ctx.params["id"]!,
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "transcript_page_failed",
+          message: "Failed to load chat transcript page",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/chats/:id/tool-calls/:toolCallId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the full details for one chat tool call.",
+    async GET(_req: Request, ctx): Promise<Response> {
+      const toolCall = await chatManager.getChatToolCall(
+        ctx.params["id"]!,
+        ctx.params["toolCallId"]!,
+      );
+      if (!toolCall) {
+        return errorResponse("not_found", "Tool call not found", 404);
+      }
+      return Response.json(toolCall);
     },
   },
 

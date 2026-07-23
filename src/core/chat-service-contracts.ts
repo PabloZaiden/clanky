@@ -15,12 +15,15 @@ import type {
   Chat,
   ChatConfig,
   ChatPermissionDecision,
+  ChatSnapshot,
   ChatState,
   ChatStatus,
+  ChatTranscriptPage,
   ChatWorktreeState,
   SessionInfo,
   Task,
   TaskLogEntry,
+  ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -93,6 +96,9 @@ export interface ChatDirectoryResolution {
 
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
+  getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null>;
+  getChatTranscriptPage(chatId: string, limit: number, before?: string): Promise<ChatTranscriptPage | null>;
+  getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;
   getChatSummaries(): Promise<Chat[]>;

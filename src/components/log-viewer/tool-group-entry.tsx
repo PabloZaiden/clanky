@@ -1,5 +1,6 @@
 import { memo, useId, useMemo, useState } from "react";
 import type { DisplayEntry, ToolGroupEntryBase } from "./types";
+import type { ToolCallData } from "@/shared";
 import { annotateDisplayEntries, formatTime, getEntrySpacingClass } from "./utils";
 import { ToolEntry } from "./tool-entry";
 import { getToolMeta, type InferredToolKind } from "./tool-inference";
@@ -11,6 +12,7 @@ interface ToolGroupEntryProps {
   };
   spacingClass: string;
   toolPathDisplayRoot?: string;
+  onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
 function truncateToolSummary(summary: string): string {
@@ -78,6 +80,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   entry,
   spacingClass,
   toolPathDisplayRoot,
+  onLoadToolDetails,
 }: ToolGroupEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
@@ -136,6 +139,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
               spacingClass={getEntrySpacingClass(groupedTool, groupedToolEntries[index - 1])}
               toolPathDisplayRoot={toolPathDisplayRoot}
               fullWidth
+              onLoadToolDetails={onLoadToolDetails}
             />
           ))}
         </div>

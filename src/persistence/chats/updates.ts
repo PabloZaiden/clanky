@@ -7,11 +7,13 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { syncChatTranscriptEntriesInTransaction } from "./transcript";
 
 const log = createLogger("persistence:chats");
 
 interface UpdateChatStateOptions {
   preserveQueuedMessages?: boolean;
+  previousState?: ChatState;
 }
 
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
@@ -26,6 +28,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     }
 
     const chat = rowToChat(row);
+    const previousState = options.previousState ?? chat.state;
     chat.state = state;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => {
@@ -40,6 +43,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     values.push(chatId, userId);
 
     db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?`).run(...values);
+    syncChatTranscriptEntriesInTransaction(db, chatId, previousState, state);
     log.debug("Chat state updated", { chatId, status: state.status });
     return true;
   })();

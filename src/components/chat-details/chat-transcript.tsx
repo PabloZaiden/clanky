@@ -4,10 +4,13 @@ import type { ChatTranscriptProps } from "./types";
 
 export function ChatTranscript({
   chat,
+  transcript,
   lifecycleError,
   isActive,
   toolPathDisplayRoot,
   fileLinkContext,
+  onLoadOlderEntries,
+  onLoadToolDetails,
 }: ChatTranscriptProps) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
 
@@ -25,9 +28,13 @@ export function ChatTranscript({
       )}
       <ConversationViewer
         id="chat-transcript"
-        messages={chat.state.messages}
-        toolCalls={chat.state.toolCalls}
-        logs={chat.state.logs}
+        messages={transcript.messages}
+        toolCalls={transcript.toolCalls}
+        logs={transcript.logs}
+        hasOlderEntries={transcript.hasOlder}
+        loadingOlderEntries={transcript.loadingOlder}
+        onLoadOlderEntries={onLoadOlderEntries}
+        onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         activeMessageId={chat.state.activeMessageId}
         markdownEnabled={markdownEnabled}

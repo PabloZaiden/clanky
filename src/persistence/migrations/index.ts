@@ -259,6 +259,45 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 14,
+    name: "add_chat_transcript_entries",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS chat_transcript_entries (
+          chat_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (chat_id, entry_id),
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_page
+        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS chat_transcript_meta (
+          chat_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chat_transcript_meta_user
+        ON chat_transcript_meta(user_id, chat_id)
+      `);
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

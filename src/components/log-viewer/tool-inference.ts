@@ -1,4 +1,5 @@
-import type { ToolCallData } from "@/shared";
+import type { ToolCallData, ToolCallSummary } from "@/shared";
+import { isToolCallSummary } from "@/shared/tool-call";
 import type { FileDiff } from "@/contracts";
 import { formatToolPathForDisplay } from "./tool-paths";
 
@@ -684,7 +685,39 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
   }
 }
 
-export function getToolMeta(tool: ToolCallData, context: ToolMetaContext = {}): ToolMeta {
+export function getToolMeta(
+  tool: ToolCallData | ToolCallSummary,
+  context: ToolMetaContext = {},
+): ToolMeta {
+  if (isToolCallSummary(tool)) {
+    const knownKinds: InferredToolKind[] = [
+      "view",
+      "edit",
+      "glob",
+      "rg",
+      "apply_patch",
+      "bash",
+      "read_bash",
+      "write_bash",
+      "sql",
+      "github_mcp",
+      "web_fetch",
+      "todo",
+      "skill",
+      "rubber_duck",
+      "unknown",
+    ];
+    const kind = knownKinds.includes(tool.kind as InferredToolKind)
+      ? tool.kind as InferredToolKind
+      : "unknown";
+    return {
+      kind,
+      summary: tool.summary,
+      outputLabel: tool.outputLabel,
+      outputType: tool.outputType,
+    };
+  }
+
   const kind = inferToolKind(tool);
   const outputLabel = kind === "sql" ? "Done" : kind === "view" || kind === "glob" || kind === "rg" || kind === "apply_patch"
     ? "Result"
