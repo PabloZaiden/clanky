@@ -17,6 +17,8 @@
  *    - Use `ALTER TABLE ... ADD COLUMN` for new columns
  *    - Use `CREATE TABLE IF NOT EXISTS` for new tables
  *    - Handle the case where the change already exists (idempotent)
+ *    - Set `transactional: false` for operations such as `VACUUM` that
+ *      cannot run inside a transaction
  *
  * 3. Add a test in `tests/unit/migrations.test.ts`
  *
@@ -532,6 +534,23 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 18,
+    name: "compact_database_after_transcript_cleanup",
+    // VACUUM cannot run inside the transaction used by normal migrations.
+    transactional: false,
+    up: (db) => {
+      const checkpoint = db.query("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      if (checkpoint.busy !== 0) {
+        throw new Error(`SQLite WAL checkpoint was busy before VACUUM (status: ${checkpoint.busy})`);
+      }
+      db.run("VACUUM");
+      const finalCheckpoint = db.query("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      if (finalCheckpoint.busy !== 0) {
+        throw new Error(`SQLite WAL checkpoint was busy after VACUUM (status: ${finalCheckpoint.busy})`);
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
@@ -704,7 +723,8 @@ function recordMigration(db: Database, migration: Migration): void {
  * Run all pending migrations.
  * 
  * This function is idempotent - it only runs migrations that haven't been applied yet.
- * Each migration is run in its own transaction for safety.
+ * Each migration is run in its own transaction for safety unless it opts out
+ * with `transactional: false`.
  * 
  * @param db The database instance
  * @returns The number of migrations applied

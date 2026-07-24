@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
-import { getSchemaVersion, migrations } from "../../src/persistence/migrations";
+import { getSchemaVersion, migrations, runMigrations } from "../../src/persistence/migrations";
 
 const PRIVATE_FLAG_TABLE_NAMES = [
   "workspaces",
@@ -516,6 +516,54 @@ describe("database schema", () => {
       );
     } finally {
       db.close();
+    }
+  });
+
+  test("migration v18 runs database compaction once outside a transaction", async () => {
+    const migration = migrations.find((candidate) => candidate.version === 18);
+    if (!migration) {
+      throw new Error("Migration v18 was not found");
+    }
+
+    const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-vacuum-"));
+    const dbPath = join(dataDir, "database.sqlite");
+    const db = new Database(dbPath);
+    try {
+      db.exec(`
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE preserved (value TEXT NOT NULL);
+        CREATE TABLE payload (value BLOB NOT NULL);
+        INSERT INTO preserved VALUES ('kept');
+      `);
+      db.run("INSERT INTO payload VALUES (?)", [new Uint8Array(2 * 1024 * 1024)]);
+      db.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      db.run("DELETE FROM payload");
+      db.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      const sizeBeforeVacuum = Bun.file(dbPath).size;
+      expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBeGreaterThan(0);
+
+      const insertMigration = db.prepare(
+        "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      );
+      for (let version = 1; version <= 17; version += 1) {
+        insertMigration.run(version, `migration-${version}`, "now");
+      }
+
+      expect(migration.transactional).toBe(false);
+      expect(runMigrations(db)).toBe(1);
+      expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
+      expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
+      expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
+      expect(runMigrations(db)).toBe(0);
+      expect(getSchemaVersion(db)).toBe(18);
+    } finally {
+      db.close();
+      await rm(dataDir, { recursive: true, force: true });
     }
   });
 });
