@@ -22,6 +22,7 @@ import type {
   SessionInfo,
   Task,
   TaskLogEntry,
+  TranscriptChangeSet,
   ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -112,7 +113,13 @@ export interface ChatStatePort {
   }>;
   saveNewChat(chat: Chat): Promise<void>;
   updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null>;
-  updateState(chat: Chat, state: ChatState): Promise<Chat>;
+  updateState(
+    chat: Chat,
+    state: ChatState,
+    options?: {
+      transcriptChanges?: TranscriptChangeSet;
+    },
+  ): Promise<Chat>;
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;

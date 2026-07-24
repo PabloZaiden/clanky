@@ -18,10 +18,13 @@ import type {
   ChatPermissionRequest,
   ChatState,
   MessageData,
+  PersistedMessage,
   PersistedToolCall,
   SessionInfo,
   TaskLogEntry,
+  TranscriptChangeSet,
 } from "@/shared";
+import { createTranscriptChangeSet } from "@/shared";
 import {
   ChatBusyError,
   isChatBusyStatus,
@@ -30,8 +33,14 @@ import {
 } from "@/shared/chat";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { AgentStreamController, type AgentStreamHandle } from "./agent-stream-controller";
+import {
+  AgentStreamCheckpointPolicy,
+  AgentStreamController,
+  type AgentStreamHandle,
+  getAgentStreamTextByteLength,
+} from "./agent-stream-controller";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
+import { TranscriptMemoryIndex } from "./transcript-memory-index";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
@@ -49,13 +58,78 @@ import { buildPromptParts } from "../backends/prompt-parts";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-const CHAT_STREAM_PERSIST_INTERVAL_MS = 1000;
-const CHAT_STREAM_PERSIST_MIN_CHARS = 4096;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 
 interface ActiveChatStream {
   handle: AgentStreamHandle;
   generation: number;
+  completion: Promise<void>;
+}
+
+interface ChatTranscriptMemory {
+  messages: TranscriptMemoryIndex<PersistedMessage>;
+  logs: TranscriptMemoryIndex<TaskLogEntry>;
+  toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
+  runningToolIdsByName: Map<string, string[]>;
+}
+
+function createChatTranscriptMemory(state: ChatState): ChatTranscriptMemory {
+  const messages = state.messages ?? [];
+  const logs = state.logs ?? [];
+  const toolCalls = state.toolCalls ?? [];
+  const runningToolIdsByName = new Map<string, string[]>();
+  for (const toolCall of toolCalls) {
+    if (toolCall.status !== "running") {
+      continue;
+    }
+    const runningToolIds = runningToolIdsByName.get(toolCall.name) ?? [];
+    runningToolIds.push(toolCall.id);
+    runningToolIdsByName.set(toolCall.name, runningToolIds);
+  }
+  return {
+    messages: new TranscriptMemoryIndex(messages),
+    logs: new TranscriptMemoryIndex(logs),
+    toolCalls: new TranscriptMemoryIndex(toolCalls),
+    runningToolIdsByName,
+  };
+}
+
+function updateRunningToolIndex(
+  memory: ChatTranscriptMemory,
+  previous: PersistedToolCall | undefined,
+  next: PersistedToolCall,
+): void {
+  if (previous?.status === "running" && next.status !== "running") {
+    const runningToolIds = memory.runningToolIdsByName.get(previous.name);
+    const index = runningToolIds?.lastIndexOf(previous.id) ?? -1;
+    if (index >= 0) {
+      runningToolIds!.splice(index, 1);
+    }
+  }
+  if (next.status === "running" && previous?.status !== "running") {
+    const runningToolIds = memory.runningToolIdsByName.get(next.name) ?? [];
+    runningToolIds.push(next.id);
+    memory.runningToolIdsByName.set(next.name, runningToolIds);
+  }
+}
+
+function getLatestRunningTool(
+  memory: ChatTranscriptMemory,
+  name: string,
+): PersistedToolCall | undefined {
+  const runningToolIds = memory.runningToolIdsByName.get(name);
+  if (!runningToolIds) {
+    return undefined;
+  }
+  while (runningToolIds.length > 0) {
+    const toolId = runningToolIds[runningToolIds.length - 1]!;
+    const tool = memory.toolCalls.get(toolId);
+    if (tool?.status === "running") {
+      return tool;
+    }
+    runningToolIds.pop();
+  }
+  return undefined;
 }
 
 export type ChatPermissionHandler = (
@@ -153,12 +227,12 @@ export class ChatConversationService implements ChatConversationPort {
   async waitForChatIdle(chatId: string, timeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS): Promise<Chat> {
     const startedAt = Date.now();
     while (true) {
-      const chat = await this.state.getChat(chatId);
-      if (!chat) {
+      const summary = await this.state.getChatSummary(chatId);
+      if (!summary) {
         throw new Error(`Chat not found: ${chatId}`);
       }
-      if (!this.activeStreams.has(chatId) && !isChatBusyStatus(chat.state.status)) {
-        return chat;
+      if (!this.activeStreams.has(chatId) && !isChatBusyStatus(summary.state.status)) {
+        return await this.state.getChat(chatId) ?? summary;
       }
       if (Date.now() - startedAt > timeoutMs) {
         throw new Error(`Timed out waiting for chat to become idle: ${chatId}`);
@@ -178,7 +252,7 @@ export class ChatConversationService implements ChatConversationPort {
     }
 
     const backend = await this.session.ensureBackendConnected(chat);
-    const updating = await this.updateState(chat, {
+    await this.updateState(chat, {
       ...chat.state,
       status: "interrupting",
       interruptRequested: true,
@@ -211,10 +285,21 @@ export class ChatConversationService implements ChatConversationPort {
       }
     }
 
+    if (activeStream) {
+      await activeStream.completion;
+    }
+    const latestChat = await this.state.getChat(chatId);
+    if (!latestChat) {
+      return null;
+    }
     if (reason) {
       log.info("Chat interrupted by user request", { chatId, reason });
     }
-    const completed = await this.completeInterruptedChat(updating);
+    const completed = activeStream
+      || latestChat.state.status === "interrupting"
+      || latestChat.state.interruptRequested
+      ? await this.completeInterruptedChat(latestChat)
+      : latestChat;
     this.scheduleQueuedMessageDrain(chatId);
     return completed;
   }
@@ -412,10 +497,12 @@ export class ChatConversationService implements ChatConversationPort {
       activityTimeoutMs: DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS,
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
-    this.activeStreams.set(chat.config.id, {
+    const activeStream: ActiveChatStream = {
       handle,
       generation,
-    });
+      completion: Promise.resolve(),
+    };
+    this.activeStreams.set(chat.config.id, activeStream);
     try {
       const streamingChat = await this.updateState(chat, {
         ...chat.state,
@@ -430,7 +517,7 @@ export class ChatConversationService implements ChatConversationPort {
         this.clearActiveStream(chat.config.id, generation);
         return await this.state.getChat(chat.config.id) ?? chat;
       }
-      void this.consumeEventStream(chat.config.id, backend, handle, generation);
+      activeStream.completion = this.consumeEventStream(chat.config.id, backend, handle, generation);
       return streamingChat;
     } catch (error) {
       this.clearActiveStream(chat.config.id, generation);
@@ -451,6 +538,7 @@ export class ChatConversationService implements ChatConversationPort {
       return;
     }
     let chat: Chat = initialChat;
+    const transcriptMemory = createChatTranscriptMemory(initialChat.state);
 
     let currentTurnMessageId: string | null = null;
     let currentResponseMessageId: string | null = null;
@@ -464,27 +552,14 @@ export class ChatConversationService implements ChatConversationPort {
     let currentReasoningLogContent = "";
     let currentStreamBlockKind: "response" | "reasoning" | null = null;
     let lastStatusReloadAt = 0;
-    let lastStreamPersistAt = 0;
-    let lastStreamPersistLength = 0;
+    const streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
     const toolInputs = new Map<string, unknown>();
-    const shouldPersistStreamingProgress = (contentLength: number): boolean => {
-      const nowMs = Date.now();
-      return (
-        lastStreamPersistAt === 0
-        || nowMs - lastStreamPersistAt >= CHAT_STREAM_PERSIST_INTERVAL_MS
-        || contentLength - lastStreamPersistLength >= CHAT_STREAM_PERSIST_MIN_CHARS
-      );
-    };
-    const markStreamingProgressPersisted = (contentLength: number): void => {
-      lastStreamPersistAt = Date.now();
-      lastStreamPersistLength = contentLength;
-    };
     const reloadInterruptStateIfNeeded = async (force = false): Promise<boolean> => {
       const nowMs = Date.now();
       if (!force && nowMs - lastStatusReloadAt < CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS) {
         return true;
       }
-      const latestChat = await this.state.getChat(chatId);
+      const latestChat = await this.state.getChatSummary(chatId);
       lastStatusReloadAt = nowMs;
       if (!latestChat) {
         return false;
@@ -534,8 +609,8 @@ export class ChatConversationService implements ChatConversationPort {
           emitDelta: false,
           emitFullMessage: true,
           updateResponseLog: false,
-        }));
-        markStreamingProgressPersisted(currentResponseContent.length);
+        }, transcriptMemory));
+        streamCheckpointPolicy.markCheckpoint();
       } else if (currentStreamBlockKind === "reasoning" && currentReasoningLogId) {
         chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
           logKind: "reasoning",
@@ -543,8 +618,9 @@ export class ChatConversationService implements ChatConversationPort {
         }, currentReasoningLogId, activityTimestamp, {
           persist: true,
           emitFull: true,
+          memory: transcriptMemory,
         });
-        markStreamingProgressPersisted(currentReasoningLogContent.length);
+        streamCheckpointPolicy.markCheckpoint();
       }
     };
     const resetActiveStreamBlock = (): void => {
@@ -556,8 +632,6 @@ export class ChatConversationService implements ChatConversationPort {
       currentReasoningLogId = null;
       currentReasoningLogContent = "";
       currentStreamBlockKind = null;
-      lastStreamPersistAt = 0;
-      lastStreamPersistLength = 0;
     };
     const resetCurrentTurnStreamState = (): void => {
       currentTurnMessageId = null;
@@ -567,7 +641,7 @@ export class ChatConversationService implements ChatConversationPort {
     };
 
     try {
-      await handle.consume({
+      const streamResult = await handle.consume({
         shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
         onEvent: async (event) => {
         if (!await reloadInterruptStateIfNeeded(event.type !== "message.delta" && event.type !== "reasoning.delta")) {
@@ -587,7 +661,9 @@ export class ChatConversationService implements ChatConversationPort {
             if (isInterrupted) {
               break;
             }
-            chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" });
+            chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" }, undefined, undefined, {
+              memory: transcriptMemory,
+            });
             chat = await this.updateState(chat, {
               ...chat.state,
               activeMessageId: undefined,
@@ -611,7 +687,9 @@ export class ChatConversationService implements ChatConversationPort {
             currentResponseContent += event.content;
             currentResponseLogContent += event.content;
             totalResponseLength += event.content.length;
-            const persistResponseProgress = shouldPersistStreamingProgress(currentResponseContent.length);
+            const persistResponseProgress = streamCheckpointPolicy.recordText(
+              getAgentStreamTextByteLength(event.content),
+            );
             ({
               chat,
               messageId: currentResponseMessageId,
@@ -628,9 +706,9 @@ export class ChatConversationService implements ChatConversationPort {
               emitDelta: true,
               emitFullMessage: false,
               updateResponseLog: false,
-            }));
+            }, transcriptMemory));
             if (persistResponseProgress) {
-              markStreamingProgressPersisted(currentResponseContent.length);
+              streamCheckpointPolicy.markCheckpoint();
             }
             break;
 
@@ -645,7 +723,9 @@ export class ChatConversationService implements ChatConversationPort {
               currentStreamBlockKind = "reasoning";
             }
             currentReasoningLogContent += event.content;
-            const persistReasoningProgress = shouldPersistStreamingProgress(currentReasoningLogContent.length);
+            const persistReasoningProgress = streamCheckpointPolicy.recordText(
+              getAgentStreamTextByteLength(event.content),
+            );
             chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
               logKind: "reasoning",
               responseContent: currentReasoningLogContent,
@@ -653,9 +733,10 @@ export class ChatConversationService implements ChatConversationPort {
               delta: event.content,
               persist: persistReasoningProgress,
               emitFull: isFirstReasoningDelta,
+              memory: transcriptMemory,
             });
             if (persistReasoningProgress) {
-              markStreamingProgressPersisted(currentReasoningLogContent.length);
+              streamCheckpointPolicy.markCheckpoint();
             }
             break;
 
@@ -674,7 +755,7 @@ export class ChatConversationService implements ChatConversationPort {
               input: event.input,
               status: "running",
               timestamp: now,
-            });
+            }, transcriptMemory);
             break;
           }
 
@@ -688,8 +769,8 @@ export class ChatConversationService implements ChatConversationPort {
             const toolCallId = event.toolCallId;
             const toolKey = toolCallId ?? toolName;
             const existing = toolCallId
-              ? chat.state.toolCalls.find((tool) => tool.id === toolCallId)
-              : [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
+              ? transcriptMemory.toolCalls.get(toolCallId)
+              : getLatestRunningTool(transcriptMemory, toolName);
             const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolKey);
             const completedToolId = toolCallId ?? existing?.id ?? `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(toolKey, completedInput);
@@ -700,7 +781,7 @@ export class ChatConversationService implements ChatConversationPort {
               output: event.output,
               status: "completed",
               timestamp: now,
-            });
+            }, transcriptMemory);
             this.scheduleToolImagePreview(chat.config.id, {
               id: completedToolId,
               name: toolName,
@@ -714,7 +795,7 @@ export class ChatConversationService implements ChatConversationPort {
 
           case "session.status":
             if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
-              chat = await this.completeInterruptedChat(chat);
+              chat = await this.completeInterruptedChat(chat, transcriptMemory);
               this.clearActiveStream(chatId, generation);
               return { stop: true };
             } else if (event.status === "idle") {
@@ -729,7 +810,7 @@ export class ChatConversationService implements ChatConversationPort {
 
           case "message.complete": {
             if (isInterrupted) {
-              chat = await this.completeInterruptedChat(chat);
+              chat = await this.completeInterruptedChat(chat, transcriptMemory);
               this.clearActiveStream(chatId, generation);
               return { stop: true };
             }
@@ -740,7 +821,7 @@ export class ChatConversationService implements ChatConversationPort {
             chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
               logKind: "system",
               responseLength: completedResponseLength,
-            });
+            }, undefined, undefined, { memory: transcriptMemory });
             if (responseSegmentCount === 0 && event.content.length > 0) {
               responseSegmentCount += 1;
               currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
@@ -766,11 +847,11 @@ export class ChatConversationService implements ChatConversationPort {
                 emitDelta: false,
                 emitFullMessage: true,
                 updateResponseLog: false,
-              }));
-              markStreamingProgressPersisted(currentResponseContent.length);
+              }, transcriptMemory));
+              streamCheckpointPolicy.markCheckpoint();
             }
             if (chat.state.interruptRequested || chat.state.status === "interrupting") {
-              chat = await this.completeInterruptedChat(chat);
+              chat = await this.completeInterruptedChat(chat, transcriptMemory);
             } else {
               const completionTimestamp = createTimestamp();
               chat = await this.updateState(chat, {
@@ -787,13 +868,26 @@ export class ChatConversationService implements ChatConversationPort {
 
           case "error":
             if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
-              chat = await this.state.getChat(chatId) ?? chat;
+              await flushActiveStreamBlock(now);
+              const latestChat = await this.state.getChat(chatId);
+              if (latestChat) {
+                chat = {
+                  ...latestChat,
+                  state: {
+                    ...latestChat.state,
+                    messages: chat.state.messages,
+                    logs: chat.state.logs,
+                    toolCalls: chat.state.toolCalls,
+                  },
+                };
+              }
               if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
-                await this.completeInterruptedChat(chat);
+                await this.completeInterruptedChat(chat, transcriptMemory);
               }
               this.clearActiveStream(chatId, generation);
               return { stop: true };
             }
+            await flushActiveStreamBlock(now);
             await this.emitChatError(chat, event.message, event.code);
             this.clearActiveStream(chatId, generation);
             return { stop: true };
@@ -826,15 +920,40 @@ export class ChatConversationService implements ChatConversationPort {
 
         },
       });
+      if (
+        streamResult.lastEvent?.type !== "message.complete"
+        && streamResult.lastEvent?.type !== "error"
+      ) {
+        await flushActiveStreamBlock();
+      }
     } catch (error) {
+      try {
+        await flushActiveStreamBlock();
+      } catch (flushError) {
+        log.error("Failed to checkpoint chat transcript after stream failure", {
+          chatId,
+          error: String(flushError),
+        });
+      }
       if (this.shouldSuppressStreamError(
         chatId,
         generation,
         isAcpErrorCode(error, "acp_request_cancelled") ? "acp_request_cancelled" : undefined,
       )) {
-        const interruptedChat = await this.loadChatIfAvailable(chatId);
+        const latestChat = await this.loadChatIfAvailable(chatId);
+        const interruptedChat = latestChat
+          ? {
+            ...latestChat,
+            state: {
+              ...latestChat.state,
+              messages: chat.state.messages,
+              logs: chat.state.logs,
+              toolCalls: chat.state.toolCalls,
+            },
+          }
+          : chat;
         if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
-          await this.completeInterruptedChat(interruptedChat);
+          await this.completeInterruptedChat(interruptedChat, transcriptMemory);
         }
         return;
       }
@@ -856,11 +975,19 @@ export class ChatConversationService implements ChatConversationPort {
     const nextMessages = chat.state.messages.some((existing) => existing.id === message.id)
       ? chat.state.messages.map((existing) => existing.id === message.id ? message : existing)
       : [...chat.state.messages, message];
-    const updated = await this.updateState(chat, {
+    const nextState = {
       ...chat.state,
       ...updates,
       messages: nextMessages,
       lastActivityAt: message.timestamp,
+    };
+    const updated = await this.updateState(chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, [{
+        id: message.id,
+        kind: "message",
+        timestamp: message.timestamp,
+        payload: message,
+      }]),
     });
     this.emitter.emit({
       type: "chat.message",
@@ -872,11 +999,17 @@ export class ChatConversationService implements ChatConversationPort {
     return updated;
   }
 
-  private findMessage(chat: Chat, messageId?: string): MessageData | undefined {
+  private findMessage(
+    chat: Chat,
+    messageId?: string,
+    memory?: ChatTranscriptMemory,
+  ): MessageData | undefined {
     if (!messageId) {
       return undefined;
     }
-    return chat.state.messages.find((message) => message.id === messageId);
+    return memory
+      ? memory.messages.get(messageId)
+      : chat.state.messages.find((message) => message.id === messageId);
   }
 
   private createResponseSegmentMessageId(turnMessageId: string | null, segmentCount: number): string {
@@ -913,14 +1046,17 @@ export class ChatConversationService implements ChatConversationPort {
       emitFullMessage?: boolean;
       updateResponseLog?: boolean;
     },
+    memory?: ChatTranscriptMemory,
   ): Promise<{ chat: Chat; messageId: string; responseLogId: string }> {
     const shouldPersist = persist ?? true;
     const shouldEmitDelta = emitDelta ?? false;
     const shouldEmitFullMessage = emitFullMessage ?? true;
     const shouldUpdateResponseLog = updateResponseLog ?? true;
-    const existingMessage = this.findMessage(chat, messageId ?? undefined);
+    const existingMessage = this.findMessage(chat, messageId ?? undefined, memory);
     const existingLog = shouldUpdateResponseLog && responseLogId
-      ? chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
+      ? memory
+        ? memory.logs.get(responseLogId)
+        : chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
       : undefined;
     const nextMessageId = existingMessage?.id
       ?? messageId
@@ -941,13 +1077,17 @@ export class ChatConversationService implements ChatConversationPort {
       },
       timestamp: existingLog?.timestamp ?? timestamp,
     };
-    const nextMessages = chat.state.messages.some((existing) => existing.id === assistantMessage.id)
-      ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
-      : [...chat.state.messages, assistantMessage];
+    const nextMessages = memory
+      ? (memory.messages.upsert(assistantMessage), memory.messages.values)
+      : chat.state.messages.some((existing) => existing.id === assistantMessage.id)
+        ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
+        : [...chat.state.messages, assistantMessage];
     const nextLogs = shouldUpdateResponseLog
-      ? existingLog
-        ? chat.state.logs.map((logEntry) => logEntry.id === responseLog.id ? responseLog : logEntry)
-        : [...chat.state.logs, responseLog]
+      ? memory
+        ? (memory.logs.upsert(responseLog), memory.logs.values)
+        : existingLog
+          ? chat.state.logs.map((logEntry) => logEntry.id === responseLog.id ? responseLog : logEntry)
+          : [...chat.state.logs, responseLog]
       : chat.state.logs;
     const nextState = {
       ...chat.state,
@@ -956,8 +1096,24 @@ export class ChatConversationService implements ChatConversationPort {
       logs: nextLogs,
       lastActivityAt: activityTimestamp,
     };
+    const transcriptUpserts: TranscriptChangeSet["upserts"] = [{
+      id: assistantMessage.id,
+      kind: "message" as const,
+      timestamp: assistantMessage.timestamp,
+      payload: assistantMessage,
+    }];
+    if (shouldUpdateResponseLog) {
+      transcriptUpserts.push({
+        id: responseLog.id,
+        kind: "log" as const,
+        timestamp: responseLog.timestamp,
+        payload: responseLog,
+      });
+    }
     const updated = shouldPersist
-      ? await this.updateState(chat, nextState)
+      ? await this.updateState(chat, nextState, {
+        transcriptChanges: createTranscriptChangeSet(nextState, transcriptUpserts),
+      })
       : { config: chat.config, state: nextState };
     if (shouldEmitDelta && delta !== undefined) {
       this.emitter.emit({
@@ -1009,12 +1165,15 @@ export class ChatConversationService implements ChatConversationPort {
       delta?: string;
       persist?: boolean;
       emitFull?: boolean;
+      memory?: ChatTranscriptMemory;
     } = {},
   ): Promise<Chat> {
     const shouldPersist = options.persist ?? true;
     const shouldEmitFull = options.emitFull ?? true;
     const existing = id
-      ? chat.state.logs.find((logEntry) => logEntry.id === id)
+      ? options.memory
+        ? options.memory.logs.get(id)
+        : chat.state.logs.find((logEntry) => logEntry.id === id)
       : undefined;
     const activityTimestamp = timestamp ?? createTimestamp();
     const entry: TaskLogEntry = {
@@ -1024,17 +1183,25 @@ export class ChatConversationService implements ChatConversationPort {
       details,
       timestamp: existing?.timestamp ?? activityTimestamp,
     };
-    const existingIndex = chat.state.logs.findIndex((logEntry) => logEntry.id === entry.id);
-    const logs = existingIndex >= 0
-      ? chat.state.logs.map((logEntry, index) => index === existingIndex ? entry : logEntry)
-      : [...chat.state.logs, entry];
+    const logs = options.memory
+      ? (options.memory.logs.upsert(entry), options.memory.logs.values)
+      : chat.state.logs.findIndex((logEntry) => logEntry.id === entry.id) >= 0
+        ? chat.state.logs.map((logEntry) => logEntry.id === entry.id ? entry : logEntry)
+        : [...chat.state.logs, entry];
     const nextState = {
       ...chat.state,
       logs,
       lastActivityAt: activityTimestamp,
     };
     const updated = shouldPersist
-      ? await this.updateState(chat, nextState)
+      ? await this.updateState(chat, nextState, {
+        transcriptChanges: createTranscriptChangeSet(nextState, [{
+          id: entry.id,
+          kind: "log",
+          timestamp: entry.timestamp,
+          payload: entry,
+        }]),
+      })
       : { config: chat.config, state: nextState };
     if (options.delta !== undefined && id) {
       const responseContent = details?.["responseContent"];
@@ -1071,12 +1238,30 @@ export class ChatConversationService implements ChatConversationPort {
     this.state.emitChatUpdated(chat);
   }
 
-  private async appendToolCall(chat: Chat, tool: PersistedToolCall): Promise<Chat> {
-    const toolCalls = [...chat.state.toolCalls, tool];
-    const updated = await this.updateState(chat, {
+  private async appendToolCall(
+    chat: Chat,
+    tool: PersistedToolCall,
+    memory?: ChatTranscriptMemory,
+  ): Promise<Chat> {
+    const toolCalls = memory
+      ? (
+        updateRunningToolIndex(memory, memory.toolCalls.get(tool.id), tool),
+        memory.toolCalls.upsert(tool),
+        memory.toolCalls.values
+      )
+      : [...chat.state.toolCalls, tool];
+    const nextState = {
       ...chat.state,
       toolCalls,
       lastActivityAt: tool.timestamp,
+    };
+    const updated = await this.updateState(chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, [{
+        id: tool.id,
+        kind: "tool",
+        timestamp: tool.timestamp,
+        payload: tool,
+      }]),
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1088,18 +1273,34 @@ export class ChatConversationService implements ChatConversationPort {
     return updated;
   }
 
-  private async upsertToolCall(chat: Chat, tool: PersistedToolCall): Promise<Chat> {
-    const existingIndex = chat.state.toolCalls.findIndex((existing) => existing.id === tool.id);
-    const persistedTool = existingIndex >= 0
-      ? mergeToolCallRecord(chat.state.toolCalls[existingIndex], tool)
+  private async upsertToolCall(
+    chat: Chat,
+    tool: PersistedToolCall,
+    memory?: ChatTranscriptMemory,
+  ): Promise<Chat> {
+    const existing = memory
+      ? memory.toolCalls.get(tool.id)
+      : chat.state.toolCalls.find((candidate) => candidate.id === tool.id);
+    const persistedTool = existing
+      ? mergeToolCallRecord(existing, tool)
       : tool;
-    const toolCalls = existingIndex >= 0
-      ? chat.state.toolCalls.map((existing, index) => index === existingIndex ? persistedTool : existing)
-      : [...chat.state.toolCalls, tool];
-    const updated = await this.updateState(chat, {
+    const toolCalls = memory
+      ? (updateRunningToolIndex(memory, existing, persistedTool), memory.toolCalls.upsert(persistedTool), memory.toolCalls.values)
+      : existing
+        ? chat.state.toolCalls.map((candidate) => candidate.id === persistedTool.id ? persistedTool : candidate)
+        : [...chat.state.toolCalls, tool];
+    const nextState = {
       ...chat.state,
       toolCalls,
       lastActivityAt: tool.timestamp,
+    };
+    const updated = await this.updateState(chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, [{
+        id: persistedTool.id,
+        kind: "tool",
+        timestamp: persistedTool.timestamp,
+        payload: persistedTool,
+      }]),
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1116,16 +1317,33 @@ export class ChatConversationService implements ChatConversationPort {
     toolId: string,
     extra: ToolCallExtra,
     timestamp = createTimestamp(),
+    memory?: ChatTranscriptMemory,
   ): Promise<Chat> {
-    const toolCalls = chat.state.toolCalls.map((toolCall) => (
-      toolCall.id === toolId
-        ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, extra) }
-        : toolCall
-    ));
-    const updated = await this.updateState(chat, {
+    const existingTool = memory
+      ? memory.toolCalls.get(toolId)
+      : chat.state.toolCalls.find((toolCall) => toolCall.id === toolId);
+    if (!existingTool) {
+      return chat;
+    }
+    const updatedTool = {
+      ...existingTool,
+      extras: upsertToolCallExtra(existingTool.extras, extra),
+    };
+    const toolCalls = memory
+      ? (memory.toolCalls.upsert(updatedTool), memory.toolCalls.values)
+      : chat.state.toolCalls.map((toolCall) => toolCall.id === toolId ? updatedTool : toolCall);
+    const nextState = {
       ...chat.state,
       toolCalls,
       lastActivityAt: timestamp,
+    };
+    const updated = await this.updateState(chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, [{
+        id: updatedTool.id,
+        kind: "tool",
+        timestamp: updatedTool.timestamp,
+        payload: updatedTool,
+      }]),
     });
     this.emitter.emit({
       type: "chat.tool_call.extra",
@@ -1183,11 +1401,20 @@ export class ChatConversationService implements ChatConversationPort {
     return this.state.markChatError(chat, message, errorCode);
   }
 
-  private async completeInterruptedChat(chat: Chat): Promise<Chat> {
+  private async completeInterruptedChat(chat: Chat, memory?: ChatTranscriptMemory): Promise<Chat> {
     const now = createTimestamp();
-    const updated = await this.updateState(chat, {
+    const cancelledToolCalls: PersistedToolCall[] = [];
+    const toolCalls = memory
+      ? this.cancelInFlightToolCallsWithMemory(memory, now, cancelledToolCalls)
+      : this.cancelInFlightToolCalls(chat.state.toolCalls, now);
+    if (!memory) {
+      cancelledToolCalls.push(...toolCalls.filter((toolCall, index) =>
+        toolCall !== chat.state.toolCalls[index]
+      ));
+    }
+    const nextState = {
       ...chat.state,
-      status: "idle",
+      status: "idle" as const,
       error: undefined,
       interruptRequested: false,
       completedAt: undefined,
@@ -1196,8 +1423,16 @@ export class ChatConversationService implements ChatConversationPort {
         status: "cancelled",
         resolvedAt: now,
       }),
-      toolCalls: this.cancelInFlightToolCalls(chat.state.toolCalls, now),
+      toolCalls,
       lastActivityAt: now,
+    };
+    const updated = await this.updateState(chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, cancelledToolCalls.map((toolCall) => ({
+        id: toolCall.id,
+        kind: "tool",
+        timestamp: toolCall.timestamp,
+        payload: toolCall,
+      }))),
     });
     this.emitter.emit({
       type: "chat.interrupted",
@@ -1232,6 +1467,29 @@ export class ChatConversationService implements ChatConversationPort {
     });
   }
 
+  private cancelInFlightToolCallsWithMemory(
+    memory: ChatTranscriptMemory,
+    timestamp: string,
+    cancelledToolCalls: PersistedToolCall[],
+  ): PersistedToolCall[] {
+    for (const toolCall of memory.toolCalls.values) {
+      if (toolCall.status !== "pending" && toolCall.status !== "running") {
+        continue;
+      }
+
+      const updatedTool: PersistedToolCall = {
+        ...toolCall,
+        status: "failed",
+        output: toolCall.output ?? "Cancelled by user.",
+        timestamp,
+      };
+      updateRunningToolIndex(memory, toolCall, updatedTool);
+      memory.toolCalls.upsert(updatedTool);
+      cancelledToolCalls.push(updatedTool);
+    }
+    return memory.toolCalls.values;
+  }
+
   private nextActiveStreamGeneration(chatId: string): number {
     const generation = (this.activeStreamGenerations.get(chatId) ?? 0) + 1;
     this.activeStreamGenerations.set(chatId, generation);
@@ -1256,8 +1514,12 @@ export class ChatConversationService implements ChatConversationPort {
     return code === "acp_request_cancelled";
   }
 
-  private async updateState(chat: Chat, state: ChatState): Promise<Chat> {
-    return this.state.updateState(chat, state);
+  private async updateState(
+    chat: Chat,
+    state: ChatState,
+    options?: { transcriptChanges?: TranscriptChangeSet },
+  ): Promise<Chat> {
+    return this.state.updateState(chat, state, options);
   }
 
   private assertChatIsAvailable(chat: Chat): void {

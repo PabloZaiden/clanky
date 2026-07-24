@@ -8,6 +8,50 @@ import {
 
 export type ChatTranscriptEntryKind = "message" | "tool" | "log";
 
+export type TranscriptEntryKind = ChatTranscriptEntryKind;
+
+export type TranscriptEntryPayload = PersistedMessage | TaskLogEntry | ToolCallRecord;
+
+export interface TranscriptEntryUpsert {
+  id: string;
+  kind: TranscriptEntryKind;
+  timestamp: string;
+  payload: TranscriptEntryPayload;
+  /**
+   * Existing entries keep their database sequence. New live entries may
+   * provide one so the persistence layer does not need to scan the resource.
+   */
+  sequence?: number;
+}
+
+export interface TranscriptEntryDelete {
+  id: string;
+  kind: TranscriptEntryKind;
+}
+
+export interface TranscriptChangeSet {
+  upserts: TranscriptEntryUpsert[];
+  deletes: TranscriptEntryDelete[];
+  entryCount: number;
+  revision?: string;
+}
+
+export function createTranscriptChangeSet(
+  state: {
+    messages: PersistedMessage[];
+    logs: TaskLogEntry[];
+    toolCalls: ToolCallRecord[];
+  },
+  upserts: TranscriptEntryUpsert[] = [],
+  deletes: TranscriptEntryDelete[] = [],
+): TranscriptChangeSet {
+  return {
+    upserts,
+    deletes,
+    entryCount: state.messages.length + state.logs.length + state.toolCalls.length,
+  };
+}
+
 export interface ChatTranscriptStorageEntry {
   id: string;
   kind: ChatTranscriptEntryKind;

@@ -21,6 +21,7 @@ export {
   taskExists,
   updateTaskState,
   updateTaskStateForUser,
+  updateTaskOperationalState,
   updateTaskConfig,
   getActiveTaskByDirectory,
   isStaleTaskStatus,

@@ -2,19 +2,24 @@
  * Partial update operations for chats persistence.
  */
 
-import type { ChatConfig, ChatState } from "@/shared";
+import type { ChatConfig, ChatState, TranscriptChangeSet } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { syncChatTranscriptEntriesInTransaction } from "./transcript";
-import { hydrateTranscriptStateForUser } from "../transcripts/store";
+import {
+  applyTranscriptChangeSetInTransaction,
+  hydrateTranscriptStateForUser,
+} from "../transcripts/store";
 import { CHAT_METADATA_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:chats");
 
-interface UpdateChatStateOptions {
+export interface UpdateChatStateOptions {
   preserveQueuedMessages?: boolean;
+  previousState?: ChatState;
+  transcriptChanges?: TranscriptChangeSet;
 }
 
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
@@ -29,13 +34,6 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     }
 
     const chat = rowToChat(row);
-    const transcript = hydrateTranscriptStateForUser("chat", chatId, userId);
-    const previousState = {
-      ...chat.state,
-      messages: transcript.messages,
-      logs: transcript.logs,
-      toolCalls: transcript.toolCalls,
-    };
     chat.state = state;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => {
@@ -50,7 +48,26 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     values.push(chatId, userId);
 
     db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?`).run(...values);
-    syncChatTranscriptEntriesInTransaction(db, chatId, previousState, state);
+    if (options.transcriptChanges) {
+      applyTranscriptChangeSetInTransaction(
+        db,
+        "chat",
+        chatId,
+        userId,
+        options.transcriptChanges,
+      );
+    } else {
+      const previousState = options.previousState ?? (() => {
+        const transcript = hydrateTranscriptStateForUser("chat", chatId, userId);
+        return {
+          ...chat.state,
+          messages: transcript.messages,
+          logs: transcript.logs,
+          toolCalls: transcript.toolCalls,
+        };
+      })();
+      syncChatTranscriptEntriesInTransaction(db, chatId, previousState, state);
+    }
     log.debug("Chat state updated", { chatId, status: state.status });
     return true;
   })();

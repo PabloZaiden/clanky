@@ -13,7 +13,17 @@
  * - engine-tools.ts: Agent event processing
  */
 
-import type { FollowUpPromptMode, TaskConfig, TaskState, Task, IterationSummary, TaskLogEntry, ModelConfig } from "@/shared/task";
+import type {
+  FollowUpPromptMode,
+  TaskConfig,
+  TaskState,
+  Task,
+  IterationSummary,
+  TaskLogEntry,
+  ModelConfig,
+  PersistedMessage,
+  PersistedToolCall,
+} from "@/shared/task";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
@@ -36,12 +46,22 @@ import {
   type TaskEngineOptions,
   type IterationResult,
   type IterationContext,
+  MAX_PERSISTED_LOGS,
+  MAX_PERSISTED_MESSAGES,
+  MAX_PERSISTED_TOOL_CALLS,
 } from "./engine-types";
-import { AgentStreamController, type AgentStreamHandle } from "../agent-stream-controller";
+import {
+  AgentStreamCheckpointPolicy,
+  AgentStreamController,
+  type AgentStreamHandle,
+  getAgentStreamTextByteLength,
+} from "../agent-stream-controller";
+import { TranscriptChangeTracker } from "../transcript-change-tracker";
+import { TranscriptMemoryIndex } from "../transcript-memory-index";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
-import { upsertToolCallExtra } from "@/shared/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector } from "./engine-helpers";
-import { logToConsole, persistTaskLog, persistTaskMessage, persistTaskToolCall } from "./engine-events";
+import { logToConsole } from "./engine-events";
 import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
 import {
   clearTaskPlanningFolder,
@@ -74,7 +94,7 @@ export class TaskEngine {
   private stopDetector: StopPatternDetector;
   private aborted = false;
   private sessionId: string | null = null;
-  private onPersistState?: (state: TaskState) => Promise<void>;
+  private onPersistState?: TaskEngineOptions["onPersistState"];
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
   /** Guard to prevent concurrent runTask() executions */
@@ -91,6 +111,15 @@ export class TaskEngine {
   private pendingPromptAttachments: MessageImageAttachment[] = [];
   private currentStreamHandle: AgentStreamHandle | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
+  private readonly transcriptChanges = new TranscriptChangeTracker();
+  private readonly messageMemory: TranscriptMemoryIndex<PersistedMessage>;
+  private readonly logMemory: TranscriptMemoryIndex<TaskLogEntry>;
+  private readonly toolMemory: TranscriptMemoryIndex<PersistedToolCall>;
+  private readonly streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
+  private operationalPersistenceDirty = false;
+  private operationalPersistenceVersion = 0;
+  private persistenceInFlight: Promise<void> | null = null;
+  private persistenceRequested = false;
 
   constructor(options: TaskEngineOptions) {
     this.task = options.task;
@@ -98,11 +127,21 @@ export class TaskEngine {
     this.git = options.gitService;
     this.emitter = options.eventEmitter ?? taskEventEmitter;
     this.stopDetector = new StopPatternDetector(options.task.config.stopPattern);
+    this.task.state.messages ??= [];
+    this.task.state.logs ??= [];
+    this.task.state.toolCalls ??= [];
+    this.messageMemory = new TranscriptMemoryIndex(this.task.state.messages, MAX_PERSISTED_MESSAGES);
+    this.logMemory = new TranscriptMemoryIndex(this.task.state.logs, MAX_PERSISTED_LOGS);
+    this.toolMemory = new TranscriptMemoryIndex(this.task.state.toolCalls, MAX_PERSISTED_TOOL_CALLS);
     this.onPersistState = options.onPersistState;
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
     this.skipGitSetup = options.skipGitSetup ?? false;
     this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
+  }
+
+  async flushPersistence(): Promise<void> {
+    await this.triggerPersistence();
   }
 
   /**
@@ -429,6 +468,12 @@ export class TaskEngine {
     } catch (error) {
       this.emitLog("error", `Failed to start task: ${String(error)}`);
       this.handleError(error);
+      try {
+        await this.triggerPersistence();
+      } catch (persistenceError) {
+        log.error(`Failed to persist task startup failure: ${String(persistenceError)}`);
+        throw persistenceError;
+      }
     }
   }
 
@@ -438,10 +483,6 @@ export class TaskEngine {
   async stop(reason = "User requested stop"): Promise<void> {
     this.emitLog("info", `Stopping task: ${reason}`);
     this.aborted = true;
-
-    // Clear the persistence callback to prevent stale async operations
-    // from overwriting state after the task is stopped/deleted
-    this.onPersistState = undefined;
 
     await this.interruptActiveSession({
       abortMessage: "Aborting backend session...",
@@ -465,6 +506,17 @@ export class TaskEngine {
     });
 
     this.emitLog("info", "Task stopped");
+
+    // Wait for the interrupted iteration to release the in-memory stream before
+    // the final checkpoint, then prevent any later callbacks from persisting.
+    await this.waitForTaskIdle();
+    try {
+      await this.triggerPersistence();
+    } catch (error) {
+      log.warn(`Final task stop checkpoint failed; retrying: ${String(error)}`);
+      await this.triggerPersistence();
+    }
+    this.onPersistState = undefined;
   }
 
   /**
@@ -475,9 +527,7 @@ export class TaskEngine {
   async abortSessionOnly(reason = "Connection reset requested"): Promise<void> {
     this.emitLog("info", `Aborting session only (preserving status): ${reason}`);
     this.aborted = true;
-
-    // Clear the persistence callback to prevent stale async operations
-    this.onPersistState = undefined;
+    this.currentStreamHandle?.close();
 
     if (this.sessionId) {
       try {
@@ -496,6 +546,15 @@ export class TaskEngine {
     });
 
     this.emitLog("info", "Session aborted (status preserved)");
+
+    await this.waitForTaskIdle();
+    try {
+      await this.triggerPersistence();
+    } catch (error) {
+      log.warn(`Final session-abort checkpoint failed; retrying: ${String(error)}`);
+      await this.triggerPersistence();
+    }
+    this.onPersistState = undefined;
   }
 
   /**
@@ -780,9 +839,15 @@ export class TaskEngine {
    * If isUpdate is true, update an existing entry; otherwise append.
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_LOGS.
    */
-  private persistLog(entry: TaskLogEntry, isUpdate: boolean): void {
-    const logs = this.task.state.logs ?? [];
-    this.updateState({ logs: persistTaskLog(logs, entry, isUpdate) });
+  private persistLog(entry: TaskLogEntry, _isUpdate: boolean): void {
+    const { evicted } = this.logMemory.upsert(entry);
+    this.updateState({ logs: this.logMemory.values });
+    for (const oldEntry of evicted) {
+      this.transcriptChanges.recordDelete("log", oldEntry.id);
+    }
+    if (this.logMemory.has(entry.id)) {
+      this.transcriptChanges.recordUpsert("log", entry);
+    }
   }
 
   /**
@@ -790,8 +855,22 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_MESSAGES.
    */
   private persistMessage(message: MessageData): void {
-    const messages = this.task.state.messages ?? [];
-    this.updateState({ messages: persistTaskMessage(messages, message) });
+    const existing = this.messageMemory.get(message.id);
+    const persistedMessage: PersistedMessage = {
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      attachments: message.attachments ?? existing?.attachments,
+      timestamp: message.timestamp,
+    };
+    const { evicted } = this.messageMemory.upsert(persistedMessage);
+    this.updateState({ messages: this.messageMemory.values });
+    for (const oldMessage of evicted) {
+      this.transcriptChanges.recordDelete("message", oldMessage.id);
+    }
+    if (this.messageMemory.has(message.id)) {
+      this.transcriptChanges.recordUpsert("message", persistedMessage);
+    }
   }
 
   /**
@@ -800,8 +879,18 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_TOOL_CALLS.
    */
   private persistToolCall(toolCall: ToolCallData): void {
-    const toolCalls = this.task.state.toolCalls ?? [];
-    this.updateState({ toolCalls: persistTaskToolCall(toolCalls, toolCall) });
+    const existing = this.toolMemory.get(toolCall.id);
+    const persistedTool: PersistedToolCall = existing
+      ? mergeToolCallRecord(existing, toolCall)
+      : toolCall;
+    const { evicted } = this.toolMemory.upsert(persistedTool);
+    this.updateState({ toolCalls: this.toolMemory.values });
+    for (const oldTool of evicted) {
+      this.transcriptChanges.recordDelete("tool", oldTool.id);
+    }
+    if (this.toolMemory.has(toolCall.id)) {
+      this.transcriptChanges.recordUpsert("tool", persistedTool);
+    }
   }
 
   /**
@@ -864,8 +953,7 @@ export class TaskEngine {
     id: string,
   ): void {
     const timestamp = createTimestamp();
-    const logs = this.task.state.logs ?? [];
-    const existing = logs.find((logEntry) => logEntry.id === id);
+    const existing = id ? this.logMemory.get(id) : undefined;
     const logTimestamp = existing?.timestamp ?? timestamp;
     const entry: TaskLogEntry = {
       id,
@@ -994,7 +1082,7 @@ export class TaskEngine {
           return;
         }
 
-        const currentTool = this.task.state.toolCalls.find((entry) => entry.id === toolCall.id);
+        const currentTool = this.toolMemory.get(toolCall.id);
         if (!currentTool) {
           return;
         }
@@ -1209,7 +1297,11 @@ export class TaskEngine {
       queueMicrotask(() => {
         void this.onCompleted?.().catch(async (error) => {
           this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
-          await this.triggerPersistence();
+          try {
+            await this.triggerPersistence();
+          } catch (persistenceError) {
+            log.error(`Failed to persist completion follow-up failure: ${String(persistenceError)}`);
+          }
         });
       });
     }
@@ -1275,7 +1367,11 @@ export class TaskEngine {
       queueMicrotask(() => {
         void this.onPlanReady?.().catch(async (error) => {
           this.emitLog("error", `Auto-accepting the plan failed: ${String(error)}`);
-          await this.triggerPersistence();
+          try {
+            await this.triggerPersistence();
+          } catch (persistenceError) {
+            log.error(`Failed to persist auto-accept failure: ${String(persistenceError)}`);
+          }
         });
       });
     }
@@ -1349,7 +1445,7 @@ export class TaskEngine {
       iteration: this.task.state.currentIteration,
       timestamp: createTimestamp(),
     });
-    void this.triggerPersistence();
+    await this.triggerPersistence();
 
     // Continue to retry (next iteration will use same iteration number)
     return false;
@@ -1558,6 +1654,7 @@ export class TaskEngine {
       })
       .join("\n---\n");
     this.emitLog("debug", `[Prompt] ${fullPromptText}`);
+    await this.triggerPersistence();
 
     let hasRetriedMissingSession = false;
     let completed = false;
@@ -1617,6 +1714,14 @@ export class TaskEngine {
 
             // Delegate event processing to the handler
             await this.processAgentEvent(event, ctx);
+
+            const isTextDelta = event.type === "message.delta" || event.type === "reasoning.delta";
+            const shouldCheckpointText = isTextDelta
+              ? this.streamCheckpointPolicy.recordText(getAgentStreamTextByteLength(event.content))
+              : false;
+            if (!isTextDelta || shouldCheckpointText) {
+              await this.triggerPersistence();
+            }
 
             if (event.type === "error" && event.code === "acp_session_not_found") {
               throw createAcpSessionNotFoundError(activeSessionId, {
@@ -1808,20 +1913,74 @@ export class TaskEngine {
     if (update.status !== undefined && update.status !== this.task.state.status) {
       assertValidTransition(this.task.state.status, update.status, "TaskEngine.updateState");
     }
+    const transcriptKeys = new Set(["messages", "logs", "toolCalls"]);
+    if (Object.keys(update).some((key) => key !== "lastActivityAt" && !transcriptKeys.has(key))) {
+      this.markOperationalPersistenceDirty();
+    }
     Object.assign(this.task.state, update);
+  }
+
+  private markOperationalPersistenceDirty(): void {
+    this.operationalPersistenceDirty = true;
+    this.operationalPersistenceVersion += 1;
+    if (this.persistenceInFlight) {
+      this.persistenceRequested = true;
+    }
   }
 
   /**
    * Trigger disk persistence of the current state.
    * This is called at key points to ensure data survives server restart.
    */
-  private async triggerPersistence(): Promise<void> {
-    if (this.onPersistState) {
-      try {
-        await this.onPersistState(this.task.state);
-      } catch (error) {
-        log.error(`Failed to persist task state: ${String(error)}`);
+  private triggerPersistence(): Promise<void> {
+    this.persistenceRequested = true;
+    if (!this.persistenceInFlight) {
+      this.persistenceInFlight = this.drainPersistence();
+    }
+    return this.persistenceInFlight;
+  }
+
+  private async drainPersistence(): Promise<void> {
+    try {
+      do {
+        this.persistenceRequested = false;
+        await this.persistCurrentState();
+      } while (this.persistenceRequested);
+    } finally {
+      this.persistenceInFlight = null;
+    }
+  }
+
+  private async persistCurrentState(): Promise<void> {
+    if (!this.onPersistState) {
+      return;
+    }
+
+    const checkpointedTextBytes = this.streamCheckpointPolicy.getPendingTextBytes();
+    const operationalPersistenceVersion = this.operationalPersistenceVersion;
+    const snapshot = this.transcriptChanges.snapshot(this.task.state);
+    if (
+      !this.operationalPersistenceDirty
+      && snapshot.changes.upserts.length === 0
+      && snapshot.changes.deletes.length === 0
+    ) {
+      return;
+    }
+
+    try {
+      await this.onPersistState(this.task.state, {
+        transcriptChanges: snapshot.changes,
+      });
+      this.transcriptChanges.acknowledge(snapshot);
+      if (this.operationalPersistenceVersion === operationalPersistenceVersion) {
+        this.operationalPersistenceDirty = false;
+      } else {
+        this.persistenceRequested = true;
       }
+      this.streamCheckpointPolicy.markCheckpoint(checkpointedTextBytes);
+    } catch (error) {
+      log.error(`Failed to persist task state: ${String(error)}`);
+      throw error;
     }
   }
 

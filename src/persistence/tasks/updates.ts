@@ -3,12 +3,17 @@
  * Handles atomic state and config updates via transactions.
  */
 
-import type { TaskConfig, TaskState } from "@/shared";
+import type { TaskConfig, TaskState, TranscriptChangeSet } from "@/shared";
+import { createTranscriptChangeSet } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
-import { hydrateTranscriptStateForUser, syncTranscriptEntriesInTransaction } from "../transcripts/store";
+import {
+  applyTranscriptChangeSetInTransaction,
+  hydrateTranscriptStateForUser,
+  syncTranscriptEntriesInTransaction,
+} from "../transcripts/store";
 import { TASK_LIST_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:tasks");
@@ -17,12 +22,42 @@ const log = createLogger("persistence:tasks");
  * Update only the state portion of a task.
  * Uses a transaction to ensure atomicity of SELECT + UPDATE.
  */
-export async function updateTaskState(taskId: string, state: TaskState): Promise<boolean> {
+export async function updateTaskState(
+  taskId: string,
+  state: TaskState,
+  options: UpdateTaskStateOptions = {},
+): Promise<boolean> {
   log.debug("Updating task state", { taskId, status: state.status });
-  return updateTaskStateForUser(taskId, state, requirePersistenceUserId());
+  return updateTaskStateForUser(taskId, state, requirePersistenceUserId(), options);
 }
 
-export async function updateTaskStateForUser(taskId: string, state: TaskState, userId: string): Promise<boolean> {
+export interface UpdateTaskStateOptions {
+  previousState?: TaskState;
+  transcriptChanges?: TranscriptChangeSet;
+}
+
+/**
+ * Persist task metadata without treating its in-memory transcript as a change.
+ *
+ * Active engines provide explicit change sets. This helper is for lifecycle
+ * operations that only update task-owned operational fields after a stream
+ * checkpoint has already been written.
+ */
+export async function updateTaskOperationalState(
+  taskId: string,
+  state: TaskState,
+): Promise<boolean> {
+  return updateTaskState(taskId, state, {
+    transcriptChanges: createTranscriptChangeSet(state),
+  });
+}
+
+export async function updateTaskStateForUser(
+  taskId: string,
+  state: TaskState,
+  userId: string,
+  options: UpdateTaskStateOptions = {},
+): Promise<boolean> {
   const db = getDatabase();
   // Prepare statements outside transaction
   const selectStmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
@@ -36,13 +71,6 @@ export async function updateTaskStateForUser(taskId: string, state: TaskState, u
     }
 
     const task = rowToTask(row);
-    const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
-    const previousState = {
-      ...task.state,
-      messages: transcript.messages,
-      logs: transcript.logs,
-      toolCalls: transcript.toolCalls,
-    };
     task.state = state;
 
     const newRow = taskToRow(task);
@@ -60,14 +88,33 @@ export async function updateTaskStateForUser(taskId: string, state: TaskState, u
       UPDATE tasks SET ${setClause} WHERE id = ? AND user_id = ?
     `);
     updateStmt.run(...values);
-    syncTranscriptEntriesInTransaction(
-      db,
-      "task",
-      taskId,
-      userId,
-      previousState,
-      state,
-    );
+    if (options.transcriptChanges) {
+      applyTranscriptChangeSetInTransaction(
+        db,
+        "task",
+        taskId,
+        userId,
+        options.transcriptChanges,
+      );
+    } else {
+      const previousState = options.previousState ?? (() => {
+        const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
+        return {
+          ...task.state,
+          messages: transcript.messages,
+          logs: transcript.logs,
+          toolCalls: transcript.toolCalls,
+        };
+      })();
+      syncTranscriptEntriesInTransaction(
+        db,
+        "task",
+        taskId,
+        userId,
+        previousState,
+        state,
+      );
+    }
 
     log.debug("Task state updated", { taskId, status: state.status });
     return true;

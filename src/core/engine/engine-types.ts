@@ -4,7 +4,14 @@
 
 import type { AcpBackend } from "../../backends/acp";
 import type { AgentStreamBackend } from "../agent-stream-controller";
-import type { TaskConfig, TaskState, Task, TaskLogEntry, ModelConfig } from "@/shared/task";
+import type {
+  TaskConfig,
+  TaskState,
+  Task,
+  TaskLogEntry,
+  ModelConfig,
+  TranscriptChangeSet,
+} from "@/shared";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { GitService } from "../git";
@@ -62,7 +69,10 @@ export interface TaskEngineOptions {
   /** Event emitter instance (optional, defaults to global) */
   eventEmitter?: SimpleEventEmitter<TaskEvent>;
   /** Callback to persist state to disk (optional) */
-  onPersistState?: (state: TaskState) => Promise<void>;
+  onPersistState?: (
+    state: TaskState,
+    options: { transcriptChanges: TranscriptChangeSet },
+  ) => Promise<void>;
   /** Callback fired after a plan becomes ready (optional) */
   onPlanReady?: () => Promise<void>;
   /** Callback fired after a task reaches completed status (optional) */

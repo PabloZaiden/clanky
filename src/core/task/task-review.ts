@@ -4,7 +4,10 @@ import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpResult } from "./task-types";
 import type { AutomaticPrFlowFeedbackItem } from "../automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
-import { loadTask, saveTask } from "../../persistence/tasks";
+import {
+  loadTask,
+  updateTaskOperationalState,
+} from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { getTaskWorkingDirectory } from "./task-types";
@@ -202,7 +205,7 @@ export async function startAutomaticPrReviewCycleImpl(
       startedAt: now,
     },
   };
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, taskId, task.state.automaticPrFlow);
 
   const result = await startFeedbackCycleImpl(ctx, taskId, {
@@ -221,7 +224,7 @@ export async function startAutomaticPrReviewCycleImpl(
           },
           updatedAt: new Date().toISOString(),
         };
-        await saveTask(latestTask);
+        await updateTaskOperationalState(taskId, latestTask.state);
         emitAutomaticPrFlowUpdatedEvent(ctx.emitter, taskId, latestTask.state.automaticPrFlow);
       }
     }
@@ -238,7 +241,7 @@ export async function startAutomaticPrReviewCycleImpl(
       lastError: result.error.message,
       activeBatch: undefined,
     };
-    await saveTask(rollbackTask);
+    await updateTaskOperationalState(taskId, rollbackTask.state);
     emitAutomaticPrFlowUpdatedEvent(ctx.emitter, taskId, rollbackTask.state.automaticPrFlow);
   }
 
@@ -295,7 +298,7 @@ export async function startAutomaticPrFlowImpl(
       activeBatch: undefined,
       stoppedAt: undefined,
     };
-    await saveTask(task);
+    await updateTaskOperationalState(taskId, task.state);
     emitAutomaticPrFlowUpdatedEvent(ctx.emitter, taskId, task.state.automaticPrFlow);
 
     return { success: true, automaticPrFlow: task.state.automaticPrFlow };
@@ -340,7 +343,7 @@ export async function stopAutomaticPrFlowImpl(
         activeBatch: undefined,
         stoppedAt: now,
       };
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, taskId, task.state.automaticPrFlow);
 
   return { success: true, automaticPrFlow: task.state.automaticPrFlow };
