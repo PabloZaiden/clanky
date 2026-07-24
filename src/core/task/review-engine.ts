@@ -7,7 +7,11 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
-import { saveTask, updateTaskState } from "../../persistence/tasks";
+import {
+  updateTaskConfig,
+  updateTaskOperationalState,
+  updateTaskState,
+} from "../../persistence/tasks";
 import { startStatePersistenceImpl } from "./task-execution";
 
 export async function transitionToFeedbackCycleAndStart(
@@ -40,7 +44,10 @@ export async function transitionToFeedbackCycleAndStart(
     task.config.model = options.model;
   }
 
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
+  if (options.model !== undefined) {
+    await updateTaskConfig(taskId, task.config);
+  }
 
   if (options.reviewComment) {
     insertReviewComment({
@@ -86,8 +93,8 @@ function startFeedbackEngine(
     backend,
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, options) => {
+      await updateTaskState(taskId, state, options);
     },
     skipGitSetup: true,
     initialPromptAttachments: options.attachments,

@@ -1,4 +1,5 @@
 import type { Agent, AgentRun, AgentRunStatus } from "@/shared/agent";
+import type { TranscriptChangeSet } from "@/shared";
 import { getDatabase } from "../database";
 import {
   agentRunToRow,
@@ -10,6 +11,7 @@ import {
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import {
+  applyTranscriptChangeSetInTransaction,
   hydrateTranscriptStateForUser,
   syncTranscriptEntriesInTransaction,
 } from "../transcripts/store";
@@ -120,23 +122,38 @@ export async function deleteAgent(agentId: string): Promise<boolean> {
   return result.changes > 0;
 }
 
-export async function saveAgentRun(run: AgentRun): Promise<void> {
+export interface SaveAgentRunOptions {
+  previousState?: Pick<AgentRun, "messages" | "logs" | "toolCalls">;
+  transcriptChanges?: TranscriptChangeSet;
+}
+
+export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions = {}): Promise<void> {
   const row = agentRunToRow(run);
   validateAgentRunColumnNames(Object.keys(row));
   const { sql, values } = buildUpsertSql("agent_runs", row);
   const db = getDatabase();
   const userId = String(row["user_id"]);
   db.transaction(() => {
-    const previousState = hydrateTranscriptStateForUser("agent_run", run.id, userId);
     db.prepare(sql).run(...values);
-    syncTranscriptEntriesInTransaction(
-      db,
-      "agent_run",
-      run.id,
-      userId,
-      previousState,
-      run,
-    );
+    if (options.transcriptChanges) {
+      applyTranscriptChangeSetInTransaction(
+        db,
+        "agent_run",
+        run.id,
+        userId,
+        options.transcriptChanges,
+      );
+    } else {
+      const previousState = options.previousState ?? hydrateTranscriptStateForUser("agent_run", run.id, userId);
+      syncTranscriptEntriesInTransaction(
+        db,
+        "agent_run",
+        run.id,
+        userId,
+        previousState,
+        run,
+      );
+    }
   })();
 }
 

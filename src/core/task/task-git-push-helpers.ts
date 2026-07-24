@@ -3,7 +3,10 @@ import type { TaskConfig, TaskState } from "@/shared/task";
 import type { PushTaskResult } from "./task-types";
 import { TaskEngine } from "../task-engine";
 import { createTimestamp } from "@/shared/events";
-import { updateTaskState } from "../../persistence/tasks";
+import {
+  updateTaskOperationalState,
+  updateTaskState,
+} from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
@@ -96,7 +99,7 @@ export async function syncWorkingBranch(
     assertValidTransition(task.state.status, "resolving_conflicts", caller);
     task.state.status = "resolving_conflicts";
     task.state.completedAt = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     return startConflictResolutionEngine(
       ctx, taskId, task, git, `origin/${workingBranch}`, conflictedFiles
@@ -194,7 +197,7 @@ export async function syncBaseBranchAndPush(
       assertValidTransition(task.state.status, "resolving_conflicts", "syncBaseBranchAndPush");
       task.state.status = "resolving_conflicts";
       task.state.completedAt = undefined;
-      await updateTaskState(taskId, task.state);
+      await updateTaskOperationalState(taskId, task.state);
 
       return startConflictResolutionEngine(
         ctx, taskId, task, git, `origin/${baseBranch}`, conflictedFiles
@@ -228,7 +231,7 @@ export async function syncBaseBranchBeforeExecution(
     autoPushOnComplete: false,
     syncPhase: "base_branch",
   };
-  await updateTaskState(taskId, task.state);
+  await updateTaskOperationalState(taskId, task.state);
 
   ctx.emitter.emit({
     type: "task.sync.started",
@@ -243,7 +246,7 @@ export async function syncBaseBranchBeforeExecution(
       `[TaskManager] syncBaseBranchBeforeExecution: No origin remote configured for task ${taskId}, skipping base branch sync`,
     );
     task.state.syncState = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     ctx.emitter.emit({
       type: "task.sync.clean",
@@ -266,7 +269,7 @@ export async function syncBaseBranchBeforeExecution(
     const error = `Failed to fetch origin/${baseBranch} before accepted plan execution`;
     log.error(`[TaskManager] syncBaseBranchBeforeExecution: ${error} for task ${taskId}`);
     task.state.syncState = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     ctx.emitter.emit({
       type: "task.sync.failed",
@@ -294,7 +297,7 @@ export async function syncBaseBranchBeforeExecution(
   if (alreadyUpToDate) {
     log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Already up to date with origin/${baseBranch}`);
     task.state.syncState = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     ctx.emitter.emit({
       type: "task.sync.clean",
@@ -319,7 +322,7 @@ export async function syncBaseBranchBeforeExecution(
   if (mergeResult.success) {
     log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Clean merge with origin/${baseBranch}`);
     task.state.syncState = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     ctx.emitter.emit({
       type: "task.sync.clean",
@@ -357,7 +360,7 @@ export async function syncBaseBranchBeforeExecution(
     assertValidTransition(task.state.status, "resolving_conflicts", "syncBaseBranchBeforeExecution");
     task.state.status = "resolving_conflicts";
     task.state.completedAt = undefined;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     return startConflictResolutionEngine(
       ctx,
@@ -377,7 +380,7 @@ export async function syncBaseBranchBeforeExecution(
   const errorMsg = mergeResult.stderr || "Unknown merge error";
   log.error(`[TaskManager] syncBaseBranchBeforeExecution: Merge failed (not conflicts) for task ${taskId}: ${errorMsg}`);
   task.state.syncState = undefined;
-  await updateTaskState(taskId, task.state);
+  await updateTaskOperationalState(taskId, task.state);
   ctx.emitter.emit({
     type: "task.sync.failed",
     taskId,
@@ -420,7 +423,7 @@ export async function pushAndFinalize(
     pullRequestMonitoring: undefined,
     syncState: undefined,
   };
-  await updateTaskState(taskId, updatedState);
+  await updateTaskOperationalState(taskId, updatedState);
 
   await backendManager.disconnectTask(taskId);
 
@@ -460,8 +463,8 @@ async function startConflictResolutionEngine(
     backend,
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, persistOptions) => {
+      await updateTaskState(taskId, state, persistOptions);
       if (state.status === "completed" && state.syncState?.autoPushOnComplete) {
         handleConflictResolutionComplete(ctx, taskId).catch((error) => {
           log.error(`[TaskManager] Auto-push after conflict resolution failed for task ${taskId}:`, String(error));
@@ -478,13 +481,13 @@ async function startConflictResolutionEngine(
       if (state.status === "failed" || state.status === "max_iterations") {
         if (state.syncState?.autoPushOnComplete) {
           state.syncState.autoPushOnComplete = false;
-          await updateTaskState(taskId, state);
+          await updateTaskOperationalState(taskId, state);
         } else if (options.onCompleted && state.syncState) {
           log.warn(
             `[TaskManager] ${options.completionDescription ?? "Post-conflict completion"} aborted because conflict resolution ended in ${state.status} for task ${taskId}`,
           );
           state.syncState = undefined;
-          await updateTaskState(taskId, state);
+          await updateTaskOperationalState(taskId, state);
         }
       }
     },
@@ -543,7 +546,7 @@ async function handleConflictResolutionComplete(ctx: TaskCtx, taskId: string): P
       log.debug(`[TaskManager] handleConflictResolutionComplete: Working branch conflicts resolved, continuing with base branch sync for task ${taskId}`);
 
       task.state.syncState.syncPhase = "base_branch";
-      await updateTaskState(taskId, task.state);
+      await updateTaskOperationalState(taskId, task.state);
 
       const result = await syncBaseBranchAndPush(ctx, taskId, task, git);
       if (!result.success) {
@@ -570,7 +573,7 @@ async function handleConflictResolutionComplete(ctx: TaskCtx, taskId: string): P
     if (task.state.syncState) {
       task.state.syncState.autoPushOnComplete = false;
     }
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
   }
 }
 

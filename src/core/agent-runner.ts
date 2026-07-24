@@ -1,6 +1,7 @@
 import type { Agent, AgentRun, AgentRunTrigger } from "@/shared/agent";
 import { isAgentCodeEnabled } from "@/shared/agent";
 import type { ChatEvent } from "@/shared";
+import { createTranscriptChangeSet } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
 import { DomainError } from "./domain-error";
@@ -15,6 +16,7 @@ import { agentEventEmitter, chatEventEmitter } from "./event-emitter";
 import { executeDeterministicAgent } from "./deterministic-agent-runtime";
 import { DeterministicAgentOutput } from "./deterministic-agent-output";
 import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
+import { AgentRunStreamPersistence } from "./agent-run-stream-persistence";
 
 const log = createLogger("agent-runner");
 
@@ -78,6 +80,7 @@ function mergeRunLogs(chatLogs: AgentRun["logs"], outputLogs: AgentRun["logs"]):
 export class AgentRunner {
   private readonly activeRuns = new Map<string, Promise<AgentRun>>();
   private readonly activeRunControllers = new Map<string, AbortController>();
+  private readonly activeRunPersistences = new Map<string, AgentRunStreamPersistence>();
 
   isRunActive(runId: string): boolean {
     return this.activeRuns.has(runId);
@@ -109,7 +112,12 @@ export class AgentRunner {
   ): Promise<AgentRun> {
     const scheduledFor = options.scheduledFor ?? createTimestamp();
     let run = createRunFromAgent(agent, trigger, scheduledFor, options.attachments);
-    await saveAgentRun(run);
+    await saveAgentRun(run, {
+      transcriptChanges: {
+        ...createTranscriptChangeSet(run),
+        revision: `${run.updatedAt}:0`,
+      },
+    });
     agentEventEmitter.emit({
       type: "agent.run.scheduled",
       agentId: agent.config.id,
@@ -147,7 +155,9 @@ export class AgentRunner {
           },
           updatedAt: now,
         };
-        await saveAgentRun(updated);
+        await saveAgentRun(updated, {
+          transcriptChanges: createTranscriptChangeSet(updated),
+        });
         return updated;
       }
       throw new DomainError(
@@ -164,6 +174,7 @@ export class AgentRunner {
         { details: { runId: run.id, chatId: run.chatId } },
       );
     }
+    const streamPersistence = this.activeRunPersistences.get(run.id);
     const now = createTimestamp();
     const updated: AgentRun = {
       ...run,
@@ -175,14 +186,22 @@ export class AgentRunner {
         code: "interrupted",
       },
       messages: chat?.state.messages ?? run.messages,
-      logs: isAgentCodeEnabled(run.configSnapshot) ? run.logs : chat?.state.logs ?? run.logs,
+      logs: isAgentCodeEnabled(run.configSnapshot)
+        ? streamPersistence?.currentRun.logs ?? run.logs
+        : chat?.state.logs ?? run.logs,
       toolCalls: chat?.state.toolCalls ?? run.toolCalls,
       pendingPermissionRequests: chat?.state.pendingPermissionRequests ?? run.pendingPermissionRequests,
       session: chat?.state.session ?? run.session,
       worktree: chat?.state.worktree ?? run.worktree,
       updatedAt: now,
     };
-    await saveAgentRun(updated);
+    if (streamPersistence) {
+      await streamPersistence.adoptRun(updated);
+    } else {
+      await saveAgentRun(updated, {
+        transcriptChanges: createTranscriptChangeSet(updated),
+      });
+    }
     return updated;
   }
 
@@ -234,11 +253,14 @@ export class AgentRunner {
       startedAt: createTimestamp(),
       updatedAt: createTimestamp(),
     };
-    await saveAgentRun(currentRun);
+    await saveAgentRun(currentRun, {
+      transcriptChanges: createTranscriptChangeSet(currentRun),
+    });
 
     let chatId: string | null = null;
     let unsubscribeChatEvents: (() => void) | undefined;
     let output: DeterministicAgentOutput | undefined;
+    let streamPersistence: AgentRunStreamPersistence | undefined;
     try {
       if (abortController.signal.aborted) {
         throw new Error("Agent run interrupted");
@@ -265,6 +287,7 @@ export class AgentRunner {
         if (event.chatId !== chatId || !isAgentChatEvent(event)) {
           return;
         }
+        streamPersistence?.handleChatEvent(event);
         if (event.type === "chat.message") {
           agentEventEmitter.emit({
             type: "agent.run.message",
@@ -314,7 +337,9 @@ export class AgentRunner {
         worktree: chat.state.worktree,
         updatedAt: createTimestamp(),
       };
-      await saveAgentRun(currentRun);
+      streamPersistence = new AgentRunStreamPersistence(currentRun);
+      this.activeRunPersistences.set(currentRun.id, streamPersistence);
+      await streamPersistence.persist();
       if (abortController.signal.aborted) {
         throw new Error("Agent run interrupted");
       }
@@ -334,7 +359,12 @@ export class AgentRunner {
       });
 
       const codeMode = isAgentCodeEnabled(currentRun.configSnapshot);
-      output = codeMode ? new DeterministicAgentOutput(currentRun) : undefined;
+      output = codeMode
+        ? new DeterministicAgentOutput(currentRun, {
+          persist: false,
+          onAppend: (entry) => streamPersistence?.handleOutputLog(entry),
+        })
+        : undefined;
       if (codeMode && output) {
         if (abortController.signal.aborted) {
           throw new Error("Agent run interrupted");
@@ -381,7 +411,13 @@ export class AgentRunner {
         pendingPermissionRequests: completedChat.state.pendingPermissionRequests,
         updatedAt: now,
       };
-      await saveAgentRun(completedRun);
+      if (streamPersistence) {
+        await streamPersistence.adoptRun(completedRun);
+      } else {
+        await saveAgentRun(completedRun, {
+          transcriptChanges: createTranscriptChangeSet(completedRun),
+        });
+      }
       if (completedRun.status === "interrupted") {
         agentEventEmitter.emit({
           type: "agent.run.interrupted",
@@ -446,7 +482,13 @@ export class AgentRunner {
         },
         updatedAt: now,
       };
-      await saveAgentRun(failedRun);
+      if (streamPersistence) {
+        await streamPersistence.adoptRun(failedRun);
+      } else {
+        await saveAgentRun(failedRun, {
+          transcriptChanges: createTranscriptChangeSet(failedRun),
+        });
+      }
       if (failedRun.status === "interrupted") {
         agentEventEmitter.emit({
           type: "agent.run.interrupted",
@@ -475,6 +517,7 @@ export class AgentRunner {
     } finally {
       unsubscribeChatEvents?.();
       this.activeRunControllers.delete(run.id);
+      this.activeRunPersistences.delete(run.id);
     }
   }
 }

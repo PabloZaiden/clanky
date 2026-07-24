@@ -4,7 +4,16 @@ import type { CreateTaskOptions } from "./task-types";
 import type { PullRequestDestinationResponse } from "@/contracts";
 import { createTimestamp } from "@/shared/events";
 import { createInitialState, DEFAULT_TASK_CONFIG } from "@/shared/task";
-import { createTaskListSnapshot, saveTask, loadTask, loadTaskSummary, listTasks, listTaskSummaries } from "../../persistence/tasks";
+import {
+  createTaskListSnapshot,
+  loadTask,
+  loadTaskSummary,
+  listTasks,
+  listTaskSummaries,
+  saveTask,
+  updateTaskConfig,
+  updateTaskOperationalState,
+} from "../../persistence/tasks";
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
@@ -384,7 +393,8 @@ export async function updateTaskImpl(
   const shouldTriggerCompletedAutonomy = syncPostApprovalFullyAutonomousPending(updatedConfig, currentState);
 
   const updatedTask: Task = { config: updatedConfig, state: currentState };
-  await saveTask(updatedTask);
+  await updateTaskConfig(taskId, updatedConfig);
+  await updateTaskOperationalState(taskId, currentState);
   if (engine) {
     syncActivePlanningConfig(engine, updatedConfig);
   }

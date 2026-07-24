@@ -37,6 +37,7 @@ export async function setPendingPromptImpl(
   }
 
   engine.setPendingPrompt(prompt, attachments);
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -68,6 +69,7 @@ export async function clearPendingPromptImpl(
   }
 
   engine.clearPendingPrompt();
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -108,6 +110,7 @@ export async function setPendingModelImpl(
   }
 
   engine.setPendingModel(model);
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -139,6 +142,7 @@ export async function clearPendingModelImpl(
   }
 
   engine.clearPendingModel();
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -170,6 +174,7 @@ export async function clearPendingImpl(
   }
 
   engine.clearPending();
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -219,6 +224,7 @@ export async function setPendingImpl(
   if (options.model !== undefined) {
     engine.setPendingModel(options.model);
   }
+  await engine.flushPersistence();
 
   return { success: true };
 }
@@ -284,6 +290,7 @@ export async function injectPendingImpl(
   }
 
   await engine.injectPendingNow(options);
+  await engine.flushPersistence();
 
   return { success: true };
 }

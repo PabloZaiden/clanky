@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentEvent, PromptInput } from "../../src/backends/types";
-import { AgentStreamController } from "../../src/core/agent-stream-controller";
+import {
+  AgentStreamCheckpointPolicy,
+  AgentStreamController,
+  AGENT_STREAM_TEXT_CHECKPOINT_BYTES,
+  getAgentStreamTextByteLength,
+} from "../../src/core/agent-stream-controller";
 import { createEventStream, type EventStream } from "../../src/utils/event-stream";
 
 function createBackend(events: AgentEvent[], calls: string[]): {
@@ -26,6 +31,20 @@ function createBackend(events: AgentEvent[], calls: string[]): {
 }
 
 describe("AgentStreamController", () => {
+  test("uses UTF-8 bytes and preserves text added during a checkpoint", () => {
+    const policy = new AgentStreamCheckpointPolicy();
+    const emojiBytes = getAgentStreamTextByteLength("😀");
+
+    expect(emojiBytes).toBe(4);
+    expect(policy.recordText(AGENT_STREAM_TEXT_CHECKPOINT_BYTES - emojiBytes)).toBe(false);
+    expect(policy.recordText(emojiBytes)).toBe(true);
+
+    policy.markCheckpoint(AGENT_STREAM_TEXT_CHECKPOINT_BYTES - emojiBytes);
+    expect(policy.hasPendingText()).toBe(true);
+    policy.markCheckpoint(emojiBytes);
+    expect(policy.hasPendingText()).toBe(false);
+  });
+
   test("subscribes before sending and consumes one complete turn", async () => {
     const calls: string[] = [];
     const events: AgentEvent[] = [

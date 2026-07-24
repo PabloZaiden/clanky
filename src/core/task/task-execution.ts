@@ -3,7 +3,11 @@ import type { Task } from "@/shared/task";
 import type { StartTaskOptions } from "./task-types";
 import { TaskEngine } from "../task-engine";
 import { createTimestamp } from "@/shared/events";
-import { loadTask, updateTaskState } from "../../persistence/tasks";
+import {
+  loadTask,
+  updateTaskOperationalState,
+  updateTaskState,
+} from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
@@ -51,8 +55,8 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
     backend,
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, options) => {
+      await updateTaskState(taskId, state, options);
     },
     onCompleted: async () => {
       await handleFullyAutonomousCompletionImpl(ctx, taskId);
@@ -97,7 +101,7 @@ export async function stopTaskImpl(ctx: TaskCtx, taskId: string, reason = "User 
     engine.state.syncState.autoPushOnComplete = false;
   }
 
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
   log.info("Task execution stopped", { taskId, reason, status: engine.state.status });
 }
 
@@ -138,7 +142,7 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
   if (!task.state.startedAt) {
     task.state.startedAt = createTimestamp();
   }
-  await updateTaskState(taskId, task.state);
+  await updateTaskOperationalState(taskId, task.state);
 
   const backend = backendManager.getTaskBackend(taskId, task.config.workspaceId);
 
@@ -147,8 +151,8 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
     backend,
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, options) => {
+      await updateTaskState(taskId, state, options);
     },
     onPlanReady: async () => {
       await ctx.acceptPlan(taskId);
@@ -218,13 +222,13 @@ export async function startDraftImpl(
       planningFolderCleared: false,
       isPlanReady: false,
     };
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     await startPlanModeImpl(ctx, taskId, { attachments: options.attachments });
   } else {
     assertValidTransition(task.state.status, "idle", "startDraft");
     task.state.status = "idle";
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
 
     await startTaskImpl(ctx, taskId, { attachments: options.attachments });
   }

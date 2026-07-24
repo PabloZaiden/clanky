@@ -1,7 +1,7 @@
 import type { TaskCtx } from "./context";
 import type { AcceptTaskResult } from "./task-types";
 import { createTimestamp } from "@/shared/events";
-import { updateTaskState } from "../../persistence/tasks";
+import { updateTaskOperationalState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
@@ -60,7 +60,7 @@ export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<Acce
       status: "accepted_local" as const,
       reviewMode,
     };
-    await updateTaskState(taskId, updatedState);
+    await updateTaskOperationalState(taskId, updatedState);
 
     await backendManager.disconnectTask(taskId);
 

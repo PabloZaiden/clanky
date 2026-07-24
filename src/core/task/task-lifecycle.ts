@@ -3,7 +3,7 @@ import { createTimestamp } from "@/shared/events";
 import {
   loadTask,
   updateTaskConfig,
-  updateTaskState,
+  updateTaskOperationalState,
   deleteTask as deleteTaskFile,
   resetStaleTasks,
 } from "../../persistence/tasks";
@@ -120,7 +120,7 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
       ? { ...task.state.reviewMode, addressable: false }
       : undefined,
   };
-  await updateTaskState(taskId, updatedState);
+  await updateTaskOperationalState(taskId, updatedState);
   log.debug(`[TaskManager] deleteTask: Status updated to deleted for task ${taskId}`);
 
   await deleteLinkedTaskChat(taskId);
@@ -177,7 +177,7 @@ export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<Tas
       ...task.state,
       status: "deleted" as const,
     };
-    await updateTaskState(taskId, updatedState);
+    await updateTaskOperationalState(taskId, updatedState);
 
     await backendManager.disconnectTask(taskId);
 
@@ -281,7 +281,7 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
   if (task.state.reviewMode) {
     await detachTaskFromMissingWorkspace(taskId);
     task.state.reviewMode.addressable = false;
-    await updateTaskState(taskId, task.state);
+    await updateTaskOperationalState(taskId, task.state);
   }
 
   const deleted = await deleteTaskFile(taskId);
@@ -341,7 +341,7 @@ export async function markMergedImpl(ctx: TaskCtx, taskId: string): Promise<Task
         ? { ...task.state.reviewMode, addressable: false }
         : undefined,
     };
-    await updateTaskState(taskId, updatedState);
+    await updateTaskOperationalState(taskId, updatedState);
 
     await backendManager.disconnectTask(taskId);
 
@@ -386,7 +386,7 @@ export async function closeLocalTaskImpl(ctx: TaskCtx, taskId: string): Promise<
 
   try {
     assertValidTransition(task.state.status, "accepted_local", "closeLocalTask");
-    await updateTaskState(taskId, {
+    await updateTaskOperationalState(taskId, {
       ...task.state,
       reviewMode: {
         ...task.state.reviewMode,
@@ -452,7 +452,7 @@ export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Prom
       await disconnectTaskEngine(ctx, taskId);
     }
 
-    await updateTaskState(taskId, updatedState);
+    await updateTaskOperationalState(taskId, updatedState);
 
     ctx.emitter.emit({
       type: "task.completed",
@@ -486,11 +486,11 @@ export async function forceResetAllImpl(ctx: TaskCtx): Promise<{ enginesCleared:
     try {
       if (engine.state.status === "planning") {
         log.info(`Preserving planning task ${taskId} status during force reset`);
-        await updateTaskState(taskId, engine.state);
+        await updateTaskOperationalState(taskId, engine.state);
         await engine.abortSessionOnly();
       } else {
         await engine.stop("Force reset by user");
-        await updateTaskState(taskId, engine.state);
+        await updateTaskOperationalState(taskId, engine.state);
       }
     } catch (error) {
       log.warn(`Failed to stop engine ${taskId} during force reset: ${String(error)}`);

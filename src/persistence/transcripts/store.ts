@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite";
 import type {
   ChatTranscriptStorageEntry,
+  TranscriptChangeSet,
+  TranscriptEntryKind as SharedTranscriptEntryKind,
   PersistedMessage,
   TaskLogEntry,
   ToolCallRecord,
@@ -12,7 +14,7 @@ import { requirePersistenceUserId } from "../ownership";
 const log = createLogger("persistence:transcripts");
 
 export type TranscriptResource = "chat" | "task" | "agent_run";
-export type TranscriptEntryKind = "message" | "tool" | "log";
+export type TranscriptEntryKind = SharedTranscriptEntryKind;
 
 interface TranscriptTableConfig {
   parentTable: "chats" | "tasks" | "agent_runs";
@@ -76,12 +78,19 @@ interface TranscriptRow {
   tool_has_output?: number | null;
 }
 
+let nextLiveTranscriptSequence = Math.floor(Date.now() * 1000);
+
 function getTableConfig(resource: TranscriptResource): TranscriptTableConfig {
   return TRANSCRIPT_TABLES[resource];
 }
 
 function getEntryKey(kind: TranscriptEntryKind, id: string): string {
   return `${kind}:${id}`;
+}
+
+function allocateLiveTranscriptSequence(): number {
+  nextLiveTranscriptSequence += 1;
+  return nextLiveTranscriptSequence;
 }
 
 function serializeJson(value: unknown): string {
@@ -155,7 +164,7 @@ function getRevision(entries: TranscriptStateEntry[], updatedAt: string): string
   return `${sorted.length}:${sorted.at(-1)?.timestamp ?? ""}:${updatedAt}`;
 }
 
-function getToolPayload(entry: TranscriptStateEntry): ToolCallRecord | null {
+function getToolPayload(entry: Pick<TranscriptStateEntry, "kind" | "payload">): ToolCallRecord | null {
   return entry.kind === "tool" ? entry.payload as ToolCallRecord : null;
 }
 
@@ -164,7 +173,7 @@ function upsertEntry(
   resource: TranscriptResource,
   resourceId: string,
   userId: string,
-  entry: TranscriptStateEntry,
+  entry: Pick<TranscriptStateEntry, "id" | "kind" | "timestamp" | "payload">,
   sequence: number,
   now: string,
 ): void {
@@ -336,6 +345,7 @@ export function syncTranscriptEntriesInTransaction(
     ) {
       continue;
     }
+
     const sequence = existingSequences.get(entryKey) ?? nextSequence++;
     upsertEntry(db, resource, resourceId, userId, entry, sequence, now);
     transcriptChanged = true;
@@ -354,6 +364,80 @@ export function syncTranscriptEntriesInTransaction(
   if (transcriptChanged) {
     updateMeta(db, resource, resourceId, userId, getRevision(nextEntries, now), nextEntries.length, now);
   }
+}
+
+/**
+ * Apply only the entries changed by an active stream.
+ *
+ * This path intentionally does not hydrate the transcript, enumerate existing
+ * rows, calculate MAX(sequence), or serialize unchanged payloads. Each
+ * resource owner supplies the current entry count from its in-memory state.
+ */
+export function applyTranscriptChangeSetInTransaction(
+  db: Database,
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  changes: TranscriptChangeSet,
+): void {
+  if (changes.upserts.length === 0 && changes.deletes.length === 0) {
+    if (changes.revision !== undefined) {
+      const now = new Date().toISOString();
+      updateMeta(
+        db,
+        resource,
+        resourceId,
+        userId,
+        changes.revision,
+        changes.entryCount,
+        now,
+      );
+    }
+    return;
+  }
+
+  const config = getTableConfig(resource);
+  const now = new Date().toISOString();
+  const existingSequenceStmt = db.prepare(`
+    SELECT sequence
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
+    LIMIT 1
+  `);
+  const deleteStmt = db.prepare(`
+    DELETE FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
+  `);
+
+  for (const entry of changes.deletes) {
+    deleteStmt.run(resourceId, userId, getEntryKey(entry.kind, entry.id));
+  }
+
+  for (const entry of changes.upserts) {
+    const entryKey = getEntryKey(entry.kind, entry.id);
+    const existing = entry.sequence === undefined
+      ? existingSequenceStmt.get(resourceId, userId, entryKey) as { sequence: number } | null
+      : null;
+    upsertEntry(
+      db,
+      resource,
+      resourceId,
+      userId,
+      entry,
+      entry.sequence ?? existing?.sequence ?? allocateLiveTranscriptSequence(),
+      now,
+    );
+  }
+
+  updateMeta(
+    db,
+    resource,
+    resourceId,
+    userId,
+    changes.revision ?? `${now}:${changes.entryCount}:${crypto.randomUUID()}`,
+    changes.entryCount,
+    now,
+  );
 }
 
 export function syncTranscriptEntries(

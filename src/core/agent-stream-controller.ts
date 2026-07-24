@@ -10,6 +10,49 @@ import type { AgentEvent, PromptInput } from "../backends/types";
 import type { EventStream } from "../utils/event-stream";
 
 const DEFAULT_AGENT_STREAM_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const agentStreamTextEncoder = new TextEncoder();
+export const AGENT_STREAM_TEXT_CHECKPOINT_INTERVAL_MS = 300_000;
+export const AGENT_STREAM_TEXT_CHECKPOINT_BYTES = 512 * 1024;
+
+export function getAgentStreamTextByteLength(text: string): number {
+  return agentStreamTextEncoder.encode(text).byteLength;
+}
+
+/**
+ * Shared durability policy for ACP text deltas.
+ *
+ * Domain consumers keep their active transcript in memory and call
+ * `recordText` for each delta. Semantic events and terminal paths force a
+ * checkpoint independently of this policy.
+ */
+export class AgentStreamCheckpointPolicy {
+  private lastCheckpointAt = Date.now();
+  private pendingTextBytes = 0;
+
+  recordText(byteCount: number): boolean {
+    if (byteCount <= 0) {
+      return false;
+    }
+    this.pendingTextBytes += byteCount;
+    return (
+      this.pendingTextBytes >= AGENT_STREAM_TEXT_CHECKPOINT_BYTES
+      || Date.now() - this.lastCheckpointAt >= AGENT_STREAM_TEXT_CHECKPOINT_INTERVAL_MS
+    );
+  }
+
+  hasPendingText(): boolean {
+    return this.pendingTextBytes > 0;
+  }
+
+  getPendingTextBytes(): number {
+    return this.pendingTextBytes;
+  }
+
+  markCheckpoint(checkpointedTextBytes = this.pendingTextBytes): void {
+    this.pendingTextBytes = Math.max(0, this.pendingTextBytes - checkpointedTextBytes);
+    this.lastCheckpointAt = Date.now();
+  }
+}
 
 export interface AgentStreamBackend {
   subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>>;

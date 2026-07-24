@@ -26,8 +26,10 @@ import type {
   Chat,
   ChatConfig,
   ChatState,
+  TranscriptChangeSet,
   Workspace,
 } from "@/shared";
+import { createTranscriptChangeSet } from "@/shared";
 import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
@@ -138,10 +140,23 @@ export class ChatStateService implements ChatStatePort {
     return this.getChat(chatId);
   }
 
-  async updateState(chat: Chat, state: ChatState): Promise<Chat> {
+  async updateState(
+    chat: Chat,
+    state: ChatState,
+    options: { transcriptChanges?: TranscriptChangeSet } = {},
+  ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
+    const transcriptChanges = options.transcriptChanges ?? (
+      state.messages === chat.state.messages
+      && state.logs === chat.state.logs
+      && state.toolCalls === chat.state.toolCalls
+        ? createTranscriptChangeSet(state)
+        : undefined
+    );
     const saved = await updateChatState(chat.config.id, state, {
       preserveQueuedMessages,
+      previousState: transcriptChanges ? chat.state : undefined,
+      transcriptChanges,
     });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
