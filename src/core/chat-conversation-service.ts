@@ -517,7 +517,7 @@ export class ChatConversationService implements ChatConversationPort {
         this.clearActiveStream(chat.config.id, generation);
         return await this.state.getChat(chat.config.id) ?? chat;
       }
-      activeStream.completion = this.consumeEventStream(chat.config.id, backend, handle, generation);
+      activeStream.completion = this.consumeEventStream(chat.config.id, backend, handle, generation, streamingChat);
       return streamingChat;
     } catch (error) {
       this.clearActiveStream(chat.config.id, generation);
@@ -531,12 +531,8 @@ export class ChatConversationService implements ChatConversationPort {
     backend: Backend,
     handle: AgentStreamHandle,
     generation: number,
+    initialChat: Chat,
   ): Promise<void> {
-    const initialChat = await this.state.getChat(chatId);
-    if (!initialChat) {
-      handle.close();
-      return;
-    }
     let chat: Chat = initialChat;
     const transcriptMemory = createChatTranscriptMemory(initialChat.state);
 
@@ -782,7 +778,7 @@ export class ChatConversationService implements ChatConversationPort {
               status: "completed",
               timestamp: now,
             }, transcriptMemory);
-            this.scheduleToolImagePreview(chat.config.id, {
+            this.scheduleToolImagePreview(chat, {
               id: completedToolId,
               name: toolName,
               input: completedInput,
@@ -1356,7 +1352,7 @@ export class ChatConversationService implements ChatConversationPort {
     return updated;
   }
 
-  private scheduleToolImagePreview(chatId: string, tool: PersistedToolCall): void {
+  private scheduleToolImagePreview(chat: Chat, tool: PersistedToolCall): void {
     const path = getImageViewToolPath(tool.name, tool.input);
     if (!path) {
       return;
@@ -1365,13 +1361,9 @@ export class ChatConversationService implements ChatConversationPort {
     // Resolve previews in the background so the main chat stream is not blocked.
     void (async () => {
       try {
-        const currentChat = await this.loadChatIfAvailable(chatId);
-        if (!currentChat) {
-          return;
-        }
-        const directory = currentChat.state.worktree?.worktreePath ?? currentChat.config.directory;
+        const directory = chat.state.worktree?.worktreePath ?? chat.config.directory;
         const extra = await resolveToolCallImagePreview({
-          workspaceId: currentChat.config.workspaceId,
+          workspaceId: chat.config.workspaceId,
           directory,
           path,
           toolCallId: tool.id,
@@ -1379,14 +1371,14 @@ export class ChatConversationService implements ChatConversationPort {
         if (!extra) {
           return;
         }
-        const latestChat = await this.loadChatIfAvailable(chatId);
+        const latestChat = await this.loadChatIfAvailable(chat.config.id);
         if (!latestChat || !latestChat.state.toolCalls.some((toolCall) => toolCall.id === tool.id)) {
           return;
         }
         await this.appendToolCallExtra(latestChat, tool.id, extra);
       } catch (error) {
         log.debug("Skipping chat tool image preview generation", {
-          chatId,
+          chatId: chat.config.id,
           toolId: tool.id,
           error: String(error),
         });

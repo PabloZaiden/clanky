@@ -31,9 +31,9 @@ export class TranscriptChangeTracker {
   private readonly changes = new Map<string, VersionedChange>();
   private nextVersion = 0;
 
-  recordUpsert(
+  recordUpsert<T extends TranscriptEntryPayload>(
     kind: TranscriptEntryKind,
-    payload: TranscriptEntryPayload,
+    payload: T,
   ): void {
     const key = `${kind}:${payload.id}`;
     this.nextVersion += 1;

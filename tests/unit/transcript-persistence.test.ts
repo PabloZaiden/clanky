@@ -190,6 +190,32 @@ describe("incremental transcript persistence", () => {
     });
   });
 
+  test("syncs transcript changes for legacy state updates without explicit change sets", async () => {
+    const task = createTask(context);
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await saveTask(task);
+      const loaded = await loadTask(task.config.id);
+      if (!loaded) {
+        throw new Error("Expected task to load");
+      }
+
+      const newMessage: PersistedMessage = {
+        id: "message-2",
+        role: "user",
+        content: "legacy state update",
+        timestamp: new Date().toISOString(),
+      };
+      await updateTaskState(task.config.id, {
+        ...loaded.state,
+        messages: [...loaded.state.messages, newMessage],
+      });
+
+      const persisted = await loadTask(task.config.id);
+      expect(persisted?.state.messages).toContainEqual(newMessage);
+      expect(getTranscriptMeta("task", task.config.id)?.entryCount).toBe(4);
+    });
+  });
+
   test("evicts bounded transcript entries without changing their logical order", () => {
     const index = new TranscriptMemoryIndex([
       { id: "entry-1" },

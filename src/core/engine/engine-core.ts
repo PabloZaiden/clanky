@@ -21,8 +21,6 @@ import type {
   IterationSummary,
   TaskLogEntry,
   ModelConfig,
-  PersistedMessage,
-  PersistedToolCall,
 } from "@/shared/task";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
@@ -56,10 +54,10 @@ import {
   type AgentStreamHandle,
   getAgentStreamTextByteLength,
 } from "../agent-stream-controller";
-import { TranscriptChangeTracker } from "../transcript-change-tracker";
-import { TranscriptMemoryIndex } from "../transcript-memory-index";
+import { MemoryFirstPersistenceQueue } from "../memory-first-persistence-queue";
+import { TranscriptStreamProjection } from "../transcript-stream-projection";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector } from "./engine-helpers";
 import { logToConsole } from "./engine-events";
 import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
@@ -111,15 +109,9 @@ export class TaskEngine {
   private pendingPromptAttachments: MessageImageAttachment[] = [];
   private currentStreamHandle: AgentStreamHandle | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
-  private readonly transcriptChanges = new TranscriptChangeTracker();
-  private readonly messageMemory: TranscriptMemoryIndex<PersistedMessage>;
-  private readonly logMemory: TranscriptMemoryIndex<TaskLogEntry>;
-  private readonly toolMemory: TranscriptMemoryIndex<PersistedToolCall>;
+  private readonly transcript: TranscriptStreamProjection;
   private readonly streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
-  private operationalPersistenceDirty = false;
-  private operationalPersistenceVersion = 0;
-  private persistenceInFlight: Promise<void> | null = null;
-  private persistenceRequested = false;
+  private readonly persistenceQueue = new MemoryFirstPersistenceQueue();
 
   constructor(options: TaskEngineOptions) {
     this.task = options.task;
@@ -130,9 +122,11 @@ export class TaskEngine {
     this.task.state.messages ??= [];
     this.task.state.logs ??= [];
     this.task.state.toolCalls ??= [];
-    this.messageMemory = new TranscriptMemoryIndex(this.task.state.messages, MAX_PERSISTED_MESSAGES);
-    this.logMemory = new TranscriptMemoryIndex(this.task.state.logs, MAX_PERSISTED_LOGS);
-    this.toolMemory = new TranscriptMemoryIndex(this.task.state.toolCalls, MAX_PERSISTED_TOOL_CALLS);
+    this.transcript = new TranscriptStreamProjection(this.task.state, {
+      maxMessages: MAX_PERSISTED_MESSAGES,
+      maxLogs: MAX_PERSISTED_LOGS,
+      maxToolCalls: MAX_PERSISTED_TOOL_CALLS,
+    });
     this.onPersistState = options.onPersistState;
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
@@ -840,14 +834,8 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_LOGS.
    */
   private persistLog(entry: TaskLogEntry, _isUpdate: boolean): void {
-    const { evicted } = this.logMemory.upsert(entry);
-    this.updateState({ logs: this.logMemory.values });
-    for (const oldEntry of evicted) {
-      this.transcriptChanges.recordDelete("log", oldEntry.id);
-    }
-    if (this.logMemory.has(entry.id)) {
-      this.transcriptChanges.recordUpsert("log", entry);
-    }
+    this.transcript.upsertLog(entry);
+    this.updateState({ logs: this.transcript.logs });
   }
 
   /**
@@ -855,22 +843,8 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_MESSAGES.
    */
   private persistMessage(message: MessageData): void {
-    const existing = this.messageMemory.get(message.id);
-    const persistedMessage: PersistedMessage = {
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      attachments: message.attachments ?? existing?.attachments,
-      timestamp: message.timestamp,
-    };
-    const { evicted } = this.messageMemory.upsert(persistedMessage);
-    this.updateState({ messages: this.messageMemory.values });
-    for (const oldMessage of evicted) {
-      this.transcriptChanges.recordDelete("message", oldMessage.id);
-    }
-    if (this.messageMemory.has(message.id)) {
-      this.transcriptChanges.recordUpsert("message", persistedMessage);
-    }
+    this.transcript.upsertMessage(message);
+    this.updateState({ messages: this.transcript.messages });
   }
 
   /**
@@ -879,18 +853,8 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_TOOL_CALLS.
    */
   private persistToolCall(toolCall: ToolCallData): void {
-    const existing = this.toolMemory.get(toolCall.id);
-    const persistedTool: PersistedToolCall = existing
-      ? mergeToolCallRecord(existing, toolCall)
-      : toolCall;
-    const { evicted } = this.toolMemory.upsert(persistedTool);
-    this.updateState({ toolCalls: this.toolMemory.values });
-    for (const oldTool of evicted) {
-      this.transcriptChanges.recordDelete("tool", oldTool.id);
-    }
-    if (this.toolMemory.has(toolCall.id)) {
-      this.transcriptChanges.recordUpsert("tool", persistedTool);
-    }
+    this.transcript.upsertToolCall(toolCall);
+    this.updateState({ toolCalls: this.transcript.toolCalls });
   }
 
   /**
@@ -953,7 +917,7 @@ export class TaskEngine {
     id: string,
   ): void {
     const timestamp = createTimestamp();
-    const existing = id ? this.logMemory.get(id) : undefined;
+    const existing = id ? this.transcript.getLog(id) : undefined;
     const logTimestamp = existing?.timestamp ?? timestamp;
     const entry: TaskLogEntry = {
       id,
@@ -1082,7 +1046,7 @@ export class TaskEngine {
           return;
         }
 
-        const currentTool = this.toolMemory.get(toolCall.id);
+        const currentTool = this.transcript.getToolCall(toolCall.id);
         if (!currentTool) {
           return;
         }
@@ -1921,11 +1885,7 @@ export class TaskEngine {
   }
 
   private markOperationalPersistenceDirty(): void {
-    this.operationalPersistenceDirty = true;
-    this.operationalPersistenceVersion += 1;
-    if (this.persistenceInFlight) {
-      this.persistenceRequested = true;
-    }
+    this.persistenceQueue.markOperationalPersistenceDirty();
   }
 
   /**
@@ -1933,22 +1893,7 @@ export class TaskEngine {
    * This is called at key points to ensure data survives server restart.
    */
   private triggerPersistence(): Promise<void> {
-    this.persistenceRequested = true;
-    if (!this.persistenceInFlight) {
-      this.persistenceInFlight = this.drainPersistence();
-    }
-    return this.persistenceInFlight;
-  }
-
-  private async drainPersistence(): Promise<void> {
-    try {
-      do {
-        this.persistenceRequested = false;
-        await this.persistCurrentState();
-      } while (this.persistenceRequested);
-    } finally {
-      this.persistenceInFlight = null;
-    }
+    return this.persistenceQueue.request(() => this.persistCurrentState());
   }
 
   private async persistCurrentState(): Promise<void> {
@@ -1957,10 +1902,10 @@ export class TaskEngine {
     }
 
     const checkpointedTextBytes = this.streamCheckpointPolicy.getPendingTextBytes();
-    const operationalPersistenceVersion = this.operationalPersistenceVersion;
-    const snapshot = this.transcriptChanges.snapshot(this.task.state);
+    const operationalPersistenceVersion = this.persistenceQueue.operationalVersion;
+    const snapshot = this.transcript.changes.snapshot(this.task.state);
     if (
-      !this.operationalPersistenceDirty
+      !this.persistenceQueue.isOperationalPersistenceDirty
       && snapshot.changes.upserts.length === 0
       && snapshot.changes.deletes.length === 0
     ) {
@@ -1971,12 +1916,8 @@ export class TaskEngine {
       await this.onPersistState(this.task.state, {
         transcriptChanges: snapshot.changes,
       });
-      this.transcriptChanges.acknowledge(snapshot);
-      if (this.operationalPersistenceVersion === operationalPersistenceVersion) {
-        this.operationalPersistenceDirty = false;
-      } else {
-        this.persistenceRequested = true;
-      }
+      this.transcript.changes.acknowledge(snapshot);
+      this.persistenceQueue.acknowledgeOperationalPersistence(operationalPersistenceVersion);
       this.streamCheckpointPolicy.markCheckpoint(checkpointedTextBytes);
     } catch (error) {
       log.error(`Failed to persist task state: ${String(error)}`);

@@ -1,21 +1,20 @@
 import type {
   AgentRun,
   MessageData,
-  PersistedMessage,
   PersistedToolCall,
   TaskLogEntry,
+  TranscriptEntryPayload,
   ToolCallExtra,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   AgentStreamCheckpointPolicy,
   getAgentStreamTextByteLength,
 } from "./agent-stream-controller";
 import { MAX_PERSISTED_LOGS, MAX_PERSISTED_MESSAGES, MAX_PERSISTED_TOOL_CALLS } from "./engine/engine-types";
-import { TranscriptChangeTracker } from "./transcript-change-tracker";
-import { TranscriptMemoryIndex } from "./transcript-memory-index";
+import { MemoryFirstPersistenceQueue } from "./memory-first-persistence-queue";
+import { TranscriptStreamProjection } from "./transcript-stream-projection";
 import { saveAgentRun } from "../persistence/agents";
 
 const log = createLogger("agent-run-stream-persistence");
@@ -29,22 +28,18 @@ const log = createLogger("agent-run-stream-persistence");
  */
 export class AgentRunStreamPersistence {
   private run: AgentRun;
-  private readonly transcriptChanges = new TranscriptChangeTracker();
-  private messages: TranscriptMemoryIndex<PersistedMessage>;
-  private logs: TranscriptMemoryIndex<TaskLogEntry>;
-  private toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
+  private readonly transcript: TranscriptStreamProjection;
   private readonly checkpointPolicy = new AgentStreamCheckpointPolicy();
-  private persistenceInFlight: Promise<void> | null = null;
-  private persistenceRequested = false;
+  private readonly persistenceQueue = new MemoryFirstPersistenceQueue(true);
   private persistenceError: unknown = null;
-  private operationalPersistenceDirty = true;
-  private operationalPersistenceVersion = 1;
 
   constructor(run: AgentRun) {
     this.run = run;
-    this.messages = new TranscriptMemoryIndex(run.messages, MAX_PERSISTED_MESSAGES);
-    this.logs = new TranscriptMemoryIndex(run.logs, MAX_PERSISTED_LOGS);
-    this.toolCalls = new TranscriptMemoryIndex(run.toolCalls, MAX_PERSISTED_TOOL_CALLS);
+    this.transcript = new TranscriptStreamProjection(run, {
+      maxMessages: MAX_PERSISTED_MESSAGES,
+      maxLogs: MAX_PERSISTED_LOGS,
+      maxToolCalls: MAX_PERSISTED_TOOL_CALLS,
+    });
   }
 
   get currentRun(): AgentRun {
@@ -146,40 +141,18 @@ export class AgentRunStreamPersistence {
 
   async persist(): Promise<void> {
     this.raisePersistenceError();
-    this.persistenceRequested = true;
-    if (!this.persistenceInFlight) {
-      this.persistenceInFlight = this.drainPersistence();
-    }
-    await this.persistenceInFlight;
+    await this.persistenceQueue.request(() => this.persistCurrentState());
     this.raisePersistenceError();
   }
 
   async adoptRun(run: AgentRun): Promise<void> {
     await this.persistForFinalization();
-    const nextMessageIds = new Set(run.messages.map((message) => message.id));
-    const nextLogIds = new Set(run.logs.map((entry) => entry.id));
-    const nextToolIds = new Set(run.toolCalls.map((toolCall) => toolCall.id));
-    for (const message of this.run.messages) {
-      if (!nextMessageIds.has(message.id)) {
-        this.transcriptChanges.recordDelete("message", message.id);
-      }
-    }
-    for (const entry of this.run.logs) {
-      if (!nextLogIds.has(entry.id)) {
-        this.transcriptChanges.recordDelete("log", entry.id);
-      }
-    }
-    for (const toolCall of this.run.toolCalls) {
-      if (!nextToolIds.has(toolCall.id)) {
-        this.transcriptChanges.recordDelete("tool", toolCall.id);
-      }
-    }
+    this.reconcileTranscript("message", this.transcript.messages, run.messages);
+    this.reconcileTranscript("log", this.transcript.logs, run.logs);
+    this.reconcileTranscript("tool", this.transcript.toolCalls, run.toolCalls);
     this.run = run;
-    this.messages = new TranscriptMemoryIndex(run.messages, MAX_PERSISTED_MESSAGES);
-    this.logs = new TranscriptMemoryIndex(run.logs, MAX_PERSISTED_LOGS);
-    this.toolCalls = new TranscriptMemoryIndex(run.toolCalls, MAX_PERSISTED_TOOL_CALLS);
+    this.transcript.replace(run);
     this.markOperationalPersistenceDirty();
-    this.recordFullTranscript(run);
     await this.persistForFinalization();
   }
 
@@ -219,23 +192,12 @@ export class AgentRunStreamPersistence {
     });
   }
 
-  private async drainPersistence(): Promise<void> {
-    try {
-      do {
-        this.persistenceRequested = false;
-        await this.persistCurrentState();
-      } while (this.persistenceRequested);
-    } finally {
-      this.persistenceInFlight = null;
-    }
-  }
-
   private async persistCurrentState(): Promise<void> {
     const checkpointedTextBytes = this.checkpointPolicy.getPendingTextBytes();
-    const operationalPersistenceVersion = this.operationalPersistenceVersion;
-    const snapshot = this.transcriptChanges.snapshot(this.run);
+    const operationalPersistenceVersion = this.persistenceQueue.operationalVersion;
+    const snapshot = this.transcript.changes.snapshot(this.run);
     if (
-      !this.operationalPersistenceDirty
+      !this.persistenceQueue.isOperationalPersistenceDirty
       && snapshot.changes.upserts.length === 0
       && snapshot.changes.deletes.length === 0
     ) {
@@ -245,48 +207,26 @@ export class AgentRunStreamPersistence {
     await saveAgentRun(this.run, {
       transcriptChanges: snapshot.changes,
     });
-    this.transcriptChanges.acknowledge(snapshot);
-    if (this.operationalPersistenceVersion === operationalPersistenceVersion) {
-      this.operationalPersistenceDirty = false;
-    } else {
-      this.persistenceRequested = true;
-    }
+    this.transcript.changes.acknowledge(snapshot);
+    this.persistenceQueue.acknowledgeOperationalPersistence(operationalPersistenceVersion);
     this.checkpointPolicy.markCheckpoint(checkpointedTextBytes);
   }
 
   private markOperationalPersistenceDirty(): void {
-    this.operationalPersistenceDirty = true;
-    this.operationalPersistenceVersion += 1;
-    if (this.persistenceInFlight) {
-      this.persistenceRequested = true;
-    }
+    this.persistenceQueue.markOperationalPersistenceDirty();
   }
 
   private upsertMessage(message: MessageData): void {
-    const existing = this.messages.get(message.id);
-    const persistedMessage: PersistedMessage = {
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      attachments: message.attachments ?? existing?.attachments,
-      timestamp: message.timestamp,
-    };
-    const { evicted } = this.messages.upsert(persistedMessage);
+    this.transcript.upsertMessage(message);
     this.run = {
       ...this.run,
-      messages: this.messages.values,
+      messages: this.transcript.messages,
       updatedAt: message.timestamp,
     };
-    for (const entry of evicted) {
-      this.transcriptChanges.recordDelete("message", entry.id);
-    }
-    if (this.messages.has(message.id)) {
-      this.transcriptChanges.recordUpsert("message", persistedMessage);
-    }
   }
 
   private upsertMessageDelta(event: Extract<ChatEvent, { type: "chat.message.delta" }>): void {
-    const existing = this.messages.get(event.messageId);
+    const existing = this.transcript.getMessage(event.messageId);
     const currentContent = existing?.content ?? "";
     const content = existing && currentContent.length >= event.baseLength
       ? `${currentContent.slice(0, event.baseLength)}${event.delta}`
@@ -300,22 +240,16 @@ export class AgentRunStreamPersistence {
   }
 
   private upsertLog(entry: TaskLogEntry): void {
-    const { evicted } = this.logs.upsert(entry);
+    this.transcript.upsertLog(entry);
     this.run = {
       ...this.run,
-      logs: this.logs.values,
+      logs: this.transcript.logs,
       updatedAt: entry.timestamp,
     };
-    for (const oldEntry of evicted) {
-      this.transcriptChanges.recordDelete("log", oldEntry.id);
-    }
-    if (this.logs.has(entry.id)) {
-      this.transcriptChanges.recordUpsert("log", entry);
-    }
   }
 
   private upsertLogDelta(event: Extract<ChatEvent, { type: "chat.log.delta" }>): void {
-    const existing = this.logs.get(event.logId);
+    const existing = this.transcript.getLog(event.logId);
     const existingContent = typeof existing?.details?.["responseContent"] === "string"
       ? existing.details["responseContent"]
       : "";
@@ -336,51 +270,43 @@ export class AgentRunStreamPersistence {
   }
 
   private upsertToolCall(tool: PersistedToolCall): void {
-    const existing = this.toolCalls.get(tool.id);
-    const mergedTool = existing
-      ? mergeToolCallRecord(existing, tool)
-      : tool;
-    const { evicted } = this.toolCalls.upsert(mergedTool);
+    this.transcript.upsertToolCall(tool);
     this.run = {
       ...this.run,
-      toolCalls: this.toolCalls.values,
+      toolCalls: this.transcript.toolCalls,
       updatedAt: tool.timestamp,
     };
-    for (const oldTool of evicted) {
-      this.transcriptChanges.recordDelete("tool", oldTool.id);
-    }
-    if (this.toolCalls.has(mergedTool.id)) {
-      this.transcriptChanges.recordUpsert("tool", mergedTool);
-    }
   }
 
   private upsertToolCallExtra(toolId: string, extra: ToolCallExtra, timestamp = new Date().toISOString()): void {
-    const existing = this.toolCalls.get(toolId);
-    if (!existing) {
+    if (!this.transcript.upsertToolCallExtra(toolId, extra)) {
       return;
     }
-    const updated = {
-      ...existing,
-      extras: upsertToolCallExtra(existing.extras, extra),
-    };
     this.run = {
       ...this.run,
-      toolCalls: this.toolCalls.values,
+      toolCalls: this.transcript.toolCalls,
       updatedAt: timestamp,
     };
-    this.toolCalls.upsert(updated);
-    this.transcriptChanges.recordUpsert("tool", updated);
   }
 
-  private recordFullTranscript(run: AgentRun): void {
-    for (const message of run.messages) {
-      this.transcriptChanges.recordUpsert("message", message);
+  private reconcileTranscript<T extends TranscriptEntryPayload>(
+    kind: "message" | "log" | "tool",
+    current: T[],
+    nextEntries: T[],
+  ): void {
+    const currentById = new Map(current.map((entry) => [entry.id, entry]));
+    const nextIds = new Set<string>();
+    for (const entry of nextEntries) {
+      nextIds.add(entry.id);
+      const currentEntry = currentById.get(entry.id);
+      if (!currentEntry || JSON.stringify(currentEntry) !== JSON.stringify(entry)) {
+        this.transcript.changes.recordUpsert(kind, entry);
+      }
     }
-    for (const logEntry of run.logs) {
-      this.transcriptChanges.recordUpsert("log", logEntry);
-    }
-    for (const toolCall of run.toolCalls) {
-      this.transcriptChanges.recordUpsert("tool", toolCall);
+    for (const entry of current) {
+      if (!nextIds.has(entry.id)) {
+        this.transcript.changes.recordDelete(kind, entry.id);
+      }
     }
   }
 

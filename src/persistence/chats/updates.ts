@@ -60,7 +60,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
       const previousState = options.previousState ?? (() => {
         const transcript = hydrateTranscriptStateForUser("chat", chatId, userId);
         return {
-          ...chat.state,
+          ...state,
           messages: transcript.messages,
           logs: transcript.logs,
           toolCalls: transcript.toolCalls,

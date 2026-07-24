@@ -4,7 +4,7 @@ import {
   getTranscriptToolCall,
   listTranscriptEntries,
 } from "../persistence/transcripts/store";
-import { loadAgentRun } from "../persistence/agents";
+import { loadAgentRunSummary } from "../persistence/agents";
 import { createTranscriptFromStorageEntries } from "./transcript-service";
 
 export type AgentRunTranscriptSnapshotRun = Omit<AgentRun, "messages" | "logs" | "toolCalls">;
@@ -17,7 +17,7 @@ export interface AgentRunTranscriptSnapshot {
 export async function getAgentRunTranscriptSnapshot(
   runId: string,
 ): Promise<AgentRunTranscriptSnapshot | null> {
-  const run = await loadAgentRun(runId);
+  const run = await loadAgentRunSummary(runId);
   if (!run) {
     return null;
   }
@@ -44,7 +44,7 @@ export async function getAgentRunTranscriptToolCall(
   runId: string,
   toolCallId: string,
 ): Promise<ToolCallRecord | null> {
-  const run = await loadAgentRun(runId);
+  const run = await loadAgentRunSummary(runId);
   if (!run) {
     return null;
   }

@@ -100,7 +100,7 @@ export async function updateTaskStateForUser(
       const previousState = options.previousState ?? (() => {
         const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
         return {
-          ...task.state,
+          ...state,
           messages: transcript.messages,
           logs: transcript.logs,
           toolCalls: transcript.toolCalls,

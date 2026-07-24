@@ -404,12 +404,13 @@ export function applyTranscriptChangeSetInTransaction(
     WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
     LIMIT 1
   `);
+  const deleteStmt = db.prepare(`
+    DELETE FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
+  `);
 
   for (const entry of changes.deletes) {
-    db.prepare(`
-      DELETE FROM ${config.entriesTable}
-      WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
-    `).run(resourceId, userId, getEntryKey(entry.kind, entry.id));
+    deleteStmt.run(resourceId, userId, getEntryKey(entry.kind, entry.id));
   }
 
   for (const entry of changes.upserts) {
