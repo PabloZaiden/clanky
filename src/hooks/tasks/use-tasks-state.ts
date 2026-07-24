@@ -57,7 +57,7 @@ export function useTasksState(): UseTasksStateResult {
 
   const refreshTask = useCallback(async (id: string) => {
     try {
-      const response = await appFetch(`/api/tasks/${id}/snapshot?limit=1`);
+      const response = await appFetch("/api/tasks");
       if (!response.ok) {
         if (response.status === 404) {
           // Task was deleted
@@ -66,8 +66,12 @@ export function useTasksState(): UseTasksStateResult {
         }
         throw new Error(`Failed to fetch task: ${response.statusText}`);
       }
-      const snapshot = (await response.json()) as { task: Task };
-      const task = snapshot.task;
+      const tasks = await response.json() as Task[];
+      const task = tasks.find((item) => item.config.id === id);
+      if (!task) {
+        setTasks((prev) => prev.filter((item) => item.config.id !== id));
+        return;
+      }
       setTasks((prev) => {
         const index = prev.findIndex((l) => l.config.id === id);
         if (index >= 0) {

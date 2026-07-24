@@ -9,7 +9,12 @@ import {
   type ClankyRealtimeEvent,
   type ClankyRealtimePublisher,
 } from "../../src/realtime";
-import { mergeTranscriptPages, mergeTranscriptToolCalls } from "../../src/shared/chat-transcript";
+import {
+  mergeTranscriptPages,
+  mergeTranscriptSnapshot,
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptToolCalls,
+} from "../../src/shared/chat-transcript";
 import { createToolCallSummary, isToolCallDetailsStale } from "../../src/shared/tool-call";
 
 interface PublishedResource {
@@ -306,6 +311,60 @@ describe("Clanky realtime migration", () => {
       revision: "revision-new",
       totalEntries: 101,
     });
+  });
+
+  test("uses full snapshots to repair stale records while retaining newer live records", () => {
+    const current = {
+      messages: [
+        {
+          id: "message-stale",
+          role: "assistant" as const,
+          content: "partial",
+          timestamp: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          id: "message-deleted",
+          role: "user" as const,
+          content: "deleted",
+          timestamp: "2025-12-31T23:59:59.000Z",
+        },
+        {
+          id: "message-live",
+          role: "assistant" as const,
+          content: "live",
+          timestamp: "2026-01-01T00:00:02.000Z",
+        },
+      ],
+      logs: [],
+      toolCalls: [],
+      hasOlder: true,
+      revision: "revision-old",
+      totalEntries: 3,
+    };
+    const incoming = {
+      messages: [
+        {
+          id: "message-stale",
+          role: "assistant" as const,
+          content: "canonical",
+          timestamp: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+      logs: [],
+      toolCalls: [],
+      hasOlder: false,
+      revision: "revision-new",
+      totalEntries: 1,
+    };
+
+    expect(mergeTranscriptSnapshot(current, incoming).messages).toEqual([
+      incoming.messages[0]!,
+      current.messages[2]!,
+    ]);
+    expect(mergeTranscriptSnapshotRecords(
+      current.messages,
+      incoming.messages,
+    )).not.toContainEqual(current.messages[1]);
   });
 
   test("invalidates the task resource when an iteration starts", () => {

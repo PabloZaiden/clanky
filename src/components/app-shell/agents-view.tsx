@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeTranscriptPages, mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
+import { mergeTranscriptSnapshot, mergeTranscriptToolCalls } from "@/shared";
 import type {
   Agent,
   AgentEvent,
@@ -86,7 +86,7 @@ function upsertById<T extends { id: string; timestamp?: string }>(items: T[], it
   const nextItems = existingIndex === -1 ? [...items, item] : items.map((entry, index) => (
     index === existingIndex ? item : entry
   ));
-  return nextItems.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? "")).slice(-1000);
+  return nextItems.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
 }
 
 function AgentStatusPill({ status }: { status: string }) {
@@ -1017,10 +1017,8 @@ function AgentRunDetail({
   const [run, setRun] = useState<AgentRun | null>(initialRun);
   const [transcript, setTranscript] = useState<ChatTranscriptPage | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingOlderEntries, setLoadingOlderEntries] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transcriptRef = useRef<ChatTranscriptPage | null>(null);
-  const loadingOlderEntriesRef = useRef(false);
   const snapshotEtagRef = useRef<string | null>(null);
   const previousRunIdRef = useRef(runId);
 
@@ -1039,7 +1037,7 @@ function AgentRunDetail({
       if (snapshotEtagRef.current) {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
-      const response = await appFetch(`/api/agent-runs/${runId}/snapshot?limit=100`, { headers });
+      const response = await appFetch(`/api/agent-runs/${runId}/snapshot`, { headers });
       if (response.status === 304) {
         return;
       }
@@ -1049,7 +1047,7 @@ function AgentRunDetail({
       const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscriptPage };
       snapshotEtagRef.current = response.headers.get("ETag");
       setRun(snapshot.run);
-      setTranscript(mergeTranscriptPages(transcriptRef.current, snapshot.transcript));
+      setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
@@ -1070,46 +1068,6 @@ function AgentRunDetail({
     setRun(initialRun);
     void refreshRun();
   }, [initialRun, refreshRun, runId]);
-
-  const loadOlderEntries = useCallback(async (): Promise<void> => {
-    const currentTranscript = transcriptRef.current;
-    if (
-      loadingOlderEntriesRef.current
-      || !currentTranscript?.hasOlder
-      || !currentTranscript.nextCursor
-    ) {
-      return;
-    }
-
-    loadingOlderEntriesRef.current = true;
-    setLoadingOlderEntries(true);
-    try {
-      const params = new URLSearchParams({
-        limit: "100",
-        before: currentTranscript.nextCursor,
-      });
-      const response = await appFetch(`/api/agent-runs/${runId}/transcript?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to load older transcript entries"));
-      }
-      const page = await response.json() as ChatTranscriptPage;
-      setTranscript((current) => current ? {
-        ...current,
-        messages: mergeTranscriptRecords(current.messages, page.messages),
-        logs: mergeTranscriptRecords(current.logs, page.logs),
-        toolCalls: mergeTranscriptToolCalls(current.toolCalls, page.toolCalls),
-        hasOlder: page.hasOlder,
-        nextCursor: page.nextCursor,
-        revision: page.revision,
-        totalEntries: page.totalEntries,
-      } : current);
-    } catch (loadError) {
-      setError(String(loadError));
-    } finally {
-      loadingOlderEntriesRef.current = false;
-      setLoadingOlderEntries(false);
-    }
-  }, [runId]);
 
   const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
     const response = await appFetch(`/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`);
@@ -1223,9 +1181,6 @@ function AgentRunDetail({
         showResponseLogs={false}
         emptyStateMessage="No messages yet"
         activeStateMessage="Running..."
-        hasOlderEntries={transcript?.hasOlder ?? false}
-        loadingOlderEntries={loadingOlderEntries}
-        onLoadOlderEntries={loadOlderEntries}
         onLoadToolDetails={loadToolDetails}
       />
     </div>

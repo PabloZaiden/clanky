@@ -234,7 +234,7 @@ export function syncChatTranscriptEntries(
 export function listChatTranscriptEntries(
   chatId: string,
   before: ChatTranscriptCursor | undefined,
-  limit: number,
+  limit: number | undefined,
 ): ChatTranscriptStorageEntry[] {
   return listTranscriptEntriesForUser(
     "chat",

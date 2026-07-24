@@ -96,7 +96,7 @@ export interface ChatDirectoryResolution {
 
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
-  getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null>;
+  getChatSnapshot(chatId: string): Promise<ChatSnapshot | null>;
   getChatTranscriptPage(chatId: string, limit: number, before?: string): Promise<ChatTranscriptPage | null>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;

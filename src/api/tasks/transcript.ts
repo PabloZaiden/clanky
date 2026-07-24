@@ -36,21 +36,16 @@ export const tasksTranscriptRoutes = defineRoutes({
   "/api/tasks/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the recent paginated transcript snapshot for a task.",
+    description: "Read the complete lightweight transcript snapshot for a task.",
     async GET(req: Request, ctx): Promise<Response> {
-      const limit = parseLimit(req);
-      if (limit instanceof Response) {
-        return limit;
-      }
       try {
-        const snapshot = await getTaskTranscriptSnapshot(ctx.params["id"]!, limit);
+        const snapshot = await getTaskTranscriptSnapshot(ctx.params["id"]!);
         if (!snapshot) {
           return errorResponse("not_found", "Task not found", 404);
         }
         const revision = getTranscriptSnapshotEtag(
           snapshot.transcript.revision,
           { task: snapshot.task },
-          limit,
         );
         if (isNotModified(req, revision)) {
           return new Response(null, {

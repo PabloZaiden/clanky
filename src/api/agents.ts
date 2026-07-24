@@ -914,21 +914,16 @@ export const agentsRoutes = defineRoutes({
   "/api/agent-runs/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the recent paginated transcript snapshot for an agent run.",
+    description: "Read the complete lightweight transcript snapshot for an agent run.",
     async GET(req: Request, ctx): Promise<Response> {
-      const limit = parseTranscriptLimit(req);
-      if (limit instanceof Response) {
-        return limit;
-      }
       try {
-        const snapshot = await getAgentRunTranscriptSnapshot(ctx.params["id"]!, limit);
+        const snapshot = await getAgentRunTranscriptSnapshot(ctx.params["id"]!);
         if (!snapshot) {
           return errorResponse("agent_run_not_found", "Agent run not found", 404);
         }
         const revision = getTranscriptSnapshotEtag(
           snapshot.transcript.revision,
           { run: snapshot.run },
-          limit,
         );
         if (isNotModified(req, revision)) {
           return new Response(null, {

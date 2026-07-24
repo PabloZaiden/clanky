@@ -7,7 +7,6 @@ import type { Dispatch, SetStateAction } from "react";
 import type { TaskEvent, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useTaskData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
 import { isToolCallSummary, mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 
@@ -64,7 +63,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
             };
             return updated;
           }
-          // Add new entry, evict oldest if over limit
+          // Add new entry while preserving the complete live transcript.
           const newLogs = [
             ...prev,
             {
@@ -75,9 +74,6 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
               timestamp: event.timestamp,
             },
           ];
-          if (newLogs.length > MAX_FRONTEND_LOGS) {
-            return newLogs.slice(-MAX_FRONTEND_LOGS);
-          }
           return newLogs;
         });
         break;
@@ -103,7 +99,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
                 timestamp: event.logTimestamp,
               },
             ];
-            return newLogs.length > MAX_FRONTEND_LOGS ? newLogs.slice(-MAX_FRONTEND_LOGS) : newLogs;
+            return newLogs;
           }
 
           const existingLog = prev[existingIndex]!;
@@ -142,11 +138,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           setLogs((prev) => finalizeLatestResponseLog(prev, event.message.content));
         }
         setMessages((prev) => {
-          const newMessages = [...prev, event.message];
-          if (newMessages.length > MAX_FRONTEND_MESSAGES) {
-            return newMessages.slice(-MAX_FRONTEND_MESSAGES);
-          }
-          return newMessages;
+          return [...prev, event.message];
         });
         break;
 
@@ -159,11 +151,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
             newToolCalls[index] = mergeToolCallRecord<ToolCallData>(newToolCalls[index], event.tool);
             return newToolCalls;
           }
-          const newToolCalls = [...prev, event.tool];
-          if (newToolCalls.length > MAX_FRONTEND_TOOL_CALLS) {
-            return newToolCalls.slice(-MAX_FRONTEND_TOOL_CALLS);
-          }
-          return newToolCalls;
+          return [...prev, event.tool];
         });
         break;
 

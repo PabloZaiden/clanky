@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, memo } from "react";
+import { useMemo, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -12,9 +12,6 @@ import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
-
-export const INITIAL_TRANSCRIPT_ENTRY_LIMIT = 100;
-export const TRANSCRIPT_ENTRY_CHUNK_SIZE = 100;
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -37,15 +34,8 @@ export const ConversationViewer = memo(function ConversationViewer({
   fileLinkContext,
   surfaceClassName,
   transcriptClassName,
-  hasOlderEntries = false,
-  loadingOlderEntries = false,
-  onLoadOlderEntries,
   onLoadToolDetails,
 }: ConversationViewerProps) {
-  const [renderedEntryLimit, setRenderedEntryLimit] = useState(INITIAL_TRANSCRIPT_ENTRY_LIMIT);
-  const prependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
-  const isServerPaged = onLoadOlderEntries !== undefined;
-
   const groupedEntries = useMemo(() => {
     const result: EntryBase[] = [];
 
@@ -112,15 +102,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     return groupConsecutiveToolEntries(result);
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
-  const visibleEntryCount = Math.min(renderedEntryLimit, groupedEntries.length);
-  const hiddenEntryCount = isServerPaged
-    ? (hasOlderEntries ? TRANSCRIPT_ENTRY_CHUNK_SIZE : 0)
-    : Math.max(0, groupedEntries.length - visibleEntryCount);
-  const visibleEntries = useMemo(
-    () => annotateDisplayEntries(isServerPaged ? groupedEntries : groupedEntries.slice(-visibleEntryCount)),
-    [groupedEntries, isServerPaged, visibleEntryCount],
-  );
-  const olderEntryLoadCount = Math.min(TRANSCRIPT_ENTRY_CHUNK_SIZE, hiddenEntryCount);
+  const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const isEmpty = groupedEntries.length === 0;
   const { containerRef, contentRef } = useStickyBottomScroll([
     visibleEntries,
@@ -130,30 +112,6 @@ export const ConversationViewer = memo(function ConversationViewer({
     emptyStateMessage,
     markdownEnabled,
   ]);
-
-  useLayoutEffect(() => {
-    const previous = prependScrollRef.current;
-    const container = containerRef.current;
-    if (!previous || !container) {
-      return;
-    }
-    prependScrollRef.current = null;
-    container.scrollTop = previous.scrollTop + (container.scrollHeight - previous.scrollHeight);
-  }, [containerRef, visibleEntries.length]);
-
-  function handleLoadOlderEntries(): void {
-    if (!onLoadOlderEntries || loadingOlderEntries) {
-      return;
-    }
-    const container = containerRef.current;
-    if (container) {
-      prependScrollRef.current = {
-        scrollHeight: container.scrollHeight,
-        scrollTop: container.scrollTop,
-      };
-    }
-    void onLoadOlderEntries();
-  }
 
   const resolvedSurfaceClassName = surfaceClassName ?? "bg-gray-50 dark:bg-[#171717]";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
@@ -178,20 +136,6 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
       ) : (
         <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          {hiddenEntryCount > 0 && (
-            <div className="mb-4 flex justify-center">
-              <button
-                type="button"
-                onClick={isServerPaged ? handleLoadOlderEntries : () => setRenderedEntryLimit((current) => current + TRANSCRIPT_ENTRY_CHUNK_SIZE)}
-                disabled={loadingOlderEntries}
-                className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 shadow-sm hover:border-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-neutral-700"
-              >
-                {loadingOlderEntries
-                  ? "Loading older entries…"
-                  : `Show ${olderEntryLoadCount} older ${olderEntryLoadCount === 1 ? "entry" : "entries"}`}
-              </button>
-            </div>
-          )}
           {visibleEntries.map((entry, index) => {
             const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
             const isLastVisibleEntry = index === visibleEntries.length - 1;

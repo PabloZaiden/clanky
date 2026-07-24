@@ -531,7 +531,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.state.planMode.planContent).toBe("Active engine plan content that should not be returned by the list endpoint");
     });
 
-    test("loads task transcripts by cursor and lazy-loads tool call payloads", async () => {
+    test("loads complete lightweight task transcripts and lazy-loads tool call payloads", async () => {
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -581,7 +581,7 @@ describe("Tasks CRUD API Integration", () => {
       });
       expect(updated).not.toBeNull();
 
-      const snapshotResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?limit=4`);
+      const snapshotResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot`);
       expect(snapshotResponse.status).toBe(200);
       const snapshot = await snapshotResponse.json() as {
         task: { state: Record<string, unknown> };
@@ -599,13 +599,16 @@ describe("Tasks CRUD API Integration", () => {
       expect(snapshot.task.state["logs"]).toBeUndefined();
       expect(snapshot.task.state["toolCalls"]).toBeUndefined();
       expect(snapshot.transcript.totalEntries).toBe(9);
-      expect(snapshot.transcript.hasOlder).toBe(true);
-      expect(snapshot.transcript.nextCursor).toBeString();
+      expect(snapshot.transcript.hasOlder).toBe(false);
+      expect(snapshot.transcript.nextCursor).toBeUndefined();
+      expect(snapshot.transcript.messages).toHaveLength(3);
+      expect(snapshot.transcript.logs).toHaveLength(2);
+      expect(snapshot.transcript.toolCalls).toHaveLength(4);
       expect(snapshot.transcript.toolCalls.every((tool) => "input" in tool && !("output" in tool))).toBe(true);
 
       const etag = snapshotResponse.headers.get("ETag");
       expect(etag).toBeString();
-      const notModifiedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?limit=4`, {
+      const notModifiedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot`, {
         headers: { "If-None-Match": etag! },
       });
       expect(notModifiedResponse.status).toBe(304);
@@ -618,8 +621,13 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.output.content).toContain("task-large-output-3");
       expect(JSON.stringify(snapshot)).not.toContain("task-large-output-3");
 
+      const latestPageResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/transcript?limit=4`);
+      expect(latestPageResponse.status).toBe(200);
+      const latestPage = await latestPageResponse.json();
+      expect(latestPage.hasOlder).toBe(true);
+      expect(latestPage.nextCursor).toBeString();
       const olderResponse = await fetch(
-        `${baseUrl}/api/tasks/${taskId}/transcript?limit=4&before=${encodeURIComponent(snapshot.transcript.nextCursor!)}`,
+        `${baseUrl}/api/tasks/${taskId}/transcript?limit=4&before=${encodeURIComponent(latestPage.nextCursor)}`,
       );
       expect(olderResponse.status).toBe(200);
       const older = await olderResponse.json() as {
@@ -628,9 +636,9 @@ describe("Tasks CRUD API Integration", () => {
         toolCalls: Array<{ id: string }>;
       };
       const currentKeys = new Set([
-        ...snapshot.transcript.messages.map((entry) => `message:${entry.id}`),
-        ...snapshot.transcript.logs.map((entry) => `log:${entry.id}`),
-        ...snapshot.transcript.toolCalls.map((entry) => `tool:${entry["id"]}`),
+        ...latestPage.messages.map((entry: PersistedMessage) => `message:${entry.id}`),
+        ...latestPage.logs.map((entry: TaskLogEntry) => `log:${entry.id}`),
+        ...latestPage.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
       ]);
       const olderKeys = [
         ...older.messages.map((entry) => `message:${entry.id}`),

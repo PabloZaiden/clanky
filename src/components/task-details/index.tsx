@@ -46,7 +46,7 @@ export function TaskDetails({
    const {
       task, loading, error, messages, toolCalls, logs, gitChangeCounter,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
-       stopTask, setPending, sendFollowUp, hasOlderEntries, loadingOlderEntries, loadOlderEntries, loadToolDetails,
+       stopTask, setPending, sendFollowUp, loadToolDetails,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
       sendPlanFeedback, acceptPlan, discardPlan,
      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh,
@@ -192,9 +192,6 @@ export function TaskDetails({
             hasBottomActionBar={showActionBar}
             feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
-            hasOlderEntries={hasOlderEntries}
-            loadingOlderEntries={loadingOlderEntries}
-            onLoadOlderEntries={loadOlderEntries}
             onLoadToolDetails={loadToolDetails}
             logDisplay={logDisplay}
             content={content}

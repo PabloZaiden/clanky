@@ -30,11 +30,8 @@ export interface ChatTranscriptViewState {
   messages: Chat["state"]["messages"];
   logs: Chat["state"]["logs"];
   toolCalls: ToolCallDisplayData[];
-  hasOlder: boolean;
-  nextCursor?: string;
   revision: string;
   totalEntries: number;
-  loadingOlder: boolean;
 }
 
 export interface ChatLifecycleResult {
@@ -45,7 +42,6 @@ export interface ChatLifecycleResult {
   isActive: boolean;
   needsSshCredentials: boolean;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
-  loadOlderEntries: () => Promise<void>;
   loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   applyChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
@@ -59,7 +55,6 @@ export interface ChatTranscriptProps {
   isActive: boolean;
   toolPathDisplayRoot: string;
   fileLinkContext?: TranscriptFileLinkContext;
-  onLoadOlderEntries: () => Promise<void>;
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 

@@ -893,7 +893,7 @@ export default async function run(ctx) {
     expect(response.status).toBe(400);
   });
 
-  test("loads agent-run transcripts by cursor and lazy-loads tool call payloads", async () => {
+  test("loads complete lightweight agent-run transcripts and lazy-loads tool call payloads", async () => {
     const agent = await createAgent("Agent transcript snapshot");
     const runId = crypto.randomUUID();
     const firstTimestamp = Date.parse("2025-03-02T00:00:00.000Z");
@@ -944,7 +944,7 @@ export default async function run(ctx) {
       updatedAt: toolCalls.at(-1)!.timestamp,
     });
 
-    const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot?limit=4`);
+    const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
     expect(snapshotResponse.status).toBe(200);
     const snapshot = await snapshotResponse.json() as {
       run: Record<string, unknown>;
@@ -962,13 +962,16 @@ export default async function run(ctx) {
     expect(snapshot.run["logs"]).toBeUndefined();
     expect(snapshot.run["toolCalls"]).toBeUndefined();
     expect(snapshot.transcript.totalEntries).toBe(9);
-    expect(snapshot.transcript.hasOlder).toBe(true);
-    expect(snapshot.transcript.nextCursor).toBeString();
+    expect(snapshot.transcript.hasOlder).toBe(false);
+    expect(snapshot.transcript.nextCursor).toBeUndefined();
+    expect(snapshot.transcript.messages).toHaveLength(3);
+    expect(snapshot.transcript.logs).toHaveLength(2);
+    expect(snapshot.transcript.toolCalls).toHaveLength(4);
     expect(snapshot.transcript.toolCalls.every((tool) => "input" in tool && !("output" in tool))).toBe(true);
 
     const etag = snapshotResponse.headers.get("ETag");
     expect(etag).toBeString();
-    const notModifiedResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot?limit=4`, {
+    const notModifiedResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`, {
       headers: { "If-None-Match": etag! },
     });
     expect(notModifiedResponse.status).toBe(304);
@@ -981,8 +984,13 @@ export default async function run(ctx) {
     expect(detail.output.content).toContain("agent-large-output-3");
     expect(JSON.stringify(snapshot)).not.toContain("agent-large-output-3");
 
+    const latestPageResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/transcript?limit=4`);
+    expect(latestPageResponse.status).toBe(200);
+    const latestPage = await latestPageResponse.json();
+    expect(latestPage.hasOlder).toBe(true);
+    expect(latestPage.nextCursor).toBeString();
     const olderResponse = await fetch(
-      `${baseUrl}/api/agent-runs/${runId}/transcript?limit=4&before=${encodeURIComponent(snapshot.transcript.nextCursor!)}`,
+      `${baseUrl}/api/agent-runs/${runId}/transcript?limit=4&before=${encodeURIComponent(latestPage.nextCursor)}`,
     );
     expect(olderResponse.status).toBe(200);
     const older = await olderResponse.json() as {
@@ -991,9 +999,9 @@ export default async function run(ctx) {
       toolCalls: Array<{ id: string }>;
     };
     const currentKeys = new Set([
-      ...snapshot.transcript.messages.map((entry) => `message:${entry.id}`),
-      ...snapshot.transcript.logs.map((entry) => `log:${entry.id}`),
-      ...snapshot.transcript.toolCalls.map((entry) => `tool:${entry["id"]}`),
+      ...latestPage.messages.map((entry: typeof messages[number]) => `message:${entry.id}`),
+      ...latestPage.logs.map((entry: typeof logs[number]) => `log:${entry.id}`),
+      ...latestPage.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
     ]);
     const olderKeys = [
       ...older.messages.map((entry) => `message:${entry.id}`),

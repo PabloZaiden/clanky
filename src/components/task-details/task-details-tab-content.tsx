@@ -37,9 +37,6 @@ interface TaskDetailsTabContentProps {
   messages: MessageData[];
   toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
-  hasOlderEntries: boolean;
-  loadingOlderEntries: boolean;
-  onLoadOlderEntries: () => Promise<void>;
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
 
   // Bundled state from hooks
@@ -64,9 +61,6 @@ export function TaskDetailsTabContent({
   messages,
   toolCalls,
   logs,
-  hasOlderEntries,
-  loadingOlderEntries,
-  onLoadOlderEntries,
   onLoadToolDetails,
   logDisplay,
   content,
@@ -120,9 +114,6 @@ export function TaskDetailsTabContent({
           applyBottomSafeAreaPadding={applyLogBottomSafeAreaPadding}
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
-          hasOlderEntries={hasOlderEntries}
-          loadingOlderEntries={loadingOlderEntries}
-          onLoadOlderEntries={onLoadOlderEntries}
           onLoadToolDetails={onLoadToolDetails}
         />
       )}

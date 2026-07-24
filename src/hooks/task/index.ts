@@ -56,12 +56,6 @@ export interface UseTaskResult {
   gitChangeCounter: number;
   /** Refresh task data */
   refresh: () => Promise<void>;
-  /** Whether older transcript entries are available from the server. */
-  hasOlderEntries: boolean;
-  /** Whether an older transcript page is loading. */
-  loadingOlderEntries: boolean;
-  /** Load the next older transcript page. */
-  loadOlderEntries: () => Promise<void>;
   /** Load one complete tool-call payload when expanded. */
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   /** Update the task */
@@ -158,9 +152,6 @@ export function useTask(taskId: string): UseTaskResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
-    hasOlderEntries,
-    loadingOlderEntries,
-    loadOlderEntries,
     loadToolDetails,
     abortControllerRef,
     initialLoadDoneRef,
@@ -286,9 +277,6 @@ export function useTask(taskId: string): UseTaskResult {
     logs,
     gitChangeCounter,
     refresh,
-    hasOlderEntries,
-    loadingOlderEntries,
-    loadOlderEntries,
     loadToolDetails,
     ...actions,
     ...fileQueries,

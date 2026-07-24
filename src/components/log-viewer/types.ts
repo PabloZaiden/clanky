@@ -98,12 +98,6 @@ export interface LogViewerProps {
   surfaceClassName?: string;
   /** Optional class override for the inner transcript wrapper. */
   transcriptClassName?: string;
-  /** Whether the server has older entries that can be fetched. */
-  hasOlderEntries?: boolean;
-  /** Whether an older-entry request is currently running. */
-  loadingOlderEntries?: boolean;
-  /** Fetches the next older transcript page. */
-  onLoadOlderEntries?: () => Promise<void>;
   /** Fetches one full tool-call payload when its row is expanded. */
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }

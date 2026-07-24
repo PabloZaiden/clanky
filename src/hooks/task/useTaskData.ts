@@ -6,7 +6,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatTranscriptPage, Task, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
-import { mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
+import {
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptSnapshotToolCalls,
+} from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
@@ -14,13 +17,6 @@ import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
 const log = createLogger("useTask");
-
-/** Maximum number of log entries to keep in frontend state */
-export const MAX_FRONTEND_LOGS = 2000;
-/** Maximum number of messages to keep in frontend state */
-export const MAX_FRONTEND_MESSAGES = 1000;
-/** Maximum number of tool calls to keep in frontend state */
-export const MAX_FRONTEND_TOOL_CALLS = 2000;
 
 export interface UseTaskDataResult {
   task: Task | null;
@@ -39,9 +35,6 @@ export interface UseTaskDataResult {
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
   refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
-  hasOlderEntries: boolean;
-  loadingOlderEntries: boolean;
-  loadOlderEntries: () => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   abortControllerRef: React.MutableRefObject<AbortController | null>;
   initialLoadDoneRef: React.MutableRefObject<boolean>;
@@ -60,23 +53,14 @@ export function useTaskData(
   const [progressContent, setProgressContent] = useState<string>("");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [gitChangeCounter, setGitChangeCounter] = useState(0);
-  const [hasOlderEntries, setHasOlderEntries] = useState(false);
-  const [nextTranscriptCursor, setNextTranscriptCursor] = useState<string | undefined>();
-  const [loadingOlderEntries, setLoadingOlderEntries] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const olderAbortControllerRef = useRef<AbortController | null>(null);
   const snapshotEtagRef = useRef<string | null>(null);
   const initialLoadDoneRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
 
   useEffect(() => {
-    olderAbortControllerRef.current?.abort();
-    olderAbortControllerRef.current = null;
     snapshotEtagRef.current = null;
-    setHasOlderEntries(false);
-    setNextTranscriptCursor(undefined);
-    setLoadingOlderEntries(false);
   }, [taskId]);
 
   const refresh = useCallback(async (options?: { hydrateFromSnapshot?: boolean }) => {
@@ -162,7 +146,7 @@ export function useTaskData(
       if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
         initialLoadDoneRef.current = true;
 
-        const latestLogs = data.transcript.logs?.slice(-1000).map((logEntry) => ({
+        const latestLogs = data.transcript.logs?.map((logEntry) => ({
           id: logEntry.id,
           level: logEntry.level,
           message: logEntry.message,
@@ -170,23 +154,20 @@ export function useTaskData(
           timestamp: logEntry.timestamp,
         })) ?? [];
         setLogs((current) => normalizeHydratedTaskLogs(
-          mergeTranscriptRecords(current, latestLogs),
+          mergeTranscriptSnapshotRecords(current, latestLogs),
         ));
 
-        const latestMessages = data.transcript.messages?.slice(-1000).map((msg) => ({
+        const latestMessages = data.transcript.messages?.map((msg) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
           attachments: msg.attachments,
           timestamp: msg.timestamp,
         })) ?? [];
-        setMessages((current) => mergeTranscriptRecords(current, latestMessages));
+        setMessages((current) => mergeTranscriptSnapshotRecords(current, latestMessages));
 
-        const latestToolCalls = data.transcript.toolCalls?.slice(-1000) ?? [];
-        setToolCalls((current) => mergeTranscriptToolCalls(current, latestToolCalls));
-
-        setHasOlderEntries((current) => current || data.transcript.hasOlder);
-        setNextTranscriptCursor((current) => current ?? data.transcript.nextCursor);
+        const latestToolCalls = data.transcript.toolCalls ?? [];
+        setToolCalls((current) => mergeTranscriptSnapshotToolCalls(current, latestToolCalls));
 
         if (options?.hydrateFromSnapshot) {
           setProgressContent("");
@@ -209,62 +190,6 @@ export function useTaskData(
       }
     }
   }, [isActiveTask, taskId]);
-
-  const loadOlderEntries = useCallback(async () => {
-    const cursor = nextTranscriptCursor;
-    if (!cursor || loadingOlderEntries) {
-      return;
-    }
-
-    olderAbortControllerRef.current?.abort();
-    const controller = new AbortController();
-    olderAbortControllerRef.current = controller;
-    setLoadingOlderEntries(true);
-    try {
-      const response = await appFetch(
-        `/api/tasks/${taskId}/transcript?limit=100&before=${encodeURIComponent(cursor)}`,
-        { signal: controller.signal },
-      );
-      if (!response.ok) {
-        throw new Error(`Failed to fetch older task transcript entries: ${response.statusText}`);
-      }
-      const page = await response.json() as ChatTranscriptPage;
-      if (controller.signal.aborted || !isActiveTask(taskId)) {
-        return;
-      }
-
-      setMessages((current) => {
-        const existing = new Set(current.map((entry) => entry.id));
-        const older = page.messages.filter((entry) => !existing.has(entry.id));
-        return [...older, ...current];
-      });
-      setLogs((current) => {
-        const existing = new Set(current.map((entry) => entry.id));
-        const older = page.logs.filter((entry) => !existing.has(entry.id));
-        return [...older, ...current];
-      });
-      setToolCalls((current) => reconcileToolCallRecords(
-        page.toolCalls as ToolCallData[],
-        current,
-      ));
-      setHasOlderEntries(page.hasOlder);
-      setNextTranscriptCursor(page.nextCursor);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        return;
-      }
-      log.error("Failed to load older task transcript entries", {
-        taskId,
-        error: String(err),
-      });
-      setError(String(err));
-    } finally {
-      if (olderAbortControllerRef.current === controller) {
-        olderAbortControllerRef.current = null;
-      }
-      setLoadingOlderEntries(false);
-    }
-  }, [isActiveTask, loadingOlderEntries, nextTranscriptCursor, setError, taskId]);
 
   const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
     const response = await appFetch(`/api/tasks/${taskId}/tool-calls/${encodeURIComponent(toolCallId)}`);
@@ -294,9 +219,6 @@ export function useTaskData(
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
-    hasOlderEntries,
-    loadingOlderEntries,
-    loadOlderEntries,
     loadToolDetails,
     abortControllerRef,
     initialLoadDoneRef,

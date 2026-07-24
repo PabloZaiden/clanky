@@ -22,14 +22,19 @@ export interface TaskTranscriptSnapshot {
 
 function createTaskTranscriptPage(
   taskId: string,
-  limit: number,
+  limit: number | undefined,
   before?: string,
 ): ChatTranscriptPage {
   const meta = getTranscriptMeta("task", taskId);
   if (!meta) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
-  const entries = listTranscriptEntries("task", taskId, before ? parseTranscriptCursor(before) : undefined, limit + 1);
+  const entries = listTranscriptEntries(
+    "task",
+    taskId,
+    before ? parseTranscriptCursor(before) : undefined,
+    limit === undefined ? undefined : limit + 1,
+  );
   return createTranscriptPageFromStorageEntries(entries, limit, before, {
     revision: meta.revision,
     totalEntries: meta.entryCount,
@@ -38,7 +43,6 @@ function createTaskTranscriptPage(
 
 export async function getTaskTranscriptSnapshot(
   taskId: string,
-  limit: number,
 ): Promise<TaskTranscriptSnapshot | null> {
   const task = await loadTaskSummary(taskId);
   if (!task) {
@@ -55,7 +59,7 @@ export async function getTaskTranscriptSnapshot(
       config: task.config,
       state,
     },
-    transcript: createTaskTranscriptPage(taskId, limit),
+    transcript: createTaskTranscriptPage(taskId, undefined),
   };
 }
 

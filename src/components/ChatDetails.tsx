@@ -32,7 +32,6 @@ export function ChatDetails({
     isActive,
     needsSshCredentials,
     refreshChat,
-    loadOlderEntries,
     loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,
@@ -126,7 +125,6 @@ export function ChatDetails({
         isActive={isActive}
         toolPathDisplayRoot={chatWorkingDirectory}
         fileLinkContext={fileLinkContext}
-        onLoadOlderEntries={loadOlderEntries}
         onLoadToolDetails={loadToolCallDetails}
       />
       <ChatPermissionPanel

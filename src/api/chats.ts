@@ -356,12 +356,10 @@ export const chatsRoutes = defineRoutes({
   "/api/chats/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the recent paginated transcript snapshot for a chat.",
+    description: "Read the complete lightweight transcript snapshot for a chat.",
     async GET(req: Request, ctx): Promise<Response> {
       try {
-        const url = new URL(req.url);
-        const limit = normalizeTranscriptPageSize(url.searchParams.get("limit"));
-        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!, limit);
+        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!);
         if (!snapshot) {
           return errorResponse("not_found", "Chat not found", 404);
         }
@@ -369,7 +367,6 @@ export const chatsRoutes = defineRoutes({
         const revision = getTranscriptSnapshotEtag(
           snapshot.transcript.revision,
           { config: snapshot.config, state: snapshot.state },
-          limit,
         );
         if (isNotModified(req, revision)) {
           return new Response(null, {
@@ -384,9 +381,6 @@ export const chatsRoutes = defineRoutes({
       } catch (error) {
         if (error instanceof InvalidTranscriptCursorError) {
           return errorResponse(error.code, error.message, error.status);
-        }
-        if (error instanceof Error && error.message.startsWith("Transcript limit")) {
-          return errorResponse("invalid_limit", error.message, 400);
         }
         log.error("Failed to load chat snapshot", {
           chatId: ctx.params["id"]!,

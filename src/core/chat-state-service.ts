@@ -77,7 +77,7 @@ export class ChatStateService implements ChatStatePort {
     return loadChat(chatId);
   }
 
-  async getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null> {
+  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
     const chat = await loadChatMetadata(chatId);
     if (!chat) {
       return null;
@@ -88,15 +88,15 @@ export class ChatStateService implements ChatStatePort {
       throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
-    const { entries, hasOlder } = listVisibleChatTranscriptEntries(chatId, limit);
+    const entries = listChatTranscriptEntries(chatId, undefined, undefined);
     const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
     return {
       config: chat.config,
       state,
-      transcript: createTranscriptPageFromStorageEntries(entries, limit, undefined, {
+      transcript: createTranscriptPageFromStorageEntries(entries, undefined, undefined, {
         revision: meta.revision,
         totalEntries: countChatTranscriptEntries(chatId),
-        hasOlder,
+        hasOlder: false,
       }, shouldIncludeChatTranscriptLog),
     };
   }

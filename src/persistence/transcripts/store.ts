@@ -448,6 +448,18 @@ function rowToStorageEntry(
     `${resource}_transcript_tool_call`,
     row.entry_id,
   );
+  if (legacyTool && !includeToolPayload) {
+    const { output: _output, extras: _extras, ...summary } = legacyTool;
+    return {
+      id,
+      kind: row.kind,
+      timestamp: row.timestamp,
+      sequence: row.sequence,
+      payload: summary,
+      tool: summary,
+      ...(legacyTool.output !== undefined ? { toolHasOutput: true } : {}),
+    };
+  }
   return {
     id,
     kind: row.kind,
@@ -517,7 +529,7 @@ export function listTranscriptEntriesForUser(
   resourceId: string,
   userId: string,
   before: ChatTranscriptCursor | undefined,
-  limit: number,
+  limit: number | undefined,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
   const config = getTableConfig(resource);
@@ -545,7 +557,10 @@ export function listTranscriptEntriesForUser(
       getEntryKey(before.kind, before.id),
     );
   }
-  params.push(limit);
+  const limitClause = limit === undefined ? "" : "LIMIT ?";
+  if (limit !== undefined) {
+    params.push(limit);
+  }
 
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -556,7 +571,7 @@ export function listTranscriptEntriesForUser(
     WHERE ${config.resourceColumn} = ? AND user_id = ?
     ${beforeClause}
     ORDER BY timestamp DESC, sequence DESC, kind DESC, entry_id DESC
-    LIMIT ?
+    ${limitClause}
   `).all(...params) as TranscriptRow[];
 
   return rows.map((row) => rowToStorageEntry(row, includeToolPayload, resource));
@@ -566,7 +581,7 @@ export function listTranscriptEntries(
   resource: TranscriptResource,
   resourceId: string,
   before: ChatTranscriptCursor | undefined,
-  limit: number,
+  limit: number | undefined,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
   return listTranscriptEntriesForUser(

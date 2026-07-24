@@ -70,13 +70,12 @@ export function getTranscriptPageEtag(
 export function getTranscriptSnapshotEtag(
   transcriptRevision: string,
   snapshotState: unknown,
-  limit: number,
 ): string {
   const stateRevision = createHash("sha256")
     .update(JSON.stringify(snapshotState) ?? "undefined")
     .digest("hex")
     .slice(0, 16);
-  return getTranscriptPageEtag(`${transcriptRevision}:state-${stateRevision}`, undefined, limit);
+  return `${transcriptRevision}:state-${stateRevision}:full`;
 }
 
 function compareTranscriptEntries(left: TranscriptEntry, right: TranscriptEntry): number {
@@ -196,19 +195,19 @@ export function isTranscriptStorageEntryVisible(
 
 export function createTranscriptPageFromStorageEntries(
   entries: ChatTranscriptStorageEntry[],
-  limit: number,
+  limit: number | undefined,
   before: string | undefined,
   options: { revision: string; totalEntries: number; hasOlder?: boolean },
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): ChatTranscriptPage {
   const cursor = before ? parseTranscriptCursor(before) : undefined;
-  const hasMoreEntries = options.hasOlder ?? entries.length > limit;
+  const hasMoreEntries = options.hasOlder ?? (limit !== undefined && entries.length > limit);
   const transcriptEntries = entries
     .map((entry) => createTranscriptEntryFromStorage(entry, shouldIncludeLog))
     .filter((entry): entry is TranscriptEntry => entry !== null)
     .filter((entry) => !cursor || compareEntryToCursor(entry, cursor) < 0)
     .sort(compareTranscriptEntries);
-  const selected = transcriptEntries.length > limit
+  const selected = limit !== undefined && transcriptEntries.length > limit
     ? transcriptEntries.slice(-limit)
     : transcriptEntries;
 

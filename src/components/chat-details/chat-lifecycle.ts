@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
-import { mergeTranscriptPages, mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
+import {
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptSnapshotToolCalls,
+} from "@/shared";
 import type {
   Chat,
   ChatSnapshot,
-  ChatTranscriptPage,
   MessageData,
   TaskLogEntry,
   ToolCallData,
@@ -32,8 +34,6 @@ import type {
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
-const INITIAL_TRANSCRIPT_PAGE_SIZE = 100;
-const MAX_LIVE_TRANSCRIPT_ENTRIES = 10_000;
 
 export async function parseChatError(response: Response, fallback: string): Promise<string> {
   try {
@@ -57,9 +57,7 @@ export function upsertById<T extends { id: string; timestamp?: string }>(items: 
   const next = existingIndex === -1
     ? [...items, item]
     : items.map((entry, index) => index === existingIndex ? item : entry);
-  return next
-    .sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""))
-    .slice(-MAX_LIVE_TRANSCRIPT_ENTRIES);
+  return next.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
 }
 
 function createEmptyTranscript(): ChatTranscriptViewState {
@@ -67,10 +65,8 @@ function createEmptyTranscript(): ChatTranscriptViewState {
     messages: [],
     logs: [],
     toolCalls: [],
-    hasOlder: false,
     revision: "",
     totalEntries: 0,
-    loadingOlder: false,
   };
 }
 
@@ -89,8 +85,11 @@ function hydrateChatSnapshot(snapshot: ChatSnapshot): {
       },
     },
     transcript: {
-      ...snapshot.transcript,
-      loadingOlder: false,
+      messages: snapshot.transcript.messages,
+      logs: snapshot.transcript.logs,
+      toolCalls: snapshot.transcript.toolCalls,
+      revision: snapshot.transcript.revision,
+      totalEntries: snapshot.transcript.totalEntries,
     },
   };
 }
@@ -190,7 +189,7 @@ function applyChatStreamEvent(
         },
         transcript: {
           ...transcript,
-          messages: nextMessages.slice(-MAX_LIVE_TRANSCRIPT_ENTRIES),
+          messages: nextMessages,
         },
       };
     }
@@ -338,7 +337,7 @@ function applyChatStreamEvent(
         },
         transcript: {
           ...transcript,
-          logs: nextLogs.slice(-MAX_LIVE_TRANSCRIPT_ENTRIES),
+          logs: nextLogs,
         },
       };
     }
@@ -355,7 +354,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const transcriptRef = useRef<ChatTranscriptViewState>(createEmptyTranscript());
   const mountedRef = useRef(false);
   const refreshControllerRef = useRef<AbortController | null>(null);
-  const olderControllerRef = useRef<AbortController | null>(null);
   const detailControllersRef = useRef(new Map<string, AbortController>());
   const refreshShowLoadingRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
@@ -398,7 +396,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
       const response = await appFetch(
-        `/api/chats/${chatId}/snapshot?limit=${INITIAL_TRANSCRIPT_PAGE_SIZE}`,
+        `/api/chats/${chatId}/snapshot`,
         {
           signal: controller.signal,
           headers,
@@ -429,8 +427,20 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       setChatState(hydrated.chat);
       const currentTranscript = transcriptRef.current;
       setTranscriptState({
-        ...mergeTranscriptPages(currentTranscript, hydrated.transcript),
-        loadingOlder: currentTranscript.loadingOlder,
+        messages: mergeTranscriptSnapshotRecords(
+          currentTranscript.messages as MessageData[],
+          hydrated.transcript.messages as MessageData[],
+        ),
+        logs: mergeTranscriptSnapshotRecords(
+          currentTranscript.logs as TaskLogEntry[],
+          hydrated.transcript.logs as TaskLogEntry[],
+        ),
+        toolCalls: mergeTranscriptSnapshotToolCalls(
+          currentTranscript.toolCalls,
+          hydrated.transcript.toolCalls,
+        ),
+        revision: hydrated.transcript.revision,
+        totalEntries: hydrated.transcript.totalEntries,
       });
     } catch (refreshError) {
       if (
@@ -456,66 +466,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       }
     }
   }, [chatId, setChatState, setTranscriptState]);
-
-  const loadOlderEntries = useCallback(async (): Promise<void> => {
-    const currentTranscript = transcriptRef.current;
-    if (
-      !mountedRef.current
-      || currentTranscript.loadingOlder
-      || !currentTranscript.hasOlder
-      || !currentTranscript.nextCursor
-    ) {
-      return;
-    }
-
-    olderControllerRef.current?.abort();
-    const controller = new AbortController();
-    olderControllerRef.current = controller;
-    setTranscriptState({ ...currentTranscript, loadingOlder: true });
-
-    try {
-      const params = new URLSearchParams({
-        limit: String(INITIAL_TRANSCRIPT_PAGE_SIZE),
-        before: currentTranscript.nextCursor,
-      });
-      const response = await appFetch(`/api/chats/${chatId}/transcript?${params.toString()}`, {
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted || !mountedRef.current) {
-        return;
-      }
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to load older transcript entries"));
-      }
-      const page = await response.json() as ChatTranscriptPage;
-      const latestTranscript = transcriptRef.current;
-      setTranscriptState({
-        messages: mergeTranscriptRecords(latestTranscript.messages, page.messages),
-        logs: mergeTranscriptRecords(latestTranscript.logs, page.logs),
-        toolCalls: mergeTranscriptToolCalls(latestTranscript.toolCalls, page.toolCalls),
-        hasOlder: page.hasOlder,
-        nextCursor: page.nextCursor,
-        revision: page.revision,
-        totalEntries: page.totalEntries,
-        loadingOlder: false,
-      });
-    } catch (loadError) {
-      if (!isAbortError(loadError) && !controller.signal.aborted && mountedRef.current) {
-        setError(String(loadError));
-      }
-    } finally {
-      if (olderControllerRef.current === controller) {
-        olderControllerRef.current = null;
-      }
-      if (
-        mountedRef.current
-        && !controller.signal.aborted
-        && transcriptRef.current.loadingOlder
-      ) {
-        setTranscriptState({ ...transcriptRef.current, loadingOlder: false });
-      }
-    }
-  }, [chatId, setTranscriptState]);
 
   const loadToolCallDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
     const currentTool = transcriptRef.current.toolCalls.find((toolCall) => toolCall.id === toolCallId);
@@ -680,13 +630,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     return () => {
       mountedRef.current = false;
       refreshControllerRef.current?.abort();
-      olderControllerRef.current?.abort();
       for (const controller of detailControllersRef.current.values()) {
         controller.abort();
       }
       detailControllersRef.current.clear();
       refreshControllerRef.current = null;
-      olderControllerRef.current = null;
       refreshShowLoadingRef.current = false;
       chatRef.current = null;
       transcriptRef.current = createEmptyTranscript();
@@ -718,7 +666,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     needsSshCredentials: chat?.config.source?.kind === "ssh_server"
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
-    loadOlderEntries,
     loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,

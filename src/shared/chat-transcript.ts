@@ -60,6 +60,25 @@ export function mergeTranscriptPages(
   };
 }
 
+export function mergeTranscriptSnapshot(
+  current: ChatTranscriptPage | null | undefined,
+  incoming: ChatTranscriptPage,
+): ChatTranscriptPage {
+  if (!current) {
+    return incoming;
+  }
+
+  return {
+    messages: mergeTranscriptSnapshotRecords(current.messages, incoming.messages),
+    logs: mergeTranscriptSnapshotRecords(current.logs, incoming.logs),
+    toolCalls: mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls),
+    hasOlder: incoming.hasOlder,
+    ...(incoming.nextCursor ? { nextCursor: incoming.nextCursor } : {}),
+    revision: incoming.revision,
+    totalEntries: incoming.totalEntries,
+  };
+}
+
 export function mergeTranscriptRecords<T extends { id: string; timestamp: string }>(
   current: T[],
   incoming: T[],
@@ -72,6 +91,25 @@ export function mergeTranscriptRecords<T extends { id: string; timestamp: string
     merged.set(item.id, item);
   }
   return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+}
+
+export function mergeTranscriptSnapshotRecords<T extends { id: string; timestamp: string }>(
+  current: T[],
+  incoming: T[],
+): T[] {
+  const incomingIds = new Set(incoming.map((item) => item.id));
+  const latestIncomingTimestamp = incoming.reduce(
+    (latest, item) => item.timestamp.localeCompare(latest) > 0 ? item.timestamp : latest,
+    "",
+  );
+  const liveOnly = latestIncomingTimestamp.length > 0
+    ? current.filter((item) => (
+      !incomingIds.has(item.id)
+      && item.timestamp.localeCompare(latestIncomingTimestamp) >= 0
+    ))
+    : [];
+  return [...incoming, ...liveOnly]
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
 export function mergeTranscriptToolCalls(
@@ -91,6 +129,24 @@ export function mergeTranscriptToolCalls(
     merged.set(toolCall.id, mergeToolCallDisplayData(toolCall, existing));
   }
   return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+}
+
+export function mergeTranscriptSnapshotToolCalls(
+  current: ToolCallDisplayData[],
+  incoming: ToolCallDisplayData[],
+): ToolCallDisplayData[] {
+  const incomingIds = new Set(incoming.map((toolCall) => toolCall.id));
+  const latestIncomingTimestamp = incoming.reduce(
+    (latest, toolCall) => toolCall.timestamp.localeCompare(latest) > 0 ? toolCall.timestamp : latest,
+    "",
+  );
+  const currentToMerge = latestIncomingTimestamp.length > 0
+    ? current.filter((toolCall) => (
+      incomingIds.has(toolCall.id)
+      || toolCall.timestamp.localeCompare(latestIncomingTimestamp) >= 0
+    ))
+    : [];
+  return mergeTranscriptToolCalls(currentToMerge, incoming);
 }
 
 export function shouldIncludeChatTranscriptLog(log: TaskLogEntry): boolean {

@@ -18,9 +18,6 @@ interface LogTabProps {
   applyBottomSafeAreaPadding: boolean;
   toolPathDisplayRoot?: string;
   fileLinkContext?: TranscriptFileLinkContext;
-  hasOlderEntries?: boolean;
-  loadingOlderEntries?: boolean;
-  onLoadOlderEntries?: () => Promise<void>;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
@@ -39,9 +36,6 @@ export function LogTab({
   applyBottomSafeAreaPadding,
   toolPathDisplayRoot,
   fileLinkContext,
-  hasOlderEntries = false,
-  loadingOlderEntries = false,
-  onLoadOlderEntries,
   onLoadToolDetails,
 }: LogTabProps) {
   const logViewerId = "logs-viewer";
@@ -63,9 +57,6 @@ export function LogTab({
           fileLinkContext={fileLinkContext}
           surfaceClassName="bg-transparent"
           transcriptClassName={`flex w-full flex-col ${taskDetailsTabPaddingClassName}`}
-          hasOlderEntries={hasOlderEntries}
-          loadingOlderEntries={loadingOlderEntries}
-          onLoadOlderEntries={onLoadOlderEntries}
           onLoadToolDetails={onLoadToolDetails}
         />
       </div>

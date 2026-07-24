@@ -20,7 +20,7 @@ export interface AgentRunTranscriptSnapshot {
 
 function createAgentRunTranscriptPage(
   runId: string,
-  limit: number,
+  limit: number | undefined,
   before?: string,
 ): ChatTranscriptPage {
   const meta = getTranscriptMeta("agent_run", runId);
@@ -31,7 +31,7 @@ function createAgentRunTranscriptPage(
     "agent_run",
     runId,
     before ? parseTranscriptCursor(before) : undefined,
-    limit + 1,
+    limit === undefined ? undefined : limit + 1,
   );
   return createTranscriptPageFromStorageEntries(entries, limit, before, {
     revision: meta.revision,
@@ -41,7 +41,6 @@ function createAgentRunTranscriptPage(
 
 export async function getAgentRunTranscriptSnapshot(
   runId: string,
-  limit: number,
 ): Promise<AgentRunTranscriptSnapshot | null> {
   const run = await loadAgentRunSummary(runId);
   if (!run) {
@@ -53,7 +52,7 @@ export async function getAgentRunTranscriptSnapshot(
   const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...runSnapshot } = run;
   return {
     run: runSnapshot,
-    transcript: createAgentRunTranscriptPage(runId, limit),
+    transcript: createAgentRunTranscriptPage(runId, undefined),
   };
 }
 
