@@ -10,7 +10,6 @@ import {
   type ClankyRealtimePublisher,
 } from "../../src/realtime";
 import {
-  mergeTranscriptPages,
   mergeTranscriptRecords,
   mergeTranscriptSnapshot,
   mergeTranscriptSnapshotRecords,
@@ -294,47 +293,6 @@ describe("Clanky realtime migration", () => {
     expect(toolCalls.map((toolCall) => toolCall.id)).toEqual(["tool-a", "tool-b"]);
   });
 
-  test("preserves loaded older transcript pages during snapshot refresh", () => {
-    const current = {
-      messages: [{
-        id: "message-old",
-        role: "user" as const,
-        content: "old",
-        timestamp: "2026-01-01T00:00:00.000Z",
-      }],
-      logs: [],
-      toolCalls: [],
-      hasOlder: true,
-      nextCursor: "cursor-before-old",
-      revision: "revision-old",
-      totalEntries: 100,
-    };
-    const incoming = {
-      messages: [{
-        id: "message-new",
-        role: "assistant" as const,
-        content: "new",
-        timestamp: "2026-01-01T00:00:01.000Z",
-      }],
-      logs: [],
-      toolCalls: [],
-      hasOlder: false,
-      nextCursor: undefined,
-      revision: "revision-new",
-      totalEntries: 101,
-    };
-
-    expect(mergeTranscriptPages(current, incoming)).toEqual({
-      messages: [...current.messages, ...incoming.messages],
-      logs: [],
-      toolCalls: [],
-      hasOlder: true,
-      nextCursor: "cursor-before-old",
-      revision: "revision-new",
-      totalEntries: 101,
-    });
-  });
-
   test("uses full snapshots to repair stale records while retaining newer live records", () => {
     const current = {
       messages: [
@@ -359,7 +317,6 @@ describe("Clanky realtime migration", () => {
       ],
       logs: [],
       toolCalls: [],
-      hasOlder: true,
       revision: "revision-old",
       totalEntries: 3,
     };
@@ -374,7 +331,6 @@ describe("Clanky realtime migration", () => {
       ],
       logs: [],
       toolCalls: [],
-      hasOlder: false,
       revision: "revision-new",
       totalEntries: 1,
     };

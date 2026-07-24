@@ -718,12 +718,18 @@ export function resetDatabase(): void {
   // FK constraints.
   const dropAllTables = db.transaction(() => {
     db!.run("DROP TABLE IF EXISTS preview_sessions");
+    db!.run("DROP TABLE IF EXISTS agent_run_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS agent_run_transcript_entries");
     db!.run("DROP TABLE IF EXISTS agent_runs");
     db!.run("DROP TABLE IF EXISTS agents");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
+    db!.run("DROP TABLE IF EXISTS task_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS task_transcript_entries");
     db!.run("DROP TABLE IF EXISTS tasks");
+    db!.run("DROP TABLE IF EXISTS chat_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS chat_transcript_entries");
     db!.run("DROP TABLE IF EXISTS chats");
     db!.run("DROP TABLE IF EXISTS vnc_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_servers");

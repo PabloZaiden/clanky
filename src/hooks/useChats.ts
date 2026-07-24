@@ -6,7 +6,7 @@ import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatR
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import {
   getStreamingActivityStatus,
-  mergeChatSnapshot,
+  mergeChatSummarySnapshot,
 } from "../utils/chat-snapshot";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
@@ -21,7 +21,7 @@ function upsertChat(chats: Chat[], chat: Chat): Chat[] {
   const next = chats.filter((item) => item.config.id !== chat.config.id);
 
   const current = chats.find((item) => item.config.id === chat.config.id);
-  next.push(current ? mergeChatSnapshot(current, chat) : chat);
+  next.push(current ? mergeChatSummarySnapshot(current, chat) : chat);
   return sortChats(next);
 }
 

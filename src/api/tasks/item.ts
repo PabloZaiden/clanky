@@ -84,7 +84,14 @@ async function applyTaskUpdates(
         updatedTask?.config.cheapModel ?? body.cheapModel,
       );
     }
-    return Response.json(updatedTask);
+    if (!updatedTask) {
+      return Response.json(updatedTask);
+    }
+    const responseTask = await taskManager.getTaskSummary(taskId);
+    if (!responseTask) {
+      throw new Error(`Task disappeared after mutation: ${taskId}`);
+    }
+    return Response.json(responseTask);
   } catch (error) {
     const errorMessage = String(error);
     if (error instanceof TaskUpdateError) {
@@ -114,7 +121,7 @@ export const tasksItemRoutes = defineRoutes({
      */
     async GET(_req: Request, ctx): Promise<Response> {
       log.debug("GET /api/tasks/:id", { taskId: ctx.params["id"]! });
-      const task = await taskManager.getTask(ctx.params["id"]!);
+      const task = await taskManager.getTaskSummary(ctx.params["id"]!);
       if (!task) {
         log.debug("GET /api/tasks/:id - Task not found", { taskId: ctx.params["id"]! });
         return errorResponse("not_found", "Task not found", 404);

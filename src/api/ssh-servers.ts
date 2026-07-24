@@ -263,7 +263,11 @@ export const sshServersRoutes = defineRoutes({
           autoApprovePermissions: validation.data.autoApprovePermissions,
           credentialToken: validation.data.credentialToken,
         });
-        return Response.json(chat, { status: 201 });
+        const responseChat = await chatManager.getChatSummary(chat.config.id);
+        if (!responseChat) {
+          throw new Error(`SSH-server chat disappeared after creation: ${chat.config.id}`);
+        }
+        return Response.json(responseChat, { status: 201 });
       } catch (error) {
         log.error("Failed to create SSH-server chat", {
           serverId: ctx.params["id"]!,

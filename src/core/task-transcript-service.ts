@@ -1,15 +1,11 @@
-import type { ChatTranscriptPage, Task, ToolCallRecord } from "@/shared";
+import type { ChatTranscript, Task, ToolCallRecord } from "@/shared";
 import {
   getTranscriptMeta,
   listTranscriptEntries,
   getTranscriptToolCall,
 } from "../persistence/transcripts/store";
 import { loadTaskSummary } from "../persistence/tasks";
-import {
-  createTranscriptPageFromStorageEntries,
-  normalizeTranscriptPageSize,
-  parseTranscriptCursor,
-} from "./transcript-service";
+import { createTranscriptFromStorageEntries } from "./transcript-service";
 
 export type TaskTranscriptSnapshotTask = Omit<Task, "state"> & {
   state: Omit<Task["state"], "messages" | "logs" | "toolCalls">;
@@ -17,28 +13,7 @@ export type TaskTranscriptSnapshotTask = Omit<Task, "state"> & {
 
 export interface TaskTranscriptSnapshot {
   task: TaskTranscriptSnapshotTask;
-  transcript: ChatTranscriptPage;
-}
-
-function createTaskTranscriptPage(
-  taskId: string,
-  limit: number | undefined,
-  before?: string,
-): ChatTranscriptPage {
-  const meta = getTranscriptMeta("task", taskId);
-  if (!meta) {
-    throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
-  }
-  const entries = listTranscriptEntries(
-    "task",
-    taskId,
-    before ? parseTranscriptCursor(before) : undefined,
-    limit === undefined ? undefined : limit + 1,
-  );
-  return createTranscriptPageFromStorageEntries(entries, limit, before, {
-    revision: meta.revision,
-    totalEntries: meta.entryCount,
-  });
+  transcript: ChatTranscript;
 }
 
 export async function getTaskTranscriptSnapshot(
@@ -49,7 +24,8 @@ export async function getTaskTranscriptSnapshot(
     return null;
   }
 
-  if (!getTranscriptMeta("task", taskId)) {
+  const meta = getTranscriptMeta("task", taskId);
+  if (!meta) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
 
@@ -59,23 +35,14 @@ export async function getTaskTranscriptSnapshot(
       config: task.config,
       state,
     },
-    transcript: createTaskTranscriptPage(taskId, undefined),
+    transcript: createTranscriptFromStorageEntries(
+      listTranscriptEntries("task", taskId),
+      {
+        revision: meta.revision,
+        totalEntries: meta.entryCount,
+      },
+    ),
   };
-}
-
-export async function getTaskTranscriptPage(
-  taskId: string,
-  limit: number,
-  before?: string,
-): Promise<ChatTranscriptPage | null> {
-  const task = await loadTaskSummary(taskId);
-  if (!task) {
-    return null;
-  }
-  if (!getTranscriptMeta("task", taskId)) {
-    throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
-  }
-  return createTaskTranscriptPage(taskId, limit, before);
 }
 
 export async function getTaskTranscriptToolCall(
@@ -91,5 +58,3 @@ export async function getTaskTranscriptToolCall(
   }
   return getTranscriptToolCall("task", taskId, toolCallId);
 }
-
-export { normalizeTranscriptPageSize };

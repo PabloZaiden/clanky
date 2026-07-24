@@ -3,7 +3,7 @@
  */
 
 import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
-import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
+import type { PersistedMessage } from "@/shared/task";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
@@ -188,11 +188,8 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     mode: ((row["mode"] as ChatConfig["mode"] | null) ?? DEFAULT_CHAT_CONFIG.mode),
   };
 
-  const messages = row["messages"] ? safeJsonParse<PersistedMessage[]>(row["messages"] as string, [], "messages", rowId) : [];
-  const logs = row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [];
-  const toolCalls = row["tool_calls"] ? safeJsonParse<PersistedToolCall[]>(row["tool_calls"] as string, [], "tool_calls", rowId) : [];
-  const hasMessages = booleanColumn(row, "has_messages") ?? messages.some(hasMessageContent);
-  const hasTranscript = booleanColumn(row, "has_transcript") ?? (hasMessages || toolCalls.length > 0);
+  const hasMessages = booleanColumn(row, "has_messages") ?? false;
+  const hasTranscript = booleanColumn(row, "has_transcript") ?? hasMessages;
 
   const state: ChatState = {
     id: config.id,
@@ -200,9 +197,9 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,
     lastActivityAt: (row["last_activity_at"] as string | null) ?? undefined,
-    messages,
-    logs,
-    toolCalls,
+    messages: [],
+    logs: [],
+    toolCalls: [],
     hasMessages,
     hasTranscript,
     pendingPermissionRequests: row["pending_permission_requests"]

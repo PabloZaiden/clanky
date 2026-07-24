@@ -14,6 +14,7 @@ import {
   listActiveAgentRuns,
   loadAgent,
   loadAgentRun,
+  loadAgentRunSummary,
   saveAgent,
 } from "../persistence/agents";
 import { chatManager } from "./chat-manager";
@@ -277,6 +278,10 @@ export class AgentManager {
 
   async getRun(runId: string): Promise<AgentRun | null> {
     return loadAgentRun(runId);
+  }
+
+  async getRunSummary(runId: string): Promise<AgentRun | null> {
+    return loadAgentRunSummary(runId);
   }
 
   async deleteRun(runId: string): Promise<boolean> {

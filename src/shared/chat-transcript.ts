@@ -8,26 +8,21 @@ import {
 
 export type ChatTranscriptEntryKind = "message" | "tool" | "log";
 
-export interface ChatTranscriptCursor {
-  kind: ChatTranscriptEntryKind;
+export interface ChatTranscriptStorageEntry {
   id: string;
+  kind: ChatTranscriptEntryKind;
   timestamp: string;
   sequence: number;
-}
-
-export interface ChatTranscriptStorageEntry extends ChatTranscriptCursor {
   payload: unknown;
-  /** Normalized tool metadata/input; output and extras are omitted from pages. */
+  /** Normalized tool metadata/input; output and extras are omitted from snapshots. */
   tool?: ToolCallRecord;
   toolHasOutput?: boolean;
 }
 
-export interface ChatTranscriptPage {
+export interface ChatTranscript {
   messages: PersistedMessage[];
   logs: TaskLogEntry[];
   toolCalls: ToolCallDisplayData[];
-  hasOlder: boolean;
-  nextCursor?: string;
   revision: string;
   totalEntries: number;
 }
@@ -37,7 +32,7 @@ export type ChatSnapshotState = Omit<ChatState, "messages" | "logs" | "toolCalls
 export interface ChatSnapshot {
   config: ChatConfig;
   state: ChatSnapshotState;
-  transcript: ChatTranscriptPage;
+  transcript: ChatTranscript;
 }
 
 function compareTranscriptRecords(
@@ -48,30 +43,10 @@ function compareTranscriptRecords(
   return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
 }
 
-export function mergeTranscriptPages(
-  current: ChatTranscriptPage | null | undefined,
-  incoming: ChatTranscriptPage,
-): ChatTranscriptPage {
-  if (!current) {
-    return incoming;
-  }
-
-  const nextCursor = current.nextCursor ?? incoming.nextCursor;
-  return {
-    messages: mergeTranscriptRecords(current.messages, incoming.messages),
-    logs: mergeTranscriptRecords(current.logs, incoming.logs),
-    toolCalls: mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls),
-    hasOlder: current.hasOlder || incoming.hasOlder,
-    ...(nextCursor ? { nextCursor } : {}),
-    revision: incoming.revision,
-    totalEntries: incoming.totalEntries,
-  };
-}
-
 export function mergeTranscriptSnapshot(
-  current: ChatTranscriptPage | null | undefined,
-  incoming: ChatTranscriptPage,
-): ChatTranscriptPage {
+  current: ChatTranscript | null | undefined,
+  incoming: ChatTranscript,
+): ChatTranscript {
   if (!current) {
     return incoming;
   }
@@ -80,8 +55,6 @@ export function mergeTranscriptSnapshot(
     messages: mergeTranscriptSnapshotRecords(current.messages, incoming.messages),
     logs: mergeTranscriptSnapshotRecords(current.logs, incoming.logs),
     toolCalls: mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls),
-    hasOlder: incoming.hasOlder,
-    ...(incoming.nextCursor ? { nextCursor: incoming.nextCursor } : {}),
     revision: incoming.revision,
     totalEntries: incoming.totalEntries,
   };

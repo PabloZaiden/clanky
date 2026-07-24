@@ -563,6 +563,25 @@ export async function getTaskViaAPI(
   return { status: response.status, body };
 }
 
+async function hydrateTaskTranscriptFromSnapshot(baseUrl: string, task: Task): Promise<Task> {
+  const response = await fetch(`${baseUrl}/api/tasks/${task.config.id}/snapshot`);
+  if (!response.ok) {
+    throw new Error(`Failed to load task transcript snapshot: HTTP ${response.status}`);
+  }
+  const snapshot = await response.json() as {
+    transcript: Pick<Task["state"], "messages" | "logs" | "toolCalls">;
+  };
+  return {
+    ...task,
+    state: {
+      ...task.state,
+      messages: snapshot.transcript.messages,
+      logs: snapshot.transcript.logs,
+      toolCalls: snapshot.transcript.toolCalls,
+    },
+  };
+}
+
 /**
  * Wait for a task to reach a specific status.
  */
@@ -584,7 +603,7 @@ export async function waitForTaskStatus(
       lastTask = task;
       lastStatus = task.state?.status ?? "no state";
       if (statuses.includes(task.state.status)) {
-        return task;
+        return hydrateTaskTranscriptFromSnapshot(baseUrl, task);
       }
     } else {
       lastStatus = `HTTP ${status}`;
@@ -615,7 +634,7 @@ export async function waitForTaskCondition(
       lastTask = task;
       lastStatus = task.state?.status ?? "no state";
       if (predicate(task)) {
-        return task;
+        return hydrateTaskTranscriptFromSnapshot(baseUrl, task);
       }
     } else {
       lastStatus = `HTTP ${status}`;

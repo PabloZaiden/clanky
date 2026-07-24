@@ -4,7 +4,7 @@ import type { CreateTaskOptions } from "./task-types";
 import type { PullRequestDestinationResponse } from "@/contracts";
 import { createTimestamp } from "@/shared/events";
 import { createInitialState, DEFAULT_TASK_CONFIG } from "@/shared/task";
-import { createTaskListSnapshot, saveTask, loadTask, listTasks, listTaskSummaries } from "../../persistence/tasks";
+import { createTaskListSnapshot, saveTask, loadTask, loadTaskSummary, listTasks, listTaskSummaries } from "../../persistence/tasks";
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
@@ -164,6 +164,19 @@ export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | 
     return { config: engine.config, state: engine.state };
   }
   return loadTask(taskId);
+}
+
+export async function getTaskSummaryImpl(ctx: TaskCtx, taskId: string): Promise<Task | null> {
+  const persistedTask = await loadTaskSummary(taskId);
+  if (!persistedTask) {
+    return null;
+  }
+
+  const engine = ctx.engines.get(taskId);
+  if (engine) {
+    return createTaskListSnapshot({ config: persistedTask.config, state: engine.state });
+  }
+  return persistedTask;
 }
 
 export async function getAllTasksImpl(ctx: TaskCtx): Promise<Task[]> {

@@ -1,15 +1,11 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import {
-  getTaskTranscriptPage,
   getTaskTranscriptSnapshot,
   getTaskTranscriptToolCall,
-  normalizeTranscriptPageSize,
 } from "../../core/task-transcript-service";
 import {
-  getTranscriptPageEtag,
   getTranscriptSnapshotEtag,
-  InvalidTranscriptCursorError,
 } from "../../core/transcript-service";
 
 function transcriptResponseHeaders(revision: string): Headers {
@@ -22,14 +18,6 @@ function transcriptResponseHeaders(revision: string): Headers {
 function isNotModified(request: Request, revision: string): boolean {
   const ifNoneMatch = request.headers.get("If-None-Match");
   return ifNoneMatch === `"${revision}"` || ifNoneMatch === revision;
-}
-
-function parseLimit(req: Request): number | Response {
-  try {
-    return normalizeTranscriptPageSize(new URL(req.url).searchParams.get("limit"));
-  } catch (error) {
-    return errorResponse("invalid_transcript_limit", String(error), 400);
-  }
 }
 
 export const tasksTranscriptRoutes = defineRoutes({
@@ -55,48 +43,9 @@ export const tasksTranscriptRoutes = defineRoutes({
         }
         return Response.json(snapshot, { headers: transcriptResponseHeaders(revision) });
       } catch (error) {
-        if (error instanceof InvalidTranscriptCursorError) {
-          return errorResponse(error.code, error.message, error.status);
-        }
         return internalErrorResponse(error, {
           error: "snapshot_failed",
           message: "Failed to load task snapshot",
-          status: 500,
-        });
-      }
-    },
-  },
-
-  "/api/tasks/:id/transcript": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Read an older page of a task transcript.",
-    async GET(req: Request, ctx): Promise<Response> {
-      const limit = parseLimit(req);
-      if (limit instanceof Response) {
-        return limit;
-      }
-      const before = new URL(req.url).searchParams.get("before") ?? undefined;
-      try {
-        const page = await getTaskTranscriptPage(ctx.params["id"]!, limit, before);
-        if (!page) {
-          return errorResponse("not_found", "Task not found", 404);
-        }
-        const revision = getTranscriptPageEtag(page.revision, before, limit);
-        if (isNotModified(req, revision)) {
-          return new Response(null, {
-            status: 304,
-            headers: transcriptResponseHeaders(revision),
-          });
-        }
-        return Response.json(page, { headers: transcriptResponseHeaders(revision) });
-      } catch (error) {
-        if (error instanceof InvalidTranscriptCursorError) {
-          return errorResponse(error.code, error.message, error.status);
-        }
-        return internalErrorResponse(error, {
-          error: "transcript_page_failed",
-          message: "Failed to load task transcript page",
           status: 500,
         });
       }

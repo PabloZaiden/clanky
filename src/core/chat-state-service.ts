@@ -19,54 +19,21 @@ import {
   saveChat,
   updateChatConfig,
   updateChatState,
-  countChatTranscriptEntries,
 } from "../persistence/chats";
-import {
-  createTranscriptPageFromStorageEntries,
-  isTranscriptStorageEntryVisible,
-  parseTranscriptCursor,
-} from "./transcript-service";
+import { createTranscriptFromStorageEntries } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import type {
   Chat,
   ChatConfig,
   ChatState,
-  ChatTranscriptCursor,
-  ChatTranscriptStorageEntry,
   Workspace,
 } from "@/shared";
-import type { ChatSnapshot, ChatTranscriptPage, ToolCallRecord } from "@/shared";
+import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import { isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-
-function listVisibleChatTranscriptEntries(
-  chatId: string,
-  limit: number,
-  before?: ChatTranscriptCursor,
-): { entries: ChatTranscriptStorageEntry[]; hasOlder: boolean } {
-  const entries: ChatTranscriptStorageEntry[] = [];
-  const rawLimit = limit + 1;
-  let rawCursor = before;
-
-  while (true) {
-    const batch = listChatTranscriptEntries(chatId, rawCursor, rawLimit);
-    entries.push(...batch);
-    const visibleCount = entries.filter((entry) =>
-      isTranscriptStorageEntryVisible(entry, shouldIncludeChatTranscriptLog)
-    ).length;
-    if (visibleCount > limit || batch.length < rawLimit) {
-      return { entries, hasOlder: visibleCount > limit };
-    }
-    const oldest = batch.at(-1);
-    if (!oldest) {
-      return { entries, hasOlder: false };
-    }
-    rawCursor = oldest;
-  }
-}
 
 export class ChatStateService implements ChatStatePort {
   constructor(
@@ -75,6 +42,10 @@ export class ChatStateService implements ChatStatePort {
 
   async getChat(chatId: string): Promise<Chat | null> {
     return loadChat(chatId);
+  }
+
+  async getChatSummary(chatId: string): Promise<Chat | null> {
+    return loadChatMetadata(chatId);
   }
 
   async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
@@ -88,41 +59,16 @@ export class ChatStateService implements ChatStatePort {
       throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
-    const entries = listChatTranscriptEntries(chatId, undefined, undefined);
+    const entries = listChatTranscriptEntries(chatId);
     const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
     return {
       config: chat.config,
       state,
-      transcript: createTranscriptPageFromStorageEntries(entries, undefined, undefined, {
+      transcript: createTranscriptFromStorageEntries(entries, {
         revision: meta.revision,
-        totalEntries: countChatTranscriptEntries(chatId),
-        hasOlder: false,
+        totalEntries: meta.entryCount,
       }, shouldIncludeChatTranscriptLog),
     };
-  }
-
-  async getChatTranscriptPage(
-    chatId: string,
-    limit: number,
-    before?: string,
-  ): Promise<ChatTranscriptPage | null> {
-    const chat = await loadChatMetadata(chatId);
-    if (!chat) {
-      return null;
-    }
-
-    const meta = getChatTranscriptMeta(chatId);
-    if (!meta) {
-      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
-    }
-
-    const cursor = before ? parseTranscriptCursor(before) : undefined;
-    const { entries, hasOlder } = listVisibleChatTranscriptEntries(chatId, limit, cursor);
-    return createTranscriptPageFromStorageEntries(entries, limit, before, {
-      revision: meta.revision,
-      totalEntries: countChatTranscriptEntries(chatId),
-      hasOlder,
-    }, shouldIncludeChatTranscriptLog);
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {

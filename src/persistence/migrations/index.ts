@@ -450,6 +450,88 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 17,
+    name: "remove_legacy_transcript_columns",
+    up: (db) => {
+      const resources = [
+        {
+          resource: "chat",
+          parentTable: "chats",
+          metaTable: "chat_transcript_meta",
+          entriesTable: "chat_transcript_entries",
+          resourceColumn: "chat_id",
+        },
+        {
+          resource: "task",
+          parentTable: "tasks",
+          metaTable: "task_transcript_meta",
+          entriesTable: "task_transcript_entries",
+          resourceColumn: "task_id",
+        },
+        {
+          resource: "agent_run",
+          parentTable: "agent_runs",
+          metaTable: "agent_run_transcript_meta",
+          entriesTable: "agent_run_transcript_entries",
+          resourceColumn: "agent_run_id",
+        },
+      ] as const;
+
+      for (const resource of resources) {
+        if (
+          !tableExists(db, resource.parentTable)
+          || !tableExists(db, resource.metaTable)
+          || !tableExists(db, resource.entriesTable)
+        ) {
+          throw new Error(
+            `Cannot remove legacy ${resource.resource} transcript columns: normalized tables are missing`,
+          );
+        }
+
+        const incomplete = db.query(`
+          SELECT parent.id, parent.user_id, meta.user_id AS meta_user_id,
+            meta.entry_count, COALESCE(entries.actual_count, 0) AS actual_count
+          FROM ${resource.parentTable} AS parent
+          LEFT JOIN ${resource.metaTable} AS meta
+            ON meta.${resource.resourceColumn} = parent.id
+          LEFT JOIN (
+            SELECT ${resource.resourceColumn}, COUNT(*) AS actual_count
+            FROM ${resource.entriesTable}
+            GROUP BY ${resource.resourceColumn}
+          ) AS entries
+            ON entries.${resource.resourceColumn} = parent.id
+          WHERE meta.${resource.resourceColumn} IS NULL
+            OR meta.user_id <> parent.user_id
+            OR meta.entry_count <> COALESCE(entries.actual_count, 0)
+          LIMIT 1
+        `).get() as {
+          id: string;
+          user_id: string;
+          meta_user_id: string | null;
+          entry_count: number | null;
+          actual_count: number;
+        } | null;
+
+        if (incomplete) {
+          throw new Error(
+            `Cannot remove legacy ${resource.resource} transcript columns: `
+            + `normalized transcript is incomplete for ${incomplete.id} `
+            + `(metadata user ${incomplete.meta_user_id ?? "missing"}, `
+            + `entry count ${incomplete.entry_count ?? "missing"}, actual ${incomplete.actual_count})`,
+          );
+        }
+      }
+
+      for (const tableName of ["chats", "tasks", "agent_runs"] as const) {
+        for (const column of ["messages", "logs", "tool_calls"] as const) {
+          if (getTableColumns(db, tableName).includes(column)) {
+            db.run(`ALTER TABLE ${tableName} DROP COLUMN ${column}`);
+          }
+        }
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

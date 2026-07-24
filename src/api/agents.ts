@@ -4,6 +4,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import type { Agent } from "@/shared/agent";
+import type { AgentRun } from "@/shared/agent";
 import type { AgentRunStatus } from "@/shared/agent";
 import type { DeterministicAgentTestResult, DeterministicAgentTestStreamEvent } from "@/shared/deterministic-agent";
 import type { TaskLogEntry } from "@/shared/task";
@@ -19,15 +20,11 @@ import { generateDeterministicAgentCode } from "../core/deterministic-agent-gene
 import { testDeterministicAgentCode } from "../core/deterministic-agent-test";
 import { isDomainError } from "../core/domain-error";
 import {
-  getAgentRunTranscriptPage,
   getAgentRunTranscriptSnapshot,
   getAgentRunTranscriptToolCall,
-  normalizeTranscriptPageSize,
 } from "../core/agent-run-transcript-service";
 import {
-  getTranscriptPageEtag,
   getTranscriptSnapshotEtag,
-  InvalidTranscriptCursorError,
 } from "../core/transcript-service";
 
 const log = createLogger("api:agents");
@@ -46,12 +43,12 @@ function isNotModified(request: Request, revision: string): boolean {
   return ifNoneMatch === `"${revision}"` || ifNoneMatch === revision;
 }
 
-function parseTranscriptLimit(req: Request): number | Response {
-  try {
-    return normalizeTranscriptPageSize(new URL(req.url).searchParams.get("limit"));
-  } catch (error) {
-    return errorResponse("invalid_transcript_limit", String(error), 400);
+async function toLightweightAgentRun(run: AgentRun): Promise<AgentRun> {
+  const summary = await agentManager.getRunSummary(run.id);
+  if (!summary) {
+    throw new Error(`Agent run disappeared after mutation: ${run.id}`);
   }
+  return summary;
 }
 
 async function validateAgentModel(workspaceId: string, model: {
@@ -731,7 +728,7 @@ export const agentsRoutes = defineRoutes({
 
       try {
         const run = await agentManager.runNow(ctx.params["id"]!, validation.data.attachments);
-        return Response.json(run, { status: 202 });
+        return Response.json(await toLightweightAgentRun(run), { status: 202 });
       } catch (error) {
         const response = domainErrorResponse(error, {
           mappings: {
@@ -772,7 +769,7 @@ export const agentsRoutes = defineRoutes({
         if (!run) {
           return errorResponse("no_active_agent_run", "Agent does not have an active run", 409);
         }
-        return Response.json(run);
+        return Response.json(await toLightweightAgentRun(run));
       } catch (error) {
         const response = domainErrorResponse(error, {
           mappings: {
@@ -895,7 +892,7 @@ export const agentsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read or delete an agent run.",
     async GET(_req: Request, ctx): Promise<Response> {
-      const run = await agentManager.getRun(ctx.params["id"]!);
+      const run = await agentManager.getRunSummary(ctx.params["id"]!);
       if (!run) {
         return errorResponse("agent_run_not_found", "Agent run not found", 404);
       }
@@ -935,50 +932,9 @@ export const agentsRoutes = defineRoutes({
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
-        if (error instanceof InvalidTranscriptCursorError) {
-          return errorResponse(error.code, error.message, error.status);
-        }
         return internalErrorResponse(error, {
           error: "snapshot_failed",
           message: "Failed to load agent-run snapshot",
-          status: 500,
-        });
-      }
-    },
-  },
-
-  "/api/agent-runs/:id/transcript": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Read an older page of an agent-run transcript.",
-    async GET(req: Request, ctx): Promise<Response> {
-      const limit = parseTranscriptLimit(req);
-      if (limit instanceof Response) {
-        return limit;
-      }
-      const before = new URL(req.url).searchParams.get("before") ?? undefined;
-      try {
-        const page = await getAgentRunTranscriptPage(ctx.params["id"]!, limit, before);
-        if (!page) {
-          return errorResponse("agent_run_not_found", "Agent run not found", 404);
-        }
-        const revision = getTranscriptPageEtag(page.revision, before, limit);
-        if (isNotModified(req, revision)) {
-          return new Response(null, {
-            status: 304,
-            headers: transcriptResponseHeaders(revision),
-          });
-        }
-        return Response.json(page, {
-          headers: transcriptResponseHeaders(revision),
-        });
-      } catch (error) {
-        if (error instanceof InvalidTranscriptCursorError) {
-          return errorResponse(error.code, error.message, error.status);
-        }
-        return internalErrorResponse(error, {
-          error: "transcript_page_failed",
-          message: "Failed to load agent-run transcript page",
           status: 500,
         });
       }
