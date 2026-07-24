@@ -239,9 +239,9 @@ export function evaluateTaskOutcome(ctx: IterationContext, buildCtx: PromptBuild
   }
 
   const isInPlanMode = buildCtx.state.status === "planning" && buildCtx.state.planMode?.active;
-  const planReadyPattern = /<promise>PLAN_READY<\/promise>/;
+  const planReadyPattern = /<promise>PLAN_READY<\/promise>/i;
 
-  if (isInPlanMode && planReadyPattern.test(ctx.responseContent)) {
+  if (isInPlanMode && (trailingMarker?.kind === "plan_ready" || planReadyPattern.test(ctx.responseContent))) {
     buildCtx.emitLog("info", "PLAN_READY marker detected - plan is ready for review");
     ctx.outcome = "plan_ready";
     if (buildCtx.state.planMode) {

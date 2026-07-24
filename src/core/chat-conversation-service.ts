@@ -8,7 +8,6 @@ import {
   isAcpErrorCode,
 } from "../backends/acp";
 import type {
-  AgentEvent,
   Backend,
   PromptInput,
   SessionReplayEvent,
@@ -31,8 +30,7 @@ import {
 } from "@/shared/chat";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import type { EventStream } from "../utils/event-stream";
-import { nextWithTimeout } from "./engine/engine-helpers";
+import { AgentStreamController, type AgentStreamHandle } from "./agent-stream-controller";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
@@ -56,8 +54,7 @@ const CHAT_STREAM_PERSIST_MIN_CHARS = 4096;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 
 interface ActiveChatStream {
-  stream: EventStream<AgentEvent>;
-  promptPromise: Promise<void>;
+  handle: AgentStreamHandle;
   generation: number;
 }
 
@@ -223,7 +220,7 @@ export class ChatConversationService implements ChatConversationPort {
   }
 
   closeActiveStream(chatId: string): void {
-    this.activeStreams.get(chatId)?.stream.close();
+    this.activeStreams.get(chatId)?.handle.close();
     this.activeStreams.delete(chatId);
     this.activeStreamGenerations.delete(chatId);
   }
@@ -408,19 +405,15 @@ export class ChatConversationService implements ChatConversationPort {
     sessionId: string,
     prompt: PromptInput,
   ): Promise<Chat> {
-    const eventStream = await backend.subscribeToEvents(sessionId);
-    let promptPromise: Promise<void>;
-    try {
-      promptPromise = backend.sendPromptAsync(sessionId, prompt);
-      await promptPromise;
-    } catch (error) {
-      eventStream.close();
-      throw error;
-    }
+    const streamController = new AgentStreamController(backend);
+    const handle = streamController.start({
+      sessionId,
+      prompt,
+      activityTimeoutMs: DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS,
+    });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     this.activeStreams.set(chat.config.id, {
-      stream: eventStream,
-      promptPromise,
+      handle,
       generation,
     });
     try {
@@ -432,11 +425,16 @@ export class ChatConversationService implements ChatConversationPort {
         completedAt: undefined,
         lastActivityAt: createTimestamp(),
       });
-      void this.consumeEventStream(chat.config.id, backend, eventStream, promptPromise, generation);
+      const started = await handle.startPrompt();
+      if (!started) {
+        this.clearActiveStream(chat.config.id, generation);
+        return await this.state.getChat(chat.config.id) ?? chat;
+      }
+      void this.consumeEventStream(chat.config.id, backend, handle, generation);
       return streamingChat;
     } catch (error) {
       this.clearActiveStream(chat.config.id, generation);
-      eventStream.close();
+      handle.close();
       throw error;
     }
   }
@@ -444,13 +442,12 @@ export class ChatConversationService implements ChatConversationPort {
   private async consumeEventStream(
     chatId: string,
     backend: Backend,
-    eventStream: EventStream<AgentEvent>,
-    promptPromise: Promise<void>,
+    handle: AgentStreamHandle,
     generation: number,
   ): Promise<void> {
     const initialChat = await this.state.getChat(chatId);
     if (!initialChat) {
-      eventStream.close();
+      handle.close();
       return;
     }
     let chat: Chat = initialChat;
@@ -570,14 +567,11 @@ export class ChatConversationService implements ChatConversationPort {
     };
 
     try {
-      await promptPromise;
-      let event = await nextWithTimeout<AgentEvent>(eventStream, DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS);
-      while (event !== null) {
-        if (!this.isActiveStreamGeneration(chatId, generation)) {
-          return;
-        }
+      await handle.consume({
+        shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
+        onEvent: async (event) => {
         if (!await reloadInterruptStateIfNeeded(event.type !== "message.delta" && event.type !== "reasoning.delta")) {
-          break;
+          return { stop: true };
         }
 
         const now = createTimestamp();
@@ -722,7 +716,7 @@ export class ChatConversationService implements ChatConversationPort {
             if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
               chat = await this.completeInterruptedChat(chat);
               this.clearActiveStream(chatId, generation);
-              return;
+              return { stop: true };
             } else if (event.status === "idle") {
               chat = await this.updateState(chat, {
                 ...chat.state,
@@ -737,7 +731,7 @@ export class ChatConversationService implements ChatConversationPort {
             if (isInterrupted) {
               chat = await this.completeInterruptedChat(chat);
               this.clearActiveStream(chatId, generation);
-              return;
+              return { stop: true };
             }
             await flushActiveStreamBlock(now);
             const completedResponseLength = event.content.length > 0
@@ -788,7 +782,7 @@ export class ChatConversationService implements ChatConversationPort {
               });
             }
             this.clearActiveStream(chatId, generation);
-            return;
+            return { stop: true };
           }
 
           case "error":
@@ -798,11 +792,11 @@ export class ChatConversationService implements ChatConversationPort {
                 await this.completeInterruptedChat(chat);
               }
               this.clearActiveStream(chatId, generation);
-              return;
+              return { stop: true };
             }
             await this.emitChatError(chat, event.message, event.code);
             this.clearActiveStream(chatId, generation);
-            return;
+            return { stop: true };
 
           case "permission.asked":
             if (isInterrupted) {
@@ -810,7 +804,7 @@ export class ChatConversationService implements ChatConversationPort {
             }
             if (!this.permissionHandler) {
               await this.emitChatError(chat, "Chat permission handler is not configured");
-              return;
+              return { stop: true };
             }
             chat = await this.permissionHandler(chat, backend, {
               requestId: event.requestId,
@@ -827,11 +821,11 @@ export class ChatConversationService implements ChatConversationPort {
               chat,
               `Interactive question requires a UI response: ${event.questions.map((question) => question.question).join(" | ")}`,
             );
-            return;
+            return { stop: true };
         }
 
-        event = await nextWithTimeout<AgentEvent>(eventStream, DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS);
-      }
+        },
+      });
     } catch (error) {
       if (this.shouldSuppressStreamError(
         chatId,
@@ -849,7 +843,6 @@ export class ChatConversationService implements ChatConversationPort {
         await this.emitChatError(errorChat, error);
       }
     } finally {
-      eventStream.close();
       this.clearActiveStream(chatId, generation);
       this.scheduleQueuedMessageDrain(chatId);
     }
