@@ -1,8 +1,7 @@
 import type { ChatConfig, ChatState } from "./chat";
 import type { PersistedMessage, TaskLogEntry } from "./task";
 import {
-  isToolCallSummary,
-  mergeToolCallRecord,
+  mergeToolCallDisplayData,
   type ToolCallDisplayData,
   type ToolCallRecord,
 } from "./tool-call";
@@ -41,6 +40,26 @@ export interface ChatSnapshot {
   transcript: ChatTranscriptPage;
 }
 
+export function mergeTranscriptPages(
+  current: ChatTranscriptPage | null | undefined,
+  incoming: ChatTranscriptPage,
+): ChatTranscriptPage {
+  if (!current) {
+    return incoming;
+  }
+
+  const nextCursor = current.nextCursor ?? incoming.nextCursor;
+  return {
+    messages: mergeTranscriptRecords(current.messages, incoming.messages),
+    logs: mergeTranscriptRecords(current.logs, incoming.logs),
+    toolCalls: mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls),
+    hasOlder: current.hasOlder || incoming.hasOlder,
+    ...(nextCursor ? { nextCursor } : {}),
+    revision: incoming.revision,
+    totalEntries: incoming.totalEntries,
+  };
+}
+
 export function mergeTranscriptRecords<T extends { id: string; timestamp: string }>(
   current: T[],
   incoming: T[],
@@ -69,13 +88,7 @@ export function mergeTranscriptToolCalls(
       merged.set(toolCall.id, toolCall);
       continue;
     }
-    if (isToolCallSummary(existing) && !isToolCallSummary(toolCall)) {
-      merged.set(toolCall.id, mergeToolCallRecord<ToolCallRecord>(existing, toolCall) as ToolCallDisplayData);
-    } else if (!isToolCallSummary(existing) && isToolCallSummary(toolCall)) {
-      merged.set(toolCall.id, mergeToolCallRecord<ToolCallRecord>(toolCall, existing) as ToolCallDisplayData);
-    } else {
-      merged.set(toolCall.id, toolCall);
-    }
+    merged.set(toolCall.id, mergeToolCallDisplayData(toolCall, existing));
   }
   return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }

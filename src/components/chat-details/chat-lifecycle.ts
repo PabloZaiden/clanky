@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
-import { mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
+import { mergeTranscriptPages, mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
 import type {
   Chat,
   ChatSnapshot,
@@ -14,7 +14,7 @@ import { shouldIncludeChatTranscriptLog } from "@/shared";
 import {
   isToolCallDetailsStale,
   isToolCallSummary,
-  mergeToolCallRecord,
+  mergeToolCallDisplayData,
   upsertToolCallExtra,
 } from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
@@ -99,16 +99,7 @@ function mergeDisplayToolCall(
   existing: ToolCallDisplayData | undefined,
   incoming: ToolCallDisplayData,
 ): ToolCallDisplayData {
-  if (!existing) {
-    return incoming;
-  }
-  if (isToolCallSummary(existing) && isToolCallSummary(incoming)) {
-    return {
-      ...existing,
-      ...incoming,
-    };
-  }
-  return mergeToolCallRecord(existing, incoming) as ToolCallDisplayData;
+  return mergeToolCallDisplayData(existing, incoming);
 }
 
 function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
@@ -436,7 +427,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       const hydrated = hydrateChatSnapshot(data);
       snapshotEtagRef.current = response.headers.get("ETag");
       setChatState(hydrated.chat);
-      setTranscriptState(hydrated.transcript);
+      const currentTranscript = transcriptRef.current;
+      setTranscriptState({
+        ...mergeTranscriptPages(currentTranscript, hydrated.transcript),
+        loadingOlder: currentTranscript.loadingOlder,
+      });
     } catch (refreshError) {
       if (
         isAbortError(refreshError)
@@ -558,7 +553,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         ...transcriptRef.current,
         toolCalls: transcriptRef.current.toolCalls.map((entry) => (
           entry.id === toolCallId
-            ? mergeToolCallRecord(entry, tool) as ToolCallDisplayData
+            ? mergeToolCallDisplayData(entry, tool)
             : entry
         )),
       });

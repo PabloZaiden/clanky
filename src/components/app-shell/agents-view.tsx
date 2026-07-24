@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
+import { mergeTranscriptPages, mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
 import type {
   Agent,
   AgentEvent,
@@ -1049,7 +1049,7 @@ function AgentRunDetail({
       const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscriptPage };
       snapshotEtagRef.current = response.headers.get("ETag");
       setRun(snapshot.run);
-      setTranscript(snapshot.transcript);
+      setTranscript(mergeTranscriptPages(transcriptRef.current, snapshot.transcript));
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
@@ -1064,6 +1064,7 @@ function AgentRunDetail({
     if (runChanged) {
       snapshotEtagRef.current = null;
       previousRunIdRef.current = runId;
+      transcriptRef.current = null;
       setTranscript(null);
     }
     setRun(initialRun);

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatTranscriptPage, Task, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
+import { mergeTranscriptRecords, mergeTranscriptToolCalls } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
@@ -161,38 +162,31 @@ export function useTaskData(
       if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
         initialLoadDoneRef.current = true;
 
-        const latestLogs = data.transcript.logs?.slice(-1000) ?? [];
-        setLogs(
-          normalizeHydratedTaskLogs(
-            latestLogs.map((logEntry) => ({
-              id: logEntry.id,
-              level: logEntry.level,
-              message: logEntry.message,
-              details: logEntry.details,
-              timestamp: logEntry.timestamp,
-            })),
-          ),
-        );
-
-        const latestMessages = data.transcript.messages?.slice(-1000) ?? [];
-        setMessages(
-          latestMessages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            attachments: msg.attachments,
-            timestamp: msg.timestamp,
-          })),
-        );
-
-        const latestToolCalls = data.transcript.toolCalls?.slice(-1000) ?? [];
-        setToolCalls((current) => reconcileToolCallRecords(
-          current,
-          latestToolCalls as ToolCallData[],
+        const latestLogs = data.transcript.logs?.slice(-1000).map((logEntry) => ({
+          id: logEntry.id,
+          level: logEntry.level,
+          message: logEntry.message,
+          details: logEntry.details,
+          timestamp: logEntry.timestamp,
+        })) ?? [];
+        setLogs((current) => normalizeHydratedTaskLogs(
+          mergeTranscriptRecords(current, latestLogs),
         ));
 
-        setHasOlderEntries(data.transcript.hasOlder);
-        setNextTranscriptCursor(data.transcript.nextCursor);
+        const latestMessages = data.transcript.messages?.slice(-1000).map((msg) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          attachments: msg.attachments,
+          timestamp: msg.timestamp,
+        })) ?? [];
+        setMessages((current) => mergeTranscriptRecords(current, latestMessages));
+
+        const latestToolCalls = data.transcript.toolCalls?.slice(-1000) ?? [];
+        setToolCalls((current) => mergeTranscriptToolCalls(current, latestToolCalls));
+
+        setHasOlderEntries((current) => current || data.transcript.hasOlder);
+        setNextTranscriptCursor((current) => current ?? data.transcript.nextCursor);
 
         if (options?.hydrateFromSnapshot) {
           setProgressContent("");

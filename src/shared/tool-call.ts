@@ -190,6 +190,95 @@ export function mergeToolCallRecord<T extends ToolCallRecord>(
   };
 }
 
+function isTerminalToolStatus(status: ToolCallRecord["status"]): boolean {
+  return status === "completed" || status === "failed";
+}
+
+function mergeToolCallSummaries(
+  existing: ToolCallSummary,
+  incoming: ToolCallSummary,
+): ToolCallSummary {
+  const latest = incoming.timestamp.localeCompare(existing.timestamp) >= 0 ? incoming : existing;
+  const status = isTerminalToolStatus(existing.status) && !isTerminalToolStatus(incoming.status)
+    ? existing.status
+    : isTerminalToolStatus(incoming.status) && !isTerminalToolStatus(existing.status)
+      ? incoming.status
+      : latest.status;
+  const selected = status === latest.status
+    ? latest
+    : status === existing.status
+      ? existing
+      : incoming;
+  const input = latest.input ?? existing.input ?? incoming.input;
+  const displayTool: ToolCallRecord = {
+    id: selected.id,
+    name: selected.name,
+    status,
+    timestamp: selected.timestamp,
+    ...(input !== undefined ? { input } : {}),
+  };
+  const kind = inferToolCallKind(displayTool);
+
+  return {
+    ...selected,
+    ...(input !== undefined ? { input } : {}),
+    status,
+    summary: getToolCallSummary(displayTool, kind),
+    kind,
+    outputLabel: getToolCallOutputLabel(kind, status),
+    hasInput: existing.hasInput || incoming.hasInput || input !== undefined,
+    hasOutput: existing.hasOutput || incoming.hasOutput,
+    ...(selected.detailRevision === undefined
+      ? (existing.detailRevision !== undefined
+        ? { detailRevision: existing.detailRevision }
+        : incoming.detailRevision !== undefined
+          ? { detailRevision: incoming.detailRevision }
+          : {})
+      : {}),
+    detailAvailable: true,
+  };
+}
+
+function toToolCallRecord(value: ToolCallRecord): ToolCallRecord {
+  const displayValue = value as ToolCallRecord & Partial<ToolCallSummary>;
+  const {
+    summary: _summary,
+    kind: _kind,
+    outputLabel: _outputLabel,
+    outputType: _outputType,
+    hasInput: _hasInput,
+    hasOutput: _hasOutput,
+    detailAvailable: _detailAvailable,
+    ...record
+  } = displayValue;
+  return record;
+}
+
+export function mergeToolCallDisplayData(
+  existing: ToolCallDisplayData | undefined,
+  incoming: ToolCallDisplayData,
+): ToolCallDisplayData {
+  if (!existing) {
+    return incoming;
+  }
+  if (isToolCallSummary(existing) && isToolCallSummary(incoming)) {
+    return mergeToolCallSummaries(existing, incoming);
+  }
+  if (isToolCallSummary(existing)) {
+    return toToolCallRecord(mergeToolCallRecord<ToolCallRecord>(
+      existing as ToolCallRecord,
+      incoming as ToolCallRecord,
+    ));
+  }
+  if (isToolCallSummary(incoming)) {
+    return toToolCallRecord(mergeToolCallRecord<ToolCallRecord>(
+      incoming as ToolCallRecord,
+      existing,
+    ));
+  }
+  return toToolCallRecord(mergeToolCallRecord(existing, incoming));
+}
+
 export function upsertToolCallRecord<T extends ToolCallRecord>(
   toolCalls: T[],
   incoming: T,
