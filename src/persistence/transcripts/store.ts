@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import type {
-  ChatTranscriptCursor,
   ChatTranscriptStorageEntry,
   PersistedMessage,
   TaskLogEntry,
@@ -8,7 +7,6 @@ import type {
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
-import { getTableColumns } from "../migrations";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:transcripts");
@@ -21,7 +19,6 @@ interface TranscriptTableConfig {
   entriesTable: string;
   metaTable: string;
   resourceColumn: string;
-  legacyColumns: readonly ["messages", "logs", "tool_calls"];
 }
 
 const TRANSCRIPT_TABLES: Record<TranscriptResource, TranscriptTableConfig> = {
@@ -30,21 +27,18 @@ const TRANSCRIPT_TABLES: Record<TranscriptResource, TranscriptTableConfig> = {
     entriesTable: "chat_transcript_entries",
     metaTable: "chat_transcript_meta",
     resourceColumn: "chat_id",
-    legacyColumns: ["messages", "logs", "tool_calls"],
   },
   task: {
     parentTable: "tasks",
     entriesTable: "task_transcript_entries",
     metaTable: "task_transcript_meta",
     resourceColumn: "task_id",
-    legacyColumns: ["messages", "logs", "tool_calls"],
   },
   agent_run: {
     parentTable: "agent_runs",
     entriesTable: "agent_run_transcript_entries",
     metaTable: "agent_run_transcript_meta",
     resourceColumn: "agent_run_id",
-    legacyColumns: ["messages", "logs", "tool_calls"],
   },
 };
 
@@ -84,32 +78,6 @@ interface TranscriptRow {
 
 function getTableConfig(resource: TranscriptResource): TranscriptTableConfig {
   return TRANSCRIPT_TABLES[resource];
-}
-
-export function hasLegacyTranscriptColumns(resource: TranscriptResource): boolean {
-  const config = getTableConfig(resource);
-  const columns = getTableColumns(getDatabase(), config.parentTable);
-  return config.legacyColumns.every((column) => columns.includes(column));
-}
-
-export function dropLegacyTranscriptColumns(resource: TranscriptResource): void {
-  const db = getDatabase();
-  const config = getTableConfig(resource);
-  const columns = new Set(getTableColumns(db, config.parentTable));
-  const columnsToDrop = config.legacyColumns.filter((column) => columns.has(column));
-  if (columnsToDrop.length === 0) {
-    return;
-  }
-
-  db.transaction(() => {
-    for (const column of columnsToDrop) {
-      db.run(`ALTER TABLE ${config.parentTable} DROP COLUMN ${column}`);
-    }
-  })();
-  log.info("Removed legacy transcript columns", {
-    resource,
-    columns: columnsToDrop,
-  });
 }
 
 function getEntryKey(kind: TranscriptEntryKind, id: string): string {
@@ -510,39 +478,9 @@ export function listTranscriptEntriesForUser(
   resource: TranscriptResource,
   resourceId: string,
   userId: string,
-  before: ChatTranscriptCursor | undefined,
-  limit: number | undefined,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
   const config = getTableConfig(resource);
-  const params: (string | number)[] = [resourceId, userId];
-  let beforeClause = "";
-  if (before) {
-    beforeClause = `
-      AND (
-        timestamp < ?
-        OR (timestamp = ? AND sequence < ?)
-        OR (timestamp = ? AND sequence = ? AND kind < ?)
-        OR (timestamp = ? AND sequence = ? AND kind = ? AND entry_id < ?)
-      )
-    `;
-    params.push(
-      before.timestamp,
-      before.timestamp,
-      before.sequence,
-      before.timestamp,
-      before.sequence,
-      before.kind,
-      before.timestamp,
-      before.sequence,
-      before.kind,
-      getEntryKey(before.kind, before.id),
-    );
-  }
-  const limitClause = limit === undefined ? "" : "LIMIT ?";
-  if (limit !== undefined) {
-    params.push(limit);
-  }
 
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -551,10 +489,8 @@ export function listTranscriptEntriesForUser(
       CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
-    ${beforeClause}
     ORDER BY timestamp DESC, sequence DESC, kind DESC, entry_id DESC
-    ${limitClause}
-  `).all(...params) as TranscriptRow[];
+  `).all(resourceId, userId) as TranscriptRow[];
 
   return rows.map((row) => rowToStorageEntry(row, includeToolPayload, resource));
 }
@@ -562,16 +498,12 @@ export function listTranscriptEntriesForUser(
 export function listTranscriptEntries(
   resource: TranscriptResource,
   resourceId: string,
-  before: ChatTranscriptCursor | undefined,
-  limit: number | undefined,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
   return listTranscriptEntriesForUser(
     resource,
     resourceId,
     requirePersistenceUserId(),
-    before,
-    limit,
     includeToolPayload,
   );
 }
@@ -639,8 +571,6 @@ export function hydrateTranscriptStateForUser(
     resource,
     resourceId,
     userId,
-    undefined,
-    getTranscriptMetaForUser(resource, resourceId, userId)?.entryCount ?? 0,
     true,
   );
   const messages: PersistedMessage[] = [];

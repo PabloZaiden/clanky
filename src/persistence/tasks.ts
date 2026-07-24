@@ -26,6 +26,4 @@ export {
   isStaleTaskStatus,
   resetStaleTask,
   resetStaleTasks,
-  migrateLegacyTaskTranscripts,
-  replaceTaskTranscriptEntriesForUser,
 } from "./tasks/index";

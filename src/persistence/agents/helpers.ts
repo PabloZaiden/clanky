@@ -247,9 +247,9 @@ export function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,
     skipReason: (row["skip_reason"] as string | null) ?? undefined,
-    messages: row["messages"] ? safeJsonParse(row["messages"] as string, [], "messages", rowId) : [],
-    logs: row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [],
-    toolCalls: row["tool_calls"] ? safeJsonParse(row["tool_calls"] as string, [], "tool_calls", rowId) : [],
+    messages: [],
+    logs: [],
+    toolCalls: [],
     pendingPermissionRequests: row["pending_permission_requests"]
       ? safeJsonParse(row["pending_permission_requests"] as string, [], "pending_permission_requests", rowId)
       : [],

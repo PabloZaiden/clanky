@@ -18,7 +18,6 @@ import type {
   ChatSnapshot,
   ChatState,
   ChatStatus,
-  ChatTranscriptPage,
   ChatWorktreeState,
   SessionInfo,
   Task,
@@ -96,8 +95,8 @@ export interface ChatDirectoryResolution {
 
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
+  getChatSummary(chatId: string): Promise<Chat | null>;
   getChatSnapshot(chatId: string): Promise<ChatSnapshot | null>;
-  getChatTranscriptPage(chatId: string, limit: number, before?: string): Promise<ChatTranscriptPage | null>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;

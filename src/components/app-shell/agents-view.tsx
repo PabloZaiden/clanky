@@ -4,7 +4,7 @@ import type {
   Agent,
   AgentEvent,
   AgentRun,
-  ChatTranscriptPage,
+  ChatTranscript,
   DeterministicAgentTestResult,
   DeterministicCodeDiagnostic,
   ModelConfig,
@@ -1015,10 +1015,10 @@ function AgentRunDetail({
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const [run, setRun] = useState<AgentRun | null>(initialRun);
-  const [transcript, setTranscript] = useState<ChatTranscriptPage | null>(null);
+  const [transcript, setTranscript] = useState<ChatTranscript | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const transcriptRef = useRef<ChatTranscriptPage | null>(null);
+  const transcriptRef = useRef<ChatTranscript | null>(null);
   const snapshotEtagRef = useRef<string | null>(null);
   const previousRunIdRef = useRef(runId);
 
@@ -1044,7 +1044,7 @@ function AgentRunDetail({
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to fetch agent run"));
       }
-      const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscriptPage };
+      const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscript };
       snapshotEtagRef.current = response.headers.get("ETag");
       setRun(snapshot.run);
       setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));

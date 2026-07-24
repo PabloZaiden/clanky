@@ -8,7 +8,6 @@ import type {
   ChatStatus,
   SessionInfo,
   Task,
-  ChatTranscriptPage,
   ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -142,6 +141,10 @@ export class ChatManager {
     return this.services.state.getChat(chatId);
   }
 
+  async getChatSummary(chatId: string): Promise<Chat | null> {
+    return this.services.state.getChatSummary(chatId);
+  }
+
   async getAllChats(): Promise<Chat[]> {
     return this.services.state.getAllChats();
   }
@@ -168,14 +171,6 @@ export class ChatManager {
 
   async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
     return this.services.state.getChatSnapshot(chatId);
-  }
-
-  async getChatTranscriptPage(
-    chatId: string,
-    limit: number,
-    before?: string,
-  ): Promise<ChatTranscriptPage | null> {
-    return this.services.state.getChatTranscriptPage(chatId, limit, before);
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {

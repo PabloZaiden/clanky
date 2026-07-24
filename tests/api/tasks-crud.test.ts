@@ -445,10 +445,10 @@ describe("Tasks CRUD API Integration", () => {
       const detailResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
       expect(detailResponse.status).toBe(200);
       const detail = await detailResponse.json();
-      expect(detail.state.messages).toEqual(messages);
-      expect(detail.state.logs).toEqual(logs);
-      expect(detail.state.toolCalls).toEqual(toolCalls);
-      expect(detail.state.planMode.planContent).toBe("Large plan content that should not be returned by the list endpoint");
+      expect(detail.state.messages).toEqual([]);
+      expect(detail.state.logs).toEqual([]);
+      expect(detail.state.toolCalls).toEqual([]);
+      expect(detail.state.planMode.planContent).toBeUndefined();
     });
 
     test("lists active-engine tasks without hydrating transcript payloads", async () => {
@@ -525,10 +525,10 @@ describe("Tasks CRUD API Integration", () => {
       const detailResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
       expect(detailResponse.status).toBe(200);
       const detail = await detailResponse.json();
-      expect(detail.state.messages).toEqual(activeState.messages);
-      expect(detail.state.logs).toEqual(activeState.logs);
-      expect(detail.state.toolCalls).toEqual(activeState.toolCalls);
-      expect(detail.state.planMode.planContent).toBe("Active engine plan content that should not be returned by the list endpoint");
+      expect(detail.state.messages).toEqual([]);
+      expect(detail.state.logs).toEqual([]);
+      expect(detail.state.toolCalls).toEqual([]);
+      expect(detail.state.planMode.planContent).toBeUndefined();
     });
 
     test("loads complete lightweight task transcripts and lazy-loads tool call payloads", async () => {
@@ -589,8 +589,6 @@ describe("Tasks CRUD API Integration", () => {
           messages: PersistedMessage[];
           logs: TaskLogEntry[];
           toolCalls: Array<Record<string, unknown>>;
-          hasOlder: boolean;
-          nextCursor?: string;
           totalEntries: number;
         };
       };
@@ -599,8 +597,6 @@ describe("Tasks CRUD API Integration", () => {
       expect(snapshot.task.state["logs"]).toBeUndefined();
       expect(snapshot.task.state["toolCalls"]).toBeUndefined();
       expect(snapshot.transcript.totalEntries).toBe(9);
-      expect(snapshot.transcript.hasOlder).toBe(false);
-      expect(snapshot.transcript.nextCursor).toBeUndefined();
       expect(snapshot.transcript.messages).toHaveLength(3);
       expect(snapshot.transcript.logs).toHaveLength(2);
       expect(snapshot.transcript.toolCalls).toHaveLength(4);
@@ -621,32 +617,6 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.output.content).toContain("task-large-output-3");
       expect(JSON.stringify(snapshot)).not.toContain("task-large-output-3");
 
-      const latestPageResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/transcript?limit=4`);
-      expect(latestPageResponse.status).toBe(200);
-      const latestPage = await latestPageResponse.json();
-      expect(latestPage.hasOlder).toBe(true);
-      expect(latestPage.nextCursor).toBeString();
-      const olderResponse = await fetch(
-        `${baseUrl}/api/tasks/${taskId}/transcript?limit=4&before=${encodeURIComponent(latestPage.nextCursor)}`,
-      );
-      expect(olderResponse.status).toBe(200);
-      const older = await olderResponse.json() as {
-        messages: PersistedMessage[];
-        logs: TaskLogEntry[];
-        toolCalls: Array<{ id: string }>;
-      };
-      const currentKeys = new Set([
-        ...latestPage.messages.map((entry: PersistedMessage) => `message:${entry.id}`),
-        ...latestPage.logs.map((entry: TaskLogEntry) => `log:${entry.id}`),
-        ...latestPage.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
-      ]);
-      const olderKeys = [
-        ...older.messages.map((entry) => `message:${entry.id}`),
-        ...older.logs.map((entry) => `log:${entry.id}`),
-        ...older.toolCalls.map((entry) => `tool:${entry.id}`),
-      ];
-      expect(olderKeys.every((key) => !currentKeys.has(key))).toBe(true);
-      expect(olderKeys).toHaveLength(4);
     });
   });
 

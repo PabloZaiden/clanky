@@ -261,10 +261,10 @@ export function rowToTask(row: Record<string, unknown>): Task {
     recentIterations: row["recent_iterations"]
       ? safeJsonParse(row["recent_iterations"] as string, [], "recent_iterations", rowId)
       : [],
-    // Mandatory array fields - always initialize as empty arrays if null
-    logs: row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [],
-    messages: row["messages"] ? safeJsonParse(row["messages"] as string, [], "messages", rowId) : [],
-    toolCalls: row["tool_calls"] ? safeJsonParse(row["tool_calls"] as string, [], "tool_calls", rowId) : [],
+    // Transcript entries are hydrated from the normalized transcript tables.
+    logs: [],
+    messages: [],
+    toolCalls: [],
   };
 
   // Optional state fields

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ChatTranscriptPage, Task, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
+import type { ChatTranscript, Task, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
 import {
   mergeTranscriptSnapshotRecords,
   mergeTranscriptSnapshotToolCalls,
@@ -117,7 +117,7 @@ export function useTaskData(
       }
       const data = (await response.json()) as {
         task: Task;
-        transcript: ChatTranscriptPage;
+        transcript: ChatTranscript;
       };
       if (
         controller.signal.aborted ||

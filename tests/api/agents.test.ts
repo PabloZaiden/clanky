@@ -64,7 +64,17 @@ describe("Agents API Integration", () => {
         const run = await response.json() as AgentRun;
         lastStatus = run.status;
         if (terminalStatuses.has(run.status)) {
-          return run;
+          const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
+          expect(snapshotResponse.status).toBe(200);
+          const snapshot = await snapshotResponse.json() as {
+            transcript: Pick<AgentRun, "messages" | "logs" | "toolCalls">;
+          };
+          return {
+            ...run,
+            messages: snapshot.transcript.messages,
+            logs: snapshot.transcript.logs,
+            toolCalls: snapshot.transcript.toolCalls,
+          };
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -952,8 +962,6 @@ export default async function run(ctx) {
         messages: typeof messages;
         logs: typeof logs;
         toolCalls: Array<Record<string, unknown>>;
-        hasOlder: boolean;
-        nextCursor?: string;
         totalEntries: number;
       };
     };
@@ -962,8 +970,6 @@ export default async function run(ctx) {
     expect(snapshot.run["logs"]).toBeUndefined();
     expect(snapshot.run["toolCalls"]).toBeUndefined();
     expect(snapshot.transcript.totalEntries).toBe(9);
-    expect(snapshot.transcript.hasOlder).toBe(false);
-    expect(snapshot.transcript.nextCursor).toBeUndefined();
     expect(snapshot.transcript.messages).toHaveLength(3);
     expect(snapshot.transcript.logs).toHaveLength(2);
     expect(snapshot.transcript.toolCalls).toHaveLength(4);
@@ -984,32 +990,6 @@ export default async function run(ctx) {
     expect(detail.output.content).toContain("agent-large-output-3");
     expect(JSON.stringify(snapshot)).not.toContain("agent-large-output-3");
 
-    const latestPageResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/transcript?limit=4`);
-    expect(latestPageResponse.status).toBe(200);
-    const latestPage = await latestPageResponse.json();
-    expect(latestPage.hasOlder).toBe(true);
-    expect(latestPage.nextCursor).toBeString();
-    const olderResponse = await fetch(
-      `${baseUrl}/api/agent-runs/${runId}/transcript?limit=4&before=${encodeURIComponent(latestPage.nextCursor)}`,
-    );
-    expect(olderResponse.status).toBe(200);
-    const older = await olderResponse.json() as {
-      messages: typeof messages;
-      logs: typeof logs;
-      toolCalls: Array<{ id: string }>;
-    };
-    const currentKeys = new Set([
-      ...latestPage.messages.map((entry: typeof messages[number]) => `message:${entry.id}`),
-      ...latestPage.logs.map((entry: typeof logs[number]) => `log:${entry.id}`),
-      ...latestPage.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
-    ]);
-    const olderKeys = [
-      ...older.messages.map((entry) => `message:${entry.id}`),
-      ...older.logs.map((entry) => `log:${entry.id}`),
-      ...older.toolCalls.map((entry) => `tool:${entry.id}`),
-    ];
-    expect(olderKeys.every((key) => !currentKeys.has(key))).toBe(true);
-    expect(olderKeys).toHaveLength(4);
   });
 
   test("purges large run histories in batches", async () => {
