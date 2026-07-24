@@ -82,6 +82,25 @@ describe("AgentStreamController", () => {
     expect(result.stopped).toBe(true);
   });
 
+  test("reports a naturally ended stream as stopped", async () => {
+    const calls: string[] = [];
+    const event: AgentEvent = { type: "message.delta", content: "partial" };
+    const events: AgentEvent[] = [event];
+    const controller = new AgentStreamController(createBackend(events, calls));
+
+    const handle = controller.start({
+      sessionId: "session-1",
+      prompt: { parts: [{ type: "text", text: "prompt" }] },
+      activityTimeoutMs: null,
+    });
+    await expect(handle.startPrompt()).resolves.toBe(true);
+    const result = await handle.consume({
+      onEvent: async () => {},
+    });
+
+    expect(result).toEqual({ lastEvent: event, stopped: true });
+  });
+
   test("does not send a prompt after startup is cancelled", async () => {
     const calls: string[] = [];
     const controller = new AgentStreamController(createBackend([], calls));

@@ -47,11 +47,9 @@ export interface AgentStreamHandle {
 /**
  * Owns one ACP prompt/response turn. Calling `start()` creates a cancellable
  * handle before any asynchronous startup. The subscription and prompt are
- * started when the
- * returned handle's `startPrompt()` method is called, followed by event
- * consumption through `consume()`.
- * This lets callers register their active-stream state before startup can
- * continue.
+ * started when the returned handle's `startPrompt()` method is called,
+ * followed by event consumption through `consume()`. This lets callers
+ * register their active-stream state before startup can continue.
  */
 export class AgentStreamController {
   constructor(private readonly backend: AgentStreamBackend) {}
@@ -152,7 +150,7 @@ export class AgentStreamController {
         event = await this.nextEvent(stream, activityTimeoutMs);
       }
 
-      return { lastEvent, stopped: false };
+      return { lastEvent, stopped: true };
     } finally {
       stream.close();
     }
