@@ -1,6 +1,11 @@
 import type { ChatConfig, ChatState } from "./chat";
 import type { PersistedMessage, TaskLogEntry } from "./task";
-import type { ToolCallSummary } from "./tool-call";
+import {
+  isToolCallSummary,
+  mergeToolCallRecord,
+  type ToolCallDisplayData,
+  type ToolCallRecord,
+} from "./tool-call";
 
 export type ChatTranscriptEntryKind = "message" | "tool" | "log";
 
@@ -8,17 +13,20 @@ export interface ChatTranscriptCursor {
   kind: ChatTranscriptEntryKind;
   id: string;
   timestamp: string;
+  sequence: number;
 }
 
 export interface ChatTranscriptStorageEntry extends ChatTranscriptCursor {
-  sequence: number;
   payload: unknown;
+  /** Normalized tool metadata/input; output and extras are omitted from pages. */
+  tool?: ToolCallRecord;
+  toolHasOutput?: boolean;
 }
 
 export interface ChatTranscriptPage {
   messages: PersistedMessage[];
   logs: TaskLogEntry[];
-  toolCalls: ToolCallSummary[];
+  toolCalls: ToolCallDisplayData[];
   hasOlder: boolean;
   nextCursor?: string;
   revision: string;
@@ -31,6 +39,45 @@ export interface ChatSnapshot {
   config: ChatConfig;
   state: ChatSnapshotState;
   transcript: ChatTranscriptPage;
+}
+
+export function mergeTranscriptRecords<T extends { id: string; timestamp: string }>(
+  current: T[],
+  incoming: T[],
+): T[] {
+  const merged = new Map<string, T>();
+  for (const item of incoming) {
+    merged.set(item.id, item);
+  }
+  for (const item of current) {
+    merged.set(item.id, item);
+  }
+  return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+}
+
+export function mergeTranscriptToolCalls(
+  current: ToolCallDisplayData[],
+  incoming: ToolCallDisplayData[],
+): ToolCallDisplayData[] {
+  const merged = new Map<string, ToolCallDisplayData>();
+  for (const toolCall of incoming) {
+    merged.set(toolCall.id, toolCall);
+  }
+  for (const toolCall of current) {
+    const existing = merged.get(toolCall.id);
+    if (!existing) {
+      merged.set(toolCall.id, toolCall);
+      continue;
+    }
+    if (isToolCallSummary(existing) && !isToolCallSummary(toolCall)) {
+      merged.set(toolCall.id, mergeToolCallRecord<ToolCallRecord>(existing, toolCall) as ToolCallDisplayData);
+    } else if (!isToolCallSummary(existing) && isToolCallSummary(toolCall)) {
+      merged.set(toolCall.id, mergeToolCallRecord<ToolCallRecord>(toolCall, existing) as ToolCallDisplayData);
+    } else {
+      merged.set(toolCall.id, toolCall);
+    }
+  }
+  return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
 export function shouldIncludeChatTranscriptLog(log: TaskLogEntry): boolean {

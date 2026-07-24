@@ -1423,7 +1423,9 @@ describe("Chats API Integration", () => {
     const toolCalls: PersistedToolCall[] = Array.from({ length: 250 }, (_, index) => ({
       id: `page-tool-${index}`,
       name: index % 2 === 0 ? "Read" : "Execute",
-      input: { filePath: `src/file-${index}.ts` },
+      input: index === 249
+        ? { patchText: "i".repeat(200_000) }
+        : { filePath: `src/file-${index}.ts` },
       output: {
         content: `large-output-${index}-${"x".repeat(10_000)}`,
         detailedContent: `large-output-${index}-${"y".repeat(10_000)}`,
@@ -1475,7 +1477,9 @@ describe("Chats API Integration", () => {
     expect(snapshot.transcript.nextCursor).toBeString();
     expect(snapshot.transcript.totalEntries).toBe(274);
     expect(snapshot.transcript.toolCalls.length).toBe(96);
-    expect(snapshot.transcript.toolCalls.every((tool) => !("input" in tool) && !("output" in tool))).toBe(true);
+    expect(snapshot.transcript.toolCalls.every((tool) => "input" in tool && !("output" in tool))).toBe(true);
+    const largeInputTool = snapshot.transcript.toolCalls.find((tool) => tool["id"] === "page-tool-249");
+    expect((largeInputTool?.["input"] as { patchText: string }).patchText).toHaveLength(200_000);
 
     const etag = snapshotResponse.headers.get("ETag");
     expect(etag).toBeString();
@@ -1483,6 +1487,24 @@ describe("Chats API Integration", () => {
       headers: { "If-None-Match": etag! },
     });
     expect(notModifiedResponse.status).toBe(304);
+
+    const persistedChat = await loadChat(chatId);
+    expect(persistedChat).not.toBeNull();
+    await updateChatState(chatId, {
+      ...persistedChat!.state,
+      lastActivityAt: "2025-01-02T00:00:00.000Z",
+    });
+    const changedTranscriptResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?limit=100`, {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(changedTranscriptResponse.status).toBe(200);
+    const changedEtag = changedTranscriptResponse.headers.get("ETag");
+    expect(changedEtag).toBeString();
+    expect(changedEtag).not.toBe(etag);
+    const unchangedTranscriptResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?limit=100`, {
+      headers: { "If-None-Match": changedEtag! },
+    });
+    expect(unchangedTranscriptResponse.status).toBe(304);
 
     const latestToolId = toolCalls.at(-1)!.id;
     const detailResponse = await fetch(
@@ -1513,7 +1535,7 @@ describe("Chats API Integration", () => {
     expect(olderKeys.length).toBe(100);
   });
 
-  test("backfills a legacy chat on its first paginated read", async () => {
+  test("serves a normalized chat through paginated reads", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

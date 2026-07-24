@@ -9,8 +9,37 @@ import {
   validateAgentRunColumnNames,
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import {
+  hydrateTranscriptStateForUser,
+  syncTranscriptEntriesInTransaction,
+} from "../transcripts/store";
 
 const DELETE_AGENT_RUN_BATCH_SIZE = 500;
+const AGENT_RUN_METADATA_COLUMNS = [
+  "id",
+  "user_id",
+  "agent_id",
+  "chat_id",
+  "status",
+  "trigger",
+  "scheduled_for",
+  "started_at",
+  "completed_at",
+  "skip_reason",
+  "error_message",
+  "error_timestamp",
+  "error_code",
+  "session_id",
+  "session_server_url",
+  "worktree_original_branch",
+  "worktree_working_branch",
+  "worktree_path",
+  "pending_permission_requests",
+  "config_snapshot",
+  "created_at",
+  "updated_at",
+].join(", ");
+const AGENT_RUN_LOAD_COLUMNS = `${AGENT_RUN_METADATA_COLUMNS}, attachments`;
 
 export interface AgentRunListOptions {
   limit?: number;
@@ -95,28 +124,70 @@ export async function saveAgentRun(run: AgentRun): Promise<void> {
   const row = agentRunToRow(run);
   validateAgentRunColumnNames(Object.keys(row));
   const { sql, values } = buildUpsertSql("agent_runs", row);
-  getDatabase().prepare(sql).run(...values);
+  const db = getDatabase();
+  const userId = String(row["user_id"]);
+  db.transaction(() => {
+    const previousState = hydrateTranscriptStateForUser("agent_run", run.id, userId);
+    db.prepare(sql).run(...values);
+    syncTranscriptEntriesInTransaction(
+      db,
+      "agent_run",
+      run.id,
+      userId,
+      previousState,
+      run,
+    );
+  })();
 }
 
 export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
   const userId = requirePersistenceUserId();
   const row = getDatabase()
-    .prepare("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?")
+    .prepare(`SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs WHERE id = ? AND user_id = ?`)
     .get(runId, userId) as Record<string, unknown> | null;
-  return row ? rowToAgentRun(row) : null;
+  if (!row) {
+    return null;
+  }
+
+  const run = rowToAgentRun(row);
+  const transcript = hydrateTranscriptStateForUser("agent_run", runId, userId);
+  run.messages = transcript.messages;
+  run.logs = transcript.logs;
+  run.toolCalls = transcript.toolCalls;
+  return run;
+}
+
+/** Load agent-run metadata without parsing transcript or attachment columns. */
+export async function loadAgentRunSummary(runId: string): Promise<AgentRun | null> {
+  const userId = requirePersistenceUserId();
+  const row = getDatabase()
+    .prepare(`SELECT ${AGENT_RUN_METADATA_COLUMNS} FROM agent_runs WHERE id = ? AND user_id = ?`)
+    .get(runId, userId) as Record<string, unknown> | null;
+  if (!row) {
+    return null;
+  }
+  return rowToAgentRun(row);
 }
 
 export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | null> {
   const userId = requirePersistenceUserId();
   const row = getDatabase()
     .prepare(`
-      SELECT * FROM agent_runs
+      SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs
       WHERE chat_id = ? AND user_id = ?
       ORDER BY created_at DESC
       LIMIT 1
     `)
     .get(chatId, userId) as Record<string, unknown> | null;
-  return row ? rowToAgentRun(row) : null;
+  if (!row) {
+    return null;
+  }
+  const run = rowToAgentRun(row);
+  const transcript = hydrateTranscriptStateForUser("agent_run", run.id, userId);
+  run.messages = transcript.messages;
+  run.logs = transcript.logs;
+  run.toolCalls = transcript.toolCalls;
+  return run;
 }
 
 export async function listAgentRuns(
@@ -128,7 +199,7 @@ export async function listAgentRuns(
   const userId = requirePersistenceUserId();
   const rows = getDatabase()
     .prepare(`
-      SELECT * FROM agent_runs
+      SELECT ${AGENT_RUN_METADATA_COLUMNS} FROM agent_runs
       WHERE agent_id = ? AND user_id = ?
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -141,12 +212,19 @@ export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> 
   const userId = requirePersistenceUserId();
   const rows = getDatabase()
     .prepare(`
-      SELECT * FROM agent_runs
+      SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs
       WHERE agent_id = ? AND user_id = ? AND status IN ('scheduled', 'starting', 'running')
       ORDER BY created_at DESC
     `)
     .all(agentId, userId) as Record<string, unknown>[];
-  return rows.map(rowToAgentRun);
+  return rows.map((row) => {
+    const run = rowToAgentRun(row);
+    const transcript = hydrateTranscriptStateForUser("agent_run", run.id, userId);
+    run.messages = transcript.messages;
+    run.logs = transcript.logs;
+    run.toolCalls = transcript.toolCalls;
+    return run;
+  });
 }
 
 export async function deleteAgentRun(runId: string): Promise<boolean> {

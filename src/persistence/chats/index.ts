@@ -21,6 +21,7 @@ export {
 } from "./crud";
 export { updateChatState, updateChatConfig } from "./updates";
 export {
+  countChatTranscriptEntries,
   getChatTranscriptMeta,
   migrateLegacyChatTranscripts,
   replaceChatTranscriptEntries,

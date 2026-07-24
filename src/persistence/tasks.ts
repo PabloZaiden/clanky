@@ -12,6 +12,7 @@ export {
   saveTask,
   loadTask,
   loadTaskForUser,
+  loadTaskSummary,
   deleteTask,
   listTasks,
   listTasksForUser,
@@ -25,4 +26,6 @@ export {
   isStaleTaskStatus,
   resetStaleTask,
   resetStaleTasks,
+  migrateLegacyTaskTranscripts,
+  replaceTaskTranscriptEntriesForUser,
 } from "./tasks/index";

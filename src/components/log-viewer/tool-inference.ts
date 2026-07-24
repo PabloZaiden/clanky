@@ -1,24 +1,15 @@
 import type { ToolCallData, ToolCallSummary } from "@/shared";
 import { isToolCallSummary } from "@/shared/tool-call";
+import {
+  getToolCallOutputLabel,
+  getToolCallSummary as getSharedToolCallSummary,
+  inferToolCallKind,
+  type ToolCallKind,
+} from "@/shared/tool-call-presentation";
 import type { FileDiff } from "@/contracts";
 import { formatToolPathForDisplay } from "./tool-paths";
 
-export type InferredToolKind =
-  | "view"
-  | "edit"
-  | "glob"
-  | "rg"
-  | "apply_patch"
-  | "bash"
-  | "read_bash"
-  | "write_bash"
-  | "sql"
-  | "github_mcp"
-  | "web_fetch"
-  | "todo"
-  | "skill"
-  | "rubber_duck"
-  | "unknown";
+export type InferredToolKind = ToolCallKind;
 
 export interface ToolMeta {
   /** Inferred tool kind derived from the raw persisted payload shape. */
@@ -62,18 +53,6 @@ export interface StructuredToolDetails {
   outputBlocks: ToolDetailBlock[];
 }
 
-const RG_STYLE_KEYS = [
-  "output_mode",
-  "glob",
-  "head_limit",
-  "paths",
-  "-n",
-  "-i",
-  "-A",
-  "-B",
-  "-C",
-] as const;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -83,18 +62,9 @@ function getStringField(input: Record<string, unknown>, key: string): string | u
   return typeof value === "string" ? value : undefined;
 }
 
-function getNumberField(input: Record<string, unknown>, key: string): number | undefined {
-  const value = input[key];
-  return typeof value === "number" ? value : undefined;
-}
-
 function getBooleanField(input: Record<string, unknown>, key: string): boolean | undefined {
   const value = input[key];
   return typeof value === "boolean" ? value : undefined;
-}
-
-function hasOnlyKeys(input: Record<string, unknown>, allowedKeys: string[]): boolean {
-  return Object.keys(input).every((key) => allowedKeys.includes(key));
 }
 
 function getPathField(input: Record<string, unknown>): string | undefined {
@@ -120,82 +90,8 @@ function getPathsField(input: Record<string, unknown>): string[] | undefined {
   return value;
 }
 
-function getParsedCommandRecords(input: Record<string, unknown> | undefined): Record<string, unknown>[] {
-  const value = input?.["parsed_cmd"];
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(isRecord);
-}
-
-function getParsedCommandPath(input: Record<string, unknown> | undefined): string | undefined {
-  const command = getParsedCommandRecords(input).find((entry) => {
-    const type = getStringField(entry, "type");
-    return type === "read" || type === "list_files";
-  });
-  return command ? getStringField(command, "path") ?? getStringField(command, "name") : undefined;
-}
-
-function getStoredName(tool: ToolCallData): string | undefined {
-  const name = tool.name.trim().replace(/^general tool:\s*/i, "");
-  return name.length > 0 ? name : undefined;
-}
-
 function isEmptyRecord(value: unknown): value is Record<string, never> {
   return isRecord(value) && Object.keys(value).length === 0;
-}
-
-function getStoredNameKind(tool: ToolCallData): InferredToolKind | undefined {
-  const name = getStoredName(tool)?.toLowerCase();
-  if (!name) {
-    return undefined;
-  }
-
-  if (name === "read" || name === "view") {
-    return "view";
-  }
-
-  if (name === "edit" || name === "write" || name === "multiedit") {
-    return "edit";
-  }
-
-  if (name === "execute" || name === "bash" || name === "shell") {
-    return "bash";
-  }
-
-  if (name === "grep" || name === "rg") {
-    return "rg";
-  }
-
-  if (name === "glob" || name === "ls") {
-    return "glob";
-  }
-
-  if (name === "fetch" || name === "webfetch") {
-    return "web_fetch";
-  }
-
-  if (name === "todowrite") {
-    return "todo";
-  }
-
-  if (name === "context7_resolve_library_id" || name === "context7_get_library_docs") {
-    return "rg";
-  }
-
-  if (name === "search") {
-    const textOutput = getTextFromOutput(tool.output);
-    if (textOutput?.startsWith("Found ")) {
-      return "rg";
-    }
-    return "glob";
-  }
-
-  return undefined;
-}
-
-function truncate(text: string, maxLength: number): string {
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function formatScalarValue(value: unknown): string | undefined {
@@ -270,53 +166,6 @@ function formatApplyPatchPathLabel(path: string, oldPath?: string): string {
 
 function dedupeApplyPatchFileLabels(labels: string[]): string[] {
   return Array.from(new Set(labels));
-}
-
-function parseApplyPatchFiles(input: string): string[] {
-  const lines = normalizePatchLines(input);
-  const files: string[] = [];
-  let currentSourcePath: string | undefined;
-  let currentMoveTo: string | undefined;
-
-  function flushCurrent(): void {
-    if (!currentSourcePath) {
-      return;
-    }
-    files.push(formatApplyPatchPathLabel(currentMoveTo ?? currentSourcePath, currentMoveTo ? currentSourcePath : undefined));
-    currentSourcePath = undefined;
-    currentMoveTo = undefined;
-  }
-
-  for (const line of lines) {
-    if (line === "*** Begin Patch" || line === "*** End Patch") {
-      continue;
-    }
-
-    const fileMatch = line.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/);
-    if (fileMatch) {
-      flushCurrent();
-      const sourcePath = fileMatch[2]?.trim();
-      if (sourcePath) {
-        currentSourcePath = sourcePath;
-      }
-      continue;
-    }
-
-    if (!currentSourcePath) {
-      continue;
-    }
-
-    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
-    if (moveMatch) {
-      const moveTo = moveMatch[1]?.trim();
-      if (moveTo) {
-        currentMoveTo = moveTo;
-      }
-    }
-  }
-
-  flushCurrent();
-  return dedupeApplyPatchFileLabels(files);
 }
 
 interface ParsedApplyPatchDetails {
@@ -429,230 +278,11 @@ export function getTextFromOutput(output: unknown): string | undefined {
 }
 
 export function inferToolKind(tool: ToolCallData): InferredToolKind {
-  const { input } = tool;
-
-  if (typeof input === "string" && input.startsWith("*** Begin Patch")) {
-    return "apply_patch";
-  }
-
-  if (!isRecord(input)) {
-    return getStoredNameKind(tool) ?? "unknown";
-  }
-
-  if (isEmptyRecord(input)) {
-    return getStoredNameKind(tool) ?? "unknown";
-  }
-
-  if (Array.isArray(input["todos"])) {
-    return "todo";
-  }
-
-  if (getStringField(input, "agent_type") === "rubber-duck") {
-    return "rubber_duck";
-  }
-
-  if (typeof input["patchText"] === "string" && input["patchText"].startsWith("*** Begin Patch")) {
-    return "apply_patch";
-  }
-
-  if (isRecord(input["changes"])) {
-    return "edit";
-  }
-
-  const shellId = getStringField(input, "shellId");
-  const delay = getNumberField(input, "delay");
-
-  if (shellId && delay !== undefined && typeof input["input"] === "string") {
-    return "write_bash";
-  }
-
-  if (shellId && delay !== undefined && hasOnlyKeys(input, ["shellId", "delay"])) {
-    return "read_bash";
-  }
-
-  if (typeof input["command"] === "string") {
-    return "bash";
-  }
-
-  const parsedCommands = getParsedCommandRecords(input);
-  if (parsedCommands.some((entry) => getStringField(entry, "type") === "read")) {
-    return "view";
-  }
-
-  if (parsedCommands.some((entry) => getStringField(entry, "type") === "list_files")) {
-    return "glob";
-  }
-
-  if (typeof input["url"] === "string") {
-    return "web_fetch";
-  }
-
-  if (typeof input["skill"] === "string") {
-    return "skill";
-  }
-
-  if (typeof input["description"] === "string" && typeof input["query"] === "string") {
-    return "sql";
-  }
-
-  if (typeof input["method"] === "string" && typeof input["owner"] === "string" && typeof input["repo"] === "string") {
-    return "github_mcp";
-  }
-
-  const fileTarget = getFileTargetField(input);
-  if (fileTarget && isViewRange(input["view_range"])) {
-    return "view";
-  }
-
-  if (fileTarget && typeof input["pattern"] !== "string") {
-    return "view";
-  }
-
-  if (typeof input["pattern"] === "string") {
-    const path = getPathField(input);
-    const hasRgStyleKeys = RG_STYLE_KEYS.some((key) => key in input);
-    if (hasRgStyleKeys) {
-      return "rg";
-    }
-
-    if (hasOnlyKeys(input, ["pattern"]) || (path && hasOnlyKeys(input, ["pattern", "path"]))) {
-      return "glob";
-    }
-  }
-
-  return getStoredNameKind(tool) ?? "unknown";
+  return inferToolCallKind(tool);
 }
 
 export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, context: ToolMetaContext = {}): string {
-  const input = isRecord(tool.input) ? tool.input : undefined;
-
-  switch (kind) {
-    case "view": {
-      const path = input ? getFileTargetField(input) ?? getParsedCommandPath(input) : undefined;
-      const displayPath = path ? formatToolPathForDisplay(path, context.pathDisplayRoot) : undefined;
-      const range = input?.["view_range"];
-      if (displayPath && isViewRange(range)) {
-        return `View ${displayPath}:${range[0]}-${range[1]}`;
-      }
-      return `View ${displayPath ?? "file"}`;
-    }
-    case "edit": {
-      const changes = input && isRecord(input["changes"]) ? input["changes"] : undefined;
-      const changedPaths = changes ? Object.keys(changes) : [];
-      if (changedPaths.length === 1) {
-        return `Edit ${formatToolPathForDisplay(changedPaths[0]!, context.pathDisplayRoot)}`;
-      }
-      if (changedPaths.length > 1) {
-        return `Edit ${changedPaths.length} files`;
-      }
-      return "Edit files";
-    }
-    case "glob": {
-      const pattern = input ? getStringField(input, "pattern") : undefined;
-      const path = input ? getPathField(input) ?? getParsedCommandPath(input) : undefined;
-      const displayPath = formatOptionalPath(path, context);
-      if (!pattern) {
-        return displayPath ? `List ${displayPath}` : "List files";
-      }
-      if (path && pattern) {
-        return `Find files matching '${pattern}' in ${displayPath ?? path}`;
-      }
-      return `Find files matching '${pattern ?? ""}'`;
-    }
-    case "rg": {
-      const pattern = input ? getStringField(input, "pattern") : undefined;
-      const path = input ? getPathField(input) : undefined;
-      const paths = input ? getPathsField(input) : undefined;
-      const displayPath = formatOptionalPath(path, context);
-      if (path && pattern) {
-        return `Search for '${pattern}' in ${displayPath ?? path}`;
-      }
-      if (paths && pattern) {
-        return `Search for '${pattern}' in ${paths.length} paths`;
-      }
-      return `Search for '${pattern ?? ""}'`;
-    }
-    case "apply_patch": {
-      if (typeof tool.input !== "string") {
-        return "Apply patch";
-      }
-      const files = parseApplyPatchFiles(tool.input);
-      if (files.length === 1) {
-        return `Patch ${files[0]}`;
-      }
-      if (files.length > 1) {
-        return `Patch ${files.length} files`;
-      }
-      return "Apply patch";
-    }
-    case "bash": {
-      const description = input ? getStringField(input, "description") : undefined;
-      const command = input ? getStringField(input, "command") : undefined;
-      return description ?? truncate(command ?? "Run command", 80);
-    }
-    case "read_bash":
-      return `Read shell output (shell ${shellIdFromInput(input) ?? "unknown"})`;
-    case "write_bash": {
-      const shellId = shellIdFromInput(input) ?? "unknown";
-      const rawInput = input ? getStringField(input, "input") : undefined;
-      const preview = rawInput ? rawInput.trim() : "";
-      if (preview.length > 0 && preview.length <= 20 && !/[\r\n\t]/.test(preview)) {
-        return `Send input to shell ${shellId}: ${JSON.stringify(preview)}`;
-      }
-      return `Send input to shell ${shellId}`;
-    }
-    case "sql": {
-      const description = input ? getStringField(input, "description") : undefined;
-      return description ?? "SQL query";
-    }
-    case "github_mcp": {
-      const repo = input ? getStringField(input, "repo") : undefined;
-      const owner = input ? getStringField(input, "owner") : undefined;
-      const method = input ? getStringField(input, "method") : undefined;
-      const pullNumber = input?.["pullNumber"];
-      if (repo && typeof pullNumber === "number" && method) {
-        return `GitHub ${repo}#${pullNumber} ${method}`;
-      }
-      if (owner && repo && method) {
-        return `GitHub ${owner}/${repo} ${method}`;
-      }
-      return "GitHub tool call";
-    }
-    case "web_fetch": {
-      const url = input ? getStringField(input, "url") : undefined;
-      return `Fetch ${url ?? "URL"}`;
-    }
-    case "todo": {
-      const todos = input?.["todos"];
-      if (Array.isArray(todos)) {
-        return `Update todo list (${todos.length})`;
-      }
-      return "Update todo list";
-    }
-    case "skill": {
-      const skill = input ? getStringField(input, "skill") : undefined;
-      return `Load skill ${skill ?? "unknown"}`;
-    }
-    case "rubber_duck": {
-      const description = input ? getStringField(input, "description") : undefined;
-      const name = input ? getStringField(input, "name") : undefined;
-      if (description) {
-        return `Rubber duck: ${description}`;
-      }
-      if (name) {
-        return `Rubber duck: ${name}`;
-      }
-      return "Rubber duck agent";
-    }
-    case "unknown": {
-      const storedName = getStoredName(tool);
-      return storedName ? `General tool: ${storedName}` : "Unknown tool";
-    }
-  }
-}
-
-function shellIdFromInput(input: Record<string, unknown> | undefined): string | undefined {
-  return input ? getStringField(input, "shellId") : undefined;
+  return getSharedToolCallSummary(tool, kind, context);
 }
 
 export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "text" | "json" {
@@ -712,16 +342,16 @@ export function getToolMeta(
       : "unknown";
     return {
       kind,
-      summary: tool.summary,
+      summary: tool.input !== undefined
+        ? getToolSummary(tool, kind, context)
+        : tool.summary,
       outputLabel: tool.outputLabel,
       outputType: tool.outputType,
     };
   }
 
   const kind = inferToolKind(tool);
-  const outputLabel = kind === "sql" ? "Done" : kind === "view" || kind === "glob" || kind === "rg" || kind === "apply_patch"
-    ? "Result"
-    : "Output";
+  const outputLabel = getToolCallOutputLabel(kind, tool.status);
 
   return {
     kind,

@@ -30,6 +30,7 @@ export { tasksPendingRoutes } from "./pending";
 export { tasksPlanRoutes } from "./plan";
 export { tasksStopRoutes } from "./stop";
 export { tasksChatRoutes } from "./chat";
+export { tasksTranscriptRoutes } from "./transcript";
 
 import { tasksCrudRoutes } from "./crud";
 import { tasksDraftRoutes } from "./draft";
@@ -42,6 +43,7 @@ import { tasksDataRoutes } from "./data";
 import { tasksReviewRoutes } from "./review";
 import { tasksStopRoutes } from "./stop";
 import { tasksChatRoutes } from "./chat";
+import { tasksTranscriptRoutes } from "./transcript";
 
 /**
  * All tasks routes combined.
@@ -58,4 +60,5 @@ export const tasksRoutes = defineRoutes({
   ...tasksReviewRoutes,
   ...tasksStopRoutes,
   ...tasksChatRoutes,
+  ...tasksTranscriptRoutes,
 });

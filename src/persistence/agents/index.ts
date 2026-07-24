@@ -7,6 +7,7 @@ export {
   deleteAgent,
   saveAgentRun,
   loadAgentRun,
+  loadAgentRunSummary,
   loadAgentRunByChatId,
   listAgentRuns,
   listActiveAgentRuns,
@@ -15,3 +16,4 @@ export {
   type AgentRunListOptions,
   type AgentRunPurgeOptions,
 } from "./crud";
+export { migrateLegacyAgentRunTranscripts, replaceAgentRunTranscriptEntriesForUser } from "./transcript";

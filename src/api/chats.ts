@@ -18,9 +18,11 @@ import { isDomainError } from "../core/domain-error";
 import { preferencesManager } from "../core/preferences-manager";
 import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
 import {
-  InvalidChatTranscriptCursorError,
+  getTranscriptPageEtag,
+  getTranscriptSnapshotEtag,
+  InvalidTranscriptCursorError,
   normalizeTranscriptPageSize,
-} from "../core/chat-transcript-service";
+} from "../core/transcript-service";
 
 const log = createLogger("api:chats");
 
@@ -119,11 +121,6 @@ function transcriptResponseHeaders(revision: string): Headers {
 function isNotModified(request: Request, revision: string): boolean {
   const ifNoneMatch = request.headers.get("If-None-Match");
   return ifNoneMatch === `"${revision}"` || ifNoneMatch === revision;
-}
-
-function isChatTranscriptPaginationDisabled(): boolean {
-  const value = process.env["CLANKY_DISABLE_CHAT_TRANSCRIPT_PAGINATION"]?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
 }
 
 export const chatsRoutes = defineRoutes({
@@ -362,13 +359,6 @@ export const chatsRoutes = defineRoutes({
     description: "Read the recent paginated transcript snapshot for a chat.",
     async GET(req: Request, ctx): Promise<Response> {
       try {
-        if (isChatTranscriptPaginationDisabled()) {
-          return errorResponse(
-            "transcript_pagination_disabled",
-            "Paginated chat transcripts are disabled by server configuration",
-            501,
-          );
-        }
         const url = new URL(req.url);
         const limit = normalizeTranscriptPageSize(url.searchParams.get("limit"));
         const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!, limit);
@@ -376,18 +366,23 @@ export const chatsRoutes = defineRoutes({
           return errorResponse("not_found", "Chat not found", 404);
         }
 
-        if (isNotModified(req, snapshot.transcript.revision)) {
+        const revision = getTranscriptSnapshotEtag(
+          snapshot.transcript.revision,
+          { config: snapshot.config, state: snapshot.state },
+          limit,
+        );
+        if (isNotModified(req, revision)) {
           return new Response(null, {
             status: 304,
-            headers: transcriptResponseHeaders(snapshot.transcript.revision),
+            headers: transcriptResponseHeaders(revision),
           });
         }
 
         return Response.json(snapshot, {
-          headers: transcriptResponseHeaders(snapshot.transcript.revision),
+          headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
-        if (error instanceof InvalidChatTranscriptCursorError) {
+        if (error instanceof InvalidTranscriptCursorError) {
           return errorResponse(error.code, error.message, error.status);
         }
         if (error instanceof Error && error.message.startsWith("Transcript limit")) {
@@ -412,13 +407,6 @@ export const chatsRoutes = defineRoutes({
     description: "Read an older page of a chat transcript.",
     async GET(req: Request, ctx): Promise<Response> {
       try {
-        if (isChatTranscriptPaginationDisabled()) {
-          return errorResponse(
-            "transcript_pagination_disabled",
-            "Paginated chat transcripts are disabled by server configuration",
-            501,
-          );
-        }
         const url = new URL(req.url);
         const limit = normalizeTranscriptPageSize(url.searchParams.get("limit"));
         const before = url.searchParams.get("before")?.trim() || undefined;
@@ -427,7 +415,7 @@ export const chatsRoutes = defineRoutes({
           return errorResponse("not_found", "Chat not found", 404);
         }
 
-        const revision = `${page.revision}:${before ?? "latest"}:${limit}`;
+        const revision = getTranscriptPageEtag(page.revision, before, limit);
         if (isNotModified(req, revision)) {
           return new Response(null, {
             status: 304,
@@ -439,7 +427,7 @@ export const chatsRoutes = defineRoutes({
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
-        if (error instanceof InvalidChatTranscriptCursorError) {
+        if (error instanceof InvalidTranscriptCursorError) {
           return errorResponse(error.code, error.message, error.status);
         }
         if (error instanceof Error && error.message.startsWith("Transcript limit")) {

@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
-import type { Chat, ChatEvent } from "@/shared";
+import type { Chat, ChatEvent, ChatSnapshot } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
-import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
+import {
+  getStreamingActivityStatus,
+  mergeChatSnapshot,
+  mergeChatSummarySnapshot,
+} from "../utils/chat-snapshot";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
 const log = createLogger("useChats");
@@ -121,7 +125,7 @@ export function useChats(): UseChatsResult {
 
   const refreshChat = useCallback(async (id: string) => {
     try {
-      const response = await appFetch(`/api/chats/${id}`);
+      const response = await appFetch(`/api/chats/${id}/snapshot?limit=1`);
       if (!response.ok) {
         if (response.status === 404) {
           setChats((prev) => prev.filter((chat) => chat.config.id !== id));
@@ -129,8 +133,22 @@ export function useChats(): UseChatsResult {
         }
         throw new Error(await parseError(response, "Failed to fetch chat"));
       }
-      const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      const snapshot = await response.json() as ChatSnapshot;
+      const chat = {
+        config: snapshot.config,
+        state: {
+          ...snapshot.state,
+          messages: [],
+          logs: [],
+          toolCalls: [],
+        },
+      } satisfies Chat;
+      setChats((prev) => {
+        const next = prev.filter((item) => item.config.id !== id);
+        const current = prev.find((item) => item.config.id === id);
+        next.push(current ? mergeChatSummarySnapshot(current, chat) : chat);
+        return sortChats(next);
+      });
     } catch (refreshError) {
       log.error("Failed to refresh chat", { chatId: id, error: String(refreshError) });
     }

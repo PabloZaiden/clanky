@@ -4,12 +4,12 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { TaskEvent, MessageData, ToolCallData } from "@/shared";
+import type { TaskEvent, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useTaskData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { isToolCallSummary, mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 
 const log = createLogger("useTask");
 
@@ -18,7 +18,7 @@ export interface TaskEventHandlerParams {
   refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setMessages: Dispatch<SetStateAction<MessageData[]>>;
-  setToolCalls: Dispatch<SetStateAction<ToolCallData[]>>;
+  setToolCalls: Dispatch<SetStateAction<ToolCallDisplayData[]>>;
   setProgressContent: Dispatch<SetStateAction<string>>;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
 }
@@ -156,7 +156,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           const index = prev.findIndex((tc) => tc.id === event.tool.id);
           if (index >= 0) {
             const newToolCalls = [...prev];
-            newToolCalls[index] = mergeToolCallRecord(newToolCalls[index], event.tool);
+            newToolCalls[index] = mergeToolCallRecord<ToolCallData>(newToolCalls[index], event.tool);
             return newToolCalls;
           }
           const newToolCalls = [...prev, event.tool];
@@ -169,7 +169,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
 
       case "task.tool_call.extra":
         setToolCalls((prev) => prev.map((toolCall) => (
-          toolCall.id === event.toolId
+          toolCall.id === event.toolId && !isToolCallSummary(toolCall)
             ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
             : toolCall
         )));

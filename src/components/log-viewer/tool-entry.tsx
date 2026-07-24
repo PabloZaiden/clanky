@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ToolCallData, ToolCallDisplayData } from "@/shared";
-import { isToolCallSummary } from "@/shared/tool-call";
+import { isToolCallDetailsStale, isToolCallSummary } from "@/shared/tool-call";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
@@ -232,6 +232,15 @@ export const ToolEntry = memo(function ToolEntry({
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const activeTool = details ?? (isSummary ? null : tool);
+  useEffect(() => {
+    if (!isSummary) {
+      setDetails(tool);
+      return;
+    }
+    if (details && isToolCallDetailsStale(tool, details)) {
+      setDetails(null);
+    }
+  }, [details, isSummary, tool]);
   const meta = getToolMeta(activeTool ?? tool, { pathDisplayRoot: toolPathDisplayRoot });
   const structuredDetails = useMemo(
     () => activeTool
@@ -288,7 +297,8 @@ export const ToolEntry = memo(function ToolEntry({
     : null;
 
   const loadDetails = useCallback(async () => {
-    if (!isSummary || details || detailsLoading) {
+    const detailsAreStale = isSummary && details !== null && isToolCallDetailsStale(tool, details);
+    if (!isSummary || (details !== null && !detailsAreStale) || detailsLoading) {
       return;
     }
     if (!onLoadToolDetails) {
@@ -296,6 +306,9 @@ export const ToolEntry = memo(function ToolEntry({
       return;
     }
 
+    if (detailsAreStale) {
+      setDetails(null);
+    }
     setDetailsLoading(true);
     setDetailsError(null);
     try {
@@ -367,6 +380,7 @@ export const ToolEntry = memo(function ToolEntry({
             summary={inputSummary}
             renderContent={renderDetailsContent}
             onOpen={() => void loadDetails()}
+            contentRevision={tool.detailRevision}
             className="w-full"
             triggerClassName="w-full text-left"
             panelClassName="mt-2"

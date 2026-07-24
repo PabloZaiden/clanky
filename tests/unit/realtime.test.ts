@@ -9,6 +9,7 @@ import {
   type ClankyRealtimeEvent,
   type ClankyRealtimePublisher,
 } from "../../src/realtime";
+import { createToolCallSummary, isToolCallDetailsStale } from "../../src/shared/tool-call";
 
 interface PublishedResource {
   ownerId: string;
@@ -175,7 +176,7 @@ describe("Clanky realtime migration", () => {
     };
     expect(event.tool["id"]).toBe("tool-1");
     expect(event.tool["detailAvailable"]).toBe(true);
-    expect(event.tool["input"]).toBeUndefined();
+    expect(event.tool["input"]).toEqual({ filePath: "src/index.ts" });
     expect(event.tool["output"]).toBeUndefined();
   });
 
@@ -202,7 +203,40 @@ describe("Clanky realtime migration", () => {
     }, { userId: "user-1" });
 
     expect(recording.streams).toEqual([]);
-    expect(recording.resources).toEqual([]);
+    expect(recording.resources).toEqual([{
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.chats,
+      action: "changed",
+      id: "chat-1",
+      scope: undefined,
+    }]);
+  });
+
+  test("marks lazy tool details stale when the server detail revision changes", () => {
+    const summary = createToolCallSummary({
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "initial" },
+      status: "completed",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      detailRevision: "revision-1",
+    });
+    const details = {
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "initial" },
+      status: "completed" as const,
+      timestamp: "2026-01-01T00:00:00.000Z",
+      detailRevision: "revision-1",
+    };
+
+    expect(isToolCallDetailsStale(summary, details)).toBe(false);
+    expect(isToolCallDetailsStale(
+      { ...summary, detailRevision: "revision-2" },
+      details,
+    )).toBe(true);
   });
 
   test("invalidates the task resource when an iteration starts", () => {
