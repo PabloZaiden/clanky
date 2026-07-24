@@ -1,4 +1,10 @@
 import type { MessageImageAttachment } from "./message-attachments";
+import {
+  getToolCallOutputLabel,
+  getToolCallSummary,
+  inferToolCallKind,
+  type ToolCallKind,
+} from "./tool-call-presentation";
 
 export interface ToolCallImagePreviewExtra {
   id: string;
@@ -12,11 +18,79 @@ export type ToolCallExtra = ToolCallImagePreviewExtra;
 export interface ToolCallRecord {
   id: string;
   name: string;
-  input: unknown;
+  input?: unknown;
   output?: unknown;
   status: "pending" | "running" | "completed" | "failed";
   timestamp: string;
   extras?: ToolCallExtra[];
+  /** Server-side revision used to invalidate cached lazy details. */
+  detailRevision?: string;
+}
+
+/**
+ * Lightweight browser representation used by paginated chat transcripts.
+ * Tool inputs are included so collapsed rows can be described accurately;
+ * outputs and image bytes stay on the server until the row is expanded.
+ */
+export interface ToolCallSummary {
+  id: string;
+  name: string;
+  input?: unknown;
+  status: ToolCallRecord["status"];
+  timestamp: string;
+  summary: string;
+  kind: ToolCallKind;
+  outputLabel: string;
+  outputType: "text" | "json";
+  hasInput: boolean;
+  hasOutput: boolean;
+  detailRevision?: string;
+  detailAvailable: true;
+}
+
+export type ToolCallDisplayData = ToolCallRecord | ToolCallSummary;
+
+/** Keep normal tool inputs complete without allowing pathological payloads into snapshots. */
+export function isToolCallSummary(value: ToolCallDisplayData): value is ToolCallSummary {
+  return "detailAvailable" in value && value.detailAvailable === true;
+}
+
+export function isToolCallDetailsStale(
+  summary: ToolCallSummary,
+  details: ToolCallRecord,
+): boolean {
+  return (
+    details.status !== summary.status
+    || (summary.hasInput && details.input === undefined)
+    || (summary.hasOutput && details.output === undefined)
+    || (
+      summary.detailRevision !== undefined
+      && details.detailRevision !== summary.detailRevision
+    )
+  );
+}
+
+export function createToolCallSummary(
+  tool: ToolCallRecord,
+  metadata: { hasOutput?: boolean; detailRevision?: string } = {},
+): ToolCallSummary {
+  const kind = inferToolCallKind(tool);
+  const detailRevision = metadata.detailRevision ?? tool.detailRevision;
+  return {
+    id: tool.id,
+    name: tool.name,
+    ...(tool.input !== undefined ? { input: tool.input } : {}),
+    status: tool.status,
+    timestamp: tool.timestamp,
+    summary: getToolCallSummary(tool, kind),
+    kind,
+    outputLabel: getToolCallOutputLabel(kind, tool.status),
+    outputType: typeof tool.output === "string" ? "text" : "json",
+    hasInput: tool.input !== undefined,
+    hasOutput: metadata.hasOutput ?? tool.output !== undefined,
+    ...(detailRevision !== undefined ? { detailRevision } : {}),
+    detailAvailable: true,
+  };
 }
 
 function isNonNullObject(value: unknown): value is Record<string, unknown> {
@@ -117,6 +191,95 @@ export function mergeToolCallRecord<T extends ToolCallRecord>(
     ...(mergedOutput !== undefined ? { output: mergedOutput } : {}),
     ...(mergedExtras !== undefined ? { extras: mergedExtras } : {}),
   };
+}
+
+function isTerminalToolStatus(status: ToolCallRecord["status"]): boolean {
+  return status === "completed" || status === "failed";
+}
+
+function mergeToolCallSummaries(
+  existing: ToolCallSummary,
+  incoming: ToolCallSummary,
+): ToolCallSummary {
+  const latest = incoming.timestamp.localeCompare(existing.timestamp) >= 0 ? incoming : existing;
+  const status = isTerminalToolStatus(existing.status) && !isTerminalToolStatus(incoming.status)
+    ? existing.status
+    : isTerminalToolStatus(incoming.status) && !isTerminalToolStatus(existing.status)
+      ? incoming.status
+      : latest.status;
+  const selected = status === latest.status
+    ? latest
+    : status === existing.status
+      ? existing
+      : incoming;
+  const input = latest.input ?? existing.input ?? incoming.input;
+  const displayTool: ToolCallRecord = {
+    id: selected.id,
+    name: selected.name,
+    status,
+    timestamp: selected.timestamp,
+    ...(input !== undefined ? { input } : {}),
+  };
+  const kind = inferToolCallKind(displayTool);
+
+  return {
+    ...selected,
+    ...(input !== undefined ? { input } : {}),
+    status,
+    summary: getToolCallSummary(displayTool, kind),
+    kind,
+    outputLabel: getToolCallOutputLabel(kind, status),
+    hasInput: existing.hasInput || incoming.hasInput || input !== undefined,
+    hasOutput: existing.hasOutput || incoming.hasOutput,
+    ...(selected.detailRevision === undefined
+      ? (existing.detailRevision !== undefined
+        ? { detailRevision: existing.detailRevision }
+        : incoming.detailRevision !== undefined
+          ? { detailRevision: incoming.detailRevision }
+          : {})
+      : {}),
+    detailAvailable: true,
+  };
+}
+
+function toToolCallRecord(value: ToolCallRecord): ToolCallRecord {
+  const displayValue = value as ToolCallRecord & Partial<ToolCallSummary>;
+  const {
+    summary: _summary,
+    kind: _kind,
+    outputLabel: _outputLabel,
+    outputType: _outputType,
+    hasInput: _hasInput,
+    hasOutput: _hasOutput,
+    detailAvailable: _detailAvailable,
+    ...record
+  } = displayValue;
+  return record;
+}
+
+export function mergeToolCallDisplayData(
+  existing: ToolCallDisplayData | undefined,
+  incoming: ToolCallDisplayData,
+): ToolCallDisplayData {
+  if (!existing) {
+    return incoming;
+  }
+  if (isToolCallSummary(existing) && isToolCallSummary(incoming)) {
+    return mergeToolCallSummaries(existing, incoming);
+  }
+  if (isToolCallSummary(existing)) {
+    return toToolCallRecord(mergeToolCallRecord<ToolCallRecord>(
+      existing as ToolCallRecord,
+      incoming as ToolCallRecord,
+    ));
+  }
+  if (isToolCallSummary(incoming)) {
+    return toToolCallRecord(mergeToolCallRecord<ToolCallRecord>(
+      incoming as ToolCallRecord,
+      existing,
+    ));
+  }
+  return toToolCallRecord(mergeToolCallRecord(existing, incoming));
 }
 
 export function upsertToolCallRecord<T extends ToolCallRecord>(

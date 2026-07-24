@@ -13,3 +13,16 @@ test("recognizes and strips a trailing BLOCKED marker", () => {
     content: "The upstream dependency is unavailable.",
   });
 });
+
+test("recognizes PLAN_READY when the marker is wrapped in inline markdown code", () => {
+  const match = detectTrailingPromiseMarker(
+    "The plan is ready for review. `<promise>plan_ready</promise>`",
+  );
+
+  expect(match).toEqual({
+    marker: "plan_ready",
+    kind: "plan_ready",
+    label: "PLAN READY",
+    content: "The plan is ready for review.",
+  });
+});

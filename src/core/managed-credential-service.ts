@@ -33,9 +33,28 @@ import { DomainError } from "./domain-error";
 import { requireCurrentUser } from "./user-context";
 
 const MANAGED_BY = "clanky.execution-context";
+export const DETERMINISTIC_AGENT_MANAGED_BY = "clanky.deterministic-agent-runtime";
+export const DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHED_CREDENTIALS = 256;
 
+function canCreateWhenWorkspaceDisabled(options?: ManagedCredentialOptions): boolean {
+  return options?.allowWhenWorkspaceDisabled === true
+    && options.managedBy === DETERMINISTIC_AGENT_MANAGED_BY;
+}
+
 export type ManagedCredentialMode = "reuse" | "recreate";
+
+export interface ManagedCredentialOptions {
+  managedBy?: string;
+  name?: string;
+  scopes?: string[];
+  expiresAt?: string;
+  /**
+   * Allow a narrowly scoped runtime credential to be created even when the
+   * workspace does not expose general Clanky CLI credentials.
+   */
+  allowWhenWorkspaceDisabled?: boolean;
+}
 
 export type ManagedCredentialErrorCode =
   | "managed_context_not_configured"
@@ -53,6 +72,8 @@ export interface ManagedRuntimeCredential extends ManagedContextIdentity {
   generation: number;
   baseUrl: string;
   token: string;
+  expiresAt?: string;
+  managedBy?: string;
 }
 
 function credentialCacheKey(identity: ManagedContextIdentity): string {
@@ -75,12 +96,17 @@ function contextDetails(identity: ManagedContextIdentity): Record<string, string
 export class ManagedCredentialService {
   private store: WebAppStore | undefined;
   private publicBaseUrl: string | undefined;
+  private localBaseUrl: string | undefined;
   private readonly activeCredentials = new Map<string, ManagedRuntimeCredential>();
   private readonly credentialLocks = new Map<string, Promise<void>>();
 
-  configure(store: WebAppStore, config: Pick<RuntimeConfig, "publicBaseUrl">): void {
+  configure(
+    store: WebAppStore,
+    config: Pick<RuntimeConfig, "publicBaseUrl"> & { localBaseUrl?: string },
+  ): void {
     this.store = store;
     this.publicBaseUrl = config.publicBaseUrl;
+    this.localBaseUrl = config.localBaseUrl;
     this.activeCredentials.clear();
     this.credentialLocks.clear();
   }
@@ -88,6 +114,7 @@ export class ManagedCredentialService {
   resetForTests(): void {
     this.store = undefined;
     this.publicBaseUrl = undefined;
+    this.localBaseUrl = undefined;
     this.activeCredentials.clear();
     this.credentialLocks.clear();
   }
@@ -95,6 +122,7 @@ export class ManagedCredentialService {
   async ensureCredential(
     identity: ManagedContextIdentity,
     mode: ManagedCredentialMode = "reuse",
+    options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential> {
     const user = requireCurrentUser();
     this.assertOwner(identity, user.id);
@@ -115,7 +143,7 @@ export class ManagedCredentialService {
             details: contextDetails(identity),
           });
         }
-        if (workspace.allowClankyContext !== true) {
+        if (workspace.allowClankyContext !== true && !canCreateWhenWorkspaceDisabled(options)) {
           throw new ManagedCredentialError(
             "managed_context_disabled",
             "This workspace does not allow new Clanky execution contexts",
@@ -124,17 +152,17 @@ export class ManagedCredentialService {
         }
       }
 
-      if (mode === "reuse") {
+      if (mode === "reuse" && !options) {
         const cached = this.activeCredentials.get(cacheKey);
         if (cached) {
-          const baseUrl = this.requirePublicBaseUrl();
+          const baseUrl = await this.requirePublicBaseUrl(identity);
           this.activeCredentials.delete(cacheKey);
           this.activeCredentials.set(cacheKey, { ...cached, baseUrl });
           return { ...cached, baseUrl };
         }
       }
 
-      const baseUrl = this.requirePublicBaseUrl();
+      const baseUrl = await this.requirePublicBaseUrl(identity);
       const generation = await getNextContextApiKeyGenerationForUser(
         user.id,
         identity.workspaceId,
@@ -142,9 +170,10 @@ export class ManagedCredentialService {
         identity.contextId,
       );
       const created = createManagedApiKey(store, user, {
-        name: "Clanky execution context",
-        managedBy: MANAGED_BY,
-        scopes: ["*"],
+        name: options?.name ?? "Clanky execution context",
+        managedBy: options?.managedBy ?? MANAGED_BY,
+        scopes: options?.scopes ?? ["*"],
+        expiresAt: options?.expiresAt,
       });
 
       let association: ContextApiKeyAssociation;
@@ -182,6 +211,8 @@ export class ManagedCredentialService {
         generation: association.generation,
         baseUrl,
         token: created.token,
+        ...(created.key.expiresAt ? { expiresAt: created.key.expiresAt } : {}),
+        ...(created.key.managedBy ? { managedBy: created.key.managedBy } : {}),
       };
       this.cacheCredential(cacheKey, credential);
       return credential;
@@ -191,6 +222,7 @@ export class ManagedCredentialService {
   async ensureCredentialForRuntime(
     identity: ManagedContextIdentity,
     mode: ManagedCredentialMode = "reuse",
+    options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential | undefined> {
     const user = requireCurrentUser();
     this.assertOwner(identity, user.id);
@@ -207,12 +239,12 @@ export class ManagedCredentialService {
           details: contextDetails(identity),
         });
       }
-      if (workspace.allowClankyContext !== true) {
+      if (workspace.allowClankyContext !== true && !canCreateWhenWorkspaceDisabled(options)) {
         return undefined;
       }
     }
 
-    return await this.ensureCredential(identity, mode);
+    return await this.ensureCredential(identity, mode, options);
   }
 
   async revokeCredential(credential: ManagedRuntimeCredential): Promise<void> {
@@ -287,15 +319,15 @@ export class ManagedCredentialService {
       if (association.workspaceId !== workspaceId) {
         continue;
       }
-      const key = JSON.stringify([
+      const contextKey = JSON.stringify([
         association.workspaceId,
         association.contextType,
         association.contextId,
       ]);
-      if (contextKeys.has(key)) {
+      if (contextKeys.has(contextKey)) {
         continue;
       }
-      contextKeys.add(key);
+      contextKeys.add(contextKey);
       await this.revokeContext({
         userId: user.id,
         workspaceId: association.workspaceId,
@@ -311,21 +343,37 @@ export class ManagedCredentialService {
     }
     const user = requireCurrentUser();
     const associations = await listContextApiKeyAssociationsForUser(user.id);
+    const managedKeys = listManagedApiKeys(this.store, user.id);
+    const managedKeysById = new Map(managedKeys.map((key) => [key.id, key]));
+    const activeAssociationKeyIds = new Set<string>();
     const contextKeys = new Set<string>();
     let revokedContextCount = 0;
     for (const association of associations) {
       if (association.revokedAt) {
         continue;
       }
-      const key = JSON.stringify([
+      const key = managedKeysById.get(association.apiKeyId);
+      if (!key) {
+        await revokeContextApiKeyAssociationForUser(user.id, association.apiKeyId);
+        revokedContextCount += 1;
+        continue;
+      }
+      activeAssociationKeyIds.add(association.apiKeyId);
+      if (key.managedBy === DETERMINISTIC_AGENT_MANAGED_BY) {
+        revokeManagedApiKey(this.store, association.apiKeyId, user.id);
+        await revokeContextApiKeyAssociationForUser(user.id, association.apiKeyId);
+        revokedContextCount += 1;
+        continue;
+      }
+      const contextKey = JSON.stringify([
         association.workspaceId,
         association.contextType,
         association.contextId,
       ]);
-      if (contextKeys.has(key)) {
+      if (contextKeys.has(contextKey)) {
         continue;
       }
-      contextKeys.add(key);
+      contextKeys.add(contextKey);
       if (await this.contextExists(association)) {
         continue;
       }
@@ -336,6 +384,15 @@ export class ManagedCredentialService {
         contextId: association.contextId,
       });
       revokedContextCount += 1;
+    }
+    for (const managedKey of managedKeys) {
+      if (
+        managedKey.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
+        && !activeAssociationKeyIds.has(managedKey.id)
+      ) {
+        revokeManagedApiKey(this.store, managedKey.id, user.id);
+        revokedContextCount += 1;
+      }
     }
     return revokedContextCount;
   }
@@ -362,9 +419,9 @@ export class ManagedCredentialService {
     throw launchError;
   }
 
-  listManagedKeysForCurrentUser(): ManagedApiKeySummary[] {
+  listManagedKeysForCurrentUser(managedBy?: string): ManagedApiKeySummary[] {
     const user = requireCurrentUser();
-    return listManagedApiKeys(this.requireStore(), user.id, MANAGED_BY);
+    return listManagedApiKeys(this.requireStore(), user.id, managedBy ?? MANAGED_BY);
   }
 
   private assertOwner(identity: ManagedContextIdentity, userId: string): void {
@@ -387,12 +444,18 @@ export class ManagedCredentialService {
     return this.store;
   }
 
-  private requirePublicBaseUrl(): string {
-    const rawValue = this.publicBaseUrl?.trim();
+  private async requirePublicBaseUrl(identity: ManagedContextIdentity): Promise<string> {
+    let rawValue = this.publicBaseUrl?.trim();
+    if (!rawValue) {
+      const workspace = await getWorkspace(identity.workspaceId);
+      if (workspace?.serverSettings.agent.transport === "stdio") {
+        rawValue = this.localBaseUrl?.trim();
+      }
+    }
     if (!rawValue) {
       throw new ManagedCredentialError(
         "managed_context_base_url_missing",
-        "CLANKY_PUBLIC_BASE_URL must be configured before starting a managed execution context",
+        "A reachable Clanky public base URL must be configured before starting a managed execution context on a remote workspace",
       );
     }
 

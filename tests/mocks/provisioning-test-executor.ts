@@ -239,8 +239,12 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     return this.directories.has(path) || this.gitRepos.has(path);
   }
 
-  async readFile(path: string): Promise<string | null> {
-    return this.files.get(path) ?? null;
+  async readFile(path: string, options?: FileStreamOptions): Promise<string | null> {
+    if (options?.signal?.aborted) {
+      return null;
+    }
+    const content = this.files.get(path) ?? null;
+    return options?.signal?.aborted ? null : content;
   }
 
   async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {

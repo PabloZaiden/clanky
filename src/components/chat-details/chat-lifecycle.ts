@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
+import {
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptSnapshotToolCalls,
+} from "@/shared";
 import type {
   Chat,
+  ChatSnapshot,
   MessageData,
   TaskLogEntry,
   ToolCallData,
+  ToolCallDisplayData,
 } from "@/shared";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { shouldIncludeChatTranscriptLog } from "@/shared";
+import {
+  isToolCallDetailsStale,
+  isToolCallSummary,
+  mergeToolCallDisplayData,
+  upsertToolCallExtra,
+} from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
   getStreamingActivityStatus,
-  mergeChatSnapshot,
 } from "../../utils/chat-snapshot";
 import type {
   ChatLifecycleResult,
   ChatRefreshOptions,
   ChatStreamEvent,
+  ChatTranscriptViewState,
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
@@ -41,22 +53,82 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  const next = items.filter((entry) => entry.id !== item.id);
-  next.push(item);
-  return next.sort((left, right) => {
-    const leftTimestamp = left.timestamp ?? "";
-    const rightTimestamp = right.timestamp ?? "";
-    const byTimestamp = leftTimestamp.localeCompare(rightTimestamp);
-    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  }).slice(-1000);
+  const existingIndex = items.findIndex((entry) => entry.id === item.id);
+  const next = existingIndex === -1
+    ? [...items, item]
+    : items.map((entry, index) => index === existingIndex ? item : entry);
+  return next.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
+}
+
+function createEmptyTranscript(): ChatTranscriptViewState {
+  return {
+    messages: [],
+    logs: [],
+    toolCalls: [],
+    revision: "",
+    totalEntries: 0,
+  };
+}
+
+function hydrateChatSnapshot(snapshot: ChatSnapshot): {
+  chat: Chat;
+  transcript: ChatTranscriptViewState;
+} {
+  return {
+    chat: {
+      config: snapshot.config,
+      state: {
+        ...snapshot.state,
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    },
+    transcript: {
+      messages: snapshot.transcript.messages,
+      logs: snapshot.transcript.logs,
+      toolCalls: snapshot.transcript.toolCalls,
+      revision: snapshot.transcript.revision,
+      totalEntries: snapshot.transcript.totalEntries,
+    },
+  };
+}
+
+function mergeDisplayToolCall(
+  existing: ToolCallDisplayData | undefined,
+  incoming: ToolCallDisplayData,
+): ToolCallDisplayData {
+  return mergeToolCallDisplayData(existing, incoming);
+}
+
+function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
+  return {
+    ...current,
+    config: {
+      ...current.config,
+      ...incoming.config,
+    },
+    state: {
+      ...current.state,
+      ...incoming.state,
+      messages: [],
+      logs: [],
+      toolCalls: [],
+    },
+  };
 }
 
 interface ChatStreamUpdate {
   chat: Chat;
+  transcript?: ChatTranscriptViewState;
   refreshOptions?: ChatRefreshOptions;
 }
 
-function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStreamUpdate {
+function applyChatStreamEvent(
+  current: Chat,
+  transcript: ChatTranscriptViewState,
+  event: ChatStreamEvent,
+): ChatStreamUpdate {
   switch (event.type) {
     case "chat.status":
       return {
@@ -72,12 +144,15 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
               ? getStreamingActivityStatus(current.state.status)
               : current.state.status,
             lastActivityAt: event.timestamp,
-            messages: upsertById(current.state.messages as MessageData[], event.message),
           },
+        },
+        transcript: {
+          ...transcript,
+          messages: upsertById(transcript.messages as MessageData[], event.message),
         },
       };
     case "chat.message.delta": {
-      const messages = current.state.messages as MessageData[];
+      const messages = transcript.messages as MessageData[];
       const existingIndex = messages.findIndex((messageEntry) => messageEntry.id === event.messageId);
       if (existingIndex < 0 && event.baseLength !== 0) {
         return { chat: current, refreshOptions: { showLoading: false } };
@@ -99,7 +174,7 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
           };
       const nextMessages = existingIndex >= 0
         ? messages.map((messageEntry, index) => index === existingIndex ? nextMessage : messageEntry)
-        : [...messages, nextMessage].slice(-1000);
+        : [...messages, nextMessage];
       return {
         chat: {
           ...current,
@@ -110,8 +185,11 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
               : current.state.status,
             activeMessageId: event.messageId,
             lastActivityAt: event.timestamp,
-            messages: nextMessages,
           },
+        },
+        transcript: {
+          ...transcript,
+          messages: nextMessages,
         },
       };
     }
@@ -123,14 +201,17 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
             lastActivityAt: event.timestamp,
-            toolCalls: upsertById(
-              current.state.toolCalls as ToolCallData[],
-              mergeToolCallRecord(
-                (current.state.toolCalls as ToolCallData[]).find((toolCall) => toolCall.id === event.tool.id),
-                event.tool,
-              ),
-            ),
           },
+        },
+        transcript: {
+          ...transcript,
+          toolCalls: upsertById(
+            transcript.toolCalls,
+            mergeDisplayToolCall(
+              transcript.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
+              event.tool,
+            ),
+          ),
         },
       };
     case "chat.tool_call.extra":
@@ -141,15 +222,34 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
             lastActivityAt: event.timestamp,
-            toolCalls: (current.state.toolCalls as ToolCallData[]).map((toolCall) => (
-              toolCall.id === event.toolId
-                ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
-                : toolCall
-            )),
           },
+        },
+        transcript: {
+          ...transcript,
+          toolCalls: transcript.toolCalls.map((toolCall) => {
+            if (toolCall.id !== event.toolId || isToolCallSummary(toolCall)) {
+              return toolCall;
+            }
+            return {
+              ...toolCall,
+              extras: upsertToolCallExtra(toolCall.extras, event.extra),
+            };
+          }),
         },
       };
     case "chat.log":
+      if (!shouldIncludeChatTranscriptLog(event.log)) {
+        return {
+          chat: {
+            ...current,
+            state: {
+              ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
+              lastActivityAt: event.timestamp,
+            },
+          },
+        };
+      }
       return {
         chat: {
           ...current,
@@ -157,12 +257,28 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
             lastActivityAt: event.timestamp,
-            logs: upsertById(current.state.logs as TaskLogEntry[], event.log),
           },
+        },
+        transcript: {
+          ...transcript,
+          logs: upsertById(transcript.logs as TaskLogEntry[], event.log),
         },
       };
     case "chat.log.delta": {
-      const logs = current.state.logs as TaskLogEntry[];
+      if (event.logKind === "response" || event.logKind === "tool" || event.logKind === "system") {
+        return {
+          chat: {
+            ...current,
+            state: {
+              ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
+              lastActivityAt: event.timestamp,
+            },
+          },
+        };
+      }
+
+      const logs = transcript.logs as TaskLogEntry[];
       const existingIndex = logs.findIndex((logEntry) => logEntry.id === event.logId);
       if (existingIndex < 0 && event.baseLength !== 0) {
         return { chat: current, refreshOptions: { showLoading: false } };
@@ -195,9 +311,21 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
             },
             timestamp: event.logTimestamp,
           };
+      if (!shouldIncludeChatTranscriptLog(nextLog)) {
+        return {
+          chat: {
+            ...current,
+            state: {
+              ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
+              lastActivityAt: event.timestamp,
+            },
+          },
+        };
+      }
       const nextLogs = existingIndex >= 0
         ? logs.map((logEntry, index) => index === existingIndex ? nextLog : logEntry)
-        : [...logs, nextLog].slice(-1000);
+        : [...logs, nextLog];
       return {
         chat: {
           ...current,
@@ -205,8 +333,11 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
             lastActivityAt: event.timestamp,
-            logs: nextLogs,
           },
+        },
+        transcript: {
+          ...transcript,
+          logs: nextLogs,
         },
       };
     }
@@ -216,18 +347,28 @@ function applyChatStreamEvent(current: Chat, event: ChatStreamEvent): ChatStream
 export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const toast = useToast();
   const [chat, setChat] = useState<Chat | null>(null);
+  const [transcript, setTranscript] = useState<ChatTranscriptViewState>(createEmptyTranscript);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const chatRef = useRef<Chat | null>(null);
+  const transcriptRef = useRef<ChatTranscriptViewState>(createEmptyTranscript());
   const mountedRef = useRef(false);
   const refreshControllerRef = useRef<AbortController | null>(null);
+  const detailControllersRef = useRef(new Map<string, AbortController>());
   const refreshShowLoadingRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
   const reconnectAttemptedRef = useRef(false);
+  const snapshotEtagRef = useRef<string | null>(null);
+  const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
 
   const setChatState = useCallback((nextChat: Chat | null) => {
     chatRef.current = nextChat;
     setChat(nextChat);
+  }, []);
+
+  const setTranscriptState = useCallback((nextTranscript: ChatTranscriptViewState) => {
+    transcriptRef.current = nextTranscript;
+    setTranscript(nextTranscript);
   }, []);
 
   const refreshChat = useCallback(async (options: ChatRefreshOptions = {}): Promise<void> => {
@@ -250,9 +391,17 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       if (mountedRef.current) {
         setError(null);
       }
-      const response = await appFetch(`/api/chats/${chatId}`, {
-        signal: controller.signal,
-      });
+      const headers = new Headers();
+      if (snapshotEtagRef.current) {
+        headers.set("If-None-Match", snapshotEtagRef.current);
+      }
+      const response = await appFetch(
+        `/api/chats/${chatId}/snapshot`,
+        {
+          signal: controller.signal,
+          headers,
+        },
+      );
       if (
         controller.signal.aborted
         || !mountedRef.current
@@ -260,16 +409,39 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       ) {
         return;
       }
+      if (response.status === 304) {
+        return;
+      }
       if (!response.ok) {
         if (response.status === 404) {
           setChatState(null);
+          setTranscriptState(createEmptyTranscript());
           setError("Chat not found");
           return;
         }
         throw new Error(await parseChatError(response, "Failed to fetch chat"));
       }
-      const data = (await response.json()) as Chat;
-      setChatState(chatRef.current ? mergeChatSnapshot(chatRef.current, data) : data);
+      const data = await response.json() as ChatSnapshot;
+      const hydrated = hydrateChatSnapshot(data);
+      snapshotEtagRef.current = response.headers.get("ETag");
+      setChatState(hydrated.chat);
+      const currentTranscript = transcriptRef.current;
+      setTranscriptState({
+        messages: mergeTranscriptSnapshotRecords(
+          currentTranscript.messages as MessageData[],
+          hydrated.transcript.messages as MessageData[],
+        ),
+        logs: mergeTranscriptSnapshotRecords(
+          currentTranscript.logs as TaskLogEntry[],
+          hydrated.transcript.logs as TaskLogEntry[],
+        ),
+        toolCalls: mergeTranscriptSnapshotToolCalls(
+          currentTranscript.toolCalls,
+          hydrated.transcript.toolCalls,
+        ),
+        revision: hydrated.transcript.revision,
+        totalEntries: hydrated.transcript.totalEntries,
+      });
     } catch (refreshError) {
       if (
         isAbortError(refreshError)
@@ -293,13 +465,70 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         refreshShowLoadingRef.current = false;
       }
     }
-  }, [chatId, setChatState]);
+  }, [chatId, setChatState, setTranscriptState]);
+
+  const loadToolCallDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
+    const currentTool = transcriptRef.current.toolCalls.find((toolCall) => toolCall.id === toolCallId);
+    const cached = toolDetailsCacheRef.current.get(toolCallId);
+    if (
+      cached
+      && (!currentTool || !isToolCallSummary(currentTool) || !isToolCallDetailsStale(currentTool, cached))
+    ) {
+      return cached;
+    }
+    if (cached) {
+      toolDetailsCacheRef.current.delete(toolCallId);
+    }
+    if (currentTool && !isToolCallSummary(currentTool)) {
+      toolDetailsCacheRef.current.set(toolCallId, currentTool);
+      return currentTool;
+    }
+
+    const existingController = detailControllersRef.current.get(toolCallId);
+    existingController?.abort();
+    const controller = new AbortController();
+    detailControllersRef.current.set(toolCallId, controller);
+
+    try {
+      const response = await appFetch(
+        `/api/chats/${chatId}/tool-calls/${encodeURIComponent(toolCallId)}`,
+        { signal: controller.signal },
+      );
+      if (!response.ok) {
+        throw new Error(await parseChatError(response, "Failed to load tool call details"));
+      }
+      const tool = await response.json() as ToolCallData;
+      toolDetailsCacheRef.current.set(toolCallId, tool);
+      setTranscriptState({
+        ...transcriptRef.current,
+        toolCalls: transcriptRef.current.toolCalls.map((entry) => (
+          entry.id === toolCallId
+            ? mergeToolCallDisplayData(entry, tool)
+            : entry
+        )),
+      });
+      return tool;
+    } finally {
+      if (detailControllersRef.current.get(toolCallId) === controller) {
+        detailControllersRef.current.delete(toolCallId);
+      }
+    }
+  }, [chatId, setTranscriptState]);
 
   const applyChatSnapshot = useCallback((nextChat: Chat) => {
     if (!mountedRef.current || nextChat.config.id !== chatId) {
       return;
     }
-    setChatState(chatRef.current ? mergeChatSnapshot(chatRef.current, nextChat) : nextChat);
+    const current = chatRef.current;
+    setChatState(current ? mergeOperationalChatSnapshot(current, nextChat) : {
+      ...nextChat,
+      state: {
+        ...nextChat.state,
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    });
   }, [chatId, setChatState]);
 
   const markChatStarting = useCallback(() => {
@@ -335,7 +564,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       if (!response.ok) {
         throw new Error(await parseChatError(response, "Failed to reconnect chat"));
       }
-      const nextChat = (await response.json()) as Chat;
+      const nextChat = await response.json() as Chat;
       applyChatSnapshot(nextChat);
     } catch (reconnectError) {
       toast.error(String(reconnectError));
@@ -350,7 +579,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (!current) {
       return;
     }
-    const update = applyChatStreamEvent(current, event);
+    const update = applyChatStreamEvent(current, transcriptRef.current, event);
     if (update.refreshOptions) {
       void refreshChat(update.refreshOptions);
       return;
@@ -358,7 +587,10 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (update.chat !== current) {
       setChatState(update.chat);
     }
-  }, [chatId, refreshChat, setChatState]);
+    if (update.transcript) {
+      setTranscriptState(update.transcript);
+    }
+  }, [chatId, refreshChat, setChatState, setTranscriptState]);
 
   const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
     filters: { chatId },
@@ -374,6 +606,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     refresh: (event) => {
       if (event.action === "deleted") {
         setChatState(null);
+        setTranscriptState(createEmptyTranscript());
         setError("Chat not found");
         return;
       }
@@ -385,17 +618,26 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   useEffect(() => {
     mountedRef.current = true;
     chatRef.current = null;
+    transcriptRef.current = createEmptyTranscript();
     setChat(null);
+    setTranscript(createEmptyTranscript());
     setLoading(true);
     setError(null);
+    snapshotEtagRef.current = null;
+    toolDetailsCacheRef.current.clear();
     void refreshChat();
 
     return () => {
       mountedRef.current = false;
       refreshControllerRef.current?.abort();
+      for (const controller of detailControllersRef.current.values()) {
+        controller.abort();
+      }
+      detailControllersRef.current.clear();
       refreshControllerRef.current = null;
       refreshShowLoadingRef.current = false;
       chatRef.current = null;
+      transcriptRef.current = createEmptyTranscript();
     };
   }, [chatId, refreshChat]);
 
@@ -417,12 +659,14 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
 
   return {
     chat,
+    transcript,
     loading,
     error,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
     needsSshCredentials: chat?.config.source?.kind === "ssh_server"
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
+    loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,
     handleReconnect,

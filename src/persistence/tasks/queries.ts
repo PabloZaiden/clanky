@@ -7,7 +7,9 @@ import type { Task, TaskStatus } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToTask } from "./helpers";
+import { TASK_LIST_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
+import { hydrateTranscriptStateForUser } from "../transcripts/store";
 
 const log = createLogger("persistence:tasks");
 const STALE_TASK_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -46,7 +48,7 @@ export async function getActiveTaskByDirectory(directory: string, workspaceId: s
   const placeholders = ACTIVE_TASK_STATUSES.map(() => "?").join(", ");
 
   const stmt = db.prepare(`
-    SELECT * FROM tasks 
+    SELECT ${TASK_LIST_COLUMNS} FROM tasks
     WHERE directory = ? AND workspace_id = ? AND user_id = ? AND status IN (${placeholders})
     LIMIT 1
   `);
@@ -59,6 +61,10 @@ export async function getActiveTaskByDirectory(directory: string, workspaceId: s
   }
 
   const task = rowToTask(row);
+  const transcript = hydrateTranscriptStateForUser("task", task.config.id, userId);
+  task.state.messages = transcript.messages;
+  task.state.logs = transcript.logs;
+  task.state.toolCalls = transcript.toolCalls;
   log.debug("Active task found", { directory, workspaceId, taskId: task.config.id, status: task.state.status });
   return task;
 }

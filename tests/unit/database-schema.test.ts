@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
-import { getSchemaVersion, migrations } from "../../src/persistence/migrations";
+import { getSchemaVersion, migrations, runMigrations } from "../../src/persistence/migrations";
 
 const PRIVATE_FLAG_TABLE_NAMES = [
   "workspaces",
@@ -404,6 +404,166 @@ describe("database schema", () => {
       ]));
     } finally {
       db.close();
+    }
+  });
+
+  test("migration v17 removes legacy transcript columns only after normalized data is complete", () => {
+    const migration = migrations.find((candidate) => candidate.version === 17);
+    if (!migration) {
+      throw new Error("Migration v17 was not found");
+    }
+
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE chats (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT
+        );
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT
+        );
+        CREATE TABLE agent_runs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT
+        );
+        CREATE TABLE chat_transcript_meta (
+          chat_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE task_transcript_meta (
+          task_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE agent_run_transcript_meta (
+          agent_run_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE chat_transcript_entries (chat_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        CREATE TABLE task_transcript_entries (task_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        CREATE TABLE agent_run_transcript_entries (agent_run_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        INSERT INTO chats VALUES ('chat-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO tasks VALUES ('task-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO agent_runs VALUES ('run-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO chat_transcript_meta VALUES ('chat-1', 'user-1', 'chat-rev', 1, 'now');
+        INSERT INTO task_transcript_meta VALUES ('task-1', 'user-1', 'task-rev', 0, 'now');
+        INSERT INTO agent_run_transcript_meta VALUES ('run-1', 'user-1', 'run-rev', 0, 'now');
+        INSERT INTO chat_transcript_entries VALUES ('chat-1', 'message:1');
+      `);
+
+      migration.up(db);
+      migration.up(db);
+
+      for (const tableName of ["chats", "tasks", "agent_runs"]) {
+        const columns = db.query(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+        expect(columns.map((column) => column.name)).not.toEqual(
+          expect.arrayContaining(["messages", "logs", "tool_calls"]),
+        );
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v17 fails before dropping columns when normalized data is incomplete", () => {
+    const migration = migrations.find((candidate) => candidate.version === 17);
+    if (!migration) {
+      throw new Error("Migration v17 was not found");
+    }
+
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE chats (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, messages TEXT, logs TEXT, tool_calls TEXT);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, messages TEXT, logs TEXT, tool_calls TEXT);
+        CREATE TABLE agent_runs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, messages TEXT, logs TEXT, tool_calls TEXT);
+        CREATE TABLE chat_transcript_meta (chat_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, revision TEXT NOT NULL, entry_count INTEGER NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE task_transcript_meta (task_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, revision TEXT NOT NULL, entry_count INTEGER NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE agent_run_transcript_meta (agent_run_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, revision TEXT NOT NULL, entry_count INTEGER NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE chat_transcript_entries (chat_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        CREATE TABLE task_transcript_entries (task_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        CREATE TABLE agent_run_transcript_entries (agent_run_id TEXT NOT NULL, entry_id TEXT NOT NULL);
+        INSERT INTO chats VALUES ('chat-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO tasks VALUES ('task-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO agent_runs VALUES ('run-1', 'user-1', '{}', '{}', '{}');
+        INSERT INTO chat_transcript_meta VALUES ('chat-1', 'user-1', 'chat-rev', 0, 'now');
+        INSERT INTO agent_run_transcript_meta VALUES ('run-1', 'user-1', 'run-rev', 0, 'now');
+      `);
+
+      expect(() => migration.up(db)).toThrow("normalized transcript is incomplete");
+      const columns = db.query("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining(["messages", "logs", "tool_calls"]),
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v18 runs database compaction once outside a transaction", async () => {
+    const migration = migrations.find((candidate) => candidate.version === 18);
+    if (!migration) {
+      throw new Error("Migration v18 was not found");
+    }
+
+    const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-vacuum-"));
+    const dbPath = join(dataDir, "database.sqlite");
+    const db = new Database(dbPath);
+    try {
+      db.exec(`
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE preserved (value TEXT NOT NULL);
+        CREATE TABLE payload (value BLOB NOT NULL);
+        INSERT INTO preserved VALUES ('kept');
+      `);
+      db.run("INSERT INTO payload VALUES (?)", [new Uint8Array(2 * 1024 * 1024)]);
+      db.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      db.run("DELETE FROM payload");
+      db.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      const sizeBeforeVacuum = Bun.file(dbPath).size;
+      expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBeGreaterThan(0);
+
+      const insertMigration = db.prepare(
+        "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      );
+      for (let version = 1; version <= 17; version += 1) {
+        insertMigration.run(version, `migration-${version}`, "now");
+      }
+
+      expect(migration.transactional).toBe(false);
+      expect(runMigrations(db)).toBe(1);
+      expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
+      expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
+      expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
+      expect(runMigrations(db)).toBe(0);
+      expect(getSchemaVersion(db)).toBe(18);
+    } finally {
+      db.close();
+      await rm(dataDir, { recursive: true, force: true });
     }
   });
 });

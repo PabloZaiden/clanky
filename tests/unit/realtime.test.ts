@@ -9,6 +9,13 @@ import {
   type ClankyRealtimeEvent,
   type ClankyRealtimePublisher,
 } from "../../src/realtime";
+import {
+  mergeTranscriptRecords,
+  mergeTranscriptSnapshot,
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptToolCalls,
+} from "../../src/shared/chat-transcript";
+import { createToolCallSummary, isToolCallDetailsStale } from "../../src/shared/tool-call";
 
 interface PublishedResource {
   ownerId: string;
@@ -144,6 +151,198 @@ describe("Clanky realtime migration", () => {
       id: "chat-1",
       scope: undefined,
     }]);
+  });
+
+  test("publishes chat tool events without tool payloads", () => {
+    const events: unknown[] = [];
+    const publisher: ClankyRealtimePublisher = {
+      publishResource() {},
+      publishStream(_owner, event) {
+        events.push(event);
+      },
+    };
+
+    publishClankyDomainEvent(publisher, {
+      type: "chat.tool_call",
+      chatId: "chat-1",
+      scope: "workspace",
+      tool: {
+        id: "tool-1",
+        name: "Read",
+        input: { filePath: "src/index.ts" },
+        output: { content: "x".repeat(10_000) },
+        status: "completed",
+        timestamp: "2026-01-01T00:00:00.000Z",
+      },
+      timestamp: "2026-01-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    const event = events[0] as {
+      tool: Record<string, unknown>;
+    };
+    expect(event.tool["id"]).toBe("tool-1");
+    expect(event.tool["detailAvailable"]).toBe(true);
+    expect(event.tool["input"]).toEqual({ filePath: "src/index.ts" });
+    expect(event.tool["output"]).toBeUndefined();
+  });
+
+  test("does not stream chat tool extras containing image bytes", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "chat.tool_call.extra",
+      chatId: "chat-1",
+      scope: "workspace",
+      toolId: "tool-1",
+      extra: {
+        id: "preview-1",
+        type: "image_preview",
+        image: {
+          id: "image-1",
+          filename: "preview.png",
+          mimeType: "image/png",
+          data: "base64-image-data",
+          size: 17,
+        },
+      },
+      timestamp: "2026-01-01T00:00:01.000Z",
+    }, { userId: "user-1" });
+
+    expect(recording.streams).toEqual([]);
+    expect(recording.resources).toEqual([{
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.chats,
+      action: "changed",
+      id: "chat-1",
+      scope: undefined,
+    }]);
+  });
+
+  test("marks lazy tool details stale when the server detail revision changes", () => {
+    const summary = createToolCallSummary({
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "initial" },
+      status: "completed",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      detailRevision: "revision-1",
+    });
+    const details = {
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "initial" },
+      status: "completed" as const,
+      timestamp: "2026-01-01T00:00:00.000Z",
+      detailRevision: "revision-1",
+    };
+
+    expect(isToolCallDetailsStale(summary, details)).toBe(false);
+    expect(isToolCallDetailsStale(
+      { ...summary, detailRevision: "revision-2" },
+      details,
+    )).toBe(true);
+  });
+
+  test("merges newer tool-call summaries without regressing completion status", () => {
+    const running = createToolCallSummary({
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      status: "running",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+    const completed = createToolCallSummary({
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "done" },
+      status: "completed",
+      timestamp: "2026-01-01T00:00:01.000Z",
+    });
+
+    expect(mergeTranscriptToolCalls([running], [completed])[0]).toMatchObject({
+      status: "completed",
+      summary: "View src/index.ts",
+    });
+    expect(mergeTranscriptToolCalls([completed], [running])[0]).toMatchObject({
+      status: "completed",
+      summary: "View src/index.ts",
+    });
+  });
+
+  test("sorts transcript records and tool calls deterministically for tied timestamps", () => {
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const messages = mergeTranscriptRecords(
+      [
+        { id: "message-b", role: "user" as const, content: "b", timestamp },
+        { id: "message-a", role: "user" as const, content: "a", timestamp },
+      ],
+      [],
+    );
+    const toolCalls = mergeTranscriptToolCalls(
+      [
+        { id: "tool-b", name: "Read", status: "completed" as const, timestamp },
+        { id: "tool-a", name: "Read", status: "completed" as const, timestamp },
+      ],
+      [],
+    );
+
+    expect(messages.map((message) => message.id)).toEqual(["message-a", "message-b"]);
+    expect(toolCalls.map((toolCall) => toolCall.id)).toEqual(["tool-a", "tool-b"]);
+  });
+
+  test("uses full snapshots to repair stale records while retaining newer live records", () => {
+    const current = {
+      messages: [
+        {
+          id: "message-stale",
+          role: "assistant" as const,
+          content: "partial",
+          timestamp: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          id: "message-deleted",
+          role: "user" as const,
+          content: "deleted",
+          timestamp: "2025-12-31T23:59:59.000Z",
+        },
+        {
+          id: "message-live",
+          role: "assistant" as const,
+          content: "live",
+          timestamp: "2026-01-01T00:00:02.000Z",
+        },
+      ],
+      logs: [],
+      toolCalls: [],
+      revision: "revision-old",
+      totalEntries: 3,
+    };
+    const incoming = {
+      messages: [
+        {
+          id: "message-stale",
+          role: "assistant" as const,
+          content: "canonical",
+          timestamp: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+      logs: [],
+      toolCalls: [],
+      revision: "revision-new",
+      totalEntries: 1,
+    };
+
+    expect(mergeTranscriptSnapshot(current, incoming).messages).toEqual([
+      incoming.messages[0]!,
+      current.messages[2]!,
+    ]);
+    expect(mergeTranscriptSnapshotRecords(
+      current.messages,
+      incoming.messages,
+    )).not.toContainEqual(current.messages[1]);
   });
 
   test("invalidates the task resource when an iteration starts", () => {

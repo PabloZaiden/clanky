@@ -6,8 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { replaceWebAppRoute, routeToHash } from "@pablozaiden/webapp/web";
-import type { Task } from "@/shared";
-import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "@/shared/task";
+import type { MessageData, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
 import type { LogDisplayState } from "./use-log-display-state";
@@ -35,9 +34,10 @@ interface TaskDetailsTabContentProps {
   markdownEnabled: boolean;
 
   // Log tab raw data
-  messages: PersistedMessage[];
-  toolCalls: PersistedToolCall[];
+  messages: MessageData[];
+  toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
+  onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
 
   // Bundled state from hooks
   logDisplay: LogDisplayState;
@@ -61,6 +61,7 @@ export function TaskDetailsTabContent({
   messages,
   toolCalls,
   logs,
+  onLoadToolDetails,
   logDisplay,
   content,
   actions,
@@ -113,6 +114,7 @@ export function TaskDetailsTabContent({
           applyBottomSafeAreaPadding={applyLogBottomSafeAreaPadding}
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
+          onLoadToolDetails={onLoadToolDetails}
         />
       )}
       {(activeTab === "chat" || hasVisitedChatTab) && (

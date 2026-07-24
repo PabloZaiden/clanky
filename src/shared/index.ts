@@ -1,5 +1,7 @@
 export * from "./agent";
+export * from "./deterministic-agent";
 export * from "./chat";
+export * from "./chat-transcript";
 export * from "./commit-scope";
 export * from "./context-api-key";
 export * from "./events";
@@ -13,6 +15,7 @@ export * from "./ssh-server";
 export * from "./ssh-session";
 export * from "./ssh-session-events";
 export * from "./tool-call";
+export * from "./tool-call-presentation";
 export * from "./preview";
 export * from "./workspace";
 export * from "./workspace-files";

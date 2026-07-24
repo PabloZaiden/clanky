@@ -1,5 +1,5 @@
 -- Demo-only UI seed for local visual testing.
--- Apply this against data/clanky.db with your preferred SQLite client.
+-- This file targets the current database schema directly.
 
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
@@ -34,6 +34,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_servers (
   id,
+  user_id,
   name,
   address,
   username,
@@ -42,6 +43,7 @@ INSERT INTO ssh_servers (
   repositories_base_path
 ) VALUES (
   'demo-server-build',
+  'admin',
   'Build Box',
   'demo-box.internal',
   'clanky',
@@ -59,6 +61,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_servers (
   id,
+  user_id,
   name,
   address,
   username,
@@ -67,6 +70,7 @@ INSERT INTO ssh_servers (
   repositories_base_path
 ) VALUES (
   'demo-server-ops',
+  'admin',
   'Ops Box',
   'ops-box.internal',
   'deploy',
@@ -84,6 +88,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_server_sessions (
   id,
+  user_id,
   ssh_server_id,
   name,
   remote_session_name,
@@ -97,6 +102,7 @@ INSERT INTO ssh_server_sessions (
   notice_message
 ) VALUES (
   'demo-server-session-build-main',
+  'admin',
   'demo-server-build',
   'Main shell',
   'clanky-build-main',
@@ -124,6 +130,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_server_sessions (
   id,
+  user_id,
   ssh_server_id,
   name,
   remote_session_name,
@@ -137,6 +144,7 @@ INSERT INTO ssh_server_sessions (
   notice_message
 ) VALUES (
   'demo-server-session-ops-debug',
+  'admin',
   'demo-server-ops',
   'Debug shell',
   'clanky-ops-debug',
@@ -164,6 +172,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO workspaces (
   id,
+  user_id,
   name,
   directory,
   server_fingerprint,
@@ -178,6 +187,7 @@ INSERT INTO workspaces (
   provider
 ) VALUES (
   'demo-workspace-webapp',
+  'admin',
   'Storefront Web',
   '/workspaces/demo-storefront',
   'opencode:stdio',
@@ -207,6 +217,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO workspaces (
   id,
+  user_id,
   name,
   directory,
   server_fingerprint,
@@ -221,6 +232,7 @@ INSERT INTO workspaces (
   provider
 ) VALUES (
   'demo-workspace-api',
+  'admin',
   'Billing API',
   '/srv/workspaces/billing-api',
   'copilot:ssh:demo-box.internal:22:clanky',
@@ -250,6 +262,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO agents (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -278,6 +291,7 @@ INSERT INTO agents (
   active_run_id
 ) VALUES (
   'demo-agent-billing-review',
+  'admin',
   'Billing risk review',
   'demo-workspace-api',
   '/srv/workspaces/billing-api',
@@ -335,6 +349,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO agents (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -363,6 +378,7 @@ INSERT INTO agents (
   active_run_id
 ) VALUES (
   'demo-agent-storefront-a11y',
+  'admin',
   'Storefront accessibility sweep',
   'demo-workspace-webapp',
   '/workspaces/demo-storefront',
@@ -420,6 +436,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO agents (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -448,6 +465,7 @@ INSERT INTO agents (
   active_run_id
 ) VALUES (
   'demo-agent-release-notes',
+  'admin',
   'Release notes watcher',
   'demo-workspace-webapp',
   '/workspaces/demo-storefront',
@@ -505,6 +523,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_sessions (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -520,6 +539,7 @@ INSERT INTO ssh_sessions (
   notice_message
 ) VALUES (
   'demo-workspace-session-api',
+  'admin',
   'Workspace terminal',
   'demo-workspace-api',
   '/srv/workspaces/billing-api',
@@ -551,6 +571,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO ssh_sessions (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -566,6 +587,7 @@ INSERT INTO ssh_sessions (
   notice_message
 ) VALUES (
   'demo-workspace-session-task-running',
+  'admin',
   'Task shell',
   'demo-workspace-api',
   '/srv/worktrees/billing-api/running-task',
@@ -597,6 +619,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO tasks (
   id,
+  user_id,
   name,
   directory,
   prompt,
@@ -636,9 +659,6 @@ INSERT INTO tasks (
   git_worktree_path,
   git_commits,
   recent_iterations,
-  logs,
-  messages,
-  tool_calls,
   consecutive_errors,
   pending_prompt,
   pending_model_provider_id,
@@ -658,6 +678,7 @@ INSERT INTO tasks (
   fully_autonomous_pending
 ) VALUES (
   'demo-task-planning',
+  'admin',
   'Dashboard filters',
   '/workspaces/demo-storefront',
   'Design and implement dashboard filtering for tasks, chats, and SSH sessions.',
@@ -697,9 +718,6 @@ INSERT INTO tasks (
   '/worktrees/demo-storefront/dashboard-filters',
   '[]',
   '[{"iteration":1,"startedAt":"2026-04-16T18:42:00.000Z","completedAt":"2026-04-16T18:54:00.000Z","messageCount":4,"toolCallCount":3,"outcome":"plan_ready"}]',
-  '[{"id":"log-demo-task-planning-1","level":"info","message":"Plan draft ready for review.","timestamp":"2026-04-16T18:54:00.000Z"},{"id":"log-demo-task-planning-2","level":"agent","message":"Waiting for plan approval.","timestamp":"2026-04-16T19:10:00.000Z"}]',
-  '[{"id":"msg-demo-task-planning-1","role":"user","content":"Add filtering controls to the dashboard.","timestamp":"2026-04-16T18:41:00.000Z"},{"id":"msg-demo-task-planning-2","role":"assistant","content":"Plan ready. Add a compact filter bar and persist the selected query in the URL.","timestamp":"2026-04-16T18:54:00.000Z"}]',
-  '[{"id":"tool-demo-task-planning-1","name":"Glob","input":{"pattern":"src/components/**/*.tsx"},"output":["src/components/dashboard.tsx"],"status":"completed","timestamp":"2026-04-16T18:45:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -763,9 +781,6 @@ ON CONFLICT(id) DO UPDATE SET
   git_worktree_path = excluded.git_worktree_path,
   git_commits = excluded.git_commits,
   recent_iterations = excluded.recent_iterations,
-  logs = excluded.logs,
-  messages = excluded.messages,
-  tool_calls = excluded.tool_calls,
   consecutive_errors = excluded.consecutive_errors,
   pending_prompt = excluded.pending_prompt,
   pending_model_provider_id = excluded.pending_model_provider_id,
@@ -786,6 +801,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO tasks (
   id,
+  user_id,
   name,
   directory,
   prompt,
@@ -825,9 +841,6 @@ INSERT INTO tasks (
   git_worktree_path,
   git_commits,
   recent_iterations,
-  logs,
-  messages,
-  tool_calls,
   consecutive_errors,
   pending_prompt,
   pending_model_provider_id,
@@ -847,6 +860,7 @@ INSERT INTO tasks (
   fully_autonomous_pending
 ) VALUES (
   'demo-task-running',
+  'admin',
   'Rework invoice timeline',
   '/srv/workspaces/billing-api',
   'Improve the invoice timeline with grouped events and cleaner empty states.',
@@ -886,9 +900,6 @@ INSERT INTO tasks (
   '/srv/worktrees/billing-api/running-task',
   '[{"iteration":1,"sha":"abc1234","message":"feat(billing): scaffold grouped timeline","timestamp":"2026-04-16T19:01:00.000Z","filesChanged":4},{"iteration":2,"sha":"def5678","message":"refactor(billing): extract empty state cards","timestamp":"2026-04-16T19:18:00.000Z","filesChanged":6}]',
   '[{"iteration":1,"startedAt":"2026-04-16T18:52:00.000Z","completedAt":"2026-04-16T19:01:00.000Z","messageCount":6,"toolCallCount":4,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T19:05:00.000Z","completedAt":"2026-04-16T19:18:00.000Z","messageCount":5,"toolCallCount":6,"outcome":"continue"}]',
-  '[{"id":"log-demo-task-running-1","level":"info","message":"Connected to remote workspace host.","timestamp":"2026-04-16T18:52:10.000Z"},{"id":"log-demo-task-running-2","level":"agent","message":"Refined grouped event rendering.","timestamp":"2026-04-16T19:22:00.000Z"},{"id":"log-demo-task-running-3","level":"info","message":"Demo task completed successfully.","timestamp":"2026-04-16T19:34:00.000Z"}]',
-  '[{"id":"msg-demo-task-running-1","role":"user","content":"Make the invoice timeline easier to scan.","timestamp":"2026-04-16T18:52:00.000Z"},{"id":"msg-demo-task-running-2","role":"assistant","content":"I grouped related events and tightened the spacing.","timestamp":"2026-04-16T19:22:30.000Z"}]',
-  '[{"id":"tool-demo-task-running-1","name":"Read","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"lineCount":280},"status":"completed","timestamp":"2026-04-16T18:57:00.000Z"},{"id":"tool-demo-task-running-2","name":"Edit","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"updated":true},"status":"completed","timestamp":"2026-04-16T19:20:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -947,9 +958,6 @@ ON CONFLICT(id) DO UPDATE SET
   git_worktree_path = excluded.git_worktree_path,
   git_commits = excluded.git_commits,
   recent_iterations = excluded.recent_iterations,
-  logs = excluded.logs,
-  messages = excluded.messages,
-  tool_calls = excluded.tool_calls,
   consecutive_errors = excluded.consecutive_errors,
   pending_prompt = excluded.pending_prompt,
   pending_model_provider_id = excluded.pending_model_provider_id,
@@ -970,6 +978,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO tasks (
   id,
+  user_id,
   name,
   directory,
   prompt,
@@ -1009,9 +1018,6 @@ INSERT INTO tasks (
   git_worktree_path,
   git_commits,
   recent_iterations,
-  logs,
-  messages,
-  tool_calls,
   consecutive_errors,
   pending_prompt,
   pending_model_provider_id,
@@ -1031,6 +1037,7 @@ INSERT INTO tasks (
   fully_autonomous_pending
 ) VALUES (
   'demo-task-pushed',
+  'admin',
   'PR follow-up automation',
   '/srv/workspaces/billing-api',
   'Handle PR feedback automatically after push and keep monitoring merge state.',
@@ -1070,9 +1077,6 @@ INSERT INTO tasks (
   '/srv/worktrees/billing-api/pr-automation',
   '[{"iteration":2,"sha":"111aaaa","message":"feat(automation): monitor pushed PR state","timestamp":"2026-04-16T18:02:00.000Z","filesChanged":5},{"iteration":4,"sha":"222bbbb","message":"feat(automation): persist handled review items","timestamp":"2026-04-16T18:34:00.000Z","filesChanged":7}]',
   '[{"iteration":1,"startedAt":"2026-04-16T17:42:00.000Z","completedAt":"2026-04-16T17:55:00.000Z","messageCount":4,"toolCallCount":3,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T17:57:00.000Z","completedAt":"2026-04-16T18:02:00.000Z","messageCount":3,"toolCallCount":4,"outcome":"continue"},{"iteration":3,"startedAt":"2026-04-16T18:10:00.000Z","completedAt":"2026-04-16T18:20:00.000Z","messageCount":4,"toolCallCount":2,"outcome":"continue"},{"iteration":4,"startedAt":"2026-04-16T18:25:00.000Z","completedAt":"2026-04-16T18:34:00.000Z","messageCount":5,"toolCallCount":5,"outcome":"continue"},{"iteration":5,"startedAt":"2026-04-16T18:40:00.000Z","completedAt":"2026-04-16T18:50:00.000Z","messageCount":2,"toolCallCount":1,"outcome":"complete"}]',
-  '[{"id":"log-demo-task-pushed-1","level":"info","message":"Branch pushed to origin.","timestamp":"2026-04-16T18:50:00.000Z"},{"id":"log-demo-task-pushed-2","level":"info","message":"Demo PR metadata loaded without starting live monitoring.","timestamp":"2026-04-16T19:28:00.000Z"}]',
-  '[{"id":"msg-demo-task-pushed-1","role":"user","content":"Monitor pushed PRs and react to review feedback.","timestamp":"2026-04-16T17:42:00.000Z"},{"id":"msg-demo-task-pushed-2","role":"assistant","content":"The branch is pushed and the PR automation task is active.","timestamp":"2026-04-16T19:28:00.000Z"}]',
-  '[{"id":"tool-demo-task-pushed-1","name":"Bash","input":{"command":"gh pr view --json number,state,url"},"output":{"number":42,"state":"OPEN","url":"https://github.com/example/billing-api/pull/42"},"status":"completed","timestamp":"2026-04-16T19:05:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -1131,9 +1135,6 @@ ON CONFLICT(id) DO UPDATE SET
   git_worktree_path = excluded.git_worktree_path,
   git_commits = excluded.git_commits,
   recent_iterations = excluded.recent_iterations,
-  logs = excluded.logs,
-  messages = excluded.messages,
-  tool_calls = excluded.tool_calls,
   consecutive_errors = excluded.consecutive_errors,
   pending_prompt = excluded.pending_prompt,
   pending_model_provider_id = excluded.pending_model_provider_id,
@@ -1154,6 +1155,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO tasks (
   id,
+  user_id,
   name,
   directory,
   prompt,
@@ -1193,9 +1195,6 @@ INSERT INTO tasks (
   git_worktree_path,
   git_commits,
   recent_iterations,
-  logs,
-  messages,
-  tool_calls,
   consecutive_errors,
   pending_prompt,
   pending_model_provider_id,
@@ -1215,6 +1214,7 @@ INSERT INTO tasks (
   fully_autonomous_pending
 ) VALUES (
   'demo-task-failed',
+  'admin',
   'Sync legacy ledger jobs',
   '/workspaces/demo-storefront',
   'Backfill ledger jobs from the old worker system and remove dead code.',
@@ -1254,9 +1254,6 @@ INSERT INTO tasks (
   '/worktrees/demo-storefront/ledger-sync',
   '[{"iteration":1,"sha":"fedcba1","message":"chore(ledger): add migration scaffold","timestamp":"2026-04-16T17:45:00.000Z","filesChanged":3}]',
   '[{"iteration":1,"startedAt":"2026-04-16T17:25:00.000Z","completedAt":"2026-04-16T17:45:00.000Z","messageCount":4,"toolCallCount":2,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T17:50:00.000Z","completedAt":"2026-04-16T18:12:00.000Z","messageCount":3,"toolCallCount":4,"outcome":"error"}]',
-  '[{"id":"log-demo-task-failed-1","level":"warn","message":"Legacy payload parser returned an unexpected shape.","timestamp":"2026-04-16T18:08:00.000Z"},{"id":"log-demo-task-failed-2","level":"error","message":"Task failed after repeated parser errors.","timestamp":"2026-04-16T18:12:00.000Z"}]',
-  '[{"id":"msg-demo-task-failed-1","role":"user","content":"Migrate the old ledger job payloads.","timestamp":"2026-04-16T17:25:00.000Z"},{"id":"msg-demo-task-failed-2","role":"assistant","content":"The legacy payload format is inconsistent and needs manual cleanup.","timestamp":"2026-04-16T18:12:00.000Z"}]',
-  '[{"id":"tool-demo-task-failed-1","name":"Bash","input":{"command":"bun run scripts/migrate-ledger.ts"},"output":{"exitCode":1,"stderr":"Unexpected token at row 19"},"status":"failed","timestamp":"2026-04-16T18:12:00.000Z"}]',
   '{"lastErrorMessage":"Unexpected token at row 19","count":2}',
   NULL,
   NULL,
@@ -1315,9 +1312,6 @@ ON CONFLICT(id) DO UPDATE SET
   git_worktree_path = excluded.git_worktree_path,
   git_commits = excluded.git_commits,
   recent_iterations = excluded.recent_iterations,
-  logs = excluded.logs,
-  messages = excluded.messages,
-  tool_calls = excluded.tool_calls,
   consecutive_errors = excluded.consecutive_errors,
   pending_prompt = excluded.pending_prompt,
   pending_model_provider_id = excluded.pending_model_provider_id,
@@ -1338,6 +1332,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO chats (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -1361,13 +1356,11 @@ INSERT INTO chats (
   worktree_original_branch,
   worktree_working_branch,
   worktree_path,
-  messages,
-  logs,
-  tool_calls,
   active_message_id,
   interrupt_requested
 ) VALUES (
   'demo-chat-streaming',
+  'admin',
   'API pairing session',
   'demo-workspace-api',
   '/srv/workspaces/billing-api',
@@ -1391,9 +1384,6 @@ INSERT INTO chats (
   'main',
   'chat/api-pairing-session',
   '/srv/worktrees/billing-api/chat-api-pairing',
-  '[{"id":"msg-demo-chat-streaming-1","role":"user","content":"Review the invoice timeline API responses.","timestamp":"2026-04-16T19:01:00.000Z"},{"id":"msg-demo-chat-streaming-2","role":"assistant","content":"I found duplicated event shapes between settled and pending invoices.","timestamp":"2026-04-16T19:14:00.000Z"}]',
-  '[{"id":"log-demo-chat-streaming-1","level":"info","message":"Chat session connected.","timestamp":"2026-04-16T19:01:10.000Z"},{"id":"log-demo-chat-streaming-2","level":"agent","message":"Inspecting timeline serializers.","timestamp":"2026-04-16T19:34:00.000Z"}]',
-  '[{"id":"tool-demo-chat-streaming-1","name":"Read","input":{"filePath":"src/api/invoices.ts"},"output":{"lineCount":142},"status":"completed","timestamp":"2026-04-16T19:08:00.000Z"}]',
   'msg-demo-chat-streaming-2',
   0
 )
@@ -1421,14 +1411,12 @@ ON CONFLICT(id) DO UPDATE SET
   worktree_original_branch = excluded.worktree_original_branch,
   worktree_working_branch = excluded.worktree_working_branch,
   worktree_path = excluded.worktree_path,
-  messages = excluded.messages,
-  logs = excluded.logs,
-  tool_calls = excluded.tool_calls,
   active_message_id = excluded.active_message_id,
   interrupt_requested = excluded.interrupt_requested;
 
 INSERT INTO chats (
   id,
+  user_id,
   name,
   workspace_id,
   directory,
@@ -1452,13 +1440,11 @@ INSERT INTO chats (
   worktree_original_branch,
   worktree_working_branch,
   worktree_path,
-  messages,
-  logs,
-  tool_calls,
   active_message_id,
   interrupt_requested
 ) VALUES (
   'demo-chat-failed',
+  'admin',
   'Frontend cleanup chat',
   'demo-workspace-webapp',
   '/workspaces/demo-storefront',
@@ -1482,9 +1468,6 @@ INSERT INTO chats (
   'main',
   'chat/frontend-cleanup',
   '/worktrees/demo-storefront/chat-frontend-cleanup',
-  '[{"id":"msg-demo-chat-failed-1","role":"user","content":"Find duplicated button styles in the dashboard.","timestamp":"2026-04-16T18:06:00.000Z"},{"id":"msg-demo-chat-failed-2","role":"assistant","content":"I found three duplicated button variants before the provider timed out.","timestamp":"2026-04-16T18:44:00.000Z"}]',
-  '[{"id":"log-demo-chat-failed-1","level":"warn","message":"Provider latency is above threshold.","timestamp":"2026-04-16T18:40:00.000Z"},{"id":"log-demo-chat-failed-2","level":"error","message":"Chat failed while waiting for the next event.","timestamp":"2026-04-16T18:45:00.000Z"}]',
-  '[{"id":"tool-demo-chat-failed-1","name":"Glob","input":{"pattern":"src/components/**/*.tsx"},"output":["src/components/Button.tsx","src/components/IconButton.tsx"],"status":"completed","timestamp":"2026-04-16T18:20:00.000Z"}]',
   'msg-demo-chat-failed-2',
   0
 )
@@ -1512,14 +1495,12 @@ ON CONFLICT(id) DO UPDATE SET
   worktree_original_branch = excluded.worktree_original_branch,
   worktree_working_branch = excluded.worktree_working_branch,
   worktree_path = excluded.worktree_path,
-  messages = excluded.messages,
-  logs = excluded.logs,
-  tool_calls = excluded.tool_calls,
   active_message_id = excluded.active_message_id,
   interrupt_requested = excluded.interrupt_requested;
 
 INSERT INTO review_comments (
   id,
+  user_id,
   task_id,
   review_cycle,
   comment_text,
@@ -1528,6 +1509,7 @@ INSERT INTO review_comments (
   addressed_at
 ) VALUES (
   'demo-review-comment-1',
+  'admin',
   'demo-task-pushed',
   1,
   'Please split the PR monitoring badge into its own component.',
@@ -1596,5 +1578,1151 @@ ON CONFLICT(id) DO UPDATE SET
   connected_at = excluded.connected_at,
   closed_at = excluded.closed_at,
   error_message = excluded.error_message;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'message:msg-demo-task-planning-1',
+  'message',
+  '2026-04-16T18:41:00.000Z',
+  '0',
+  '{"id":"msg-demo-task-planning-1","role":"user","content":"Add filtering controls to the dashboard.","timestamp":"2026-04-16T18:41:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'tool:tool-demo-task-planning-1',
+  'tool',
+  '2026-04-16T18:45:00.000Z',
+  '1',
+  '{}',
+  'Glob',
+  'completed',
+  '{"pattern":"src/components/**/*.tsx"}',
+  '["src/components/dashboard.tsx"]',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'message:msg-demo-task-planning-2',
+  'message',
+  '2026-04-16T18:54:00.000Z',
+  '2',
+  '{"id":"msg-demo-task-planning-2","role":"assistant","content":"Plan ready. Add a compact filter bar and persist the selected query in the URL.","timestamp":"2026-04-16T18:54:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'log:log-demo-task-planning-1',
+  'log',
+  '2026-04-16T18:54:00.000Z',
+  '3',
+  '{"id":"log-demo-task-planning-1","level":"info","message":"Plan draft ready for review.","timestamp":"2026-04-16T18:54:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'log:log-demo-task-planning-2',
+  'log',
+  '2026-04-16T19:10:00.000Z',
+  '4',
+  '{"id":"log-demo-task-planning-2","level":"agent","message":"Waiting for plan approval.","timestamp":"2026-04-16T19:10:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_meta (
+  task_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-task-planning',
+  'admin',
+  'demo-seed:5',
+  5,
+  'demo-seed'
+)
+ON CONFLICT(task_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'message:msg-demo-task-running-1',
+  'message',
+  '2026-04-16T18:52:00.000Z',
+  '0',
+  '{"id":"msg-demo-task-running-1","role":"user","content":"Make the invoice timeline easier to scan.","timestamp":"2026-04-16T18:52:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'log:log-demo-task-running-1',
+  'log',
+  '2026-04-16T18:52:10.000Z',
+  '1',
+  '{"id":"log-demo-task-running-1","level":"info","message":"Connected to remote workspace host.","timestamp":"2026-04-16T18:52:10.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'tool:tool-demo-task-running-1',
+  'tool',
+  '2026-04-16T18:57:00.000Z',
+  '2',
+  '{}',
+  'Read',
+  'completed',
+  '{"filePath":"src/components/invoice-timeline.tsx"}',
+  '{"lineCount":280}',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'tool:tool-demo-task-running-2',
+  'tool',
+  '2026-04-16T19:20:00.000Z',
+  '3',
+  '{}',
+  'Edit',
+  'completed',
+  '{"filePath":"src/components/invoice-timeline.tsx"}',
+  '{"updated":true}',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'log:log-demo-task-running-2',
+  'log',
+  '2026-04-16T19:22:00.000Z',
+  '4',
+  '{"id":"log-demo-task-running-2","level":"agent","message":"Refined grouped event rendering.","timestamp":"2026-04-16T19:22:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'message:msg-demo-task-running-2',
+  'message',
+  '2026-04-16T19:22:30.000Z',
+  '5',
+  '{"id":"msg-demo-task-running-2","role":"assistant","content":"I grouped related events and tightened the spacing.","timestamp":"2026-04-16T19:22:30.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'log:log-demo-task-running-3',
+  'log',
+  '2026-04-16T19:34:00.000Z',
+  '6',
+  '{"id":"log-demo-task-running-3","level":"info","message":"Demo task completed successfully.","timestamp":"2026-04-16T19:34:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_meta (
+  task_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-task-running',
+  'admin',
+  'demo-seed:7',
+  7,
+  'demo-seed'
+)
+ON CONFLICT(task_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'message:msg-demo-task-pushed-1',
+  'message',
+  '2026-04-16T17:42:00.000Z',
+  '0',
+  '{"id":"msg-demo-task-pushed-1","role":"user","content":"Monitor pushed PRs and react to review feedback.","timestamp":"2026-04-16T17:42:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'log:log-demo-task-pushed-1',
+  'log',
+  '2026-04-16T18:50:00.000Z',
+  '1',
+  '{"id":"log-demo-task-pushed-1","level":"info","message":"Branch pushed to origin.","timestamp":"2026-04-16T18:50:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'tool:tool-demo-task-pushed-1',
+  'tool',
+  '2026-04-16T19:05:00.000Z',
+  '2',
+  '{}',
+  'Bash',
+  'completed',
+  '{"command":"gh pr view --json number,state,url"}',
+  '{"number":42,"state":"OPEN","url":"https://github.com/example/billing-api/pull/42"}',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'message:msg-demo-task-pushed-2',
+  'message',
+  '2026-04-16T19:28:00.000Z',
+  '3',
+  '{"id":"msg-demo-task-pushed-2","role":"assistant","content":"The branch is pushed and the PR automation task is active.","timestamp":"2026-04-16T19:28:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'log:log-demo-task-pushed-2',
+  'log',
+  '2026-04-16T19:28:00.000Z',
+  '4',
+  '{"id":"log-demo-task-pushed-2","level":"info","message":"Demo PR metadata loaded without starting live monitoring.","timestamp":"2026-04-16T19:28:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_meta (
+  task_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-task-pushed',
+  'admin',
+  'demo-seed:5',
+  5,
+  'demo-seed'
+)
+ON CONFLICT(task_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'message:msg-demo-task-failed-1',
+  'message',
+  '2026-04-16T17:25:00.000Z',
+  '0',
+  '{"id":"msg-demo-task-failed-1","role":"user","content":"Migrate the old ledger job payloads.","timestamp":"2026-04-16T17:25:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'log:log-demo-task-failed-1',
+  'log',
+  '2026-04-16T18:08:00.000Z',
+  '1',
+  '{"id":"log-demo-task-failed-1","level":"warn","message":"Legacy payload parser returned an unexpected shape.","timestamp":"2026-04-16T18:08:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'message:msg-demo-task-failed-2',
+  'message',
+  '2026-04-16T18:12:00.000Z',
+  '2',
+  '{"id":"msg-demo-task-failed-2","role":"assistant","content":"The legacy payload format is inconsistent and needs manual cleanup.","timestamp":"2026-04-16T18:12:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'tool:tool-demo-task-failed-1',
+  'tool',
+  '2026-04-16T18:12:00.000Z',
+  '3',
+  '{}',
+  'Bash',
+  'failed',
+  '{"command":"bun run scripts/migrate-ledger.ts"}',
+  '{"exitCode":1,"stderr":"Unexpected token at row 19"}',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_entries (
+  task_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'log:log-demo-task-failed-2',
+  'log',
+  '2026-04-16T18:12:00.000Z',
+  '4',
+  '{"id":"log-demo-task-failed-2","level":"error","message":"Task failed after repeated parser errors.","timestamp":"2026-04-16T18:12:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(task_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO task_transcript_meta (
+  task_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-task-failed',
+  'admin',
+  'demo-seed:5',
+  5,
+  'demo-seed'
+)
+ON CONFLICT(task_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'message:msg-demo-chat-streaming-1',
+  'message',
+  '2026-04-16T19:01:00.000Z',
+  '0',
+  '{"id":"msg-demo-chat-streaming-1","role":"user","content":"Review the invoice timeline API responses.","timestamp":"2026-04-16T19:01:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'log:log-demo-chat-streaming-1',
+  'log',
+  '2026-04-16T19:01:10.000Z',
+  '1',
+  '{"id":"log-demo-chat-streaming-1","level":"info","message":"Chat session connected.","timestamp":"2026-04-16T19:01:10.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'tool:tool-demo-chat-streaming-1',
+  'tool',
+  '2026-04-16T19:08:00.000Z',
+  '2',
+  '{}',
+  'Read',
+  'completed',
+  '{"filePath":"src/api/invoices.ts"}',
+  '{"lineCount":142}',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'message:msg-demo-chat-streaming-2',
+  'message',
+  '2026-04-16T19:14:00.000Z',
+  '3',
+  '{"id":"msg-demo-chat-streaming-2","role":"assistant","content":"I found duplicated event shapes between settled and pending invoices.","timestamp":"2026-04-16T19:14:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'log:log-demo-chat-streaming-2',
+  'log',
+  '2026-04-16T19:34:00.000Z',
+  '4',
+  '{"id":"log-demo-chat-streaming-2","level":"agent","message":"Inspecting timeline serializers.","timestamp":"2026-04-16T19:34:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_meta (
+  chat_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-chat-streaming',
+  'admin',
+  'demo-seed:5',
+  5,
+  'demo-seed'
+)
+ON CONFLICT(chat_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'message:msg-demo-chat-failed-1',
+  'message',
+  '2026-04-16T18:06:00.000Z',
+  '0',
+  '{"id":"msg-demo-chat-failed-1","role":"user","content":"Find duplicated button styles in the dashboard.","timestamp":"2026-04-16T18:06:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'tool:tool-demo-chat-failed-1',
+  'tool',
+  '2026-04-16T18:20:00.000Z',
+  '1',
+  '{}',
+  'Glob',
+  'completed',
+  '{"pattern":"src/components/**/*.tsx"}',
+  '["src/components/Button.tsx","src/components/IconButton.tsx"]',
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'log:log-demo-chat-failed-1',
+  'log',
+  '2026-04-16T18:40:00.000Z',
+  '2',
+  '{"id":"log-demo-chat-failed-1","level":"warn","message":"Provider latency is above threshold.","timestamp":"2026-04-16T18:40:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'message:msg-demo-chat-failed-2',
+  'message',
+  '2026-04-16T18:44:00.000Z',
+  '3',
+  '{"id":"msg-demo-chat-failed-2","role":"assistant","content":"I found three duplicated button variants before the provider timed out.","timestamp":"2026-04-16T18:44:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_entries (
+  chat_id, user_id, entry_id, kind, timestamp, sequence,
+  payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+  created_at, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'log:log-demo-chat-failed-2',
+  'log',
+  '2026-04-16T18:45:00.000Z',
+  '4',
+  '{"id":"log-demo-chat-failed-2","level":"error","message":"Chat failed while waiting for the next event.","timestamp":"2026-04-16T18:45:00.000Z"}',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'demo-seed',
+  'demo-seed'
+)
+ON CONFLICT(chat_id, entry_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  timestamp = excluded.timestamp,
+  sequence = excluded.sequence,
+  payload = excluded.payload,
+  tool_name = excluded.tool_name,
+  tool_status = excluded.tool_status,
+  tool_input = excluded.tool_input,
+  tool_output = excluded.tool_output,
+  tool_extras = excluded.tool_extras,
+  updated_at = excluded.updated_at;
+
+INSERT INTO chat_transcript_meta (
+  chat_id, user_id, revision, entry_count, updated_at
+) VALUES (
+  'demo-chat-failed',
+  'admin',
+  'demo-seed:5',
+  5,
+  'demo-seed'
+)
+ON CONFLICT(chat_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  revision = excluded.revision,
+  entry_count = excluded.entry_count,
+  updated_at = excluded.updated_at;
 
 COMMIT;

@@ -247,9 +247,6 @@ function createTables(database: Database): void {
         git_worktree_path TEXT,
         git_commits TEXT,
         recent_iterations TEXT,
-        logs TEXT,
-        messages TEXT,
-        tool_calls TEXT,
         consecutive_errors TEXT,
         pending_prompt TEXT,
         pending_prompt_mode TEXT,
@@ -313,9 +310,6 @@ function createTables(database: Database): void {
         worktree_original_branch TEXT,
         worktree_working_branch TEXT,
         worktree_path TEXT,
-        messages TEXT,
-        logs TEXT,
-        tool_calls TEXT,
         pending_permission_requests TEXT,
         queued_messages TEXT,
         active_message_id TEXT,
@@ -546,9 +540,6 @@ function createTables(database: Database): void {
         worktree_original_branch TEXT,
         worktree_working_branch TEXT,
         worktree_path TEXT,
-        messages TEXT NOT NULL DEFAULT '[]',
-        logs TEXT NOT NULL DEFAULT '[]',
-        tool_calls TEXT NOT NULL DEFAULT '[]',
         pending_permission_requests TEXT NOT NULL DEFAULT '[]',
         attachments TEXT NOT NULL DEFAULT '[]',
         config_snapshot TEXT NOT NULL,
@@ -727,12 +718,18 @@ export function resetDatabase(): void {
   // FK constraints.
   const dropAllTables = db.transaction(() => {
     db!.run("DROP TABLE IF EXISTS preview_sessions");
+    db!.run("DROP TABLE IF EXISTS agent_run_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS agent_run_transcript_entries");
     db!.run("DROP TABLE IF EXISTS agent_runs");
     db!.run("DROP TABLE IF EXISTS agents");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
+    db!.run("DROP TABLE IF EXISTS task_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS task_transcript_entries");
     db!.run("DROP TABLE IF EXISTS tasks");
+    db!.run("DROP TABLE IF EXISTS chat_transcript_meta");
+    db!.run("DROP TABLE IF EXISTS chat_transcript_entries");
     db!.run("DROP TABLE IF EXISTS chats");
     db!.run("DROP TABLE IF EXISTS vnc_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_servers");

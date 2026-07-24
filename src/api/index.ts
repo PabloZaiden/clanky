@@ -21,6 +21,7 @@
 
 import { defineRoutes, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../core/user-context";
+import { agentPromptBridgeRoutes } from "./agent-prompt-bridge";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
@@ -56,6 +57,7 @@ const nativeApiRoutes = {
   ...agentsRoutes,
   ...vncSessionRoutes,
   ...previewRoutes,
+  ...agentPromptBridgeRoutes,
 };
 
 const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -98,3 +100,4 @@ export * from "./chats";
 export * from "./agents";
 export * from "./vnc-sessions";
 export * from "./previews";
+export * from "./agent-prompt-bridge";

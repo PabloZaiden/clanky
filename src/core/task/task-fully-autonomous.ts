@@ -1,5 +1,8 @@
 import type { Task } from "@/shared/task";
-import { loadTask, updateTaskState } from "../../persistence/tasks";
+import {
+  loadTask,
+  updateTaskOperationalState,
+} from "../../persistence/tasks";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { TaskCtx } from "./context";
 import { emitAutomaticPrFlowUpdatedEvent } from "./task-automatic-pr-flow-events";
@@ -28,7 +31,7 @@ function buildAutomationErrorState(task: Task, error: string): NonNullable<Task[
 async function persistAutomationFailure(ctx: TaskCtx, task: Task, error: string): Promise<void> {
   task.state.fullyAutonomousPending = false;
   task.state.automaticPrFlow = buildAutomationErrorState(task, error);
-  await updateTaskState(task.config.id, task.state);
+  await updateTaskOperationalState(task.config.id, task.state);
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, task.config.id, task.state.automaticPrFlow);
 }
 
@@ -69,7 +72,7 @@ export async function finalizeFullyAutonomousPushImpl(ctx: TaskCtx, taskId: stri
   }
 
   latestTask.state.fullyAutonomousPending = false;
-  await updateTaskState(taskId, latestTask.state);
+  await updateTaskOperationalState(taskId, latestTask.state);
 }
 
 export async function handleFullyAutonomousCompletionImpl(ctx: TaskCtx, taskId: string): Promise<void> {

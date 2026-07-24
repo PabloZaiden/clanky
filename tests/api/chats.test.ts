@@ -109,15 +109,28 @@ describe("Chats API Integration", () => {
     throw new Error(`Failed to create workspace: ${JSON.stringify(data)}`);
   }
 
-  async function waitForChatIdle(chatId: string, timeoutMs = 5000): Promise<unknown> {
+  async function waitForChatIdle(chatId: string, timeoutMs = 5000): Promise<Chat> {
     const start = Date.now();
 
     while (Date.now() - start < timeoutMs) {
       const response = await fetch(`${baseUrl}/api/chats/${chatId}`);
       if (response.ok) {
-        const chat = await response.json();
+        const chat = await response.json() as Chat;
         if (chat.state?.status === "idle" || chat.state?.status === "failed") {
-          return chat;
+          const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
+          expect(snapshotResponse.status).toBe(200);
+          const snapshot = await snapshotResponse.json() as {
+            transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;
+          };
+          return {
+            ...chat,
+            state: {
+              ...chat.state,
+              messages: snapshot.transcript.messages,
+              logs: snapshot.transcript.logs,
+              toolCalls: snapshot.transcript.toolCalls,
+            },
+          };
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -409,15 +422,27 @@ describe("Chats API Integration", () => {
       expect(interrupted.state.status).toBe("idle");
       expect(interrupted.state.error).toBeUndefined();
       expect(interrupted.state.activeMessageId).toBeUndefined();
-      expect(interrupted.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
+      expect(interrupted.state.messages).toEqual([]);
+      expect(interrupted.state.toolCalls).toEqual([]);
+
+      const interruptedSnapshotResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`);
+      expect(interruptedSnapshotResponse.status).toBe(200);
+      const interruptedSnapshot = await interruptedSnapshotResponse.json();
+      expect(interruptedSnapshot.transcript.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
         ["user", "Start a long response"],
         ["assistant", "Still working..."],
       ]);
-      expect(interrupted.state.toolCalls).toContainEqual(expect.objectContaining({
+      expect(interruptedSnapshot.transcript.toolCalls).toContainEqual(expect.objectContaining({
         id: "tool-interrupted",
         status: "failed",
-        output: "Cancelled by user.",
       }));
+      const interruptedToolResponse = await fetch(
+        `${baseUrl}/api/chats/${created.config.id}/tool-calls/tool-interrupted`,
+      );
+      expect(interruptedToolResponse.status).toBe(200);
+      await expect(interruptedToolResponse.json()).resolves.toMatchObject({
+        output: "Cancelled by user.",
+      });
       expect(observedEvents.some((event) => event.type === "chat.interrupted")).toBe(true);
       expect(observedEvents.some((event) => event.type === "chat.error")).toBe(false);
 
@@ -477,37 +502,42 @@ describe("Chats API Integration", () => {
     expect(imported.config.directory).toBe(testWorkDir);
     expect(imported.state.session.id).toBe("provider-session-import-1");
     expect(imported.state.status).toBe("idle");
-    expect(imported.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
+    expect(imported.state.messages).toEqual([]);
+    expect(imported.state.logs).toEqual([]);
+    expect(imported.state.toolCalls).toEqual([]);
+
+    const importedSnapshotResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/snapshot`);
+    expect(importedSnapshotResponse.status).toBe(200);
+    const importedSnapshot = await importedSnapshotResponse.json();
+    expect(importedSnapshot.transcript.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
       ["user", "Please inspect the README"],
       ["assistant", "The README is present."],
     ]);
-    expect(imported.state.logs.some((log: { details?: { logKind?: string; responseContent?: string } }) =>
+    expect(importedSnapshot.transcript.logs.some((log: { details?: { logKind?: string; responseContent?: string } }) =>
       log.details?.logKind === "reasoning"
       && log.details.responseContent === "I should inspect the repository first."
     )).toBe(true);
-    expect(imported.state.toolCalls).toEqual([
+    expect(importedSnapshot.transcript.toolCalls).toEqual([
       expect.objectContaining({
         id: "tool-import-1",
         name: "read_file",
         input: { path: "README.md" },
-        output: "README contents",
         status: "completed",
       }),
       expect.objectContaining({
         name: "grep",
         input: { pattern: "Clanky" },
-        output: "Clanky matches",
         status: "completed",
       }),
     ]);
-    expect(imported.state.toolCalls).toHaveLength(2);
+    expect(importedSnapshot.transcript.toolCalls).toHaveLength(2);
 
     const reconnectResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/reconnect`, {
       method: "POST",
     });
     expect(reconnectResponse.status).toBe(200);
     const reconnected = await reconnectResponse.json();
-    expect(reconnected.state.messages).toHaveLength(2);
+    expect(reconnected.state.messages).toEqual([]);
 
     const sendResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/messages`, {
       method: "POST",
@@ -573,10 +603,7 @@ describe("Chats API Integration", () => {
 
     expect(secondImport.config.id).not.toBe(firstImport.config.id);
     expect(secondImport.state.session.id).toBe("provider-session-import-duplicate");
-    expect(secondImport.state.messages.map((message: { content: string }) => message.content)).toEqual([
-      "Original request",
-      "Original response",
-    ]);
+    expect(secondImport.state.messages).toEqual([]);
   });
 
   test("preserves import failure when cleanup disconnect fails", async () => {
@@ -858,12 +885,14 @@ describe("Chats API Integration", () => {
       const settled = await waitForChatIdle(created.config.id) as Chat;
       const expectedContent = chunks.join("");
       expect(settled.state.messages.at(-1)?.content).toBe(expectedContent);
-      const completionLog = settled.state.logs.find((log) => log.message === "AI finished generating response");
+      const persistedSettled = await loadChat(created.config.id);
+      expect(persistedSettled).not.toBeNull();
+      const completionLog = persistedSettled?.state.logs.find((log) => log.message === "AI finished generating response");
       expect(completionLog).toBeDefined();
-      if (!completionLog || !settled.state.lastActivityAt) {
+      if (!completionLog || !persistedSettled?.state.lastActivityAt) {
         throw new Error("Expected the settled chat to include completion activity timestamps");
       }
-      expect(Date.parse(settled.state.lastActivityAt)).toBeGreaterThanOrEqual(Date.parse(completionLog.timestamp));
+      expect(Date.parse(persistedSettled.state.lastActivityAt)).toBeGreaterThanOrEqual(Date.parse(completionLog.timestamp));
       const completionLogEvent = events.find(
         (event): event is Extract<ChatEvent, { type: "chat.log" }> =>
           event.type === "chat.log"
@@ -898,10 +927,10 @@ describe("Chats API Integration", () => {
       );
       expect(finalAssistantEvent?.message.content).toBe(expectedContent);
 
-      const reloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+      const reloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`);
       expect(reloadResponse.status).toBe(200);
-      const reloaded = await reloadResponse.json() as Chat;
-      expect(reloaded.state.messages.at(-1)?.content).toBe(expectedContent);
+      const reloaded = await reloadResponse.json();
+      expect(reloaded.transcript.messages.at(-1)?.content).toBe(expectedContent);
     } finally {
       unsubscribe();
       setSystemTime();
@@ -1393,9 +1422,170 @@ describe("Chats API Integration", () => {
     const detailResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
     expect(detailResponse.status).toBe(200);
     const detail = await detailResponse.json();
-    expect(detail.state.messages).toEqual(messages);
-    expect(detail.state.logs).toEqual(logs);
-    expect(detail.state.toolCalls).toEqual(toolCalls);
+    expect(detail.state.messages).toEqual([]);
+    expect(detail.state.logs).toEqual([]);
+    expect(detail.state.toolCalls).toEqual([]);
+  });
+
+  test("loads complete lightweight transcripts and lazy-loads tool call payloads", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Paginated Long Transcript",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+    const firstTimestamp = Date.parse("2025-01-01T00:00:00.000Z");
+    const messages: PersistedMessage[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `page-message-${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `Message ${index}`,
+      timestamp: new Date(firstTimestamp + index * 1_000).toISOString(),
+    }));
+    const toolCalls: PersistedToolCall[] = Array.from({ length: 250 }, (_, index) => ({
+      id: `page-tool-${index}`,
+      name: index % 2 === 0 ? "Read" : "Execute",
+      input: index === 249
+        ? { patchText: "i".repeat(200_000) }
+        : { filePath: `src/file-${index}.ts` },
+      output: {
+        content: `large-output-${index}-${"x".repeat(10_000)}`,
+        detailedContent: `large-output-${index}-${"y".repeat(10_000)}`,
+        binaryResultsForLlm: "base64-payload-that-must-stay-server-side",
+      },
+      status: "completed",
+      timestamp: new Date(firstTimestamp + (20 + index) * 1_000).toISOString(),
+    }));
+    const logs: TaskLogEntry[] = Array.from({ length: 20 }, (_, index) => ({
+      id: `page-log-${index}`,
+      level: index % 5 === 0 ? "agent" : "debug",
+      message: `Log ${index}`,
+      details: index % 5 === 0 ? undefined : { logKind: "system" },
+      timestamp: new Date(firstTimestamp + (300 + index) * 1_000).toISOString(),
+    }));
+
+    await updateChatState(chatId, {
+      ...created.state,
+      messages,
+      logs,
+      toolCalls,
+      lastActivityAt: toolCalls.at(-1)!.timestamp,
+    });
+
+    const fullResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
+    expect(fullResponse.status).toBe(200);
+    const fullBody = await fullResponse.text();
+
+    const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
+    expect(snapshotResponse.status).toBe(200);
+    const snapshotBody = await snapshotResponse.text();
+    const snapshot = JSON.parse(snapshotBody) as {
+      state: Record<string, unknown>;
+      transcript: {
+        messages: PersistedMessage[];
+        logs: TaskLogEntry[];
+        toolCalls: Array<Record<string, unknown>>;
+        totalEntries: number;
+      };
+    };
+
+    expect(fullBody).not.toContain("large-output-249");
+    expect(snapshotBody).not.toContain("large-output-249");
+    expect(snapshot.state["messages"]).toBeUndefined();
+    expect(snapshot.state["logs"]).toBeUndefined();
+    expect(snapshot.state["toolCalls"]).toBeUndefined();
+    expect(snapshot.transcript.totalEntries).toBe(290);
+    expect(snapshot.transcript.messages).toHaveLength(20);
+    expect(snapshot.transcript.logs).toHaveLength(4);
+    expect(snapshot.transcript.toolCalls.length).toBe(250);
+    expect(snapshot.transcript.toolCalls.every((tool) => "input" in tool && !("output" in tool))).toBe(true);
+    const largeInputTool = snapshot.transcript.toolCalls.find((tool) => tool["id"] === "page-tool-249");
+    expect((largeInputTool?.["input"] as { patchText: string }).patchText).toHaveLength(200_000);
+
+    const etag = snapshotResponse.headers.get("ETag");
+    expect(etag).toBeString();
+    const notModifiedResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`, {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(notModifiedResponse.status).toBe(304);
+
+    const persistedChat = await loadChat(chatId);
+    expect(persistedChat).not.toBeNull();
+    await updateChatState(chatId, {
+      ...persistedChat!.state,
+      lastActivityAt: "2025-01-02T00:00:00.000Z",
+    });
+    const changedTranscriptResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`, {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(changedTranscriptResponse.status).toBe(200);
+    const changedEtag = changedTranscriptResponse.headers.get("ETag");
+    expect(changedEtag).toBeString();
+    expect(changedEtag).not.toBe(etag);
+    const unchangedTranscriptResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`, {
+      headers: { "If-None-Match": changedEtag! },
+    });
+    expect(unchangedTranscriptResponse.status).toBe(304);
+
+    const latestToolId = toolCalls.at(-1)!.id;
+    const detailResponse = await fetch(
+      `${baseUrl}/api/chats/${chatId}/tool-calls/${encodeURIComponent(latestToolId)}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json();
+    expect(detail.id).toBe(latestToolId);
+    expect(detail.output.content).toContain("large-output-249");
+    expect(JSON.stringify(snapshot)).not.toContain("large-output-249");
+
+  });
+
+  test("rolls back chat metadata when transcript persistence fails", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Atomic Chat Save",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const persisted = await loadChat(created.config.id);
+    expect(persisted).not.toBeNull();
+
+    const cyclicInput: Record<string, unknown> = {};
+    cyclicInput["self"] = cyclicInput;
+    await expect(saveChat({
+      ...persisted!,
+      config: {
+        ...persisted!.config,
+        name: "Should be rolled back",
+      },
+      state: {
+        ...persisted!.state,
+        toolCalls: [{
+          id: "cyclic-tool",
+          name: "Read",
+          input: cyclicInput,
+          status: "pending",
+          timestamp: "2025-01-01T00:00:00.000Z",
+        }],
+      },
+    })).rejects.toThrow();
+
+    const reloaded = await loadChat(created.config.id);
+    expect(reloaded?.config.name).toBe(created.config.name);
+    expect(reloaded?.state.toolCalls).toEqual([]);
   });
 
   test("replies to pending chat permission requests", async () => {
@@ -2091,11 +2281,11 @@ describe("Chats API Integration", () => {
     const tasks = await listTasksResponse.json();
     expect(tasks.some((task: { config: { id: string } }) => task.config.id === spawnedTask.config.id)).toBe(true);
 
-    const chatResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
+    const chatResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
     expect(chatResponse.status).toBe(200);
     const chatAfterSpawn = await chatResponse.json();
     expect(
-      chatAfterSpawn.state.messages.map((message: { content: string }) => message.content),
+      chatAfterSpawn.transcript.messages.map((message: { content: string }) => message.content),
     ).toEqual(
       settledChat.state.messages.map((message) => message.content),
     );
@@ -2225,8 +2415,6 @@ describe("Chats API Integration", () => {
     expect(spawnedTask.config.name).not.toContain("Plan from");
     expect(spawnedTask.state.status).toBe("planning");
     expect(spawnedTask.state.planMode?.isPlanReady).toBe(true);
-    expect(spawnedTask.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");
-
     const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
     expect(planResponse.status).toBe(200);
     await expect(planResponse.json()).resolves.toMatchObject({
@@ -2304,8 +2492,6 @@ describe("Chats API Integration", () => {
 
     expect(spawnResponse.status).toBe(201);
     const spawnedTask = await spawnResponse.json();
-    expect(spawnedTask.state.planMode?.planContent).toBe(largePlanContent);
-
     const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
     expect(planResponse.status).toBe(200);
     await expect(planResponse.json()).resolves.toMatchObject({
@@ -2371,7 +2557,12 @@ describe("Chats API Integration", () => {
 
     expect(spawnResponse.status).toBe(201);
     const spawnedTask = await spawnResponse.json();
-    expect(spawnedTask.state.planMode?.planContent).toBe("# Fallback plan\n\n1. Use the default path.");
+    const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
+    expect(planResponse.status).toBe(200);
+    await expect(planResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: "# Fallback plan\n\n1. Use the default path.",
+    });
   });
 
   test("spawns from an absolute plan path outside the chat workspace", async () => {
@@ -2418,7 +2609,6 @@ describe("Chats API Integration", () => {
 
     expect(spawnResponse.status).toBe(201);
     const spawnedTask = await spawnResponse.json();
-    expect(spawnedTask.state.planMode?.planContent).toBe("# External plan\n\n1. Import from an absolute path.");
 
     const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
     expect(planResponse.status).toBe(200);

@@ -243,6 +243,9 @@ To repopulate local demo data for the UI, run:
 bun tests/test-data-generation/generate-demo-ui-data.ts
 ```
 
+The versioned SQL seed targets the current database schema directly, including
+normalized transcript entries; the generator does not rewrite legacy columns.
+
 ## Contributing
 
 1. Fork the repository.

@@ -7,9 +7,11 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { chatManager } from "../core/chat-manager";
+import { taskManager } from "../core/task-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat } from "@/shared/chat";
+import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat, type Chat } from "@/shared/chat";
 import type { ChatConfig } from "@/shared/chat";
+import type { Task } from "@/shared/task";
 import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";
 import { requireWorkspace, errorResponse, internalErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
@@ -17,6 +19,9 @@ import { isModelEnabled } from "../core/model-discovery";
 import { isDomainError } from "../core/domain-error";
 import { preferencesManager } from "../core/preferences-manager";
 import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
+import {
+  getTranscriptSnapshotEtag,
+} from "../core/transcript-service";
 
 const log = createLogger("api:chats");
 
@@ -105,6 +110,34 @@ async function validateQuickChatRequestModel(body: {
   }
 }
 
+function transcriptResponseHeaders(revision: string): Headers {
+  return new Headers({
+    "Cache-Control": "private, no-cache",
+    ETag: `"${revision}"`,
+  });
+}
+
+function isNotModified(request: Request, revision: string): boolean {
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  return ifNoneMatch === `"${revision}"` || ifNoneMatch === revision;
+}
+
+async function toLightweightChat(chat: Chat): Promise<Chat> {
+  const summary = await chatManager.getChatSummary(chat.config.id);
+  if (!summary) {
+    throw new Error(`Chat disappeared after mutation: ${chat.config.id}`);
+  }
+  return summary;
+}
+
+async function toLightweightTask(task: Task): Promise<Task> {
+  const summary = await taskManager.getTaskSummary(task.config.id);
+  if (!summary) {
+    throw new Error(`Task disappeared after mutation: ${task.config.id}`);
+  }
+  return summary;
+}
+
 export const chatsRoutes = defineRoutes({
   "/api/chats": {
     auth: "user",
@@ -153,7 +186,7 @@ export const chatsRoutes = defineRoutes({
           syncBaseBranch: !body.quick,
           prepareWorktreeOnCreate: !body.quick,
         });
-        return Response.json(chat, { status: 201 });
+        return Response.json(await toLightweightChat(chat), { status: 201 });
       } catch (error) {
         log.error("Failed to create chat", {
           workspaceId: body.workspaceId,
@@ -239,7 +272,7 @@ export const chatsRoutes = defineRoutes({
           cwd: body.cwd,
           autoApprovePermissions: body.autoApprovePermissions,
         });
-        return Response.json(chat, { status: 201 });
+        return Response.json(await toLightweightChat(chat), { status: 201 });
       } catch (error) {
         log.error("Failed to import chat session", {
           workspaceId: body.workspaceId,
@@ -261,7 +294,7 @@ export const chatsRoutes = defineRoutes({
     description: "Read, update, or delete a chat session.",
     requestSchema: UpdateChatRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
-      const chat = await chatManager.getChat(ctx.params["id"]!);
+      const chat = await chatManager.getChatSummary(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
@@ -301,7 +334,7 @@ export const chatsRoutes = defineRoutes({
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
-        return Response.json(updated);
+        return Response.json(await toLightweightChat(updated));
       } catch (error) {
         log.error("Failed to update chat", { chatId: ctx.params["id"]!, error: String(error) });
         return internalErrorResponse(error, {
@@ -332,6 +365,61 @@ export const chatsRoutes = defineRoutes({
           status: 500,
         });
       }
+    },
+  },
+
+  "/api/chats/:id/snapshot": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the complete lightweight transcript snapshot for a chat.",
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!);
+        if (!snapshot) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+
+        const revision = getTranscriptSnapshotEtag(
+          snapshot.transcript.revision,
+          { config: snapshot.config, state: snapshot.state },
+        );
+        if (isNotModified(req, revision)) {
+          return new Response(null, {
+            status: 304,
+            headers: transcriptResponseHeaders(revision),
+          });
+        }
+
+        return Response.json(snapshot, {
+          headers: transcriptResponseHeaders(revision),
+        });
+      } catch (error) {
+        log.error("Failed to load chat snapshot", {
+          chatId: ctx.params["id"]!,
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "snapshot_failed",
+          message: "Failed to load chat snapshot",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/chats/:id/tool-calls/:toolCallId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the full details for one chat tool call.",
+    async GET(_req: Request, ctx): Promise<Response> {
+      const toolCall = await chatManager.getChatToolCall(
+        ctx.params["id"]!,
+        ctx.params["toolCallId"]!,
+      );
+      if (!toolCall) {
+        return errorResponse("not_found", "Tool call not found", 404);
+      }
+      return Response.json(toolCall);
     },
   },
 
@@ -383,7 +471,7 @@ export const chatsRoutes = defineRoutes({
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
-        return Response.json(updated);
+        return Response.json(await toLightweightChat(updated));
       } catch (error) {
         const message = String(error);
         log.error("Failed to remove queued chat message", {
@@ -448,7 +536,7 @@ export const chatsRoutes = defineRoutes({
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
-        return Response.json(updated);
+        return Response.json(await toLightweightChat(updated));
       } catch (error) {
         log.error("Failed to interrupt chat", { chatId: ctx.params["id"]!, error: String(error) });
         return internalErrorResponse(error, {
@@ -485,7 +573,7 @@ export const chatsRoutes = defineRoutes({
         if (!updated) {
           return errorResponse("not_found", "Chat not found", 404);
         }
-        return Response.json(updated);
+        return Response.json(await toLightweightChat(updated));
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
@@ -527,7 +615,7 @@ export const chatsRoutes = defineRoutes({
         if (!reconnected) {
           return errorResponse("not_found", "Chat not found", 404);
         }
-        return Response.json(reconnected);
+        return Response.json(await toLightweightChat(reconnected));
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
@@ -572,7 +660,7 @@ export const chatsRoutes = defineRoutes({
 
       try {
         const task = await chatManager.spawnTaskFromChat(ctx.params["id"]!);
-        return Response.json(task, { status: 201 });
+        return Response.json(await toLightweightTask(task), { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
@@ -625,7 +713,7 @@ export const chatsRoutes = defineRoutes({
 
       try {
         const task = await chatManager.spawnTaskFromCurrentPlan(ctx.params["id"]!, validation.data.planFilePath);
-        return Response.json(task, { status: 201 });
+        return Response.json(await toLightweightTask(task), { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {

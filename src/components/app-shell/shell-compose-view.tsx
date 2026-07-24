@@ -146,6 +146,8 @@ export function ComposeView(props: ComposeViewProps) {
         defaultBranch={dashboardData.defaultBranch}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onCreateAgent={agents.createAgent}
+        onGenerateAgentCode={agents.generateAgentCode}
+        onTestAgentCode={agents.testAgentCode}
         navigateWithinShell={navigateWithinShell}
       />
     );

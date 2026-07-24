@@ -38,6 +38,7 @@ export interface AgentConfigSnapshot {
   workspaceId: string;
   directory: string;
   prompt: string;
+  code?: string;
   model: ModelConfig;
   baseBranch?: string;
   useWorktree: boolean;
@@ -127,4 +128,8 @@ export function createInitialAgentState(id: string, nextRunAt?: string): AgentSt
 
 export function isAgentRunActiveStatus(status: AgentRunStatus): boolean {
   return status === "scheduled" || status === "starting" || status === "running";
+}
+
+export function isAgentCodeEnabled(config: Pick<AgentConfigSnapshot, "code">): boolean {
+  return typeof config.code === "string" && config.code.trim().length > 0;
 }

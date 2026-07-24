@@ -63,7 +63,11 @@ export const tasksCollectionRoutes = defineRoutes({
 
       try {
         const task = await taskCreationService.create(body);
-        return Response.json(task, { status: 201 });
+        const responseTask = await taskManager.getTaskSummary(task.config.id);
+        if (!responseTask) {
+          throw new Error(`Task disappeared after creation: ${task.config.id}`);
+        }
+        return Response.json(responseTask, { status: 201 });
       } catch (error) {
         if (error instanceof TaskCreationStartError) {
           const startDetails = error.phase === "uploaded_plan"

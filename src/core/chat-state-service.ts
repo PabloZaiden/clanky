@@ -11,16 +11,29 @@ import {
   listChats,
   listChatsByWorkspace,
   loadChat,
+  loadChatMetadata,
   loadTaskChat,
+  getChatTranscriptMeta,
+  getChatToolCallFromTranscript,
+  listChatTranscriptEntries,
   saveChat,
   updateChatConfig,
   updateChatState,
 } from "../persistence/chats";
+import { createTranscriptFromStorageEntries } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
-import type { Chat, ChatConfig, ChatState, Workspace } from "@/shared";
+import type {
+  Chat,
+  ChatConfig,
+  ChatState,
+  TranscriptChangeSet,
+  Workspace,
+} from "@/shared";
+import { createTranscriptChangeSet } from "@/shared";
+import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { isStandaloneChat } from "@/shared/chat";
+import { isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
 
@@ -31,6 +44,49 @@ export class ChatStateService implements ChatStatePort {
 
   async getChat(chatId: string): Promise<Chat | null> {
     return loadChat(chatId);
+  }
+
+  async getChatSummary(chatId: string): Promise<Chat | null> {
+    return loadChatMetadata(chatId);
+  }
+
+  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
+    const chat = await loadChatMetadata(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const meta = getChatTranscriptMeta(chatId);
+    if (!meta) {
+      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
+    }
+
+    const entries = listChatTranscriptEntries(chatId);
+    const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
+    return {
+      config: chat.config,
+      state,
+      transcript: createTranscriptFromStorageEntries(entries, {
+        revision: meta.revision,
+        totalEntries: meta.entryCount,
+      }, shouldIncludeChatTranscriptLog),
+    };
+  }
+
+  async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
+    const chatMeta = await loadChatMetadata(chatId);
+    if (!chatMeta) {
+      return null;
+    }
+    const meta = getChatTranscriptMeta(chatId);
+    if (!meta) {
+      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
+    }
+
+    const value = getChatToolCallFromTranscript(chatId, toolCallId);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as ToolCallRecord
+      : null;
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {
@@ -84,9 +140,24 @@ export class ChatStateService implements ChatStatePort {
     return this.getChat(chatId);
   }
 
-  async updateState(chat: Chat, state: ChatState): Promise<Chat> {
+  async updateState(
+    chat: Chat,
+    state: ChatState,
+    options: { transcriptChanges?: TranscriptChangeSet } = {},
+  ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
-    const saved = await updateChatState(chat.config.id, state, { preserveQueuedMessages });
+    const transcriptChanges = options.transcriptChanges ?? (
+      state.messages === chat.state.messages
+      && state.logs === chat.state.logs
+      && state.toolCalls === chat.state.toolCalls
+        ? createTranscriptChangeSet(state)
+        : undefined
+    );
+    const saved = await updateChatState(chat.config.id, state, {
+      preserveQueuedMessages,
+      previousState: transcriptChanges ? chat.state : undefined,
+      transcriptChanges,
+    });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }

@@ -4,12 +4,11 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { TaskEvent, MessageData, ToolCallData } from "@/shared";
+import type { TaskEvent, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useTaskData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { isToolCallSummary, mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 
 const log = createLogger("useTask");
 
@@ -18,7 +17,7 @@ export interface TaskEventHandlerParams {
   refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setMessages: Dispatch<SetStateAction<MessageData[]>>;
-  setToolCalls: Dispatch<SetStateAction<ToolCallData[]>>;
+  setToolCalls: Dispatch<SetStateAction<ToolCallDisplayData[]>>;
   setProgressContent: Dispatch<SetStateAction<string>>;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
 }
@@ -64,7 +63,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
             };
             return updated;
           }
-          // Add new entry, evict oldest if over limit
+          // Add new entry while preserving the complete live transcript.
           const newLogs = [
             ...prev,
             {
@@ -75,9 +74,6 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
               timestamp: event.timestamp,
             },
           ];
-          if (newLogs.length > MAX_FRONTEND_LOGS) {
-            return newLogs.slice(-MAX_FRONTEND_LOGS);
-          }
           return newLogs;
         });
         break;
@@ -103,7 +99,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
                 timestamp: event.logTimestamp,
               },
             ];
-            return newLogs.length > MAX_FRONTEND_LOGS ? newLogs.slice(-MAX_FRONTEND_LOGS) : newLogs;
+            return newLogs;
           }
 
           const existingLog = prev[existingIndex]!;
@@ -142,11 +138,7 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           setLogs((prev) => finalizeLatestResponseLog(prev, event.message.content));
         }
         setMessages((prev) => {
-          const newMessages = [...prev, event.message];
-          if (newMessages.length > MAX_FRONTEND_MESSAGES) {
-            return newMessages.slice(-MAX_FRONTEND_MESSAGES);
-          }
-          return newMessages;
+          return [...prev, event.message];
         });
         break;
 
@@ -156,20 +148,16 @@ export function createTaskEventHandler(params: TaskEventHandlerParams) {
           const index = prev.findIndex((tc) => tc.id === event.tool.id);
           if (index >= 0) {
             const newToolCalls = [...prev];
-            newToolCalls[index] = mergeToolCallRecord(newToolCalls[index], event.tool);
+            newToolCalls[index] = mergeToolCallRecord<ToolCallData>(newToolCalls[index], event.tool);
             return newToolCalls;
           }
-          const newToolCalls = [...prev, event.tool];
-          if (newToolCalls.length > MAX_FRONTEND_TOOL_CALLS) {
-            return newToolCalls.slice(-MAX_FRONTEND_TOOL_CALLS);
-          }
-          return newToolCalls;
+          return [...prev, event.tool];
         });
         break;
 
       case "task.tool_call.extra":
         setToolCalls((prev) => prev.map((toolCall) => (
-          toolCall.id === event.toolId
+          toolCall.id === event.toolId && !isToolCallSummary(toolCall)
             ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
             : toolCall
         )));

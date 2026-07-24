@@ -2,7 +2,14 @@
  * Public orchestration facade for long-lived ACP-backed chats.
  */
 
-import type { Chat, ChatStatus, SessionInfo, Task } from "@/shared";
+import type {
+  Chat,
+  ChatSnapshot,
+  ChatStatus,
+  SessionInfo,
+  Task,
+  ToolCallRecord,
+} from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { ChatStateService } from "./chat-state-service";
@@ -134,6 +141,10 @@ export class ChatManager {
     return this.services.state.getChat(chatId);
   }
 
+  async getChatSummary(chatId: string): Promise<Chat | null> {
+    return this.services.state.getChatSummary(chatId);
+  }
+
   async getAllChats(): Promise<Chat[]> {
     return this.services.state.getAllChats();
   }
@@ -156,6 +167,14 @@ export class ChatManager {
 
   async getTaskChat(taskId: string): Promise<Chat | null> {
     return this.services.state.getTaskChat(taskId);
+  }
+
+  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
+    return this.services.state.getChatSnapshot(chatId);
+  }
+
+  async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
+    return this.services.state.getChatToolCall(chatId, toolCallId);
   }
 
   async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {

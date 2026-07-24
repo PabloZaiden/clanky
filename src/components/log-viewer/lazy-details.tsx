@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { memo, useId, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 
 interface LazyDetailsProps {
   /** Summary content shown in the collapsed header (accepts ReactNode for rich content). */
@@ -7,6 +7,10 @@ interface LazyDetailsProps {
   renderContent: () => ReactNode;
   /** Whether the details element starts open. Defaults to false. */
   defaultOpen?: boolean;
+  /** Runs when the details are opened for the first time or reopened. */
+  onOpen?: () => void;
+  /** Re-loads open content when its server-side detail revision changes. */
+  contentRevision?: string;
   /** Additional classes applied to the root wrapper. */
   className?: string;
   /** Additional classes applied to the trigger button. */
@@ -19,15 +23,28 @@ export const LazyDetails = memo(function LazyDetails({
   summary,
   renderContent,
   defaultOpen = false,
+  onOpen,
+  contentRevision,
   className,
   triggerClassName,
   panelClassName,
 }: LazyDetailsProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [hasOpened, setHasOpened] = useState(defaultOpen);
+  const contentRevisionRef = useRef(contentRevision);
   const reactId = useId();
   const triggerId = `lazy-details-trigger-${reactId}`;
   const panelId = `lazy-details-panel-${reactId}`;
+
+  useEffect(() => {
+    if (contentRevisionRef.current === contentRevision) {
+      return;
+    }
+    contentRevisionRef.current = contentRevision;
+    if (isOpen && hasOpened) {
+      onOpen?.();
+    }
+  }, [contentRevision, hasOpened, isOpen, onOpen]);
 
   return (
     <div
@@ -45,6 +62,7 @@ export const LazyDetails = memo(function LazyDetails({
           setIsOpen(nextOpen);
           if (nextOpen) {
             setHasOpened(true);
+            onOpen?.();
           }
         }}
       >

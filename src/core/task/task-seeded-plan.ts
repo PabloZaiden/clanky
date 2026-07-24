@@ -2,7 +2,7 @@ import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
 import type { SeedPlanFilesOptions } from "./task-types";
 import { createTimestamp } from "@/shared/events";
-import { loadTask, saveTask } from "../../persistence/tasks";
+import { loadTask, updateTaskOperationalState } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { TaskEngine } from "../task-engine";
@@ -61,7 +61,7 @@ export async function seedPlanFilesImpl(
   task.state.completedAt = undefined;
   task.state.session = undefined;
 
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
 
   ctx.emitter.emit({
     type: "task.plan.ready",

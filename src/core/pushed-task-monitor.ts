@@ -13,7 +13,11 @@ import type {
 } from "./automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem, AutomaticPrFlowFeedbackExtractionResult } from "./automatic-pr-feedback";
 import type { PushTaskResult, SendFollowUpResult, TaskResult } from "./task-manager";
-import { listTasks, loadTask, updateTaskState } from "../persistence/tasks";
+import {
+  listTasks,
+  loadTask,
+  updateTaskOperationalState,
+} from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { taskEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { GitService } from "./git";
@@ -138,7 +142,7 @@ export class PushedTaskMonitor {
     this.deps = {
       listTasks,
       loadTask,
-      updateTaskState,
+      updateTaskState: updateTaskOperationalState,
       emitter: taskEventEmitter,
       getCommandExecutor: (workspaceId: string, directory: string) =>
         backendManager.getCommandExecutorAsync(workspaceId, directory),

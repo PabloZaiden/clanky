@@ -6,7 +6,9 @@ import type { Chat, ChatStatus } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { rowToChat } from "./helpers";
+import { CHAT_METADATA_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
+import { hydrateTranscriptStateForUser } from "../transcripts/store";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -30,12 +32,20 @@ export async function getActiveChatByDirectory(directory: string, workspaceId: s
   const placeholders = ACTIVE_CHAT_STATUSES.map(() => "?").join(", ");
   const userId = requirePersistenceUserId();
   const row = getDatabase().prepare(`
-    SELECT * FROM chats
+    SELECT ${CHAT_METADATA_COLUMNS} FROM chats
     WHERE directory = ? AND workspace_id = ? AND user_id = ? AND scope = 'workspace' AND status IN (${placeholders})
     LIMIT 1
   `).get(directory, workspaceId, userId, ...ACTIVE_CHAT_STATUSES) as Record<string, unknown> | null;
 
-  return row ? rowToChat(row) : null;
+  if (!row) {
+    return null;
+  }
+  const chat = rowToChat(row);
+  const transcript = hydrateTranscriptStateForUser("chat", chat.config.id, userId);
+  chat.state.messages = transcript.messages;
+  chat.state.logs = transcript.logs;
+  chat.state.toolCalls = transcript.toolCalls;
+  return chat;
 }
 
 export function isStaleChatStatus(status: ChatStatus): boolean {
