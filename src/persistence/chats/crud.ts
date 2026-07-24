@@ -8,7 +8,7 @@ import { getDatabase } from "../database";
 import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
-import { replaceChatTranscriptEntriesForUser } from "./transcript";
+import { replaceChatTranscriptEntriesForUserInTransaction } from "./transcript";
 import { hydrateTranscriptStateForUser } from "../transcripts/store";
 
 const log = createLogger("persistence:chats");
@@ -82,13 +82,17 @@ export async function saveChat(chat: Chat): Promise<void> {
   const updateColumns = columns.filter((column) => column !== "id");
   const updateClause = updateColumns.map((column) => `${column} = excluded.${column}`).join(", ");
 
+  const userId = String(row["user_id"]);
   try {
-    db.prepare(`
-      INSERT INTO chats (${columns.join(", ")})
-      VALUES (${placeholders})
-      ON CONFLICT(id) DO UPDATE SET ${updateClause}
-      WHERE chats.user_id = excluded.user_id
-    `).run(...values);
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO chats (${columns.join(", ")})
+        VALUES (${placeholders})
+        ON CONFLICT(id) DO UPDATE SET ${updateClause}
+        WHERE chats.user_id = excluded.user_id
+      `).run(...values);
+      replaceChatTranscriptEntriesForUserInTransaction(db, chat, userId);
+    })();
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {
       throw uniqueConstraintError(
@@ -99,7 +103,6 @@ export async function saveChat(chat: Chat): Promise<void> {
     }
     throw error;
   }
-  replaceChatTranscriptEntriesForUser(chat, String(row["user_id"]));
 }
 
 export async function loadChat(chatId: string): Promise<Chat | null> {

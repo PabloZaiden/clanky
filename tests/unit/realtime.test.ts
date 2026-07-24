@@ -11,6 +11,7 @@ import {
 } from "../../src/realtime";
 import {
   mergeTranscriptPages,
+  mergeTranscriptRecords,
   mergeTranscriptSnapshot,
   mergeTranscriptSnapshotRecords,
   mergeTranscriptToolCalls,
@@ -270,6 +271,27 @@ describe("Clanky realtime migration", () => {
       status: "completed",
       summary: "View src/index.ts",
     });
+  });
+
+  test("sorts transcript records and tool calls deterministically for tied timestamps", () => {
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const messages = mergeTranscriptRecords(
+      [
+        { id: "message-b", role: "user" as const, content: "b", timestamp },
+        { id: "message-a", role: "user" as const, content: "a", timestamp },
+      ],
+      [],
+    );
+    const toolCalls = mergeTranscriptToolCalls(
+      [
+        { id: "tool-b", name: "Read", status: "completed" as const, timestamp },
+        { id: "tool-a", name: "Read", status: "completed" as const, timestamp },
+      ],
+      [],
+    );
+
+    expect(messages.map((message) => message.id)).toEqual(["message-a", "message-b"]);
+    expect(toolCalls.map((toolCall) => toolCall.id)).toEqual(["tool-a", "tool-b"]);
   });
 
   test("preserves loaded older transcript pages during snapshot refresh", () => {

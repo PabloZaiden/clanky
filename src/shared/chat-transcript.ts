@@ -40,6 +40,14 @@ export interface ChatSnapshot {
   transcript: ChatTranscriptPage;
 }
 
+function compareTranscriptRecords(
+  left: { id: string; timestamp: string },
+  right: { id: string; timestamp: string },
+): number {
+  const byTimestamp = left.timestamp.localeCompare(right.timestamp);
+  return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
+}
+
 export function mergeTranscriptPages(
   current: ChatTranscriptPage | null | undefined,
   incoming: ChatTranscriptPage,
@@ -90,7 +98,7 @@ export function mergeTranscriptRecords<T extends { id: string; timestamp: string
   for (const item of current) {
     merged.set(item.id, item);
   }
-  return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  return Array.from(merged.values()).sort(compareTranscriptRecords);
 }
 
 export function mergeTranscriptSnapshotRecords<T extends { id: string; timestamp: string }>(
@@ -109,7 +117,7 @@ export function mergeTranscriptSnapshotRecords<T extends { id: string; timestamp
     ))
     : [];
   return [...incoming, ...liveOnly]
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+    .sort(compareTranscriptRecords);
 }
 
 export function mergeTranscriptToolCalls(
@@ -128,7 +136,7 @@ export function mergeTranscriptToolCalls(
     }
     merged.set(toolCall.id, mergeToolCallDisplayData(toolCall, existing));
   }
-  return Array.from(merged.values()).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  return Array.from(merged.values()).sort(compareTranscriptRecords);
 }
 
 export function mergeTranscriptSnapshotToolCalls(

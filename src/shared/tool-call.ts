@@ -142,7 +142,10 @@ function mergeToolStatus(
 }
 
 function sortToolCalls<T extends ToolCallRecord>(toolCalls: T[]): T[] {
-  return [...toolCalls].sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  return [...toolCalls].sort((left, right) => {
+    const byTimestamp = left.timestamp.localeCompare(right.timestamp);
+    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
+  });
 }
 
 function mergeToolCallRecordMap<T extends ToolCallRecord>(toolCalls: T[]): Map<string, T> {

@@ -7,19 +7,18 @@ import type {
   ToolCallRecord,
 } from "@/shared";
 import { mergeToolCallRecords } from "@/shared/tool-call";
-import { shouldIncludeChatTranscriptLog } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
 import { rowToChat } from "./helpers";
 import {
-  countTranscriptEntriesForUser,
   getTranscriptMetaForUser,
   getTranscriptToolCallForUser,
   hasLegacyTranscriptColumns,
   hydrateTranscriptStateForUser,
   listTranscriptEntriesForUser,
   replaceTranscriptEntriesForUser,
+  replaceTranscriptEntriesForUserInTransaction,
   syncTranscriptEntriesInTransaction,
   type TranscriptMeta,
 } from "../transcripts/store";
@@ -33,11 +32,20 @@ export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null
 }
 
 export function countChatTranscriptEntries(chatId: string): number {
-  return countTranscriptEntriesForUser(
+  return getChatTranscriptMeta(chatId)?.entryCount ?? 0;
+}
+
+export function replaceChatTranscriptEntriesForUserInTransaction(
+  db: Database,
+  chat: Chat,
+  userId: string,
+): void {
+  replaceTranscriptEntriesForUserInTransaction(
+    db,
     "chat",
-    chatId,
-    requirePersistenceUserId(),
-    shouldIncludeChatTranscriptLog,
+    chat.config.id,
+    userId,
+    chat.state,
   );
 }
 

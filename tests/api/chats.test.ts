@@ -1475,7 +1475,7 @@ describe("Chats API Integration", () => {
     expect(snapshot.state["toolCalls"]).toBeUndefined();
     expect(snapshot.transcript.hasOlder).toBe(false);
     expect(snapshot.transcript.nextCursor).toBeUndefined();
-    expect(snapshot.transcript.totalEntries).toBe(274);
+    expect(snapshot.transcript.totalEntries).toBe(290);
     expect(snapshot.transcript.messages).toHaveLength(20);
     expect(snapshot.transcript.logs).toHaveLength(4);
     expect(snapshot.transcript.toolCalls.length).toBe(250);
@@ -1540,6 +1540,48 @@ describe("Chats API Integration", () => {
     ];
     expect(olderKeys.every((key) => !currentKeys.has(key))).toBe(true);
     expect(olderKeys.length).toBe(100);
+  });
+
+  test("rolls back chat metadata when transcript persistence fails", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Atomic Chat Save",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const persisted = await loadChat(created.config.id);
+    expect(persisted).not.toBeNull();
+
+    const cyclicInput: Record<string, unknown> = {};
+    cyclicInput["self"] = cyclicInput;
+    await expect(saveChat({
+      ...persisted!,
+      config: {
+        ...persisted!.config,
+        name: "Should be rolled back",
+      },
+      state: {
+        ...persisted!.state,
+        toolCalls: [{
+          id: "cyclic-tool",
+          name: "Read",
+          input: cyclicInput,
+          status: "pending",
+          timestamp: "2025-01-01T00:00:00.000Z",
+        }],
+      },
+    })).rejects.toThrow();
+
+    const reloaded = await loadChat(created.config.id);
+    expect(reloaded?.config.name).toBe(created.config.name);
+    expect(reloaded?.state.toolCalls).toEqual([]);
   });
 
   test("serves a normalized chat through paginated reads", async () => {

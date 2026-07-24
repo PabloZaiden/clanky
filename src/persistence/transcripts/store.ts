@@ -264,6 +264,26 @@ function updateMeta(
   `).run(resourceId, userId, revision, entryCount, now);
 }
 
+export function replaceTranscriptEntriesForUserInTransaction(
+  db: Database,
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  state: TranscriptStateLike,
+  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+): void {
+  const config = getTableConfig(resource);
+  const entries = sortStateEntries(getTranscriptStateEntries(state, shouldIncludeLog));
+  const now = new Date().toISOString();
+
+  db.prepare(`DELETE FROM ${config.entriesTable} WHERE ${config.resourceColumn} = ? AND user_id = ?`)
+    .run(resourceId, userId);
+  for (const [sequence, entry] of entries.entries()) {
+    upsertEntry(db, resource, resourceId, userId, entry, sequence, now);
+  }
+  updateMeta(db, resource, resourceId, userId, getRevision(entries, now), entries.length, now);
+}
+
 export function replaceTranscriptEntriesForUser(
   resource: TranscriptResource,
   resourceId: string,
@@ -272,17 +292,15 @@ export function replaceTranscriptEntriesForUser(
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
   const db = getDatabase();
-  const config = getTableConfig(resource);
-  const entries = sortStateEntries(getTranscriptStateEntries(state, shouldIncludeLog));
-  const now = new Date().toISOString();
-
   db.transaction(() => {
-    db.prepare(`DELETE FROM ${config.entriesTable} WHERE ${config.resourceColumn} = ? AND user_id = ?`)
-      .run(resourceId, userId);
-    for (const [sequence, entry] of entries.entries()) {
-      upsertEntry(db, resource, resourceId, userId, entry, sequence, now);
-    }
-    updateMeta(db, resource, resourceId, userId, getRevision(entries, now), entries.length, now);
+    replaceTranscriptEntriesForUserInTransaction(
+      db,
+      resource,
+      resourceId,
+      userId,
+      state,
+      shouldIncludeLog,
+    );
   })();
 }
 
@@ -486,42 +504,6 @@ export function getTranscriptMetaForUser(
 
 export function getTranscriptMeta(resource: TranscriptResource, resourceId: string): TranscriptMeta | null {
   return getTranscriptMetaForUser(resource, resourceId, requirePersistenceUserId());
-}
-
-export function countTranscriptEntriesForUser(
-  resource: TranscriptResource,
-  resourceId: string,
-  userId: string,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
-): number {
-  const config = getTableConfig(resource);
-  const rows = getDatabase().prepare(`
-    SELECT entry_id, kind, payload
-    FROM ${config.entriesTable}
-    WHERE ${config.resourceColumn} = ? AND user_id = ?
-  `).all(resourceId, userId) as Array<{
-    entry_id: string;
-    kind: TranscriptEntryKind;
-    payload: string;
-  }>;
-
-  let count = 0;
-  for (const row of rows) {
-    if (row.kind !== "log") {
-      count += 1;
-      continue;
-    }
-    const logEntry = parseJson<TaskLogEntry | null>(
-      row.payload,
-      null,
-      `${resource}_transcript_log`,
-      row.entry_id,
-    );
-    if (logEntry && shouldIncludeLog(logEntry)) {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 export function listTranscriptEntriesForUser(
