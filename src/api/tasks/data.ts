@@ -51,6 +51,10 @@ export const tasksDataRoutes = defineRoutes({
         const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workDir);
         const git = GitService.withExecutor(executor);
 
+        if (!(await executor.directoryExists(workDir)) || !(await git.isGitRepo(workDir))) {
+          return Response.json([]);
+        }
+
         const diffs = await git.getDiffWithContent(
           workDir,
           task.state.git.originalBranch,

@@ -29,4 +29,10 @@ describe("GitService diff", () => {
     expect(diff[0]?.status).toBe("modified");
     expect(diff[0]?.patch).toContain("+<h1>Hello world</h1>");
   });
+
+  test("returns an empty diff when no base ref is available", async () => {
+    const diff = await ctx.git.getDiffWithContent(ctx.workDir, "missing-base");
+
+    expect(diff).toEqual([]);
+  });
 });
