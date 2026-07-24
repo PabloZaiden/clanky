@@ -7,6 +7,7 @@ export {
   deleteAgent,
   saveAgentRun,
   loadAgentRun,
+  loadAgentRunSummary,
   loadAgentRunByChatId,
   listAgentRuns,
   listActiveAgentRuns,

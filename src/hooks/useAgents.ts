@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appFetch } from "../lib/public-path";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { Agent, AgentRun } from "@/shared";
-import type { CreateAgentRequest, DeleteAgentRunsRequest, RunAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import type {
+  Agent,
+  AgentRun,
+  DeterministicAgentTestResult,
+  DeterministicAgentTestStreamEvent,
+  GeneratedAgentCode,
+  TaskLogEntry,
+} from "@/shared";
+import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 const log = createLogger("useAgents");
@@ -41,6 +48,18 @@ export interface UseAgentsResult {
   refreshRuns: (agentId: string) => Promise<void>;
   createAgent: (request: CreateAgentRequest) => Promise<Agent | null>;
   updateAgent: (id: string, request: UpdateAgentRequest) => Promise<Agent | null>;
+  generateAgentCode: (
+    request: GenerateAgentCodeRequest,
+    id?: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<GeneratedAgentCode | null>;
+  testAgentCode: (
+    request: TestAgentCodeRequest,
+    options?: {
+      signal?: AbortSignal;
+      onLog?: (entry: TaskLogEntry) => void;
+    },
+  ) => Promise<DeterministicAgentTestResult | null>;
   deleteAgent: (id: string) => Promise<boolean>;
   runAgent: (id: string, request?: RunAgentRequest) => Promise<AgentRun | null>;
   interruptAgent: (id: string) => Promise<AgentRun | null>;
@@ -121,6 +140,9 @@ export function useAgents(): UseAgentsResult {
       }
       return await response.json() as T;
     } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return null;
+      }
       setError(String(requestError));
       return null;
     }
@@ -147,6 +169,95 @@ export function useAgents(): UseAgentsResult {
     }
     return agent;
   }, [requestAgent]);
+
+  const generateAgentCode = useCallback(async (
+    request: GenerateAgentCodeRequest,
+    id?: string,
+    options: { signal?: AbortSignal } = {},
+  ) => {
+    const generated = await requestAgent<GeneratedAgentCode & { error?: string; message?: string }>(
+      id ? `/api/agents/${id}/code/generate` : "/api/agents/code/generate",
+      {
+        method: "POST",
+        signal: options.signal,
+        body: JSON.stringify(request),
+      },
+      "Failed to generate agent code",
+    );
+    if (generated?.error) {
+      setError(generated.message ?? generated.error);
+      return null;
+    }
+    return generated;
+  }, [requestAgent]);
+
+  const testAgentCode = useCallback(async (
+    request: TestAgentCodeRequest,
+    options: {
+      signal?: AbortSignal;
+      onLog?: (entry: TaskLogEntry) => void;
+    } = {},
+  ): Promise<DeterministicAgentTestResult | null> => {
+    try {
+      const response = await appFetch("/api/agents/code/test/stream", {
+        method: "POST",
+        signal: options.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to test agent code"));
+      }
+      if (!response.body) {
+        throw new Error("Deterministic agent test did not return a stream");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let result: DeterministicAgentTestResult | null = null;
+
+      const consumeLine = (line: string): void => {
+        if (line.trim().length === 0) {
+          return;
+        }
+        const event = JSON.parse(line) as DeterministicAgentTestStreamEvent;
+        if (event.type === "log") {
+          options.onLog?.(event.log);
+        } else if (event.type === "result") {
+          result = event.result;
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: !done });
+        }
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          consumeLine(line);
+        }
+        if (done) {
+          buffer += decoder.decode();
+          break;
+        }
+      }
+      consumeLine(buffer);
+
+      if (!result) {
+        throw new Error("Deterministic agent test stream ended without a result");
+      }
+      return result;
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return null;
+      }
+      setError(String(requestError));
+      return null;
+    }
+  }, []);
 
   const deleteAgent = useCallback(async (id: string) => {
     const result = await requestAgent<{ success: boolean }>(`/api/agents/${id}`, {
@@ -265,6 +376,8 @@ export function useAgents(): UseAgentsResult {
     refreshRuns,
     createAgent,
     updateAgent,
+    generateAgentCode,
+    testAgentCode,
     deleteAgent,
     runAgent,
     interruptAgent,

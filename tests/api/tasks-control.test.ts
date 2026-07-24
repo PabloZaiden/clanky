@@ -297,6 +297,40 @@ describe("Tasks Control API Integration", () => {
       expect(body.error).toBe("no_git_branch");
     });
 
+    test("returns an empty diff when a persisted worktree is no longer available", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Test missing worktree diff",
+          name: "Missing Worktree Diff",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const taskId = (await createResponse.json()).config.id as string;
+      const task = await taskManager.getTask(taskId);
+      expect(task).not.toBeNull();
+
+      task!.state.git = {
+        originalBranch: "main",
+        workingBranch: "missing-worktree",
+        worktreePath: join(testDataDir, "missing-worktree"),
+        commits: [],
+      };
+      await saveTask(task!);
+
+      const response = await fetch(`${baseUrl}/api/tasks/${taskId}/diff`);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual([]);
+    });
+
     test("returns diff data for branch-only tasks without a worktree", async () => {
       const diffTestDir = await createTrackedTempDir("clanky-branch-only-diff-");
       await Bun.$`git init -b main ${diffTestDir}`.quiet();

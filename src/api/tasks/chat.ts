@@ -12,7 +12,7 @@ export const tasksChatRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read or create the chat session attached to a task.",
     async GET(_req: Request, ctx): Promise<Response> {
-      const task = await taskManager.getTask(ctx.params["id"]!);
+      const task = await taskManager.getTaskSummary(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
@@ -22,18 +22,32 @@ export const tasksChatRoutes = defineRoutes({
         return errorResponse("not_found", "Task chat not found", 404);
       }
 
-      return Response.json(chat);
+      const responseChat = await chatManager.getChatSummary(chat.config.id);
+      if (!responseChat) {
+        return errorResponse("not_found", "Task chat not found", 404);
+      }
+      return Response.json(responseChat);
     },
 
-    async POST(_req: Request, ctx): Promise<Response> {
-      const task = await taskManager.getTask(ctx.params["id"]!);
+    async POST(req: Request, ctx): Promise<Response> {
+      const task = await taskManager.getTaskSummary(ctx.params["id"]!);
       if (!task) {
         return errorResponse("not_found", "Task not found", 404);
       }
 
       try {
         const result = await chatManager.getOrCreateTaskChat(ctx.params["id"]!, task);
-        return Response.json(result.chat, { status: result.created ? 201 : 200 });
+        if (new URL(req.url).searchParams.get("summary") === "1") {
+          return Response.json({
+            chatId: result.chat.config.id,
+            created: result.created,
+          }, { status: result.created ? 201 : 200 });
+        }
+        const responseChat = await chatManager.getChatSummary(result.chat.config.id);
+        if (!responseChat) {
+          throw new Error(`Task chat disappeared after creation: ${result.chat.config.id}`);
+        }
+        return Response.json(responseChat, { status: result.created ? 201 : 200 });
       } catch (error) {
         log.error("Failed to get or create task chat", {
           taskId: ctx.params["id"]!,

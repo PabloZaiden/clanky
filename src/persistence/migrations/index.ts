@@ -17,6 +17,8 @@
  *    - Use `ALTER TABLE ... ADD COLUMN` for new columns
  *    - Use `CREATE TABLE IF NOT EXISTS` for new tables
  *    - Handle the case where the change already exists (idempotent)
+ *    - Set `transactional: false` for operations such as `VACUUM` that
+ *      cannot run inside a transaction
  *
  * 3. Add a test in `tests/unit/migrations.test.ts`
  *
@@ -75,6 +77,12 @@ const KNOWN_TABLE_NAMES = new Set([
   "preferences",
   "review_comments",
   "schema_migrations",
+  "chat_transcript_entries",
+  "chat_transcript_meta",
+  "task_transcript_entries",
+  "task_transcript_meta",
+  "agent_run_transcript_entries",
+  "agent_run_transcript_meta",
 ]);
 
 /**
@@ -249,6 +257,300 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    name: "add_agent_code",
+    up: (db) => {
+      const columns = getTableColumns(db, "agents");
+      if (!columns.includes("code")) {
+        db.run("ALTER TABLE agents ADD COLUMN code TEXT");
+      }
+    },
+  },
+  {
+    version: 14,
+    name: "add_chat_transcript_entries",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS chat_transcript_entries (
+          chat_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (chat_id, entry_id),
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_page
+        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS chat_transcript_meta (
+          chat_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chat_transcript_meta_user
+        ON chat_transcript_meta(user_id, chat_id)
+      `);
+    },
+  },
+  {
+    version: 15,
+    name: "add_unified_transcript_payloads",
+    up: (db) => {
+      const chatEntryColumns = getTableColumns(db, "chat_transcript_entries");
+      for (const column of ["tool_name", "tool_status", "tool_input", "tool_output", "tool_extras"]) {
+        if (!chatEntryColumns.includes(column)) {
+          db.run(`ALTER TABLE chat_transcript_entries ADD COLUMN ${column} TEXT`);
+        }
+      }
+
+      const legacyToolRows = db.query(`
+        SELECT chat_id, user_id, entry_id, payload
+        FROM chat_transcript_entries
+        WHERE kind = 'tool' AND tool_name IS NULL
+      `).all() as Array<{ chat_id: string; user_id: string; entry_id: string; payload: string }>;
+      const updateLegacyTool = db.prepare(`
+        UPDATE chat_transcript_entries
+        SET payload = ?, tool_name = ?, tool_status = ?, tool_input = ?, tool_output = ?, tool_extras = ?
+        WHERE chat_id = ? AND user_id = ? AND entry_id = ?
+      `);
+      for (const row of legacyToolRows) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(row.payload);
+        } catch (error) {
+          throw new Error(`Unable to migrate chat transcript tool ${row.entry_id}`, { cause: error });
+        }
+        if (
+          !isRecord(parsed)
+          || typeof parsed["name"] !== "string"
+          || !["pending", "running", "completed", "failed"].includes(String(parsed["status"]))
+        ) {
+          throw new Error(`Invalid chat transcript tool payload: ${row.entry_id}`);
+        }
+        const toolName = parsed["name"] as string;
+        const toolStatus = parsed["status"] as string;
+        const serialize = (value: unknown): string | null => {
+          const serialized = JSON.stringify(value);
+          return serialized === undefined ? null : serialized;
+        };
+        updateLegacyTool.run(
+          "{}",
+          toolName,
+          toolStatus,
+          serialize(parsed["input"]),
+          serialize(parsed["output"]),
+          serialize(parsed["extras"]),
+          row.chat_id,
+          row.user_id,
+          row.entry_id,
+        );
+      }
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS task_transcript_entries (
+          task_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          tool_name TEXT,
+          tool_status TEXT,
+          tool_input TEXT,
+          tool_output TEXT,
+          tool_extras TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (task_id, entry_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_page
+        ON task_transcript_entries(user_id, task_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS task_transcript_meta (
+          task_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_task_transcript_meta_user
+        ON task_transcript_meta(user_id, task_id)
+      `);
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_run_transcript_entries (
+          agent_run_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          tool_name TEXT,
+          tool_status TEXT,
+          tool_input TEXT,
+          tool_output TEXT,
+          tool_extras TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (agent_run_id, entry_id),
+          FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_page
+        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_run_transcript_meta (
+          agent_run_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_meta_user
+        ON agent_run_transcript_meta(user_id, agent_run_id)
+      `);
+    },
+  },
+  {
+    version: 16,
+    name: "optimize_transcript_page_indexes",
+    up: (db) => {
+      for (const resource of ["chat", "task", "agent_run"] as const) {
+        db.run(`DROP INDEX IF EXISTS idx_${resource}_transcript_entries_page`);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_${resource}_transcript_entries_page
+          ON ${resource}_transcript_entries(user_id, ${resource === "agent_run" ? "agent_run_id" : `${resource}_id`}, timestamp DESC, sequence DESC, kind DESC, entry_id DESC)
+        `);
+      }
+    },
+  },
+  {
+    version: 17,
+    name: "remove_legacy_transcript_columns",
+    up: (db) => {
+      const resources = [
+        {
+          resource: "chat",
+          parentTable: "chats",
+          metaTable: "chat_transcript_meta",
+          entriesTable: "chat_transcript_entries",
+          resourceColumn: "chat_id",
+        },
+        {
+          resource: "task",
+          parentTable: "tasks",
+          metaTable: "task_transcript_meta",
+          entriesTable: "task_transcript_entries",
+          resourceColumn: "task_id",
+        },
+        {
+          resource: "agent_run",
+          parentTable: "agent_runs",
+          metaTable: "agent_run_transcript_meta",
+          entriesTable: "agent_run_transcript_entries",
+          resourceColumn: "agent_run_id",
+        },
+      ] as const;
+
+      for (const resource of resources) {
+        if (
+          !tableExists(db, resource.parentTable)
+          || !tableExists(db, resource.metaTable)
+          || !tableExists(db, resource.entriesTable)
+        ) {
+          throw new Error(
+            `Cannot remove legacy ${resource.resource} transcript columns: normalized tables are missing`,
+          );
+        }
+
+        const incomplete = db.query(`
+          SELECT parent.id, parent.user_id, meta.user_id AS meta_user_id,
+            meta.entry_count, COALESCE(entries.actual_count, 0) AS actual_count
+          FROM ${resource.parentTable} AS parent
+          LEFT JOIN ${resource.metaTable} AS meta
+            ON meta.${resource.resourceColumn} = parent.id
+          LEFT JOIN (
+            SELECT ${resource.resourceColumn}, COUNT(*) AS actual_count
+            FROM ${resource.entriesTable}
+            GROUP BY ${resource.resourceColumn}
+          ) AS entries
+            ON entries.${resource.resourceColumn} = parent.id
+          WHERE meta.${resource.resourceColumn} IS NULL
+            OR meta.user_id <> parent.user_id
+            OR meta.entry_count <> COALESCE(entries.actual_count, 0)
+          LIMIT 1
+        `).get() as {
+          id: string;
+          user_id: string;
+          meta_user_id: string | null;
+          entry_count: number | null;
+          actual_count: number;
+        } | null;
+
+        if (incomplete) {
+          throw new Error(
+            `Cannot remove legacy ${resource.resource} transcript columns: `
+            + `normalized transcript is incomplete for ${incomplete.id} `
+            + `(metadata user ${incomplete.meta_user_id ?? "missing"}, `
+            + `entry count ${incomplete.entry_count ?? "missing"}, actual ${incomplete.actual_count})`,
+          );
+        }
+      }
+
+      for (const tableName of ["chats", "tasks", "agent_runs"] as const) {
+        for (const column of ["messages", "logs", "tool_calls"] as const) {
+          if (getTableColumns(db, tableName).includes(column)) {
+            db.run(`ALTER TABLE ${tableName} DROP COLUMN ${column}`);
+          }
+        }
+      }
+    },
+  },
+  {
+    version: 18,
+    name: "compact_database_after_transcript_cleanup",
+    // VACUUM cannot run inside the transaction used by normal migrations.
+    transactional: false,
+    up: (db) => {
+      const checkpoint = db.query("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      if (checkpoint.busy !== 0) {
+        throw new Error(`SQLite WAL checkpoint was busy before VACUUM (status: ${checkpoint.busy})`);
+      }
+      db.run("VACUUM");
+      const finalCheckpoint = db.query("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy: number };
+      if (finalCheckpoint.busy !== 0) {
+        throw new Error(`SQLite WAL checkpoint was busy after VACUUM (status: ${finalCheckpoint.busy})`);
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
@@ -421,7 +723,8 @@ function recordMigration(db: Database, migration: Migration): void {
  * Run all pending migrations.
  * 
  * This function is idempotent - it only runs migrations that haven't been applied yet.
- * Each migration is run in its own transaction for safety.
+ * Each migration is run in its own transaction for safety unless it opts out
+ * with `transactional: false`.
  * 
  * @param db The database instance
  * @returns The number of migrations applied

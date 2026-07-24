@@ -39,29 +39,3 @@ export class StopPatternDetector {
     return this.pattern.test(content);
   }
 }
-
-/**
- * Wraps an event stream's next() call with a timeout.
- * Throws an error if no event is received within the specified time.
- */
-export async function nextWithTimeout<T>(
-  stream: { next: () => Promise<T | null> },
-  timeoutMs: number
-): Promise<T | null> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`No activity for ${Math.round(timeoutMs / 1000)} seconds`));
-    }, timeoutMs);
-  });
-
-  try {
-    const result = await Promise.race([stream.next(), timeoutPromise]);
-    return result;
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
-}

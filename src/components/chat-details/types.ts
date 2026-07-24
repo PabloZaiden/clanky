@@ -3,6 +3,8 @@ import type {
   ChatEvent,
   ChatPermissionRequest,
   QueuedChatMessage,
+  ToolCallData,
+  ToolCallDisplayData,
 } from "@/shared";
 import type { TranscriptFileLinkContext } from "../LogViewer";
 
@@ -24,13 +26,23 @@ export interface ChatRefreshOptions {
   showLoading?: boolean;
 }
 
+export interface ChatTranscriptViewState {
+  messages: Chat["state"]["messages"];
+  logs: Chat["state"]["logs"];
+  toolCalls: ToolCallDisplayData[];
+  revision: string;
+  totalEntries: number;
+}
+
 export interface ChatLifecycleResult {
   chat: Chat | null;
+  transcript: ChatTranscriptViewState;
   loading: boolean;
   error: string | null;
   isActive: boolean;
   needsSshCredentials: boolean;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
+  loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   applyChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
   handleReconnect: () => Promise<void>;
@@ -38,10 +50,12 @@ export interface ChatLifecycleResult {
 
 export interface ChatTranscriptProps {
   chat: Chat;
+  transcript: ChatTranscriptViewState;
   lifecycleError: string | null;
   isActive: boolean;
   toolPathDisplayRoot: string;
   fileLinkContext?: TranscriptFileLinkContext;
+  onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
 export interface ChatPermissionPanelProps {

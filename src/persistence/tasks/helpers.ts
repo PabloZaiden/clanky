@@ -60,9 +60,6 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "git_working_branch",
   "git_commits",
   "recent_iterations",
-  "logs",
-  "messages",
-  "tool_calls",
   "consecutive_errors",
   "pending_prompt",
   "pending_prompt_mode",
@@ -147,9 +144,6 @@ export function taskToRow(task: Task): Record<string, unknown> {
     git_worktree_path: state.git?.worktreePath ?? null,
     git_commits: state.git?.commits ? JSON.stringify(state.git.commits) : null,
     recent_iterations: JSON.stringify(state.recentIterations),
-    logs: state.logs ? JSON.stringify(state.logs) : null,
-    messages: state.messages ? JSON.stringify(state.messages) : null,
-    tool_calls: state.toolCalls ? JSON.stringify(state.toolCalls) : null,
     consecutive_errors: state.consecutiveErrors ? JSON.stringify(state.consecutiveErrors) : null,
     pending_prompt: state.pendingPrompt ?? null,
     pending_prompt_mode: state.pendingPromptMode ?? null,
@@ -267,10 +261,10 @@ export function rowToTask(row: Record<string, unknown>): Task {
     recentIterations: row["recent_iterations"]
       ? safeJsonParse(row["recent_iterations"] as string, [], "recent_iterations", rowId)
       : [],
-    // Mandatory array fields - always initialize as empty arrays if null
-    logs: row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [],
-    messages: row["messages"] ? safeJsonParse(row["messages"] as string, [], "messages", rowId) : [],
-    toolCalls: row["tool_calls"] ? safeJsonParse(row["tool_calls"] as string, [], "tool_calls", rowId) : [],
+    // Transcript entries are hydrated from the normalized transcript tables.
+    logs: [],
+    messages: [],
+    toolCalls: [],
   };
 
   // Optional state fields

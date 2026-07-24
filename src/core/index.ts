@@ -11,6 +11,7 @@ export * from "./settings-maintenance-service";
 export * from "./chat-manager";
 export * from "./agent-manager";
 export * from "./agent-runner";
+export * from "./agent-stream-controller";
 export * from "./agent-schedule";
 export * from "./agent-scheduler";
 export * from "./event-emitter";

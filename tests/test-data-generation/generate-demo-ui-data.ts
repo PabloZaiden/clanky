@@ -1,11 +1,14 @@
 /**
- * Materialize the versioned demo UI seed into a runtime data directory and,
- * unless disabled, apply it to the SQLite database.
+ * Materialize the current-schema demo UI seed into a runtime data directory
+ * and, unless disabled, apply it to the SQLite database.
  *
  * Usage:
  *   bun tests/test-data-generation/generate-demo-ui-data.ts
  *   bun tests/test-data-generation/generate-demo-ui-data.ts --skip-apply
  *   bun tests/test-data-generation/generate-demo-ui-data.ts --data-dir ./tmp/demo-data
+ *
+ * The SQL seed is kept in the current schema. This script intentionally does
+ * not rewrite legacy columns or transcript payloads at runtime.
  */
 
 import { mkdir } from "fs/promises";
@@ -13,52 +16,15 @@ import { join, resolve } from "path";
 
 interface DatabaseModule {
   closeDatabase: () => void;
-  getDatabase: () => { exec: (sql: string) => void };
+  getDatabase: () => {
+    exec: (sql: string) => void;
+  };
   initializeDatabase: () => Promise<void>;
 }
 
 interface CliOptions {
   dataDir: string;
   applySeed: boolean;
-}
-
-const DEMO_OWNER_USER_ID = "admin";
-const USER_OWNED_SEED_TABLES = [
-  "ssh_servers",
-  "ssh_server_sessions",
-  "workspaces",
-  "ssh_sessions",
-  "tasks",
-  "chats",
-  "agents",
-  "review_comments",
-  "preview_sessions",
-] as const;
-
-function prepareSeedSqlForCurrentSchema(sql: string): string {
-  let preparedSql = sql;
-  for (const tableName of USER_OWNED_SEED_TABLES) {
-    const insertPattern = new RegExp(
-      `INSERT INTO ${tableName} \\([\\s\\S]*?\\nON CONFLICT\\(id\\)[\\s\\S]*?;`,
-      "g",
-    );
-
-    preparedSql = preparedSql.replaceAll(insertPattern, (statement: string) => {
-      const columnListEnd = statement.indexOf("\n) VALUES");
-      const columnList = columnListEnd === -1 ? statement : statement.slice(0, columnListEnd);
-      if (columnList.includes("\n  user_id,")) {
-        return statement;
-      }
-
-      return statement
-        .replace(
-          `INSERT INTO ${tableName} (\n  id,`,
-          `INSERT INTO ${tableName} (\n  id,\n  user_id,`,
-        )
-        .replace(/\) VALUES \(\n  ('demo-[^']+',)/, `) VALUES (\n  $1\n  '${DEMO_OWNER_USER_ID}',`);
-    });
-  }
-  return preparedSql;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -105,9 +71,7 @@ async function writeRuntimeArtifacts(dataDir: string): Promise<{
 
   await mkdir(dataDir, { recursive: true });
   await mkdir(keyDir, { recursive: true });
-
-  const sql = await Bun.file(sqlSourcePath).text();
-  await Bun.write(sqlPath, prepareSeedSqlForCurrentSchema(sql));
+  await Bun.write(sqlPath, Bun.file(sqlSourcePath));
 
   for (const keyFileName of new Bun.Glob("*.json").scanSync({ cwd: keySourceDir })) {
     await Bun.write(

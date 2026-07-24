@@ -3,7 +3,12 @@ import type { Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
 import { createTimestamp } from "@/shared/events";
-import { loadTask, updateTaskState, saveTask } from "../../persistence/tasks";
+import {
+  loadTask,
+  updateTaskOperationalState,
+  updateTaskState,
+  updateTaskConfig,
+} from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
@@ -64,8 +69,8 @@ export async function jumpstartTaskFromEngine(
   task.state.error = undefined;
   task.state.syncState = undefined;
 
-  await updateTaskState(taskId, task.state);
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
+  await updateTaskConfig(taskId, task.config);
 
   ctx.emitter.emit({
     type: "task.pending.updated",
@@ -157,7 +162,7 @@ export async function reviveDeletedTask(taskId: string): Promise<TaskResult> {
     task.state.planMode.isPlanReady = false;
   }
 
-  await saveTask(task);
+  await updateTaskOperationalState(taskId, task.state);
   return { success: true };
 }
 
@@ -192,8 +197,8 @@ async function jumpstartOnExistingBranch(
       backend,
       gitService: git,
       eventEmitter: ctx.emitter,
-      onPersistState: async (state) => {
-        await updateTaskState(taskId, state);
+      onPersistState: async (state, options) => {
+        await updateTaskState(taskId, state, options);
       },
       skipGitSetup: true,
       initialPromptAttachments: attachments,

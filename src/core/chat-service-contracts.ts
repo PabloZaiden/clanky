@@ -15,12 +15,15 @@ import type {
   Chat,
   ChatConfig,
   ChatPermissionDecision,
+  ChatSnapshot,
   ChatState,
   ChatStatus,
   ChatWorktreeState,
   SessionInfo,
   Task,
   TaskLogEntry,
+  TranscriptChangeSet,
+  ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -93,6 +96,9 @@ export interface ChatDirectoryResolution {
 
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
+  getChatSummary(chatId: string): Promise<Chat | null>;
+  getChatSnapshot(chatId: string): Promise<ChatSnapshot | null>;
+  getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;
   getChatSummaries(): Promise<Chat[]>;
@@ -107,7 +113,13 @@ export interface ChatStatePort {
   }>;
   saveNewChat(chat: Chat): Promise<void>;
   updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null>;
-  updateState(chat: Chat, state: ChatState): Promise<Chat>;
+  updateState(
+    chat: Chat,
+    state: ChatState,
+    options?: {
+      transcriptChanges?: TranscriptChangeSet;
+    },
+  ): Promise<Chat>;
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;

@@ -26,11 +26,13 @@ export function ChatDetails({
   const isEmbedded = typeof embeddedTaskId === "string" && embeddedTaskId.length > 0;
   const {
     chat,
+    transcript,
     loading,
     error,
     isActive,
     needsSshCredentials,
     refreshChat,
+    loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,
     handleReconnect,
@@ -118,10 +120,12 @@ export function ChatDetails({
     <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
       <ChatTranscript
         chat={chat}
+        transcript={transcript}
         lifecycleError={error}
         isActive={isActive}
         toolPathDisplayRoot={chatWorkingDirectory}
         fileLinkContext={fileLinkContext}
+        onLoadToolDetails={loadToolCallDetails}
       />
       <ChatPermissionPanel
         chatId={chatId}

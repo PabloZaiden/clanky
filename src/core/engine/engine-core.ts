@@ -5,7 +5,7 @@
  *
  * Types and helpers are organized into:
  * - engine-types.ts: Interfaces and constants
- * - engine-helpers.ts: StopPatternDetector, nextWithTimeout
+ * - engine-helpers.ts: StopPatternDetector
  * - engine-events.ts: Log and persistence helpers
  * - engine-prompt.ts: Prompt building and outcome evaluation
  * - engine-git.ts: Git branch setup, worktree, and commit operations
@@ -13,7 +13,15 @@
  * - engine-tools.ts: Agent event processing
  */
 
-import type { FollowUpPromptMode, TaskConfig, TaskState, Task, IterationSummary, TaskLogEntry, ModelConfig } from "@/shared/task";
+import type {
+  FollowUpPromptMode,
+  TaskConfig,
+  TaskState,
+  Task,
+  IterationSummary,
+  TaskLogEntry,
+  ModelConfig,
+} from "@/shared/task";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
@@ -36,11 +44,22 @@ import {
   type TaskEngineOptions,
   type IterationResult,
   type IterationContext,
+  MAX_PERSISTED_LOGS,
+  MAX_PERSISTED_MESSAGES,
+  MAX_PERSISTED_TOOL_CALLS,
 } from "./engine-types";
+import {
+  AgentStreamCheckpointPolicy,
+  AgentStreamController,
+  type AgentStreamHandle,
+  getAgentStreamTextByteLength,
+} from "../agent-stream-controller";
+import { MemoryFirstPersistenceQueue } from "../memory-first-persistence-queue";
+import { TranscriptStreamProjection } from "../transcript-stream-projection";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
 import { upsertToolCallExtra } from "@/shared/tool-call";
-import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
-import { logToConsole, persistTaskLog, persistTaskMessage, persistTaskToolCall } from "./engine-events";
+import { StopPatternDetector } from "./engine-helpers";
+import { logToConsole } from "./engine-events";
 import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
 import {
   clearTaskPlanningFolder,
@@ -58,7 +77,6 @@ import {
   type SessionOperationContext,
 } from "./engine-session";
 import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
-import type { EventStream } from "../../utils/event-stream";
 import {
   AcpError,
   createAcpSessionNotFoundError,
@@ -74,7 +92,7 @@ export class TaskEngine {
   private stopDetector: StopPatternDetector;
   private aborted = false;
   private sessionId: string | null = null;
-  private onPersistState?: (state: TaskState) => Promise<void>;
+  private onPersistState?: TaskEngineOptions["onPersistState"];
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
   /** Guard to prevent concurrent runTask() executions */
@@ -89,8 +107,11 @@ export class TaskEngine {
   private injectionPending = false;
   private initialPromptAttachments: MessageImageAttachment[];
   private pendingPromptAttachments: MessageImageAttachment[] = [];
-  private currentEventStream: EventStream<AgentEvent> | null = null;
+  private currentStreamHandle: AgentStreamHandle | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
+  private readonly transcript: TranscriptStreamProjection;
+  private readonly streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
+  private readonly persistenceQueue = new MemoryFirstPersistenceQueue();
 
   constructor(options: TaskEngineOptions) {
     this.task = options.task;
@@ -98,11 +119,23 @@ export class TaskEngine {
     this.git = options.gitService;
     this.emitter = options.eventEmitter ?? taskEventEmitter;
     this.stopDetector = new StopPatternDetector(options.task.config.stopPattern);
+    this.task.state.messages ??= [];
+    this.task.state.logs ??= [];
+    this.task.state.toolCalls ??= [];
+    this.transcript = new TranscriptStreamProjection(this.task.state, {
+      maxMessages: MAX_PERSISTED_MESSAGES,
+      maxLogs: MAX_PERSISTED_LOGS,
+      maxToolCalls: MAX_PERSISTED_TOOL_CALLS,
+    });
     this.onPersistState = options.onPersistState;
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
     this.skipGitSetup = options.skipGitSetup ?? false;
     this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
+  }
+
+  async flushPersistence(): Promise<void> {
+    await this.triggerPersistence();
   }
 
   /**
@@ -293,7 +326,7 @@ export class TaskEngine {
         this.aborted = true;
       }
 
-      this.currentEventStream?.close();
+      this.currentStreamHandle?.close();
 
       try {
         this.emitLog("info", options.abortMessage);
@@ -429,6 +462,12 @@ export class TaskEngine {
     } catch (error) {
       this.emitLog("error", `Failed to start task: ${String(error)}`);
       this.handleError(error);
+      try {
+        await this.triggerPersistence();
+      } catch (persistenceError) {
+        log.error(`Failed to persist task startup failure: ${String(persistenceError)}`);
+        throw persistenceError;
+      }
     }
   }
 
@@ -438,10 +477,6 @@ export class TaskEngine {
   async stop(reason = "User requested stop"): Promise<void> {
     this.emitLog("info", `Stopping task: ${reason}`);
     this.aborted = true;
-
-    // Clear the persistence callback to prevent stale async operations
-    // from overwriting state after the task is stopped/deleted
-    this.onPersistState = undefined;
 
     await this.interruptActiveSession({
       abortMessage: "Aborting backend session...",
@@ -465,6 +500,17 @@ export class TaskEngine {
     });
 
     this.emitLog("info", "Task stopped");
+
+    // Wait for the interrupted iteration to release the in-memory stream before
+    // the final checkpoint, then prevent any later callbacks from persisting.
+    await this.waitForTaskIdle();
+    try {
+      await this.triggerPersistence();
+    } catch (error) {
+      log.warn(`Final task stop checkpoint failed; retrying: ${String(error)}`);
+      await this.triggerPersistence();
+    }
+    this.onPersistState = undefined;
   }
 
   /**
@@ -475,9 +521,7 @@ export class TaskEngine {
   async abortSessionOnly(reason = "Connection reset requested"): Promise<void> {
     this.emitLog("info", `Aborting session only (preserving status): ${reason}`);
     this.aborted = true;
-
-    // Clear the persistence callback to prevent stale async operations
-    this.onPersistState = undefined;
+    this.currentStreamHandle?.close();
 
     if (this.sessionId) {
       try {
@@ -496,6 +540,15 @@ export class TaskEngine {
     });
 
     this.emitLog("info", "Session aborted (status preserved)");
+
+    await this.waitForTaskIdle();
+    try {
+      await this.triggerPersistence();
+    } catch (error) {
+      log.warn(`Final session-abort checkpoint failed; retrying: ${String(error)}`);
+      await this.triggerPersistence();
+    }
+    this.onPersistState = undefined;
   }
 
   /**
@@ -780,9 +833,9 @@ export class TaskEngine {
    * If isUpdate is true, update an existing entry; otherwise append.
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_LOGS.
    */
-  private persistLog(entry: TaskLogEntry, isUpdate: boolean): void {
-    const logs = this.task.state.logs ?? [];
-    this.updateState({ logs: persistTaskLog(logs, entry, isUpdate) });
+  private persistLog(entry: TaskLogEntry, _isUpdate: boolean): void {
+    this.transcript.upsertLog(entry);
+    this.updateState({ logs: this.transcript.logs });
   }
 
   /**
@@ -790,8 +843,8 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_MESSAGES.
    */
   private persistMessage(message: MessageData): void {
-    const messages = this.task.state.messages ?? [];
-    this.updateState({ messages: persistTaskMessage(messages, message) });
+    this.transcript.upsertMessage(message);
+    this.updateState({ messages: this.transcript.messages });
   }
 
   /**
@@ -800,8 +853,8 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_TOOL_CALLS.
    */
   private persistToolCall(toolCall: ToolCallData): void {
-    const toolCalls = this.task.state.toolCalls ?? [];
-    this.updateState({ toolCalls: persistTaskToolCall(toolCalls, toolCall) });
+    this.transcript.upsertToolCall(toolCall);
+    this.updateState({ toolCalls: this.transcript.toolCalls });
   }
 
   /**
@@ -864,8 +917,7 @@ export class TaskEngine {
     id: string,
   ): void {
     const timestamp = createTimestamp();
-    const logs = this.task.state.logs ?? [];
-    const existing = logs.find((logEntry) => logEntry.id === id);
+    const existing = id ? this.transcript.getLog(id) : undefined;
     const logTimestamp = existing?.timestamp ?? timestamp;
     const entry: TaskLogEntry = {
       id,
@@ -994,7 +1046,7 @@ export class TaskEngine {
           return;
         }
 
-        const currentTool = this.task.state.toolCalls.find((entry) => entry.id === toolCall.id);
+        const currentTool = this.transcript.getToolCall(toolCall.id);
         if (!currentTool) {
           return;
         }
@@ -1209,7 +1261,11 @@ export class TaskEngine {
       queueMicrotask(() => {
         void this.onCompleted?.().catch(async (error) => {
           this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
-          await this.triggerPersistence();
+          try {
+            await this.triggerPersistence();
+          } catch (persistenceError) {
+            log.error(`Failed to persist completion follow-up failure: ${String(persistenceError)}`);
+          }
         });
       });
     }
@@ -1275,7 +1331,11 @@ export class TaskEngine {
       queueMicrotask(() => {
         void this.onPlanReady?.().catch(async (error) => {
           this.emitLog("error", `Auto-accepting the plan failed: ${String(error)}`);
-          await this.triggerPersistence();
+          try {
+            await this.triggerPersistence();
+          } catch (persistenceError) {
+            log.error(`Failed to persist auto-accept failure: ${String(persistenceError)}`);
+          }
         });
       });
     }
@@ -1349,7 +1409,7 @@ export class TaskEngine {
       iteration: this.task.state.currentIteration,
       timestamp: createTimestamp(),
     });
-    void this.triggerPersistence();
+    await this.triggerPersistence();
 
     // Continue to retry (next iteration will use same iteration number)
     return false;
@@ -1558,6 +1618,7 @@ export class TaskEngine {
       })
       .join("\n---\n");
     this.emitLog("debug", `[Prompt] ${fullPromptText}`);
+    await this.triggerPersistence();
 
     let hasRetriedMissingSession = false;
     let completed = false;
@@ -1568,68 +1629,76 @@ export class TaskEngine {
       }
       const activeSessionId = this.sessionId;
 
-      // Subscribe to events BEFORE sending the prompt.
-      // IMPORTANT: We must await the subscription to ensure the SSE connection is established
-      // before sending the prompt. This prevents a race condition where events are emitted
-      // by the server before we're ready to receive them.
-      log.debug("[TaskEngine] runIteration: About to subscribe to events");
-      this.emitLog("debug", "Subscribing to AI response stream");
-      const eventStream = await this.backend.subscribeToEvents(activeSessionId);
-      this.currentEventStream = eventStream;
-      log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
-
+      const activityTimeoutSeconds =
+        this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
+      const streamController = new AgentStreamController(this.backend);
+      let streamHandle: AgentStreamHandle | null = null;
       try {
-        // Now send prompt asynchronously (subscription is definitely active)
-        log.debug("[TaskEngine] runIteration: About to send prompt async");
+        // The shared controller subscribes before sending the prompt and owns
+        // stream cleanup for both chat and task turns.
+        log.debug("[TaskEngine] runIteration: Starting shared agent stream");
+        this.emitLog("debug", "Subscribing to AI response stream");
         this.emitLog("info", "Sending prompt to AI agent...");
-        await this.backend.sendPromptAsync(activeSessionId, prompt);
-        log.debug("[TaskEngine] runIteration: sendPromptAsync completed");
-
-        log.debug("[TaskEngine] runIteration: About to start event iteration task");
-
-        const activityTimeoutSeconds =
-          this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
-        const nextEvent = async (): Promise<AgentEvent | null> => {
-          if (activityTimeoutSeconds === null) {
-            return eventStream.next();
-          }
-          return nextWithTimeout(eventStream, activityTimeoutSeconds * 1000);
-        };
-
-        let event: AgentEvent | null = await nextEvent();
-        while (event !== null) {
-          log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
-          // Check if aborted
-          if (this.aborted) {
-            if (this.injectionPending) {
-              this.emitLog("info", "Iteration interrupted for pending message injection");
-            } else {
-              this.emitLog("info", "Iteration aborted by user");
-            }
-            break;
-          }
-
-          // Update last activity timestamp
-          this.updateState({ lastActivityAt: createTimestamp() });
-
-          // Delegate event processing to the handler
-          await this.processAgentEvent(event, ctx);
-
-          if (event.type === "error" && event.code === "acp_session_not_found") {
-            throw createAcpSessionNotFoundError(activeSessionId, {
-              details: { eventMessage: event.message },
-            });
-          }
-
-          // If message is complete or error occurred, stop listening
-          if (event.type === "message.complete" || event.type === "error") {
-            this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
-            break;
-          }
-
-          // Get next event with timeout
-          event = await nextEvent();
+        streamHandle = streamController.start({
+          sessionId: activeSessionId,
+          prompt,
+          activityTimeoutMs: activityTimeoutSeconds === null
+            ? null
+            : activityTimeoutSeconds * 1000,
+        });
+        this.currentStreamHandle = streamHandle;
+        const started = await streamHandle.startPrompt();
+        if (!started) {
+          completed = true;
+          continue;
         }
+        log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
+        log.debug("[TaskEngine] runIteration: About to start event iteration task");
+        let abortLogged = false;
+        await streamHandle.consume({
+          shouldStop: () => {
+            if (!this.aborted) {
+              return false;
+            }
+            if (!abortLogged) {
+              abortLogged = true;
+              if (this.injectionPending) {
+                this.emitLog("info", "Iteration interrupted for pending message injection");
+              } else {
+                this.emitLog("info", "Iteration aborted by user");
+              }
+            }
+            return true;
+          },
+          onEvent: async (event) => {
+            log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
+
+            // Update last activity timestamp
+            this.updateState({ lastActivityAt: createTimestamp() });
+
+            // Delegate event processing to the handler
+            await this.processAgentEvent(event, ctx);
+
+            const isTextDelta = event.type === "message.delta" || event.type === "reasoning.delta";
+            const shouldCheckpointText = isTextDelta
+              ? this.streamCheckpointPolicy.recordText(getAgentStreamTextByteLength(event.content))
+              : false;
+            if (!isTextDelta || shouldCheckpointText) {
+              await this.triggerPersistence();
+            }
+
+            if (event.type === "error" && event.code === "acp_session_not_found") {
+              throw createAcpSessionNotFoundError(activeSessionId, {
+                details: { eventMessage: event.message },
+              });
+            }
+
+            // The shared controller stops after message.complete/error.
+            if (event.type === "message.complete" || event.type === "error") {
+              this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
+            }
+          },
+        });
 
         completed = true;
       } catch (error) {
@@ -1647,10 +1716,9 @@ export class TaskEngine {
 
         throw error;
       } finally {
-        // Close the stream to abort the subscription
-        eventStream.close();
-        if (this.currentEventStream === eventStream) {
-          this.currentEventStream = null;
+        streamHandle?.close();
+        if (this.currentStreamHandle === streamHandle) {
+          this.currentStreamHandle = null;
         }
       }
     }
@@ -1809,20 +1877,51 @@ export class TaskEngine {
     if (update.status !== undefined && update.status !== this.task.state.status) {
       assertValidTransition(this.task.state.status, update.status, "TaskEngine.updateState");
     }
+    const transcriptKeys = new Set(["messages", "logs", "toolCalls"]);
+    if (Object.keys(update).some((key) => key !== "lastActivityAt" && !transcriptKeys.has(key))) {
+      this.markOperationalPersistenceDirty();
+    }
     Object.assign(this.task.state, update);
+  }
+
+  private markOperationalPersistenceDirty(): void {
+    this.persistenceQueue.markOperationalPersistenceDirty();
   }
 
   /**
    * Trigger disk persistence of the current state.
    * This is called at key points to ensure data survives server restart.
    */
-  private async triggerPersistence(): Promise<void> {
-    if (this.onPersistState) {
-      try {
-        await this.onPersistState(this.task.state);
-      } catch (error) {
-        log.error(`Failed to persist task state: ${String(error)}`);
-      }
+  private triggerPersistence(): Promise<void> {
+    return this.persistenceQueue.request(() => this.persistCurrentState());
+  }
+
+  private async persistCurrentState(): Promise<void> {
+    if (!this.onPersistState) {
+      return;
+    }
+
+    const checkpointedTextBytes = this.streamCheckpointPolicy.getPendingTextBytes();
+    const operationalPersistenceVersion = this.persistenceQueue.operationalVersion;
+    const snapshot = this.transcript.changes.snapshot(this.task.state);
+    if (
+      !this.persistenceQueue.isOperationalPersistenceDirty
+      && snapshot.changes.upserts.length === 0
+      && snapshot.changes.deletes.length === 0
+    ) {
+      return;
+    }
+
+    try {
+      await this.onPersistState(this.task.state, {
+        transcriptChanges: snapshot.changes,
+      });
+      this.transcript.changes.acknowledge(snapshot);
+      this.persistenceQueue.acknowledgeOperationalPersistence(operationalPersistenceVersion);
+      this.streamCheckpointPolicy.markCheckpoint(checkpointedTextBytes);
+    } catch (error) {
+      log.error(`Failed to persist task state: ${String(error)}`);
+      throw error;
     }
   }
 

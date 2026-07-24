@@ -3,7 +3,15 @@
  */
 
 import type { AcpBackend } from "../../backends/acp";
-import type { TaskConfig, TaskState, Task, TaskLogEntry, ModelConfig } from "@/shared/task";
+import type { AgentStreamBackend } from "../agent-stream-controller";
+import type {
+  TaskConfig,
+  TaskState,
+  Task,
+  TaskLogEntry,
+  ModelConfig,
+  TranscriptChangeSet,
+} from "@/shared";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { GitService } from "../git";
@@ -35,15 +43,13 @@ export const MAX_PERSISTED_TOOL_CALLS = 5000;
  * Using a structural type (interface) instead of a union allows for
  * easy mocking in tests without requiring all internal class fields.
  */
-export interface TaskBackend {
+export interface TaskBackend extends AgentStreamBackend {
   connect: AcpBackend["connect"];
   disconnect: AcpBackend["disconnect"];
   isConnected: AcpBackend["isConnected"];
   createSession: AcpBackend["createSession"];
   sendPrompt: AcpBackend["sendPrompt"];
-  sendPromptAsync: AcpBackend["sendPromptAsync"];
   abortSession: AcpBackend["abortSession"];
-  subscribeToEvents: AcpBackend["subscribeToEvents"];
   replyToPermission: AcpBackend["replyToPermission"];
   replyToQuestion: AcpBackend["replyToQuestion"];
   setConfigOption: AcpBackend["setConfigOption"];
@@ -63,7 +69,10 @@ export interface TaskEngineOptions {
   /** Event emitter instance (optional, defaults to global) */
   eventEmitter?: SimpleEventEmitter<TaskEvent>;
   /** Callback to persist state to disk (optional) */
-  onPersistState?: (state: TaskState) => Promise<void>;
+  onPersistState?: (
+    state: TaskState,
+    options: { transcriptChanges: TranscriptChangeSet },
+  ) => Promise<void>;
   /** Callback fired after a plan becomes ready (optional) */
   onPlanReady?: () => Promise<void>;
   /** Callback fired after a task reaches completed status (optional) */

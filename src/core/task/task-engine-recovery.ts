@@ -43,8 +43,8 @@ export async function recoverPlanningEngineImpl(ctx: TaskCtx, taskId: string): P
     backend,
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, options) => {
+      await updateTaskState(taskId, state, options);
     },
     onPlanReady: async () => {
       await ctx.acceptPlan(taskId);

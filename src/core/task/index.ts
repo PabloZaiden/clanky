@@ -23,7 +23,7 @@ import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedb
 import { TaskEngine } from "../task-engine";
 import { taskEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
-import { createTaskImpl, generateTaskTitleImpl, getTaskImpl, getAllTasksImpl, getTaskSummariesImpl, updateTaskImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningTaskStateImpl } from "./task-crud";
+import { createTaskImpl, generateTaskTitleImpl, getTaskImpl, getTaskSummaryImpl, getAllTasksImpl, getTaskSummariesImpl, updateTaskImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningTaskStateImpl } from "./task-crud";
 import { startTaskImpl, stopTaskImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureTaskBranchCheckedOutImpl } from "./task-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./task-plan-mode";
 import { seedPlanFilesImpl } from "./task-seeded-plan";
@@ -107,6 +107,10 @@ export class TaskManager {
 
   async getTask(taskId: string): Promise<Task | null> {
     return getTaskImpl(this.ctx, taskId);
+  }
+
+  async getTaskSummary(taskId: string): Promise<Task | null> {
+    return getTaskSummaryImpl(this.ctx, taskId);
   }
 
   async getPullRequestDestination(taskId: string): Promise<PullRequestDestinationResponse | null> {

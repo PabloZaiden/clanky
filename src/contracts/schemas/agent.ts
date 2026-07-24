@@ -32,6 +32,7 @@ export const CreateAgentRequestSchema = z.object({
   name: TaskNameSchema,
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().trim().min(1, "prompt is required"),
+  code: z.string().nullable().optional(),
   model: ModelConfigSchema,
   baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").optional(),
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
@@ -42,12 +43,33 @@ export const CreateAgentRequestSchema = z.object({
 export const UpdateAgentRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   prompt: z.string().trim().min(1, "prompt cannot be empty").optional(),
+  code: z.string().nullable().optional(),
   model: ModelConfigSchema.optional(),
   baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").nullable().optional(),
   useWorktree: z.boolean().optional(),
   schedule: AgentScheduleSchema.optional(),
   enabled: z.boolean().optional(),
   isPrivate: z.boolean().optional(),
+});
+
+export const GenerateAgentCodeRequestSchema = z.object({
+  name: TaskNameSchema.optional(),
+  prompt: z.string().optional(),
+  comments: z.string().optional(),
+  previousCode: z.string().optional(),
+  workspaceId: z.string().min(1).optional(),
+  model: ModelConfigSchema.optional(),
+});
+
+export const TestAgentCodeRequestSchema = z.object({
+  name: TaskNameSchema.optional(),
+  prompt: z.string().optional().default(""),
+  code: z.string().trim().min(1, "code is required"),
+  workspaceId: z.string().min(1),
+  model: ModelConfigSchema,
+  baseBranch: z.string().trim().min(1).optional(),
+  useWorktree: z.boolean().default(false),
+  testRunId: z.string().uuid().optional(),
 });
 
 export const RunAgentRequestSchema = z.object({
@@ -80,6 +102,8 @@ export const SchedulerTimezoneRequestSchema = z.object({
 
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type UpdateAgentRequest = z.infer<typeof UpdateAgentRequestSchema>;
+export type GenerateAgentCodeRequest = z.infer<typeof GenerateAgentCodeRequestSchema>;
+export type TestAgentCodeRequest = z.infer<typeof TestAgentCodeRequestSchema>;
 export type RunAgentRequest = z.infer<typeof RunAgentRequestSchema>;
 export type DeleteAgentRunsRequest = z.infer<typeof DeleteAgentRunsRequestSchema>;
 export type AgentRunsQuery = z.infer<typeof AgentRunsQuerySchema>;

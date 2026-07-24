@@ -217,6 +217,8 @@ function renderMainContent(props: ShellMainContentProps) {
         onSavedAgentEdit={props.onSavedAgentEdit}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onUpdateAgent={agents.updateAgent}
+        onGenerateAgentCode={agents.generateAgentCode}
+        onTestAgentCode={agents.testAgentCode}
         onDeleteRun={agents.deleteRun}
         onRefreshRuns={agents.refreshRuns}
         runsByAgentId={agents.runsByAgentId}

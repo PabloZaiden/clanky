@@ -12,6 +12,9 @@ export async function getDiff(
   baseBranch: string
 ): Promise<FileDiff[]> {
   const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  if (!diffBase) {
+    return [];
+  }
   return getDiffForBase(executor, directory, diffBase);
 }
 
@@ -71,6 +74,9 @@ export async function getDiffSummary(
   baseBranch: string
 ): Promise<{ files: number; insertions: number; deletions: number }> {
   const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  if (!diffBase) {
+    return { files: 0, insertions: 0, deletions: 0 };
+  }
   const shortstatArgs = ["diff", "--shortstat", diffBase];
   const result = await runGitCommand(executor, directory, shortstatArgs);
   if (!result.success) {
@@ -98,6 +104,9 @@ export async function getFileDiffContent(
   filePath: string
 ): Promise<string> {
   const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  if (!diffBase) {
+    return "";
+  }
   const diffArgs = ["diff", diffBase, "--", filePath];
   const result = await runGitCommand(executor, directory, diffArgs);
   if (!result.success) {
@@ -112,6 +121,9 @@ export async function getDiffWithContent(
   baseBranch: string
 ): Promise<FileDiffWithContent[]> {
   const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  if (!diffBase) {
+    return [];
+  }
   const diffs = await getDiffForBase(executor, directory, diffBase);
 
   const result = await runGitCommand(executor, directory, ["diff", diffBase]);
@@ -147,7 +159,7 @@ async function resolveDiffBaseRef(
   executor: CommandExecutor,
   directory: string,
   baseBranch: string,
-): Promise<string> {
+): Promise<string | null> {
   const verifyResult = await runGitCommand(
     executor,
     directory,
@@ -160,7 +172,7 @@ async function resolveDiffBaseRef(
 
   const localBranch = localBranchNameForRemoteRef(baseBranch);
   if (!localBranch) {
-    return baseBranch;
+    return null;
   }
 
   const localVerifyResult = await runGitCommand(
@@ -169,7 +181,7 @@ async function resolveDiffBaseRef(
     ["rev-parse", "--verify", "--quiet", `refs/heads/${localBranch}^{commit}`],
     { allowFailure: true },
   );
-  return localVerifyResult.success ? localBranch : baseBranch;
+  return localVerifyResult.success ? localBranch : null;
 }
 
 function localBranchNameForRemoteRef(ref: string): string | null {

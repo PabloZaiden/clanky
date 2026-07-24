@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Agent, AgentEvent, AgentRun, ModelConfig, Workspace } from "@/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { mergeTranscriptSnapshot, mergeTranscriptToolCalls } from "@/shared";
+import type {
+  Agent,
+  AgentEvent,
+  AgentRun,
+  ChatTranscript,
+  DeterministicAgentTestResult,
+  DeterministicCodeDiagnostic,
+  ModelConfig,
+  ToolCallData,
+  Workspace,
+} from "@/shared";
+import { isAgentCodeEnabled } from "@/shared/agent";
 import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import type { CreateAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import type { TaskLogEntry } from "@/shared/task";
 import { appFetch } from "../../lib/public-path";
 import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { isToolCallSummary, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
@@ -69,10 +82,11 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  return [...items.filter((entry) => entry.id !== item.id), item].sort((left, right) => {
-    const byTimestamp = (left.timestamp ?? "").localeCompare(right.timestamp ?? "");
-    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  }).slice(-1000);
+  const existingIndex = items.findIndex((entry) => entry.id === item.id);
+  const nextItems = existingIndex === -1 ? [...items, item] : items.map((entry, index) => (
+    index === existingIndex ? item : entry
+  ));
+  return nextItems.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
 }
 
 function AgentStatusPill({ status }: { status: string }) {
@@ -101,6 +115,8 @@ function AgentForm({
   onWorkspaceChange,
   onCreateAgent,
   onUpdateAgent,
+  onGenerateAgentCode,
+  onTestAgentCode,
   onCancel,
   onSaved,
 }: {
@@ -121,13 +137,22 @@ function AgentForm({
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
+  onTestAgentCode: UseAgentsResult["testAgentCode"];
   onCancel: () => void;
   onSaved: (agent: Agent) => void;
 }) {
   const toast = useToast();
   const [name, setName] = useState(agent?.config.name ?? "");
   const [prompt, setPrompt] = useState(agent?.config.prompt ?? "");
+  const [code, setCode] = useState(agent?.config.code ?? "");
+  const [codeDiagnostics, setCodeDiagnostics] = useState<DeterministicCodeDiagnostic[]>([]);
+  const [generationComments, setGenerationComments] = useState("");
+  const [testResult, setTestResult] = useState<DeterministicAgentTestResult | null>(null);
+  const [testLogs, setTestLogs] = useState<TaskLogEntry[]>([]);
+  const [testStreamId, setTestStreamId] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState(agent?.config.workspaceId ?? initialWorkspace?.id ?? "");
+  const workspaceForBranchRef = useRef<string | null>(agent?.config.workspaceId ?? initialWorkspace?.id ?? null);
   const [modelKey, setModelKey] = useState(agent
     ? makeModelKey(agent.config.model.providerID, agent.config.model.modelID, agent.config.model.variant)
     : "");
@@ -140,6 +165,35 @@ function AgentForm({
   const [intervalValue, setIntervalValue] = useState(agent?.config.schedule.interval.value ?? 60);
   const [intervalUnit, setIntervalUnit] = useState<"minutes" | "hours" | "days">(agent?.config.schedule.interval.unit ?? "minutes");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [isTestingCode, setIsTestingCode] = useState(false);
+  const generateAbortControllerRef = useRef<AbortController | null>(null);
+  const testAbortControllerRef = useRef<AbortController | null>(null);
+  const testLogIdsRef = useRef(new Set<string>());
+
+  useEffect(() => () => {
+    generateAbortControllerRef.current?.abort();
+    testAbortControllerRef.current?.abort();
+  }, []);
+
+  function appendTestLog(entry: TaskLogEntry): void {
+    if (testLogIdsRef.current.has(entry.id)) {
+      return;
+    }
+    testLogIdsRef.current.add(entry.id);
+    setTestLogs((previous) => [...previous, entry].slice(-1000));
+  }
+
+  useRealtimeStream<AgentEvent>({
+    enabled: isTestingCode && testStreamId !== null,
+    filters: { agentRunId: testStreamId ?? undefined },
+    predicate: (event) => event.type === "agent.run.log" && event.agentRunId === testStreamId,
+    onEvent: (event) => {
+      if (event.type === "agent.run.log") {
+        appendTestLog(event.log);
+      }
+    },
+  });
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === workspaceId) ?? null,
@@ -155,7 +209,12 @@ function AgentForm({
   useEffect(() => {
     if (!selectedWorkspace) {
       setBaseBranch("");
+      workspaceForBranchRef.current = null;
       return;
+    }
+    if (workspaceForBranchRef.current !== selectedWorkspace.id) {
+      workspaceForBranchRef.current = selectedWorkspace.id;
+      setBaseBranch("");
     }
     onWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
   }, [onWorkspaceChange, selectedWorkspace?.directory, selectedWorkspace?.id]);
@@ -202,6 +261,7 @@ function AgentForm({
     const baseRequest = {
       name: name.trim(),
       prompt: prompt.trim(),
+      code: code.trim() || null,
       model: {
         providerID: parsedModel.providerID,
         modelID: parsedModel.modelID,
@@ -234,7 +294,128 @@ function AgentForm({
     }
   }
 
+  async function handleGenerateCode(): Promise<void> {
+    const parsedGenerationModel = parseModelKey(modelKey);
+    if (!selectedWorkspace || !parsedGenerationModel) {
+      toast.error("Select a workspace and model before generating code");
+      return;
+    }
+    const controller = new AbortController();
+    generateAbortControllerRef.current = controller;
+    setIsGeneratingCode(true);
+    try {
+      const generated = await onGenerateAgentCode({
+        name: name.trim() || undefined,
+        prompt,
+        comments: generationComments,
+        previousCode: code,
+        workspaceId: selectedWorkspace.id,
+        model: parsedGenerationModel,
+      }, agent?.config.id, { signal: controller.signal });
+      if (!generated || controller.signal.aborted) {
+        return;
+      }
+      setCode(generated.code);
+      setCodeDiagnostics(generated.diagnostics);
+      setTestResult(null);
+      setTestLogs([]);
+      toast.success(
+        generated.diagnostics.length > 0
+          ? "Code draft generated with validation warnings. Fix them before saving."
+          : "Code draft generated. Save the agent to enable it.",
+      );
+    } finally {
+      if (generateAbortControllerRef.current === controller) {
+        generateAbortControllerRef.current = null;
+      }
+      setIsGeneratingCode(false);
+    }
+  }
+
+  function handleCancelGenerateCode(): void {
+    const controller = generateAbortControllerRef.current;
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    controller.abort();
+  }
+
+  async function handleTestCode(): Promise<void> {
+    const parsedTestModel = parseModelKey(modelKey);
+    if (!selectedWorkspace || !parsedTestModel) {
+      toast.error("Select a workspace and model before testing code");
+      return;
+    }
+    if (!code.trim()) {
+      toast.error("Enter deterministic code before testing it");
+      return;
+    }
+    setIsTestingCode(true);
+    setTestResult(null);
+    setTestLogs([]);
+    testLogIdsRef.current.clear();
+    const testRunId = crypto.randomUUID();
+    setTestStreamId(testRunId);
+    const controller = new AbortController();
+    testAbortControllerRef.current = controller;
+    try {
+      const result = await onTestAgentCode({
+        name: name.trim() || undefined,
+        prompt,
+        code,
+        workspaceId: selectedWorkspace.id,
+        model: parsedTestModel,
+        baseBranch: baseBranch.trim() || undefined,
+        useWorktree,
+        testRunId,
+      } satisfies TestAgentCodeRequest, {
+        signal: controller.signal,
+        onLog: appendTestLog,
+      });
+      if (!result || controller.signal.aborted) {
+        if (!result && !controller.signal.aborted) {
+          setTestResult({
+            status: "failed",
+            logs: [],
+            error: "Deterministic code test ended without a result",
+            diagnostics: [],
+          });
+        }
+        return;
+      }
+      setTestResult(result);
+      setTestLogs((previous) => result.logs.length > 0 ? result.logs : previous);
+      if (result.status === "completed") {
+        toast.success("Deterministic code test completed");
+      } else if (result.status === "failed") {
+        toast.error(result.error ?? "Deterministic code test failed");
+      }
+    } finally {
+      if (testAbortControllerRef.current === controller) {
+        testAbortControllerRef.current = null;
+      }
+      setTestStreamId(null);
+      setIsTestingCode(false);
+    }
+  }
+
+  function handleCancelTest(): void {
+    const controller = testAbortControllerRef.current;
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    setTestResult({
+      status: "cancelled",
+      logs: testLogs,
+      diagnostics: [],
+    });
+    setTestStreamId(null);
+    controller.abort();
+  }
+
   const canSubmit = !isSubmitting
+    && !isGeneratingCode
+    && !isTestingCode
     && !branchesLoading
     && !modelsLoading
     && Boolean(selectedWorkspace)
@@ -397,6 +578,110 @@ function AgentForm({
             className={`${inputClassName} min-h-32 resize-y`}
           />
         </div>
+
+        <section className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Deterministic Mode (optional)</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Deterministic Mode code replaces the scheduled prompt. Leave it empty to keep prompt mode
+            </p>
+          </div>
+          <div>
+            <label htmlFor="agent-code-comments" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Generation comments
+            </label>
+            <textarea
+              id="agent-code-comments"
+              value={generationComments}
+              onChange={(event) => setGenerationComments(event.target.value)}
+              className={`${inputClassName} min-h-20 resize-y`}
+              placeholder="Describe what to change in the generated code"
+              disabled={isGeneratingCode}
+            />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            The user can only see text written to stdout and stderr. Do not print anything to either stream that should remain hidden.
+          </p>
+          <div>
+            <label htmlFor="agent-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              TypeScript code
+            </label>
+            <textarea
+              id="agent-code"
+              value={code}
+              onChange={(event) => {
+                setCode(event.target.value);
+                setCodeDiagnostics([]);
+                setTestResult(null);
+                setTestLogs([]);
+              }}
+              className={`${inputClassName} min-h-72 resize-y font-mono text-xs`}
+              spellCheck={false}
+              disabled={isGeneratingCode || isTestingCode}
+              placeholder={'export default async function run(ctx) {\n  // Use ctx.workspace.exec or ctx.workspace.prompt\n}'}
+            />
+            {codeDiagnostics.length > 0 && (
+              <div className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-300">
+                {codeDiagnostics.map((diagnostic, index) => (
+                  <p key={`${diagnostic.line ?? "code"}-${diagnostic.column ?? "position"}-${index}`}>
+                    {diagnostic.line ? `Line ${diagnostic.line}: ` : ""}{diagnostic.message}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-28"
+              onClick={() => void handleGenerateCode()}
+              disabled={isSubmitting || isGeneratingCode || isTestingCode || !selectedWorkspace || !modelKey}
+              loading={isGeneratingCode}
+            >
+              Generate
+            </Button>
+            {isGeneratingCode && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={handleCancelGenerateCode}
+              >
+                Cancel generation
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-28"
+              onClick={() => void handleTestCode()}
+              disabled={isSubmitting || isGeneratingCode || isTestingCode || !code.trim() || !selectedWorkspace || !modelKey}
+              loading={isTestingCode}
+            >
+              Test
+            </Button>
+            {isTestingCode && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={handleCancelTest}
+              >
+                Cancel test
+              </Button>
+            )}
+          </div>
+          {(isTestingCode || testResult || testLogs.length > 0) && (
+            <DeterministicTestOutputPanel
+              result={testResult}
+              logs={testLogs}
+              isRunning={isTestingCode}
+            />
+          )}
+        </section>
     </div>
   );
 }
@@ -537,6 +822,8 @@ function AgentDetail({
   editing,
   onWorkspaceChange,
   onUpdateAgent,
+  onGenerateAgentCode,
+  onTestAgentCode,
   onDeleteRun,
   onRefreshRuns,
   onCancelEdit,
@@ -559,6 +846,8 @@ function AgentDetail({
   editing: boolean;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
+  onTestAgentCode: UseAgentsResult["testAgentCode"];
   onDeleteRun: UseAgentsResult["deleteRun"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
   onCancelEdit: () => void;
@@ -591,6 +880,8 @@ function AgentDetail({
         onWorkspaceChange={onWorkspaceChange}
         onCreateAgent={async () => null}
         onUpdateAgent={onUpdateAgent}
+        onGenerateAgentCode={onGenerateAgentCode}
+        onTestAgentCode={onTestAgentCode}
         onCancel={onCancelEdit}
         onSaved={(savedAgent) => {
           onSavedEdit(savedAgent);
@@ -606,6 +897,7 @@ function AgentDetail({
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
           <span>Next run: {formatDate(agent.state.nextRunAt)}</span>
           <span>Every {agent.config.schedule.interval.value} {agent.config.schedule.interval.unit}</span>
+          <span>Execution: {isAgentCodeEnabled(agent.config) ? "deterministic code" : "prompt"}</span>
           <span>Base branch: {agent.config.baseBranch ?? "default"}</span>
           <span>Worktree: {agent.config.useWorktree ? "yes" : "no"}</span>
         </div>
@@ -625,6 +917,93 @@ function AgentDetail({
   );
 }
 
+function DeterministicOutputStreams({ logs }: { logs: AgentRun["logs"] }) {
+  const outputLogs = logs.filter((log) => {
+    const stream = log.details?.["stream"];
+    return stream === "stdout" || stream === "stderr";
+  });
+
+  const renderStream = (stream: "stdout" | "stderr") => outputLogs
+    .filter((log) => log.details?.["stream"] === stream)
+    .map((log) => log.message)
+    .join("");
+
+  const stdout = renderStream("stdout");
+  const stderr = renderStream("stderr");
+  return (
+    <div className="grid gap-3 rounded-md border border-gray-200 bg-neutral-950 p-3 text-xs text-gray-100 dark:border-gray-700">
+      <div className="min-w-0">
+        <h2 className="font-semibold text-gray-300">stdout</h2>
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">{stdout || "(empty)"}</pre>
+      </div>
+      <div className="min-w-0">
+        <h2 className="font-semibold text-red-300">stderr</h2>
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-red-100">{stderr || "(empty)"}</pre>
+      </div>
+    </div>
+  );
+}
+
+function DeterministicOutputPanel({ logs }: { logs: AgentRun["logs"] }) {
+  const hasOutput = logs.some((log) => {
+    const stream = log.details?.["stream"];
+    return stream === "stdout" || stream === "stderr";
+  });
+  if (!hasOutput) {
+    return null;
+  }
+  return (
+    <section className="mx-4 mt-3">
+      <DeterministicOutputStreams logs={logs} />
+    </section>
+  );
+}
+
+function DeterministicTestOutputPanel({
+  result,
+  logs,
+  isRunning,
+}: {
+  result: DeterministicAgentTestResult | null;
+  logs: AgentRun["logs"];
+  isRunning: boolean;
+}) {
+  return (
+    <section className="space-y-3 rounded-md border border-gray-200 p-3 dark:border-gray-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Test output</h2>
+        <StatusBadge
+          variant={
+            isRunning
+              ? "info"
+              : result?.status === "completed"
+                ? "success"
+                : result?.status === "cancelled"
+                  ? "warning"
+                  : "error"
+          }
+          size="sm"
+        >
+          {isRunning ? "running" : result?.status ?? "failed"}
+        </StatusBadge>
+      </div>
+      {result?.error && (
+        <p className="whitespace-pre-wrap text-xs text-red-700 dark:text-red-300">{result.error}</p>
+      )}
+      {result && result.diagnostics.length > 0 && (
+        <div className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+          {result.diagnostics.map((diagnostic, index) => (
+            <p key={`${diagnostic.line ?? "code"}-${diagnostic.column ?? "position"}-${index}`}>
+              {diagnostic.line ? `Line ${diagnostic.line}: ` : ""}{diagnostic.message}
+            </p>
+          ))}
+        </div>
+      )}
+      <DeterministicOutputStreams logs={logs} />
+    </section>
+  );
+}
+
 function AgentRunDetail({
   agent,
   runId,
@@ -636,8 +1015,16 @@ function AgentRunDetail({
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const [run, setRun] = useState<AgentRun | null>(initialRun);
-  const [loading, setLoading] = useState(!initialRun);
+  const [transcript, setTranscript] = useState<ChatTranscript | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const transcriptRef = useRef<ChatTranscript | null>(null);
+  const snapshotEtagRef = useRef<string | null>(null);
+  const previousRunIdRef = useRef(runId);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   const refreshRun = useCallback(async (options: { showLoading?: boolean } = {}) => {
     const showLoading = options.showLoading ?? true;
@@ -646,11 +1033,21 @@ function AgentRunDetail({
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch(`/api/agent-runs/${runId}`);
+      const headers = new Headers();
+      if (snapshotEtagRef.current) {
+        headers.set("If-None-Match", snapshotEtagRef.current);
+      }
+      const response = await appFetch(`/api/agent-runs/${runId}/snapshot`, { headers });
+      if (response.status === 304) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to fetch agent run"));
       }
-      setRun(await response.json() as AgentRun);
+      const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscript };
+      snapshotEtagRef.current = response.headers.get("ETag");
+      setRun(snapshot.run);
+      setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
@@ -658,6 +1055,29 @@ function AgentRunDetail({
         setLoading(false);
       }
     }
+  }, [runId]);
+
+  useEffect(() => {
+    const runChanged = previousRunIdRef.current !== runId;
+    if (runChanged) {
+      snapshotEtagRef.current = null;
+      previousRunIdRef.current = runId;
+      transcriptRef.current = null;
+      setTranscript(null);
+    }
+    setRun(initialRun);
+    void refreshRun();
+  }, [initialRun, refreshRun, runId]);
+
+  const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
+    const response = await appFetch(`/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(await parseError(response, "Failed to load tool-call details"));
+    }
+    return await response.json() as ToolCallData;
   }, [runId]);
 
   useRealtimeRefresh({
@@ -688,41 +1108,41 @@ function AgentRunDetail({
         return;
       }
       if (event.type === "agent.run.message") {
-        setRun((current) => current ? { ...current, messages: upsertById(current.messages, event.message), updatedAt: event.timestamp } : current);
+        setTranscript((current) => current ? {
+          ...current,
+          messages: upsertById(current.messages, event.message),
+          totalEntries: current.totalEntries + 1,
+        } : current);
         return;
       }
       if (event.type === "agent.run.tool_call") {
-        setRun((current) => current
-          ? {
-              ...current,
-              toolCalls: upsertById(
-                current.toolCalls,
-                mergeToolCallRecord(
-                  current.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
-                  event.tool,
-                ),
-              ),
-              updatedAt: event.timestamp,
-            }
-          : current);
+        setTranscript((current) => current ? {
+          ...current,
+          toolCalls: mergeTranscriptToolCalls(current.toolCalls, [event.tool]),
+        } : current);
         return;
       }
       if (event.type === "agent.run.tool_call.extra") {
-        setRun((current) => current
-          ? {
-              ...current,
-              toolCalls: current.toolCalls.map((toolCall) => (
-                toolCall.id === event.toolId
-                  ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
-                  : toolCall
-              )),
-              updatedAt: event.timestamp,
-            }
-          : current);
+        setTranscript((current) => current ? {
+          ...current,
+          toolCalls: current.toolCalls.map((toolCall) => (
+            toolCall.id === event.toolId && !isToolCallSummary(toolCall)
+              ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
+              : toolCall
+          )),
+        } : current);
         return;
       }
       if (event.type === "agent.run.log") {
-        setRun((current) => current ? { ...current, logs: upsertById(current.logs, event.log), updatedAt: event.timestamp } : current);
+        setTranscript((current) => current ? {
+          ...current,
+          logs: upsertById(current.logs, event.log),
+          totalEntries: current.totalEntries + 1,
+        } : current);
+        return;
+      }
+      if (event.type === "agent.run.status") {
+        setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
       }
     },
     onReconnect: () => refreshRun({ showLoading: false }),
@@ -749,17 +1169,19 @@ function AgentRunDetail({
           {run.error.message}
         </div>
       )}
+      <DeterministicOutputPanel logs={transcript?.logs ?? []} />
       <ConversationViewer
         id="agent-run-transcript"
-        messages={run.messages}
-        toolCalls={run.toolCalls}
-        logs={run.logs}
+        messages={transcript?.messages ?? []}
+        toolCalls={transcript?.toolCalls ?? []}
+        logs={transcript?.logs ?? []}
         isActive={isActive}
         markdownEnabled={markdownEnabled}
         showAssistantMessages
         showResponseLogs={false}
         emptyStateMessage="No messages yet"
         activeStateMessage="Running..."
+        onLoadToolDetails={loadToolDetails}
       />
     </div>
   );
@@ -780,6 +1202,8 @@ export function AgentComposer({
   defaultBranch,
   onWorkspaceChange,
   onCreateAgent,
+  onGenerateAgentCode,
+  onTestAgentCode,
   navigateWithinShell,
 }: {
   composeWorkspace: Workspace | null;
@@ -796,6 +1220,8 @@ export function AgentComposer({
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
+  onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
+  onTestAgentCode: UseAgentsResult["testAgentCode"];
   navigateWithinShell: (route: WebAppRoute) => void;
 }) {
   return (
@@ -816,6 +1242,8 @@ export function AgentComposer({
       onWorkspaceChange={onWorkspaceChange}
       onCreateAgent={onCreateAgent}
       onUpdateAgent={async () => null}
+      onGenerateAgentCode={onGenerateAgentCode}
+      onTestAgentCode={onTestAgentCode}
       onCancel={() => navigateWithinShell(composeWorkspace ? { view: "agents", workspaceId: composeWorkspace.id } : { view: "home" })}
       onSaved={(savedAgent) => navigateWithinShell({ view: "agent", agentId: savedAgent.config.id })}
     />
@@ -832,6 +1260,8 @@ export function AgentsView({
   selectedWorkspaceId: _selectedWorkspaceId,
   onWorkspaceChange,
   onUpdateAgent,
+  onGenerateAgentCode,
+  onTestAgentCode,
   onDeleteRun,
   onRefreshRuns,
   runsByAgentId,
@@ -856,6 +1286,8 @@ export function AgentsView({
   selectedWorkspaceId: string | null;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
+  onTestAgentCode: UseAgentsResult["testAgentCode"];
   onDeleteRun: UseAgentsResult["deleteRun"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
   runsByAgentId: Record<string, AgentRun[]>;
@@ -907,6 +1339,8 @@ export function AgentsView({
         editing={editingAgentId === agent.config.id}
         onWorkspaceChange={onWorkspaceChange}
         onUpdateAgent={onUpdateAgent}
+        onGenerateAgentCode={onGenerateAgentCode}
+        onTestAgentCode={onTestAgentCode}
         onDeleteRun={onDeleteRun}
         onRefreshRuns={onRefreshRuns}
         onCancelEdit={onCancelAgentEdit}

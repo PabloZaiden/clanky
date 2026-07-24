@@ -1,7 +1,9 @@
 import type { TaskCtx } from "./context";
 import type { AcceptPlanOptions, AcceptPlanResult } from "./task-types";
 import { createTimestamp } from "@/shared/events";
-import { updateTaskState } from "../../persistence/tasks";
+import {
+  updateTaskOperationalState,
+} from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { sshSessionManager } from "../ssh-session-manager";
@@ -33,7 +35,7 @@ export async function sendPlanFeedbackImpl(
     engine.state.planMode.isPlanReady = false;
   }
 
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
 
   ctx.emitter.emit({
     type: "task.plan.feedback",
@@ -94,7 +96,7 @@ export async function acceptPlanImpl(
   };
 
   Object.assign(engine.state, updatedState);
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
 
   const executionPrompt = options.executionPrompt ?? buildAcceptedPlanExecutionPrompt();
   const executionPromptMode = options.executionPromptMode;
@@ -182,14 +184,14 @@ async function beginAcceptedPlanExecution(
     assertValidTransition(engine.state.status, "starting", "beginAcceptedPlanExecution");
     engine.state.status = "starting";
     engine.state.completedAt = undefined;
-    await updateTaskState(taskId, engine.state);
+    await updateTaskOperationalState(taskId, engine.state);
   }
 
   assertValidTransition(engine.state.status, "running", "beginAcceptedPlanExecution");
   engine.state.status = "running";
   engine.state.syncState = undefined;
   engine.state.completedAt = undefined;
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
 
   ctx.emitter.emit({
     type: "task.started",
@@ -220,7 +222,7 @@ async function failAcceptedPlanExecutionStart(
     iteration: engine.state.currentIteration,
     timestamp: createTimestamp(),
   };
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
 }
 
 export async function discardPlanImpl(ctx: TaskCtx, taskId: string): Promise<boolean> {

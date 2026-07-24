@@ -1,7 +1,7 @@
 import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
 import type { CommandExecutor } from "../command-executor";
-import { updateTaskState } from "../../persistence/tasks";
+import { updateTaskOperationalState } from "../../persistence/tasks";
 import { log } from "@pablozaiden/webapp/server";
 import { ensurePlanningDirectory } from "../planning-directory";
 import { getPlanFilePath } from "../../lib/planning-files";
@@ -32,7 +32,7 @@ export async function clearPlanningFilesImpl(
 
       if (task.state.planMode) {
         task.state.planMode.planningFolderCleared = true;
-        await updateTaskState(taskId, task.state);
+        await updateTaskOperationalState(taskId, task.state);
       }
     } catch (error) {
       log.warn(`Failed to clear .clanky-planning folder: ${String(error)}`);

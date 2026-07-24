@@ -42,6 +42,8 @@ export interface MockBackendOptions {
   responses?: string[];
   /** Streaming response chunks to emit for async prompts, cycled independently from `responses`. */
   streamingResponseChunks?: string[][];
+  /** Optional hook invoked after a prompt is sent, before its response is emitted. */
+  onPrompt?: (prompt: PromptInput, directory: string) => void | Promise<void>;
   /** Models to return from getModels() */
   models?: MockModelInfo[];
   /** Match real ACP provider-scoped model discovery for tests that need it. */
@@ -73,6 +75,7 @@ export class MockAcpBackend implements Backend {
   private pendingPrompt = false;
   private readonly responses: string[];
   private readonly streamingResponseChunks: string[][];
+  private readonly onPrompt?: MockBackendOptions["onPrompt"];
   private streamingResponseIndex = 0;
   private readonly models: MockModelInfo[];
   private readonly filterModelsByConnectionProvider: boolean;
@@ -83,12 +86,14 @@ export class MockAcpBackend implements Backend {
   private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
   private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
   private readonly connectionConfigs: BackendConnectionConfig[] = [];
+  private responseGate: (() => Promise<void>) | undefined;
   private nextCreateSessionError: string | null = null;
   private nextGetSessionError: string | null = null;
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
+    this.onPrompt = options.onPrompt;
     this.models = options.models ?? [];
     this.filterModelsByConnectionProvider = options.filterModelsByConnectionProvider ?? false;
   }
@@ -148,6 +153,7 @@ export class MockAcpBackend implements Backend {
 
   async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
     this.sentPrompts.push(_prompt);
+    await this.onPrompt?.(_prompt, this.directory);
     const response = this.getNextResponse();
     this.checkForError(response);
     return {
@@ -159,6 +165,7 @@ export class MockAcpBackend implements Backend {
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
     this.sentPrompts.push(_prompt);
+    await this.onPrompt?.(_prompt, this.directory);
     this.pendingPrompt = true;
   }
 
@@ -177,6 +184,7 @@ export class MockAcpBackend implements Backend {
         attempts++;
       }
       this.pendingPrompt = false;
+      await this.responseGate?.();
 
       const chunks = this.streamingResponseChunks.length > 0
         ? this.streamingResponseChunks[this.streamingResponseIndex++ % this.streamingResponseChunks.length]
@@ -337,6 +345,10 @@ export class MockAcpBackend implements Backend {
 
   failNextGetSession(message: string): void {
     this.nextGetSessionError = message;
+  }
+
+  setResponseGate(responseGate?: () => Promise<void>): void {
+    this.responseGate = responseGate;
   }
 
   getSentPrompts(): PromptInput[] {

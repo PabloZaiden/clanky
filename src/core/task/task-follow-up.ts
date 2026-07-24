@@ -2,8 +2,11 @@ import type { TaskCtx } from "./context";
 import type { Task, TaskStatus, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpOptions, SendFollowUpResult } from "./task-types";
-import { loadTask } from "../../persistence/tasks";
-import { updateTaskState } from "../../persistence/tasks";
+import {
+  loadTask,
+  updateTaskOperationalState,
+  updateTaskState,
+} from "../../persistence/tasks";
 import { TaskEngine } from "../task-engine";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
@@ -129,8 +132,8 @@ async function startPlainChatFollowUp(
     backend: backendManager.getTaskBackend(taskId, task.config.workspaceId),
     gitService: git,
     eventEmitter: ctx.emitter,
-    onPersistState: async (state) => {
-      await updateTaskState(taskId, state);
+    onPersistState: async (state, options) => {
+      await updateTaskState(taskId, state, options);
     },
     skipGitSetup: true,
   });
@@ -157,7 +160,7 @@ async function startPlainChatFollowUp(
   }
 
   preparePlainChatState(engine, options);
-  await updateTaskState(taskId, engine.state);
+  await updateTaskOperationalState(taskId, engine.state);
   ctx.engines.set(taskId, engine);
   startStatePersistenceImpl(ctx, taskId);
 
@@ -172,7 +175,7 @@ async function startPlainChatFollowUp(
         iteration: engine.state.currentIteration,
         timestamp: createTimestamp(),
       };
-      await updateTaskState(taskId, engine.state);
+      await updateTaskOperationalState(taskId, engine.state);
     }
   });
 

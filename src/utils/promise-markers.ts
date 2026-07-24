@@ -7,7 +7,7 @@ export interface PromiseMarkerMatch {
   content: string;
 }
 
-const TRAILING_PROMISE_MARKER_PATTERN = /^(?<content>[\s\S]*?)(?:\r?\n)?[ \t]*<promise>(?<marker>[^<]+)<\/promise>[ \t]*$/;
+const TRAILING_PROMISE_MARKER_PATTERN = /^(?<content>[\s\S]*?)(?:\r?\n)?[ \t]*(?:`)?<promise>(?<marker>[^<]+)<\/promise>(?:`)?[ \t]*$/;
 
 function humanizePromiseMarker(marker: string): string {
   return marker

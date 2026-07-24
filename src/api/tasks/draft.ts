@@ -60,7 +60,14 @@ export const tasksDraftRoutes = defineRoutes({
           planMode: body.planMode,
           attachments: body.attachments,
         });
-        return Response.json(updatedTask);
+        if (!updatedTask) {
+          return Response.json(updatedTask);
+        }
+        const responseTask = await taskManager.getTaskSummary(ctx.params["id"]!);
+        if (!responseTask) {
+          throw new Error(`Task disappeared after draft start: ${ctx.params["id"]!}`);
+        }
+        return Response.json(responseTask);
       } catch (startError) {
         return startErrorResponse(
           startError,

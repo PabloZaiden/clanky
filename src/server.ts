@@ -42,6 +42,34 @@ const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 
+function normalizeLocalManagedCredentialHost(host: string): string | undefined {
+  const normalizedHost = host.trim().toLowerCase();
+  if (normalizedHost === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  if (normalizedHost === "127.0.0.1" || normalizedHost === "localhost") {
+    return normalizedHost;
+  }
+  if (
+    normalizedHost === "::"
+    || normalizedHost === "[::]"
+    || normalizedHost === "::1"
+    || normalizedHost === "[::1]"
+  ) {
+    return "::1";
+  }
+  return undefined;
+}
+
+export function getLocalManagedCredentialBaseUrl(host: string, port: number): string | undefined {
+  const normalizedHost = normalizeLocalManagedCredentialHost(host);
+  if (!normalizedHost || port <= 0) {
+    return undefined;
+  }
+  const formattedHost = normalizedHost === "::1" ? `[${normalizedHost}]` : normalizedHost;
+  return `http://${formattedHost}:${String(port)}`;
+}
+
 function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): void {
   if (realtimeBridgeUnsubscribers) {
     return;
@@ -181,7 +209,10 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       };
     },
   });
-  managedCredentialService.configure(app.store, app.config);
+  managedCredentialService.configure(app.store, {
+    publicBaseUrl: app.config.publicBaseUrl,
+    localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
+  });
   registerClankyRealtimeBridge(app);
   return app;
 }
@@ -211,6 +242,16 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   }
 
   const server = await appServer.start();
+  const serverUrl = new URL(server.url);
+  const localManagedCredentialBaseUrl = getLocalManagedCredentialBaseUrl(
+    serverUrl.hostname,
+    Number(serverUrl.port),
+  );
+  if (!appServer.config.publicBaseUrl && localManagedCredentialBaseUrl) {
+    managedCredentialService.configure(appServer.store, {
+      localBaseUrl: localManagedCredentialBaseUrl,
+    });
+  }
   pushedTaskMonitor.start();
   agentScheduler.start();
 
