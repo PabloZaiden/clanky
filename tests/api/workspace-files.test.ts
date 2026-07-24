@@ -700,6 +700,63 @@ describe("workspace files API integration", () => {
       expect(uploadExecutor.streamWriteCalls).toBe(2);
     });
 
+    test("accepts workspace upload chunks larger than the legacy 800 KiB limit", async () => {
+      const uploadExecutor = new UploadTrackingExecutor();
+      backendManager.setExecutorFactoryForTesting(() => uploadExecutor);
+      const workspace = await createWorkspace();
+      const firstChunk = new Uint8Array(8 * 1024 * 1024);
+      firstChunk.fill(0x5a);
+      const secondChunk = new Uint8Array([0, 1, 2, 3, 255]);
+      const expected = new Uint8Array(firstChunk.byteLength + secondChunk.byteLength);
+      expected.set(firstChunk);
+      expected.set(secondChunk, firstChunk.byteLength);
+
+      const createResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          directory: "src",
+          fileName: "large-upload.bin",
+          size: expected.byteLength,
+          overwrite: false,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const session = await createResponse.json() as { uploadId: string };
+
+      const firstChunkResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=0`,
+        {
+          method: "POST",
+          body: new Blob([firstChunk]),
+        },
+      );
+      expect(firstChunkResponse.ok).toBe(true);
+      expect(await firstChunkResponse.json()).toMatchObject({ nextOffset: firstChunk.byteLength });
+
+      const secondChunkResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=${firstChunk.byteLength}`,
+        {
+          method: "POST",
+          body: new Blob([secondChunk]),
+        },
+      );
+      expect(secondChunkResponse.ok).toBe(true);
+      expect(await secondChunkResponse.json()).toMatchObject({ nextOffset: expected.byteLength });
+
+      const completeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: session.uploadId }),
+      });
+      expect(completeResponse.ok).toBe(true);
+      const uploaded = new Uint8Array(await Bun.file(join(workDir, "src", "large-upload.bin")).arrayBuffer());
+      expect(uploaded).toEqual(expected);
+      expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
+      expect(uploadExecutor.writeFileCalled).toBe(false);
+      expect(uploadExecutor.streamWriteCalls).toBe(2);
+    });
+
     test("rejects overwrite requests when destination kinds are incompatible", async () => {
       const workspace = await createWorkspace();
       await writeFile(join(workDir, "rename-kind-source.txt"), "source\n");
