@@ -7,10 +7,14 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import {
+  hydrateTranscriptStateForUser,
+  syncTranscriptEntriesInTransaction,
+} from "../transcripts/store";
 
 const log = createLogger("persistence:tasks");
 
-const TASK_LIST_COLUMNS = [
+export const TASK_LIST_COLUMNS = [
   "id",
   "name",
   "directory",
@@ -60,6 +64,7 @@ const TASK_LIST_COLUMNS = [
   "plan_session_id",
   "plan_server_url",
   "plan_feedback_rounds",
+  "plan_content",
   "planning_folder_cleared",
   "plan_is_ready",
   "review_mode",
@@ -116,7 +121,19 @@ export async function saveTask(task: Task): Promise<void> {
     WHERE tasks.user_id = excluded.user_id
   `);
 
-  stmt.run(...values);
+  const userId = String(row["user_id"]);
+  db.transaction(() => {
+    const previousState = hydrateTranscriptStateForUser("task", task.config.id, userId);
+    stmt.run(...values);
+    syncTranscriptEntriesInTransaction(
+      db,
+      "task",
+      task.config.id,
+      userId,
+      previousState,
+      task.state,
+    );
+  })();
   log.debug("Task saved to database", { id: task.config.id });
 }
 
@@ -129,9 +146,18 @@ export async function loadTask(taskId: string): Promise<Task | null> {
   return loadTaskForUser(taskId, requirePersistenceUserId());
 }
 
+/** Load task metadata without parsing transcript columns. */
+export async function loadTaskSummary(taskId: string): Promise<Task | null> {
+  const userId = requirePersistenceUserId();
+  const row = getDatabase()
+    .prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`)
+    .get(taskId, userId) as Record<string, unknown> | null;
+  return row ? createTaskListSnapshot(rowToTask(row)) : null;
+}
+
 export async function loadTaskForUser(taskId: string, userId: string): Promise<Task | null> {
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
+  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
   const row = stmt.get(taskId, userId) as Record<string, unknown> | null;
 
   if (!row) {
@@ -140,6 +166,10 @@ export async function loadTaskForUser(taskId: string, userId: string): Promise<T
   }
 
   const task = rowToTask(row);
+  const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
+  task.state.messages = transcript.messages;
+  task.state.logs = transcript.logs;
+  task.state.toolCalls = transcript.toolCalls;
   log.debug("Task loaded", { taskId, status: task.state.status });
   return task;
 }
@@ -176,10 +206,17 @@ export async function listTasks(): Promise<Task[]> {
 
 export async function listTasksForUser(userId: string): Promise<Task[]> {
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC");
+  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? ORDER BY created_at DESC`);
   const rows = stmt.all(userId) as Record<string, unknown>[];
 
-  const tasks = rows.map(rowToTask);
+  const tasks = rows.map((row) => {
+    const task = rowToTask(row);
+    const transcript = hydrateTranscriptStateForUser("task", task.config.id, userId);
+    task.state.messages = transcript.messages;
+    task.state.logs = transcript.logs;
+    task.state.toolCalls = transcript.toolCalls;
+    return task;
+  });
   log.debug("Tasks listed", { count: tasks.length });
   return tasks;
 }

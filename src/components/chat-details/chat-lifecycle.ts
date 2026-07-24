@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
+import {
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptSnapshotToolCalls,
+} from "@/shared";
 import type {
   Chat,
   ChatSnapshot,
-  ChatTranscriptPage,
   MessageData,
   TaskLogEntry,
   ToolCallData,
@@ -11,9 +14,9 @@ import type {
 } from "@/shared";
 import { shouldIncludeChatTranscriptLog } from "@/shared";
 import {
-  createToolCallSummary,
+  isToolCallDetailsStale,
   isToolCallSummary,
-  mergeToolCallRecord,
+  mergeToolCallDisplayData,
   upsertToolCallExtra,
 } from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
@@ -31,8 +34,6 @@ import type {
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
-const INITIAL_TRANSCRIPT_PAGE_SIZE = 100;
-const MAX_LIVE_TRANSCRIPT_ENTRIES = 10_000;
 
 export async function parseChatError(response: Response, fallback: string): Promise<string> {
   try {
@@ -52,16 +53,11 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  const next = items.filter((entry) => entry.id !== item.id);
-  next.push(item);
-  return next
-    .sort((left, right) => {
-      const leftTimestamp = left.timestamp ?? "";
-      const rightTimestamp = right.timestamp ?? "";
-      const byTimestamp = leftTimestamp.localeCompare(rightTimestamp);
-      return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-    })
-    .slice(-MAX_LIVE_TRANSCRIPT_ENTRIES);
+  const existingIndex = items.findIndex((entry) => entry.id === item.id);
+  const next = existingIndex === -1
+    ? [...items, item]
+    : items.map((entry, index) => index === existingIndex ? item : entry);
+  return next.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
 }
 
 function createEmptyTranscript(): ChatTranscriptViewState {
@@ -69,50 +65,9 @@ function createEmptyTranscript(): ChatTranscriptViewState {
     messages: [],
     logs: [],
     toolCalls: [],
-    hasOlder: false,
     revision: "",
     totalEntries: 0,
-    loadingOlder: false,
   };
-}
-
-function createLegacyChatSnapshot(chat: Chat): ChatSnapshot {
-  const logs = chat.state.logs.filter(shouldIncludeChatTranscriptLog);
-  const transcriptEntryCount = chat.state.messages.length + logs.length + chat.state.toolCalls.length;
-  const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
-  return {
-    config: chat.config,
-    state,
-    transcript: {
-      messages: chat.state.messages,
-      logs,
-      toolCalls: chat.state.toolCalls.map((tool) => createToolCallSummary(tool)),
-      hasOlder: false,
-      revision: `${transcriptEntryCount}:${chat.state.lastActivityAt ?? chat.config.updatedAt}`,
-      totalEntries: transcriptEntryCount,
-    },
-  };
-}
-
-async function loadLegacyChatSnapshot(chatId: string, signal: AbortSignal): Promise<ChatSnapshot> {
-  const response = await appFetch(`/api/chats/${chatId}`, { signal });
-  if (!response.ok) {
-    throw new Error(await parseChatError(response, "Failed to fetch chat"));
-  }
-  const chat = await response.json() as Chat;
-  return createLegacyChatSnapshot(chat);
-}
-
-async function isPaginationDisabledResponse(response: Response): Promise<boolean> {
-  if (response.status !== 501) {
-    return false;
-  }
-  try {
-    const body = await response.clone().json() as { error?: unknown };
-    return body.error === "transcript_pagination_disabled";
-  } catch {
-    return false;
-  }
 }
 
 function hydrateChatSnapshot(snapshot: ChatSnapshot): {
@@ -130,8 +85,11 @@ function hydrateChatSnapshot(snapshot: ChatSnapshot): {
       },
     },
     transcript: {
-      ...snapshot.transcript,
-      loadingOlder: false,
+      messages: snapshot.transcript.messages,
+      logs: snapshot.transcript.logs,
+      toolCalls: snapshot.transcript.toolCalls,
+      revision: snapshot.transcript.revision,
+      totalEntries: snapshot.transcript.totalEntries,
     },
   };
 }
@@ -140,61 +98,7 @@ function mergeDisplayToolCall(
   existing: ToolCallDisplayData | undefined,
   incoming: ToolCallDisplayData,
 ): ToolCallDisplayData {
-  if (!existing) {
-    return incoming;
-  }
-  if (isToolCallSummary(existing) && isToolCallSummary(incoming)) {
-    return {
-      ...existing,
-      ...incoming,
-    };
-  }
-  return mergeToolCallRecord(existing, incoming) as ToolCallDisplayData;
-}
-
-function mergeTranscriptToolCalls(
-  current: ToolCallDisplayData[],
-  incoming: ToolCallDisplayData[],
-): ToolCallDisplayData[] {
-  const merged = new Map<string, ToolCallDisplayData>();
-  for (const toolCall of incoming) {
-    merged.set(toolCall.id, toolCall);
-  }
-  for (const toolCall of current) {
-    const existing = merged.get(toolCall.id);
-    if (!existing) {
-      merged.set(toolCall.id, toolCall);
-      continue;
-    }
-    if (isToolCallSummary(existing) && !isToolCallSummary(toolCall)) {
-      merged.set(toolCall.id, mergeToolCallRecord<ToolCallData>(existing, toolCall) as ToolCallDisplayData);
-    } else if (!isToolCallSummary(existing) && isToolCallSummary(toolCall)) {
-      merged.set(toolCall.id, mergeToolCallRecord<ToolCallData>(toolCall, existing) as ToolCallDisplayData);
-    } else {
-      merged.set(toolCall.id, toolCall);
-    }
-  }
-  return Array.from(merged.values()).sort((left, right) => {
-    const byTimestamp = left.timestamp.localeCompare(right.timestamp);
-    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  });
-}
-
-function mergeTranscriptRecords<T extends { id: string; timestamp: string }>(
-  current: T[],
-  incoming: T[],
-): T[] {
-  const merged = new Map<string, T>();
-  for (const item of incoming) {
-    merged.set(item.id, item);
-  }
-  for (const item of current) {
-    merged.set(item.id, item);
-  }
-  return Array.from(merged.values()).sort((left, right) => {
-    const byTimestamp = left.timestamp.localeCompare(right.timestamp);
-    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  });
+  return mergeToolCallDisplayData(existing, incoming);
 }
 
 function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
@@ -285,7 +189,7 @@ function applyChatStreamEvent(
         },
         transcript: {
           ...transcript,
-          messages: nextMessages.slice(-MAX_LIVE_TRANSCRIPT_ENTRIES),
+          messages: nextMessages,
         },
       };
     }
@@ -433,7 +337,7 @@ function applyChatStreamEvent(
         },
         transcript: {
           ...transcript,
-          logs: nextLogs.slice(-MAX_LIVE_TRANSCRIPT_ENTRIES),
+          logs: nextLogs,
         },
       };
     }
@@ -450,13 +354,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const transcriptRef = useRef<ChatTranscriptViewState>(createEmptyTranscript());
   const mountedRef = useRef(false);
   const refreshControllerRef = useRef<AbortController | null>(null);
-  const olderControllerRef = useRef<AbortController | null>(null);
   const detailControllersRef = useRef(new Map<string, AbortController>());
   const refreshShowLoadingRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
   const reconnectAttemptedRef = useRef(false);
   const snapshotEtagRef = useRef<string | null>(null);
-  const legacyPaginationRef = useRef(false);
   const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
 
   const setChatState = useCallback((nextChat: Chat | null) => {
@@ -494,7 +396,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
       const response = await appFetch(
-        `/api/chats/${chatId}/snapshot?limit=${INITIAL_TRANSCRIPT_PAGE_SIZE}`,
+        `/api/chats/${chatId}/snapshot`,
         {
           signal: controller.signal,
           headers,
@@ -511,22 +413,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         return;
       }
       if (!response.ok) {
-        if (await isPaginationDisabledResponse(response)) {
-          const legacySnapshot = await loadLegacyChatSnapshot(chatId, controller.signal);
-          if (
-            controller.signal.aborted
-            || !mountedRef.current
-            || requestId !== refreshRequestIdRef.current
-          ) {
-            return;
-          }
-          legacyPaginationRef.current = true;
-          snapshotEtagRef.current = null;
-          const hydrated = hydrateChatSnapshot(legacySnapshot);
-          setChatState(hydrated.chat);
-          setTranscriptState(hydrated.transcript);
-          return;
-        }
         if (response.status === 404) {
           setChatState(null);
           setTranscriptState(createEmptyTranscript());
@@ -537,10 +423,25 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       }
       const data = await response.json() as ChatSnapshot;
       const hydrated = hydrateChatSnapshot(data);
-      legacyPaginationRef.current = false;
       snapshotEtagRef.current = response.headers.get("ETag");
       setChatState(hydrated.chat);
-      setTranscriptState(hydrated.transcript);
+      const currentTranscript = transcriptRef.current;
+      setTranscriptState({
+        messages: mergeTranscriptSnapshotRecords(
+          currentTranscript.messages as MessageData[],
+          hydrated.transcript.messages as MessageData[],
+        ),
+        logs: mergeTranscriptSnapshotRecords(
+          currentTranscript.logs as TaskLogEntry[],
+          hydrated.transcript.logs as TaskLogEntry[],
+        ),
+        toolCalls: mergeTranscriptSnapshotToolCalls(
+          currentTranscript.toolCalls,
+          hydrated.transcript.toolCalls,
+        ),
+        revision: hydrated.transcript.revision,
+        totalEntries: hydrated.transcript.totalEntries,
+      });
     } catch (refreshError) {
       if (
         isAbortError(refreshError)
@@ -566,83 +467,18 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     }
   }, [chatId, setChatState, setTranscriptState]);
 
-  const loadOlderEntries = useCallback(async (): Promise<void> => {
-    const currentTranscript = transcriptRef.current;
-    if (
-      !mountedRef.current
-      || currentTranscript.loadingOlder
-      || !currentTranscript.hasOlder
-      || !currentTranscript.nextCursor
-    ) {
-      return;
-    }
-
-    olderControllerRef.current?.abort();
-    const controller = new AbortController();
-    olderControllerRef.current = controller;
-    setTranscriptState({ ...currentTranscript, loadingOlder: true });
-
-    try {
-      const params = new URLSearchParams({
-        limit: String(INITIAL_TRANSCRIPT_PAGE_SIZE),
-        before: currentTranscript.nextCursor,
-      });
-      const response = await appFetch(`/api/chats/${chatId}/transcript?${params.toString()}`, {
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted || !mountedRef.current) {
-        return;
-      }
-      if (!response.ok) {
-        if (await isPaginationDisabledResponse(response)) {
-          const legacySnapshot = await loadLegacyChatSnapshot(chatId, controller.signal);
-          if (controller.signal.aborted || !mountedRef.current) {
-            return;
-          }
-          legacyPaginationRef.current = true;
-          const hydrated = hydrateChatSnapshot(legacySnapshot);
-          setChatState(hydrated.chat);
-          setTranscriptState(hydrated.transcript);
-          return;
-        }
-        throw new Error(await parseChatError(response, "Failed to load older transcript entries"));
-      }
-      const page = await response.json() as ChatTranscriptPage;
-      setTranscriptState({
-        messages: mergeTranscriptRecords(currentTranscript.messages, page.messages),
-        logs: mergeTranscriptRecords(currentTranscript.logs, page.logs),
-        toolCalls: mergeTranscriptToolCalls(currentTranscript.toolCalls, page.toolCalls),
-        hasOlder: page.hasOlder,
-        nextCursor: page.nextCursor,
-        revision: page.revision,
-        totalEntries: page.totalEntries,
-        loadingOlder: false,
-      });
-    } catch (loadError) {
-      if (!isAbortError(loadError) && !controller.signal.aborted && mountedRef.current) {
-        setError(String(loadError));
-      }
-    } finally {
-      if (olderControllerRef.current === controller) {
-        olderControllerRef.current = null;
-      }
-      if (
-        mountedRef.current
-        && !controller.signal.aborted
-        && transcriptRef.current.loadingOlder
-      ) {
-        setTranscriptState({ ...transcriptRef.current, loadingOlder: false });
-      }
-    }
-  }, [chatId, setTranscriptState]);
-
   const loadToolCallDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
+    const currentTool = transcriptRef.current.toolCalls.find((toolCall) => toolCall.id === toolCallId);
     const cached = toolDetailsCacheRef.current.get(toolCallId);
-    if (cached) {
+    if (
+      cached
+      && (!currentTool || !isToolCallSummary(currentTool) || !isToolCallDetailsStale(currentTool, cached))
+    ) {
       return cached;
     }
-
-    const currentTool = transcriptRef.current.toolCalls.find((toolCall) => toolCall.id === toolCallId);
+    if (cached) {
+      toolDetailsCacheRef.current.delete(toolCallId);
+    }
     if (currentTool && !isToolCallSummary(currentTool)) {
       toolDetailsCacheRef.current.set(toolCallId, currentTool);
       return currentTool;
@@ -667,7 +503,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         ...transcriptRef.current,
         toolCalls: transcriptRef.current.toolCalls.map((entry) => (
           entry.id === toolCallId
-            ? mergeToolCallRecord(entry, tool) as ToolCallDisplayData
+            ? mergeToolCallDisplayData(entry, tool)
             : entry
         )),
       });
@@ -788,22 +624,18 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     setLoading(true);
     setError(null);
     snapshotEtagRef.current = null;
-    legacyPaginationRef.current = false;
     toolDetailsCacheRef.current.clear();
     void refreshChat();
 
     return () => {
       mountedRef.current = false;
       refreshControllerRef.current?.abort();
-      olderControllerRef.current?.abort();
       for (const controller of detailControllersRef.current.values()) {
         controller.abort();
       }
       detailControllersRef.current.clear();
       refreshControllerRef.current = null;
-      olderControllerRef.current = null;
       refreshShowLoadingRef.current = false;
-      legacyPaginationRef.current = false;
       chatRef.current = null;
       transcriptRef.current = createEmptyTranscript();
     };
@@ -834,7 +666,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     needsSshCredentials: chat?.config.source?.kind === "ssh_server"
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
-    loadOlderEntries,
     loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,

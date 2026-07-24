@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { mergeTranscriptSnapshot, mergeTranscriptToolCalls } from "@/shared";
 import type {
   Agent,
   AgentEvent,
   AgentRun,
+  ChatTranscriptPage,
   DeterministicAgentTestResult,
   DeterministicCodeDiagnostic,
   ModelConfig,
+  ToolCallData,
   Workspace,
 } from "@/shared";
 import { isAgentCodeEnabled } from "@/shared/agent";
@@ -15,7 +18,7 @@ import type { CreateAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } fro
 import type { TaskLogEntry } from "@/shared/task";
 import { appFetch } from "../../lib/public-path";
 import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
-import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
+import { isToolCallSummary, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
@@ -79,10 +82,11 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  return [...items.filter((entry) => entry.id !== item.id), item].sort((left, right) => {
-    const byTimestamp = (left.timestamp ?? "").localeCompare(right.timestamp ?? "");
-    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
-  }).slice(-1000);
+  const existingIndex = items.findIndex((entry) => entry.id === item.id);
+  const nextItems = existingIndex === -1 ? [...items, item] : items.map((entry, index) => (
+    index === existingIndex ? item : entry
+  ));
+  return nextItems.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
 }
 
 function AgentStatusPill({ status }: { status: string }) {
@@ -1011,8 +1015,16 @@ function AgentRunDetail({
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const [run, setRun] = useState<AgentRun | null>(initialRun);
-  const [loading, setLoading] = useState(!initialRun);
+  const [transcript, setTranscript] = useState<ChatTranscriptPage | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const transcriptRef = useRef<ChatTranscriptPage | null>(null);
+  const snapshotEtagRef = useRef<string | null>(null);
+  const previousRunIdRef = useRef(runId);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   const refreshRun = useCallback(async (options: { showLoading?: boolean } = {}) => {
     const showLoading = options.showLoading ?? true;
@@ -1021,11 +1033,21 @@ function AgentRunDetail({
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch(`/api/agent-runs/${runId}`);
+      const headers = new Headers();
+      if (snapshotEtagRef.current) {
+        headers.set("If-None-Match", snapshotEtagRef.current);
+      }
+      const response = await appFetch(`/api/agent-runs/${runId}/snapshot`, { headers });
+      if (response.status === 304) {
+        return;
+      }
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to fetch agent run"));
       }
-      setRun(await response.json() as AgentRun);
+      const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscriptPage };
+      snapshotEtagRef.current = response.headers.get("ETag");
+      setRun(snapshot.run);
+      setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
@@ -1033,6 +1055,29 @@ function AgentRunDetail({
         setLoading(false);
       }
     }
+  }, [runId]);
+
+  useEffect(() => {
+    const runChanged = previousRunIdRef.current !== runId;
+    if (runChanged) {
+      snapshotEtagRef.current = null;
+      previousRunIdRef.current = runId;
+      transcriptRef.current = null;
+      setTranscript(null);
+    }
+    setRun(initialRun);
+    void refreshRun();
+  }, [initialRun, refreshRun, runId]);
+
+  const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
+    const response = await appFetch(`/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(await parseError(response, "Failed to load tool-call details"));
+    }
+    return await response.json() as ToolCallData;
   }, [runId]);
 
   useRealtimeRefresh({
@@ -1063,41 +1108,41 @@ function AgentRunDetail({
         return;
       }
       if (event.type === "agent.run.message") {
-        setRun((current) => current ? { ...current, messages: upsertById(current.messages, event.message), updatedAt: event.timestamp } : current);
+        setTranscript((current) => current ? {
+          ...current,
+          messages: upsertById(current.messages, event.message),
+          totalEntries: current.totalEntries + 1,
+        } : current);
         return;
       }
       if (event.type === "agent.run.tool_call") {
-        setRun((current) => current
-          ? {
-              ...current,
-              toolCalls: upsertById(
-                current.toolCalls,
-                mergeToolCallRecord(
-                  current.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
-                  event.tool,
-                ),
-              ),
-              updatedAt: event.timestamp,
-            }
-          : current);
+        setTranscript((current) => current ? {
+          ...current,
+          toolCalls: mergeTranscriptToolCalls(current.toolCalls, [event.tool]),
+        } : current);
         return;
       }
       if (event.type === "agent.run.tool_call.extra") {
-        setRun((current) => current
-          ? {
-              ...current,
-              toolCalls: current.toolCalls.map((toolCall) => (
-                toolCall.id === event.toolId
-                  ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
-                  : toolCall
-              )),
-              updatedAt: event.timestamp,
-            }
-          : current);
+        setTranscript((current) => current ? {
+          ...current,
+          toolCalls: current.toolCalls.map((toolCall) => (
+            toolCall.id === event.toolId && !isToolCallSummary(toolCall)
+              ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
+              : toolCall
+          )),
+        } : current);
         return;
       }
       if (event.type === "agent.run.log") {
-        setRun((current) => current ? { ...current, logs: upsertById(current.logs, event.log), updatedAt: event.timestamp } : current);
+        setTranscript((current) => current ? {
+          ...current,
+          logs: upsertById(current.logs, event.log),
+          totalEntries: current.totalEntries + 1,
+        } : current);
+        return;
+      }
+      if (event.type === "agent.run.status") {
+        setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
       }
     },
     onReconnect: () => refreshRun({ showLoading: false }),
@@ -1124,18 +1169,19 @@ function AgentRunDetail({
           {run.error.message}
         </div>
       )}
-      <DeterministicOutputPanel logs={run.logs} />
+      <DeterministicOutputPanel logs={transcript?.logs ?? []} />
       <ConversationViewer
         id="agent-run-transcript"
-        messages={run.messages}
-        toolCalls={run.toolCalls}
-        logs={run.logs}
+        messages={transcript?.messages ?? []}
+        toolCalls={transcript?.toolCalls ?? []}
+        logs={transcript?.logs ?? []}
         isActive={isActive}
         markdownEnabled={markdownEnabled}
         showAssistantMessages
         showResponseLogs={false}
         emptyStateMessage="No messages yet"
         activeStateMessage="Running..."
+        onLoadToolDetails={loadToolDetails}
       />
     </div>
   );

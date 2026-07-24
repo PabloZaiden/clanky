@@ -1,11 +1,11 @@
-import type { PersistedMessage, PersistedToolCall, TaskLogEntry } from "@/shared/task";
+import type { MessageData, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import { LogViewer } from "../LogViewer";
 import { taskDetailsTabPaddingClassName } from "./tab-layout";
 import type { TranscriptFileLinkContext } from "../log-viewer";
 
 interface LogTabProps {
-  messages: PersistedMessage[];
-  toolCalls: PersistedToolCall[];
+  messages: MessageData[];
+  toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
   showSystemInfo: boolean;
   onShowSystemInfoChange: (v: boolean) => void;
@@ -18,6 +18,7 @@ interface LogTabProps {
   applyBottomSafeAreaPadding: boolean;
   toolPathDisplayRoot?: string;
   fileLinkContext?: TranscriptFileLinkContext;
+  onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
 
 export function LogTab({
@@ -35,6 +36,7 @@ export function LogTab({
   applyBottomSafeAreaPadding,
   toolPathDisplayRoot,
   fileLinkContext,
+  onLoadToolDetails,
 }: LogTabProps) {
   const logViewerId = "logs-viewer";
 
@@ -55,6 +57,7 @@ export function LogTab({
           fileLinkContext={fileLinkContext}
           surfaceClassName="bg-transparent"
           transcriptClassName={`flex w-full flex-col ${taskDetailsTabPaddingClassName}`}
+          onLoadToolDetails={onLoadToolDetails}
         />
       </div>
 

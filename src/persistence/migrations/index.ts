@@ -75,6 +75,12 @@ const KNOWN_TABLE_NAMES = new Set([
   "preferences",
   "review_comments",
   "schema_migrations",
+  "chat_transcript_entries",
+  "chat_transcript_meta",
+  "task_transcript_entries",
+  "task_transcript_meta",
+  "agent_run_transcript_entries",
+  "agent_run_transcript_meta",
 ]);
 
 /**
@@ -296,6 +302,152 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_chat_transcript_meta_user
         ON chat_transcript_meta(user_id, chat_id)
       `);
+    },
+  },
+  {
+    version: 15,
+    name: "add_unified_transcript_payloads",
+    up: (db) => {
+      const chatEntryColumns = getTableColumns(db, "chat_transcript_entries");
+      for (const column of ["tool_name", "tool_status", "tool_input", "tool_output", "tool_extras"]) {
+        if (!chatEntryColumns.includes(column)) {
+          db.run(`ALTER TABLE chat_transcript_entries ADD COLUMN ${column} TEXT`);
+        }
+      }
+
+      const legacyToolRows = db.query(`
+        SELECT chat_id, user_id, entry_id, payload
+        FROM chat_transcript_entries
+        WHERE kind = 'tool' AND tool_name IS NULL
+      `).all() as Array<{ chat_id: string; user_id: string; entry_id: string; payload: string }>;
+      const updateLegacyTool = db.prepare(`
+        UPDATE chat_transcript_entries
+        SET payload = ?, tool_name = ?, tool_status = ?, tool_input = ?, tool_output = ?, tool_extras = ?
+        WHERE chat_id = ? AND user_id = ? AND entry_id = ?
+      `);
+      for (const row of legacyToolRows) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(row.payload);
+        } catch (error) {
+          throw new Error(`Unable to migrate chat transcript tool ${row.entry_id}`, { cause: error });
+        }
+        if (
+          !isRecord(parsed)
+          || typeof parsed["name"] !== "string"
+          || !["pending", "running", "completed", "failed"].includes(String(parsed["status"]))
+        ) {
+          throw new Error(`Invalid chat transcript tool payload: ${row.entry_id}`);
+        }
+        const toolName = parsed["name"] as string;
+        const toolStatus = parsed["status"] as string;
+        const serialize = (value: unknown): string | null => {
+          const serialized = JSON.stringify(value);
+          return serialized === undefined ? null : serialized;
+        };
+        updateLegacyTool.run(
+          "{}",
+          toolName,
+          toolStatus,
+          serialize(parsed["input"]),
+          serialize(parsed["output"]),
+          serialize(parsed["extras"]),
+          row.chat_id,
+          row.user_id,
+          row.entry_id,
+        );
+      }
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS task_transcript_entries (
+          task_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          tool_name TEXT,
+          tool_status TEXT,
+          tool_input TEXT,
+          tool_output TEXT,
+          tool_extras TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (task_id, entry_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_page
+        ON task_transcript_entries(user_id, task_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS task_transcript_meta (
+          task_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_task_transcript_meta_user
+        ON task_transcript_meta(user_id, task_id)
+      `);
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_run_transcript_entries (
+          agent_run_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+          timestamp TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          tool_name TEXT,
+          tool_status TEXT,
+          tool_input TEXT,
+          tool_output TEXT,
+          tool_extras TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (agent_run_id, entry_id),
+          FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_page
+        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, kind DESC, entry_id DESC)
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_run_transcript_meta (
+          agent_run_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          revision TEXT NOT NULL,
+          entry_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_meta_user
+        ON agent_run_transcript_meta(user_id, agent_run_id)
+      `);
+    },
+  },
+  {
+    version: 16,
+    name: "optimize_transcript_page_indexes",
+    up: (db) => {
+      for (const resource of ["chat", "task", "agent_run"] as const) {
+        db.run(`DROP INDEX IF EXISTS idx_${resource}_transcript_entries_page`);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_${resource}_transcript_entries_page
+          ON ${resource}_transcript_entries(user_id, ${resource === "agent_run" ? "agent_run_id" : `${resource}_id`}, timestamp DESC, sequence DESC, kind DESC, entry_id DESC)
+        `);
+      }
     },
   },
 ];

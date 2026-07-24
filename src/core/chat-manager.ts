@@ -166,8 +166,8 @@ export class ChatManager {
     return this.services.state.getTaskChat(taskId);
   }
 
-  async getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null> {
-    return this.services.state.getChatSnapshot(chatId, limit);
+  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
+    return this.services.state.getChatSnapshot(chatId);
   }
 
   async getChatTranscriptPage(

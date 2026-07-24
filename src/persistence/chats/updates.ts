@@ -8,18 +8,19 @@ import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { syncChatTranscriptEntriesInTransaction } from "./transcript";
+import { hydrateTranscriptStateForUser } from "../transcripts/store";
+import { CHAT_METADATA_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:chats");
 
 interface UpdateChatStateOptions {
   preserveQueuedMessages?: boolean;
-  previousState?: ChatState;
 }
 
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const selectStmt = db.prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?");
+  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
 
   return db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
@@ -28,7 +29,13 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     }
 
     const chat = rowToChat(row);
-    const previousState = options.previousState ?? chat.state;
+    const transcript = hydrateTranscriptStateForUser("chat", chatId, userId);
+    const previousState = {
+      ...chat.state,
+      messages: transcript.messages,
+      logs: transcript.logs,
+      toolCalls: transcript.toolCalls,
+    };
     chat.state = state;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => {
@@ -52,7 +59,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
 export async function updateChatConfig(chatId: string, config: ChatConfig): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const selectStmt = db.prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?");
+  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
 
   return db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;

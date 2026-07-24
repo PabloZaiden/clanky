@@ -423,15 +423,22 @@ export class ChatConversationService implements ChatConversationPort {
       promptPromise,
       generation,
     });
-    void this.consumeEventStream(chat.config.id, backend, eventStream, promptPromise, generation);
-    return this.updateState(chat, {
-      ...chat.state,
-      status: "streaming",
-      error: undefined,
-      interruptRequested: false,
-      completedAt: undefined,
-      lastActivityAt: createTimestamp(),
-    });
+    try {
+      const streamingChat = await this.updateState(chat, {
+        ...chat.state,
+        status: "streaming",
+        error: undefined,
+        interruptRequested: false,
+        completedAt: undefined,
+        lastActivityAt: createTimestamp(),
+      });
+      void this.consumeEventStream(chat.config.id, backend, eventStream, promptPromise, generation);
+      return streamingChat;
+    } catch (error) {
+      this.clearActiveStream(chat.config.id, generation);
+      eventStream.close();
+      throw error;
+    }
   }
 
   private async consumeEventStream(

@@ -223,11 +223,24 @@ export function publishClankyDomainEvent(
       return;
     case "task.message":
     case "task.progress":
-    case "task.tool_call":
-    case "task.tool_call.extra":
     case "task.log":
     case "task.log.delta":
       publishStream(publisher, owner, event, { taskId: event.taskId });
+      return;
+    case "task.tool_call":
+      publishStream(
+        publisher,
+        owner,
+        {
+          ...event,
+          tool: createToolCallSummary(event.tool),
+        },
+        { taskId: event.taskId },
+      );
+      return;
+    case "task.tool_call.extra":
+      // Extras can contain image bytes; expanded rows fetch them from the detail route.
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
     case "task.iteration.start":
     case "task.iteration.end":
@@ -273,6 +286,7 @@ export function publishClankyDomainEvent(
     case "chat.tool_call.extra":
       // Tool-call summaries are enough for the live transcript. The complete
       // extra, which can contain image bytes, is fetched from the detail route.
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.tool_call":
       publishStream(
@@ -307,13 +321,35 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
       return;
     case "agent.run.message":
-    case "agent.run.tool_call":
-    case "agent.run.tool_call.extra":
     case "agent.run.log":
       publishStream(publisher, owner, event, {
         agentId: event.agentId,
         agentRunId: event.agentRunId,
       });
+      return;
+    case "agent.run.tool_call":
+      publishStream(
+        publisher,
+        owner,
+        {
+          ...event,
+          tool: createToolCallSummary(event.tool),
+        },
+        {
+          agentId: event.agentId,
+          agentRunId: event.agentRunId,
+        },
+      );
+      return;
+    case "agent.run.tool_call.extra":
+      // Extras can contain image bytes; expanded rows fetch them from the detail route.
+      publishChanged(
+        publisher,
+        owner,
+        CLANKY_REALTIME_RESOURCES.agentRuns,
+        event.agentRunId,
+        event.agentId,
+      );
       return;
     case "agent.run.scheduled":
     case "agent.run.started":

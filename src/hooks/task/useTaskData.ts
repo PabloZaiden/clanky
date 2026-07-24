@@ -3,9 +3,13 @@
  * Handles HTTP fetching, abort controller, hydration from persisted state.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, MessageData, ToolCallData } from "@/shared";
+import type { ChatTranscriptPage, Task, MessageData, ToolCallData, ToolCallDisplayData } from "@/shared";
+import {
+  mergeTranscriptSnapshotRecords,
+  mergeTranscriptSnapshotToolCalls,
+} from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../../lib/public-path";
@@ -13,13 +17,6 @@ import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
 const log = createLogger("useTask");
-
-/** Maximum number of log entries to keep in frontend state */
-export const MAX_FRONTEND_LOGS = 2000;
-/** Maximum number of messages to keep in frontend state */
-export const MAX_FRONTEND_MESSAGES = 1000;
-/** Maximum number of tool calls to keep in frontend state */
-export const MAX_FRONTEND_TOOL_CALLS = 2000;
 
 export interface UseTaskDataResult {
   task: Task | null;
@@ -29,8 +26,8 @@ export interface UseTaskDataResult {
   setError: Dispatch<SetStateAction<string | null>>;
   messages: MessageData[];
   setMessages: Dispatch<SetStateAction<MessageData[]>>;
-  toolCalls: ToolCallData[];
-  setToolCalls: Dispatch<SetStateAction<ToolCallData[]>>;
+  toolCalls: ToolCallDisplayData[];
+  setToolCalls: Dispatch<SetStateAction<ToolCallDisplayData[]>>;
   progressContent: string;
   setProgressContent: Dispatch<SetStateAction<string>>;
   logs: LogEntry[];
@@ -38,6 +35,7 @@ export interface UseTaskDataResult {
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
   refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
+  loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   abortControllerRef: React.MutableRefObject<AbortController | null>;
   initialLoadDoneRef: React.MutableRefObject<boolean>;
   refreshRequestIdRef: React.MutableRefObject<number>;
@@ -51,14 +49,19 @@ export function useTaskData(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageData[]>([]);
-  const [toolCalls, setToolCalls] = useState<ToolCallData[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCallDisplayData[]>([]);
   const [progressContent, setProgressContent] = useState<string>("");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [gitChangeCounter, setGitChangeCounter] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const snapshotEtagRef = useRef<string | null>(null);
   const initialLoadDoneRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    snapshotEtagRef.current = null;
+  }, [taskId]);
 
   const refresh = useCallback(async (options?: { hydrateFromSnapshot?: boolean }) => {
     const requestTaskId = taskId;
@@ -81,8 +84,13 @@ export function useTaskData(
       if (isActiveTask(requestTaskId)) {
         setError(null);
       }
-      const response = await appFetch(`/api/tasks/${requestTaskId}`, {
+      const headers = new Headers();
+      if (snapshotEtagRef.current) {
+        headers.set("If-None-Match", snapshotEtagRef.current);
+      }
+      const response = await appFetch(`/api/tasks/${requestTaskId}/snapshot`, {
         signal: controller.signal,
+        headers,
       });
 
       // Check if request was aborted during fetch
@@ -91,6 +99,10 @@ export function useTaskData(
         !isActiveTask(requestTaskId) ||
         refreshRequestIdRef.current !== requestId
       ) {
+        return;
+      }
+
+      if (response.status === 304) {
         return;
       }
 
@@ -103,7 +115,10 @@ export function useTaskData(
         }
         throw new Error(`Failed to fetch task: ${response.statusText}`);
       }
-      const data = (await response.json()) as Task;
+      const data = (await response.json()) as {
+        task: Task;
+        transcript: ChatTranscriptPage;
+      };
       if (
         controller.signal.aborted ||
         !isActiveTask(requestTaskId) ||
@@ -111,17 +126,18 @@ export function useTaskData(
       ) {
         return;
       }
+      snapshotEtagRef.current = response.headers.get("ETag");
       setTask((current) => current ? {
-        ...data,
+        ...data.task,
         state: {
-          ...data.state,
+          ...data.task.state,
           toolCalls: reconcileToolCallRecords(
             (current.state.toolCalls as ToolCallData[] | undefined) ?? [],
-            (data.state.toolCalls as ToolCallData[] | undefined) ?? [],
+            (data.task.state.toolCalls as ToolCallData[] | undefined) ?? [],
           ),
         },
-      } : data);
-      log.debug("Task data refreshed", { taskId: requestTaskId, status: data.state.status });
+      } : data.task);
+      log.debug("Task data refreshed", { taskId: requestTaskId, status: data.task.state.status });
 
       // Hydrate persisted data on the first successful load and on explicit reconnect recovery.
       // Using a ref avoids adding state array lengths to the dependency array,
@@ -130,43 +146,28 @@ export function useTaskData(
       if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
         initialLoadDoneRef.current = true;
 
-        const latestLogs = data.state.logs?.slice(-1000) ?? [];
-        setLogs(
-          normalizeHydratedTaskLogs(
-            latestLogs.map((logEntry) => ({
-              id: logEntry.id,
-              level: logEntry.level,
-              message: logEntry.message,
-              details: logEntry.details,
-              timestamp: logEntry.timestamp,
-            })),
-          ),
-        );
-
-        const latestMessages = data.state.messages?.slice(-1000) ?? [];
-        setMessages(
-          latestMessages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            attachments: msg.attachments,
-            timestamp: msg.timestamp,
-          })),
-        );
-
-        const latestToolCalls = data.state.toolCalls?.slice(-1000) ?? [];
-        setToolCalls((current) => reconcileToolCallRecords(
-          current,
-          latestToolCalls.map((tc) => ({
-            id: tc.id,
-            name: tc.name,
-            input: tc.input,
-            output: tc.output,
-            status: tc.status,
-            timestamp: tc.timestamp,
-            extras: tc.extras,
-          })),
+        const latestLogs = data.transcript.logs?.map((logEntry) => ({
+          id: logEntry.id,
+          level: logEntry.level,
+          message: logEntry.message,
+          details: logEntry.details,
+          timestamp: logEntry.timestamp,
+        })) ?? [];
+        setLogs((current) => normalizeHydratedTaskLogs(
+          mergeTranscriptSnapshotRecords(current, latestLogs),
         ));
+
+        const latestMessages = data.transcript.messages?.map((msg) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          attachments: msg.attachments,
+          timestamp: msg.timestamp,
+        })) ?? [];
+        setMessages((current) => mergeTranscriptSnapshotRecords(current, latestMessages));
+
+        const latestToolCalls = data.transcript.toolCalls ?? [];
+        setToolCalls((current) => mergeTranscriptSnapshotToolCalls(current, latestToolCalls));
 
         if (options?.hydrateFromSnapshot) {
           setProgressContent("");
@@ -190,6 +191,17 @@ export function useTaskData(
     }
   }, [isActiveTask, taskId]);
 
+  const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
+    const response = await appFetch(`/api/tasks/${taskId}/tool-calls/${encodeURIComponent(toolCallId)}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Failed to fetch task tool call: ${response.statusText}`);
+    }
+    return await response.json() as ToolCallData;
+  }, [taskId]);
+
   return {
     task,
     setTask,
@@ -207,6 +219,7 @@ export function useTaskData(
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
+    loadToolDetails,
     abortControllerRef,
     initialLoadDoneRef,
     refreshRequestIdRef,

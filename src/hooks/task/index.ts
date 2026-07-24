@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, MessageData, ToolCallData, SshSession } from "@/shared";
+import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, SshSession } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { FollowUpPromptMode } from "@/shared/task";
@@ -47,7 +47,7 @@ export interface UseTaskResult {
   /** Messages from the current/recent iterations */
   messages: MessageData[];
   /** Tool calls from the current/recent iterations */
-  toolCalls: ToolCallData[];
+  toolCalls: ToolCallDisplayData[];
   /** Streaming progress content (accumulated text deltas) */
   progressContent: string;
   /** Application logs from the task engine */
@@ -56,6 +56,8 @@ export interface UseTaskResult {
   gitChangeCounter: number;
   /** Refresh task data */
   refresh: () => Promise<void>;
+  /** Load one complete tool-call payload when expanded. */
+  loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   /** Update the task */
   update: (request: UpdateTaskRequest) => Promise<boolean>;
   /** Delete the task */
@@ -150,6 +152,7 @@ export function useTask(taskId: string): UseTaskResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
+    loadToolDetails,
     abortControllerRef,
     initialLoadDoneRef,
     refreshRequestIdRef,
@@ -274,6 +277,7 @@ export function useTask(taskId: string): UseTaskResult {
     logs,
     gitChangeCounter,
     refresh,
+    loadToolDetails,
     ...actions,
     ...fileQueries,
   };

@@ -16,26 +16,57 @@ import {
   getChatTranscriptMeta,
   getChatToolCallFromTranscript,
   listChatTranscriptEntries,
-  replaceChatTranscriptEntries,
   saveChat,
   updateChatConfig,
   updateChatState,
+  countChatTranscriptEntries,
 } from "../persistence/chats";
+import {
+  createTranscriptPageFromStorageEntries,
+  isTranscriptStorageEntryVisible,
+  parseTranscriptCursor,
+} from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
-import type { Chat, ChatConfig, ChatState, Workspace } from "@/shared";
+import type {
+  Chat,
+  ChatConfig,
+  ChatState,
+  ChatTranscriptCursor,
+  ChatTranscriptStorageEntry,
+  Workspace,
+} from "@/shared";
 import type { ChatSnapshot, ChatTranscriptPage, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { isStandaloneChat } from "@/shared/chat";
+import { isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-import {
-  createChatSnapshot,
-  createChatSnapshotFromPage,
-  createChatTranscriptPage,
-  createChatTranscriptPageFromStorageEntries,
-  parseChatTranscriptCursor,
-} from "./chat-transcript-service";
+
+function listVisibleChatTranscriptEntries(
+  chatId: string,
+  limit: number,
+  before?: ChatTranscriptCursor,
+): { entries: ChatTranscriptStorageEntry[]; hasOlder: boolean } {
+  const entries: ChatTranscriptStorageEntry[] = [];
+  const rawLimit = limit + 1;
+  let rawCursor = before;
+
+  while (true) {
+    const batch = listChatTranscriptEntries(chatId, rawCursor, rawLimit);
+    entries.push(...batch);
+    const visibleCount = entries.filter((entry) =>
+      isTranscriptStorageEntryVisible(entry, shouldIncludeChatTranscriptLog)
+    ).length;
+    if (visibleCount > limit || batch.length < rawLimit) {
+      return { entries, hasOlder: visibleCount > limit };
+    }
+    const oldest = batch.at(-1);
+    if (!oldest) {
+      return { entries, hasOlder: false };
+    }
+    rawCursor = oldest;
+  }
+}
 
 export class ChatStateService implements ChatStatePort {
   constructor(
@@ -46,7 +77,7 @@ export class ChatStateService implements ChatStatePort {
     return loadChat(chatId);
   }
 
-  async getChatSnapshot(chatId: string, limit: number): Promise<ChatSnapshot | null> {
+  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
     const chat = await loadChatMetadata(chatId);
     if (!chat) {
       return null;
@@ -54,22 +85,20 @@ export class ChatStateService implements ChatStatePort {
 
     const meta = getChatTranscriptMeta(chatId);
     if (!meta) {
-      const fullChat = await loadChat(chatId);
-      if (!fullChat) {
-        return null;
-      }
-      replaceChatTranscriptEntries(fullChat);
-      return createChatSnapshot(fullChat, limit);
+      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
-    const entries = listChatTranscriptEntries(chatId, undefined, limit + 1);
-    return createChatSnapshotFromPage(
-      chat,
-      createChatTranscriptPageFromStorageEntries(entries, limit, undefined, {
+    const entries = listChatTranscriptEntries(chatId, undefined, undefined);
+    const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
+    return {
+      config: chat.config,
+      state,
+      transcript: createTranscriptPageFromStorageEntries(entries, undefined, undefined, {
         revision: meta.revision,
-        totalEntries: meta.entryCount,
-      }),
-    );
+        totalEntries: countChatTranscriptEntries(chatId),
+        hasOlder: false,
+      }, shouldIncludeChatTranscriptLog),
+    };
   }
 
   async getChatTranscriptPage(
@@ -84,20 +113,16 @@ export class ChatStateService implements ChatStatePort {
 
     const meta = getChatTranscriptMeta(chatId);
     if (!meta) {
-      const fullChat = await loadChat(chatId);
-      if (!fullChat) {
-        return null;
-      }
-      replaceChatTranscriptEntries(fullChat);
-      return createChatTranscriptPage(fullChat, limit, before);
+      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
-    const cursor = before ? parseChatTranscriptCursor(before) : undefined;
-    const entries = listChatTranscriptEntries(chatId, cursor, limit + 1);
-    return createChatTranscriptPageFromStorageEntries(entries, limit, before, {
+    const cursor = before ? parseTranscriptCursor(before) : undefined;
+    const { entries, hasOlder } = listVisibleChatTranscriptEntries(chatId, limit, cursor);
+    return createTranscriptPageFromStorageEntries(entries, limit, before, {
       revision: meta.revision,
-      totalEntries: meta.entryCount,
-    });
+      totalEntries: countChatTranscriptEntries(chatId),
+      hasOlder,
+    }, shouldIncludeChatTranscriptLog);
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
@@ -105,11 +130,9 @@ export class ChatStateService implements ChatStatePort {
     if (!chatMeta) {
       return null;
     }
-
     const meta = getChatTranscriptMeta(chatId);
     if (!meta) {
-      const chat = await loadChat(chatId);
-      return chat?.state.toolCalls.find((toolCall) => toolCall.id === toolCallId) ?? null;
+      throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
     const value = getChatToolCallFromTranscript(chatId, toolCallId);
@@ -159,7 +182,6 @@ export class ChatStateService implements ChatStatePort {
 
   async saveNewChat(chat: Chat): Promise<void> {
     await saveChat(chat);
-    replaceChatTranscriptEntries(chat);
   }
 
   async updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null> {
@@ -174,7 +196,6 @@ export class ChatStateService implements ChatStatePort {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
     const saved = await updateChatState(chat.config.id, state, {
       preserveQueuedMessages,
-      previousState: chat.state,
     });
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);

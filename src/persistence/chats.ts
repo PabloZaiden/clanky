@@ -24,6 +24,7 @@ export {
   updateChatConfig,
 } from "./chats/index";
 export {
+  countChatTranscriptEntries,
   getChatTranscriptMeta,
   migrateLegacyChatTranscripts,
   replaceChatTranscriptEntries,

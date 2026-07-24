@@ -530,6 +530,124 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.state.toolCalls).toEqual(activeState.toolCalls);
       expect(detail.state.planMode.planContent).toBe("Active engine plan content that should not be returned by the list endpoint");
     });
+
+    test("loads complete lightweight task transcripts and lazy-loads tool call payloads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Load a paginated task transcript",
+          name: "Task Transcript Snapshot Test",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const taskId = created.config.id as string;
+      const firstTimestamp = Date.parse("2025-03-01T00:00:00.000Z");
+      const messages: PersistedMessage[] = Array.from({ length: 3 }, (_, index) => ({
+        id: `task-page-message-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `Task message ${index}`,
+        timestamp: new Date(firstTimestamp + index * 1_000).toISOString(),
+      }));
+      const logs: TaskLogEntry[] = Array.from({ length: 2 }, (_, index) => ({
+        id: `task-page-log-${index}`,
+        level: "agent",
+        message: `Task log ${index}`,
+        timestamp: new Date(firstTimestamp + (10 + index) * 1_000).toISOString(),
+      }));
+      const toolCalls: PersistedToolCall[] = Array.from({ length: 4 }, (_, index) => ({
+        id: `task-page-tool-${index}`,
+        name: "Read",
+        input: { filePath: `src/task-${index}.ts` },
+        output: { content: `task-large-output-${index}-${"x".repeat(2_000)}` },
+        status: "completed",
+        timestamp: new Date(firstTimestamp + (20 + index) * 1_000).toISOString(),
+      }));
+
+      const updated = await updateTaskState(taskId, {
+        ...created.state,
+        messages,
+        logs,
+        toolCalls,
+        lastActivityAt: toolCalls.at(-1)!.timestamp,
+      });
+      expect(updated).not.toBeNull();
+
+      const snapshotResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot`);
+      expect(snapshotResponse.status).toBe(200);
+      const snapshot = await snapshotResponse.json() as {
+        task: { state: Record<string, unknown> };
+        transcript: {
+          messages: PersistedMessage[];
+          logs: TaskLogEntry[];
+          toolCalls: Array<Record<string, unknown>>;
+          hasOlder: boolean;
+          nextCursor?: string;
+          totalEntries: number;
+        };
+      };
+
+      expect(snapshot.task.state["messages"]).toBeUndefined();
+      expect(snapshot.task.state["logs"]).toBeUndefined();
+      expect(snapshot.task.state["toolCalls"]).toBeUndefined();
+      expect(snapshot.transcript.totalEntries).toBe(9);
+      expect(snapshot.transcript.hasOlder).toBe(false);
+      expect(snapshot.transcript.nextCursor).toBeUndefined();
+      expect(snapshot.transcript.messages).toHaveLength(3);
+      expect(snapshot.transcript.logs).toHaveLength(2);
+      expect(snapshot.transcript.toolCalls).toHaveLength(4);
+      expect(snapshot.transcript.toolCalls.every((tool) => "input" in tool && !("output" in tool))).toBe(true);
+
+      const etag = snapshotResponse.headers.get("ETag");
+      expect(etag).toBeString();
+      const notModifiedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot`, {
+        headers: { "If-None-Match": etag! },
+      });
+      expect(notModifiedResponse.status).toBe(304);
+
+      const detailResponse = await fetch(
+        `${baseUrl}/api/tasks/${taskId}/tool-calls/${encodeURIComponent(toolCalls.at(-1)!.id)}`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.output.content).toContain("task-large-output-3");
+      expect(JSON.stringify(snapshot)).not.toContain("task-large-output-3");
+
+      const latestPageResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/transcript?limit=4`);
+      expect(latestPageResponse.status).toBe(200);
+      const latestPage = await latestPageResponse.json();
+      expect(latestPage.hasOlder).toBe(true);
+      expect(latestPage.nextCursor).toBeString();
+      const olderResponse = await fetch(
+        `${baseUrl}/api/tasks/${taskId}/transcript?limit=4&before=${encodeURIComponent(latestPage.nextCursor)}`,
+      );
+      expect(olderResponse.status).toBe(200);
+      const older = await olderResponse.json() as {
+        messages: PersistedMessage[];
+        logs: TaskLogEntry[];
+        toolCalls: Array<{ id: string }>;
+      };
+      const currentKeys = new Set([
+        ...latestPage.messages.map((entry: PersistedMessage) => `message:${entry.id}`),
+        ...latestPage.logs.map((entry: TaskLogEntry) => `log:${entry.id}`),
+        ...latestPage.toolCalls.map((entry: { id: string }) => `tool:${entry["id"]}`),
+      ]);
+      const olderKeys = [
+        ...older.messages.map((entry) => `message:${entry.id}`),
+        ...older.logs.map((entry) => `log:${entry.id}`),
+        ...older.toolCalls.map((entry) => `tool:${entry.id}`),
+      ];
+      expect(olderKeys.every((key) => !currentKeys.has(key))).toBe(true);
+      expect(olderKeys).toHaveLength(4);
+    });
   });
 
   describe("POST /api/tasks/title", () => {

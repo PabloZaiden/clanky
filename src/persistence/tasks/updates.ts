@@ -8,6 +8,8 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { hydrateTranscriptStateForUser, syncTranscriptEntriesInTransaction } from "../transcripts/store";
+import { TASK_LIST_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:tasks");
 
@@ -23,7 +25,7 @@ export async function updateTaskState(taskId: string, state: TaskState): Promise
 export async function updateTaskStateForUser(taskId: string, state: TaskState, userId: string): Promise<boolean> {
   const db = getDatabase();
   // Prepare statements outside transaction
-  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
+  const selectStmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
 
   // Use transaction to ensure atomic read-modify-write
   const updateInTransaction = db.transaction(() => {
@@ -34,6 +36,13 @@ export async function updateTaskStateForUser(taskId: string, state: TaskState, u
     }
 
     const task = rowToTask(row);
+    const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
+    const previousState = {
+      ...task.state,
+      messages: transcript.messages,
+      logs: transcript.logs,
+      toolCalls: transcript.toolCalls,
+    };
     task.state = state;
 
     const newRow = taskToRow(task);
@@ -51,6 +60,14 @@ export async function updateTaskStateForUser(taskId: string, state: TaskState, u
       UPDATE tasks SET ${setClause} WHERE id = ? AND user_id = ?
     `);
     updateStmt.run(...values);
+    syncTranscriptEntriesInTransaction(
+      db,
+      "task",
+      taskId,
+      userId,
+      previousState,
+      state,
+    );
 
     log.debug("Task state updated", { taskId, status: state.status });
     return true;
@@ -69,7 +86,7 @@ export async function updateTaskConfig(taskId: string, config: TaskConfig): Prom
   const userId = requirePersistenceUserId();
 
   // Prepare statements outside transaction
-  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
+  const selectStmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
 
   // Use transaction to ensure atomic read-modify-write
   const updateInTransaction = db.transaction(() => {

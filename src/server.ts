@@ -12,7 +12,9 @@ import { apiRoutes } from "./api";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
 import { migrateLegacyChatTranscripts } from "./persistence/chats";
-import { resetStaleTasks } from "./persistence/tasks";
+import { migrateLegacyTaskTranscripts, resetStaleTasks } from "./persistence/tasks";
+import { migrateLegacyAgentRunTranscripts } from "./persistence/agents";
+import { dropLegacyTranscriptColumns } from "./persistence/transcripts/store";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
@@ -184,6 +186,21 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       migratedChats: transcriptMigration.migratedChats,
     });
   }
+  const taskTranscriptMigration = migrateLegacyTaskTranscripts();
+  if (taskTranscriptMigration.migratedTasks > 0) {
+    log.info("Migrated legacy task transcripts during startup", {
+      migratedTasks: taskTranscriptMigration.migratedTasks,
+    });
+  }
+  const agentRunTranscriptMigration = migrateLegacyAgentRunTranscripts();
+  if (agentRunTranscriptMigration.migratedAgentRuns > 0) {
+    log.info("Migrated legacy agent-run transcripts during startup", {
+      migratedAgentRuns: agentRunTranscriptMigration.migratedAgentRuns,
+    });
+  }
+  dropLegacyTranscriptColumns("chat");
+  dropLegacyTranscriptColumns("task");
+  dropLegacyTranscriptColumns("agent_run");
   const dataDir = getDataDir();
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({

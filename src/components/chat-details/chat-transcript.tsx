@@ -9,7 +9,6 @@ export function ChatTranscript({
   isActive,
   toolPathDisplayRoot,
   fileLinkContext,
-  onLoadOlderEntries,
   onLoadToolDetails,
 }: ChatTranscriptProps) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
@@ -31,9 +30,6 @@ export function ChatTranscript({
         messages={transcript.messages}
         toolCalls={transcript.toolCalls}
         logs={transcript.logs}
-        hasOlderEntries={transcript.hasOlder}
-        loadingOlderEntries={transcript.loadingOlder}
-        onLoadOlderEntries={onLoadOlderEntries}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         activeMessageId={chat.state.activeMessageId}
