@@ -5,7 +5,7 @@
  *
  * Types and helpers are organized into:
  * - engine-types.ts: Interfaces and constants
- * - engine-helpers.ts: StopPatternDetector, nextWithTimeout
+ * - engine-helpers.ts: StopPatternDetector
  * - engine-events.ts: Log and persistence helpers
  * - engine-prompt.ts: Prompt building and outcome evaluation
  * - engine-git.ts: Git branch setup, worktree, and commit operations
@@ -37,9 +37,10 @@ import {
   type IterationResult,
   type IterationContext,
 } from "./engine-types";
+import { AgentStreamController, type AgentStreamHandle } from "../agent-stream-controller";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
 import { upsertToolCallExtra } from "@/shared/tool-call";
-import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
+import { StopPatternDetector } from "./engine-helpers";
 import { logToConsole, persistTaskLog, persistTaskMessage, persistTaskToolCall } from "./engine-events";
 import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
 import {
@@ -58,7 +59,6 @@ import {
   type SessionOperationContext,
 } from "./engine-session";
 import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
-import type { EventStream } from "../../utils/event-stream";
 import {
   AcpError,
   createAcpSessionNotFoundError,
@@ -89,7 +89,7 @@ export class TaskEngine {
   private injectionPending = false;
   private initialPromptAttachments: MessageImageAttachment[];
   private pendingPromptAttachments: MessageImageAttachment[] = [];
-  private currentEventStream: EventStream<AgentEvent> | null = null;
+  private currentStreamHandle: AgentStreamHandle | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
 
   constructor(options: TaskEngineOptions) {
@@ -293,7 +293,7 @@ export class TaskEngine {
         this.aborted = true;
       }
 
-      this.currentEventStream?.close();
+      this.currentStreamHandle?.close();
 
       try {
         this.emitLog("info", options.abortMessage);
@@ -1568,68 +1568,68 @@ export class TaskEngine {
       }
       const activeSessionId = this.sessionId;
 
-      // Subscribe to events BEFORE sending the prompt.
-      // IMPORTANT: We must await the subscription to ensure the SSE connection is established
-      // before sending the prompt. This prevents a race condition where events are emitted
-      // by the server before we're ready to receive them.
-      log.debug("[TaskEngine] runIteration: About to subscribe to events");
-      this.emitLog("debug", "Subscribing to AI response stream");
-      const eventStream = await this.backend.subscribeToEvents(activeSessionId);
-      this.currentEventStream = eventStream;
-      log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
-
+      const activityTimeoutSeconds =
+        this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
+      const streamController = new AgentStreamController(this.backend);
+      let streamHandle: AgentStreamHandle | null = null;
       try {
-        // Now send prompt asynchronously (subscription is definitely active)
-        log.debug("[TaskEngine] runIteration: About to send prompt async");
+        // The shared controller subscribes before sending the prompt and owns
+        // stream cleanup for both chat and task turns.
+        log.debug("[TaskEngine] runIteration: Starting shared agent stream");
+        this.emitLog("debug", "Subscribing to AI response stream");
         this.emitLog("info", "Sending prompt to AI agent...");
-        await this.backend.sendPromptAsync(activeSessionId, prompt);
-        log.debug("[TaskEngine] runIteration: sendPromptAsync completed");
-
-        log.debug("[TaskEngine] runIteration: About to start event iteration task");
-
-        const activityTimeoutSeconds =
-          this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
-        const nextEvent = async (): Promise<AgentEvent | null> => {
-          if (activityTimeoutSeconds === null) {
-            return eventStream.next();
-          }
-          return nextWithTimeout(eventStream, activityTimeoutSeconds * 1000);
-        };
-
-        let event: AgentEvent | null = await nextEvent();
-        while (event !== null) {
-          log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
-          // Check if aborted
-          if (this.aborted) {
-            if (this.injectionPending) {
-              this.emitLog("info", "Iteration interrupted for pending message injection");
-            } else {
-              this.emitLog("info", "Iteration aborted by user");
-            }
-            break;
-          }
-
-          // Update last activity timestamp
-          this.updateState({ lastActivityAt: createTimestamp() });
-
-          // Delegate event processing to the handler
-          await this.processAgentEvent(event, ctx);
-
-          if (event.type === "error" && event.code === "acp_session_not_found") {
-            throw createAcpSessionNotFoundError(activeSessionId, {
-              details: { eventMessage: event.message },
-            });
-          }
-
-          // If message is complete or error occurred, stop listening
-          if (event.type === "message.complete" || event.type === "error") {
-            this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
-            break;
-          }
-
-          // Get next event with timeout
-          event = await nextEvent();
+        streamHandle = streamController.start({
+          sessionId: activeSessionId,
+          prompt,
+          activityTimeoutMs: activityTimeoutSeconds === null
+            ? null
+            : activityTimeoutSeconds * 1000,
+        });
+        this.currentStreamHandle = streamHandle;
+        const started = await streamHandle.startPrompt();
+        if (!started) {
+          completed = true;
+          continue;
         }
+        log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
+        log.debug("[TaskEngine] runIteration: About to start event iteration task");
+        let abortLogged = false;
+        await streamHandle.consume({
+          shouldStop: () => {
+            if (!this.aborted) {
+              return false;
+            }
+            if (!abortLogged) {
+              abortLogged = true;
+              if (this.injectionPending) {
+                this.emitLog("info", "Iteration interrupted for pending message injection");
+              } else {
+                this.emitLog("info", "Iteration aborted by user");
+              }
+            }
+            return true;
+          },
+          onEvent: async (event) => {
+            log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
+
+            // Update last activity timestamp
+            this.updateState({ lastActivityAt: createTimestamp() });
+
+            // Delegate event processing to the handler
+            await this.processAgentEvent(event, ctx);
+
+            if (event.type === "error" && event.code === "acp_session_not_found") {
+              throw createAcpSessionNotFoundError(activeSessionId, {
+                details: { eventMessage: event.message },
+              });
+            }
+
+            // The shared controller stops after message.complete/error.
+            if (event.type === "message.complete" || event.type === "error") {
+              this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
+            }
+          },
+        });
 
         completed = true;
       } catch (error) {
@@ -1647,10 +1647,9 @@ export class TaskEngine {
 
         throw error;
       } finally {
-        // Close the stream to abort the subscription
-        eventStream.close();
-        if (this.currentEventStream === eventStream) {
-          this.currentEventStream = null;
+        streamHandle?.close();
+        if (this.currentStreamHandle === streamHandle) {
+          this.currentStreamHandle = null;
         }
       }
     }

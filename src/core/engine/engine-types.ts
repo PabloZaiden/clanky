@@ -3,6 +3,7 @@
  */
 
 import type { AcpBackend } from "../../backends/acp";
+import type { AgentStreamBackend } from "../agent-stream-controller";
 import type { TaskConfig, TaskState, Task, TaskLogEntry, ModelConfig } from "@/shared/task";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -35,15 +36,13 @@ export const MAX_PERSISTED_TOOL_CALLS = 5000;
  * Using a structural type (interface) instead of a union allows for
  * easy mocking in tests without requiring all internal class fields.
  */
-export interface TaskBackend {
+export interface TaskBackend extends AgentStreamBackend {
   connect: AcpBackend["connect"];
   disconnect: AcpBackend["disconnect"];
   isConnected: AcpBackend["isConnected"];
   createSession: AcpBackend["createSession"];
   sendPrompt: AcpBackend["sendPrompt"];
-  sendPromptAsync: AcpBackend["sendPromptAsync"];
   abortSession: AcpBackend["abortSession"];
-  subscribeToEvents: AcpBackend["subscribeToEvents"];
   replyToPermission: AcpBackend["replyToPermission"];
   replyToQuestion: AcpBackend["replyToQuestion"];
   setConfigOption: AcpBackend["setConfigOption"];
