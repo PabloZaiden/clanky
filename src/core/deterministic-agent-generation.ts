@@ -227,6 +227,26 @@ export async function cleanupDeterministicAgentGenerationFiles(
   await removeGenerationFile(executor, directory, createGenerationCompletionFilePath(outputFilePath));
 }
 
+async function restoreGenerationDraftAfterAbort(
+  executor: CommandExecutor,
+  directory: string,
+  outputFilePath: string,
+  completionFilePath: string,
+  previousCode: string,
+): Promise<void> {
+  if (previousCode.trim()) {
+    const restored = await executor.writeFile(outputFilePath, previousCode);
+    if (!restored) {
+      log.warn("Failed to restore deterministic agent generation draft after cancellation", {
+        filePath: outputFilePath,
+      });
+    }
+  } else {
+    await removeGenerationFile(executor, directory, outputFilePath);
+  }
+  await removeGenerationFile(executor, directory, completionFilePath);
+}
+
 function createAbortError(): DOMException {
   return new DOMException("Deterministic agent code generation was cancelled", "AbortError");
 }
@@ -430,11 +450,12 @@ export async function generateDeterministicAgentCode(
       await requestInterrupt();
     }
     if (options.signal?.aborted) {
-      await cleanupDeterministicAgentGenerationFiles(
-        options.workspaceId,
-        options.directory,
-        options.chatId,
+      await restoreGenerationDraftAfterAbort(
         executor,
+        options.directory,
+        outputFilePath,
+        completionFilePath,
+        options.previousCode,
       );
     }
   }

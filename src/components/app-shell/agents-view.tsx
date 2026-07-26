@@ -751,6 +751,7 @@ function AgentForm({
                 height="360px"
                 language="typescript"
                 value={code}
+                ariaLabel="TypeScript code editor"
                 onChange={(nextCode) => {
                   codeRevisionRef.current += 1;
                   localCodeEditRef.current = true;

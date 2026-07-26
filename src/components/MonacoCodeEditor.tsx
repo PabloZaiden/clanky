@@ -6,12 +6,14 @@ export function MonacoCodeEditor({
   language,
   height,
   wordWrap = "on",
+  ariaLabel = "Code editor",
   onChange,
 }: {
   value: string;
   language: string;
   height: string;
   wordWrap?: "on" | "off";
+  ariaLabel?: string;
   onChange: (value: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
@@ -28,6 +30,7 @@ export function MonacoCodeEditor({
         automaticLayout: true,
         wordWrap,
         scrollBeyondLastLine: false,
+        ariaLabel,
       }}
     />
   );

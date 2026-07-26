@@ -82,6 +82,23 @@ describe("Agents API Integration", () => {
     throw new Error(`Agent run ${runId} did not complete. Last status: ${lastStatus}`);
   }
 
+  async function waitForAgentDraft(agentId: string, expectedCode: string, timeoutMs = 5000): Promise<void> {
+    const start = Date.now();
+    let lastCode = "";
+    while (Date.now() - start < timeoutMs) {
+      const response = await fetch(`${baseUrl}/api/agents/${agentId}/code/draft`);
+      if (response.ok) {
+        const body = await response.json() as { code?: unknown };
+        lastCode = typeof body.code === "string" ? body.code : "";
+        if (lastCode === expectedCode) {
+          return;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Agent draft was not restored within ${timeoutMs}ms. Last code: ${lastCode}`);
+  }
+
   async function createAgent(name = "Scheduled build fixer", code?: string) {
     const response = await fetch(`${baseUrl}/api/agents`, {
       method: "POST",
@@ -559,6 +576,7 @@ describe("Agents API Integration", () => {
     });
     const controller = new AbortController();
     const generationName = "Cancellable generation draft";
+    const previousCode = "export default async function run(ctx) {}";
     mockBackend.setResponseGate(() => providerGate);
 
     try {
@@ -571,7 +589,7 @@ describe("Agents API Integration", () => {
           name: generationName,
           prompt: "Generate code until the client disconnects",
           comments: "",
-          previousCode: "",
+          previousCode,
           workspaceId,
           model: testModel,
         }),
@@ -586,6 +604,7 @@ describe("Agents API Integration", () => {
       const chatId = response.headers.get("X-Clanky-Generation-Chat-Id");
       expect(chatId).toBeTruthy();
       expect(await fetch(`${baseUrl}/api/chats/${chatId}`).then((result) => result.status)).toBe(200);
+      await waitForAgentDraft(agent!.config.id, previousCode);
     } finally {
       controller.abort();
       releaseProvider();
