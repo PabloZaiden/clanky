@@ -6,11 +6,12 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import type { Agent } from "@/shared/agent";
 import type { AgentRun } from "@/shared/agent";
 import type { AgentRunStatus } from "@/shared/agent";
+import type { Chat } from "@/shared/chat";
 import type { DeterministicAgentTestResult, DeterministicAgentTestStreamEvent } from "@/shared/deterministic-agent";
 import type { TaskLogEntry } from "@/shared/task";
 import type { Workspace } from "@/shared/workspace";
-import { AgentRunsQuerySchema, CreateAgentRequestSchema, DeleteAgentRunsRequestSchema, GenerateAgentCodeRequestSchema, RunAgentRequestSchema, TestAgentCodeRequestSchema, UpdateAgentRequestSchema } from "@/contracts/schemas";
-import type { TestAgentCodeRequest } from "@/contracts/schemas";
+import { AgentRunsQuerySchema, CreateAgentRequestSchema, DeleteAgentRunsRequestSchema, GenerateAgentCodeRequestSchema, PrepareGenerateAgentCodeRequestSchema, RunAgentRequestSchema, TestAgentCodeRequestSchema, UpdateAgentRequestSchema } from "@/contracts/schemas";
+import type { GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest, TestAgentCodeRequest } from "@/contracts/schemas";
 import { agentManager } from "../core/agent-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../core/model-discovery";
@@ -77,7 +78,6 @@ async function validateAgentModel(workspaceId: string, model: {
 interface PreparedGenerateAgentCode {
   name: string;
   prompt: string;
-  comments: string;
   previousCode: string;
   workspaceId: string;
   directory: string;
@@ -86,6 +86,9 @@ interface PreparedGenerateAgentCode {
     modelID: string;
     variant: string;
   };
+  chatId: string;
+  message?: string;
+  attachments: GenerateAgentCodeRequest["attachments"];
 }
 
 interface GenerateAgentCodeErrorPayload {
@@ -93,6 +96,77 @@ interface GenerateAgentCodeErrorPayload {
   message: string;
   diagnostics?: unknown;
   status?: number;
+}
+
+interface GenerationTarget {
+  workspace: Workspace;
+  model: {
+    providerID: string;
+    modelID: string;
+    variant: string;
+  };
+}
+
+async function resolveGenerationTarget(
+  agent: Agent,
+  requestedWorkspaceId: string | undefined,
+  requestedModel: GenerateAgentCodeRequest["model"] | PrepareGenerateAgentCodeRequest["model"],
+): Promise<GenerationTarget | Response> {
+  const workspaceId = agent.config.workspaceId;
+  if (requestedWorkspaceId && requestedWorkspaceId !== workspaceId) {
+    return errorResponse("workspace_mismatch", "The generation workspace must match the saved agent", 400);
+  }
+  if (!workspaceId) {
+    return errorResponse("workspace_required", "Select a workspace before generating code", 400);
+  }
+  const workspace = await requireWorkspace(workspaceId);
+  if (workspace instanceof Response) {
+    return workspace;
+  }
+  const model = requestedModel ?? agent.config.model;
+  if (!model) {
+    return errorResponse("model_required", "Select a model before generating code", 400);
+  }
+  const modelValidation = await validateAgentModel(workspaceId, model);
+  if (modelValidation) {
+    return modelValidation;
+  }
+  return {
+    workspace,
+    model: {
+      providerID: model.providerID,
+      modelID: model.modelID,
+      variant: model.variant ?? "",
+    },
+  };
+}
+
+async function resetGenerationChat(
+  agent: Agent,
+  model: GenerationTarget["model"],
+): Promise<Chat | Response> {
+  try {
+    return await agentManager.resetGenerationChat(agent.config.id, { model });
+  } catch (error) {
+    log.error("Failed to reset the deterministic agent generation chat", {
+      agentId: agent.config.id,
+      error: String(error),
+    });
+    return domainErrorResponse(error, {
+      mappings: {
+        agent_not_found: {
+          error: "agent_not_found",
+          message: "Agent not found",
+          status: 404,
+        },
+      },
+      fallback: {
+        error: "generation_chat_failed",
+        message: "Failed to prepare the generation conversation",
+        status: 500,
+      },
+    });
+  }
 }
 
 async function prepareGenerateAgentCode(
@@ -103,37 +177,82 @@ async function prepareGenerateAgentCode(
   if (!validation.success) {
     return validation.response;
   }
+  if (!agent) {
+    return errorResponse("agent_required", "Save the agent before generating code", 400);
+  }
 
   const body = validation.data;
-  const workspaceId = body.workspaceId ?? agent?.config.workspaceId;
-  if (!workspaceId) {
-    return errorResponse("workspace_required", "Select a workspace before generating code", 400);
+  const target = await resolveGenerationTarget(agent, body.workspaceId, body.model);
+  if (target instanceof Response) {
+    return target;
   }
-  const workspace = await requireWorkspace(workspaceId);
-  if (workspace instanceof Response) {
-    return workspace;
-  }
-  const model = body.model ?? agent?.config.model;
-  if (!model) {
-    return errorResponse("model_required", "Select a model before generating code", 400);
-  }
-  const modelValidation = await validateAgentModel(workspaceId, model);
-  if (modelValidation) {
-    return modelValidation;
+
+  let chatId = body.chatId;
+  if (chatId) {
+    if (chatId !== agent.config.generationChatId) {
+      return errorResponse("generation_chat_mismatch", "The generation conversation is no longer current", 409);
+    }
+    const chat = await agentManager.getGenerationChat(agent.config.id);
+    if (!chat || chat.config.id !== chatId) {
+      return errorResponse("generation_chat_not_found", "The generation conversation no longer exists", 404);
+    }
+    const hasFollowUpContent = body.message !== undefined || body.attachments.length > 0;
+    if (body.generationMode === "initial" && hasFollowUpContent) {
+      return errorResponse("generation_mode_invalid", "Initial generation cannot include a follow-up message", 400);
+    }
+    if (body.generationMode !== "initial" && !hasFollowUpContent) {
+      return errorResponse("generation_message_required", "Enter a message to continue the generation conversation", 400);
+    }
+  } else {
+    if (body.generationMode === "follow_up") {
+      return errorResponse("generation_mode_invalid", "Follow-ups require an existing generation conversation", 400);
+    }
+    const chat = await resetGenerationChat(agent, target.model);
+    if (chat instanceof Response) {
+      return chat;
+    }
+    chatId = chat.config.id;
   }
 
   return {
-    name: body.name ?? agent?.config.name ?? "Draft deterministic agent",
-    workspaceId,
-    directory: workspace.directory,
-    model: {
-      ...model,
-      variant: model.variant ?? "",
-    },
-    prompt: body.prompt ?? agent?.config.prompt ?? "",
-    comments: body.comments ?? "",
-    previousCode: body.previousCode ?? agent?.config.code ?? "",
+    name: body.name ?? agent.config.name,
+    workspaceId: agent.config.workspaceId,
+    directory: target.workspace.directory,
+    model: target.model,
+    prompt: body.prompt ?? agent.config.prompt,
+    previousCode: body.previousCode ?? agent.config.code ?? "",
+    chatId,
+    message: body.message,
+    attachments: body.attachments,
   };
+}
+
+async function prepareGenerationChat(
+  req: Request,
+  agent: Agent | null,
+): Promise<Response> {
+  const validation = await parseAndValidate(
+    PrepareGenerateAgentCodeRequestSchema,
+    req,
+    { allowEmptyBody: true },
+  );
+  if (!validation.success) {
+    return validation.response;
+  }
+  if (!agent) {
+    return errorResponse("agent_required", "Save the agent before generating code", 400);
+  }
+
+  const body = validation.data;
+  const target = await resolveGenerationTarget(agent, body.workspaceId, body.model);
+  if (target instanceof Response) {
+    return target;
+  }
+  const chat = await resetGenerationChat(agent, target.model);
+  if (chat instanceof Response) {
+    return chat;
+  }
+  return Response.json({ chatId: chat.config.id });
 }
 
 async function mapGenerateAgentCodeError(
@@ -182,7 +301,7 @@ async function mapGenerateAgentCodeError(
 function createGenerateAgentCodeStream(
   req: Request,
   prepared: PreparedGenerateAgentCode,
-  agentId: string | undefined,
+  agentId: string,
 ): Response {
   const encoder = new TextEncoder();
   const executionController = new AbortController();
@@ -226,10 +345,14 @@ function createGenerateAgentCodeStream(
             ...prepared,
             signal: executionController.signal,
           });
+          const chat = await agentManager.getGenerationChat(agentId);
+          if (!chat || chat.config.id !== prepared.chatId) {
+            throw new Error("Generation chat disappeared before the result was returned");
+          }
           if (streamClosed) {
             return;
           }
-          controller.enqueue(encoder.encode(JSON.stringify(generated)));
+          controller.enqueue(encoder.encode(JSON.stringify({ ...generated, chat })));
           closeStream();
         } catch (error) {
           if (streamClosed || executionController.signal.aborted) {
@@ -258,6 +381,7 @@ function createGenerateAgentCodeStream(
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
+      "X-Clanky-Generation-Chat-Id": prepared.chatId,
     },
   });
 }
@@ -272,7 +396,7 @@ async function generateAgentCodeResponse(
     return prepared;
   }
 
-  return createGenerateAgentCodeStream(req, prepared, agentId);
+  return createGenerateAgentCodeStream(req, prepared, agentId ?? agent!.config.id);
 }
 
 interface PreparedDeterministicAgentTest {
@@ -584,7 +708,7 @@ export const agentsRoutes = defineRoutes({
   "/api/agents/code/generate": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Generate an editable deterministic agent program before saving an agent.",
+    description: "Reject generation for unsaved agents.",
     async POST(req: Request, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       return generateAgentCodeResponse(req, null);
@@ -671,6 +795,33 @@ export const agentsRoutes = defineRoutes({
           status: 500,
         });
       }
+    },
+  },
+
+  "/api/agents/:id/code/draft": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the current generated deterministic agent draft.",
+    async GET(_req: Request, ctx): Promise<Response> {
+      const agent = await agentManager.getAgent(ctx.params["id"]!);
+      if (!agent) {
+        return errorResponse("agent_not_found", "Agent not found", 404);
+      }
+      const code = await agentManager.getGenerationDraft(agent.config.id);
+      return Response.json({ code: code ?? "" });
+    },
+  },
+
+  "/api/agents/:id/code/generate/prepare": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Prepare the hidden deterministic-agent generation conversation before a long generation request.",
+    async POST(req: Request, ctx): Promise<Response> {
+      const agent = await agentManager.getAgent(ctx.params["id"]!);
+      if (!agent) {
+        return errorResponse("agent_not_found", "Agent not found", 404);
+      }
+      return prepareGenerationChat(req, agent);
     },
   },
 

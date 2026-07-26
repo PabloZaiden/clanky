@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mergeTranscriptSnapshot, mergeTranscriptToolCalls } from "@/shared";
+import {
+  DETERMINISTIC_AGENT_CODE_CONTRACT,
+  DETERMINISTIC_AGENT_CODE_EXAMPLE,
+} from "@/shared/deterministic-agent";
 import type {
   Agent,
   AgentEvent,
   AgentRun,
+  Chat,
   ChatTranscript,
   DeterministicAgentTestResult,
   DeterministicCodeDiagnostic,
@@ -11,10 +16,11 @@ import type {
   ToolCallData,
   Workspace,
 } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { isAgentCodeEnabled } from "@/shared/agent";
 import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import type { CreateAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import type { CreateAgentRequest, GenerateAgentCodeRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import type { TaskLogEntry } from "@/shared/task";
 import { appFetch } from "../../lib/public-path";
 import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
@@ -36,6 +42,8 @@ import { Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 import { getRouteString } from "./route-fields";
 import { useShellHeaderActions } from "./shell-header-actions";
 import { ClankyListRow } from "./clanky-list-row";
+import { ChatDetails } from "../ChatDetails";
+import { MonacoCodeEditor } from "../MonacoCodeEditor";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
 const compactInputClassName = "mt-1 block rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -62,6 +70,15 @@ function formatDateTimeLocalInTimezone(date: Date, timezone: string): string {
   });
   const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
   return `${parts["year"]}-${parts["month"]}-${parts["day"]}T${parts["hour"]}:${parts["minute"]}`;
+}
+
+function waitForNextPaint(): Promise<void> {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
 }
 
 function getDefaultModelKey(models: ModelInfo[], lastModel: ModelConfig | null): string {
@@ -115,6 +132,7 @@ function AgentForm({
   onWorkspaceChange,
   onCreateAgent,
   onUpdateAgent,
+  onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
   onCancel,
@@ -137,17 +155,22 @@ function AgentForm({
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
   onCancel: () => void;
   onSaved: (agent: Agent) => void;
 }) {
   const toast = useToast();
+  const toastError = toast.error;
+  const toastSuccess = toast.success;
   const [name, setName] = useState(agent?.config.name ?? "");
   const [prompt, setPrompt] = useState(agent?.config.prompt ?? "");
   const [code, setCode] = useState(agent?.config.code ?? "");
   const [codeDiagnostics, setCodeDiagnostics] = useState<DeterministicCodeDiagnostic[]>([]);
-  const [generationComments, setGenerationComments] = useState("");
+  const [generationChatId, setGenerationChatId] = useState<string | null>(
+    agent?.config.generationChatId ?? null,
+  );
   const [testResult, setTestResult] = useState<DeterministicAgentTestResult | null>(null);
   const [testLogs, setTestLogs] = useState<TaskLogEntry[]>([]);
   const [testStreamId, setTestStreamId] = useState<string | null>(null);
@@ -170,11 +193,47 @@ function AgentForm({
   const generateAbortControllerRef = useRef<AbortController | null>(null);
   const testAbortControllerRef = useRef<AbortController | null>(null);
   const testLogIdsRef = useRef(new Set<string>());
+  const codeRevisionRef = useRef(0);
+  const localCodeEditRef = useRef(false);
 
   useEffect(() => () => {
     generateAbortControllerRef.current?.abort();
     testAbortControllerRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (mode !== "edit" || !agent) {
+      return;
+    }
+    const controller = new AbortController();
+    const requestCodeRevision = codeRevisionRef.current;
+    void (async () => {
+      try {
+        const response = await appFetch(`/api/agents/${agent.config.id}/code/draft`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(await parseError(response, "Failed to load the generation draft"));
+        }
+        const draft = await response.json() as { code?: string };
+        if (
+          !controller.signal.aborted
+          && codeRevisionRef.current === requestCodeRevision
+          && !localCodeEditRef.current
+          && typeof draft.code === "string"
+          && draft.code.trim()
+        ) {
+          codeRevisionRef.current += 1;
+          setCode(draft.code);
+        }
+      } catch (draftError) {
+        if (!(draftError instanceof DOMException && draftError.name === "AbortError")) {
+          toastError(String(draftError));
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [agent?.config.id, mode, toastError]);
 
   function appendTestLog(entry: TaskLogEntry): void {
     if (testLogIdsRef.current.has(entry.id)) {
@@ -242,12 +301,12 @@ function AgentForm({
 
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
-      toast.error("Select a workspace first");
+      toastError("Select a workspace first");
       return;
     }
     const parsedModel = parseModelKey(modelKey);
     if (!parsedModel) {
-      toast.error("Select a model first");
+      toastError("Select a model first");
       return;
     }
     const schedule = {
@@ -285,7 +344,7 @@ function AgentForm({
             enabled: true,
           } satisfies CreateAgentRequest);
       if (!savedAgent) {
-        toast.error(mode === "edit" ? "Failed to save agent" : "Failed to create agent");
+        toastError(mode === "edit" ? "Failed to save agent" : "Failed to create agent");
         return;
       }
       onSaved(savedAgent);
@@ -296,9 +355,83 @@ function AgentForm({
 
   async function handleGenerateCode(): Promise<void> {
     const parsedGenerationModel = parseModelKey(modelKey);
-    if (!selectedWorkspace || !parsedGenerationModel) {
-      toast.error("Select a workspace and model before generating code");
+    if (mode !== "edit" || !agent) {
+      toastError("Save the agent before generating code");
       return;
+    }
+    if (!selectedWorkspace || !parsedGenerationModel) {
+      toastError("Select a workspace and model before generating code");
+      return;
+    }
+    const controller = new AbortController();
+    generateAbortControllerRef.current = controller;
+    setIsGeneratingCode(true);
+    codeRevisionRef.current += 1;
+    try {
+      const generationRequest: GenerateAgentCodeRequest = {
+        name: name.trim() || undefined,
+        prompt,
+        previousCode: code,
+        workspaceId: selectedWorkspace.id,
+        model: parsedGenerationModel,
+        attachments: [],
+      };
+      const prepared = await onPrepareGenerateAgentCode(agent.config.id, {
+        workspaceId: selectedWorkspace.id,
+        model: parsedGenerationModel,
+      }, {
+        signal: controller.signal,
+      });
+      if (!prepared || controller.signal.aborted) {
+        return;
+      }
+      setGenerationChatId(prepared.chatId);
+      await waitForNextPaint();
+      if (controller.signal.aborted) {
+        return;
+      }
+      const generated = await onGenerateAgentCode({
+        ...generationRequest,
+        chatId: prepared.chatId,
+        generationMode: "initial",
+      }, agent.config.id, {
+        signal: controller.signal,
+      });
+      if (!generated || controller.signal.aborted) {
+        return;
+      }
+      codeRevisionRef.current += 1;
+      localCodeEditRef.current = false;
+      setCode(generated.code);
+      setCodeDiagnostics(generated.diagnostics);
+      if (generated.chat) {
+        setGenerationChatId(generated.chat.config.id);
+      }
+      setTestResult(null);
+      setTestLogs([]);
+      toastSuccess(
+        generated.diagnostics.length > 0
+          ? "Code draft generated with validation warnings. Fix them before saving."
+          : "Code draft generated. Save the agent to enable it.",
+      );
+    } finally {
+      if (generateAbortControllerRef.current === controller) {
+        generateAbortControllerRef.current = null;
+      }
+      setIsGeneratingCode(false);
+    }
+  }
+
+  async function handleGenerationMessage(options: {
+    message?: string;
+    attachments: MessageImageAttachment[];
+  }): Promise<Chat> {
+    if (!agent || !generationChatId || !selectedWorkspace) {
+      throw new Error("Save the agent and start a generation conversation first");
+    }
+    const parsedGenerationModel = parseModelKey(modelKey);
+    if (!parsedGenerationModel) {
+      throw new Error("Select a model before continuing the generation conversation");
     }
     const controller = new AbortController();
     generateAbortControllerRef.current = controller;
@@ -307,23 +440,25 @@ function AgentForm({
       const generated = await onGenerateAgentCode({
         name: name.trim() || undefined,
         prompt,
-        comments: generationComments,
         previousCode: code,
         workspaceId: selectedWorkspace.id,
         model: parsedGenerationModel,
-      }, agent?.config.id, { signal: controller.signal });
-      if (!generated || controller.signal.aborted) {
-        return;
+        chatId: generationChatId,
+        message: options.message,
+        attachments: options.attachments,
+      }, agent.config.id, {
+        signal: controller.signal,
+      });
+      if (!generated || controller.signal.aborted || !generated.chat) {
+        throw new Error("The generation conversation ended without a chat result");
       }
+      codeRevisionRef.current += 1;
+      localCodeEditRef.current = false;
       setCode(generated.code);
       setCodeDiagnostics(generated.diagnostics);
       setTestResult(null);
       setTestLogs([]);
-      toast.success(
-        generated.diagnostics.length > 0
-          ? "Code draft generated with validation warnings. Fix them before saving."
-          : "Code draft generated. Save the agent to enable it.",
-      );
+      return generated.chat;
     } finally {
       if (generateAbortControllerRef.current === controller) {
         generateAbortControllerRef.current = null;
@@ -343,13 +478,14 @@ function AgentForm({
   async function handleTestCode(): Promise<void> {
     const parsedTestModel = parseModelKey(modelKey);
     if (!selectedWorkspace || !parsedTestModel) {
-      toast.error("Select a workspace and model before testing code");
+      toastError("Select a workspace and model before testing code");
       return;
     }
     if (!code.trim()) {
-      toast.error("Enter deterministic code before testing it");
+      toastError("Enter deterministic code before testing it");
       return;
     }
+    codeRevisionRef.current += 1;
     setIsTestingCode(true);
     setTestResult(null);
     setTestLogs([]);
@@ -386,9 +522,9 @@ function AgentForm({
       setTestResult(result);
       setTestLogs((previous) => result.logs.length > 0 ? result.logs : previous);
       if (result.status === "completed") {
-        toast.success("Deterministic code test completed");
+        toastSuccess("Deterministic code test completed");
       } else if (result.status === "failed") {
-        toast.error(result.error ?? "Deterministic code test failed");
+        toastError(result.error ?? "Deterministic code test failed");
       }
     } finally {
       if (testAbortControllerRef.current === controller) {
@@ -586,40 +722,46 @@ function AgentForm({
               Deterministic Mode code replaces the scheduled prompt. Leave it empty to keep prompt mode
             </p>
           </div>
-          <div>
-            <label htmlFor="agent-code-comments" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Generation comments
-            </label>
-            <textarea
-              id="agent-code-comments"
-              value={generationComments}
-              onChange={(event) => setGenerationComments(event.target.value)}
-              className={`${inputClassName} min-h-20 resize-y`}
-              placeholder="Describe what to change in the generated code"
-              disabled={isGeneratingCode}
-            />
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+            <p className="font-medium">Code contract</p>
+            <p className="mt-1">{DETERMINISTIC_AGENT_CODE_CONTRACT.exportRule} {DETERMINISTIC_AGENT_CODE_CONTRACT.asyncRule}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.exec}</code></li>
+              <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.prompt}</code></li>
+              <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.output}</code></li>
+              <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.signal}</code></li>
+            </ul>
+            <div className="mt-3">
+              <p className="font-medium">Minimal valid example</p>
+              <pre className="mt-2 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-[11px] leading-5 text-gray-900 dark:bg-neutral-900 dark:text-gray-100">
+                <code>{DETERMINISTIC_AGENT_CODE_EXAMPLE}</code>
+              </pre>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            The user can only see text written to stdout and stderr. Do not print anything to either stream that should remain hidden.
-          </p>
           <div>
             <label htmlFor="agent-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               TypeScript code
             </label>
-            <textarea
+            <div
               id="agent-code"
-              value={code}
-              onChange={(event) => {
-                setCode(event.target.value);
-                setCodeDiagnostics([]);
-                setTestResult(null);
-                setTestLogs([]);
-              }}
-              className={`${inputClassName} min-h-72 resize-y font-mono text-xs`}
-              spellCheck={false}
-              disabled={isGeneratingCode || isTestingCode}
-              placeholder={'export default async function run(ctx) {\n  // Use ctx.workspace.exec or ctx.workspace.prompt\n}'}
-            />
+              aria-label="TypeScript code"
+              className="mt-1 min-h-72 overflow-hidden rounded-md border border-gray-300 dark:border-gray-600"
+            >
+              <MonacoCodeEditor
+                height="360px"
+                language="typescript"
+                value={code}
+                onChange={(nextCode) => {
+                  codeRevisionRef.current += 1;
+                  localCodeEditRef.current = true;
+                  setCode(nextCode);
+                  setCodeDiagnostics([]);
+                  setTestResult(null);
+                  setTestLogs([]);
+                }}
+              />
+            </div>
+            {/* Monaco owns the editable code surface; keep diagnostics outside its model. */}
             {codeDiagnostics.length > 0 && (
               <div className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-300">
                 {codeDiagnostics.map((diagnostic, index) => (
@@ -637,7 +779,7 @@ function AgentForm({
               size="sm"
               className="w-28"
               onClick={() => void handleGenerateCode()}
-              disabled={isSubmitting || isGeneratingCode || isTestingCode || !selectedWorkspace || !modelKey}
+              disabled={mode !== "edit" || !agent || isSubmitting || isGeneratingCode || isTestingCode || !selectedWorkspace || !modelKey}
               loading={isGeneratingCode}
             >
               Generate
@@ -674,6 +816,21 @@ function AgentForm({
               </Button>
             )}
           </div>
+          {mode === "edit" && agent && generationChatId ? (
+            <div className="h-[min(38rem,70vh)] min-h-[24rem] overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+              <ChatDetails
+                key={generationChatId}
+                chatId={generationChatId}
+                embedded
+                showBackButton={false}
+                onSendMessage={handleGenerationMessage}
+              />
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              Save the agent, then use Generate to start its persistent code-generation conversation.
+            </p>
+          )}
           {(isTestingCode || testResult || testLogs.length > 0) && (
             <DeterministicTestOutputPanel
               result={testResult}
@@ -822,6 +979,7 @@ function AgentDetail({
   editing,
   onWorkspaceChange,
   onUpdateAgent,
+  onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
   onDeleteRun,
@@ -846,6 +1004,7 @@ function AgentDetail({
   editing: boolean;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
   onDeleteRun: UseAgentsResult["deleteRun"];
@@ -880,6 +1039,7 @@ function AgentDetail({
         onWorkspaceChange={onWorkspaceChange}
         onCreateAgent={async () => null}
         onUpdateAgent={onUpdateAgent}
+        onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
         onGenerateAgentCode={onGenerateAgentCode}
         onTestAgentCode={onTestAgentCode}
         onCancel={onCancelEdit}
@@ -1202,6 +1362,7 @@ export function AgentComposer({
   defaultBranch,
   onWorkspaceChange,
   onCreateAgent,
+  onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
   navigateWithinShell,
@@ -1220,6 +1381,7 @@ export function AgentComposer({
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
+  onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -1242,6 +1404,7 @@ export function AgentComposer({
       onWorkspaceChange={onWorkspaceChange}
       onCreateAgent={onCreateAgent}
       onUpdateAgent={async () => null}
+      onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
       onGenerateAgentCode={onGenerateAgentCode}
       onTestAgentCode={onTestAgentCode}
       onCancel={() => navigateWithinShell(composeWorkspace ? { view: "agents", workspaceId: composeWorkspace.id } : { view: "home" })}
@@ -1260,6 +1423,7 @@ export function AgentsView({
   selectedWorkspaceId: _selectedWorkspaceId,
   onWorkspaceChange,
   onUpdateAgent,
+  onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
   onDeleteRun,
@@ -1286,6 +1450,7 @@ export function AgentsView({
   selectedWorkspaceId: string | null;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
+  onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
   onDeleteRun: UseAgentsResult["deleteRun"];
@@ -1339,6 +1504,7 @@ export function AgentsView({
         editing={editingAgentId === agent.config.id}
         onWorkspaceChange={onWorkspaceChange}
         onUpdateAgent={onUpdateAgent}
+        onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
         onGenerateAgentCode={onGenerateAgentCode}
         onTestAgentCode={onTestAgentCode}
         onDeleteRun={onDeleteRun}

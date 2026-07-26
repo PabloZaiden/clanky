@@ -10,20 +10,25 @@ import {
   ChatQueuedMessagesPanel,
 } from "./chat-details/chat-support-panels";
 import { ChatTranscript } from "./chat-details/chat-transcript";
+import type { ChatComposerProps } from "./chat-details/types";
 
 export function ChatDetails({
   chatId,
   onBack,
   showBackButton = true,
   embeddedTaskId,
+  embedded = false,
+  onSendMessage,
 }: {
   chatId: string;
   onBack?: () => void;
   showBackButton?: boolean;
   embeddedTaskId?: string;
+  embedded?: boolean;
+  onSendMessage?: ChatComposerProps["onSendMessage"];
 }) {
   const toast = useToast();
-  const isEmbedded = typeof embeddedTaskId === "string" && embeddedTaskId.length > 0;
+  const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
   const {
     chat,
     transcript,
@@ -147,6 +152,7 @@ export function ChatDetails({
         markChatStarting={markChatStarting}
         refreshChat={refreshChat}
         handleReconnect={handleReconnect}
+        onSendMessage={onSendMessage}
       />
     </div>
   );

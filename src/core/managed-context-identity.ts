@@ -60,14 +60,15 @@ export class ManagedContextIdentityResolver {
 
     if (chat.config.scope === "agent") {
       const run = await loadAgentRunByChatId(chatId);
-      if (!run) {
-        throw missingContext("agent_run", chatId);
+      if (run) {
+        return this.createIdentity(
+          "agent_run",
+          run.id,
+          ensureWorkspace("agent_run", run.id, run.configSnapshot.workspaceId, expectedWorkspaceId),
+        );
       }
-      return this.createIdentity(
-        "agent_run",
-        run.id,
-        ensureWorkspace("agent_run", run.id, run.configSnapshot.workspaceId, expectedWorkspaceId),
-      );
+      // Persistent agent-generation chats use the agent scope without an
+      // AgentRun, so their lifecycle is managed like a standalone chat.
     }
 
     return this.createIdentity(

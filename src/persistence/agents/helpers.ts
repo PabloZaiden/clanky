@@ -12,6 +12,7 @@ export const ALLOWED_AGENT_COLUMNS = new Set([
   "directory",
   "prompt",
   "code",
+  "generation_chat_id",
   "model_provider_id",
   "model_model_id",
   "model_variant",
@@ -106,6 +107,7 @@ export function agentToRow(agent: Agent): Record<string, unknown> {
     directory: config.directory,
     prompt: config.prompt,
     code: config.code ?? null,
+    generation_chat_id: config.generationChatId ?? null,
     model_provider_id: config.model.providerID,
     model_model_id: config.model.modelID,
     model_variant: config.model.variant ?? null,
@@ -141,6 +143,7 @@ export function rowToAgent(row: Record<string, unknown>): Agent {
     directory: requireString(row, "directory", rowId),
     prompt: requireString(row, "prompt", rowId),
     code: typeof row["code"] === "string" && row["code"].trim().length > 0 ? row["code"] : undefined,
+    generationChatId: (row["generation_chat_id"] as string | null) ?? undefined,
     model: {
       providerID: requireString(row, "model_provider_id", rowId),
       modelID: requireString(row, "model_model_id", rowId),
