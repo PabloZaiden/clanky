@@ -1,4 +1,5 @@
 import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
+import { isStandaloneChat } from "@/shared/chat";
 import type { Agent, Chat, Task, SshSession, Workspace } from "@/shared";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import {
@@ -210,6 +211,9 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const chat of chats) {
+    if (!isStandaloneChat(chat)) {
+      continue;
+    }
     const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
     workspaceChats.push(chat);
     chatsByWorkspaceId.set(chat.config.workspaceId, workspaceChats);
@@ -374,7 +378,7 @@ export function buildServerSidebarNodes({
   const chatsByServerId = new Map<string, Chat[]>();
 
   for (const chat of chats) {
-    if (chat.config.source?.kind !== "ssh_server") {
+    if (!isStandaloneChat(chat) || chat.config.source?.kind !== "ssh_server") {
       continue;
     }
     const serverChats = chatsByServerId.get(chat.config.source.sshServerId) ?? [];

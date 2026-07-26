@@ -6,6 +6,7 @@ import type {
   ToolCallData,
   ToolCallDisplayData,
 } from "@/shared";
+import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { TranscriptFileLinkContext } from "../LogViewer";
 
 export type ChatStreamEvent = Extract<
@@ -80,4 +81,8 @@ export interface ChatComposerProps {
   markChatStarting: () => void;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
   handleReconnect: () => Promise<void>;
+  onSendMessage?: (options: {
+    message?: string;
+    attachments: MessageImageAttachment[];
+  }) => Promise<Chat>;
 }

@@ -111,6 +111,19 @@ function createChat(): Chat {
   };
 }
 
+function createAgentChat(): Chat {
+  const chat = createChat();
+  return {
+    ...chat,
+    config: {
+      ...chat.config,
+      id: "agent-chat-1",
+      name: "Generate code",
+      scope: "agent",
+    },
+  };
+}
+
 describe("sidebar node builders", () => {
   test("keeps workspace SSH sessions out of SSH server session nodes", () => {
     const workspaceSession = createWorkspaceSession();
@@ -157,6 +170,18 @@ describe("sidebar node builders", () => {
     expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([
       "chat:chat-1",
     ]);
+  });
+
+  test("keeps deterministic-agent chats out of sidebar nodes", () => {
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [createWorkspace()],
+      tasks: [],
+      chats: [createChat(), createAgentChat()],
+      sessions: [],
+    });
+
+    const workspaceNode = workspaceGroups[0]!.workspaces[0]!;
+    expect(workspaceNode.chats.map((chatNode) => chatNode.chat.config.id)).toEqual(["chat-1"]);
   });
 
   test("excludes archived workspace activity from active work", () => {

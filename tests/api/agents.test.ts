@@ -82,18 +82,21 @@ describe("Agents API Integration", () => {
     throw new Error(`Agent run ${runId} did not complete. Last status: ${lastStatus}`);
   }
 
-  async function waitForChatToBeRemoved(name: string, timeoutMs = 5000): Promise<void> {
+  async function waitForAgentDraft(agentId: string, expectedCode: string, timeoutMs = 5000): Promise<void> {
     const start = Date.now();
+    let lastCode = "";
     while (Date.now() - start < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/chats`);
-      expect(response.ok).toBe(true);
-      const chats = await response.json() as Array<{ config?: { name?: string } }>;
-      if (!chats.some((chat) => chat.config?.name === name)) {
-        return;
+      const response = await fetch(`${baseUrl}/api/agents/${agentId}/code/draft`);
+      if (response.ok) {
+        const body = await response.json() as { code?: unknown };
+        lastCode = typeof body.code === "string" ? body.code : "";
+        if (lastCode === expectedCode) {
+          return;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error(`Chat ${name} was not removed within ${timeoutMs}ms`);
+    throw new Error(`Agent draft was not restored within ${timeoutMs}ms. Last code: ${lastCode}`);
   }
 
   async function createAgent(name = "Scheduled build fixer", code?: string) {
@@ -241,7 +244,7 @@ describe("Agents API Integration", () => {
     expect(completedRun.logs.every((entry) => !entry.message.includes("command stderr"))).toBe(true);
   });
 
-  test("generates an editable draft from the temporary file without persisting it", async () => {
+  test("generates an editable draft in the persistent hidden agent chat", async () => {
     const agent = await createAgent("Generation draft agent");
     const previousCode = "export default async function run(ctx) {}";
     const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
@@ -249,7 +252,6 @@ describe("Agents API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt: "Use the current editor instructions",
-        comments: "Add explicit output handling",
         previousCode,
         workspaceId,
         model: testModel,
@@ -257,10 +259,19 @@ describe("Agents API Integration", () => {
     });
 
     expect(response.status).toBe(200);
-    const generated = await response.json() as { code: string; diagnostics: Array<{ message: string }> };
+    const generated = await response.json() as {
+      code: string;
+      diagnostics: Array<{ message: string }>;
+      chat: { config: { id: string; scope: string } };
+    };
     expect(generated.code).toContain("generated from temporary file");
     expect(generated.code).not.toContain("Agent run completed");
     expect(generated.diagnostics).toHaveLength(0);
+    expect(generated.chat.config.scope).toBe("agent");
+    const savedAgent = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`).then((result) => result.json()) as {
+      config: { generationChatId?: string };
+    };
+    expect(savedAgent.config.generationChatId).toBe(generated.chat.config.id);
 
     const generationPrompt = mockBackend.getSentPrompts()
       .at(-1)
@@ -268,15 +279,161 @@ describe("Agents API Integration", () => {
       .filter((part): part is { type: "text"; text: string } => part.type === "text")
       .map((part) => part.text)
       .join("\n") ?? "";
-    expect(generationPrompt).toContain("Add explicit output handling");
+    expect(generationPrompt).not.toContain("User comments for this iteration");
     expect(generationPrompt).toContain("Use the current editor instructions");
     expect(generationPrompt).toContain(previousCode);
-    expect((await loadAgent(agent!.config.id))?.config.code).toBeUndefined();
+    expect((await fetch(`${baseUrl}/api/agents/${agent!.config.id}`).then((result) => result.json()) as {
+      config: { code?: string };
+    }).config.code).toBeUndefined();
     expect(generatedSourcePaths.at(-1)).toBeTruthy();
+    expect(await Bun.file(generatedSourcePaths.at(-1)!).exists()).toBe(true);
+
+    const saveResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: generated.code }),
+    });
+    expect(saveResponse.status).toBe(200);
+
+    const draftResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/draft`);
+    expect(draftResponse.status).toBe(200);
+    expect((await draftResponse.json() as { code: string }).code).toContain("generated from temporary file");
+
+    const snapshotResponse = await fetch(`${baseUrl}/api/chats/${generated.chat.config.id}/snapshot`);
+    expect(snapshotResponse.status).toBe(200);
+    const snapshot = await snapshotResponse.json() as {
+      transcript: { messages: Array<{ content: string }> };
+    };
+    expect(snapshot.transcript.messages.some((message) => message.content.includes("Use the current editor instructions"))).toBe(true);
+  });
+
+  test("prepares the hidden generation chat before the initial generation request", async () => {
+    const agent = await createAgent("Prepared generation agent");
+    const prepareResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate/prepare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId,
+        model: testModel,
+      }),
+    });
+
+    expect(prepareResponse.status).toBe(200);
+    const prepared = await prepareResponse.json() as { chatId: string };
+    expect(prepared.chatId).toBeTruthy();
+    expect(await fetch(`${baseUrl}/api/chats/${prepared.chatId}`).then((response) => response.status)).toBe(200);
+
+    const visibleChats = await fetch(`${baseUrl}/api/chats`).then((response) => response.json()) as Array<{
+      config: { id: string };
+    }>;
+    expect(visibleChats.some((chat) => chat.config.id === prepared.chatId)).toBe(false);
+
+    const generateResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: prepared.chatId,
+        generationMode: "initial",
+        prompt: "Generate the first version",
+        previousCode: "",
+        workspaceId,
+        model: testModel,
+      }),
+    });
+
+    expect(generateResponse.status).toBe(200);
+    const generated = await generateResponse.json() as {
+      chat: { config: { id: string; scope: string } };
+    };
+    expect(generated.chat.config.id).toBe(prepared.chatId);
+    expect(generated.chat.config.scope).toBe("agent");
+  });
+
+  test("continues generation follow-ups in the same hidden conversation", async () => {
+    const agent = await createAgent("Follow-up generation agent");
+    const firstResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: "Create the first version",
+        previousCode: "",
+        workspaceId,
+        model: testModel,
+      }),
+    });
+    expect(firstResponse.status).toBe(200);
+    const first = await firstResponse.json() as {
+      code: string;
+      chat: { config: { id: string } };
+    };
+
+    const followUpResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: first.chat.config.id,
+        message: "Change the output wording",
+        previousCode: first.code,
+        workspaceId,
+        model: testModel,
+      }),
+    });
+    expect(followUpResponse.status).toBe(200);
+    const followUp = await followUpResponse.json() as {
+      code: string;
+      chat: { config: { id: string } };
+    };
+    expect(followUp.chat.config.id).toBe(first.chat.config.id);
+    expect(followUp.code).toContain("generated from temporary file");
+
+    const snapshotResponse = await fetch(`${baseUrl}/api/chats/${first.chat.config.id}/snapshot`);
+    expect(snapshotResponse.status).toBe(200);
+    const snapshot = await snapshotResponse.json() as {
+      transcript: { messages: Array<{ content: string }> };
+    };
+    expect(snapshot.transcript.messages.some((message) => message.content.includes("Change the output wording"))).toBe(true);
+  });
+
+  test("replaces the prior generation conversation when Generate is pressed again", async () => {
+    const agent = await createAgent("Reset generation agent");
+    const firstResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previousCode: "", workspaceId, model: testModel }),
+    });
+    expect(firstResponse.status).toBe(200);
+    const first = await firstResponse.json() as {
+      chat: { config: { id: string } };
+    };
+    const firstSource = generatedSourcePaths.at(-1)!;
+    expect(await Bun.file(firstSource).exists()).toBe(true);
+
+    const secondResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previousCode: "", workspaceId, model: testModel }),
+    });
+    expect(secondResponse.status).toBe(200);
+    const second = await secondResponse.json() as {
+      chat: { config: { id: string } };
+    };
+    expect(second.chat.config.id).not.toBe(first.chat.config.id);
+    expect(await fetch(`${baseUrl}/api/chats/${first.chat.config.id}`).then((response) => response.status)).toBe(404);
+    expect(await Bun.file(firstSource).exists()).toBe(false);
+    const savedAgent = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`).then((result) => result.json()) as {
+      config: { generationChatId?: string };
+    };
+    expect(savedAgent.config.generationChatId).toBe(second.chat.config.id);
+
+    const deleteResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`, {
+      method: "DELETE",
+    });
+    expect(deleteResponse.status).toBe(200);
+    expect(await fetch(`${baseUrl}/api/chats/${second.chat.config.id}`).then((response) => response.status)).toBe(404);
     expect(await Bun.file(generatedSourcePaths.at(-1)!).exists()).toBe(false);
   });
 
-  test("generates an editable draft before an agent is saved", async () => {
+  test("rejects generation before an agent is saved", async () => {
     const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -290,10 +447,8 @@ describe("Agents API Integration", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const generated = await response.json() as { code: string; diagnostics: Array<{ message: string }> };
-    expect(generated.code).toContain("generated from temporary file");
-    expect(generated.diagnostics).toHaveLength(0);
+    expect(response.status).toBe(400);
+    expect((await response.json() as { error: string }).error).toBe("agent_required");
   });
 
   test("keeps the code generation response alive while the provider is pending", async () => {
@@ -304,7 +459,8 @@ describe("Agents API Integration", () => {
     mockBackend.setResponseGate(() => providerGate);
 
     try {
-      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+      const agent = await createAgent("Pending generation agent");
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -351,7 +507,8 @@ describe("Agents API Integration", () => {
     mockBackend.setResponseGate(() => providerGate);
 
     try {
-      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+      const agent = await createAgent("Streaming generation agent");
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -386,7 +543,8 @@ describe("Agents API Integration", () => {
     // an explicit unlimited timeout rather than relying only on heartbeats.
     const releaseTimer = setTimeout(releaseProvider, 11_000);
     try {
-      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+      const agent = await createAgent("Idle timeout generation agent");
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -418,10 +576,12 @@ describe("Agents API Integration", () => {
     });
     const controller = new AbortController();
     const generationName = "Cancellable generation draft";
+    const previousCode = "export default async function run(ctx) {}";
     mockBackend.setResponseGate(() => providerGate);
 
     try {
-      const response = await fetch(`${baseUrl}/api/agents/code/generate`, {
+      const agent = await createAgent(generationName);
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
@@ -429,7 +589,7 @@ describe("Agents API Integration", () => {
           name: generationName,
           prompt: "Generate code until the client disconnects",
           comments: "",
-          previousCode: "",
+          previousCode,
           workspaceId,
           model: testModel,
         }),
@@ -439,9 +599,12 @@ describe("Agents API Integration", () => {
       expect(reader).toBeTruthy();
       await reader!.read();
       controller.abort();
-      await expect(reader!.read()).rejects.toThrow();
+      await reader!.read().catch(() => undefined);
       releaseProvider();
-      await waitForChatToBeRemoved(`Generate code: ${generationName}`);
+      const chatId = response.headers.get("X-Clanky-Generation-Chat-Id");
+      expect(chatId).toBeTruthy();
+      expect(await fetch(`${baseUrl}/api/chats/${chatId}`).then((result) => result.status)).toBe(200);
+      await waitForAgentDraft(agent!.config.id, previousCode);
     } finally {
       controller.abort();
       releaseProvider();
@@ -646,6 +809,13 @@ describe("Agents API Integration", () => {
       accumulated += decoder.decode(chunk.value);
     }
     expect(accumulated).toContain("before cancellation");
+
+    const visibleChatsResponse = await fetch(`${baseUrl}/api/chats`);
+    expect(visibleChatsResponse.ok).toBe(true);
+    const visibleChats = await visibleChatsResponse.json() as Array<{
+      config?: { name?: string };
+    }>;
+    expect(visibleChats.some((chat) => chat.config?.name === `Test code: ${testName}`)).toBe(false);
 
     controller.abort();
     await expect(reader!.read()).rejects.toThrow();

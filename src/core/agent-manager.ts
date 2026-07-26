@@ -1,7 +1,9 @@
 import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "@/shared/agent";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
+import { isChatBusyStatus } from "@/shared/chat";
 import { createInitialAgentState, isAgentRunActiveStatus } from "@/shared/agent";
 import { createTimestamp } from "@/shared/events";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
@@ -24,9 +26,16 @@ import { managedCredentialService } from "./managed-credential-service";
 import { calculateNextRunAt } from "./agent-schedule";
 import { agentEventEmitter } from "./event-emitter";
 import { normalizeAgentCode, validateDeterministicAgentCode } from "./deterministic-agent-code";
+import {
+  cleanupDeterministicAgentGenerationFiles,
+  getGenerationSourceFilePath,
+} from "./deterministic-agent-generation";
+import { backendManager } from "./backend";
+import type { CommandExecutor } from "./command-executor";
 
 const INTERRUPT_CHAT_ID_WAIT_MS = 2000;
 const INTERRUPT_CHAT_ID_POLL_MS = 50;
+const log = createLogger("agent-manager");
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -151,8 +160,156 @@ export class AgentManager {
     return loadAgent(agentId);
   }
 
+  async getGenerationChat(agentId: string): Promise<Awaited<ReturnType<typeof chatManager.getChat>>> {
+    const agent = await loadAgent(agentId);
+    if (!agent?.config.generationChatId) {
+      return null;
+    }
+    const chat = await chatManager.getChat(agent.config.generationChatId);
+    if (chat) {
+      return chat;
+    }
+
+    const updated: Agent = {
+      config: {
+        ...agent.config,
+        generationChatId: undefined,
+        updatedAt: createTimestamp(),
+      },
+      state: agent.state,
+    };
+    await saveAgent(updated);
+    agentEventEmitter.emit({
+      type: "agent.updated",
+      agentId,
+      agent: updated,
+      timestamp: updated.config.updatedAt,
+    });
+    return null;
+  }
+
+  async resetGenerationChat(
+    agentId: string,
+    options: { model: AgentConfig["model"] },
+  ): Promise<Awaited<ReturnType<typeof chatManager.createChat>>> {
+    const agent = await loadAgent(agentId);
+    if (!agent) {
+      throw new DomainError("agent_not_found", "Agent not found", {
+        details: { agentId },
+      });
+    }
+
+    const previousChatId = agent.config.generationChatId;
+    if (previousChatId) {
+      const generationExecutor: CommandExecutor = await backendManager.getCommandExecutorAsync(
+        agent.config.workspaceId,
+        agent.config.directory,
+      );
+      const previousChat = await chatManager.getChat(previousChatId);
+      if (previousChat && isChatBusyStatus(previousChat.state.status)) {
+        try {
+          await chatManager.interruptChat(previousChatId, "Generation conversation replaced");
+        } catch (error) {
+          log.warn("Failed to interrupt the previous deterministic agent generation chat", {
+            agentId,
+            chatId: previousChatId,
+            error: String(error),
+          });
+        }
+      }
+      await cleanupDeterministicAgentGenerationFiles(
+        agent.config.workspaceId,
+        agent.config.directory,
+        previousChatId,
+        generationExecutor,
+      );
+      await chatManager.deleteChat(previousChatId);
+    }
+
+    const chat = await chatManager.createChat({
+      name: `Generate code: ${agent.config.name}`,
+      workspaceId: agent.config.workspaceId,
+      scope: "agent",
+      modelProviderID: options.model.providerID,
+      modelID: options.model.modelID,
+      modelVariant: options.model.variant,
+      useWorktree: false,
+      autoApprovePermissions: true,
+      directory: agent.config.directory,
+      syncBaseBranch: false,
+      prepareWorktreeOnCreate: false,
+    });
+    const updated: Agent = {
+      config: {
+        ...agent.config,
+        generationChatId: chat.config.id,
+        updatedAt: createTimestamp(),
+      },
+      state: agent.state,
+    };
+    try {
+      await saveAgent(updated);
+    } catch (error) {
+      await chatManager.deleteChat(chat.config.id);
+      throw error;
+    }
+    agentEventEmitter.emit({
+      type: "agent.updated",
+      agentId,
+      agent: updated,
+      timestamp: updated.config.updatedAt,
+    });
+    return chat;
+  }
+
+  async getGenerationDraft(agentId: string): Promise<string | null> {
+    const agent = await loadAgent(agentId);
+    if (!agent?.config.generationChatId) {
+      return null;
+    }
+    const chat = await this.getGenerationChat(agentId);
+    if (!chat) {
+      return null;
+    }
+    const executor = await backendManager.getCommandExecutorAsync(
+      agent.config.workspaceId,
+      agent.config.directory,
+    );
+    const source = await executor.readFile(
+      getGenerationSourceFilePath(agent.config.directory, chat.config.id),
+    );
+    const trimmed = source?.trim();
+    return trimmed ? trimmed : null;
+  }
+
   async getAgents(workspaceId?: string): Promise<Agent[]> {
     return workspaceId ? listAgentsByWorkspace(workspaceId) : listAgents();
+  }
+
+  private async syncGenerationDraft(agent: Agent, code: string | undefined): Promise<void> {
+    const chatId = agent.config.generationChatId;
+    if (!chatId || !(await chatManager.getChat(chatId))) {
+      return;
+    }
+    const executor = await backendManager.getCommandExecutorAsync(
+      agent.config.workspaceId,
+      agent.config.directory,
+    );
+    const sourcePath = getGenerationSourceFilePath(agent.config.directory, chatId);
+    if (code) {
+      if (!(await executor.writeFile(sourcePath, code))) {
+        throw new DomainError("agent_generation_draft_sync_failed", "Could not save the generation draft");
+      }
+      return;
+    }
+    const result = await executor.exec("rm", ["-f", "--", sourcePath], {
+      cwd: agent.config.directory,
+      timeout: 10_000,
+      logFailures: false,
+    });
+    if (!result.success) {
+      throw new DomainError("agent_generation_draft_sync_failed", "Could not clear the generation draft");
+    }
   }
 
   async updateAgent(agentId: string, updates: UpdateAgentOptions): Promise<Agent | null> {
@@ -198,6 +355,9 @@ export class AgentManager {
         nextRunAt: enabled ? nextSchedule.nextRunAt : undefined,
       },
     };
+    if (updates.code !== undefined) {
+      await this.syncGenerationDraft(agent, code);
+    }
     await saveAgent(updated);
     agentEventEmitter.emit({
       type: "agent.updated",
@@ -342,6 +502,10 @@ export class AgentManager {
   }
 
   async deleteAgent(agentId: string): Promise<boolean> {
+    const agent = await loadAgent(agentId);
+    if (!agent) {
+      return false;
+    }
     const runs = await listAgentRuns(agentId, { limit: 10000, offset: 0 });
     for (const run of runs) {
       if (run.status === "starting" || run.status === "running" || run.status === "scheduled") {
@@ -353,6 +517,31 @@ export class AgentManager {
       );
       await managedCredentialService.revokeContextIfConfigured(identity);
       await chatManager.deleteChat(run.chatId ?? run.id);
+    }
+    if (agent.config.generationChatId) {
+      const generationExecutor = await backendManager.getCommandExecutorAsync(
+        agent.config.workspaceId,
+        agent.config.directory,
+      );
+      const generationChat = await chatManager.getChat(agent.config.generationChatId);
+      if (generationChat && isChatBusyStatus(generationChat.state.status)) {
+        try {
+          await chatManager.interruptChat(agent.config.generationChatId, "Agent deleted");
+        } catch (error) {
+          log.warn("Failed to interrupt deterministic agent generation chat during agent deletion", {
+            agentId,
+            chatId: agent.config.generationChatId,
+            error: String(error),
+          });
+        }
+      }
+      await cleanupDeterministicAgentGenerationFiles(
+        agent.config.workspaceId,
+        agent.config.directory,
+        agent.config.generationChatId,
+        generationExecutor,
+      );
+      await chatManager.deleteChat(agent.config.generationChatId);
     }
     const deleted = await deleteAgent(agentId);
     if (deleted) {

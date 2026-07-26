@@ -4,12 +4,13 @@ import { createLogger } from "@pablozaiden/webapp/web";
 import type {
   Agent,
   AgentRun,
+  Chat,
   DeterministicAgentTestResult,
   DeterministicAgentTestStreamEvent,
   GeneratedAgentCode,
   TaskLogEntry,
 } from "@/shared";
-import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 const log = createLogger("useAgents");
@@ -48,11 +49,21 @@ export interface UseAgentsResult {
   refreshRuns: (agentId: string) => Promise<void>;
   createAgent: (request: CreateAgentRequest) => Promise<Agent | null>;
   updateAgent: (id: string, request: UpdateAgentRequest) => Promise<Agent | null>;
+  prepareGenerateAgentCode: (
+    id: string,
+    request: PrepareGenerateAgentCodeRequest,
+    options?: {
+      signal?: AbortSignal;
+    },
+  ) => Promise<{ chatId: string } | null>;
   generateAgentCode: (
     request: GenerateAgentCodeRequest,
     id?: string,
-    options?: { signal?: AbortSignal },
-  ) => Promise<GeneratedAgentCode | null>;
+    options?: {
+      signal?: AbortSignal;
+      onChatId?: (chatId: string) => void;
+    },
+  ) => Promise<(GeneratedAgentCode & { chat?: Chat }) | null>;
   testAgentCode: (
     request: TestAgentCodeRequest,
     options?: {
@@ -170,26 +181,66 @@ export function useAgents(): UseAgentsResult {
     return agent;
   }, [requestAgent]);
 
-  const generateAgentCode = useCallback(async (
-    request: GenerateAgentCodeRequest,
-    id?: string,
-    options: { signal?: AbortSignal } = {},
-  ) => {
-    const generated = await requestAgent<GeneratedAgentCode & { error?: string; message?: string }>(
-      id ? `/api/agents/${id}/code/generate` : "/api/agents/code/generate",
+  const prepareGenerateAgentCode = useCallback(async (
+    id: string,
+    request: PrepareGenerateAgentCodeRequest,
+    options: {
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<{ chatId: string } | null> => {
+    return requestAgent<{ chatId: string }>(
+      `/api/agents/${id}/code/generate/prepare`,
       {
         method: "POST",
         signal: options.signal,
         body: JSON.stringify(request),
       },
-      "Failed to generate agent code",
+      "Failed to prepare the generation conversation",
     );
-    if (generated?.error) {
-      setError(generated.message ?? generated.error);
+  }, [requestAgent]);
+
+  const generateAgentCode = useCallback(async (
+    request: GenerateAgentCodeRequest,
+    id?: string,
+    options: {
+      signal?: AbortSignal;
+      onChatId?: (chatId: string) => void;
+    } = {},
+  ): Promise<(GeneratedAgentCode & { chat?: Chat }) | null> => {
+    try {
+      const response = await appFetch(
+        id ? `/api/agents/${id}/code/generate` : "/api/agents/code/generate",
+        {
+          method: "POST",
+          signal: options.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      const chatId = response.headers.get("X-Clanky-Generation-Chat-Id");
+      if (chatId) {
+        options.onChatId?.(chatId);
+      }
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to generate agent code"));
+      }
+      const generated = await response.json() as GeneratedAgentCode & {
+        chat?: Chat;
+        error?: string;
+        message?: string;
+      };
+      if (generated.error) {
+        throw new Error(generated.message ?? generated.error);
+      }
+      return generated;
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return null;
+      }
+      setError(String(requestError));
       return null;
     }
-    return generated;
-  }, [requestAgent]);
+  }, []);
 
   const testAgentCode = useCallback(async (
     request: TestAgentCodeRequest,
@@ -376,6 +427,7 @@ export function useAgents(): UseAgentsResult {
     refreshRuns,
     createAgent,
     updateAgent,
+    prepareGenerateAgentCode,
     generateAgentCode,
     testAgentCode,
     deleteAgent,

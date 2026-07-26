@@ -50,6 +50,7 @@ export interface AgentConfig extends AgentConfigSnapshot {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  generationChatId?: string;
   isPrivate?: boolean;
   mode: "agent";
 }

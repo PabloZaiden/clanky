@@ -551,6 +551,19 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 19,
+    name: "add_agent_generation_chat",
+    up: (db) => {
+      if (!tableExists(db, "agents")) {
+        return;
+      }
+      const columns = getTableColumns(db, "agents");
+      if (!columns.includes("generation_chat_id")) {
+        db.run("ALTER TABLE agents ADD COLUMN generation_chat_id TEXT");
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

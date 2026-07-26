@@ -55,8 +55,16 @@ export const UpdateAgentRequestSchema = z.object({
 export const GenerateAgentCodeRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   prompt: z.string().optional(),
-  comments: z.string().optional(),
   previousCode: z.string().optional(),
+  workspaceId: z.string().min(1).optional(),
+  model: ModelConfigSchema.optional(),
+  chatId: z.string().uuid().optional(),
+  generationMode: z.enum(["initial", "follow_up"]).optional(),
+  message: z.string().trim().min(1).optional(),
+  attachments: MessageImageAttachmentsSchema.default([]),
+});
+
+export const PrepareGenerateAgentCodeRequestSchema = z.object({
   workspaceId: z.string().min(1).optional(),
   model: ModelConfigSchema.optional(),
 });
@@ -103,6 +111,7 @@ export const SchedulerTimezoneRequestSchema = z.object({
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type UpdateAgentRequest = z.infer<typeof UpdateAgentRequestSchema>;
 export type GenerateAgentCodeRequest = z.infer<typeof GenerateAgentCodeRequestSchema>;
+export type PrepareGenerateAgentCodeRequest = z.infer<typeof PrepareGenerateAgentCodeRequestSchema>;
 export type TestAgentCodeRequest = z.infer<typeof TestAgentCodeRequestSchema>;
 export type RunAgentRequest = z.infer<typeof RunAgentRequestSchema>;
 export type DeleteAgentRunsRequest = z.infer<typeof DeleteAgentRunsRequestSchema>;

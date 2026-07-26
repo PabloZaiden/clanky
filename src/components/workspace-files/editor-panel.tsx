@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import MonacoEditor from "@monaco-editor/react";
-import { useTheme } from "@pablozaiden/webapp/web";
+import { MonacoCodeEditor } from "../MonacoCodeEditor";
 import { Button, RefreshIcon, WrapTextIcon } from "../common";
 
 const EDITOR_LANGUAGE_OPTIONS = [
@@ -62,7 +61,6 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
-  const { resolvedTheme } = useTheme();
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
   const displayPath = pendingFilePath ?? filePath;
@@ -152,19 +150,13 @@ export function WorkspaceEditorPanel({
             </div>
           </div>
         ) : filePath ? (
-          <MonacoEditor
+          <MonacoCodeEditor
             height="100%"
-            theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
             language={editorLanguage}
             value={value}
-            onChange={(nextValue: string | undefined) => onChange(nextValue ?? "")}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              automaticLayout: true,
-              wordWrap: wordWrapEnabled ? "on" : "off",
-              scrollBeyondLastLine: false,
-            }}
+            onChange={onChange}
+            wordWrap={wordWrapEnabled ? "on" : "off"}
+            ariaLabel={`Code editor: ${displayPath ?? "file"}`}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">

@@ -92,14 +92,12 @@ export async function testDeterministicAgentCode(
   let chatId: string | undefined;
 
   try {
-    const chat = await chatManager.createChat({
+    const chat = await chatManager.createAgentRunChat({
       name: `Test code: ${options.name}`,
       workspaceId: options.workspaceId,
-      scope: "workspace",
       modelProviderID: options.model.providerID,
       modelID: options.model.modelID,
       modelVariant: options.model.variant,
-      autoApprovePermissions: true,
       useWorktree: options.useWorktree,
       baseBranch: options.baseBranch,
       directory: options.directory,

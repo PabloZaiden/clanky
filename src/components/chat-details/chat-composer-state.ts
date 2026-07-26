@@ -42,6 +42,7 @@ export function useChatComposer({
   onChatSnapshot,
   markChatStarting,
   refreshChat,
+  onSendMessage,
 }: ChatComposerProps) {
   const toast = useToast();
   const [message, setMessage] = useState("");
@@ -154,24 +155,33 @@ export function useChatComposer({
         return;
       }
 
-      const response = await appFetch(`/api/chats/${chatId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmedMessage.length > 0 ? trimmedMessage : null,
-          attachments: attachments.length > 0 ? toMessageAttachments(attachments) : [],
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to send chat message"));
-      }
-      const data = (await response.json()) as { chat?: Chat };
-      if (data.chat) {
-        onChatSnapshot(data.chat);
-      } else if (isActive) {
-        await refreshChat();
+      const messageAttachments = attachments.length > 0 ? toMessageAttachments(attachments) : [];
+      if (onSendMessage) {
+        const nextChat = await onSendMessage({
+          message: trimmedMessage.length > 0 ? trimmedMessage : undefined,
+          attachments: messageAttachments,
+        });
+        onChatSnapshot(nextChat);
       } else {
-        markChatStarting();
+        const response = await appFetch(`/api/chats/${chatId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: trimmedMessage.length > 0 ? trimmedMessage : null,
+            attachments: messageAttachments,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await parseChatError(response, "Failed to send chat message"));
+        }
+        const data = (await response.json()) as { chat?: Chat };
+        if (data.chat) {
+          onChatSnapshot(data.chat);
+        } else if (isActive) {
+          await refreshChat();
+        } else {
+          markChatStarting();
+        }
       }
       setMessage("");
       setSelectedTemplate("");

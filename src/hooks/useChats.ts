@@ -3,7 +3,7 @@ import { createLogger } from "@pablozaiden/webapp/web";
 import { appFetch } from "../lib/public-path";
 import type { Chat, ChatEvent } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
+import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import {
   getStreamingActivityStatus,
   mergeChatSummarySnapshot,
@@ -18,9 +18,12 @@ function sortChats(chats: Chat[]): Chat[] {
 }
 
 function upsertChat(chats: Chat[], chat: Chat): Chat[] {
-  const next = chats.filter((item) => item.config.id !== chat.config.id);
+  const next = chats.filter((item) => isStandaloneChat(item) && item.config.id !== chat.config.id);
+  if (!isStandaloneChat(chat)) {
+    return sortChats(next);
+  }
 
-  const current = chats.find((item) => item.config.id === chat.config.id);
+  const current = chats.find((item) => item.config.id === chat.config.id && isStandaloneChat(item));
   next.push(current ? mergeChatSummarySnapshot(current, chat) : chat);
   return sortChats(next);
 }
@@ -30,8 +33,8 @@ function isActivityTimestampIncrease(currentTimestamp: string | undefined, nextT
 }
 
 function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: string): Chat[] {
-  let changed = false;
-  const nextChats = chats.map((chat) => {
+  let changed = chats.some((chat) => !isStandaloneChat(chat));
+  const nextChats = chats.filter(isStandaloneChat).map((chat) => {
     if (chat.config.id !== id) {
       return chat;
     }
@@ -109,7 +112,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to fetch chats"));
       }
       const data = (await response.json()) as Chat[];
-      setChats(sortChats(data));
+      setChats(sortChats(data.filter(isStandaloneChat)));
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
         return;
@@ -132,7 +135,7 @@ export function useChats(): UseChatsResult {
         }
         throw new Error(await parseError(response, "Failed to fetch chat"));
       }
-      const chats = await response.json() as Chat[];
+      const chats = (await response.json() as Chat[]).filter(isStandaloneChat);
       const chat = chats.find((item) => item.config.id === id);
       if (!chat) {
         setChats((prev) => prev.filter((item) => item.config.id !== id));
