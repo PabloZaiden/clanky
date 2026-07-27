@@ -1323,6 +1323,16 @@ function AgentRunDetail({
   }
 
   const isActive = run.status === "scheduled" || run.status === "starting" || run.status === "running";
+  let activeMessageId: string | undefined;
+  if (isActive) {
+    const transcriptMessages = transcript?.messages ?? [];
+    for (let index = transcriptMessages.length - 1; index >= 0; index -= 1) {
+      if (transcriptMessages[index]?.role === "assistant") {
+        activeMessageId = transcriptMessages[index]?.id;
+        break;
+      }
+    }
+  }
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       {run.error && (
@@ -1337,6 +1347,7 @@ function AgentRunDetail({
         toolCalls={transcript?.toolCalls ?? []}
         logs={transcript?.logs ?? []}
         isActive={isActive}
+        activeMessageId={activeMessageId}
         markdownEnabled={markdownEnabled}
         showAssistantMessages
         showResponseLogs={false}

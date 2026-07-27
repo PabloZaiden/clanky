@@ -1,4 +1,5 @@
 import type { Task } from "@/shared";
+import { AnimatedList } from "@pablozaiden/webapp/web";
 import type { StatusGroups, StatusSectionKey } from "../../hooks/useTaskGrouping";
 import type { DashboardViewMode } from "@/shared/preferences";
 import { sectionConfig } from "../../hooks/useTaskGrouping";
@@ -55,7 +56,7 @@ export function StatusSections({
             idPrefix={`${keyPrefix}-${key}`}
           >
             {viewMode === "rows" ? (
-              <div className="flex flex-col gap-2">
+              <AnimatedList className="flex flex-col gap-2">
                 {sectionTasks.map((task) => (
                   <TaskRow
                     key={task.config.id}
@@ -64,9 +65,9 @@ export function StatusSections({
                     {...getTaskActions(key, task.config.id)}
                   />
                 ))}
-              </div>
+              </AnimatedList>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              <AnimatedList className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {sectionTasks.map((task) => (
                   <TaskCard
                     key={task.config.id}
@@ -75,7 +76,7 @@ export function StatusSections({
                     {...getTaskActions(key, task.config.id)}
                   />
                 ))}
-              </div>
+              </AnimatedList>
             )}
           </CollapsibleSection>
         );

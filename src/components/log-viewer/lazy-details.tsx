@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { memo, useEffect, useId, useRef, useState } from "react";
+import { Collapsible } from "@pablozaiden/webapp/web";
 
 interface LazyDetailsProps {
   /** Summary content shown in the collapsed header (accepts ReactNode for rich content). */
@@ -68,15 +69,15 @@ export const LazyDetails = memo(function LazyDetails({
       >
         {summary}
       </button>
-      <div
+      <Collapsible
+        open={isOpen && hasOpened}
         id={panelId}
-        role="region"
-        aria-labelledby={triggerId}
-        hidden={!isOpen}
         className={panelClassName ?? "mt-1"}
       >
-        {hasOpened ? renderContent() : null}
-      </div>
+        <div role="region" aria-labelledby={triggerId}>
+          {hasOpened ? renderContent() : null}
+        </div>
+      </Collapsible>
     </div>
   );
 });

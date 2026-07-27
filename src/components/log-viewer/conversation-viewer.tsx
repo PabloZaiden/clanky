@@ -138,7 +138,6 @@ export const ConversationViewer = memo(function ConversationViewer({
         <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
           {visibleEntries.map((entry, index) => {
             const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
-            const isLastVisibleEntry = index === visibleEntries.length - 1;
             if (entry.type === "message") {
               return (
                 <MessageEntry
@@ -184,7 +183,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={fileLinkContext}
-                    deferMarkdown={isActive && isLastVisibleEntry}
+                    deferMarkdown={isActive && (isReasoningLogEntry(entry.data) || isResponseLogEntry(entry.data))}
                   />
                 );
             }
