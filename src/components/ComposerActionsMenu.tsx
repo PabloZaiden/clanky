@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { FloatingPanel } from "@pablozaiden/webapp/web";
 import { HamburgerIcon } from "./common";
 
 interface ComposerActionsMenuProps {
@@ -9,13 +9,6 @@ interface ComposerActionsMenuProps {
   children: ReactNode;
 }
 
-interface MenuPosition {
-  left: number;
-  top: number;
-  width: number;
-  visibility: "hidden" | "visible";
-}
-
 export function ComposerActionsMenu({
   ariaLabel,
   disabled = false,
@@ -23,128 +16,18 @@ export function ComposerActionsMenu({
   children,
 }: ComposerActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [position, setPosition] = useState<MenuPosition | null>(null);
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  const close = useCallback((returnFocus = false) => {
+  const close = useCallback(() => {
     setIsOpen(false);
-    setPosition(null);
-    if (returnFocus) {
-      requestAnimationFrame(() => triggerRef.current?.focus());
-    }
   }, []);
-
-  const updatePosition = useCallback((visibility: MenuPosition["visibility"] = "visible") => {
-    const trigger = triggerRef.current;
-    if (!trigger) {
-      return;
-    }
-
-    const margin = 8;
-    const triggerRect = trigger.getBoundingClientRect();
-    const menuRect = menuRef.current?.getBoundingClientRect();
-    const width = Math.min(320, Math.max(240, window.innerWidth - margin * 2));
-    const left = Math.min(
-      Math.max(margin, triggerRect.left),
-      Math.max(margin, window.innerWidth - width - margin),
-    );
-    const menuHeight = menuRect?.height ?? 0;
-    const preferredTop = triggerRect.top - menuHeight - margin;
-    const fallbackTop = triggerRect.bottom + margin;
-    const top = preferredTop >= margin
-      ? preferredTop
-      : Math.min(fallbackTop, Math.max(margin, window.innerHeight - menuHeight - margin));
-
-    setPosition({ left, top, width, visibility });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    updatePosition("hidden");
-    requestAnimationFrame(() => {
-      updatePosition("visible");
-      const firstControl = menuRef.current?.querySelector<HTMLElement>(
-        "button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])",
-      );
-      firstControl?.focus();
-    });
-  }, [isOpen, updatePosition]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close(true);
-      }
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      const path = event.composedPath();
-      const trigger = triggerRef.current;
-      const menuElement = menuRef.current;
-      if ((trigger && path.includes(trigger)) || (menuElement && path.includes(menuElement))) {
-        return;
-      }
-      if (!(target instanceof Node)) {
-        return;
-      }
-      if (trigger?.contains(target) || menuElement?.contains(target)) {
-        return;
-      }
-      close();
-    };
-
-    const handleViewportChange = () => updatePosition();
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-    };
-  }, [close, isOpen, updatePosition]);
 
   useEffect(() => {
     if (disabled) {
       close();
     }
   }, [close, disabled]);
-
-  const menu = isOpen && position ? createPortal(
-    <div
-      id={menuId}
-      ref={menuRef}
-      role="group"
-      aria-label={ariaLabel}
-      className="fixed z-50 max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 shadow-xl ring-1 ring-black/5 dark:border-gray-700 dark:bg-neutral-800 dark:ring-gray-700"
-      style={{
-        left: position.left,
-        top: position.top,
-        width: position.width,
-        visibility: position.visibility,
-      }}
-    >
-      <div className="space-y-3">
-        {children}
-      </div>
-    </div>,
-    document.body,
-  ) : null;
 
   return (
     <>
@@ -168,7 +51,22 @@ export function ComposerActionsMenu({
           />
         )}
       </button>
-      {menu}
+      <FloatingPanel
+        open={isOpen}
+        anchorRef={triggerRef}
+        onClose={() => close()}
+        ariaLabel={ariaLabel}
+        role="group"
+        id={menuId}
+        placement="top-start"
+        focusSelector="button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
+        restoreFocusOnClose
+        className="max-h-[min(24rem,calc(100vh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 shadow-xl ring-1 ring-black/5 dark:border-gray-700 dark:bg-neutral-800 dark:ring-gray-700"
+      >
+        <div className="space-y-3">
+          {children}
+        </div>
+      </FloatingPanel>
     </>
   );
 }

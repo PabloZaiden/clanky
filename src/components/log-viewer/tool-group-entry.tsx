@@ -11,6 +11,7 @@ interface ToolGroupEntryProps {
     showGroupHeader: boolean;
   };
   spacingClass: string;
+  className?: string;
   toolPathDisplayRoot?: string;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
@@ -79,6 +80,7 @@ function getToolGroupSummary(entry: ToolGroupEntryBase, toolPathDisplayRoot?: st
 export const ToolGroupEntry = memo(function ToolGroupEntry({
   entry,
   spacingClass,
+  className = "",
   toolPathDisplayRoot,
   onLoadToolDetails,
 }: ToolGroupEntryProps) {
@@ -103,7 +105,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   );
 
   return (
-    <div className={`group ${spacingClass}`} data-entry-type="tool-group">
+    <div className={`group ${spacingClass} ${className}`.trim()} data-entry-type="tool-group">
       {entry.showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={entry.timestamp}>
           {formatTime(entry.timestamp)}

@@ -11,6 +11,7 @@ interface LogEntryItemProps {
   showTimestamp: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
+  className?: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
   deferMarkdown?: boolean;
@@ -40,6 +41,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   showTimestamp,
   showGroupHeader,
   spacingClass,
+  className = "",
   markdownEnabled,
   fileLinkContext,
   deferMarkdown = false,
@@ -88,7 +90,7 @@ export const LogEntryItem = memo(function LogEntryItem({
     : "min-w-0 max-w-[min(96%,72rem)]";
 
   return (
-    <div className={`group ${spacingClass}`} data-log-kind={logKind ?? "default"}>
+    <div className={`group ${spacingClass} ${className}`.trim()} data-log-kind={logKind ?? "default"}>
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}

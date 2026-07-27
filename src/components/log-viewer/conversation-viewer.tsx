@@ -1,4 +1,5 @@
 import { useMemo, memo } from "react";
+import { AnimatedList } from "@pablozaiden/webapp/web";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -136,14 +137,15 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
       ) : (
         <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          {visibleEntries.map((entry, index) => {
-            const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
-            if (entry.type === "message") {
-              return (
-                <MessageEntry
-                  key={`msg-${entry.data.id}`}
-                  data={entry.data}
-                  showTimestamp={entry.showTimestamp}
+          <AnimatedList className="wapp-animated-list-contents">
+            {visibleEntries.map((entry, index) => {
+              const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
+              if (entry.type === "message") {
+                return (
+                  <MessageEntry
+                    key={`msg-${entry.data.id}`}
+                    data={entry.data}
+                    showTimestamp={entry.showTimestamp}
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
                     showRoleLabel={showMessageRoles}
@@ -151,34 +153,34 @@ export const ConversationViewer = memo(function ConversationViewer({
                     deferMarkdown={isActive && entry.data.id === activeMessageId}
                   />
                 );
-            } else if (entry.type === "tool") {
-              return (
-                <ToolEntry
-                  key={`tool-${entry.data.id}`}
-                  data={entry.data}
-                  timestamp={entry.timestamp}
-                  showTimestamp={entry.showTimestamp}
-                  spacingClass={spacingClass}
-                  toolPathDisplayRoot={toolPathDisplayRoot}
-                  onLoadToolDetails={onLoadToolDetails}
-                />
-              );
-            } else if (entry.type === "tool-group") {
-              return (
-                <ToolGroupEntry
-                  key={`tool-group-${entry.id}`}
-                  entry={entry}
-                  spacingClass={spacingClass}
-                  toolPathDisplayRoot={toolPathDisplayRoot}
-                  onLoadToolDetails={onLoadToolDetails}
-                />
-              );
-            } else {
-              return (
-                <LogEntryItem
-                  key={`log-${entry.data.id}`}
-                  data={entry.data}
-                  showTimestamp={entry.showTimestamp}
+              } else if (entry.type === "tool") {
+                return (
+                  <ToolEntry
+                    key={`tool-${entry.data.id}`}
+                    data={entry.data}
+                    timestamp={entry.timestamp}
+                    showTimestamp={entry.showTimestamp}
+                    spacingClass={spacingClass}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
+              } else if (entry.type === "tool-group") {
+                return (
+                  <ToolGroupEntry
+                    key={`tool-group-${entry.id}`}
+                    entry={entry}
+                    spacingClass={spacingClass}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
+              } else {
+                return (
+                  <LogEntryItem
+                    key={`log-${entry.data.id}`}
+                    data={entry.data}
+                    showTimestamp={entry.showTimestamp}
                     showGroupHeader={entry.showGroupHeader}
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
@@ -186,8 +188,9 @@ export const ConversationViewer = memo(function ConversationViewer({
                     deferMarkdown={isActive && (isReasoningLogEntry(entry.data) || isResponseLogEntry(entry.data))}
                   />
                 );
-            }
-          })}
+              }
+            })}
+          </AnimatedList>
           {isActive && !isEmpty && (
             <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
               <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
