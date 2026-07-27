@@ -137,7 +137,7 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
       ) : (
         <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          <AnimatedList className="wapp-animated-list-contents">
+          <AnimatedList layout="contents">
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
