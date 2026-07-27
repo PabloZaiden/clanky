@@ -1,6 +1,7 @@
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { TranscriptFileLinkContext } from "./types";
 import { TranscriptTextContent } from "./transcript-file-links";
+import { StreamingText } from "@pablozaiden/webapp/web";
 
 interface StreamingTextContentProps {
   content: string;
@@ -35,6 +36,16 @@ export function StreamingTextContent({
         className={markdownClassName}
         dimmed={dimmed}
         fileLinkContext={fileLinkContext}
+      />
+    );
+  }
+
+  if (deferMarkdown) {
+    return (
+      <StreamingText
+        as="div"
+        content={content}
+        className={`${plainTextClassName} ${dimmed ? "opacity-60" : ""}`.trim()}
       />
     );
   }

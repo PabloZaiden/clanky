@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { appAbsoluteUrl } from "../../lib/public-path";
-import { replaceWebAppRoute, routeToHash } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, routeToHash, TabPanel, TabPanels } from "@pablozaiden/webapp/web";
 import type { MessageData, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
@@ -102,8 +102,12 @@ export function TaskDetailsTabContent({
   }), [config.workspaceId, getTaskFileRoute, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
-    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800">
-      {activeTab === "log" && (
+    <TabPanels className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800">
+      <TabPanel
+        id="task-details-tab-panel-log"
+        active={activeTab === "log"}
+        className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      >
         <LogTab
           messages={messages}
           toolCalls={toolCalls}
@@ -116,13 +120,22 @@ export function TaskDetailsTabContent({
           fileLinkContext={fileLinkContext}
           onLoadToolDetails={onLoadToolDetails}
         />
-      )}
-      {(activeTab === "chat" || hasVisitedChatTab) && (
-        <div className={activeTab === "chat" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+      </TabPanel>
+      {hasVisitedChatTab ? (
+        <TabPanel
+          id="task-details-tab-panel-chat"
+          active={activeTab === "chat"}
+          keepMounted
+          className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+        >
           <ChatTab taskId={taskId} />
-        </div>
-      )}
-      {activeTab === "info" && (
+        </TabPanel>
+      ) : null}
+      <TabPanel
+        id="task-details-tab-panel-info"
+        active={activeTab === "info"}
+        className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      >
         <InfoTab
           task={task}
           labels={labels}
@@ -132,8 +145,12 @@ export function TaskDetailsTabContent({
           planningSettingsSubmitting={actions.planningSettingsSubmitting}
           onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />
-      )}
-      {activeTab === "plan" && (
+      </TabPanel>
+      <TabPanel
+        id="task-details-tab-panel-plan"
+        active={activeTab === "plan"}
+        className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      >
         <PlanTab
           isPlanning={isPlanning}
           isPlanReady={isPlanReady}
@@ -145,16 +162,24 @@ export function TaskDetailsTabContent({
           markdownEnabled={markdownEnabled}
           hasBottomActionBar={hasBottomActionBar}
         />
-      )}
-      {activeTab === "diff" && (
+      </TabPanel>
+      <TabPanel
+        id="task-details-tab-panel-diff"
+        active={activeTab === "diff"}
+        className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      >
         <DiffTab
           diffContent={content.diffContent}
           loadingContent={content.loadingContent}
           expandedFiles={content.expandedFiles}
           onExpandedFilesChange={content.setExpandedFiles}
         />
-      )}
-      {activeTab === "actions" && (
+      </TabPanel>
+      <TabPanel
+        id="task-details-tab-panel-actions"
+        active={activeTab === "actions"}
+        className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      >
         <ActionsTab
           isPlanning={isPlanning}
           isPlanReady={isPlanReady}
@@ -183,7 +208,7 @@ export function TaskDetailsTabContent({
           loadingComments={content.loadingComments}
           reviewComments={content.reviewComments}
         />
-      )}
-    </div>
+      </TabPanel>
+    </TabPanels>
   );
 }

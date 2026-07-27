@@ -7,4 +7,6 @@ export interface TaskSummaryProps {
   onClick?: () => void;
   /** Whether the full summary container should be visually obscured and non-clickable */
   privateHidden?: boolean;
+  /** Motion class injected by framework collection primitives. */
+  className?: string;
 }

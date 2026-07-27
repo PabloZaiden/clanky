@@ -2,7 +2,7 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { replaceWebAppRoute, useToast } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, Tabs, useToast } from "@pablozaiden/webapp/web";
 import { useTask, useMarkdownPreference } from "../../hooks";
 import { Button } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
@@ -154,36 +154,33 @@ export function TaskDetails({
         )}
 
         <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden">
-          <div className="flex flex-shrink-0 overflow-x-auto border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-neutral-800 sm:px-4">
-            {visibleTabs.map((tab) => {
+          <Tabs
+            value={activeTab}
+            onChange={(tabId) => handleTabChange(tabId as TabId)}
+            ariaLabel="Task details"
+            className="flex-shrink-0 overflow-x-auto bg-white px-3 dark:bg-neutral-800 sm:px-4"
+            tabs={visibleTabs.map((tab) => {
               const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
               const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id as TabId)}
-                  className={`relative px-1.5 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
-                      : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
+              return {
+                id: tab.id,
+                label: (
+                  <span className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm">
                     {tab.label}
-                    {showPlanIndicator && (
+                    {showPlanIndicator ? (
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-600" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gray-500 opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-gray-600" />
                       </span>
-                    )}
+                    ) : null}
+                    {hasUpdate && !showPlanIndicator && activeTab !== tab.id ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" />
+                    ) : null}
                   </span>
-                  {hasUpdate && !showPlanIndicator && activeTab !== tab.id && (
-                    <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gray-500" />
-                  )}
-                </button>
-              );
+                ),
+              };
             })}
-          </div>
+          />
 
           <TaskDetailsTabContent
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}

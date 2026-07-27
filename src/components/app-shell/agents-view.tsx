@@ -1323,6 +1323,9 @@ function AgentRunDetail({
   }
 
   const isActive = run.status === "scheduled" || run.status === "starting" || run.status === "running";
+  const activeMessageId = isActive
+    ? [...(transcript?.messages ?? [])].reverse().find((message) => message.role === "assistant")?.id
+    : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       {run.error && (
@@ -1337,6 +1340,7 @@ function AgentRunDetail({
         toolCalls={transcript?.toolCalls ?? []}
         logs={transcript?.logs ?? []}
         isActive={isActive}
+        activeMessageId={activeMessageId}
         markdownEnabled={markdownEnabled}
         showAssistantMessages
         showResponseLogs={false}

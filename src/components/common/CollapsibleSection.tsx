@@ -5,6 +5,7 @@
 
 import { useState, useId } from "react";
 import type { ReactNode } from "react";
+import { Collapsible } from "@pablozaiden/webapp/web";
 
 export interface CollapsibleSectionProps {
   /** Section title displayed in the header */
@@ -44,11 +45,9 @@ export function CollapsibleSection({
         <span className="text-xs">{collapsed ? "\u25B6" : "\u25BC"}</span>
         <span>{title} ({count})</span>
       </button>
-      {!collapsed && (
-        <div id={sectionId}>
-          {children}
-        </div>
-      )}
+      <Collapsible open={!collapsed} id={sectionId}>
+        {children}
+      </Collapsible>
     </section>
   );
 }
