@@ -20,6 +20,7 @@ interface ToolEntryProps {
   timestamp: string;
   showTimestamp: boolean;
   spacingClass: string;
+  className?: string;
   toolPathDisplayRoot?: string;
   fullWidth?: boolean;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
@@ -223,6 +224,7 @@ export const ToolEntry = memo(function ToolEntry({
   timestamp,
   showTimestamp,
   spacingClass,
+  className = "",
   toolPathDisplayRoot,
   fullWidth = false,
   onLoadToolDetails,
@@ -368,7 +370,7 @@ export const ToolEntry = memo(function ToolEntry({
   );
 
   return (
-    <div className={`group ${spacingClass}`} data-entry-type="tool" data-tool-kind={meta.kind}>
+    <div className={`group ${spacingClass} ${className}`.trim()} data-entry-type="tool" data-tool-kind={meta.kind}>
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
           {formatTime(timestamp)}

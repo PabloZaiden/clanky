@@ -14,6 +14,7 @@ interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
   spacingClass: string;
+  className?: string;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
@@ -24,6 +25,7 @@ export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
   spacingClass,
+  className = "",
   markdownEnabled,
   showRoleLabel,
   fileLinkContext,
@@ -44,7 +46,7 @@ export const MessageEntry = memo(function MessageEntry({
   } : null;
 
   return (
-    <div className={`group ${spacingClass}`} data-message-role={msg.role}>
+    <div className={`group ${spacingClass} ${className}`.trim()} data-message-role={msg.role}>
       {showTimestamp && (
         <time
           className={`mb-1 block text-[11px] text-gray-500 ${isUser ? "text-right pr-1" : ""}`}
