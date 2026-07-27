@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { MessageData } from "@/shared";
 import {
   getMessageAttachmentExtension,
@@ -20,7 +20,7 @@ interface MessageEntryProps {
   deferMarkdown?: boolean;
 }
 
-export function MessageEntry({
+export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
   spacingClass,
@@ -138,4 +138,4 @@ export function MessageEntry({
       </div>
     </div>
   );
-}
+});

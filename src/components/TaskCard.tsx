@@ -34,7 +34,7 @@ export function TaskCard({
     <Card
       clickable={!!onClick && !privateHidden}
       onClick={privateHidden ? undefined : onClick}
-      className={`${className} relative flex h-full flex-col ${privateHidden ? "clanky-private-obscured" : ""} ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""}`.trim()}
+      className={`relative flex h-full flex-col ${privateHidden ? "clanky-private-obscured" : ""} ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""} ${className}`.trim()}
       bodyClassName="flex min-h-0 flex-1 flex-col"
     >
       {/* Status indicator */}

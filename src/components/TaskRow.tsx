@@ -37,10 +37,10 @@ export function TaskRow({
 
   return (
     <div
-      className={`${className} relative rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800 ${borderClass} ${
+      className={`relative rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800 ${borderClass} ${
         onClick && !privateHidden ? "cursor-pointer hover:border-gray-300 hover:shadow-md dark:hover:border-gray-600" : ""
       } ${privateHidden ? "clanky-private-obscured" : ""
-      }`.trim()}
+      } ${className}`.trim()}
       onClick={privateHidden ? undefined : onClick}
     >
       <div className="px-4 py-3">
