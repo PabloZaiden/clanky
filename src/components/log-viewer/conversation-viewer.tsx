@@ -1,5 +1,4 @@
 import { useMemo, memo } from "react";
-import { AnimatedList } from "@pablozaiden/webapp/web";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -24,7 +23,6 @@ export const ConversationViewer = memo(function ConversationViewer({
   showTools = true,
   markdownEnabled = false,
   isActive = false,
-  activeMessageId,
   id,
   showAssistantMessages = false,
   showResponseLogs = true,
@@ -137,60 +135,56 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
       ) : (
         <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          <AnimatedList layout="contents">
-            {visibleEntries.map((entry, index) => {
-              const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
-              if (entry.type === "message") {
-                return (
-                  <MessageEntry
-                    key={`msg-${entry.data.id}`}
-                    data={entry.data}
-                    showTimestamp={entry.showTimestamp}
-                    spacingClass={spacingClass}
-                    markdownEnabled={markdownEnabled}
-                    showRoleLabel={showMessageRoles}
-                    fileLinkContext={fileLinkContext}
-                    deferMarkdown={isActive && entry.data.id === activeMessageId}
-                  />
-                );
-              } else if (entry.type === "tool") {
-                return (
-                  <ToolEntry
-                    key={`tool-${entry.data.id}`}
-                    data={entry.data}
-                    timestamp={entry.timestamp}
-                    showTimestamp={entry.showTimestamp}
-                    spacingClass={spacingClass}
-                    toolPathDisplayRoot={toolPathDisplayRoot}
-                    onLoadToolDetails={onLoadToolDetails}
-                  />
-                );
-              } else if (entry.type === "tool-group") {
-                return (
-                  <ToolGroupEntry
-                    key={`tool-group-${entry.id}`}
-                    entry={entry}
-                    spacingClass={spacingClass}
-                    toolPathDisplayRoot={toolPathDisplayRoot}
-                    onLoadToolDetails={onLoadToolDetails}
-                  />
-                );
-              } else {
-                return (
-                  <LogEntryItem
-                    key={`log-${entry.data.id}`}
-                    data={entry.data}
-                    showTimestamp={entry.showTimestamp}
-                    showGroupHeader={entry.showGroupHeader}
-                    spacingClass={spacingClass}
-                    markdownEnabled={markdownEnabled}
-                    fileLinkContext={fileLinkContext}
-                    deferMarkdown={isActive && (isReasoningLogEntry(entry.data) || isResponseLogEntry(entry.data))}
-                  />
-                );
-              }
-            })}
-          </AnimatedList>
+          {visibleEntries.map((entry, index) => {
+            const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
+            if (entry.type === "message") {
+              return (
+                <MessageEntry
+                  key={`msg-${entry.data.id}`}
+                  data={entry.data}
+                  showTimestamp={entry.showTimestamp}
+                  spacingClass={spacingClass}
+                  markdownEnabled={markdownEnabled}
+                  showRoleLabel={showMessageRoles}
+                  fileLinkContext={fileLinkContext}
+                />
+              );
+            } else if (entry.type === "tool") {
+              return (
+                <ToolEntry
+                  key={`tool-${entry.data.id}`}
+                  data={entry.data}
+                  timestamp={entry.timestamp}
+                  showTimestamp={entry.showTimestamp}
+                  spacingClass={spacingClass}
+                  toolPathDisplayRoot={toolPathDisplayRoot}
+                  onLoadToolDetails={onLoadToolDetails}
+                />
+              );
+            } else if (entry.type === "tool-group") {
+              return (
+                <ToolGroupEntry
+                  key={`tool-group-${entry.id}`}
+                  entry={entry}
+                  spacingClass={spacingClass}
+                  toolPathDisplayRoot={toolPathDisplayRoot}
+                  onLoadToolDetails={onLoadToolDetails}
+                />
+              );
+            } else {
+              return (
+                <LogEntryItem
+                  key={`log-${entry.data.id}`}
+                  data={entry.data}
+                  showTimestamp={entry.showTimestamp}
+                  showGroupHeader={entry.showGroupHeader}
+                  spacingClass={spacingClass}
+                  markdownEnabled={markdownEnabled}
+                  fileLinkContext={fileLinkContext}
+                />
+              );
+            }
+          })}
           {isActive && !isEmpty && (
             <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
               <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />

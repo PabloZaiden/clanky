@@ -2,8 +2,9 @@ import { memo, useCallback } from "react";
 import { StatusBadge } from "../common";
 import type { BadgeVariant } from "../common";
 import { LazyDetails } from "./lazy-details";
-import { StreamingTextContent } from "./streaming-text-content";
 import type { LogEntry, TranscriptFileLinkContext } from "./types";
+import { MarkdownRenderer } from "../MarkdownRenderer";
+import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 
 interface LogEntryItemProps {
@@ -11,10 +12,8 @@ interface LogEntryItemProps {
   showTimestamp: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
-  className?: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
-  deferMarkdown?: boolean;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -41,10 +40,8 @@ export const LogEntryItem = memo(function LogEntryItem({
   showTimestamp,
   showGroupHeader,
   spacingClass,
-  className = "",
   markdownEnabled,
   fileLinkContext,
-  deferMarkdown = false,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -71,10 +68,8 @@ export const LogEntryItem = memo(function LogEntryItem({
     return null;
   }
 
-  // Streaming text entries (response, reasoning) don't need a message label —
-  // their rendered content is already self-explanatory.
-  const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
-  const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
+  const hidesTypedResponseLabel = logKind === "response" || logKind === "reasoning";
+  const showMessageLabel = showGroupHeader && !hidesTypedResponseLabel;
   const textColorClassName = isReasoning
     ? "text-gray-500 dark:text-gray-400"
     : isResponse || log.level === "agent"
@@ -90,7 +85,7 @@ export const LogEntryItem = memo(function LogEntryItem({
     : "min-w-0 max-w-[min(96%,72rem)]";
 
   return (
-    <div className={`group ${spacingClass} ${className}`.trim()} data-log-kind={logKind ?? "default"}>
+    <div className={`group ${spacingClass}`.trim()} data-log-kind={logKind ?? "default"}>
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}
@@ -105,15 +100,21 @@ export const LogEntryItem = memo(function LogEntryItem({
         )}
         {hasResponseContent && (
           <div className={showMessageLabel ? "mt-2" : ""}>
-            <StreamingTextContent
-              content={responseContent as string}
-              markdownEnabled={markdownEnabled}
-              dimmed={isReasoning}
-              markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
-              plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
-              fileLinkContext={fileLinkContext}
-              deferMarkdown={deferMarkdown}
-            />
+            {markdownEnabled ? (
+              <MarkdownRenderer
+                content={responseContent as string}
+                className={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
+                dimmed={isReasoning}
+                fileLinkContext={fileLinkContext}
+              />
+            ) : (
+              <TranscriptTextContent
+                content={responseContent as string}
+                className={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
+                dimmed={isReasoning}
+                fileLinkContext={fileLinkContext}
+              />
+            )}
           </div>
         )}
         {finalizedResponseIndicator && (
