@@ -151,6 +151,7 @@ export function QuickChatModelRowContent({
           The saved quick chat model is not available for this workspace. Select another model before using quick chat.
         </p>
       ) : null}
+      <br />
     </div>
   );
 }
