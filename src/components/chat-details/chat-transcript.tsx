@@ -32,7 +32,6 @@ export function ChatTranscript({
         logs={transcript.logs}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
-        activeMessageId={chat.state.activeMessageId}
         markdownEnabled={markdownEnabled}
         showAssistantMessages
         showResponseLogs={false}

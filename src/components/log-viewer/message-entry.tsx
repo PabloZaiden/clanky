@@ -6,30 +6,27 @@ import {
   type MessageAttachment,
 } from "@/shared/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
-import { StreamingTextContent } from "./streaming-text-content";
+import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { TranscriptFileLinkContext } from "./types";
+import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
   spacingClass: string;
-  className?: string;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
-  deferMarkdown?: boolean;
 }
 
 export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
   spacingClass,
-  className = "",
   markdownEnabled,
   showRoleLabel,
   fileLinkContext,
-  deferMarkdown = false,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
@@ -46,7 +43,7 @@ export const MessageEntry = memo(function MessageEntry({
   } : null;
 
   return (
-    <div className={`group ${spacingClass} ${className}`.trim()} data-message-role={msg.role}>
+    <div className={`group ${spacingClass}`.trim()} data-message-role={msg.role}>
       {showTimestamp && (
         <time
           className={`mb-1 block text-[11px] text-gray-500 ${isUser ? "text-right pr-1" : ""}`}
@@ -67,30 +64,23 @@ export const MessageEntry = memo(function MessageEntry({
               className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-sm leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
               data-message-bubble="user"
             >
-              <StreamingTextContent
+              <TranscriptTextContent
                 content={msg.content}
-                markdownEnabled={false}
-                plainTextClassName="whitespace-pre-wrap break-words text-white"
+                className="whitespace-pre-wrap break-words text-white"
                 fileLinkContext={fileLinkContext}
-                deferMarkdown={deferMarkdown}
               />
             </div>
           ) : shouldRenderMarkdown ? (
-            <StreamingTextContent
+            <MarkdownRenderer
               content={msg.content}
-              markdownEnabled={true}
-              markdownClassName="text-sm leading-7 text-gray-900 dark:text-white"
-              plainTextClassName="text-sm leading-7 whitespace-pre-wrap break-words text-gray-900 dark:text-white"
+              className="text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
-              deferMarkdown={deferMarkdown}
             />
           ) : (
-            <StreamingTextContent
+            <TranscriptTextContent
               content={msg.content}
-              markdownEnabled={false}
-              plainTextClassName="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
+              className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
-              deferMarkdown={deferMarkdown}
             />
           )}
           {msg.attachments && msg.attachments.length > 0 && (
