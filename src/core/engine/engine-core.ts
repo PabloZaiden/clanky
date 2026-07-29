@@ -652,8 +652,7 @@ export class TaskEngine {
   }
 
   /**
-   * Continue task execution after plan acceptance.
-   * Used to start the execution phase after a plan has been accepted.
+   * Continue task execution with the pending prompt.
    * The engine must be in running status with a pending prompt set.
    */
   async continueExecution(): Promise<void> {
@@ -669,7 +668,7 @@ export class TaskEngine {
     }
 
     log.debug("[TaskEngine] continueExecution: Starting execution task");
-    this.emitLog("info", "Starting execution after plan acceptance");
+    this.emitLog("info", "Starting task execution");
 
     this.resetRestartFlags();
 

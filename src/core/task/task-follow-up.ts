@@ -145,9 +145,6 @@ async function startTaskLoopFollowUp(
   try {
     await engine.reconnectSession();
   } catch (error) {
-    if (ctx.engines.get(taskId) === engine) {
-      ctx.engines.delete(taskId);
-    }
     return taskFailure(
       "task_session_reconnect_failed",
       "Failed to reconnect task session",
