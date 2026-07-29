@@ -14,7 +14,6 @@ import { useEffect, useRef } from "react";
 import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, SshSession } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { FollowUpPromptMode } from "@/shared/task";
 import type { LogEntry } from "../../components/LogViewer";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../useRealtimeStream";
 import { createLogger } from "@pablozaiden/webapp/web";
@@ -115,7 +114,6 @@ export interface UseTaskResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
-    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   /** Get or create the task's linked SSH session */
   connectViaSsh: () => Promise<SshSession | null>;

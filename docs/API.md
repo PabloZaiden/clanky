@@ -1034,9 +1034,13 @@ Get the review history for a task, including past review cycles.
 
 #### POST /api/tasks/:id/follow-up
 
-Start a new follow-up cycle from a restartable terminal state.
+Resume task execution from a restartable terminal state.
 
-For pushed or merged tasks, this starts a review-feedback cycle. For other restartable task states, it queues the message and restarts the work on the existing task.
+The message is sent as a direct user turn. Completed and pushed tasks reuse
+their existing task session when it is still available and continue the normal
+task loop. Stopped, failed, and max-iteration tasks restart from their existing
+branch when possible. Review comments use the separate
+`POST /api/tasks/:id/address-comments` endpoint.
 
 **Request Body**
 

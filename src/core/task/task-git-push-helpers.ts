@@ -495,7 +495,7 @@ async function startConflictResolutionEngine(
   });
   ctx.engines.set(taskId, engine);
 
-  engine.setPendingPrompt(conflictPrompt);
+  engine.setPendingPrompt(conflictPrompt, [], "engine_context");
 
   startStatePersistenceImpl(ctx, taskId);
 

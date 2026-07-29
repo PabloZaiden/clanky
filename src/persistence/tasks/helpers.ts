@@ -3,8 +3,8 @@
  * Handles column validation, JSON serialization, and row mapping.
  */
 
-import type { FollowUpPromptMode, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "@/shared";
-import { DEFAULT_TASK_CONFIG } from "@/shared/task";
+import type { TaskPromptIntent, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "@/shared";
+import { DEFAULT_TASK_CONFIG, normalizeTaskPromptIntent } from "@/shared/task";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
@@ -306,7 +306,11 @@ export function rowToTask(row: Record<string, unknown>): Task {
   if (row["pending_prompt"] !== null) {
     state.pendingPrompt = row["pending_prompt"] as string;
   }
-  if (row["pending_prompt_mode"] !== null && row["pending_prompt_mode"] !== undefined) {
+  if (
+    state.pendingPrompt !== undefined
+    && row["pending_prompt_mode"] !== null
+    && row["pending_prompt_mode"] !== undefined
+  ) {
     state.pendingPromptMode = normalizePendingPromptMode(row["pending_prompt_mode"]);
   }
   // Reconstruct pendingModel from provider/model columns
@@ -358,6 +362,9 @@ export function rowToTask(row: Record<string, unknown>): Task {
   return { config, state };
 }
 
-function normalizePendingPromptMode(value: unknown): FollowUpPromptMode | undefined {
-  return value === "task_context" || value === "plain_chat" ? value : undefined;
+function normalizePendingPromptMode(value: unknown): TaskPromptIntent | undefined {
+  if (value !== "task_context" && value !== "engine_context" && value !== "direct_user" && value !== "plain_chat") {
+    return undefined;
+  }
+  return normalizeTaskPromptIntent(value);
 }

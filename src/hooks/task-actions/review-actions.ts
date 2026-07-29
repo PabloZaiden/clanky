@@ -3,7 +3,6 @@
  */
 
 import { apiCall, apiActionWithBody } from "./helpers";
-import type { FollowUpPromptMode } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 
 /**
@@ -74,12 +73,11 @@ export async function sendFollowUpApi(
   message: string,
   model?: { providerID: string; modelID: string },
   attachments?: MessageImageAttachment[],
-  promptMode: FollowUpPromptMode = "task_context",
 ): Promise<boolean> {
   return apiActionWithBody(
     `/api/tasks/${taskId}/follow-up`,
     "POST",
-    { message, model: model ? { ...model, variant: "" } : null, attachments: attachments ?? [], promptMode },
+    { message, model: model ? { ...model, variant: "" } : null, attachments: attachments ?? [] },
     "Send follow-up",
   );
 }

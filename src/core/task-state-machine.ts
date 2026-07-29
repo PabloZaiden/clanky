@@ -118,7 +118,7 @@ const TRANSITION_TABLE: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
   // → idle: review comments restarting the task
   // → resolving_conflicts: re-push encountered conflicts
   // → pushed: re-push after branch update (updateBranch)
-  // → starting: plain chat follow-up reusing the pushed task session
+  // → starting: task-loop follow-up reusing the pushed task session
   pushed: new Set(["merged", "deleted", "idle", "resolving_conflicts", "pushed", "starting"]),
 
   // deleted: soft-deleted, can be revived into a fresh feedback cycle before purge

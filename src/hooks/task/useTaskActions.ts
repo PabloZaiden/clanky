@@ -11,7 +11,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Task, SshSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
-import type { FollowUpPromptMode } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
   AcceptTaskResult,
@@ -74,7 +73,6 @@ export interface UseTaskActionsResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
-    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
 }

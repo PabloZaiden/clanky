@@ -98,7 +98,7 @@ class TaskCreationService {
         await taskManager.acceptPlan(task.config.id, {
           mode: "start_task",
           executionPrompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
-          executionPromptMode: "task_context",
+          executionPromptMode: "engine_context",
         });
         return await taskManager.getTask(task.config.id) ?? task;
       } catch (error) {

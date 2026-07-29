@@ -39,16 +39,18 @@ export async function sendFollowUpImpl(
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
-  const promptMode = options.promptMode ?? "task_context";
-  if (promptMode === "plain_chat") {
-    return startPlainChatFollowUp(ctx, task, {
+  // Terminal task follow-ups are user-authored turns that resume the task
+  // loop. Review feedback remains a separate workflow for accepted-local
+  // tasks, so the client never chooses prompt intent.
+  if (task.state.status === "completed" || task.state.status === "pushed") {
+    return startTaskLoopFollowUp(ctx, task, {
       message,
       model: options.model,
       attachments: options.attachments,
     });
   }
 
-  if (task.state.status === "pushed" || task.state.status === "accepted_local") {
+  if (task.state.status === "accepted_local") {
     return ctx.startFeedbackCycle(taskId, {
       prompt: message,
       model: options.model,
@@ -71,7 +73,7 @@ export async function sendFollowUpImpl(
   });
 }
 
-async function startPlainChatFollowUp(
+async function startTaskLoopFollowUp(
   ctx: TaskCtx,
   task: Task,
   options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
@@ -97,7 +99,7 @@ async function startPlainChatFollowUp(
   if (task.state.status !== "completed" && task.state.status !== "pushed") {
     return taskFailure(
       "invalid_task_state",
-      `Task cannot accept a plain chat follow-up from status: ${task.state.status}`,
+      `Task cannot accept an execution follow-up from status: ${task.state.status}`,
       { details: { taskId, status: task.state.status } },
     );
   }
@@ -136,15 +138,13 @@ async function startPlainChatFollowUp(
       await updateTaskState(taskId, state, options);
     },
     skipGitSetup: true,
+    executionPolicy: "task_loop",
   });
 
-  const previousSessionId = engine.state.session?.id;
+  const previousSessionId = task.state.session?.id;
   try {
     await engine.reconnectSession();
   } catch (error) {
-    if (ctx.engines.get(taskId) === engine) {
-      ctx.engines.delete(taskId);
-    }
     return taskFailure(
       "task_session_reconnect_failed",
       "Failed to reconnect task session",
@@ -152,22 +152,22 @@ async function startPlainChatFollowUp(
     );
   }
   if (previousSessionId && engine.state.session?.id && engine.state.session.id !== previousSessionId) {
-    log.warn("Previous task session expired; plain chat follow-up is starting with a fresh session", {
+    log.warn("Previous task session expired; task follow-up is starting with a fresh session", {
       taskId,
       previousSessionId,
       newSessionId: engine.state.session.id,
     });
   }
 
-  preparePlainChatState(engine, options);
+  prepareTaskLoopFollowUpState(engine, options);
   await updateTaskOperationalState(taskId, engine.state);
   ctx.engines.set(taskId, engine);
   startStatePersistenceImpl(ctx, taskId);
 
-  engine.runSingleTurn().catch(async (error) => {
-    log.error(`Plain chat follow-up failed for task ${taskId}: ${String(error)}`);
+  engine.continueExecution().catch(async (error) => {
+    log.error(`Task follow-up failed for task ${taskId}: ${String(error)}`);
     if (engine.state.status === "running" || engine.state.status === "starting") {
-      assertValidTransition(engine.state.status, "failed", "plainChatFollowUp");
+      assertValidTransition(engine.state.status, "failed", "taskLoopFollowUp");
       engine.state.status = "failed";
       engine.state.completedAt = createTimestamp();
       engine.state.error = {
@@ -182,25 +182,23 @@ async function startPlainChatFollowUp(
   return { success: true };
 }
 
-function preparePlainChatState(
+function prepareTaskLoopFollowUpState(
   engine: TaskEngine,
   options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
 ): void {
   const state = engine.state;
-  if (state.status === "failed" || state.status === "max_iterations") {
-    assertValidTransition(state.status, "stopped", "plainChatFollowUp");
-    state.status = "stopped";
+  if (state.status === "completed" || state.status === "pushed") {
+    assertValidTransition(state.status, "starting", "taskLoopFollowUp");
+    state.status = "starting";
   }
 
-  assertValidTransition(state.status, "starting", "plainChatFollowUp");
-  state.status = "starting";
-  assertValidTransition(state.status, "running", "plainChatFollowUp");
+  assertValidTransition(state.status, "running", "taskLoopFollowUp");
   state.status = "running";
   state.startedAt ??= createTimestamp();
   state.completedAt = undefined;
   state.error = undefined;
   state.syncState = undefined;
-  engine.setPendingPrompt(options.message, options.attachments, "plain_chat");
+  engine.setPendingPrompt(options.message, options.attachments, "direct_user");
   if (options.model) {
     engine.setPendingModel(options.model);
   }

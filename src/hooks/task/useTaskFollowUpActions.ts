@@ -16,7 +16,6 @@ import {
   type AutomaticPrFlowResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { FollowUpPromptMode } from "@/shared/task";
 import type { SshSession } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
@@ -32,7 +31,6 @@ export interface UseTaskFollowUpActionsResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
-    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
 }
@@ -90,7 +88,6 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
       message: string,
       model?: { providerID: string; modelID: string },
       attachments?: MessageImageAttachment[],
-      promptMode: FollowUpPromptMode = "task_context",
     ): Promise<boolean> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("sendFollowUp", actionTaskId, false);
@@ -102,7 +99,7 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
         messageLength: message.length,
       });
       try {
-        await sendFollowUpApi(actionTaskId, message, model, attachments, promptMode);
+        await sendFollowUpApi(actionTaskId, message, model, attachments);
         await refresh();
         if (!isActiveTask(actionTaskId)) {
           return false;
