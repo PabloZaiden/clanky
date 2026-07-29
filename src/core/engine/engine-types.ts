@@ -37,6 +37,12 @@ export const MAX_PERSISTED_MESSAGES = 2000;
 export const MAX_PERSISTED_TOOL_CALLS = 5000;
 
 /**
+ * Controls whether an engine processes one response or continues the task loop.
+ * Prompt construction is intentionally independent from this policy.
+ */
+export type TaskExecutionPolicy = "task_loop" | "single_turn";
+
+/**
  * Backend interface for TaskEngine.
  * This is a structural type that defines the methods TaskEngine needs.
  * Both AcpBackend and MockAcpBackend satisfy this interface.
@@ -79,6 +85,10 @@ export interface TaskEngineOptions {
   onCompleted?: () => Promise<void>;
   /** Skip git branch setup (for review cycles where branch is already set up) */
   skipGitSetup?: boolean;
+  /** Reuse the persisted ACP session when restarting an existing task. */
+  reuseExistingSession?: boolean;
+  /** Execution policy used when start() or continueExecution() runs the engine. */
+  executionPolicy?: TaskExecutionPolicy;
   /** Transient attachments for the first prompt sent by this engine */
   initialPromptAttachments?: MessageImageAttachment[];
 }

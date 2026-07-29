@@ -22,6 +22,46 @@ export interface PromptBuildContext {
   updateState: (update: Partial<TaskState>) => void;
   consumeInitialPromptAttachments: () => MessageImageAttachment[];
   consumePendingPromptAttachments: () => MessageImageAttachment[];
+  consumeSessionRecovery: () => boolean;
+}
+
+export interface SessionRecoveryContext {
+  originalGoal: string;
+  workingDirectory: string;
+  workingBranch?: string;
+}
+
+export function addSessionRecoveryBootstrap(
+  prompt: PromptInput,
+  context: SessionRecoveryContext,
+): PromptInput {
+  const recoveryText = `This task is continuing in a new AI session because the previous session was unavailable.
+
+- Original Goal: ${context.originalGoal}
+- Working Directory: ${context.workingDirectory}
+- Working Branch: ${context.workingBranch ?? "the current task branch"}
+- Read the documents in the \`./.clanky-planning\` folder before making changes.
+
+`;
+  const firstTextIndex = prompt.parts.findIndex((part) => part.type === "text");
+  if (firstTextIndex === -1) {
+    return {
+      ...prompt,
+      parts: [{ type: "text", text: recoveryText }, ...prompt.parts],
+    };
+  }
+
+  const firstTextPart = prompt.parts[firstTextIndex];
+  if (firstTextPart?.type !== "text") {
+    return prompt;
+  }
+
+  const parts = [...prompt.parts];
+  parts[firstTextIndex] = {
+    ...firstTextPart,
+    text: recoveryText + firstTextPart.text,
+  };
+  return { ...prompt, parts };
 }
 
 const BLOCKED_OUTCOME_INSTRUCTION = `- If you are blocked by an external dependency, missing prerequisite, or issue you cannot safely work around, explain the blocker and end your response with:
@@ -46,6 +86,7 @@ export function buildErrorContext(consecutiveErrors: TaskState["consecutiveError
 }
 
 export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): PromptInput {
+  const sessionWasRecreated = ctx.consumeSessionRecovery();
   let model = ctx.config.model;
   if (ctx.state.pendingModel) {
     model = ctx.state.pendingModel;
@@ -58,17 +99,21 @@ export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): Pr
   }
 
   if (ctx.state.status === "planning" && ctx.state.planMode?.active) {
-    return buildPlanModePrompt(ctx, model);
+    return buildPlanModePrompt(ctx, model, sessionWasRecreated);
   }
 
-  if (ctx.state.pendingPromptMode === "plain_chat") {
-    return buildPlainChatPrompt(ctx, model);
+  if (ctx.state.pendingPromptMode === "direct_user") {
+    return buildDirectUserPrompt(ctx, model, sessionWasRecreated);
   }
 
   return buildExecutionPrompt(ctx, model);
 }
 
-function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
+function buildPlanModePrompt(
+  ctx: PromptBuildContext,
+  model: ModelConfig | undefined,
+  sessionWasRecreated: boolean,
+): PromptInput {
   const feedbackRounds = ctx.state.planMode!.feedbackRounds;
 
   if (feedbackRounds === 0 && !ctx.state.pendingPrompt) {
@@ -99,10 +144,13 @@ ${errorContext}
 
 ${finalInstructions}`;
 
-    return {
+    const prompt: PromptInput = {
       parts: buildPromptParts(text, attachments),
       model,
     };
+    return sessionWasRecreated
+      ? addSessionRecoveryBootstrap(prompt, getSessionRecoveryContext(ctx))
+      : prompt;
   }
 
   const feedback = ctx.state.pendingPrompt ?? "Please refine the plan based on feedback.";
@@ -131,10 +179,13 @@ When the updated plan is ready, end your response with:
 
   ctx.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined });
 
-  return {
+  const prompt: PromptInput = {
     parts: buildPromptParts(text, attachments),
     model,
   };
+  return sessionWasRecreated
+    ? addSessionRecoveryBootstrap(prompt, getSessionRecoveryContext(ctx))
+    : prompt;
 }
 
 function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
@@ -202,15 +253,19 @@ ${BLOCKED_OUTCOME_INSTRUCTION}
   };
 }
 
-function buildPlainChatPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
+function buildDirectUserPrompt(
+  ctx: PromptBuildContext,
+  model: ModelConfig | undefined,
+  sessionWasRecreated: boolean,
+): PromptInput {
   const userMessage = ctx.state.pendingPrompt;
   if (!userMessage) {
-    throw new Error("Plain chat prompt requested without a pending message");
+    throw new Error("Direct user prompt requested without a pending message");
   }
 
   const attachments = consumePendingOrInitialAttachments(ctx);
-  ctx.emitUserMessage(userMessage, `plain-chat-${crypto.randomUUID()}`, attachments);
-  ctx.emitLog("info", "User sent a plain chat message", {
+  ctx.emitUserMessage(userMessage, `user-turn-${crypto.randomUUID()}`, attachments);
+  ctx.emitLog("info", "User sent a direct message", {
     userMessage: userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : ""),
   });
   ctx.updateState({
@@ -218,9 +273,20 @@ function buildPlainChatPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
     pendingPromptMode: undefined,
   });
 
-  return {
+  const prompt: PromptInput = {
     parts: buildPromptParts(userMessage, attachments),
     model,
+  };
+  return sessionWasRecreated
+    ? addSessionRecoveryBootstrap(prompt, getSessionRecoveryContext(ctx))
+    : prompt;
+}
+
+function getSessionRecoveryContext(ctx: PromptBuildContext): SessionRecoveryContext {
+  return {
+    originalGoal: ctx.config.prompt,
+    workingDirectory: ctx.workingDirectory,
+    workingBranch: ctx.state.git?.workingBranch,
   };
 }
 

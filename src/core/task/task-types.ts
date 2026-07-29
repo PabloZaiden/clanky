@@ -1,4 +1,4 @@
-import type { CheapModelSelection, FollowUpPromptMode, Task, ModelConfig } from "@/shared/task";
+import type { CheapModelSelection, TaskPromptMode, Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { SshSession } from "@/shared/ssh-session";
 import type { TaskResult } from "./task-errors";
@@ -89,7 +89,7 @@ export interface GenerateTaskTitleOptions {
 export interface AcceptPlanOptions {
   mode?: "start_task" | "open_ssh";
   executionPrompt?: string;
-  executionPromptMode?: FollowUpPromptMode;
+  executionPromptMode?: TaskPromptMode;
 }
 
 export type AcceptPlanResult =
@@ -116,7 +116,6 @@ export interface SendFollowUpOptions {
   message: string;
   model?: ModelConfig;
   attachments?: MessageImageAttachment[];
-  promptMode?: FollowUpPromptMode;
 }
 
 /**

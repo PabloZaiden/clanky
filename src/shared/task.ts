@@ -158,7 +158,7 @@ export interface TaskState {
 
   /** Pending prompt that overrides config.prompt for the next iteration only */
   pendingPrompt?: string;
-  pendingPromptMode?: FollowUpPromptMode;
+  pendingPromptMode?: TaskPromptIntent;
 
   /** Model override for the next prompt (one-time, cleared after use) */
   pendingModel?: ModelConfig;
@@ -277,7 +277,23 @@ export interface ConsecutiveErrorTracker {
  * Lifecycle: draft -> idle -> starting -> running <-> waiting -> completed/stopped/failed
  * Final states: accepted_local, merged, pushed, deleted (can be purged)
  */
-export type FollowUpPromptMode = "task_context" | "plain_chat";
+/**
+ * Intent of a pending prompt created by the server.
+ *
+ * The execution policy (task loop versus single turn) is independent from
+ * this intent.
+ */
+export type TaskPromptIntent = "engine_context" | "direct_user";
+
+/**
+ * Legacy prompt-mode values accepted at internal compatibility boundaries.
+ * Persisted state is normalized to TaskPromptIntent.
+ */
+export type TaskPromptMode = TaskPromptIntent | "task_context" | "plain_chat";
+
+export function normalizeTaskPromptIntent(mode: TaskPromptMode | undefined): TaskPromptIntent {
+  return mode === "direct_user" || mode === "plain_chat" ? "direct_user" : "engine_context";
+}
 
 export type TaskStatus =
   | "idle"                // Created but not started (transitional)

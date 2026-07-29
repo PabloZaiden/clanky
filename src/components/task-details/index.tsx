@@ -217,7 +217,6 @@ export function TaskDetails({
                   options.message,
                   options.model,
                   options.attachments,
-                  state.status === "completed" || state.status === "pushed" ? "plain_chat" : "task_context",
                 );
               }
               return false;

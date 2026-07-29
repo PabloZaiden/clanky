@@ -24,6 +24,12 @@ export interface SessionOperationContext {
   setSessionId: (id: string | null) => void;
 }
 
+export interface SessionReconnectResult {
+  sessionId: string;
+  reusedExisting: boolean;
+  createdNew: boolean;
+}
+
 export async function setupTaskSession(ctx: SessionOperationContext): Promise<string> {
   log.debug("[TaskEngine] setupSession: Entry point");
 
@@ -103,7 +109,7 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
   return session.id;
 }
 
-export async function reconnectTaskSession(ctx: SessionOperationContext): Promise<void> {
+export async function reconnectTaskSession(ctx: SessionOperationContext): Promise<SessionReconnectResult> {
   log.debug("[TaskEngine] reconnectSession: Entry point");
 
   const activeSessionId = ctx.getSessionId();
@@ -119,6 +125,7 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
       }
     : undefined;
   if (existingSession?.id) {
+    ctx.setSessionId(existingSession.id);
     log.debug("[TaskEngine] reconnectSession: Found existing session in state", {
       sessionId: existingSession.id,
       serverUrl: existingSession.serverUrl,
@@ -158,7 +165,11 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
           });
           await recreateSessionAfterLoss(ctx, `Session ${existingSession.id} not found during reconnect`);
           log.debug("[TaskEngine] reconnectSession: Recreated missing session");
-          return;
+          return {
+            sessionId: ctx.getSessionId()!,
+            reusedExisting: false,
+            createdNew: true,
+          };
         }
       } catch (error) {
         if (isAcpErrorCode(error, "acp_session_not_found")) {
@@ -169,7 +180,11 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
           });
           await recreateSessionAfterLoss(ctx, message);
           log.debug("[TaskEngine] reconnectSession: Recreated missing session after lookup error");
-          return;
+          return {
+            sessionId: ctx.getSessionId()!,
+            reusedExisting: false,
+            createdNew: true,
+          };
         }
 
         const message = getAcpErrorMessage(error);
@@ -183,13 +198,22 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
     ctx.setSessionId(existingSession.id);
     ctx.emitLog("info", "Reconnected to existing session", { sessionId: ctx.getSessionId() });
     log.debug("[TaskEngine] reconnectSession: Reconnected to session", { sessionId: ctx.getSessionId() });
-    return;
+    return {
+      sessionId: existingSession.id,
+      reusedExisting: true,
+      createdNew: false,
+    };
   }
 
   log.debug("[TaskEngine] reconnectSession: No existing session, creating new one");
   ctx.emitLog("info", "No existing session found, creating new session");
-  await setupTaskSession(ctx);
+  const sessionId = await setupTaskSession(ctx);
   log.debug("[TaskEngine] reconnectSession: Exit point (new session created)");
+  return {
+    sessionId,
+    reusedExisting: false,
+    createdNew: true,
+  };
 }
 
 export async function recreateSessionAfterLoss(ctx: SessionOperationContext, reason: string): Promise<string> {

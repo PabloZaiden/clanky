@@ -14,7 +14,8 @@
  */
 
 import type {
-  FollowUpPromptMode,
+  TaskPromptMode,
+  TaskPromptIntent,
   TaskConfig,
   TaskState,
   Task,
@@ -22,7 +23,7 @@ import type {
   TaskLogEntry,
   ModelConfig,
 } from "@/shared/task";
-import { DEFAULT_TASK_CONFIG } from "@/shared/task";
+import { DEFAULT_TASK_CONFIG, normalizeTaskPromptIntent } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -44,6 +45,7 @@ import {
   type TaskEngineOptions,
   type IterationResult,
   type IterationContext,
+  type TaskExecutionPolicy,
   MAX_PERSISTED_LOGS,
   MAX_PERSISTED_MESSAGES,
   MAX_PERSISTED_TOOL_CALLS,
@@ -60,7 +62,12 @@ import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-
 import { upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector } from "./engine-helpers";
 import { logToConsole } from "./engine-events";
-import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
+import {
+  addSessionRecoveryBootstrap,
+  buildTaskPrompt,
+  evaluateTaskOutcome,
+  type PromptBuildContext,
+} from "./engine-prompt";
 import {
   clearTaskPlanningFolder,
   setupTaskGitBranch,
@@ -97,6 +104,12 @@ export class TaskEngine {
   private onCompleted?: () => Promise<void>;
   /** Guard to prevent concurrent runTask() executions */
   private isTaskRunning = false;
+  /** Try to recover the persisted ACP session before creating a new one. */
+  private reuseExistingSession: boolean;
+  /** Whether the next prompt needs a one-time session recovery bootstrap. */
+  private sessionRecoveryPending = false;
+  private lastPromptMode: TaskPromptIntent = "engine_context";
+  private readonly executionPolicy: TaskExecutionPolicy;
   /** Skip git branch setup (for review cycles) */
   private skipGitSetup: boolean;
   /**
@@ -131,6 +144,8 @@ export class TaskEngine {
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
     this.skipGitSetup = options.skipGitSetup ?? false;
+    this.reuseExistingSession = options.reuseExistingSession ?? false;
+    this.executionPolicy = options.executionPolicy ?? "task_loop";
     this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
   }
 
@@ -179,9 +194,12 @@ export class TaskEngine {
   setPendingPrompt(
     prompt: string,
     attachments: MessageImageAttachment[] = [],
-    promptMode: FollowUpPromptMode = "task_context",
+    promptMode: TaskPromptMode = "engine_context",
   ): void {
-    this.updateState({ pendingPrompt: prompt, pendingPromptMode: promptMode });
+    this.updateState({
+      pendingPrompt: prompt,
+      pendingPromptMode: normalizeTaskPromptIntent(promptMode),
+    });
     this.pendingPromptAttachments = [...attachments];
   }
 
@@ -255,7 +273,7 @@ export class TaskEngine {
   }): Promise<void> {
     // Set the pending values first
     if (options.message !== undefined) {
-      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "task_context" });
+      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "direct_user" });
       this.pendingPromptAttachments = [...(options.attachments ?? [])];
     } else if (options.attachments) {
       this.pendingPromptAttachments = [...options.attachments];
@@ -281,6 +299,7 @@ export class TaskEngine {
 
     // Mark that we're doing an injection abort (not a user stop)
     this.injectionPending = true;
+    this.aborted = true;
 
     // Abort the current session to interrupt AI processing
     if (this.sessionId) {
@@ -433,10 +452,14 @@ export class TaskEngine {
         await this.clearPlanningFolder();
       }
 
-      // Create backend session
+      // Create or recover the backend session
       this.emitLog("info", "Connecting to AI backend...");
       log.debug("[TaskEngine] Starting setupSession...");
-      await this.setupSession();
+      if (this.reuseExistingSession) {
+        await this.reconnectSession();
+      } else {
+        await this.setupSession();
+      }
       log.debug("[TaskEngine] setupSession completed successfully");
 
       // Emit started event (skip in plan mode - will emit when plan is accepted)
@@ -457,7 +480,7 @@ export class TaskEngine {
 
       // Start the iteration task
       log.debug("[TaskEngine] About to call runTask");
-      await this.runTask();
+      await this.runWithExecutionPolicy();
       log.debug("[TaskEngine] runTask completed");
     } catch (error) {
       this.emitLog("error", `Failed to start task: ${String(error)}`);
@@ -651,7 +674,7 @@ export class TaskEngine {
     this.resetRestartFlags();
 
     // Run the task
-    await this.runTask();
+    await this.runWithExecutionPolicy();
   }
 
   /**
@@ -722,6 +745,17 @@ export class TaskEngine {
     }
   }
 
+  private async runWithExecutionPolicy(): Promise<void> {
+    if (this.executionPolicy === "single_turn") {
+      if (this.task.state.status === "starting") {
+        this.updateState({ status: "running" });
+      }
+      await this.runSingleTurn();
+      return;
+    }
+    await this.runTask();
+  }
+
   // ---------------------------------------------------------------------------
   // Thin delegators for extracted private methods
   // ---------------------------------------------------------------------------
@@ -755,7 +789,8 @@ export class TaskEngine {
    * while a task is still in planning mode.
    */
   async reconnectSession(): Promise<void> {
-    await reconnectTaskSession(this.makeSessionContext());
+    const result = await reconnectTaskSession(this.makeSessionContext());
+    this.sessionRecoveryPending = result.createdNew;
   }
 
   /**
@@ -763,6 +798,7 @@ export class TaskEngine {
    */
   private async recreateSessionAfterSessionLoss(reason: string): Promise<void> {
     await recreateSessionAfterLoss(this.makeSessionContext(), reason);
+    this.sessionRecoveryPending = true;
   }
 
   /**
@@ -807,6 +843,7 @@ export class TaskEngine {
    * Build the prompt for an iteration.
    */
   private buildPrompt(_iteration: number): PromptInput {
+    this.lastPromptMode = this.task.state.pendingPromptMode ?? "engine_context";
     return buildTaskPrompt(this.makePromptContext(), _iteration);
   }
 
@@ -1006,6 +1043,11 @@ export class TaskEngine {
       updateState: this.updateState.bind(this),
       consumeInitialPromptAttachments: this.consumeInitialPromptAttachments.bind(this),
       consumePendingPromptAttachments: this.consumePendingPromptAttachments.bind(this),
+      consumeSessionRecovery: () => {
+        const pending = this.sessionRecoveryPending;
+        this.sessionRecoveryPending = false;
+        return pending;
+      },
     };
   }
 
@@ -1595,7 +1637,7 @@ export class TaskEngine {
     // Build the prompt
     log.debug("[TaskEngine] runIteration: Building prompt");
     this.emitLog("debug", "Building prompt for AI agent");
-    const prompt = this.buildPrompt(ctx.iteration);
+    let prompt = this.buildPrompt(ctx.iteration);
 
     // Log the prompt for debugging
     log.debug("[TaskEngine] runIteration: Prompt details", {
@@ -1710,6 +1752,14 @@ export class TaskEngine {
             error: message,
           });
           await this.recreateSessionAfterSessionLoss(message);
+          if (this.lastPromptMode === "direct_user") {
+            prompt = addSessionRecoveryBootstrap(prompt, {
+              originalGoal: this.config.prompt,
+              workingDirectory: this.workingDirectory,
+              workingBranch: this.state.git?.workingBranch,
+            });
+          }
+          this.sessionRecoveryPending = false;
           this.resetIterationContextForRetry(ctx);
           continue;
         }

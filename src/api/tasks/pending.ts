@@ -4,7 +4,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  *
  * - PUT/DELETE /api/tasks/:id/pending-prompt - Modify the next iteration's prompt
  * - POST/DELETE /api/tasks/:id/pending      - Apply or clear the next message/model override
- * - POST /api/tasks/:id/follow-up           - Start a new feedback cycle from a terminal state
+ * - POST /api/tasks/:id/follow-up           - Resume task execution from a terminal state
  */
 
 import { taskManager } from "../../core/task-manager";
@@ -170,7 +170,7 @@ export const tasksPendingRoutes = defineRoutes({
     description: "Send a follow-up message to a task.",
     requestSchema: FollowUpRequestSchema,
     /**
-     * POST /api/tasks/:id/follow-up - Start a new feedback cycle from a restartable terminal state.
+     * POST /api/tasks/:id/follow-up - Resume task execution from a restartable terminal state.
      */
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(FollowUpRequestSchema, req);
@@ -190,7 +190,6 @@ export const tasksPendingRoutes = defineRoutes({
         message: body.message.trim(),
         model: body.model ?? undefined,
         attachments: body.attachments,
-        promptMode: body.promptMode ?? "task_context",
       });
       if (!result.success) {
         return taskErrorResponse(result.error, {

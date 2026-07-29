@@ -10,7 +10,7 @@ import { sshSessionManager } from "../ssh-session-manager";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
-import type { TaskState } from "@/shared/task";
+import type { TaskPromptMode, TaskState } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { TaskOperationError } from "./task-errors";
 
@@ -167,7 +167,7 @@ async function beginAcceptedPlanExecution(
   ctx: TaskCtx,
   taskId: string,
   executionPrompt: string,
-  executionPromptMode?: "task_context" | "plain_chat",
+  executionPromptMode?: TaskPromptMode,
 ): Promise<void> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {

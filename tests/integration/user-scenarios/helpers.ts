@@ -69,10 +69,14 @@ export class ConfigurableMockBackend implements TaskBackend {
   private responseIndex = 0;
   private responses: string[];
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly sentPrompts: Array<{ sessionId: string; prompt: PromptInput }> = [];
   
   // Promise-based synchronization for prompt/subscription coordination
   private promptResolver: (() => void) | null = null;
   private promptPromise: Promise<void> | null = null;
+  private holdNextPromptResponse = false;
+  private heldPromptResolver: (() => void) | null = null;
+  private heldPromptReleaseRequested = false;
   
   constructor(responses: string[] = ["<promise>COMPLETE</promise>"]) {
     this.responses = responses;
@@ -85,6 +89,10 @@ export class ConfigurableMockBackend implements TaskBackend {
     this.responseIndex = 0;
     this.promptResolver = null;
     this.promptPromise = null;
+    this.sentPrompts.length = 0;
+    this.holdNextPromptResponse = false;
+    this.heldPromptResolver = null;
+    this.heldPromptReleaseRequested = false;
     if (responses) {
       this.responses = responses;
     }
@@ -141,7 +149,8 @@ export class ConfigurableMockBackend implements TaskBackend {
     return session;
   }
 
-  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+  async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
+    this.sentPrompts.push({ sessionId, prompt });
     const response = this.getNextResponse();
     this.checkForError(response);
     return {
@@ -151,7 +160,8 @@ export class ConfigurableMockBackend implements TaskBackend {
     };
   }
 
-  async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    this.sentPrompts.push({ sessionId, prompt });
     // Resolve any waiting subscription
     if (this.promptResolver) {
       this.promptResolver();
@@ -194,6 +204,18 @@ export class ConfigurableMockBackend implements TaskBackend {
         }
       }
 
+      if (this.holdNextPromptResponse) {
+        this.holdNextPromptResponse = false;
+        await new Promise<void>((resolve) => {
+          if (this.heldPromptReleaseRequested) {
+            this.heldPromptReleaseRequested = false;
+            resolve();
+          } else {
+            this.heldPromptResolver = resolve;
+          }
+        });
+      }
+
       // Get the next response
       const response = this.responses[this.responseIndex % this.responses.length] ?? "<promise>COMPLETE</promise>";
       this.responseIndex++;
@@ -228,6 +250,23 @@ export class ConfigurableMockBackend implements TaskBackend {
   }
 
   async setSessionModel(_sessionId: string, _modelId: string) {}
+
+  getSentPrompts(): Array<{ sessionId: string; prompt: PromptInput }> {
+    return [...this.sentPrompts];
+  }
+
+  holdNextPrompt(): void {
+    this.holdNextPromptResponse = true;
+  }
+
+  releaseHeldPrompt(): void {
+    if (this.heldPromptResolver) {
+      this.heldPromptResolver();
+      this.heldPromptResolver = null;
+      return;
+    }
+    this.heldPromptReleaseRequested = true;
+  }
 
   // OpenCode-specific methods
   getSdkClient(): null {

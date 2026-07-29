@@ -36,7 +36,7 @@ export async function setPendingPromptImpl(
     );
   }
 
-  engine.setPendingPrompt(prompt, attachments);
+  engine.setPendingPrompt(prompt, attachments, "direct_user");
   await engine.flushPersistence();
 
   return { success: true };
@@ -219,7 +219,7 @@ export async function setPendingImpl(
   }
 
   if (options.message !== undefined) {
-    engine.setPendingPrompt(options.message, options.attachments);
+    engine.setPendingPrompt(options.message, options.attachments, "direct_user");
   }
   if (options.model !== undefined) {
     engine.setPendingModel(options.model);

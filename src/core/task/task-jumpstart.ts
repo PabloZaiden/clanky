@@ -47,6 +47,9 @@ export async function jumpstartTaskFromEngine(
 
   if (options.message !== undefined) {
     task.state.pendingPrompt = options.message;
+    task.state.pendingPromptMode = "direct_user";
+  } else if (task.state.pendingPrompt === undefined) {
+    task.state.pendingPromptMode = undefined;
   }
   if (options.model !== undefined) {
     task.state.pendingModel = options.model;
@@ -201,6 +204,7 @@ async function jumpstartOnExistingBranch(
         await updateTaskState(taskId, state, options);
       },
       skipGitSetup: true,
+      reuseExistingSession: true,
       initialPromptAttachments: attachments,
     });
     ctx.engines.set(taskId, engine);
