@@ -271,22 +271,6 @@
   opacity: 0.5;
 }
 
-.clanky-composer-button-primary {
-  background: var(--wapp-primary);
-  color: var(--wapp-shell-bg);
-}
-
-.clanky-composer-button-primary:hover:not(:disabled) {
-  background: var(--wapp-text);
-  color: var(--wapp-shell-bg);
-}
-
-.clanky-composer-button-primary:disabled {
-  cursor: not-allowed;
-  background: var(--wapp-surface-muted);
-  color: var(--wapp-muted-2);
-}
-
 .clanky-composer-button-danger {
   background: var(--wapp-danger-bg);
   color: var(--wapp-text);
@@ -316,6 +300,19 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--wapp-muted), transparent 70%);
 }
 
+.clanky-composer-select:focus:not(:focus-visible) {
+  border-color: var(--wapp-border);
+  outline: none;
+  box-shadow: var(--wapp-shadow);
+}
+
+.clanky-composer-select:focus-visible {
+  border-color: var(--wapp-muted);
+  outline: 2px solid color-mix(in srgb, var(--wapp-muted), transparent 35%);
+  outline-offset: 2px;
+  box-shadow: var(--wapp-shadow);
+}
+
 .clanky-composer-field:disabled {
   cursor: not-allowed;
   opacity: 0.6;
@@ -330,11 +327,6 @@
 
 .clanky-composer-label {
   color: var(--wapp-muted);
-}
-
-.clanky-composer-pending-indicator {
-  background: var(--wapp-muted);
-  box-shadow: 0 0 0 1px var(--wapp-surface);
 }
 
 .clanky-log-filter {

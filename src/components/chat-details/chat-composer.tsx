@@ -53,7 +53,6 @@ export function ChatComposer(props: ChatComposerProps) {
     hasQueueableInput,
     secondaryActionsDisabled,
     attachmentLimitReached,
-    hasPendingComposerActions,
     sendButtonClassName,
     interruptButtonClassName,
     handleSubmit,
@@ -103,7 +102,6 @@ export function ChatComposer(props: ChatComposerProps) {
             <ComposerActionsMenu
               ariaLabel="Message actions"
               disabled={secondaryActionsDisabled}
-              hasPendingActions={hasPendingComposerActions}
             >
               <ComposerActionsMenuSection label="Template">
                 <ChatTemplateSelector
@@ -128,7 +126,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
                     loadingText="Loading..."
                     emptyText="No models available"
-                    className="clanky-composer-field block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    className="clanky-composer-field clanky-composer-select block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </ComposerActionsMenuSection>
               )}
@@ -197,7 +195,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   {isSubmitting ? (
                     <span className="animate-spin text-sm">⏳</span>
                   ) : (
-                    <span className="text-lg leading-none">↑</span>
+                    <span className="text-lg leading-none" aria-hidden="true">↑</span>
                   )}
                 </FocusPreservingButton>
               </div>

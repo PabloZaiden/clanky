@@ -4,14 +4,12 @@ import { FloatingPanel, OverflowIcon } from "@pablozaiden/webapp/web";
 interface ComposerActionsMenuProps {
   ariaLabel: string;
   disabled?: boolean;
-  hasPendingActions?: boolean;
   children: ReactNode;
 }
 
 export function ComposerActionsMenu({
   ariaLabel,
   disabled = false,
-  hasPendingActions = false,
   children,
 }: ComposerActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -43,12 +41,6 @@ export function ComposerActionsMenu({
         data-testid="composer-actions-trigger"
       >
         <OverflowIcon />
-        {hasPendingActions && (
-          <span
-            className="clanky-composer-pending-indicator absolute right-1 top-1 h-2 w-2 rounded-full"
-            aria-hidden="true"
-          />
-        )}
       </button>
       <FloatingPanel
         open={isOpen}

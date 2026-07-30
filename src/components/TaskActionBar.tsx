@@ -99,7 +99,6 @@ export function TaskActionBar({
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
   const secondaryActionsDisabled = disabled || isSubmitting;
   const attachmentLimitReached = attachments.length >= MESSAGE_ATTACHMENT_LIMIT;
-  const hasPendingComposerActions = attachments.length > 0 || (!isPlanning && selectedModel !== "");
   const {
     composerRef,
     composerRows,
@@ -192,7 +191,6 @@ export function TaskActionBar({
             <ComposerActionsMenu
               ariaLabel={isPlanning ? "Plan feedback actions" : "Task message actions"}
               disabled={secondaryActionsDisabled}
-              hasPendingActions={hasPendingComposerActions}
             >
               {/* Model selector - hidden during planning since model changes are not supported */}
               {!isPlanning && (
@@ -210,7 +208,7 @@ export function TaskActionBar({
                     loadingText="Loading..."
                     emptyText="Select model..."
                     ariaLabel="Model"
-                    className="clanky-composer-field block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    className="clanky-composer-field clanky-composer-select block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </ComposerActionsMenuSection>
               )}
@@ -258,14 +256,14 @@ export function TaskActionBar({
               <FocusPreservingButton
                 type="submit"
                 disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-                className="clanky-composer-button-primary flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md"
+                className="wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0"
                 aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
                 title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
               >
                 {isSubmitting ? (
                   <span className="animate-spin text-sm">⏳</span>
                 ) : (
-                  <span className="text-lg leading-none">↑</span>
+                  <span className="text-lg leading-none" aria-hidden="true">↑</span>
                 )}
               </FocusPreservingButton>
             )}
