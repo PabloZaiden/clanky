@@ -300,9 +300,16 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--wapp-muted), transparent 70%);
 }
 
-.clanky-composer-select:focus {
+.clanky-composer-select:focus:not(:focus-visible) {
   border-color: var(--wapp-border);
   outline: none;
+  box-shadow: var(--wapp-shadow);
+}
+
+.clanky-composer-select:focus-visible {
+  border-color: var(--wapp-muted);
+  outline: 2px solid color-mix(in srgb, var(--wapp-muted), transparent 35%);
+  outline-offset: 2px;
   box-shadow: var(--wapp-shadow);
 }
 
