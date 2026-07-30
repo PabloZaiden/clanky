@@ -241,6 +241,11 @@
   color: var(--wapp-text);
 }
 
+.clanky-chat-composer-surface {
+  background: transparent;
+  color: var(--wapp-text);
+}
+
 .clanky-composer-button {
   border: 1px solid var(--wapp-border-soft);
   background: var(--wapp-surface);
