@@ -74,7 +74,7 @@ export function ChatComposer(props: ChatComposerProps) {
       onSubmit={(event) => {
         void handleSubmit(event);
       }}
-      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-composer-surface`}
+      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-chat-composer-surface`}
     >
       <div className="p-3" data-testid="chat-composer-padding">
         <label htmlFor={modelSelectId} className="sr-only">Model</label>
