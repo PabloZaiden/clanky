@@ -33,7 +33,7 @@ export function ChatTemplateSelector({
           }
         }}
         disabled={disabled}
-        className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
+        className="clanky-composer-field clanky-composer-select block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
       >
         <option value="">No template (custom message)</option>
         {PROMPT_TEMPLATES.map((promptTemplate) => (
