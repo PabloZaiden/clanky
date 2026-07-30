@@ -33,7 +33,6 @@ export {
   EditIcon,
   GearIcon,
   GridIcon,
-  HamburgerIcon,
   ListIcon,
   RefreshIcon,
   SidebarIcon,

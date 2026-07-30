@@ -122,7 +122,7 @@ export function ChatDetails({
   }
 
   return (
-    <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
+    <div className="flex h-full min-h-0 flex-col">
       <ChatTranscript
         chat={chat}
         transcript={transcript}

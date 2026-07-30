@@ -184,7 +184,7 @@ export function TaskActionBar({
   }, []);
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-800 flex-shrink-0 safe-area-bottom">
+    <div className="clanky-composer-surface flex-shrink-0 safe-area-bottom">
       {/* Action bar form */}
       <form ref={composerFormRef} onSubmit={handleSubmit} className="p-3 sm:p-4">
         <div className="space-y-2" data-testid="task-composer-layout">
@@ -210,7 +210,7 @@ export function TaskActionBar({
                     loadingText="Loading..."
                     emptyText="Select model..."
                     ariaLabel="Model"
-                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+                    className="clanky-composer-field block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </ComposerActionsMenuSection>
               )}
@@ -235,7 +235,7 @@ export function TaskActionBar({
               disabled={disabled || isSubmitting}
               rows={composerRows}
               aria-label={isPlanning ? "Plan feedback" : "Task message"}
-              className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 w-full resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
+              className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 w-full resize-y text-sm px-3 rounded-md disabled:opacity-50`}
             />
 
             {/* Primary action button */}
@@ -244,7 +244,7 @@ export function TaskActionBar({
                 type="button"
                 onClick={handleStop}
                 disabled={disabled || isSubmitting}
-                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                className="clanky-composer-button-danger flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md"
                 aria-label="Stop"
                 title="Stop"
               >
@@ -258,7 +258,7 @@ export function TaskActionBar({
               <FocusPreservingButton
                 type="submit"
                 disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                className="clanky-composer-button-primary flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md"
                 aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
                 title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
               >

@@ -12,8 +12,6 @@
 
 @layer base {
   :root {
-    @apply bg-gray-100 text-gray-900 font-sans;
-
     --safe-area-inset-top: var(--wapp-safe-area-top);
     --safe-area-inset-bottom: var(--wapp-safe-area-bottom);
     --safe-area-inset-left: var(--wapp-safe-area-left);
@@ -30,15 +28,7 @@
   }
 
   body {
-    @apply h-full m-0 overflow-hidden bg-gray-100 text-gray-900;
-  }
-
-  html.dark {
-    @apply bg-[#242424] text-[rgba(255,255,255,0.87)];
-  }
-
-  html.dark body {
-    @apply bg-neutral-950 text-gray-100;
+    @apply h-full m-0 overflow-hidden;
   }
 
   #root {
@@ -244,4 +234,108 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+}
+
+.clanky-composer-surface {
+  background: var(--wapp-surface);
+  color: var(--wapp-text);
+}
+
+.clanky-composer-button {
+  border: 1px solid var(--wapp-border-soft);
+  background: var(--wapp-surface);
+  color: var(--wapp-muted);
+  box-shadow: var(--wapp-shadow);
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.clanky-composer-button:hover:not(:disabled) {
+  border-color: var(--wapp-border);
+  background: var(--wapp-surface-muted);
+  color: var(--wapp-text);
+}
+
+.clanky-composer-button:focus-visible {
+  border-color: var(--wapp-muted);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wapp-muted), transparent 70%);
+}
+
+.clanky-composer-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.clanky-composer-button-primary {
+  background: var(--wapp-primary);
+  color: var(--wapp-shell-bg);
+}
+
+.clanky-composer-button-primary:hover:not(:disabled) {
+  background: var(--wapp-text);
+  color: var(--wapp-shell-bg);
+}
+
+.clanky-composer-button-primary:disabled {
+  cursor: not-allowed;
+  background: var(--wapp-surface-muted);
+  color: var(--wapp-muted-2);
+}
+
+.clanky-composer-button-danger {
+  background: var(--wapp-danger-bg);
+  color: var(--wapp-text);
+}
+
+.clanky-composer-button-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--wapp-danger-bg), var(--wapp-text) 15%);
+  color: var(--wapp-text);
+}
+
+.clanky-composer-button-danger:disabled {
+  cursor: not-allowed;
+  background: var(--wapp-surface-muted);
+  color: var(--wapp-muted-2);
+}
+
+.clanky-composer-field {
+  border: 1px solid var(--wapp-border);
+  background: var(--wapp-surface-raised);
+  color: var(--wapp-text);
+  box-shadow: var(--wapp-shadow);
+}
+
+.clanky-composer-field:focus {
+  border-color: var(--wapp-muted);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wapp-muted), transparent 70%);
+}
+
+.clanky-composer-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.clanky-composer-panel {
+  border-color: var(--wapp-border-soft);
+  background: var(--wapp-surface);
+  color: var(--wapp-text);
+  box-shadow: var(--wapp-shadow);
+}
+
+.clanky-composer-label {
+  color: var(--wapp-muted);
+}
+
+.clanky-composer-pending-indicator {
+  background: var(--wapp-muted);
+  box-shadow: 0 0 0 1px var(--wapp-surface);
+}
+
+.clanky-log-filter {
+  color: var(--wapp-muted);
+}
+
+.clanky-log-filter-input {
+  accent-color: var(--wapp-muted);
 }

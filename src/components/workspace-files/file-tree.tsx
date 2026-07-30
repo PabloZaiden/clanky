@@ -52,14 +52,14 @@ function FileTreeHeaderButton({
     <Button
       type="button"
       variant="ghost"
-      size="xs"
+      size="sm"
       onClick={onClick}
       disabled={disabled}
       icon={icon}
       aria-label={label}
       aria-expanded={ariaExpanded}
       title={label}
-      className="w-8 px-0"
+      className="w-9 px-0"
     >
       <span className="sr-only">{label}</span>
     </Button>

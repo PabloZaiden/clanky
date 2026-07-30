@@ -272,7 +272,7 @@ export function FileExplorerView({
   const modeChanged = loadFullTreeInput !== fullTreePreference.enabled;
   const pickerHasChanges = rootChanged || modeChanged;
   const tabButtonClassName = (pane: ExplorerPane, compact = false) => [
-    "inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition",
+    "inline-flex h-9 min-h-[36px] min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3 py-1.5 text-sm font-medium transition whitespace-nowrap",
     compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
     activePane === pane
       ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
@@ -647,7 +647,7 @@ export function FileExplorerView({
             <div
               data-testid={`${testIdPrefix}-pane-switcher`}
               className={[
-                "shrink-0",
+                "min-w-0 shrink-0",
                 explorerCollapsed
                   ? "grid grid-cols-2 gap-2 lg:flex lg:flex-col lg:items-center"
                   : "grid grid-cols-2 gap-2",
