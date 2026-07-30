@@ -1324,7 +1324,7 @@ function AgentRunDetail({
 
   const isActive = run.status === "scheduled" || run.status === "starting" || run.status === "running";
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
+    <div className="flex h-full min-h-0 flex-col">
       {run.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {run.error.message}

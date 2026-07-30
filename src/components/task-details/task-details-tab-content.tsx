@@ -102,7 +102,7 @@ export function TaskDetailsTabContent({
   }), [config.workspaceId, getTaskFileRoute, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
-    <TabPanels className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800">
+    <TabPanels className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-transparent">
       <TabPanel
         id="task-details-tab-panel-log"
         active={activeTab === "log"}

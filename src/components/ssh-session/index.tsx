@@ -242,7 +242,7 @@ export function SshSessionDetails({
           ? "fixed inset-0 z-50 flex min-h-0 flex-col bg-[#1e1e1e]"
           : isFocusMode
             ? "flex min-h-0 flex-1 flex-col bg-[#1e1e1e]"
-          : "flex min-h-0 flex-1 flex-col bg-gray-50 dark:bg-neutral-900"
+            : "flex min-h-0 flex-1 flex-col"
       }
       style={focusModeContainerStyle}
     >

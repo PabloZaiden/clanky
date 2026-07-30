@@ -112,7 +112,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     markdownEnabled,
   ]);
 
-  const resolvedSurfaceClassName = surfaceClassName ?? "bg-gray-50 dark:bg-[#171717]";
+  const resolvedSurfaceClassName = surfaceClassName ?? "bg-transparent";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
   return (

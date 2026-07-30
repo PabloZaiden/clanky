@@ -96,7 +96,7 @@ export function TaskDetails({
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-neutral-900 p-8">
+      <div className="min-h-screen p-8">
         <div className="w-full">
           {showBackButton && onBack && <Button variant="ghost" onClick={onBack}>← Back</Button>}
           <div className="mt-8 text-center">
@@ -124,7 +124,7 @@ export function TaskDetails({
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>
@@ -158,7 +158,7 @@ export function TaskDetails({
             value={activeTab}
             onChange={(tabId) => handleTabChange(tabId as TabId)}
             ariaLabel="Task details"
-            className="flex-shrink-0 overflow-x-auto bg-white px-3 dark:bg-neutral-800 sm:px-4"
+            className="flex-shrink-0 overflow-x-auto bg-transparent px-3 sm:px-4"
             tabs={visibleTabs.map((tab) => {
               const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
               const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";

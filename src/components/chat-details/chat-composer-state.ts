@@ -239,8 +239,8 @@ export function useChatComposer({
   const hasQueueableInput = message.trim().length > 0 || attachments.length > 0;
   const hasPendingInput = hasQueueableInput || (!isEmbedded && selectedModel.length > 0);
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
-  const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
-  const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
+  const sendButtonClassName = `${actionButtonBaseClassName} clanky-composer-button-primary`;
+  const interruptButtonClassName = `${actionButtonBaseClassName} clanky-composer-button-danger`;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
   const secondaryActionsDisabled = isSubmitting || needsSshCredentials;

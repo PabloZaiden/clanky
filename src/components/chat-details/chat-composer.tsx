@@ -74,7 +74,7 @@ export function ChatComposer(props: ChatComposerProps) {
       onSubmit={(event) => {
         void handleSubmit(event);
       }}
-      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900`}
+      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-composer-surface`}
     >
       <div className="p-3" data-testid="chat-composer-padding">
         <label htmlFor={modelSelectId} className="sr-only">Model</label>
@@ -128,7 +128,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
                     loadingText="Loading..."
                     emptyText="No models available"
-                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
+                    className="clanky-composer-field block w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </ComposerActionsMenuSection>
               )}
@@ -154,7 +154,7 @@ export function ChatComposer(props: ChatComposerProps) {
               onPaste={handlePaste}
               disabled={isSubmitting || needsSshCredentials}
               rows={composerRows}
-              className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
+              className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
             />
             {isActive && !hasQueueableInput ? (
               <button
@@ -174,7 +174,7 @@ export function ChatComposer(props: ChatComposerProps) {
             ) : (
               <div ref={dictationPopoverRef} className="relative flex-shrink-0">
                 {showDictationPopover && (
-                  <div className="absolute bottom-full right-0 z-20 mb-2 w-max max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-neutral-900">
+                  <div className="clanky-composer-panel absolute bottom-full right-0 z-20 mb-2 w-max max-w-[calc(100vw-2rem)] rounded-lg p-2">
                     <DictationControls
                       onTranscript={handleDictationTranscript}
                       onError={handleDictationError}
