@@ -346,6 +346,7 @@ export const chatsRoutes = defineRoutes({
     },
 
     async DELETE(_req: Request, ctx): Promise<Response> {
+      ctx.server?.timeout(_req, 0);
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
