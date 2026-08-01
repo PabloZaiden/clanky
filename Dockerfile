@@ -38,12 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the standalone product binary from builder
 COPY --from=builder /tmp/clanky /app/clanky
 
-# Create a non-root user for running the application
-RUN groupadd --system clanky && \
-    useradd --system --gid clanky --no-create-home clanky
-
-# Create data directory and set ownership
-RUN mkdir -p /app/data && chown -R clanky:clanky /app/data
+# Create data directory
+RUN mkdir -p /app/data
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -60,11 +56,8 @@ ENV CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix
 ENV CLANKY_TRUST_PROXY_CHAIN=first
 ENV TERM=xterm-256color
 
-# Expose port 8080 (non-root user cannot bind to privileged ports)
+# Expose port 8080
 EXPOSE 8080
-
-# Run as non-root user
-USER clanky
 
 # Health check using the /api/health endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
