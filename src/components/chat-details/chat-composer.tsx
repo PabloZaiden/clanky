@@ -98,6 +98,15 @@ export function ChatComposer(props: ChatComposerProps) {
               </Button>
             </div>
           )}
+          {attachments.length > 0 && (
+            <div className="min-w-0" data-testid="chat-composer-attachments-row">
+              <ImageAttachmentPreviewList
+                attachments={attachments}
+                onRemoveAttachment={handleRemoveAttachment}
+                disabled={isSubmitting}
+              />
+            </div>
+          )}
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
             <ComposerActionsMenu
               ariaLabel="Message actions"
@@ -201,15 +210,6 @@ export function ChatComposer(props: ChatComposerProps) {
               </div>
             )}
           </div>
-          {attachments.length > 0 && (
-            <div className="min-w-0" data-testid="chat-composer-attachments-row">
-              <ImageAttachmentPreviewList
-                attachments={attachments}
-                onRemoveAttachment={handleRemoveAttachment}
-                disabled={isSubmitting}
-              />
-            </div>
-          )}
         </div>
         {attachmentError && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
