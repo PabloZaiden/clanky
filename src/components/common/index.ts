@@ -10,11 +10,8 @@ export {
   type FocusPreservingButtonProps,
 } from "./FocusPreservingButton";
 export { Card, type CardProps } from "./Card";
-export {
-  Badge,
-  StatusBadge,
-  type BadgeProps,
-} from "@pablozaiden/webapp/web";
+export { Badge, type BadgeProps } from "@pablozaiden/webapp/web";
+export { StatusBadge } from "./StatusBadge";
 export type { BadgeVariant } from "@pablozaiden/webapp/web";
 export {
   getAgentStatusBadgeVariant,
@@ -24,6 +21,7 @@ export {
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
   getStatusBadgeVariant,
+  formatStatusLabel,
 } from "./status-variants";
 export {
   ChatIcon,

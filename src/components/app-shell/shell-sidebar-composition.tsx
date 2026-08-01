@@ -15,6 +15,7 @@ import {
   type PrivateEntity,
   type PrivateSidebarNode,
 } from "../../lib/private-items";
+import { formatStatusLabel } from "../common";
 import { isTaskActive, isTaskGenerating } from "../../utils";
 import {
   buildActiveWorkSidebarItems,
@@ -584,7 +585,7 @@ function buildSidebarNodes(
         id: item.key,
         title: item.taskNode.title,
         subtitle: item.workspaceName,
-        badge: item.taskNode.badge,
+        badge: formatStatusLabel(item.taskNode.badge),
         badgeVariant: item.taskNode.badgeVariant,
         route: { view: "task", taskId: item.taskNode.task.config.id },
         actions: privateActions(actions, privateHidden, item.taskNode.task.config.isPrivate === true),
@@ -601,7 +602,7 @@ function buildSidebarNodes(
         id: item.key,
         title: item.chatNode.title,
         subtitle: item.kind === "chat" ? item.workspaceName : item.serverName,
-        badge: item.chatNode.badge,
+        badge: formatStatusLabel(item.chatNode.badge),
         badgeVariant: item.chatNode.badgeVariant,
         route: { view: "chat", chatId: item.chatNode.chat.config.id },
         actions: privateActions(actions, privateHidden, item.chatNode.chat.config.isPrivate === true),
@@ -633,7 +634,7 @@ function buildSidebarNodes(
       id: item.key,
       title: item.sessionNode.title,
       subtitle: item.kind === "ssh-session" ? item.workspaceName : item.serverName,
-      badge: item.sessionNode.badge,
+      badge: formatStatusLabel(item.sessionNode.badge),
       badgeVariant: item.sessionNode.badgeVariant,
       route: { view: "ssh", sshSessionId: sessionId },
       actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
@@ -654,7 +655,7 @@ function buildSidebarNodes(
       id: `agent:${agent.config.id}`,
       title: agent.config.name,
       subtitle: agent.config.enabled ? "Agent" : "Paused agent",
-      badge: agent.config.enabled ? "enabled" : "paused",
+      badge: formatStatusLabel(agent.config.enabled ? "enabled" : "paused"),
       badgeVariant: agent.config.enabled ? "success" : "disabled",
       route: { view: "agent", agentId: agent.config.id },
       actions: privateActions(actions, privateHidden, agent.config.isPrivate === true),

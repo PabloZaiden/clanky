@@ -6,6 +6,7 @@ import {
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
+  formatStatusLabel,
   type BadgeVariant,
 } from "../common";
 
@@ -254,7 +255,7 @@ export function buildWorkspaceSidebarGroups({
       chats: workspaceChats.map((chat) => ({
         chat,
         title: chat.config.name,
-        badge: chat.state.status,
+        badge: formatStatusLabel(chat.state.status),
         badgeVariant: getChatStatusBadgeVariant(chat.state.status),
       })),
       sshSessions: workspaceSessions,
@@ -397,7 +398,7 @@ export function buildServerSidebarNodes({
         .map((chat) => ({
           chat,
           title: chat.config.name,
-          badge: chat.state.status,
+          badge: formatStatusLabel(chat.state.status),
           badgeVariant: getChatStatusBadgeVariant(chat.state.status),
         })),
     };

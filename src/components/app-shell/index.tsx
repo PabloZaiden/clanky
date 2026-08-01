@@ -54,7 +54,7 @@ import { useShellDialogComposition } from "./shell-dialog-composition";
 import { ShellHeaderActionsContext } from "./shell-header-actions";
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
 import { findRegisteredSshServer } from "@/shared";
-import { Badge, Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
+import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
 
@@ -748,7 +748,7 @@ export function AppShell() {
             ? {
                 title: agent.config.name,
                 subtitle: agentWorkspace?.directory,
-                badge: agent.state.status,
+                badge: formatStatusLabel(agent.state.status),
                 badgeVariant: getAgentStatusBadgeVariant(agent.state.status),
                 subtitleMobileHidden: true,
               }
