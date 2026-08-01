@@ -1,8 +1,6 @@
 import type { AgentStatus, ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
 import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
-export { formatStatusLabel } from "@pablozaiden/webapp/web";
-
 export function getStatusBadgeVariant(status: string): BadgeVariant {
   switch (status) {
     case "idle":
