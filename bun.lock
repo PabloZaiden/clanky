@@ -34,6 +34,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@pablozaiden/webapp@1.4.1": "patches/@pablozaiden%2Fwebapp@1.4.1.patch",
+  },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 

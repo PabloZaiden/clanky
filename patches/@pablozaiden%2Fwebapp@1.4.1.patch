@@ -1,0 +1,25 @@
+diff --git a/src/web/sidebar-tree.tsx b/src/web/sidebar-tree.tsx
+index 5f842880708621bf717713d1e7b3fd3f64b8d75a..14b4247d00cdc2295fb87fd4ba0dff6dc2bc126f 100644
+--- a/src/web/sidebar-tree.tsx
++++ b/src/web/sidebar-tree.tsx
+@@ -43,7 +43,11 @@ export function SidebarTree({ nodes, route, navigate, collapsed, toggleCollapsed
+         };
+         if (node.type === "section") {
+           return (
+-            <section className={`wapp-sidebar-section ${level === 0 ? "top" : "nested"}`} key={node.id}>
++            <section
++              className={`wapp-sidebar-section ${level === 0 ? "top" : "nested"}`}
++              data-wapp-sidebar-node-id={node.id}
++              key={node.id}
++            >
+               <div className="wapp-sidebar-section-title" style={sidebarIndentStyle(level, parentKind)}>
+                 {hasChildren ? (
+                   <button type="button" aria-expanded={!isCollapsed} aria-label={toggleAriaLabel} disabled={searchActive} onClick={toggleNodeCollapsed}>
+@@ -70,6 +74,7 @@ export function SidebarTree({ nodes, route, navigate, collapsed, toggleCollapsed
+             <button
+               type="button"
+               className={`wapp-sidebar-item ${active ? "active" : ""}`}
++              data-wapp-sidebar-node-id={node.id}
+               onClick={() => node.route && navigate(node.route)}
+               onContextMenu={(event) => {
+                 if (!node.actions?.length) {
