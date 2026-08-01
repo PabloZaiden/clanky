@@ -9,7 +9,7 @@
         "@monaco-editor/react": "4.7.0",
         "@novnc/novnc": "1.7.0",
         "@pablozaiden/installer": "0.0.7",
-        "@pablozaiden/webapp": "1.4.1",
+        "@pablozaiden/webapp": "1.4.2",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-webgl": "0.19.0",
@@ -33,9 +33,6 @@
         "typescript": "7.0.2",
       },
     },
-  },
-  "patchedDependencies": {
-    "@pablozaiden/webapp@1.4.1": "patches/@pablozaiden%2Fwebapp@1.4.1.patch",
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
@@ -140,7 +137,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@0.0.7", "", { "peerDependencies": { "typescript": "^7.0.0" } }, "sha512-ZIcBfkxatiMYajviF8TKu6Yt7aUMWOLp2DufTLFqOJqQQzv8p8TNt5IesHirfFy9R2vIFnz1gRsUk5CBm+5eaw=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.4.1", "", { "dependencies": { "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.1", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.3", "tailwindcss": "4.3.1", "tslog": "4.10.2", "zod": "4.4.3" }, "peerDependencies": { "react": "19.2.7", "react-dom": "19.2.7" } }, "sha512-YH2lLDC/JL0pDc7cGIANRyn0ZSXgB9ESqg4QEaTfb/sZeowSy9pr0EO9rAutL2w3adTFPcCM/f3U1e34e1mB+Q=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.4.2", "", { "dependencies": { "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.1", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.3", "tailwindcss": "4.3.1", "tslog": "4.10.2", "zod": "4.4.3" }, "peerDependencies": { "react": "19.2.7", "react-dom": "19.2.7" } }, "sha512-eERXUJjZrMMPvQFJVCLN/PdBzc5zzuGO0VuVsJpTZfvyvqAMhqnwe2GUM3ikoE9i01H8js4FqJFj77MvhYwiow=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.6.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.6.0", "asn1js": "^3.0.6", "tslib": "^2.8.1" } }, "sha512-cBRCKtYPF7vJGN76/yG8VbxRcHLPF3HnkoHhKOZeHpoVtbMYfY9ROKtH3DtYUY9m8uI1Mh47PRhHf2hSK3xcSQ=="],
 
