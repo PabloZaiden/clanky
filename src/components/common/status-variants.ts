@@ -1,15 +1,7 @@
 import type { AgentStatus, ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
 import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
-export function formatStatusLabel(label: string): string {
-  return label
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)
-    .join(" ");
-}
+export { formatStatusLabel } from "@pablozaiden/webapp/web";
 
 export function getStatusBadgeVariant(status: string): BadgeVariant {
   switch (status) {

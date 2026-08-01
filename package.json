@@ -21,7 +21,7 @@
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
     "@pablozaiden/installer": "0.0.7",
-    "@pablozaiden/webapp": "1.4.1",
+    "@pablozaiden/webapp": "1.4.2",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-webgl": "0.19.0",
@@ -43,8 +43,5 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "typescript": "7.0.2"
-  },
-  "patchedDependencies": {
-    "@pablozaiden/webapp@1.4.1": "patches/@pablozaiden%2Fwebapp@1.4.1.patch"
   }
 }
