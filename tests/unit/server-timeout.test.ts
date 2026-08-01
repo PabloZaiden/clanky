@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
+import { chatsRoutes } from "../../src/api/chats";
 import { settingsRoutes } from "../../src/api/settings";
 import { archivedTasksRoutes } from "../../src/api/workspaces/archived-tasks";
 
-const PURGE_ROUTES = [
+const LONG_RUNNING_CLEANUP_ROUTES = [
   settingsRoutes["/api/settings/purge-terminal-tasks"]!.POST!,
   archivedTasksRoutes["/api/workspaces/:id/archived-tasks/purge"]!.POST!,
+  chatsRoutes["/api/chats/:id"]!.DELETE!,
 ];
 
-test("disables Bun request idle timeout for both purge routes", async () => {
-  for (const handler of PURGE_ROUTES) {
+test("disables Bun request idle timeout for long-running cleanup routes", async () => {
+  for (const handler of LONG_RUNNING_CLEANUP_ROUTES) {
     const request = new Request("http://localhost/api/purge");
     const calls: Array<{ request: Request; seconds: number }> = [];
     const timeoutCaptured = new Error("request timeout captured");
