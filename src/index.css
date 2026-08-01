@@ -164,7 +164,6 @@
   height: auto;
   align-items: center;
   justify-self: end;
-  gap: 0.25rem;
   overflow: hidden;
   padding: 0;
   background: transparent;
@@ -173,15 +172,6 @@
   font-weight: 600;
   line-height: 0.75rem;
   white-space: nowrap;
-}
-
-.wapp-shell .wapp-sidebar-scroll .wapp-sidebar-section[data-wapp-sidebar-node-id="active-work"] .wapp-sidebar-item > .wapp-sidebar-badge::before {
-  width: 0.375rem;
-  height: 0.375rem;
-  flex: 0 0 0.375rem;
-  border-radius: 9999px;
-  background: currentColor;
-  content: "";
 }
 
 .wapp-shell .wapp-sidebar-scroll .wapp-sidebar-section[data-wapp-sidebar-node-id="active-work"] .wapp-sidebar-item > .wapp-sidebar-badge::after {
