@@ -454,7 +454,7 @@ export async function applyMeshCheckpoint(
     ? {
       ...checkpoint,
       basePayload,
-      payload: checkpoint.tombstone ? checkpoint.payload : remote,
+      payload: checkpoint.tombstone ? null : remote,
     }
     : checkpoint;
 
