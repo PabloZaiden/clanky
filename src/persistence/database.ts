@@ -717,6 +717,17 @@ export function resetDatabase(): void {
   // workspaces(id), so we must drop in reverse dependency order to satisfy
   // FK constraints.
   const dropAllTables = db.transaction(() => {
+    db!.run("DROP TABLE IF EXISTS mesh_sync_conflicts");
+    db!.run("DROP TABLE IF EXISTS mesh_link_claims");
+    db!.run("DROP TABLE IF EXISTS mesh_sync_cursors");
+    db!.run("DROP TABLE IF EXISTS mesh_sync_outbox");
+    db!.run("DROP TABLE IF EXISTS mesh_sync_checkpoints");
+    db!.run("DROP TABLE IF EXISTS mesh_pairing_approvals");
+    db!.run("DROP TABLE IF EXISTS mesh_pairing_requests");
+    db!.run("DROP TABLE IF EXISTS mesh_link_members");
+    db!.run("DROP TABLE IF EXISTS mesh_links");
+    db!.run("DROP TABLE IF EXISTS mesh_nodes");
+    db!.run("DROP TABLE IF EXISTS mesh_node_identity");
     db!.run("DROP TABLE IF EXISTS preview_sessions");
     db!.run("DROP TABLE IF EXISTS agent_run_transcript_meta");
     db!.run("DROP TABLE IF EXISTS agent_run_transcript_entries");

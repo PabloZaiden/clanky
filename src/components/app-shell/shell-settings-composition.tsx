@@ -4,6 +4,7 @@ import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
   QuickChatModelRowContent,
+  MeshSettingsContent,
   SchedulerTimezoneRowContent,
   SettingsCheckbox,
   SettingsError,
@@ -14,6 +15,7 @@ import type {
   UseDashboardDataResult,
   UseFileExplorerFullTreePreferenceResult,
   UseMarkdownPreferenceResult,
+  UseMeshResult,
   UseQuickChatSettingsResult,
   UseSchedulerTimezoneResult,
 } from "../../hooks";
@@ -31,6 +33,7 @@ export interface ShellSettingsCompositionOptions {
   workspaces: Workspace[];
   workspacesLoading: boolean;
   refreshTasks: () => Promise<void>;
+  mesh: UseMeshResult;
 }
 
 export type ShellSettingsSections =
@@ -46,6 +49,7 @@ export function buildShellSettingsSections({
   workspaces,
   workspacesLoading,
   refreshTasks,
+  mesh,
 }: ShellSettingsCompositionOptions): ShellSettingsSections {
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
@@ -136,6 +140,17 @@ export function buildShellSettingsSections({
           }],
         },
       ],
+    },
+    {
+      id: "mesh",
+      title: "Linked instances",
+      scope: "user" as const,
+      description: "Pair Clanky instances and manage eventual synchronization for SSH-backed data.",
+      rows: [{
+        id: "mesh-management",
+        title: "Mesh",
+        content: <MeshSettingsContent mesh={mesh} />,
+      }],
     },
     {
       id: "agents",

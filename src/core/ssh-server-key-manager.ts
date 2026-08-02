@@ -13,6 +13,7 @@ import { getSshServerConfig } from "../persistence/ssh-servers";
 import {
   createPersistedSshServerKeyPair,
   deleteSshServerKeyPair,
+  ensureSshServerKeyPair,
   loadSshServerKeyPair,
   saveSshServerKeyPair,
   type PersistedSshServerKeyPair,
@@ -77,8 +78,7 @@ export class SshServerKeyManager {
       return toPublicKey(existing);
     }
 
-    const generated = generatePersistedKeyPair(1);
-    await saveSshServerKeyPair(serverId, generated);
+    const generated = await ensureSshServerKeyPair(serverId);
     log.info("Generated standalone SSH server key pair", {
       serverId,
       version: generated.version,

@@ -36,6 +36,9 @@ import { chatsRoutes } from "./chats";
 import { agentsRoutes } from "./agents";
 import { vncSessionRoutes } from "./vnc-sessions";
 import { previewRoutes } from "./previews";
+import { meshRoutes } from "./mesh";
+import { assertMeshApiMutationAllowed } from "../core/mesh-api-guard";
+import { domainErrorResponse } from "./helpers";
 
 /**
  * All API routes combined.
@@ -57,6 +60,7 @@ const nativeApiRoutes = {
   ...agentsRoutes,
   ...vncSessionRoutes,
   ...previewRoutes,
+  ...meshRoutes,
   ...agentPromptBridgeRoutes,
 };
 
@@ -74,7 +78,34 @@ function withApiUserContext(routes: Record<string, RouteDefinition>): RouteTable
       if (!handler) continue;
       routeWithContext[method] = async (req, ctx) => {
         const user = ctx.requireUser();
-        return await runWithCurrentUser(user, () => handler(req, ctx));
+        return await runWithCurrentUser(user, async () => {
+          try {
+            await assertMeshApiMutationAllowed(user, req);
+          } catch (error) {
+            return domainErrorResponse(error, {
+              fallback: {
+                error: "mesh_authority_check_failed",
+                message: "Mesh authority could not be verified",
+                status: 500,
+              },
+              mappings: {
+                linked_node_not_active: {
+                  status: 409,
+                  message: "This Clanky instance is not the active mesh node",
+                },
+                mesh_link_conflict: {
+                  status: 409,
+                  message: "The linked mesh has an unresolved authority conflict",
+                },
+                mesh_link_revoked: {
+                  status: 403,
+                  message: "The linked mesh membership has been revoked",
+                },
+              },
+            });
+          }
+          return await handler(req, ctx);
+        });
       };
     }
     return [path, routeWithContext];
@@ -101,3 +132,4 @@ export * from "./agents";
 export * from "./vnc-sessions";
 export * from "./previews";
 export * from "./agent-prompt-bridge";
+export * from "./mesh";

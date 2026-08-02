@@ -111,6 +111,18 @@ describe("clanky CLI runtime", () => {
       action: "schema",
       endpoint: "/api/tasks",
     });
+    expect(parseCliCommand(["mesh", "rejoin", "http://localhost:3001", "--target-user-id", "user-2"])).toEqual({
+      action: "mesh",
+      operation: "rejoin",
+      endpoint: "http://localhost:3001",
+      targetUserId: "user-2",
+    });
+    expect(parseCliCommand(["mesh", "conflicts", "resolve", "conflict-1", "--resolution", "remote"])).toEqual({
+      action: "mesh",
+      operation: "conflict-resolve",
+      requestId: "conflict-1",
+      resolution: "remote",
+    });
     expect(parseCliCommand(["ws", "http://localhost:3000", "--task-id", "task-1"])).toEqual({
       action: "ws",
       baseUrl: "http://localhost:3000",

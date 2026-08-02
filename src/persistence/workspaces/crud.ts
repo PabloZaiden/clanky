@@ -11,10 +11,145 @@ import type { Workspace } from "@/shared/workspace";
 import { getServerFingerprint } from "@/shared/settings";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { workspaceToRow, rowToWorkspace } from "./helpers";
+import {
+  rowToWorkspace,
+  type MeshWorkspacePayload,
+  workspaceToRow,
+  workspaceWithoutIdentityFile,
+} from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { scheduleMeshCheckpoint } from "../mesh-sync";
+import { chmod, mkdir, unlink } from "fs/promises";
+import { homedir } from "os";
+import { join, normalize } from "path";
 
 const log = createLogger("persistence:workspaces");
+const MAX_MESH_IDENTITY_FILE_BYTES = 1024 * 1024;
+
+function resolveIdentityFilePath(path: string): string {
+  const trimmed = path.trim();
+  if (trimmed === "~") {
+    return homedir();
+  }
+  if (trimmed.startsWith("~/")) {
+    return join(homedir(), trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function getManagedIdentityFilePath(workspaceId: string): string {
+  return join(
+    process.env["CLANKY_DATA_DIR"] ?? "./data",
+    "mesh",
+    "workspace-identity-files",
+    `${workspaceId}.key`,
+  );
+}
+
+async function readWorkspaceIdentityFile(workspace: Workspace): Promise<MeshWorkspacePayload["identityFile"]> {
+  const agent = workspace.serverSettings.agent;
+  if (agent.transport !== "ssh" || !agent.identityFile?.trim()) {
+    return { configured: false };
+  }
+
+  const path = resolveIdentityFilePath(agent.identityFile);
+  const file = Bun.file(path);
+  if (!await file.exists()) {
+    log.warn("Workspace identity file is not available for mesh replication", {
+      workspaceId: workspace.id,
+      path,
+    });
+    return { configured: true };
+  }
+  if (file.size > MAX_MESH_IDENTITY_FILE_BYTES) {
+    log.warn("Workspace identity file is too large for mesh replication", {
+      workspaceId: workspace.id,
+      path,
+      size: file.size,
+      maxSize: MAX_MESH_IDENTITY_FILE_BYTES,
+    });
+    return { configured: true };
+  }
+
+  return {
+    configured: true,
+    content: await file.text(),
+  };
+}
+
+export async function getWorkspaceMeshPayload(workspace: Workspace): Promise<MeshWorkspacePayload> {
+  return {
+    workspace: workspaceWithoutIdentityFile(workspace),
+    identityFile: await readWorkspaceIdentityFile(workspace),
+  };
+}
+
+function applyIdentityFileToWorkspace(
+  workspace: Workspace,
+  identityFile: MeshWorkspacePayload["identityFile"],
+  existing: Workspace | null,
+): Workspace {
+  if (workspace.serverSettings.agent.transport !== "ssh") {
+    return workspace;
+  }
+
+  const currentIdentityFile = existing?.serverSettings.agent.transport === "ssh"
+    ? existing.serverSettings.agent.identityFile
+    : undefined;
+  if (!identityFile.configured) {
+    const { identityFile: _identityFile, ...agent } = workspace.serverSettings.agent;
+    return {
+      ...workspace,
+      serverSettings: { agent },
+    };
+  }
+
+  if (identityFile.content === undefined) {
+    return {
+      ...workspace,
+      serverSettings: {
+        agent: {
+          ...workspace.serverSettings.agent,
+          identityFile: currentIdentityFile ?? getManagedIdentityFilePath(workspace.id),
+        },
+      },
+    };
+  }
+
+  const managedPath = getManagedIdentityFilePath(workspace.id);
+  return {
+    ...workspace,
+    serverSettings: {
+      agent: {
+        ...workspace.serverSettings.agent,
+        identityFile: managedPath,
+      },
+    },
+  };
+}
+
+async function persistManagedIdentityFile(
+  workspaceId: string,
+  identityFile: MeshWorkspacePayload["identityFile"],
+): Promise<void> {
+  if (!identityFile.configured || identityFile.content === undefined) {
+    return;
+  }
+  const path = getManagedIdentityFilePath(workspaceId);
+  await mkdir(normalize(join(path, "..")), { recursive: true, mode: 0o700 });
+  await Bun.write(path, identityFile.content);
+  await chmod(path, 0o600);
+}
+
+async function deleteManagedIdentityFile(workspaceId: string): Promise<void> {
+  try {
+    await unlink(getManagedIdentityFilePath(workspaceId));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
 
 /**
  * Create a new workspace.
@@ -31,7 +166,38 @@ export async function createWorkspace(workspace: Workspace): Promise<void> {
   const sql = `INSERT INTO workspaces (${columns.join(", ")}) VALUES (${placeholders})`;
   const stmt = db.prepare(sql);
   stmt.run(...values);
+  const meshPayload = await getWorkspaceMeshPayload(workspace);
+  scheduleMeshCheckpoint({
+    userId: String(row["user_id"]),
+    aggregateType: "workspace",
+    aggregateId: workspace.id,
+    payload: meshPayload,
+  });
   log.info("Workspace created", { id: workspace.id, name: workspace.name });
+}
+
+export async function saveWorkspaceFromMesh(payload: MeshWorkspacePayload): Promise<void> {
+  const existing = await getWorkspace(payload.workspace.id);
+  const workspace = applyIdentityFileToWorkspace(payload.workspace, payload.identityFile, existing);
+  await persistManagedIdentityFile(workspace.id, payload.identityFile);
+  if (!payload.identityFile.configured) {
+    await deleteManagedIdentityFile(workspace.id);
+  }
+  const db = getDatabase();
+  const row = workspaceToRow(workspace);
+  const columns = Object.keys(row);
+  const placeholders = columns.map(() => "?").join(", ");
+  const values = Object.values(row) as (string | number | null)[];
+  const updateClause = columns
+    .filter((column) => column !== "id" && column !== "user_id")
+    .map((column) => `${column} = excluded.${column}`)
+    .join(", ");
+  db.run(`
+    INSERT INTO workspaces (${columns.join(", ")})
+    VALUES (${placeholders})
+    ON CONFLICT(id) DO UPDATE SET ${updateClause}
+    WHERE workspaces.user_id = excluded.user_id
+  `, values);
 }
 
 /**
@@ -120,8 +286,18 @@ export async function updateWorkspace(
   const stmt = db.prepare(sql);
   stmt.run(...values);
 
+  const updated = await getWorkspace(id);
+  if (updated) {
+    const meshPayload = await getWorkspaceMeshPayload(updated);
+    scheduleMeshCheckpoint({
+      userId,
+      aggregateType: "workspace",
+      aggregateId: id,
+      payload: meshPayload,
+    });
+  }
   log.info("Workspace updated", { id });
-  return getWorkspace(id);
+  return updated;
 }
 
 export async function countWorkspaceTasks(id: string): Promise<number> {
@@ -155,7 +331,18 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
     return false;
   }
 
-  db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
+  const workspaceUserId = requirePersistenceUserId();
+  db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, workspaceUserId]);
+  await deleteManagedIdentityFile(id);
+  const meshPayload = await getWorkspaceMeshPayload(workspace);
+  scheduleMeshCheckpoint({
+    userId: workspaceUserId,
+    aggregateType: "workspace",
+    aggregateId: id,
+    payload: meshPayload,
+    tombstone: true,
+    eligible: true,
+  });
   log.info("Workspace deleted", { id, name: workspace.name });
   return true;
 }

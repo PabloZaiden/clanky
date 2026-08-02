@@ -9,8 +9,11 @@ import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "f
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
+import { domainErrorResponse } from "./api/helpers";
+import { meshInternalRoutes } from "./api/mesh-internal";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
+import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
 import { resetStaleTasks } from "./persistence/tasks";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
@@ -18,6 +21,7 @@ import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
+import { meshSyncWorker } from "./core/mesh-sync-worker";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import {
@@ -36,6 +40,7 @@ import {
   type ClankyRealtimeEvent,
 } from "./realtime";
 import { CLANKY_VERSION } from "./version";
+import { assertLocalMeshActive } from "./core/mesh-activity";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 
@@ -104,6 +109,30 @@ function unregisterClankyRealtimeBridge(): void {
   realtimeBridgeUnsubscribers = undefined;
 }
 
+function meshAuthorityErrorResponse(error: unknown): Response {
+  return domainErrorResponse(error, {
+    fallback: {
+      error: "mesh_authority_check_failed",
+      message: "Mesh authority could not be verified",
+      status: 500,
+    },
+    mappings: {
+      linked_node_not_active: {
+        status: 409,
+        message: "This Clanky instance is not the active mesh node",
+      },
+      mesh_link_conflict: {
+        status: 409,
+        message: "The linked mesh has an unresolved authority conflict",
+      },
+      mesh_link_revoked: {
+        status: 403,
+        message: "The linked mesh membership has been revoked",
+      },
+    },
+  });
+}
+
 export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
@@ -111,15 +140,19 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     description: "Open the raw websocket bridge for a workspace preview.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
-      ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
-      const upgraded = ctx.server?.upgrade(req, {
-        data: {
-          webappSocketHandler: "clanky",
-          previewBridgeMode: true,
-          user,
-        },
-      });
-      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      return assertLocalMeshActive(user.id)
+        .then(() => {
+          ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
+          const upgraded = ctx.server?.upgrade(req, {
+            data: {
+              webappSocketHandler: "clanky",
+              previewBridgeMode: true,
+              user,
+            },
+          });
+          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+        })
+        .catch((error: unknown) => meshAuthorityErrorResponse(error));
     },
   },
   "/api/ssh-terminal": {
@@ -136,17 +169,20 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
       }
 
-      const upgraded = ctx.server?.upgrade(req, {
-        data: {
-          webappSocketHandler: "clanky",
-          sshSessionId,
-          sshServerSessionId,
-          terminalMode: true,
-          user,
-        },
-      });
-
-      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      return assertLocalMeshActive(user.id)
+        .then(() => {
+          const upgraded = ctx.server?.upgrade(req, {
+            data: {
+              webappSocketHandler: "clanky",
+              sshSessionId,
+              sshServerSessionId,
+              terminalMode: true,
+              user,
+            },
+          });
+          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+        })
+        .catch((error: unknown) => meshAuthorityErrorResponse(error));
     },
   },
   "/api/vnc": {
@@ -160,23 +196,29 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
       if (!vncSessionId) {
         return new Response("vncSessionId is required", { status: 400 });
       }
-      const upgraded = ctx.server?.upgrade(req, {
-        data: {
-          webappSocketHandler: "clanky",
-          vncSessionId,
-          vncMode: true,
-          user,
-        },
-      });
-      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      return assertLocalMeshActive(user.id)
+        .then(() => {
+          const upgraded = ctx.server?.upgrade(req, {
+            data: {
+              webappSocketHandler: "clanky",
+              vncSessionId,
+              vncMode: true,
+              user,
+            },
+          });
+          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+        })
+        .catch((error: unknown) => meshAuthorityErrorResponse(error));
     },
   },
   ...apiRoutes,
+  ...meshInternalRoutes,
 });
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) return app;
   await initializeDatabase();
+  await ensureLocalMeshNodeIdentity();
   const dataDir = getDataDir();
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({
@@ -218,6 +260,7 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
 }
 
 export function resetWebAppServerForTests(): void {
+  meshSyncWorker.stop();
   unregisterClankyRealtimeBridge();
   managedCredentialService.resetForTests();
   app = undefined;
@@ -254,6 +297,7 @@ export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   }
   pushedTaskMonitor.start();
   agentScheduler.start();
+  meshSyncWorker.start();
 
   for (const message of getServerStartupMessages({
     host: appServer.config.host,

@@ -83,6 +83,17 @@ const KNOWN_TABLE_NAMES = new Set([
   "task_transcript_meta",
   "agent_run_transcript_entries",
   "agent_run_transcript_meta",
+  "mesh_node_identity",
+  "mesh_nodes",
+  "mesh_links",
+  "mesh_link_members",
+  "mesh_pairing_requests",
+  "mesh_pairing_approvals",
+  "mesh_sync_checkpoints",
+  "mesh_sync_outbox",
+  "mesh_sync_cursors",
+  "mesh_sync_conflicts",
+  "mesh_link_claims",
 ]);
 
 /**
@@ -561,6 +572,391 @@ export const migrations: Migration[] = [
       const columns = getTableColumns(db, "agents");
       if (!columns.includes("generation_chat_id")) {
         db.run("ALTER TABLE agents ADD COLUMN generation_chat_id TEXT");
+      }
+    },
+  },
+  {
+    version: 20,
+    name: "add_mesh_identity_and_membership",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_node_identity (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          node_id TEXT NOT NULL UNIQUE,
+          public_key TEXT NOT NULL,
+          fingerprint TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_nodes (
+          node_id TEXT PRIMARY KEY,
+          public_key TEXT NOT NULL,
+          fingerprint TEXT NOT NULL UNIQUE,
+          endpoint TEXT,
+          transport TEXT NOT NULL DEFAULT 'https'
+            CHECK (transport IN ('https', 'http')),
+          status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('pending', 'active', 'offline', 'revoked', 'rejoining')),
+          last_seen_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_links (
+          link_id TEXT PRIMARY KEY,
+          local_user_id TEXT NOT NULL UNIQUE,
+          active_node_id TEXT,
+          takeover_generation INTEGER NOT NULL DEFAULT 0
+            CHECK (takeover_generation >= 0),
+          status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('active', 'conflict', 'revoked')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (local_user_id) REFERENCES webapp_users(id) ON DELETE CASCADE,
+          FOREIGN KEY (active_node_id) REFERENCES mesh_nodes(node_id) ON DELETE SET NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_link_members (
+          link_id TEXT NOT NULL,
+          node_id TEXT NOT NULL,
+          local_user_id TEXT NOT NULL,
+          endpoint TEXT,
+          transport TEXT NOT NULL DEFAULT 'https'
+            CHECK (transport IN ('https', 'http')),
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'active', 'offline', 'revoked', 'rejoining')),
+          membership_generation INTEGER NOT NULL DEFAULT 1
+            CHECK (membership_generation > 0),
+          last_seen_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (link_id, node_id),
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE CASCADE,
+          FOREIGN KEY (node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_pairing_requests (
+          id TEXT PRIMARY KEY,
+          link_id TEXT,
+          target_local_user_id TEXT,
+          requested_node_id TEXT NOT NULL,
+          requested_local_user_id TEXT NOT NULL,
+          requested_username TEXT,
+          endpoint TEXT NOT NULL,
+          transport TEXT NOT NULL DEFAULT 'https'
+            CHECK (transport IN ('https', 'http')),
+          public_key TEXT NOT NULL,
+          fingerprint TEXT NOT NULL,
+          nonce TEXT NOT NULL UNIQUE,
+          signature TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'cancelled')),
+          expires_at TEXT NOT NULL,
+          approved_at TEXT,
+          approved_by_user_id TEXT,
+          rejection_reason TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE SET NULL,
+          FOREIGN KEY (requested_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE,
+          FOREIGN KEY (approved_by_user_id) REFERENCES webapp_users(id) ON DELETE SET NULL
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_nodes_status
+        ON mesh_nodes(status, updated_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_links_user
+        ON mesh_links(local_user_id, updated_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_members_node
+        ON mesh_link_members(node_id, status, updated_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_pairing_target
+        ON mesh_pairing_requests(target_local_user_id, status, created_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_pairing_link
+        ON mesh_pairing_requests(link_id, status, created_at DESC)
+      `);
+    },
+  },
+  {
+    version: 21,
+    name: "add_mesh_pairing_direction",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_requests");
+      if (!columns.includes("direction")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_requests
+          ADD COLUMN direction TEXT NOT NULL DEFAULT 'incoming'
+          CHECK (direction IN ('incoming', 'outgoing'))
+        `);
+      }
+    },
+  },
+  {
+    version: 22,
+    name: "add_mesh_pairing_approvals",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_pairing_approvals (
+          request_id TEXT PRIMARY KEY,
+          link_id TEXT NOT NULL,
+          approved_by_node_id TEXT NOT NULL,
+          approved_by_local_user_id TEXT NOT NULL,
+          endpoint TEXT NOT NULL,
+          transport TEXT NOT NULL
+            CHECK (transport IN ('https', 'http')),
+          public_key TEXT NOT NULL,
+          fingerprint TEXT NOT NULL,
+          signature TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'accepted', 'rejected')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (request_id) REFERENCES mesh_pairing_requests(id) ON DELETE CASCADE,
+          FOREIGN KEY (approved_by_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_pairing_approvals_status
+        ON mesh_pairing_approvals(status, updated_at DESC)
+      `);
+    },
+  },
+  {
+    version: 23,
+    name: "add_mesh_sync_state",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_sync_checkpoints (
+          checkpoint_id TEXT PRIMARY KEY,
+          link_id TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          origin_node_id TEXT NOT NULL,
+          base_revision INTEGER NOT NULL,
+          target_revision INTEGER NOT NULL,
+          base_payload TEXT,
+          payload TEXT,
+          tombstone INTEGER NOT NULL DEFAULT 0 CHECK (tombstone IN (0, 1)),
+          created_at TEXT NOT NULL,
+          UNIQUE(origin_node_id, aggregate_type, aggregate_id, target_revision),
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE CASCADE,
+          FOREIGN KEY (origin_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_sync_outbox (
+          peer_node_id TEXT NOT NULL,
+          checkpoint_id TEXT NOT NULL,
+          link_id TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          origin_node_id TEXT NOT NULL,
+          target_revision INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'inflight', 'failed')),
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT NOT NULL,
+          last_error TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (peer_node_id, aggregate_type, aggregate_id, origin_node_id),
+          FOREIGN KEY (peer_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE,
+          FOREIGN KEY (checkpoint_id) REFERENCES mesh_sync_checkpoints(checkpoint_id) ON DELETE CASCADE,
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE CASCADE,
+          FOREIGN KEY (origin_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_sync_cursors (
+          peer_node_id TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          origin_node_id TEXT NOT NULL,
+          applied_revision INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (peer_node_id, aggregate_type, aggregate_id, origin_node_id),
+          FOREIGN KEY (peer_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE,
+          FOREIGN KEY (origin_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_sync_conflicts (
+          conflict_id TEXT PRIMARY KEY,
+          link_id TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          origin_node_id TEXT NOT NULL,
+          remote_revision INTEGER NOT NULL,
+          base_payload TEXT,
+          local_payload TEXT,
+          remote_payload TEXT,
+          status TEXT NOT NULL DEFAULT 'open'
+            CHECK (status IN ('open', 'resolved', 'dismissed')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(link_id, aggregate_type, aggregate_id, origin_node_id, remote_revision),
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE CASCADE,
+          FOREIGN KEY (origin_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_sync_outbox_due
+        ON mesh_sync_outbox(status, next_attempt_at, updated_at)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_sync_checkpoints_aggregate
+        ON mesh_sync_checkpoints(link_id, aggregate_type, aggregate_id, origin_node_id, target_revision DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_sync_conflicts_status
+        ON mesh_sync_conflicts(link_id, status, updated_at DESC)
+      `);
+    },
+  },
+  {
+    version: 24,
+    name: "add_mesh_pairing_member_snapshot",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_approvals");
+      if (!columns.includes("members_json")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_approvals
+          ADD COLUMN members_json TEXT NOT NULL DEFAULT '[]'
+        `);
+      }
+    },
+  },
+  {
+    version: 25,
+    name: "add_mesh_takeover_claims",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_links");
+      if (!columns.includes("active_claimed_at")) {
+        db.run("ALTER TABLE mesh_links ADD COLUMN active_claimed_at TEXT");
+      }
+      if (!columns.includes("active_claim_origin")) {
+        db.run("ALTER TABLE mesh_links ADD COLUMN active_claim_origin TEXT");
+      }
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_link_claims (
+          claim_id TEXT PRIMARY KEY,
+          link_id TEXT NOT NULL,
+          node_id TEXT NOT NULL,
+          generation INTEGER NOT NULL,
+          claimed_at TEXT NOT NULL,
+          claim_origin TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('active', 'conflict', 'superseded')),
+          created_at TEXT NOT NULL,
+          UNIQUE(link_id, generation, node_id),
+          FOREIGN KEY (link_id) REFERENCES mesh_links(link_id) ON DELETE CASCADE,
+          FOREIGN KEY (node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_mesh_link_claims_link
+        ON mesh_link_claims(link_id, generation DESC, created_at DESC)
+      `);
+    },
+  },
+  {
+    version: 26,
+    name: "add_mesh_takeover_signatures",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_link_claims");
+      if (!columns.includes("signature")) {
+        db.run("ALTER TABLE mesh_link_claims ADD COLUMN signature TEXT");
+      }
+    },
+  },
+  {
+    version: 27,
+    name: "add_mesh_pairing_authority",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_approvals");
+      if (!columns.includes("active_node_id")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_approvals
+          ADD COLUMN active_node_id TEXT
+        `);
+      }
+      if (!columns.includes("takeover_generation")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_approvals
+          ADD COLUMN takeover_generation INTEGER NOT NULL DEFAULT 0
+            CHECK (takeover_generation >= 0)
+        `);
+      }
+    },
+  },
+  {
+    version: 28,
+    name: "add_mesh_encryption_keys",
+    up: (db) => {
+      const identityColumns = getTableColumns(db, "mesh_node_identity");
+      if (!identityColumns.includes("encryption_public_key")) {
+        db.run(`
+          ALTER TABLE mesh_node_identity
+          ADD COLUMN encryption_public_key TEXT
+        `);
+      }
+      const nodeColumns = getTableColumns(db, "mesh_nodes");
+      if (!nodeColumns.includes("encryption_public_key")) {
+        db.run(`
+          ALTER TABLE mesh_nodes
+          ADD COLUMN encryption_public_key TEXT
+        `);
+      }
+    },
+  },
+  {
+    version: 29,
+    name: "add_mesh_pairing_encryption_key",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_approvals");
+      if (!columns.includes("encryption_public_key")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_approvals
+          ADD COLUMN encryption_public_key TEXT
+        `);
+      }
+    },
+  },
+  {
+    version: 30,
+    name: "add_mesh_pairing_request_encryption_key",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_requests");
+      if (!columns.includes("encryption_public_key")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_requests
+          ADD COLUMN encryption_public_key TEXT
+        `);
+      }
+    },
+  },
+  {
+    version: 31,
+    name: "add_mesh_pairing_target_link",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_pairing_requests");
+      if (!columns.includes("target_link_id")) {
+        db.run(`
+          ALTER TABLE mesh_pairing_requests
+          ADD COLUMN target_link_id TEXT
+        `);
       }
     },
   },

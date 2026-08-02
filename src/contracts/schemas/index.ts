@@ -160,3 +160,31 @@ export {
   CreateProvisioningJobRequestSchema,
   type CreateProvisioningJobRequest,
 } from "./provisioning";
+
+// Linked-instance mesh schemas
+export {
+  MeshTransportSchema,
+  MeshPairingDirectionSchema,
+  MeshConflictResolutionSchema,
+  MeshSyncAggregateTypeSchema,
+  MeshEndpointSchema,
+  StartMeshPairingRequestSchema,
+  ApproveMeshPairingRequestSchema,
+  RejectMeshPairingRequestSchema,
+  CompleteMeshPairingRequestSchema,
+  ResolveMeshSyncConflictSchema,
+  MeshTakeoverRequestSchema,
+  RevokeMeshMemberRequestSchema,
+  MeshPeerPairingRequestSchema,
+  MeshPeerPairingApprovalSchema,
+  MeshSyncPushSchema,
+  MeshSyncAckSchema,
+  type StartMeshPairingRequest,
+  type ApproveMeshPairingRequest,
+  type RejectMeshPairingRequest,
+  type CompleteMeshPairingRequest,
+  type MeshPeerPairingRequest,
+  type MeshPeerPairingApproval,
+  type MeshSyncPush,
+  type MeshSyncAck,
+} from "./mesh";
