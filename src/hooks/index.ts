@@ -33,6 +33,7 @@ export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, 
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
 export { useProvisioningJob, type UseProvisioningJobResult, type StartProvisioningJobRequest } from "./useProvisioningJob";
+export { useMesh, type UseMeshResult } from "./useMesh";
 export {
   useAvailableModels,
   type UseAvailableModelsOptions,

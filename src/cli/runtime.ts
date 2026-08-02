@@ -4,12 +4,15 @@ import { startServer } from "../server";
 import { formatClankyVersion, CLANKY_VERSION } from "../version";
 import {
   createCliCredentialsStore,
+  listCliProfiles,
   loadStoredCliCredentials,
   mergeRequestHeaders,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
   runAuthCommand,
   runStatusCommand,
+  removeCliProfile,
+  useCliProfile,
   type AuthCommandOptions,
   type StatusCommandOptions,
 } from "./auth";
@@ -48,12 +51,38 @@ const CLI_HELP_ENTRIES: CliHelpEntry[] = [
   {
     name: "auth",
     description: "Authenticate against a Clanky server and store credentials.",
-    usage: ["clanky auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
+    usage: ["clanky auth <base-url> [--profile <name>] [--client-id <client-id>] [--cookies <cookie-header>]"],
   },
   {
     name: "status",
     description: "Show the current authentication status for a server.",
-    usage: ["clanky status [base-url]"],
+    usage: ["clanky status [base-url] [--profile <name>]"],
+  },
+  {
+    name: "profile",
+    description: "List, select, or remove saved CLI login profiles.",
+    usage: [
+      "clanky profile list",
+      "clanky profile use <name>",
+      "clanky profile remove <name>",
+    ],
+  },
+  {
+    name: "mesh",
+    description: "Inspect, pair, and switch the active linked mesh instance.",
+    usage: [
+      "clanky mesh status",
+      "clanky mesh pair start <endpoint> [--target-user-id <id>]",
+      "clanky mesh pair approve <request-id> [--link-id <id>]",
+      "clanky mesh pair complete <request-id> --fingerprint <fingerprint>",
+      "clanky mesh pair reject <request-id> [--reason <reason>]",
+      "clanky mesh preflight",
+      "clanky mesh takeover [--expected-generation <number>]",
+      "clanky mesh conflicts",
+      "clanky mesh conflicts resolve <conflict-id> --resolution <local|remote|dismiss>",
+      "clanky mesh revoke <node-id>",
+      "clanky mesh rejoin <endpoint> [--target-user-id <id>]",
+    ],
   },
   {
     name: "api",
@@ -129,10 +158,40 @@ export type CliCommand =
     action: "status";
   } & StatusCommandOptions)
   | {
+  action: "profile";
+  operation: "list" | "use" | "remove";
+  name?: string;
+  }
+  | {
+    action: "mesh";
+    operation:
+      | "status"
+      | "preflight"
+      | "takeover"
+      | "conflicts"
+      | "pair-start"
+      | "pair-approve"
+      | "pair-complete"
+      | "pair-reject"
+      | "conflict-resolve"
+      | "revoke"
+      | "rejoin";
+    endpoint?: string;
+    requestId?: string;
+    targetUserId?: string;
+    linkId?: string;
+    fingerprint?: string;
+    reason?: string;
+    expectedGeneration?: number;
+    resolution?: "local" | "remote" | "dismiss";
+    profile?: string;
+  }
+  | {
     action: "api";
     endpoint?: string;
     method: string;
     payload?: string;
+    profile?: string;
   }
   | {
      action: "schema";
@@ -165,6 +224,37 @@ interface CliParseDependencies {
 
 function createUsageError(message: string): Error {
   return new Error(`${message}\n\n${CLI_USAGE}`);
+}
+
+function extractGlobalProfileOption(args: string[]): { args: string[]; profile?: string } {
+  const remaining: string[] = [];
+  let profile: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--profile" || arg?.startsWith("--profile=")) {
+      const inlineValue = arg?.startsWith("--profile=") ? arg.slice("--profile=".length) : undefined;
+      const value = inlineValue ?? args[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw createUsageError("Missing value for --profile");
+      }
+      if (inlineValue === undefined) {
+        index += 1;
+      }
+      const normalized = value.trim();
+      if (!normalized || normalized === "." || normalized === ".." || normalized.includes("/")) {
+        throw createUsageError("Invalid CLI profile name");
+      }
+      if (profile !== undefined) {
+        throw createUsageError("The --profile option may only be provided once");
+      }
+      profile = normalized;
+      continue;
+    }
+    if (arg) {
+      remaining.push(arg);
+    }
+  }
+  return { args: remaining, profile };
 }
 
 function isHelpToken(value?: string): boolean {
@@ -239,12 +329,12 @@ function parseCommandArguments(
   return { positionals, options, flags };
 }
 
-function createClankyApiFetch(fetchFn: typeof fetch): typeof fetch {
+function createClankyApiFetch(fetchFn: typeof fetch, profile?: string): typeof fetch {
   const wrapped = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const requestUrl = new URL(input instanceof Request ? input.url : String(input));
     const headers = mergeRequestHeaders(input, init);
     headers.set("origin", requestUrl.origin);
-    const credentials = await loadStoredCliCredentials();
+    const credentials = await loadStoredCliCredentials(profile);
     if (credentials?.cookies) {
       headers.set("cookie", credentials.cookies);
     }
@@ -283,9 +373,9 @@ async function runApiCommand(
   const result = await runApiCliCommand({
     args,
     catalog: getCliRouteCatalog(),
-    credentials: createCliCredentialsStore(),
+    credentials: createCliCredentialsStore(undefined, command.profile),
     envPrefix: "CLANKY",
-    fetchFn: createClankyApiFetch(dependencies.fetchFn),
+    fetchFn: createClankyApiFetch(dependencies.fetchFn, command.profile),
     now: dependencies.now,
   });
   printCliCommandResult(result, dependencies);
@@ -305,8 +395,124 @@ async function runSchemaCommand(
   return result.exitCode;
 }
 
+async function runProfileCommand(
+  command: Extract<CliCommand, { action: "profile" }>,
+  dependencies: CliOutputDependencies,
+): Promise<number> {
+  if (command.operation === "list") {
+    const profiles = await listCliProfiles();
+    if (profiles.length === 0) {
+      (dependencies.out ?? console.log)("No CLI profiles configured.");
+      return 0;
+    }
+    (dependencies.out ?? console.log)(profiles
+      .map((profile) => `${profile.active ? "* " : "  "}${profile.name}\t${profile.baseUrl}`)
+      .join("\n"));
+    return 0;
+  }
+  if (!command.name) {
+    throw new Error(`Profile ${command.operation} requires a name`);
+  }
+  if (command.operation === "use") {
+    await useCliProfile(command.name);
+    (dependencies.out ?? console.log)(`Active CLI profile: ${command.name}`);
+    return 0;
+  }
+  await removeCliProfile(command.name);
+  (dependencies.out ?? console.log)(`Removed CLI profile: ${command.name}`);
+  return 0;
+}
+
+async function runMeshCommand(
+  command: Extract<CliCommand, { action: "mesh" }>,
+  dependencies: Required<Pick<CliRuntimeDependencies, "fetchFn" | "now">> & CliOutputDependencies,
+): Promise<number> {
+  let endpoint: string;
+  let method = "GET";
+  let payload: string | undefined;
+  switch (command.operation) {
+    case "status":
+      endpoint = "/api/mesh/status";
+      break;
+    case "preflight":
+      endpoint = "/api/mesh/takeover/preflight";
+      break;
+    case "conflicts":
+      endpoint = "/api/mesh/conflicts";
+      break;
+    case "takeover":
+      endpoint = "/api/mesh/takeover";
+      method = "POST";
+      payload = JSON.stringify(
+        command.expectedGeneration === undefined
+          ? {}
+          : { expectedGeneration: command.expectedGeneration },
+      );
+      break;
+    case "pair-start":
+      endpoint = "/api/mesh/pairing-requests";
+      method = "POST";
+      payload = JSON.stringify({
+        targetEndpoint: command.endpoint,
+        ...(command.targetUserId ? { targetLocalUserId: command.targetUserId } : {}),
+      });
+      break;
+    case "pair-approve":
+      endpoint = `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/approve`;
+      method = "POST";
+      payload = JSON.stringify(command.linkId ? { linkId: command.linkId } : {});
+      break;
+    case "pair-complete":
+      endpoint = `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/complete`;
+      method = "POST";
+      payload = JSON.stringify({ fingerprint: command.fingerprint });
+      break;
+    case "pair-reject":
+      endpoint = `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/reject`;
+      method = "POST";
+      payload = JSON.stringify(command.reason ? { reason: command.reason } : {});
+      break;
+    case "conflict-resolve":
+      endpoint = `/api/mesh/conflicts/${encodeURIComponent(command.requestId ?? "")}/resolve`;
+      method = "POST";
+      payload = JSON.stringify({ resolution: command.resolution });
+      break;
+    case "revoke":
+      endpoint = "/api/mesh/members/revoke";
+      method = "POST";
+      payload = JSON.stringify({ nodeId: command.requestId });
+      break;
+    case "rejoin":
+      endpoint = "/api/mesh/rejoin";
+      method = "POST";
+      payload = JSON.stringify({
+        targetEndpoint: command.endpoint,
+        ...(command.targetUserId ? { targetLocalUserId: command.targetUserId } : {}),
+      });
+      break;
+  }
+
+  const args = [endpoint, "--method", method];
+  if (payload !== undefined) {
+    args.push("--payload", payload);
+  }
+  const result = await runApiCliCommand({
+    args,
+    catalog: getCliRouteCatalog(),
+    credentials: createCliCredentialsStore(undefined, command.profile),
+    envPrefix: "CLANKY",
+    fetchFn: createClankyApiFetch(dependencies.fetchFn, command.profile),
+    now: dependencies.now,
+  });
+  printCliCommandResult(result, dependencies);
+  return result.exitCode;
+}
+
 export function parseCliCommand(args: string[], dependencies: CliParseDependencies = {}): CliCommand {
-  const [action, ...restArgs] = args;
+  const extracted = extractGlobalProfileOption(args);
+  const [action, ...restArgs] = extracted.args;
+  const profile = extracted.profile;
+  const profileOption = profile === undefined ? {} : { profile };
   if (!action) {
     return {
       action: "help",
@@ -373,6 +579,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
       baseUrl,
       clientId: options["--client-id"]?.trim() || getDefaultClientId(dependencies.getHostname),
       cookies,
+      ...profileOption,
     };
   }
 
@@ -390,6 +597,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     return {
       action,
       baseUrl,
+      ...profileOption,
     };
   }
 
@@ -407,7 +615,156 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
       endpoint: positionals[0] ? normalizeApiEndpointPath(positionals[0]) : undefined,
       method,
       payload: options["--payload"],
+      ...profileOption,
     };
+  }
+
+  if (action === "profile") {
+    const { positionals } = parseCommandArguments(restArgs, []);
+    const operation = positionals[0] as "list" | "use" | "remove" | undefined;
+    if (!operation || !["list", "use", "remove"].includes(operation)) {
+      throw createUsageError("Profile command must be list, use, or remove");
+    }
+    if (operation === "list" && positionals.length > 1) {
+      throw createUsageError(`Unexpected argument: ${positionals[1]}`);
+    }
+    if (operation !== "list" && positionals.length !== 2) {
+      throw createUsageError(`Profile ${operation} requires a name`);
+    }
+    return {
+      action,
+      operation,
+      name: positionals[1],
+    };
+  }
+
+  if (action === "mesh") {
+    const [operation, ...operationArgs] = restArgs;
+    if (operation === "status" || operation === "preflight") {
+      const { positionals } = parseCommandArguments(operationArgs, []);
+      if (positionals.length > 0) {
+        throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+      }
+      return { action, operation, ...profileOption };
+    }
+    if (operation === "takeover") {
+      const { positionals, options } = parseCommandArguments(operationArgs, ["--expected-generation"]);
+      if (positionals.length > 0) {
+        throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+      }
+      const rawGeneration = options["--expected-generation"];
+      const expectedGeneration = rawGeneration === undefined ? undefined : Number(rawGeneration);
+      if (
+        expectedGeneration !== undefined
+        && (!Number.isInteger(expectedGeneration) || expectedGeneration < 0)
+      ) {
+        throw createUsageError("--expected-generation must be a non-negative integer");
+      }
+      return { action, operation, expectedGeneration, ...profileOption };
+    }
+    if (operation === "revoke") {
+      const { positionals } = parseCommandArguments(operationArgs, []);
+      if (positionals.length !== 1) {
+        throw createUsageError("Mesh revoke requires one node ID");
+      }
+      return {
+        action,
+        operation,
+        requestId: positionals[0],
+        ...profileOption,
+      };
+    }
+    if (operation === "rejoin") {
+      const { positionals, options } = parseCommandArguments(operationArgs, ["--target-user-id"]);
+      if (positionals.length !== 1) {
+        throw createUsageError("Mesh rejoin requires one target endpoint");
+      }
+      return {
+        action,
+        operation,
+        endpoint: positionals[0],
+        targetUserId: options["--target-user-id"],
+        ...profileOption,
+      };
+    }
+    if (operation === "conflicts") {
+      const [conflictOperation, ...conflictArgs] = operationArgs;
+      if (!conflictOperation) {
+        return { action, operation, ...profileOption };
+      }
+      if (conflictOperation !== "resolve") {
+        throw createUsageError("Mesh conflicts command must be list or resolve");
+      }
+      const { positionals, options } = parseCommandArguments(conflictArgs, ["--resolution"]);
+      const resolution = options["--resolution"] as "local" | "remote" | "dismiss" | undefined;
+      if (positionals.length !== 1 || !resolution || !["local", "remote", "dismiss"].includes(resolution)) {
+        throw createUsageError("Mesh conflicts resolve requires an ID and --resolution local|remote|dismiss");
+      }
+      return {
+        action,
+        operation: "conflict-resolve",
+        requestId: positionals[0],
+        resolution,
+        ...profileOption,
+      };
+    }
+    if (operation !== "pair") {
+      throw createUsageError("Mesh command must be status, preflight, takeover, conflicts, revoke, rejoin, or pair");
+    }
+    const [pairOperation, ...pairArgs] = operationArgs;
+    if (pairOperation === "start") {
+      const { positionals, options } = parseCommandArguments(pairArgs, ["--target-user-id"]);
+      if (positionals.length !== 1) {
+        throw createUsageError("Mesh pair start requires one target endpoint");
+      }
+      return {
+        action,
+        operation: "pair-start",
+        endpoint: positionals[0],
+        targetUserId: options["--target-user-id"],
+        ...profileOption,
+      };
+    }
+    if (pairOperation === "approve") {
+      const { positionals, options } = parseCommandArguments(pairArgs, ["--link-id"]);
+      if (positionals.length !== 1) {
+        throw createUsageError("Mesh pair approve requires one request ID");
+      }
+      return {
+        action,
+        operation: "pair-approve",
+        requestId: positionals[0],
+        linkId: options["--link-id"],
+        ...profileOption,
+      };
+    }
+    if (pairOperation === "complete") {
+      const { positionals, options } = parseCommandArguments(pairArgs, ["--fingerprint"]);
+      if (positionals.length !== 1 || !options["--fingerprint"]) {
+        throw createUsageError("Mesh pair complete requires a request ID and --fingerprint");
+      }
+      return {
+        action,
+        operation: "pair-complete",
+        requestId: positionals[0],
+        fingerprint: options["--fingerprint"],
+        ...profileOption,
+      };
+    }
+    if (pairOperation === "reject") {
+      const { positionals, options } = parseCommandArguments(pairArgs, ["--reason"]);
+      if (positionals.length !== 1) {
+        throw createUsageError("Mesh pair reject requires one request ID");
+      }
+      return {
+        action,
+        operation: "pair-reject",
+        requestId: positionals[0],
+        reason: options["--reason"],
+        ...profileOption,
+      };
+    }
+    throw createUsageError("Mesh pair command must be start, approve, complete, or reject");
   }
 
   if (action === "schema") {
@@ -446,6 +803,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     return {
       action,
       baseUrl,
+      ...profileOption,
       taskId: options["--task-id"]?.trim(),
       chatId: options["--chat-id"]?.trim(),
       sshSessionId: options["--ssh-session-id"]?.trim(),
@@ -484,6 +842,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     return {
       action,
       baseUrl,
+      ...profileOption,
       workspace,
       port: parsePortOption("--port", rawPort),
       remoteHost: options["--remote-host"]?.trim() || "localhost",
@@ -546,6 +905,15 @@ export async function runCli(
           fetchFn,
           out,
           now,
+        });
+      case "profile":
+        return await runProfileCommand(command, { out, err });
+      case "mesh":
+        return await runMeshCommand(command, {
+          fetchFn,
+          now,
+          out,
+          err,
         });
       case "api":
         return await runApiCommand(command, {

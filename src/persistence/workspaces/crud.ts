@@ -11,10 +11,85 @@ import type { Workspace } from "@/shared/workspace";
 import { getServerFingerprint } from "@/shared/settings";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { workspaceToRow, rowToWorkspace } from "./helpers";
+import {
+  rowToWorkspace,
+  type MeshWorkspacePayload,
+  workspaceToRow,
+  workspaceWithoutIdentityFile,
+} from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { scheduleMeshCheckpoint } from "../mesh-sync";
+import { unlink } from "fs/promises";
+import { join } from "path";
 
 const log = createLogger("persistence:workspaces");
+
+function getManagedIdentityFilePath(workspaceId: string): string {
+  return join(
+    process.env["CLANKY_DATA_DIR"] ?? "./data",
+    "mesh",
+    "workspace-identity-files",
+    `${workspaceId}.key`,
+  );
+}
+
+export async function getWorkspaceMeshPayload(workspace: Workspace): Promise<MeshWorkspacePayload> {
+  const identityFileConfigured = workspace.serverSettings.agent.transport === "ssh"
+    && Boolean(workspace.serverSettings.agent.identityFile?.trim());
+  return {
+    workspace: workspaceWithoutIdentityFile(workspace),
+    identityFile: { configured: identityFileConfigured },
+  };
+}
+
+function applyIdentityFileToWorkspace(
+  workspace: Workspace,
+  identityFile: MeshWorkspacePayload["identityFile"],
+  existing: Workspace | null,
+): Workspace {
+  if (workspace.serverSettings.agent.transport !== "ssh") {
+    return workspace;
+  }
+
+  const currentIdentityFile = existing?.serverSettings.agent.transport === "ssh"
+    ? existing.serverSettings.agent.identityFile
+    : undefined;
+  if (!identityFile.configured) {
+    const { identityFile: _identityFile, ...agent } = workspace.serverSettings.agent;
+    return {
+      ...workspace,
+      serverSettings: { agent },
+    };
+  }
+
+  if (currentIdentityFile) {
+    return {
+      ...workspace,
+      serverSettings: {
+        agent: {
+          ...workspace.serverSettings.agent,
+          identityFile: currentIdentityFile,
+        },
+      },
+    };
+  }
+
+  const { identityFile: _identityFile, ...agent } = workspace.serverSettings.agent;
+  return {
+    ...workspace,
+    serverSettings: { agent },
+  };
+}
+
+async function deleteManagedIdentityFile(workspaceId: string): Promise<void> {
+  try {
+    await unlink(getManagedIdentityFilePath(workspaceId));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
 
 /**
  * Create a new workspace.
@@ -31,7 +106,37 @@ export async function createWorkspace(workspace: Workspace): Promise<void> {
   const sql = `INSERT INTO workspaces (${columns.join(", ")}) VALUES (${placeholders})`;
   const stmt = db.prepare(sql);
   stmt.run(...values);
+  const meshPayload = await getWorkspaceMeshPayload(workspace);
+  scheduleMeshCheckpoint({
+    userId: String(row["user_id"]),
+    aggregateType: "workspace",
+    aggregateId: workspace.id,
+    payload: meshPayload,
+  });
   log.info("Workspace created", { id: workspace.id, name: workspace.name });
+}
+
+export async function saveWorkspaceFromMesh(payload: MeshWorkspacePayload): Promise<void> {
+  const existing = await getWorkspace(payload.workspace.id);
+  const workspace = applyIdentityFileToWorkspace(payload.workspace, payload.identityFile, existing);
+  if (!payload.identityFile.configured) {
+    await deleteManagedIdentityFile(workspace.id);
+  }
+  const db = getDatabase();
+  const row = workspaceToRow(workspace);
+  const columns = Object.keys(row);
+  const placeholders = columns.map(() => "?").join(", ");
+  const values = Object.values(row) as (string | number | null)[];
+  const updateClause = columns
+    .filter((column) => column !== "id" && column !== "user_id")
+    .map((column) => `${column} = excluded.${column}`)
+    .join(", ");
+  db.run(`
+    INSERT INTO workspaces (${columns.join(", ")})
+    VALUES (${placeholders})
+    ON CONFLICT(id) DO UPDATE SET ${updateClause}
+    WHERE workspaces.user_id = excluded.user_id
+  `, values);
 }
 
 /**
@@ -120,8 +225,18 @@ export async function updateWorkspace(
   const stmt = db.prepare(sql);
   stmt.run(...values);
 
+  const updated = await getWorkspace(id);
+  if (updated) {
+    const meshPayload = await getWorkspaceMeshPayload(updated);
+    scheduleMeshCheckpoint({
+      userId,
+      aggregateType: "workspace",
+      aggregateId: id,
+      payload: meshPayload,
+    });
+  }
   log.info("Workspace updated", { id });
-  return getWorkspace(id);
+  return updated;
 }
 
 export async function countWorkspaceTasks(id: string): Promise<number> {
@@ -155,7 +270,18 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
     return false;
   }
 
-  db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
+  const workspaceUserId = requirePersistenceUserId();
+  db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, workspaceUserId]);
+  await deleteManagedIdentityFile(id);
+  const meshPayload = await getWorkspaceMeshPayload(workspace);
+  scheduleMeshCheckpoint({
+    userId: workspaceUserId,
+    aggregateType: "workspace",
+    aggregateId: id,
+    payload: meshPayload,
+    tombstone: true,
+    eligible: true,
+  });
   log.info("Workspace deleted", { id, name: workspace.name });
   return true;
 }

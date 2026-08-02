@@ -180,7 +180,10 @@ async function getAuthContext(
   command: PreviewCommandOptions,
   dependencies: CliPreviewDependencies,
 ): Promise<CliRequestAuthContext | null> {
-  return await getCliRequestAuthContext({ baseUrl: command.baseUrl }, dependencies);
+  return await getCliRequestAuthContext({
+    baseUrl: command.baseUrl,
+    profile: command.profile,
+  }, dependencies);
 }
 
 export async function runPreviewCommand(

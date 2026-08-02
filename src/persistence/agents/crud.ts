@@ -15,6 +15,7 @@ import {
   hydrateTranscriptStateForUser,
   syncTranscriptEntriesInTransaction,
 } from "../transcripts/store";
+import { scheduleMeshCheckpoint } from "../mesh-sync";
 
 const DELETE_AGENT_RUN_BATCH_SIZE = 500;
 const AGENT_RUN_METADATA_COLUMNS = [
@@ -79,6 +80,12 @@ export async function saveAgent(agent: Agent): Promise<void> {
   validateAgentColumnNames(Object.keys(row));
   const { sql, values } = buildUpsertSql("agents", row);
   getDatabase().prepare(sql).run(...values);
+  scheduleMeshCheckpoint({
+    userId: String(row["user_id"]),
+    aggregateType: "agent",
+    aggregateId: agent.config.id,
+    payload: agent,
+  });
 }
 
 export async function loadAgent(agentId: string): Promise<Agent | null> {
@@ -118,7 +125,19 @@ export async function listDueAgents(now: string): Promise<Agent[]> {
 }
 
 export async function deleteAgent(agentId: string): Promise<boolean> {
-  const result = getDatabase().prepare("DELETE FROM agents WHERE id = ? AND user_id = ?").run(agentId, requirePersistenceUserId());
+  const userId = requirePersistenceUserId();
+  const previousAgent = await loadAgent(agentId);
+  const result = getDatabase().prepare("DELETE FROM agents WHERE id = ? AND user_id = ?").run(agentId, userId);
+  if (result.changes > 0 && previousAgent) {
+    scheduleMeshCheckpoint({
+      userId,
+      aggregateType: "agent",
+      aggregateId: agentId,
+      payload: previousAgent,
+      tombstone: true,
+      eligible: true,
+    });
+  }
   return result.changes > 0;
 }
 
@@ -133,6 +152,8 @@ export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions =
   const { sql, values } = buildUpsertSql("agent_runs", row);
   const db = getDatabase();
   const userId = String(row["user_id"]);
+  const previous = db.query("SELECT status FROM agent_runs WHERE id = ? AND user_id = ?")
+    .get(run.id, userId) as { status: string } | null;
   db.transaction(() => {
     db.prepare(sql).run(...values);
     if (options.transcriptChanges) {
@@ -155,6 +176,14 @@ export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions =
       );
     }
   })();
+  if (!previous || previous.status !== run.status) {
+    scheduleMeshCheckpoint({
+      userId,
+      aggregateType: "agent_run",
+      aggregateId: run.id,
+      payload: run,
+    });
+  }
 }
 
 export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
@@ -245,7 +274,19 @@ export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> 
 }
 
 export async function deleteAgentRun(runId: string): Promise<boolean> {
-  const result = getDatabase().prepare("DELETE FROM agent_runs WHERE id = ? AND user_id = ?").run(runId, requirePersistenceUserId());
+  const userId = requirePersistenceUserId();
+  const previousRun = await loadAgentRun(runId);
+  const result = getDatabase().prepare("DELETE FROM agent_runs WHERE id = ? AND user_id = ?").run(runId, userId);
+  if (result.changes > 0 && previousRun) {
+    scheduleMeshCheckpoint({
+      userId,
+      aggregateType: "agent_run",
+      aggregateId: runId,
+      payload: previousRun,
+      tombstone: true,
+      eligible: true,
+    });
+  }
   return result.changes > 0;
 }
 
@@ -273,12 +314,25 @@ export async function deleteAgentRuns(
   if (runIds.length === 0) {
     return [];
   }
+  const previousRuns = await Promise.all(runIds.map((runId) => loadAgentRun(runId)));
 
   const db = getDatabase();
   for (let index = 0; index < runIds.length; index += DELETE_AGENT_RUN_BATCH_SIZE) {
     const batch = runIds.slice(index, index + DELETE_AGENT_RUN_BATCH_SIZE);
     db.prepare(`DELETE FROM agent_runs WHERE user_id = ? AND id IN (${batch.map(() => "?").join(", ")})`)
       .run(userId, ...batch);
+  }
+  for (const run of previousRuns) {
+    if (run) {
+      scheduleMeshCheckpoint({
+        userId,
+        aggregateType: "agent_run",
+        aggregateId: run.id,
+        payload: run,
+        tombstone: true,
+        eligible: true,
+      });
+    }
   }
   return runIds;
 }

@@ -555,15 +555,106 @@ describe("database schema", () => {
       }
 
       expect(migration.transactional).toBe(false);
-      expect(runMigrations(db)).toBe(2);
+      expect(runMigrations(db)).toBe(15);
       expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
       expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
       expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
       expect(runMigrations(db)).toBe(0);
-      expect(getSchemaVersion(db)).toBe(19);
+      expect(getSchemaVersion(db)).toBe(32);
     } finally {
       db.close();
       await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("mesh migrations create pairing tables and are idempotent", () => {
+    const identityMigration = migrations.find((candidate) => candidate.version === 20);
+    const directionMigration = migrations.find((candidate) => candidate.version === 21);
+    const approvalMigration = migrations.find((candidate) => candidate.version === 22);
+    const syncMigration = migrations.find((candidate) => candidate.version === 23);
+    const memberSnapshotMigration = migrations.find((candidate) => candidate.version === 24);
+    const claimsMigration = migrations.find((candidate) => candidate.version === 25);
+    const signatureMigration = migrations.find((candidate) => candidate.version === 26);
+    const authorityMigration = migrations.find((candidate) => candidate.version === 27);
+    const encryptionMigration = migrations.find((candidate) => candidate.version === 28);
+    const pairingEncryptionMigration = migrations.find((candidate) => candidate.version === 29);
+    const pairingRequestEncryptionMigration = migrations.find((candidate) => candidate.version === 30);
+    const pairingTargetLinkMigration = migrations.find((candidate) => candidate.version === 31);
+    if (
+      !identityMigration ||
+      !directionMigration ||
+      !approvalMigration ||
+      !syncMigration ||
+      !memberSnapshotMigration ||
+      !claimsMigration ||
+      !signatureMigration ||
+      !authorityMigration ||
+      !encryptionMigration ||
+      !pairingEncryptionMigration ||
+      !pairingRequestEncryptionMigration ||
+      !pairingTargetLinkMigration
+    ) {
+      throw new Error("Mesh migrations were not found");
+    }
+
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE webapp_users (
+          id TEXT PRIMARY KEY
+        );
+      `);
+      identityMigration.up(db);
+      directionMigration.up(db);
+      directionMigration.up(db);
+      approvalMigration.up(db);
+      approvalMigration.up(db);
+      syncMigration.up(db);
+      syncMigration.up(db);
+      memberSnapshotMigration.up(db);
+      memberSnapshotMigration.up(db);
+
+      const pairingColumns = db.query("PRAGMA table_info(mesh_pairing_requests)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>;
+      const direction = pairingColumns.find((column) => column.name === "direction");
+      expect(direction?.notnull).toBe(1);
+      expect(direction?.dflt_value).toBe("'incoming'");
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_links'").get()).toBeTruthy();
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_pairing_approvals'").get()).toBeTruthy();
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_sync_outbox'").get()).toBeTruthy();
+      const approvalColumns = db.query("PRAGMA table_info(mesh_pairing_approvals)").all() as Array<{ name: string }>;
+      expect(approvalColumns.map((column) => column.name)).toContain("members_json");
+      claimsMigration.up(db);
+      claimsMigration.up(db);
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_link_claims'").get()).toBeTruthy();
+      signatureMigration.up(db);
+      signatureMigration.up(db);
+      const claimColumns = db.query("PRAGMA table_info(mesh_link_claims)").all() as Array<{ name: string }>;
+      expect(claimColumns.map((column) => column.name)).toContain("signature");
+      authorityMigration.up(db);
+      authorityMigration.up(db);
+      const authorityColumns = db.query("PRAGMA table_info(mesh_pairing_approvals)").all() as Array<{ name: string }>;
+      expect(authorityColumns.map((column) => column.name)).toContain("active_node_id");
+      expect(authorityColumns.map((column) => column.name)).toContain("takeover_generation");
+      encryptionMigration.up(db);
+      encryptionMigration.up(db);
+      const identityColumns = db.query("PRAGMA table_info(mesh_node_identity)").all() as Array<{ name: string }>;
+      expect(identityColumns.map((column) => column.name)).toContain("encryption_public_key");
+      pairingEncryptionMigration.up(db);
+      pairingEncryptionMigration.up(db);
+      const pairingEncryptionColumns = db.query("PRAGMA table_info(mesh_pairing_approvals)").all() as Array<{ name: string }>;
+      expect(pairingEncryptionColumns.map((column) => column.name)).toContain("encryption_public_key");
+      pairingRequestEncryptionMigration.up(db);
+      pairingRequestEncryptionMigration.up(db);
+      pairingTargetLinkMigration.up(db);
+      pairingTargetLinkMigration.up(db);
+      const pairingRequestColumns = db.query("PRAGMA table_info(mesh_pairing_requests)").all() as Array<{ name: string }>;
+      expect(pairingRequestColumns.map((column) => column.name)).toContain("target_link_id");
+    } finally {
+      db.close();
     }
   });
 });

@@ -16,6 +16,7 @@ import {
   useProvisioningJob,
   useFileExplorerFullTreePreference,
   useMarkdownPreference,
+  useMesh,
   usePrivateItemsPreference,
   useQuickChatSettings,
   useSchedulerTimezone,
@@ -168,6 +169,7 @@ export function AppShell() {
   const quickChatSettings = useQuickChatSettings();
   const schedulerTimezone = useSchedulerTimezone();
   const markdownPreference = useMarkdownPreference();
+  const mesh = useMesh();
   const fullTreePreference = useFileExplorerFullTreePreference();
   const privateItemsPreference = usePrivateItemsPreference();
   const dashboardData = useDashboardData();
@@ -552,10 +554,12 @@ export function AppShell() {
     workspaces,
     workspacesLoading,
     refreshTasks,
+    mesh,
   }), [
     dashboardData,
     fullTreePreference,
     markdownPreference,
+    mesh,
     privateItemsPreference,
     quickChatSettings,
     refreshTasks,

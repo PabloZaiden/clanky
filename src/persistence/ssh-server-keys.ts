@@ -2,8 +2,14 @@
  * File-based key storage for standalone SSH server key pairs.
  */
 
-import { mkdir, rm, unlink } from "fs/promises";
+import { chmod, mkdir, rm, unlink } from "fs/promises";
 import { join } from "path";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from "node:crypto";
 import type { SshKeyAlgorithm, SshServerPublicKey } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDataDir } from "./database";
@@ -23,7 +29,7 @@ function getSshServerKeyPath(serverId: string): string {
 }
 
 async function ensureSshServerKeysDir(): Promise<void> {
-  await mkdir(getSshServerKeysDir(), { recursive: true });
+  await mkdir(getSshServerKeysDir(), { recursive: true, mode: 0o700 });
 }
 
 function isPersistedKeyPair(value: unknown): value is PersistedSshServerKeyPair {
@@ -46,13 +52,45 @@ export async function saveSshServerKeyPair(
   serverId: string,
   keyPair: PersistedSshServerKeyPair,
 ): Promise<void> {
+  validatePersistedSshServerKeyPair(keyPair);
   await ensureSshServerKeysDir();
-  await Bun.write(getSshServerKeyPath(serverId), JSON.stringify(keyPair));
+  const path = getSshServerKeyPath(serverId);
+  await Bun.write(path, JSON.stringify(keyPair));
+  await chmod(path, 0o600);
   log.debug("Saved SSH server key pair", {
     serverId,
     algorithm: keyPair.algorithm,
     version: keyPair.version,
   });
+}
+
+export async function ensureSshServerKeyPair(
+  serverId: string,
+): Promise<PersistedSshServerKeyPair> {
+  const existing = await loadSshServerKeyPair(serverId);
+  if (existing) {
+    return existing;
+  }
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+    },
+  });
+  const keyPair = createPersistedSshServerKeyPair({
+    publicKey,
+    privateKey,
+    fingerprint: createPublicKeyFingerprint(publicKey),
+    version: 1,
+    createdAt: new Date().toISOString(),
+  });
+  await saveSshServerKeyPair(serverId, keyPair);
+  return keyPair;
 }
 
 export async function loadSshServerKeyPair(serverId: string): Promise<PersistedSshServerKeyPair | null> {
@@ -110,4 +148,31 @@ export function createPersistedSshServerKeyPair(options: {
     version: options.version,
     createdAt: options.createdAt,
   };
+}
+
+export function validatePersistedSshServerKeyPair(
+  keyPair: PersistedSshServerKeyPair,
+): void {
+  try {
+    const publicKey = createPublicKey(keyPair.publicKey);
+    const privateKey = createPrivateKey(keyPair.privateKey);
+    const derivedPublicKey = createPublicKey(privateKey);
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    const derivedPublicDer = derivedPublicKey.export({ format: "der", type: "spki" });
+    if (
+      keyPair.algorithm !== "RSA-OAEP-256"
+      || publicKey.asymmetricKeyType !== "rsa"
+      || privateKey.asymmetricKeyType !== "rsa"
+      || !Buffer.from(publicDer).equals(Buffer.from(derivedPublicDer))
+      || keyPair.fingerprint !== createPublicKeyFingerprint(keyPair.publicKey)
+    ) {
+      throw new Error("SSH server key pair metadata does not match its key material.");
+    }
+  } catch (error) {
+    throw new Error("SSH server key pair is invalid.", { cause: error });
+  }
+}
+
+function createPublicKeyFingerprint(publicKey: string): string {
+  return createHash("sha256").update(publicKey).digest("hex");
 }

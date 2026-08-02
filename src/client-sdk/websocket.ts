@@ -211,7 +211,10 @@ export async function connectWsCommand(
   dependencies: Pick<CliWsDependencies, "createSocket" | "err" | "fetchFn" | "now">,
 ): Promise<CliWsConnection | null> {
   const err = dependencies.err ?? console.error;
-  const authContext = await getCliRequestAuthContext({ baseUrl: command.baseUrl }, dependencies);
+  const authContext = await getCliRequestAuthContext({
+    baseUrl: command.baseUrl,
+    profile: command.profile,
+  }, dependencies);
   if (!authContext) {
     err("Not logged in.");
     return null;

@@ -13,6 +13,8 @@ import { agentEventEmitter } from "./event-emitter";
 import { agentRunner } from "./agent-runner";
 import { calculateNextRunAt } from "./agent-schedule";
 import { runForEachActiveUser } from "./background-users";
+import { assertLocalMeshActive } from "./mesh-activity";
+import { isDomainError } from "./domain-error";
 
 const log = createLogger("agent-scheduler");
 const POLL_INTERVAL_MS = 5000;
@@ -54,7 +56,15 @@ export class AgentScheduler {
     if (this.timer) {
       return;
     }
-    void runForEachActiveUser(async () => {
+    void runForEachActiveUser(async (user) => {
+      try {
+        await assertLocalMeshActive(user.id);
+      } catch (error) {
+        if (isDomainError(error) && error.code === "linked_node_not_active") {
+          return;
+        }
+        throw error;
+      }
       await this.reconcileStaleRuns();
     }).then(() => this.tick()).catch((error) => {
       log.error("Failed to start agent scheduler", { error: String(error) });
@@ -80,7 +90,15 @@ export class AgentScheduler {
     }
     this.ticking = true;
     try {
-      await runForEachActiveUser(async () => {
+      await runForEachActiveUser(async (user) => {
+        try {
+          await assertLocalMeshActive(user.id);
+        } catch (error) {
+          if (isDomainError(error) && error.code === "linked_node_not_active") {
+            return;
+          }
+          throw error;
+        }
         const dueAgents = await listDueAgents(now.toISOString());
         for (const agent of dueAgents) {
           await this.processDueAgent(agent, now);

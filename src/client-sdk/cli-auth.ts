@@ -39,10 +39,12 @@ export interface AuthCommandOptions {
   baseUrl: string;
   clientId: string;
   cookies?: string;
+  profile?: string;
 }
 
 export interface StatusCommandOptions {
   baseUrl?: string;
+  profile?: string;
 }
 
 export type CliRequestAuthContext =
@@ -78,6 +80,18 @@ export interface CliStatusDependencies {
 export interface CliCredentialsStore extends JsonFileStore<FrameworkCredentials> {
   read(): Promise<StoredCliCredentials | undefined>;
   write(value: CredentialWriteValue): Promise<void>;
+}
+
+interface CliAuthFile {
+  version: 2;
+  activeProfile: string;
+  profiles: Record<string, StoredCliCredentials>;
+}
+
+export interface CliProfileInfo {
+  name: string;
+  baseUrl: string;
+  active: boolean;
 }
 
 function getRequestUrl(input: string | URL | Request): string {
@@ -139,38 +153,154 @@ function parseStoredCliCredentials(value: unknown): StoredCliCredentials {
   };
 }
 
-export function createCliCredentialsStore(defaultCookies?: string): CliCredentialsStore {
-  const store = createJsonFileStore<StoredCliCredentials>({
+function normalizeProfileName(profileName: string): string {
+  const normalized = profileName.trim();
+  if (!normalized || normalized === "." || normalized === ".." || normalized.includes("/")) {
+    throw new Error("Invalid CLI profile name");
+  }
+  return normalized;
+}
+
+function parseCliAuthFile(value: unknown): CliAuthFile {
+  if (
+    typeof value === "object"
+    && value !== null
+    && "profiles" in value
+    && typeof value["profiles"] === "object"
+    && value["profiles"] !== null
+  ) {
+    const record = value as Record<string, unknown>;
+    const rawProfiles = record["profiles"] as Record<string, unknown>;
+    const profiles: Record<string, StoredCliCredentials> = {};
+    for (const [name, rawCredentials] of Object.entries(rawProfiles)) {
+      profiles[normalizeProfileName(name)] = parseStoredCliCredentials(rawCredentials);
+    }
+    const rawActiveProfile = record["activeProfile"];
+    const activeProfile = typeof rawActiveProfile === "string" && rawActiveProfile.trim()
+      ? normalizeProfileName(rawActiveProfile)
+      : "default";
+    return {
+      version: 2,
+      activeProfile,
+      profiles,
+    };
+  }
+
+  return {
+    version: 2,
+    activeProfile: "default",
+    profiles: {
+      default: parseStoredCliCredentials(value),
+    },
+  };
+}
+
+function createCliAuthFileStore(): JsonFileStore<CliAuthFile> {
+  return createJsonFileStore<CliAuthFile>({
     appDirectoryName: CLI_STATE_DIRECTORY,
     envHome: "CLANKY_CLI_HOME",
     fileName: CLI_CREDENTIALS_FILE,
-    parse: parseStoredCliCredentials,
+    parse: parseCliAuthFile,
     home: process.env["HOME"]?.trim() || homedir().trim(),
   });
+}
+
+export function createCliCredentialsStore(
+  defaultCookies?: string,
+  profileName?: string,
+): CliCredentialsStore {
+  const store = createCliAuthFileStore();
+  const selectedProfile = profileName ? normalizeProfileName(profileName) : undefined;
 
   return {
     path: store.path,
-    read: store.read,
+    async read() {
+      const file = await store.read();
+      if (!file) {
+        return undefined;
+      }
+      return file.profiles[selectedProfile ?? file.activeProfile];
+    },
     async write(value: CredentialWriteValue) {
-      const previous = await store.read();
-      await store.write({
+      const file = await store.read() ?? {
+        version: 2 as const,
+        activeProfile: selectedProfile ?? "default",
+        profiles: {},
+      };
+      const targetProfile = selectedProfile ?? file.activeProfile;
+      const previous = file.profiles[targetProfile];
+      file.profiles[targetProfile] = {
         ...value,
         cookies: "cookies" in value
           ? value.cookies
           : previous?.cookies ?? defaultCookies ?? "",
-      });
+      };
+      await store.write(file);
     },
-    clear: store.clear,
+    async clear() {
+      const file = await store.read();
+      if (!file) {
+        return;
+      }
+      const targetProfile = selectedProfile ?? file.activeProfile;
+      delete file.profiles[targetProfile];
+      if (file.activeProfile === targetProfile) {
+        file.activeProfile = Object.keys(file.profiles)[0] ?? "default";
+      }
+      await store.write(file);
+    },
     withLock: store.withLock,
   };
 }
 
-export async function loadStoredCliCredentials(): Promise<StoredCliCredentials | null> {
-  return await createCliCredentialsStore().read() ?? null;
+export async function loadStoredCliCredentials(profileName?: string): Promise<StoredCliCredentials | null> {
+  return await createCliCredentialsStore(undefined, profileName).read() ?? null;
 }
 
-export async function saveStoredCliCredentials(credentials: StoredCliCredentials): Promise<void> {
-  await createCliCredentialsStore().write(credentials);
+export async function saveStoredCliCredentials(
+  credentials: StoredCliCredentials,
+  profileName?: string,
+): Promise<void> {
+  await createCliCredentialsStore(undefined, profileName).write(credentials);
+}
+
+export async function listCliProfiles(): Promise<CliProfileInfo[]> {
+  const file = await createCliAuthFileStore().read();
+  if (!file) {
+    return [];
+  }
+  return Object.entries(file.profiles)
+    .map(([name, credentials]) => ({
+      name,
+      baseUrl: credentials.baseUrl,
+      active: name === file.activeProfile,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function useCliProfile(profileName: string): Promise<void> {
+  const normalized = normalizeProfileName(profileName);
+  const store = createCliAuthFileStore();
+  const file = await store.read();
+  if (!file?.profiles[normalized]) {
+    throw new Error(`CLI profile not found: ${normalized}`);
+  }
+  file.activeProfile = normalized;
+  await store.write(file);
+}
+
+export async function removeCliProfile(profileName: string): Promise<void> {
+  const normalized = normalizeProfileName(profileName);
+  const store = createCliAuthFileStore();
+  const file = await store.read();
+  if (!file?.profiles[normalized]) {
+    throw new Error(`CLI profile not found: ${normalized}`);
+  }
+  delete file.profiles[normalized];
+  if (file.activeProfile === normalized) {
+    file.activeProfile = Object.keys(file.profiles)[0] ?? "default";
+  }
+  await store.write(file);
 }
 
 export function getAuthorizedHeaders(
@@ -227,7 +357,7 @@ export async function runAuthCommand(
     baseUrl,
     clientId: command.clientId,
     scope: DEFAULT_SCOPE,
-    store: createCliCredentialsStore(command.cookies),
+    store: createCliCredentialsStore(command.cookies, command.profile),
     fetchFn: withRequestHeaders(dependencies.fetchFn, command.cookies),
     sleep: dependencies.sleep,
     now: dependencies.now,
@@ -272,11 +402,12 @@ export async function refreshStoredCredentials(
     now: () => Date;
   },
   baseUrlOverride?: string,
+  profileName?: string,
 ): Promise<StoredCliCredentials | null> {
   const effectiveCredentials = baseUrlOverride
     ? { ...credentials, baseUrl: normalizeBaseUrlValue(baseUrlOverride) }
     : credentials;
-  const store = createCliCredentialsStore(credentials.cookies);
+  const store = createCliCredentialsStore(credentials.cookies, profileName);
   const refreshStore = baseUrlOverride
     ? {
       write: store.write,
@@ -305,7 +436,7 @@ async function validateStoredCredentials(
     return storedCredentials;
   }
 
-  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl);
+  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl, command.profile);
 }
 
 export async function getValidatedCredentials(
@@ -315,7 +446,7 @@ export async function getValidatedCredentials(
     now: () => Date;
   },
 ): Promise<StoredCliCredentials | null> {
-  const storedCredentials = await loadStoredCliCredentials();
+  const storedCredentials = await loadStoredCliCredentials(command.profile);
   if (!storedCredentials) {
     return null;
   }
@@ -355,7 +486,7 @@ async function getCliCredentialAuthContext(
     environment?: CliEnvironment;
   },
 ): Promise<CliCredentialAuthContext | null> {
-  const storedCredentials = await loadStoredCliCredentials();
+  const storedCredentials = await loadStoredCliCredentials(command.profile);
   if (storedCredentials) {
     const credentials = await validateStoredCredentials(storedCredentials, command, dependencies);
     return credentials
@@ -435,7 +566,12 @@ export async function runStatusCommand(
 
   let probe = await probeAuthStatus(authContext, dependencies);
   if (probe.response.status === 401 && authContext.kind === "bearer") {
-    const refreshedCredentials = await refreshStoredCredentials(authContext.credentials, dependencies, command.baseUrl);
+    const refreshedCredentials = await refreshStoredCredentials(
+      authContext.credentials,
+      dependencies,
+      command.baseUrl,
+      command.profile,
+    );
     if (!refreshedCredentials) {
       dependencies.out("Stored credentials are invalid.");
       return 1;

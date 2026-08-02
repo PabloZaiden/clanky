@@ -20,6 +20,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "./model-discovery";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";
+import { assertLocalMeshActiveForAggregate } from "./mesh-activity";
+import { requireCurrentUserId } from "./user-context";
 
 const log = createLogger("core:task-creation-service");
 
@@ -151,6 +153,11 @@ class TaskCreationService {
     const effectivePlanMode = hasUploadedPlan ? true : input.planMode;
     const effectiveAutoAcceptPlan = hasUploadedPlan ? true : input.autoAcceptPlan;
     const workspace = await workspaceManager.requireWorkspace(input.workspaceId);
+    await assertLocalMeshActiveForAggregate(
+      requireCurrentUserId(),
+      "workspace",
+      workspace.id,
+    );
     await workspaceManager.touchWorkspace(workspace.id);
 
     let git: GitService | null = null;
