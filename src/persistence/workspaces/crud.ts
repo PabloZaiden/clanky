@@ -19,23 +19,10 @@ import {
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { scheduleMeshCheckpoint } from "../mesh-sync";
-import { chmod, mkdir, unlink } from "fs/promises";
-import { homedir } from "os";
-import { join, normalize } from "path";
+import { unlink } from "fs/promises";
+import { join } from "path";
 
 const log = createLogger("persistence:workspaces");
-const MAX_MESH_IDENTITY_FILE_BYTES = 1024 * 1024;
-
-function resolveIdentityFilePath(path: string): string {
-  const trimmed = path.trim();
-  if (trimmed === "~") {
-    return homedir();
-  }
-  if (trimmed.startsWith("~/")) {
-    return join(homedir(), trimmed.slice(2));
-  }
-  return trimmed;
-}
 
 function getManagedIdentityFilePath(workspaceId: string): string {
   return join(
@@ -46,41 +33,12 @@ function getManagedIdentityFilePath(workspaceId: string): string {
   );
 }
 
-async function readWorkspaceIdentityFile(workspace: Workspace): Promise<MeshWorkspacePayload["identityFile"]> {
-  const agent = workspace.serverSettings.agent;
-  if (agent.transport !== "ssh" || !agent.identityFile?.trim()) {
-    return { configured: false };
-  }
-
-  const path = resolveIdentityFilePath(agent.identityFile);
-  const file = Bun.file(path);
-  if (!await file.exists()) {
-    log.warn("Workspace identity file is not available for mesh replication", {
-      workspaceId: workspace.id,
-      path,
-    });
-    return { configured: true };
-  }
-  if (file.size > MAX_MESH_IDENTITY_FILE_BYTES) {
-    log.warn("Workspace identity file is too large for mesh replication", {
-      workspaceId: workspace.id,
-      path,
-      size: file.size,
-      maxSize: MAX_MESH_IDENTITY_FILE_BYTES,
-    });
-    return { configured: true };
-  }
-
-  return {
-    configured: true,
-    content: await file.text(),
-  };
-}
-
 export async function getWorkspaceMeshPayload(workspace: Workspace): Promise<MeshWorkspacePayload> {
+  const identityFileConfigured = workspace.serverSettings.agent.transport === "ssh"
+    && Boolean(workspace.serverSettings.agent.identityFile?.trim());
   return {
     workspace: workspaceWithoutIdentityFile(workspace),
-    identityFile: await readWorkspaceIdentityFile(workspace),
+    identityFile: { configured: identityFileConfigured },
   };
 }
 
@@ -104,41 +62,23 @@ function applyIdentityFileToWorkspace(
     };
   }
 
-  if (identityFile.content === undefined) {
+  if (currentIdentityFile) {
     return {
       ...workspace,
       serverSettings: {
         agent: {
           ...workspace.serverSettings.agent,
-          identityFile: currentIdentityFile ?? getManagedIdentityFilePath(workspace.id),
+          identityFile: currentIdentityFile,
         },
       },
     };
   }
 
-  const managedPath = getManagedIdentityFilePath(workspace.id);
+  const { identityFile: _identityFile, ...agent } = workspace.serverSettings.agent;
   return {
     ...workspace,
-    serverSettings: {
-      agent: {
-        ...workspace.serverSettings.agent,
-        identityFile: managedPath,
-      },
-    },
+    serverSettings: { agent },
   };
-}
-
-async function persistManagedIdentityFile(
-  workspaceId: string,
-  identityFile: MeshWorkspacePayload["identityFile"],
-): Promise<void> {
-  if (!identityFile.configured || identityFile.content === undefined) {
-    return;
-  }
-  const path = getManagedIdentityFilePath(workspaceId);
-  await mkdir(normalize(join(path, "..")), { recursive: true, mode: 0o700 });
-  await Bun.write(path, identityFile.content);
-  await chmod(path, 0o600);
 }
 
 async function deleteManagedIdentityFile(workspaceId: string): Promise<void> {
@@ -179,7 +119,6 @@ export async function createWorkspace(workspace: Workspace): Promise<void> {
 export async function saveWorkspaceFromMesh(payload: MeshWorkspacePayload): Promise<void> {
   const existing = await getWorkspace(payload.workspace.id);
   const workspace = applyIdentityFileToWorkspace(payload.workspace, payload.identityFile, existing);
-  await persistManagedIdentityFile(workspace.id, payload.identityFile);
   if (!payload.identityFile.configured) {
     await deleteManagedIdentityFile(workspace.id);
   }

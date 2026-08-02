@@ -9,7 +9,6 @@ import { requirePersistenceUserId } from "../ownership";
 
 export interface MeshWorkspaceIdentityFile {
   configured: boolean;
-  content?: string;
 }
 
 export interface MeshWorkspacePayload {

@@ -217,7 +217,7 @@ describe("mesh persistence", () => {
     });
   });
 
-  test("replicates standalone SSH server key material without exposing it publicly", async () => {
+  test("replicates standalone SSH server metadata without transferring private keys", async () => {
     const nodeA = await createNodeDatabase("user-a");
     const nodeB = await createNodeDatabase("user-b");
     const server = {
@@ -237,7 +237,8 @@ describe("mesh persistence", () => {
       () => saveSshServerConfig(server),
     );
     const payload = await getSshServerMeshPayload(server);
-    expect(payload.keyPair.privateKey.length).toBeGreaterThan(100);
+    expect(payload.publicKey.publicKey.length).toBeGreaterThan(100);
+    expect(JSON.stringify(payload)).not.toContain("privateKey");
 
     await useNodeDatabase(nodeB.dataDir, "user-b");
     await runWithCurrentUser(
@@ -249,16 +250,11 @@ describe("mesh persistence", () => {
       () => getSshServer(server.id),
     );
     expect(replicated?.config).toEqual(server);
-    expect(replicated?.publicKey).toEqual({
-      algorithm: payload.keyPair.algorithm,
-      publicKey: payload.keyPair.publicKey,
-      fingerprint: payload.keyPair.fingerprint,
-      version: payload.keyPair.version,
-      createdAt: payload.keyPair.createdAt,
-    });
+    expect(replicated?.publicKey.algorithm).toBe(payload.publicKey.algorithm);
+    expect(replicated?.publicKey).not.toEqual(payload.publicKey);
   });
 
-  test("replicates SSH workspace identity files into node-local managed paths", async () => {
+  test("replicates SSH workspace metadata without transferring identity files", async () => {
     const nodeA = await createNodeDatabase("user-a");
     const nodeB = await createNodeDatabase("user-b");
     const identityFilePath = join(nodeA.dataDir, "source-id_ed25519");
@@ -299,29 +295,36 @@ describe("mesh persistence", () => {
     if (payload.workspace.serverSettings.agent.transport === "ssh") {
       expect(payload.workspace.serverSettings.agent.identityFile).toBeUndefined();
     }
-    expect(payload.identityFile).toEqual({
-      configured: true,
-      content: identityFileContent,
-    });
+    expect(payload.identityFile).toEqual({ configured: true });
+    expect(JSON.stringify(payload)).not.toContain(identityFileContent);
 
     await useNodeDatabase(nodeB.dataDir, "user-b");
+    const localIdentityFilePath = join(nodeB.dataDir, "local-id_ed25519");
+    const localIdentityFileContent = "local-key-material";
+    await Bun.write(localIdentityFilePath, localIdentityFileContent);
+    await runWithCurrentUser(userB, () => createWorkspace({
+      ...workspace,
+      name: "Local workspace",
+      serverSettings: {
+        agent: {
+          ...workspace.serverSettings.agent,
+          identityFile: localIdentityFilePath,
+        },
+      },
+    }));
     await runWithCurrentUser(userB, () => saveWorkspaceFromMesh(payload));
     const replicated = await runWithCurrentUser(userB, () => getWorkspace(workspace.id));
     expect(replicated?.serverSettings.agent.transport).toBe("ssh");
     if (replicated?.serverSettings.agent.transport === "ssh") {
-      expect(replicated.serverSettings.agent.identityFile).toContain(
-        join(nodeB.dataDir, "mesh", "workspace-identity-files"),
-      );
-      expect(await Bun.file(replicated.serverSettings.agent.identityFile!).text()).toBe(identityFileContent);
+      expect(replicated.serverSettings.agent.identityFile).toBe(localIdentityFilePath);
+      expect(await Bun.file(localIdentityFilePath).text()).toBe(localIdentityFileContent);
     }
     const replicatedPayload = await runWithCurrentUser(
       userB,
       () => getWorkspaceMeshPayload(replicated!),
     );
-    expect(replicatedPayload.identityFile).toEqual({
-      configured: true,
-      content: identityFileContent,
-    });
+    expect(replicatedPayload.identityFile).toEqual({ configured: true });
+    expect(JSON.stringify(replicatedPayload)).not.toContain(localIdentityFileContent);
   });
 
   test("approves a pairing request into a link with both members", async () => {

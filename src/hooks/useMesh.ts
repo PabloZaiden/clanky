@@ -43,7 +43,7 @@ export interface UseMeshResult {
   loading: boolean;
   saving: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<MeshStatusRecord | null>;
   loadPreflight: () => Promise<MeshPreflight | null>;
   loadConflicts: () => Promise<MeshSyncConflictRecord[]>;
   updateInstanceName: (instanceName: string) => Promise<MeshStatusRecord | null>;
@@ -69,7 +69,7 @@ export function useMesh(): UseMeshResult {
   const [error, setError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<MeshStatusRecord | null> => {
     refreshAbortRef.current?.abort();
     const controller = new AbortController();
     refreshAbortRef.current = controller;
@@ -78,15 +78,18 @@ export function useMesh(): UseMeshResult {
     try {
       const response = await appFetch("/api/mesh/status", { signal: controller.signal });
       if (controller.signal.aborted) {
-        return;
+        return null;
       }
       const body = await readResponse(response, "Failed to load mesh status");
-      setStatus(body as unknown as MeshStatusRecord);
+      const nextStatus = (body.status ?? body) as unknown as MeshStatusRecord;
+      setStatus(nextStatus);
+      return nextStatus;
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
-        return;
+        return null;
       }
       setError(String(refreshError));
+      return null;
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false);
@@ -155,9 +158,8 @@ export function useMesh(): UseMeshResult {
       setStatus(response.status);
       return response.status;
     }
-    await refresh();
-    return status;
-  }, [refresh, runMutation, status]);
+    return await refresh();
+  }, [refresh, runMutation]);
 
   const startPairing = useCallback(
     (targetEndpoint: string, targetLocalUserId?: string) => mutationStatus(

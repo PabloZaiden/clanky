@@ -6,14 +6,15 @@ function getSenderNodeId(payload: unknown): string {
   if (typeof payload !== "object" || payload === null) {
     return "";
   }
-  if ("requestedNodeId" in payload) {
-    return String(payload["requestedNodeId"]);
+  const record = payload as Record<string, unknown>;
+  if ("requestedNodeId" in record) {
+    return String(record["requestedNodeId"]);
   }
-  if ("approvedByNodeId" in payload) {
-    return String(payload["approvedByNodeId"]);
+  if ("approvedByNodeId" in record) {
+    return String(record["approvedByNodeId"]);
   }
-  if ("senderNodeId" in payload) {
-    return String(payload["senderNodeId"]);
+  if ("senderNodeId" in record) {
+    return String(record["senderNodeId"]);
   }
   return "";
 }

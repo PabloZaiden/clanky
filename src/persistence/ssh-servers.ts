@@ -2,15 +2,21 @@
  * Persistence layer for standalone SSH servers and server-owned SSH sessions.
  */
 
-import { DEFAULT_SSH_CONNECTION_MODE, normalizeSshSessionUseTmux, normalizeSshConnectionMode, type SshServer, type SshServerConfig, type SshServerSession } from "@/shared";
+import {
+  DEFAULT_SSH_CONNECTION_MODE,
+  normalizeSshSessionUseTmux,
+  normalizeSshConnectionMode,
+  type SshServer,
+  type SshServerConfig,
+  type SshServerPublicKey,
+  type SshServerSession,
+} from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
 import {
   deleteSshServerKeyPair,
   ensureSshServerKeyPair,
   loadSshServerKeyPair,
-  saveSshServerKeyPair,
-  type PersistedSshServerKeyPair,
 } from "./ssh-server-keys";
 import { requirePersistenceUserId } from "./ownership";
 import { scheduleMeshCheckpoint } from "./mesh-sync";
@@ -19,7 +25,7 @@ const log = createLogger("persistence:ssh-servers");
 
 export interface MeshSshServerPayload {
   config: SshServerConfig;
-  keyPair: PersistedSshServerKeyPair;
+  publicKey: SshServerPublicKey;
 }
 
 const ALLOWED_SSH_SERVER_COLUMNS = new Set([
@@ -175,9 +181,16 @@ function persistSshServerConfig(config: SshServerConfig): void {
 export async function getSshServerMeshPayload(
   config: SshServerConfig,
 ): Promise<MeshSshServerPayload> {
+  const keyPair = await ensureSshServerKeyPair(config.id);
   return {
     config,
-    keyPair: await ensureSshServerKeyPair(config.id),
+    publicKey: {
+      algorithm: keyPair.algorithm,
+      publicKey: keyPair.publicKey,
+      fingerprint: keyPair.fingerprint,
+      version: keyPair.version,
+      createdAt: keyPair.createdAt,
+    },
   };
 }
 
@@ -195,7 +208,7 @@ export async function saveSshServerConfig(config: SshServerConfig): Promise<void
 export async function saveSshServerFromMesh(
   payload: MeshSshServerPayload,
 ): Promise<void> {
-  await saveSshServerKeyPair(payload.config.id, payload.keyPair);
+  await ensureSshServerKeyPair(payload.config.id);
   persistSshServerConfig(payload.config);
 }
 

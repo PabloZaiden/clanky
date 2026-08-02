@@ -9,7 +9,7 @@
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { Agent, AgentRun } from "@/shared/agent";
 import type { Chat, Task, Workspace } from "@/shared";
-import type { SshServerConfig, SshServerSession, SshSession } from "@/shared";
+import type { SshServerConfig, SshServerPublicKey, SshServerSession, SshSession } from "@/shared";
 import type { MeshSshServerPayload } from "../persistence/ssh-servers";
 import type {
   MeshPairingMemberRecord,
@@ -145,13 +145,17 @@ function isMeshWorkspacePayload(value: unknown): value is MeshWorkspacePayload {
     return false;
   }
   const identityFile = value["identityFile"];
-  return typeof identityFile["configured"] === "boolean"
-    && (identityFile["content"] === undefined || typeof identityFile["content"] === "string");
+  return typeof identityFile["configured"] === "boolean";
 }
 
 async function parseMeshWorkspacePayload(value: unknown): Promise<MeshWorkspacePayload> {
   if (isMeshWorkspacePayload(value)) {
-    return value;
+    return {
+      workspace: workspaceWithoutIdentityFileForLegacyPayload(value["workspace"] as unknown as Workspace),
+      identityFile: {
+        configured: value["identityFile"]["configured"] as boolean,
+      },
+    };
   }
   if (!isJsonObject(value) || typeof value["id"] !== "string") {
     throw new Error("Workspace checkpoint payload has an invalid shape.");
@@ -179,28 +183,28 @@ function workspaceWithoutIdentityFileForLegacyPayload(workspace: Workspace): Wor
 function parseMeshSshServerPayload(value: unknown): MeshSshServerPayload {
   if (!isJsonObject(value)
     || !isJsonObject(value["config"])
-    || !isJsonObject(value["keyPair"])
   ) {
     throw new Error("SSH server checkpoint payload has an invalid shape.");
   }
   const config = value["config"];
-  const keyPair = value["keyPair"];
+  const publicKey = isJsonObject(value["publicKey"])
+    ? value["publicKey"]
+    : value["keyPair"];
   if (
     typeof config["id"] !== "string"
-    || typeof keyPair["algorithm"] !== "string"
-    || keyPair["algorithm"] !== "RSA-OAEP-256"
-    || typeof keyPair["publicKey"] !== "string"
-    || typeof keyPair["privateKey"] !== "string"
-    || typeof keyPair["fingerprint"] !== "string"
-    || typeof keyPair["version"] !== "number"
-    || !Number.isInteger(keyPair["version"])
-    || typeof keyPair["createdAt"] !== "string"
+    || !isJsonObject(publicKey)
+    || publicKey["algorithm"] !== "RSA-OAEP-256"
+    || typeof publicKey["publicKey"] !== "string"
+    || typeof publicKey["fingerprint"] !== "string"
+    || typeof publicKey["version"] !== "number"
+    || !Number.isInteger(publicKey["version"])
+    || typeof publicKey["createdAt"] !== "string"
   ) {
-    throw new Error("SSH server checkpoint payload contains an invalid key pair.");
+    throw new Error("SSH server checkpoint payload contains invalid public key metadata.");
   }
   return {
     config: config as unknown as SshServerConfig,
-    keyPair: keyPair as unknown as MeshSshServerPayload["keyPair"],
+    publicKey: publicKey as unknown as SshServerPublicKey,
   };
 }
 
@@ -433,12 +437,26 @@ export async function applyMeshCheckpoint(
     ? checkpoint.basePayload === null
       ? null
       : await parseMeshWorkspacePayload(checkpoint.basePayload)
-    : checkpoint.basePayload;
+    : checkpoint.aggregateType === "ssh_server"
+      ? checkpoint.basePayload === null
+        ? null
+        : parseMeshSshServerPayload(checkpoint.basePayload)
+      : checkpoint.basePayload;
   const remote = checkpoint.tombstone
     ? null
     : checkpoint.aggregateType === "workspace"
       ? await parseMeshWorkspacePayload(checkpoint.payload)
-      : checkpoint.payload;
+      : checkpoint.aggregateType === "ssh_server"
+        ? parseMeshSshServerPayload(checkpoint.payload)
+        : checkpoint.payload;
+  const normalizedCheckpoint = checkpoint.aggregateType === "workspace"
+    || checkpoint.aggregateType === "ssh_server"
+    ? {
+      ...checkpoint,
+      basePayload,
+      payload: checkpoint.tombstone ? checkpoint.payload : remote,
+    }
+    : checkpoint;
 
   if (checkpoint.aggregateType === "mesh_membership") {
     if (checkpoint.tombstone || remote === null) {
@@ -452,7 +470,7 @@ export async function applyMeshCheckpoint(
         false,
       ),
     ));
-    await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint });
+    await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint: normalizedCheckpoint });
     await advanceMeshSyncCursor(
       peerNodeId,
       checkpoint.aggregateType,
@@ -494,7 +512,7 @@ export async function applyMeshCheckpoint(
       localPayload: current,
       remotePayload: remote,
     });
-    await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint });
+    await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint: normalizedCheckpoint });
     await advanceMeshSyncCursor(
       peerNodeId,
       checkpoint.aggregateType,
@@ -516,7 +534,7 @@ export async function applyMeshCheckpoint(
       ),
     ));
   }
-  await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint });
+  await storeReceivedMeshCheckpoint({ peerNodeId, checkpoint: normalizedCheckpoint });
   await advanceMeshSyncCursor(
     peerNodeId,
     checkpoint.aggregateType,
