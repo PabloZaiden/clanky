@@ -60,7 +60,6 @@ export function buildShellSettingsSections({
       id: "quick-chat",
       title: "Quick Chat",
       scope: "user" as const,
-      description: "Configure the defaults used by the Quick Chat shortcut.",
       rows: [
         {
           id: "quick-chat-workspace",
@@ -145,7 +144,6 @@ export function buildShellSettingsSections({
       id: "mesh",
       title: "Linked instances",
       scope: "user" as const,
-      description: "Pair Clanky instances and manage eventual synchronization for SSH-backed data.",
       rows: [{
         id: "mesh-management",
         title: "Mesh",
@@ -156,7 +154,6 @@ export function buildShellSettingsSections({
       id: "agents",
       title: "Agents",
       scope: "user" as const,
-      description: "Configure Clanky-specific agent defaults.",
       rows: [{
         id: "scheduler-timezone",
         title: "Timezone",
@@ -175,7 +172,6 @@ export function buildShellSettingsSections({
       id: "private-items",
       title: "Private items",
       scope: "user" as const,
-      description: "Control whether this browser shows or obscures items marked private.",
       rows: [{
         id: "show-private-items",
         title: "Show private items",
@@ -194,7 +190,6 @@ export function buildShellSettingsSections({
       id: "content",
       title: "Content",
       scope: "user" as const,
-      description: "Configure Clanky-specific content rendering and file explorer behavior.",
       rows: [
         {
           id: "markdown-rendering",
@@ -232,7 +227,6 @@ export function buildShellSettingsSections({
       id: "clanky-danger-zone",
       title: "Maintenance",
       scope: "owner" as const,
-      description: "Clanky-specific maintenance operations. Framework server operations live in the standard settings sections.",
       rows: [{
         id: "purge-terminal-tasks",
         title: "Purge terminal-state tasks",

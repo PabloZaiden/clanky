@@ -33,11 +33,9 @@ function internalMeshErrorResponse(error: unknown): Response {
           : error.code === "mesh_peer_revoked"
             ? 403
         : error.code.startsWith("mesh_peer_") || error.code.startsWith("mesh_endpoint_")
+          || error.code === "mesh_insecure_transport_not_loopback"
           ? 400
-          : error.code === "mesh_insecure_transport_disabled"
-            || error.code === "mesh_insecure_transport_not_loopback"
-            ? 400
-            : 500;
+          : 500;
     return errorResponse(error.code, error.message, status);
   }
   return errorResponse("mesh_internal_request_failed", "Mesh internal request failed", 500);

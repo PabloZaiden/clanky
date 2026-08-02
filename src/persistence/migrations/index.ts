@@ -960,6 +960,24 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 32,
+    name: "add_mesh_instance_names",
+    up: (db) => {
+      if (!getTableColumns(db, "mesh_node_identity").includes("instance_name")) {
+        db.run("ALTER TABLE mesh_node_identity ADD COLUMN instance_name TEXT");
+      }
+      if (!getTableColumns(db, "mesh_nodes").includes("instance_name")) {
+        db.run("ALTER TABLE mesh_nodes ADD COLUMN instance_name TEXT");
+      }
+      if (!getTableColumns(db, "mesh_pairing_requests").includes("requested_instance_name")) {
+        db.run("ALTER TABLE mesh_pairing_requests ADD COLUMN requested_instance_name TEXT");
+      }
+      if (!getTableColumns(db, "mesh_pairing_approvals").includes("approved_by_instance_name")) {
+        db.run("ALTER TABLE mesh_pairing_approvals ADD COLUMN approved_by_instance_name TEXT");
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

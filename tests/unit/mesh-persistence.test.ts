@@ -24,6 +24,7 @@ import {
 import {
   ensureLocalMeshNodeIdentity,
   getMeshNodeFingerprint,
+  setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
 } from "../../src/persistence/mesh-node-identity";
@@ -78,6 +79,8 @@ async function createNodeDatabase(userId: string): Promise<{
   process.env["CLANKY_DATA_DIR"] = nodeDataDir;
   await initializeDatabase();
   await seedUser(userId);
+  await ensureLocalMeshNodeIdentity();
+  await setLocalMeshInstanceName(`${userId} instance`);
   const identity = await ensureLocalMeshNodeIdentity();
   return { dataDir: nodeDataDir, identity };
 }
@@ -109,7 +112,6 @@ async function seedUserIfMissing(id: string): Promise<void> {
 afterEach(async () => {
   closeDatabase();
   delete process.env["CLANKY_DATA_DIR"];
-  delete process.env["CLANKY_MESH_ALLOW_INSECURE_HTTP"];
   while (createdDataDirs.length > 0) {
     const path = createdDataDirs.pop();
     if (path) {
@@ -132,6 +134,19 @@ describe("mesh persistence", () => {
     expect(first.fingerprint.startsWith("sha256:")).toBe(true);
     expect(verifyMeshPayloadSignature(payload, signature, first.publicKey)).toBe(true);
     expect(verifyMeshPayloadSignature(`${payload}-changed`, signature, first.publicKey)).toBe(false);
+  });
+
+  test("persists the instance name with the local node identity", async () => {
+    await setupDatabase();
+
+    const first = await ensureLocalMeshNodeIdentity();
+    expect(first.instanceName).toBeNull();
+
+    const named = await setLocalMeshInstanceName("Primary instance");
+    expect(named.instanceName).toBe("Primary instance");
+    expect((await ensureLocalMeshNodeIdentity()).instanceName).toBe("Primary instance");
+    expect((await listMeshNodes()).find((node) => node.nodeId === named.nodeId)?.instanceName)
+      .toBe("Primary instance");
   });
 
   test("encrypts mesh payloads for the recipient node", async () => {
@@ -417,6 +432,7 @@ describe("mesh persistence", () => {
       requestId: crypto.randomUUID(),
       targetLocalUserId: "local-user",
       requestedNodeId: crypto.randomUUID(),
+      requestedInstanceName: "Remote instance",
       requestedLocalUserId: "remote-user",
       requestedUsername: "remote",
       endpoint: "https://remote.example.test",
@@ -579,7 +595,6 @@ describe("mesh persistence", () => {
   });
 
   test("completes a two-sided pairing handshake and remains idempotent", async () => {
-    process.env["CLANKY_MESH_ALLOW_INSECURE_HTTP"] = "1";
     const nodeA = await createNodeDatabase("user-a");
     const nodeC = await createNodeDatabase("user-c");
     const originalFetch = globalThis.fetch;

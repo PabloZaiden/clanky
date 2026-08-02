@@ -98,6 +98,7 @@ async function assertTrustedPeer(
 
 async function getMeshLinkMemberSnapshots(linkId: string): Promise<Array<{
   nodeId: string;
+  instanceName: string | null;
   localUserId: string;
   endpoint: string | null;
   transport: "https" | "http";
@@ -115,6 +116,7 @@ async function getMeshLinkMemberSnapshots(linkId: string): Promise<Array<{
     }
     snapshots.push({
       nodeId: member.nodeId,
+      instanceName: node.instanceName,
       localUserId: member.localUserId,
       endpoint: member.endpoint,
       transport: member.transport,
@@ -198,6 +200,7 @@ export async function receiveMeshSyncPush(
     await mergeMeshLinkMember({
       linkId: envelope.linkId,
       nodeId: member.nodeId,
+      instanceName: member.instanceName,
       localUserId: member.localUserId,
       endpoint: member.endpoint,
       transport: member.transport,

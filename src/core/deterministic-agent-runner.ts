@@ -521,7 +521,7 @@ async function createHostTempDirectory(
   try {
     const chmodResult = await executor.exec(
       "chmod",
-      ["700", "--", tempDir],
+      ["700", tempDir],
       {
         cwd: directory,
         timeout: RUNNER_CLEANUP_TIMEOUT_MS,
@@ -536,7 +536,7 @@ async function createHostTempDirectory(
     }
   } catch (error) {
     try {
-      const cleanupResult = await executor.exec("rm", ["-rf", "--", tempDir], {
+      const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {
         cwd: directory,
         timeout: RUNNER_CLEANUP_TIMEOUT_MS,
         logFailures: false,
@@ -683,7 +683,7 @@ export async function launchDeterministicAgentOnHost(
   } finally {
     if (tempDir) {
       try {
-        const cleanupResult = await executor.exec("rm", ["-rf", "--", tempDir], {
+        const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {
           logFailures: false,
           timeout: RUNNER_CLEANUP_TIMEOUT_MS,
         });

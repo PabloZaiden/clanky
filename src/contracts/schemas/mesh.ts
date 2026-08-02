@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import {
+  MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_PAIRING_DIRECTIONS,
   MESH_CONFLICT_RESOLUTIONS,
   MESH_SYNC_AGGREGATE_TYPES,
@@ -14,6 +15,13 @@ export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
 export const MeshPairingDirectionSchema = z.enum(MESH_PAIRING_DIRECTIONS);
 export const MeshSyncAggregateTypeSchema = z.enum(MESH_SYNC_AGGREGATE_TYPES);
 export const MeshConflictResolutionSchema = z.enum(MESH_CONFLICT_RESOLUTIONS);
+export const MeshInstanceNameSchema = z.string()
+  .trim()
+  .min(1)
+  .max(MESH_INSTANCE_NAME_MAX_LENGTH)
+  .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), {
+    message: "instance name must not contain control characters",
+  });
 
 export const MeshEndpointSchema = z.string().trim().url().superRefine((value, context) => {
   const protocol = new URL(value).protocol;
@@ -28,6 +36,10 @@ export const MeshEndpointSchema = z.string().trim().url().superRefine((value, co
 export const StartMeshPairingRequestSchema = z.object({
   targetEndpoint: MeshEndpointSchema,
   targetLocalUserId: z.string().trim().min(1).optional(),
+});
+
+export const UpdateMeshInstanceNameSchema = z.object({
+  instanceName: MeshInstanceNameSchema,
 });
 
 export const ApproveMeshPairingRequestSchema = z.object({
@@ -60,6 +72,7 @@ const MeshPairingEnvelopeBaseSchema = z.object({
   linkId: z.string().trim().min(1).nullable().optional(),
   targetLocalUserId: z.string().trim().min(1).nullable().optional(),
   requestedNodeId: z.string().trim().min(1),
+  requestedInstanceName: MeshInstanceNameSchema.nullable().optional(),
   requestedLocalUserId: z.string().trim().min(1),
   requestedUsername: z.string().trim().min(1).nullable().optional(),
   endpoint: MeshEndpointSchema,
@@ -80,6 +93,7 @@ export const MeshPeerPairingApprovalSchema = z.object({
   requestId: z.string().trim().min(1),
   linkId: z.string().trim().min(1),
   approvedByNodeId: z.string().trim().min(1),
+  approvedByInstanceName: MeshInstanceNameSchema.nullable().optional(),
   approvedByLocalUserId: z.string().trim().min(1),
   activeNodeId: z.string().trim().min(1).nullable(),
   takeoverGeneration: z.number().int().nonnegative(),
@@ -90,6 +104,7 @@ export const MeshPeerPairingApprovalSchema = z.object({
   encryptionPublicKey: z.string().min(1).optional(),
   members: z.array(z.object({
     nodeId: z.string().trim().min(1),
+    instanceName: MeshInstanceNameSchema.nullable().optional(),
     localUserId: z.string().trim().min(1),
     endpoint: MeshEndpointSchema.nullable(),
     transport: MeshTransportSchema,
@@ -130,6 +145,7 @@ const MeshSyncCheckpointSchema = z.object({
 
 const MeshMemberSnapshotSchema = z.object({
   nodeId: z.string().trim().min(1),
+  instanceName: MeshInstanceNameSchema.nullable().optional(),
   localUserId: z.string().trim().min(1),
   endpoint: MeshEndpointSchema.nullable(),
   transport: MeshTransportSchema,
@@ -169,6 +185,7 @@ export const MeshSyncAckSchema = MeshSyncIdentitySchema.extend({
 });
 
 export type StartMeshPairingRequest = z.infer<typeof StartMeshPairingRequestSchema>;
+export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type ApproveMeshPairingRequest = z.infer<typeof ApproveMeshPairingRequestSchema>;
 export type RejectMeshPairingRequest = z.infer<typeof RejectMeshPairingRequestSchema>;
 export type CompleteMeshPairingRequest = z.infer<typeof CompleteMeshPairingRequestSchema>;

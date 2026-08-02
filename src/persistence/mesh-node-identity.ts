@@ -18,7 +18,10 @@ import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../core/domain-error";
-import type { MeshNodeIdentity } from "@/shared/mesh";
+import {
+  MESH_INSTANCE_NAME_MAX_LENGTH,
+  type MeshNodeIdentity,
+} from "@/shared/mesh";
 import { getDataDir, getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh-node-identity");
@@ -28,6 +31,7 @@ const IDENTITY_FILE_NAME = "node-identity.json";
 interface StoredMeshNodeIdentity {
   version: number;
   nodeId: string;
+  instanceName: string | null;
   publicKey: string;
   privateKey: string;
   fingerprint: string;
@@ -39,6 +43,7 @@ interface StoredMeshNodeIdentity {
 
 interface MeshNodeIdentityRow {
   node_id: string;
+  instance_name: string | null;
   public_key: string;
   fingerprint: string;
   encryption_public_key: string | null;
@@ -75,6 +80,31 @@ export function getMeshNodeFingerprint(publicKey: string): string {
   return `sha256:${createHash("sha256").update(der).digest("hex")}`;
 }
 
+export function normalizeMeshInstanceName(value: string): string {
+  const normalized = value.trim();
+  if (
+    normalized.length === 0
+    || normalized.length > MESH_INSTANCE_NAME_MAX_LENGTH
+    || /[\p{Cc}\p{Cf}]/u.test(normalized)
+  ) {
+    throw new DomainError(
+      "mesh_instance_name_invalid",
+      `The mesh instance name must be between 1 and ${MESH_INSTANCE_NAME_MAX_LENGTH} visible characters.`,
+    );
+  }
+  return normalized;
+}
+
+export function requireMeshInstanceName(identity: MeshNodeIdentity): string {
+  if (!identity.instanceName) {
+    throw new DomainError(
+      "mesh_instance_name_required",
+      "Set a mesh instance name before joining a mesh.",
+    );
+  }
+  return identity.instanceName;
+}
+
 function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
   let parsed: unknown;
   try {
@@ -107,12 +137,24 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
   const identity: StoredMeshNodeIdentity = {
     version: record["version"],
     nodeId: record["nodeId"],
+    instanceName: null,
     publicKey: record["publicKey"],
     privateKey: record["privateKey"],
     fingerprint: record["fingerprint"],
     createdAt: record["createdAt"],
     updatedAt: record["updatedAt"],
   };
+
+  if (
+    record["instanceName"] !== undefined
+    && record["instanceName"] !== null
+    && typeof record["instanceName"] !== "string"
+  ) {
+    throw new DomainError("mesh_node_identity_invalid", "The stored mesh instance name is invalid.");
+  }
+  if (typeof record["instanceName"] === "string") {
+    identity.instanceName = normalizeMeshInstanceName(record["instanceName"]);
+  }
 
   if (identity.version !== IDENTITY_FILE_VERSION) {
     throw new DomainError("mesh_node_identity_version_unsupported", "The stored mesh node identity version is unsupported.", {
@@ -186,7 +228,7 @@ async function writeStoredIdentity(identity: StoredMeshNodeIdentity): Promise<vo
   await chmod(path, 0o600);
 }
 
-function createStoredIdentity(): StoredMeshNodeIdentity {
+function createStoredIdentity(instanceName: string | null = null): StoredMeshNodeIdentity {
   const signingKeys = generateKeyPairSync("ed25519");
   const encryptionKeys = generateKeyPairSync("rsa", {
     modulusLength: 2048,
@@ -201,6 +243,7 @@ function createStoredIdentity(): StoredMeshNodeIdentity {
   return {
     version: IDENTITY_FILE_VERSION,
     nodeId: crypto.randomUUID(),
+    instanceName,
     publicKey: publicKeyPem,
     privateKey: privateKeyPem,
     fingerprint: getMeshNodeFingerprint(publicKeyPem),
@@ -214,6 +257,7 @@ function createStoredIdentity(): StoredMeshNodeIdentity {
 function publicIdentity(identity: StoredMeshNodeIdentity): MeshNodeIdentity {
   return {
     nodeId: identity.nodeId,
+    instanceName: identity.instanceName,
     publicKey: identity.publicKey,
     fingerprint: identity.fingerprint,
     encryptionPublicKey: identity.encryptionPublicKey,
@@ -227,16 +271,18 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
   const now = new Date().toISOString();
   db.run(`
     INSERT INTO mesh_node_identity (
-      singleton, node_id, public_key, fingerprint, encryption_public_key, created_at, updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?)
+      singleton, node_id, instance_name, public_key, fingerprint, encryption_public_key, created_at, updated_at
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(singleton) DO UPDATE SET
       node_id = excluded.node_id,
+      instance_name = excluded.instance_name,
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = excluded.encryption_public_key,
       updated_at = excluded.updated_at
   `, [
     identity.nodeId,
+    identity.instanceName,
     identity.publicKey,
     identity.fingerprint,
     identity.encryptionPublicKey ?? null,
@@ -245,16 +291,18 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
   ]);
   db.run(`
     INSERT INTO mesh_nodes (
-      node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+      node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
       last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, NULL, 'https', 'active', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, NULL, 'https', 'active', ?, ?, ?)
     ON CONFLICT(node_id) DO UPDATE SET
+      instance_name = excluded.instance_name,
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = excluded.encryption_public_key,
       updated_at = excluded.updated_at
   `, [
     identity.nodeId,
+    identity.instanceName,
     identity.publicKey,
     identity.fingerprint,
     identity.encryptionPublicKey ?? null,
@@ -270,7 +318,7 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
 export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   const db = getDatabase();
   const row = db.query(`
-    SELECT node_id, public_key, fingerprint, encryption_public_key, created_at, updated_at
+    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key, created_at, updated_at
     FROM mesh_node_identity
     WHERE singleton = 1
   `).get() as MeshNodeIdentityRow | null;
@@ -300,6 +348,7 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   }
   if (row && (
     row.node_id !== identity.nodeId
+    || (row.instance_name ?? null) !== identity.instanceName
     || row.public_key !== identity.publicKey
     || row.fingerprint !== identity.fingerprint
     || (row.encryption_public_key !== null && row.encryption_public_key !== identity.encryptionPublicKey)
@@ -347,7 +396,7 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
     );
   }
 
-  const replacement = createStoredIdentity();
+  const replacement = createStoredIdentity(current.instanceName);
   try {
     await writeStoredIdentity(replacement);
     const now = new Date().toISOString();
@@ -359,11 +408,12 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
       `, [now, current.nodeId]);
       db.run(`
         UPDATE mesh_node_identity
-        SET node_id = ?, public_key = ?, fingerprint = ?, encryption_public_key = ?,
+        SET node_id = ?, instance_name = ?, public_key = ?, fingerprint = ?, encryption_public_key = ?,
           created_at = ?, updated_at = ?
         WHERE singleton = 1
       `, [
         replacement.nodeId,
+        replacement.instanceName,
         replacement.publicKey,
         replacement.fingerprint,
         replacement.encryptionPublicKey ?? null,
@@ -372,11 +422,12 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
       ]);
       db.run(`
         INSERT INTO mesh_nodes (
-          node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+        node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
           last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, NULL, 'https', 'rejoining', NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, NULL, 'https', 'rejoining', NULL, ?, ?)
       `, [
         replacement.nodeId,
+        replacement.instanceName,
         replacement.publicKey,
         replacement.fingerprint,
         replacement.encryptionPublicKey ?? null,
@@ -397,6 +448,29 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
     nodeId: replacement.nodeId,
   });
   return publicIdentity(replacement);
+}
+
+export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeIdentity> {
+  const instanceName = normalizeMeshInstanceName(value);
+  let identity = await readStoredIdentity();
+  if (!identity) {
+    await ensureLocalMeshNodeIdentity();
+    identity = await readStoredIdentity();
+  }
+  if (!identity) {
+    throw new DomainError("mesh_node_identity_missing", "The local mesh node identity is unavailable.");
+  }
+  if (identity.instanceName === instanceName) {
+    return publicIdentity(identity);
+  }
+  const updated: StoredMeshNodeIdentity = {
+    ...identity,
+    instanceName,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeStoredIdentity(updated);
+  upsertIdentityRows(updated);
+  return publicIdentity(updated);
 }
 
 /**

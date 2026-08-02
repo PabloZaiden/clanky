@@ -11,6 +11,7 @@ import {
   RejectMeshPairingRequestSchema,
   ResolveMeshSyncConflictSchema,
   StartMeshPairingRequestSchema,
+  UpdateMeshInstanceNameSchema,
 } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";
 import { isDomainError } from "../core/domain-error";
@@ -66,6 +67,14 @@ function meshErrorResponse(error: unknown): Response {
           status: 409,
           message: "The confirmed fingerprint does not match the peer approval",
         },
+        mesh_instance_name_required: {
+          status: 409,
+          message: "Set an instance name before joining a mesh",
+        },
+        mesh_instance_name_invalid: {
+          status: 400,
+          message: "The mesh instance name is invalid",
+        },
         mesh_control_request_rejected: {
           status: 502,
           message: "The peer rejected the mesh control request",
@@ -73,10 +82,6 @@ function meshErrorResponse(error: unknown): Response {
         mesh_control_request_unreachable: {
           status: 503,
           message: "The mesh peer could not be reached",
-        },
-        mesh_insecure_transport_disabled: {
-          status: 400,
-          message: "Insecure mesh HTTP is disabled",
         },
         mesh_insecure_transport_not_loopback: {
           status: 400,
@@ -183,6 +188,28 @@ export const meshRoutes = defineRoutes({
     async GET(_req, ctx): Promise<Response> {
       try {
         return Response.json(await meshManager.getStatus(ctx.requireUser().id));
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+
+  "/api/mesh/instance-name": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Set the persistent display name for this mesh instance.",
+    tags: ["mesh", "identity"],
+    async POST(req, ctx): Promise<Response> {
+      const parsed = await parseAndValidate(UpdateMeshInstanceNameSchema, req);
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      try {
+        const status = await meshManager.setInstanceName(
+          ctx.requireUser().id,
+          parsed.data.instanceName,
+        );
+        return successResponse({ status });
       } catch (error) {
         return meshErrorResponse(error);
       }

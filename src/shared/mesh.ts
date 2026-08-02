@@ -7,6 +7,7 @@
 
 export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = typeof MESH_TRANSPORTS[number];
+export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 
 export const MESH_LINK_STATUSES = ["active", "conflict", "revoked"] as const;
 export type MeshLinkStatus = typeof MESH_LINK_STATUSES[number];
@@ -60,6 +61,7 @@ export type MeshConflictResolution = typeof MESH_CONFLICT_RESOLUTIONS[number];
 
 export interface MeshNodeIdentity {
   nodeId: string;
+  instanceName: string | null;
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
@@ -89,6 +91,7 @@ export interface MeshLinkRecord {
 export interface MeshLinkMemberRecord {
   linkId: string;
   nodeId: string;
+  instanceName?: string | null;
   localUserId: string;
   endpoint: string | null;
   transport: MeshTransport;
@@ -105,6 +108,7 @@ export interface MeshPairingRequestRecord {
   linkId: string | null;
   targetLocalUserId: string | null;
   requestedNodeId: string;
+  requestedInstanceName?: string | null;
   requestedLocalUserId: string;
   requestedUsername: string | null;
   endpoint: string;
@@ -128,6 +132,7 @@ export interface MeshPairingApprovalRecord {
   requestId: string;
   linkId: string;
   approvedByNodeId: string;
+  approvedByInstanceName?: string | null;
   approvedByLocalUserId: string;
   activeNodeId: string | null;
   takeoverGeneration: number;
@@ -145,6 +150,7 @@ export interface MeshPairingApprovalRecord {
 
 export interface MeshPairingMemberRecord {
   nodeId: string;
+  instanceName?: string | null;
   localUserId: string;
   endpoint: string | null;
   transport: MeshTransport;

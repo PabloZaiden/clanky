@@ -24,12 +24,16 @@ import type {
 } from "@/shared/mesh";
 import { DomainError } from "../core/domain-error";
 import { getDatabase } from "./database";
-import { validateMeshEncryptionPublicKey } from "./mesh-node-identity";
+import {
+  normalizeMeshInstanceName,
+  validateMeshEncryptionPublicKey,
+} from "./mesh-node-identity";
 
 const log = createLogger("persistence:mesh");
 
 interface MeshNodeRow {
   node_id: string;
+  instance_name: string | null;
   public_key: string;
   fingerprint: string;
   encryption_public_key: string | null;
@@ -56,6 +60,7 @@ interface MeshLinkRow {
 interface MeshLinkMemberRow {
   link_id: string;
   node_id: string;
+  instance_name?: string | null;
   local_user_id: string;
   endpoint: string | null;
   transport: MeshTransport;
@@ -73,6 +78,7 @@ interface MeshPairingRequestRow {
   target_link_id: string | null;
   target_local_user_id: string | null;
   requested_node_id: string;
+  requested_instance_name: string | null;
   requested_local_user_id: string;
   requested_username: string | null;
   endpoint: string;
@@ -95,6 +101,7 @@ interface MeshPairingApprovalRow {
   request_id: string;
   link_id: string;
   approved_by_node_id: string;
+  approved_by_instance_name: string | null;
   approved_by_local_user_id: string;
   active_node_id: string | null;
   takeover_generation: number;
@@ -112,6 +119,7 @@ interface MeshPairingApprovalRow {
 
 export interface SaveMeshNodeInput {
   nodeId: string;
+  instanceName?: string | null;
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
@@ -135,6 +143,7 @@ export interface CreateMeshPairingRequestInput {
   linkId?: string | null;
   targetLocalUserId?: string | null;
   requestedNodeId: string;
+  requestedInstanceName?: string | null;
   requestedLocalUserId: string;
   requestedUsername?: string | null;
   endpoint: string;
@@ -151,6 +160,7 @@ export interface SaveMeshPairingApprovalInput {
   requestId: string;
   linkId: string;
   approvedByNodeId: string;
+  approvedByInstanceName?: string | null;
   approvedByLocalUserId: string;
   activeNodeId: string | null;
   takeoverGeneration: number;
@@ -193,6 +203,7 @@ function serializePairingMembers(members: MeshPairingMemberRecord[] | undefined)
 function nodeFromRow(row: MeshNodeRow): MeshNodeRecord {
   return {
     nodeId: row.node_id,
+    instanceName: row.instance_name ?? null,
     publicKey: row.public_key,
     fingerprint: row.fingerprint,
     encryptionPublicKey: row.encryption_public_key ?? undefined,
@@ -223,6 +234,7 @@ function memberFromRow(row: MeshLinkMemberRow): MeshLinkMemberRecord {
   return {
     linkId: row.link_id,
     nodeId: row.node_id,
+    instanceName: row.instance_name ?? null,
     localUserId: row.local_user_id,
     endpoint: row.endpoint,
     transport: row.transport,
@@ -241,6 +253,7 @@ function pairingRequestFromRow(row: MeshPairingRequestRow): MeshPairingRequestRe
     linkId: row.link_id ?? row.target_link_id,
     targetLocalUserId: row.target_local_user_id,
     requestedNodeId: row.requested_node_id,
+    requestedInstanceName: row.requested_instance_name ?? null,
     requestedLocalUserId: row.requested_local_user_id,
     requestedUsername: row.requested_username,
     endpoint: row.endpoint,
@@ -265,6 +278,7 @@ function pairingApprovalFromRow(row: MeshPairingApprovalRow): MeshPairingApprova
     requestId: row.request_id,
     linkId: row.link_id,
     approvedByNodeId: row.approved_by_node_id,
+    approvedByInstanceName: row.approved_by_instance_name ?? null,
     approvedByLocalUserId: row.approved_by_local_user_id,
     activeNodeId: row.active_node_id,
     takeoverGeneration: row.takeover_generation,
@@ -283,6 +297,9 @@ function pairingApprovalFromRow(row: MeshPairingApprovalRow): MeshPairingApprova
 
 export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRecord> {
   const db = getDatabase();
+  const instanceName = input.instanceName === undefined || input.instanceName === null
+    ? input.instanceName
+    : normalizeMeshInstanceName(input.instanceName);
   if (input.encryptionPublicKey !== undefined) {
     validateMeshEncryptionPublicKey(input.encryptionPublicKey);
   }
@@ -305,10 +322,11 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
   const now = new Date().toISOString();
   db.run(`
     INSERT INTO mesh_nodes (
-      node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+      node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
       last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
     ON CONFLICT(node_id) DO UPDATE SET
+      instance_name = COALESCE(excluded.instance_name, mesh_nodes.instance_name),
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = COALESCE(excluded.encryption_public_key, mesh_nodes.encryption_public_key),
@@ -322,6 +340,7 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
       updated_at = excluded.updated_at
   `, [
     input.nodeId,
+    instanceName ?? null,
     input.publicKey,
     input.fingerprint,
     input.encryptionPublicKey ?? null,
@@ -340,7 +359,7 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
 
 export async function getMeshNode(nodeId: string): Promise<MeshNodeRecord | null> {
   const row = getDatabase().query(`
-    SELECT node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
       last_seen_at, created_at, updated_at
     FROM mesh_nodes
     WHERE node_id = ?
@@ -350,7 +369,7 @@ export async function getMeshNode(nodeId: string): Promise<MeshNodeRecord | null
 
 export async function listMeshNodes(): Promise<MeshNodeRecord[]> {
   const rows = getDatabase().query(`
-    SELECT node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
       last_seen_at, created_at, updated_at
     FROM mesh_nodes
     ORDER BY created_at ASC, node_id ASC
@@ -725,11 +744,13 @@ export async function getActiveMeshLinkTakeover(
 
 export async function listMeshLinkMembers(linkId: string): Promise<MeshLinkMemberRecord[]> {
   const rows = getDatabase().query(`
-    SELECT link_id, node_id, local_user_id, endpoint, transport, status,
-      membership_generation, last_seen_at, created_at, updated_at
-    FROM mesh_link_members
-    WHERE link_id = ?
-    ORDER BY created_at ASC, node_id ASC
+    SELECT member.link_id, member.node_id, node.instance_name, member.local_user_id,
+      member.endpoint, member.transport, member.status, member.membership_generation,
+      member.last_seen_at, member.created_at, member.updated_at
+    FROM mesh_link_members AS member
+    LEFT JOIN mesh_nodes AS node ON node.node_id = member.node_id
+    WHERE member.link_id = ?
+    ORDER BY member.created_at ASC, member.node_id ASC
   `).all(linkId) as MeshLinkMemberRow[];
   return rows.map(memberFromRow);
 }
@@ -746,6 +767,7 @@ export async function getMeshLinkMembershipSnapshot(
     }
     snapshots.push({
       nodeId: member.nodeId,
+      instanceName: node.instanceName,
       localUserId: member.localUserId,
       endpoint: member.endpoint,
       transport: member.transport,
@@ -770,6 +792,7 @@ export async function applyMeshLinkMembershipSnapshot(
     await mergeMeshLinkMember({
       linkId,
       nodeId: member.nodeId,
+      instanceName: member.instanceName,
       localUserId: member.localUserId,
       endpoint: member.endpoint,
       transport: member.transport,
@@ -882,6 +905,7 @@ export async function markLocalMeshMemberRevoked(input: {
 export async function mergeMeshLinkMember(input: {
   linkId: string;
   nodeId: string;
+  instanceName?: string | null;
   localUserId: string;
   endpoint: string | null;
   transport: MeshTransport;
@@ -897,6 +921,7 @@ export async function mergeMeshLinkMember(input: {
   }
   await saveMeshNode({
     nodeId: input.nodeId,
+    instanceName: input.instanceName,
     publicKey: input.publicKey,
     fingerprint: input.fingerprint,
     encryptionPublicKey: input.encryptionPublicKey,
@@ -950,6 +975,7 @@ export async function createMeshPairingRequest(
   const direction = input.direction ?? "incoming";
   await saveMeshNode({
     nodeId: input.requestedNodeId,
+    instanceName: input.requestedInstanceName,
     publicKey: input.publicKey,
     fingerprint: input.fingerprint,
     encryptionPublicKey: input.encryptionPublicKey,
@@ -962,10 +988,10 @@ export async function createMeshPairingRequest(
   getDatabase().run(`
     INSERT INTO mesh_pairing_requests (
       id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
-      requested_local_user_id, requested_username, endpoint, transport,
+      requested_instance_name, requested_local_user_id, requested_username, endpoint, transport,
       public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
       approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, ?)
   `, [
     id,
     direction,
@@ -973,6 +999,7 @@ export async function createMeshPairingRequest(
     direction === "incoming" ? input.linkId ?? null : null,
     input.targetLocalUserId ?? null,
     input.requestedNodeId,
+    input.requestedInstanceName ?? null,
     input.requestedLocalUserId,
     input.requestedUsername ?? null,
     input.endpoint,
@@ -1000,7 +1027,7 @@ export async function createMeshPairingRequest(
 export async function getMeshPairingRequest(id: string): Promise<MeshPairingRequestRecord | null> {
   const row = getDatabase().query(`
     SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
-      requested_local_user_id, requested_username, endpoint, transport,
+      requested_instance_name, requested_local_user_id, requested_username, endpoint, transport,
       public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
       approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
     FROM mesh_pairing_requests
@@ -1014,7 +1041,7 @@ export async function getMeshPairingApproval(
 ): Promise<MeshPairingApprovalRecord | null> {
   const row = getDatabase().query(`
     SELECT request_id, link_id, approved_by_node_id, approved_by_local_user_id,
-      active_node_id, takeover_generation, endpoint, transport, public_key,
+      approved_by_instance_name, active_node_id, takeover_generation, endpoint, transport, public_key,
       fingerprint, encryption_public_key, signature, members_json, status,
       created_at, updated_at
     FROM mesh_pairing_approvals
@@ -1031,6 +1058,7 @@ export async function saveMeshPairingApproval(
     if (
       existing.linkId !== input.linkId
       || existing.approvedByNodeId !== input.approvedByNodeId
+      || existing.approvedByInstanceName !== (input.approvedByInstanceName ?? null)
       || existing.approvedByLocalUserId !== input.approvedByLocalUserId
       || existing.activeNodeId !== input.activeNodeId
       || existing.takeoverGeneration !== input.takeoverGeneration
@@ -1049,14 +1077,15 @@ export async function saveMeshPairingApproval(
   const now = new Date().toISOString();
   getDatabase().run(`
     INSERT INTO mesh_pairing_approvals (
-      request_id, link_id, approved_by_node_id, approved_by_local_user_id,
-      active_node_id, takeover_generation, endpoint, transport, public_key,
+      request_id, link_id, approved_by_node_id, approved_by_instance_name,
+      approved_by_local_user_id, active_node_id, takeover_generation, endpoint, transport, public_key,
       fingerprint, encryption_public_key, signature, members_json, status,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     ON CONFLICT(request_id) DO UPDATE SET
       link_id = excluded.link_id,
       approved_by_node_id = excluded.approved_by_node_id,
+      approved_by_instance_name = excluded.approved_by_instance_name,
       approved_by_local_user_id = excluded.approved_by_local_user_id,
       active_node_id = excluded.active_node_id,
       takeover_generation = excluded.takeover_generation,
@@ -1076,6 +1105,7 @@ export async function saveMeshPairingApproval(
     input.requestId,
     input.linkId,
     input.approvedByNodeId,
+    input.approvedByInstanceName ?? null,
     input.approvedByLocalUserId,
     input.activeNodeId,
     input.takeoverGeneration,
@@ -1120,7 +1150,7 @@ export async function listPendingMeshPairingRequests(
     SELECT request.id, request.link_id, request.target_link_id, request.target_local_user_id,
       request.direction,
       request.requested_node_id, request.requested_local_user_id,
-      request.requested_username, request.endpoint, request.transport,
+      request.requested_instance_name, request.requested_username, request.endpoint, request.transport,
       request.public_key, request.fingerprint, request.encryption_public_key,
       request.nonce, request.signature,
       request.status, request.expires_at, request.approved_at,
@@ -1313,6 +1343,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   localNodeEndpoint: string | null;
   localNodeTransport: MeshTransport;
   remoteNodeId: string;
+  remoteInstanceName?: string | null;
   remoteLocalUserId: string;
   remoteEndpoint: string;
   remoteTransport: MeshTransport;
@@ -1377,11 +1408,12 @@ export async function completeOutgoingMeshPairingRequest(input: {
 
     db.run(`
       INSERT INTO mesh_nodes (
-        node_id, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+          node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
         last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
       ON CONFLICT(node_id) DO UPDATE SET
-        public_key = excluded.public_key,
+          instance_name = COALESCE(excluded.instance_name, mesh_nodes.instance_name),
+          public_key = excluded.public_key,
         fingerprint = excluded.fingerprint,
         endpoint = excluded.endpoint,
         encryption_public_key = COALESCE(excluded.encryption_public_key, mesh_nodes.encryption_public_key),
@@ -1394,6 +1426,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
         updated_at = excluded.updated_at
     `, [
       input.remoteNodeId,
+      input.remoteInstanceName ?? null,
       input.remotePublicKey,
       input.remoteFingerprint,
       input.remoteEncryptionPublicKey ?? null,

@@ -183,6 +183,7 @@ export async function assertMeshApiMutationAllowed(
   if (
     pathname === "/api/mesh/takeover"
     || pathname === "/api/mesh/rejoin"
+    || pathname === "/api/mesh/instance-name"
     || /^\/api\/mesh\/pairing-requests\/[^/]+\/complete$/.test(pathname)
   ) {
     return;

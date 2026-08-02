@@ -46,7 +46,9 @@ import { recordMeshMembershipCheckpoint } from "../persistence/mesh-sync";
 import {
   ensureLocalMeshNodeIdentity,
   getMeshNodeFingerprint,
+  requireMeshInstanceName,
   rotateLocalMeshNodeIdentity,
+  setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
@@ -99,6 +101,14 @@ export class MeshManager {
     };
   }
 
+  async setInstanceName(localUserId: string, value: string): Promise<MeshStatusRecord> {
+    await setLocalMeshInstanceName(value);
+    if (await getMeshLinkForLocalUser(localUserId)) {
+      await recordMeshMembershipCheckpoint(localUserId);
+    }
+    return await this.getStatus(localUserId);
+  }
+
   async getTakeoverPreflight(localUserId: string): Promise<{
     linkId: string | null;
     activeNodeId: string | null;
@@ -143,6 +153,12 @@ export class MeshManager {
     if (fingerprint !== envelope.fingerprint) {
       throw new DomainError("mesh_peer_identity_mismatch", "The pairing request fingerprint does not match its public key.");
     }
+    if (!envelope.requestedInstanceName) {
+      throw new DomainError(
+        "mesh_instance_name_required",
+        "The requesting instance must have a name before joining this mesh.",
+      );
+    }
     const knownNode = await getMeshNode(envelope.requestedNodeId);
     if (knownNode?.status === "revoked") {
       throw new DomainError("mesh_peer_revoked", "The pairing request uses a revoked mesh node identity.");
@@ -173,6 +189,7 @@ export class MeshManager {
 
     await saveMeshNode({
       nodeId: envelope.requestedNodeId,
+      instanceName: envelope.requestedInstanceName,
       publicKey: envelope.publicKey,
       fingerprint: envelope.fingerprint,
       encryptionPublicKey: envelope.encryptionPublicKey,
@@ -186,6 +203,7 @@ export class MeshManager {
       linkId: envelope.linkId ?? null,
       targetLocalUserId: envelope.targetLocalUserId ?? null,
       requestedNodeId: envelope.requestedNodeId,
+      requestedInstanceName: envelope.requestedInstanceName,
       requestedLocalUserId: envelope.requestedLocalUserId,
       requestedUsername: envelope.requestedUsername ?? null,
       endpoint: envelope.endpoint,
@@ -211,6 +229,7 @@ export class MeshManager {
     requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
+    const instanceName = requireMeshInstanceName(identity);
     const localLink = await getMeshLinkForLocalUser(localUserId);
     const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
     const localTransport = getMeshTransport(localEndpoint);
@@ -224,6 +243,7 @@ export class MeshManager {
       linkId: localLink?.linkId ?? null,
       targetLocalUserId: input.targetLocalUserId ?? null,
       requestedNodeId: identity.nodeId,
+      requestedInstanceName: instanceName,
       requestedLocalUserId: localUserId,
       requestedUsername: localUsername,
       endpoint: localEndpoint,
@@ -242,6 +262,7 @@ export class MeshManager {
       linkId: localLink?.linkId ?? null,
       targetLocalUserId: input.targetLocalUserId ?? null,
       requestedNodeId: identity.nodeId,
+      requestedInstanceName: instanceName,
       requestedLocalUserId: localUserId,
       requestedUsername: localUsername,
       endpoint: localEndpoint,
@@ -269,6 +290,7 @@ export class MeshManager {
     requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
+    requireMeshInstanceName(identity);
     const links = await listMeshLinksForLocalUser(localUserId);
     const link = links[0];
     if (!link) {
@@ -317,6 +339,12 @@ export class MeshManager {
     }
     if (fingerprint !== envelope.fingerprint) {
       throw new DomainError("mesh_peer_identity_mismatch", "The pairing approval fingerprint does not match its public key.");
+    }
+    if (!envelope.approvedByInstanceName) {
+      throw new DomainError(
+        "mesh_instance_name_required",
+        "The approving instance must have a name before completing the mesh join.",
+      );
     }
     const members = envelope.members ?? [];
     for (const member of members) {
@@ -377,6 +405,7 @@ export class MeshManager {
     }
     await saveMeshNode({
       nodeId: envelope.approvedByNodeId,
+      instanceName: envelope.approvedByInstanceName,
       publicKey: envelope.publicKey,
       fingerprint: envelope.fingerprint,
       encryptionPublicKey: envelope.encryptionPublicKey,
@@ -388,6 +417,7 @@ export class MeshManager {
       requestId: envelope.requestId,
       linkId: envelope.linkId,
       approvedByNodeId: envelope.approvedByNodeId,
+      approvedByInstanceName: envelope.approvedByInstanceName,
       approvedByLocalUserId: envelope.approvedByLocalUserId,
       activeNodeId: envelope.activeNodeId,
       takeoverGeneration: envelope.takeoverGeneration,
@@ -430,10 +460,12 @@ export class MeshManager {
       throw new DomainError("mesh_pairing_fingerprint_mismatch", "The confirmed fingerprint does not match the peer approval.");
     }
     const identity = await ensureLocalMeshNodeIdentity();
+    requireMeshInstanceName(identity);
     const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
+      instanceName: identity.instanceName,
       publicKey: identity.publicKey,
       fingerprint: identity.fingerprint,
       endpoint: localEndpoint,
@@ -447,6 +479,7 @@ export class MeshManager {
       localNodeEndpoint: localEndpoint,
       localNodeTransport: localTransport,
       remoteNodeId: approval.approvedByNodeId,
+      remoteInstanceName: approval.approvedByInstanceName,
       remoteLocalUserId: approval.approvedByLocalUserId,
       remoteEndpoint: approval.endpoint,
       remoteTransport: approval.transport,
@@ -461,6 +494,7 @@ export class MeshManager {
       await mergeMeshLinkMember({
         linkId: approval.linkId,
         nodeId: member.nodeId,
+        instanceName: member.instanceName,
         localUserId: member.localUserId,
         endpoint: member.endpoint,
         transport: member.transport,
@@ -492,14 +526,22 @@ export class MeshManager {
     requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
+    const instanceName = requireMeshInstanceName(identity);
     const request = await getMeshPairingRequest(requestId);
     if (!request) {
       throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
+    }
+    if (!request.requestedInstanceName) {
+      throw new DomainError(
+        "mesh_instance_name_required",
+        "The requesting instance must have a name before it can join this mesh.",
+      );
     }
     const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
+      instanceName,
       publicKey: identity.publicKey,
       fingerprint: identity.fingerprint,
       endpoint: localEndpoint,
@@ -523,6 +565,7 @@ export class MeshManager {
       }
       members.push({
         nodeId: member.nodeId,
+        instanceName: node.instanceName,
         localUserId: member.localUserId,
         endpoint: member.endpoint,
         transport: member.transport,
@@ -538,6 +581,7 @@ export class MeshManager {
       requestId,
       linkId: link.linkId,
       approvedByNodeId: identity.nodeId,
+      approvedByInstanceName: instanceName,
       approvedByLocalUserId: localUserId,
       activeNodeId: link.activeNodeId,
       takeoverGeneration: link.takeoverGeneration,

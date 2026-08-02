@@ -1,18 +1,12 @@
 /**
  * Mesh endpoint and transport policy.
  *
- * Insecure HTTP is intentionally limited to explicit development/loopback
- * use. HTTPS does not require a publicly trusted certificate.
+ * Insecure HTTP is intentionally limited to loopback use. HTTPS does not
+ * require a publicly trusted certificate.
  */
 
 import { DomainError } from "./domain-error";
 import type { MeshTransport } from "@/shared/mesh";
-
-const INSECURE_HTTP_ENV = "CLANKY_MESH_ALLOW_INSECURE_HTTP";
-
-function isTruthy(value: string | undefined): boolean {
-  return value === "1" || value === "true" || value === "yes";
-}
 
 export function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
@@ -45,19 +39,11 @@ export function assertMeshEndpointAllowed(
   if (parsed.search || parsed.hash) {
     throw new DomainError("mesh_endpoint_invalid", "Mesh endpoint must not contain a query or fragment.");
   }
-  if (transport === "http") {
-    if (!isTruthy(process.env[INSECURE_HTTP_ENV])) {
-      throw new DomainError(
-        "mesh_insecure_transport_disabled",
-        "Insecure mesh HTTP is disabled. Enable it explicitly for local development.",
-      );
-    }
-    if (!isLoopbackHost(parsed.hostname)) {
-      throw new DomainError(
-        "mesh_insecure_transport_not_loopback",
-        "Insecure mesh HTTP is only allowed for loopback endpoints.",
-      );
-    }
+  if (transport === "http" && !isLoopbackHost(parsed.hostname)) {
+    throw new DomainError(
+      "mesh_insecure_transport_not_loopback",
+      "Insecure mesh HTTP is only allowed for loopback endpoints.",
+    );
   }
   return parsed;
 }
