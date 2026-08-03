@@ -48,6 +48,7 @@ export interface SidebarWorkspaceNode {
   tasks: SidebarTaskNode[];
   historyTasks: SidebarTaskNode[];
   chats: SidebarChatNode[];
+  historyChats: SidebarChatNode[];
   sshSessions: SidebarWorkspaceSessionNode[];
   hasActivity: boolean;
 }
@@ -73,6 +74,7 @@ export interface SidebarServerNode {
   key: string;
   sessions: SidebarServerSessionNode[];
   chats: SidebarChatNode[];
+  historyChats: SidebarChatNode[];
 }
 
 export type SidebarActiveWorkItem =
@@ -110,6 +112,22 @@ export type SidebarActiveWorkItem =
       server: SshServer;
       serverName: string;
       sessionNode: SidebarServerSessionNode;
+    };
+
+export type SidebarChatHistoryItem =
+  | {
+      kind: "chat";
+      key: string;
+      workspace: Workspace;
+      workspaceName: string;
+      chatNode: SidebarChatNode;
+    }
+  | {
+      kind: "ssh-server-chat";
+      key: string;
+      server: SshServer;
+      serverName: string;
+      chatNode: SidebarChatNode;
     };
 
 interface BuildActiveWorkSidebarItemsOptions {
@@ -246,20 +264,24 @@ export function buildWorkspaceSidebarGroups({
     });
     const activeTaskNodes = taskNodes.filter((taskNode) => !isTerminalSidebarTask(taskNode.task));
     const historyTaskNodes = taskNodes.filter((taskNode) => isTerminalSidebarTask(taskNode.task));
+    const chatNodes = workspaceChats.map((chat) => ({
+      chat,
+      title: chat.config.name,
+      badge: formatStatusLabel(chat.state.status),
+      badgeVariant: getChatStatusBadgeVariant(chat.state.status),
+    }));
+    const activeChatNodes = chatNodes.filter((chatNode) => chatNode.chat.state.status !== "done");
+    const historyChatNodes = chatNodes.filter((chatNode) => chatNode.chat.state.status === "done");
 
     return {
       workspace,
       key: workspace.id,
       tasks: activeTaskNodes,
       historyTasks: historyTaskNodes,
-      chats: workspaceChats.map((chat) => ({
-        chat,
-        title: chat.config.name,
-        badge: formatStatusLabel(chat.state.status),
-        badgeVariant: getChatStatusBadgeVariant(chat.state.status),
-      })),
+      chats: activeChatNodes,
+      historyChats: historyChatNodes,
       sshSessions: workspaceSessions,
-      hasActivity: taskNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
+      hasActivity: activeTaskNodes.length > 0 || activeChatNodes.length > 0 || workspaceSessions.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
@@ -355,6 +377,41 @@ export function buildActiveWorkSidebarItems(
   ];
 }
 
+export function buildChatHistorySidebarItems(
+  workspaceGroups: SidebarWorkspaceGroupNode[],
+  options: BuildActiveWorkSidebarItemsOptions = {},
+): SidebarChatHistoryItem[] {
+  const historyItems: SidebarChatHistoryItem[] = [];
+
+  for (const group of workspaceGroups) {
+    for (const workspaceNode of group.workspaces) {
+      for (const chatNode of workspaceNode.historyChats) {
+        historyItems.push({
+          kind: "chat",
+          key: `chat:${chatNode.chat.config.id}`,
+          workspace: workspaceNode.workspace,
+          workspaceName: workspaceNode.workspace.name,
+          chatNode,
+        });
+      }
+    }
+  }
+
+  for (const serverNode of options.serverNodes ?? []) {
+    for (const chatNode of serverNode.historyChats) {
+      historyItems.push({
+        kind: "ssh-server-chat",
+        key: `ssh-server-chat:${chatNode.chat.config.id}`,
+        server: serverNode.server,
+        serverName: serverNode.server.config.name,
+        chatNode,
+      });
+    }
+  }
+
+  return historyItems;
+}
+
 function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
   return {
     session,
@@ -395,6 +452,15 @@ export function buildServerSidebarNodes({
       key: server.config.id,
       sessions: sortByDesc(standaloneSessions, (session) => session.createdAt),
       chats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
+        .filter((chat) => chat.state.status !== "done")
+        .map((chat) => ({
+          chat,
+          title: chat.config.name,
+          badge: formatStatusLabel(chat.state.status),
+          badgeVariant: getChatStatusBadgeVariant(chat.state.status),
+        })),
+      historyChats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
+        .filter((chat) => chat.state.status === "done")
         .map((chat) => ({
           chat,
           title: chat.config.name,

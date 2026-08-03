@@ -1,5 +1,7 @@
-import type { SshServer, SshServerSession } from "@/shared";
+import type { Chat, SshServer, SshServerSession } from "@/shared";
 import {
+  formatStatusLabel,
+  getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
   StatusBadge,
@@ -31,15 +33,34 @@ function SummaryCard({
 export function SshServerView({
   server,
   sessions,
+  chats,
   onNavigate,
   showPrivateItems = false,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
+  chats: Chat[];
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
   const serverPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
+  const activeChats = chats.filter((chat) => chat.state.status !== "done");
+  const historyChats = chats.filter((chat) => chat.state.status === "done");
+
+  function renderChatRow(chat: Chat) {
+    const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [server.config]), showPrivateItems);
+    return (
+      <ClankyListRow
+        key={chat.config.id}
+        title={chat.config.name}
+        description="Chat"
+        badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{formatStatusLabel(chat.state.status)}</StatusBadge>}
+        onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
+        privateHidden={privateHidden}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-3">
@@ -50,6 +71,22 @@ export function SshServerView({
           <SummaryCard label="Repositories base path" value={server.config.repositoriesBasePath} meta="Default base path for automatic provisioning." className={getPrivateContainerClassName(serverPrivateHidden)} />
         ) : null}
       </div>
+
+      <Panel title="Chats">
+        <div>
+          {activeChats.length === 0 ? (
+            <EmptyState title="No active chats" description="Create a chat to connect to this SSH server." />
+          ) : (
+            <div className="space-y-2">{activeChats.map(renderChatRow)}</div>
+          )}
+        </div>
+      </Panel>
+
+      {historyChats.length > 0 ? (
+        <Panel title="History" description="Chats marked as done.">
+          <div className="space-y-2">{historyChats.map(renderChatRow)}</div>
+        </Panel>
+      ) : null}
 
       <Panel title="Standalone sessions">
         <div>

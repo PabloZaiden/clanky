@@ -118,6 +118,7 @@ export interface ChatStatePort {
     state: ChatState,
     options?: {
       transcriptChanges?: TranscriptChangeSet;
+      expectedStatus?: ChatStatus;
     },
   ): Promise<Chat>;
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
@@ -195,6 +196,7 @@ export interface ChatLifecyclePort {
   importExistingSession(options: ImportExistingSessionOptions): Promise<Chat>;
   updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null>;
   updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null>;
+  markChatDone(chatId: string): Promise<Chat | null>;
   attachSession(chatId: string, session: SessionInfo): Promise<Chat | null>;
   getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }>;
   deleteTaskChat(taskId: string): Promise<boolean>;

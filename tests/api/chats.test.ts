@@ -292,6 +292,118 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("marks a chat as done, keeps it in history, and reactivates it on a new message", async () => {
+    installMockBackend(["First response", "Second response"]);
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Done Chat Workflow",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+
+    const firstSendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "First message" }),
+    });
+    expect(firstSendResponse.status).toBe(200);
+    const firstSettled = await waitForChatIdle(created.config.id);
+
+    const doneResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/done`, {
+      method: "POST",
+    });
+    expect(doneResponse.status).toBe(200);
+    const doneChat = await doneResponse.json() as Chat;
+    expect(doneChat.state.status).toBe("done");
+    expect(doneChat.state.completedAt).toBeString();
+
+    const persistedDoneChat = await loadChat(created.config.id);
+    expect(persistedDoneChat?.state.status).toBe("done");
+    expect(persistedDoneChat?.state.completedAt).toBe(doneChat.state.completedAt);
+
+    const listedDoneChats = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(listedDoneChats.status).toBe(200);
+    const listedChat = (await listedDoneChats.json() as Chat[]).find(
+      (chat) => chat.config.id === created.config.id,
+    );
+    expect(listedChat?.state.status).toBe("done");
+
+    const secondSendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Second message" }),
+    });
+    expect(secondSendResponse.status).toBe(200);
+    const secondSettled = await waitForChatIdle(created.config.id);
+
+    expect(secondSettled.state.status).toBe("idle");
+    expect(secondSettled.state.completedAt).toBeUndefined();
+    expect(secondSettled.state.messages.map((message) => message.content)).toEqual([
+      ...firstSettled.state.messages.map((message) => message.content),
+      "Second message",
+      "Second response",
+    ]);
+  });
+
+  test("rejects marking a busy chat as done without interrupting it", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Busy Done Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const persisted = await loadChat(created.config.id);
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+    await updateChatState(created.config.id, {
+      ...persisted.state,
+      status: "streaming",
+      activeMessageId: "active-message",
+    });
+
+    const doneResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/done`, {
+      method: "POST",
+    });
+    expect(doneResponse.status).toBe(409);
+    await expect(doneResponse.json()).resolves.toMatchObject({
+      error: "chat_busy",
+    });
+    expect((await loadChat(created.config.id))?.state.status).toBe("streaming");
+
+    const reconnecting = await loadChat(created.config.id);
+    if (!reconnecting) {
+      throw new Error("Expected persisted chat");
+    }
+    await updateChatState(created.config.id, {
+      ...reconnecting.state,
+      status: "reconnecting",
+    });
+
+    const reconnectingDoneResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/done`, {
+      method: "POST",
+    });
+    expect(reconnectingDoneResponse.status).toBe(409);
+    await expect(reconnectingDoneResponse.json()).resolves.toMatchObject({
+      error: "chat_busy",
+    });
+    expect((await loadChat(created.config.id))?.state.status).toBe("reconnecting");
+  });
+
   test("accepts text and PDF attachments and sends ACP resource parts", async () => {
     installMockBackend(["Document response"]);
     const createResponse = await fetch(`${baseUrl}/api/chats`, {

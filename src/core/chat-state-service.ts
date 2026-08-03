@@ -26,6 +26,7 @@ import type {
   Chat,
   ChatConfig,
   ChatState,
+  ChatStatus,
   TranscriptChangeSet,
   Workspace,
 } from "@/shared";
@@ -33,7 +34,7 @@ import { createTranscriptChangeSet } from "@/shared";
 import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
+import { ChatBusyError, isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
 
@@ -143,7 +144,10 @@ export class ChatStateService implements ChatStatePort {
   async updateState(
     chat: Chat,
     state: ChatState,
-    options: { transcriptChanges?: TranscriptChangeSet } = {},
+    options: {
+      transcriptChanges?: TranscriptChangeSet;
+      expectedStatus?: ChatStatus;
+    } = {},
   ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
     const transcriptChanges = options.transcriptChanges ?? (
@@ -157,8 +161,15 @@ export class ChatStateService implements ChatStatePort {
       preserveQueuedMessages,
       previousState: transcriptChanges ? chat.state : undefined,
       transcriptChanges,
+      expectedStatus: options.expectedStatus,
     });
     if (!saved) {
+      if (options.expectedStatus !== undefined) {
+        const latest = await this.getChat(chat.config.id);
+        if (latest && latest.state.status !== options.expectedStatus) {
+          throw new ChatBusyError("Chat changed while marking it as done");
+        }
+      }
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }
 

@@ -57,6 +57,19 @@ describe("chat snapshot merging", () => {
     expect(updated.state.interruptRequested).toBe(false);
   });
 
+  test("treats done as terminal and clears active response state", () => {
+    const current = createChat("streaming", "2026-07-18T01:00:01.000Z", {
+      activeMessageId: "message-1",
+      interruptRequested: true,
+    });
+
+    const updated = applyChatStatusEvent(current, "done", "2026-07-18T01:00:02.000Z");
+
+    expect(updated.state.status).toBe("done");
+    expect(updated.state.activeMessageId).toBeUndefined();
+    expect(updated.state.interruptRequested).toBe(false);
+  });
+
   test("ignores a stale terminal status event", () => {
     const current = createChat("streaming", CURRENT_ACTIVITY, {
       activeMessageId: "message-1",
@@ -100,6 +113,18 @@ describe("chat snapshot merging", () => {
     const merged = mergeChatSnapshot(current, incoming);
 
     expect(merged.state.status).toBe("idle");
+  });
+
+  test("does not let a stale busy snapshot downgrade a done chat", () => {
+    const current = createChat("done", CURRENT_ACTIVITY, {
+      completedAt: CURRENT_ACTIVITY,
+    });
+    const incoming = createChat("streaming", CURRENT_ACTIVITY);
+
+    const merged = mergeChatSnapshot(current, incoming);
+
+    expect(merged.state.status).toBe("done");
+    expect(merged.state.completedAt).toBe(CURRENT_ACTIVITY);
   });
 
   test("allows a genuinely newer busy transition after an idle snapshot", () => {

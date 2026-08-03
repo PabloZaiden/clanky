@@ -7,6 +7,10 @@ import type { Chat, ChatConfig, ChatStatus, SessionInfo, Task } from "@/shared";
 import {
   DEFAULT_CHAT_CONFIG,
   createInitialChatState,
+  ChatBusyError,
+  ChatNotMarkableError,
+  isChatBusyStatus,
+  isStandaloneChat,
   isTaskChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
@@ -337,6 +341,36 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
 
     return this.state.updateState(chat, state);
+  }
+
+  async markChatDone(chatId: string): Promise<Chat | null> {
+    const chat = await this.state.getChat(chatId);
+    if (!chat) {
+      return null;
+    }
+    if (!isStandaloneChat(chat)) {
+      throw new ChatNotMarkableError();
+    }
+    if (isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting") {
+      throw new ChatBusyError();
+    }
+    if (chat.state.status === "done") {
+      return chat;
+    }
+
+    const now = createTimestamp();
+    return this.state.updateState(
+      chat,
+      {
+        ...chat.state,
+        status: "done",
+        completedAt: chat.state.completedAt ?? now,
+        activeMessageId: undefined,
+        interruptRequested: false,
+        lastActivityAt: now,
+      },
+      { expectedStatus: chat.state.status },
+    );
   }
 
   async attachSession(chatId: string, session: SessionInfo): Promise<Chat | null> {

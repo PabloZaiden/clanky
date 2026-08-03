@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildActiveWorkSidebarItems,
+  buildChatHistorySidebarItems,
   buildServerSidebarNodes,
   buildWorkspaceSidebarGroups,
 } from "../../src/components/app-shell/shell-types";
@@ -83,10 +84,10 @@ function createServerSession(): SshServerSession {
   };
 }
 
-function createChat(): Chat {
+function createChat(status: Chat["state"]["status"] = "idle", id = "chat-1"): Chat {
   return {
     config: {
-      id: "chat-1",
+      id,
       name: "Quick Chat",
       workspaceId: "workspace-1",
       scope: "workspace",
@@ -102,11 +103,29 @@ function createChat(): Chat {
       mode: "chat",
     },
     state: {
-      id: "chat-1",
-      status: "idle",
+      id,
+      status,
       messages: [],
       logs: [],
       toolCalls: [],
+    },
+  };
+}
+
+function createServerChat(status: Chat["state"]["status"], id: string): Chat {
+  const chat = createChat(status, id);
+  return {
+    ...chat,
+    config: {
+      ...chat.config,
+      workspaceId: "",
+      source: {
+        kind: "ssh_server",
+        sshServerId: "server-1",
+        sshServerSessionId: "server-session-1",
+        directory: "/remote/workspace",
+      },
+      directory: "/remote/workspace",
     },
   };
 }
@@ -169,6 +188,36 @@ describe("sidebar node builders", () => {
     });
     expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([
       "chat:chat-1",
+    ]);
+  });
+
+  test("moves done workspace and SSH-server chats into history", () => {
+    const activeWorkspaceChat = createChat("idle", "workspace-active");
+    const doneWorkspaceChat = createChat("done", "workspace-done");
+    const activeServerChat = createServerChat("idle", "server-active");
+    const doneServerChat = createServerChat("done", "server-done");
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [createWorkspace()],
+      tasks: [],
+      chats: [activeWorkspaceChat, doneWorkspaceChat],
+      sessions: [],
+    });
+    const serverNodes = buildServerSidebarNodes({
+      servers: [createSshServer()],
+      sessionsByServerId: {},
+      chats: [activeServerChat, doneServerChat],
+    });
+
+    const workspaceNode = workspaceGroups[0]!.workspaces[0]!;
+    expect(workspaceNode.chats.map((chatNode) => chatNode.chat.config.id)).toEqual(["workspace-active"]);
+    expect(workspaceNode.historyChats.map((chatNode) => chatNode.chat.config.id)).toEqual(["workspace-done"]);
+    expect(buildActiveWorkSidebarItems(workspaceGroups, { serverNodes }).map((item) => item.key)).toEqual([
+      "chat:workspace-active",
+      "ssh-server-chat:server-active",
+    ]);
+    expect(buildChatHistorySidebarItems(workspaceGroups, { serverNodes }).map((item) => item.key)).toEqual([
+      "chat:workspace-done",
+      "ssh-server-chat:server-done",
     ]);
   });
 
