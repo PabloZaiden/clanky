@@ -237,7 +237,7 @@
 }
 
 .clanky-composer-surface {
-  background: var(--wapp-surface);
+  background: transparent;
   color: var(--wapp-text);
 }
 
