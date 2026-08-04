@@ -121,6 +121,7 @@ export function AppShell() {
     importExistingChat,
     createSshServerChat,
     updateChat,
+    markChatDone,
   } = useChats();
   const agents = useAgents();
   const {
@@ -334,6 +335,16 @@ export function AppShell() {
     sessionsByServerId,
     agents: agents.agents,
   });
+  const handleMarkChatDone = useCallback(async (chat: Chat): Promise<Chat | null> => {
+    const updated = await markChatDone(chat.config.id);
+    if (updated) {
+      toast.success("Chat marked as done.");
+    }
+    return updated;
+  }, [markChatDone, toast]);
+  const handleSidebarMarkChatDone = useCallback(async (chat: Chat): Promise<void> => {
+    await handleMarkChatDone(chat);
+  }, [handleMarkChatDone]);
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
     hasCodeExplorerAction: true,
@@ -344,6 +355,7 @@ export function AppShell() {
     }),
     onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
     onChatRenamed: refreshChats,
+    onChatDone: handleMarkChatDone,
     onChatDeleted: () => navigateWithinShell({ view: "home" }),
     onActionError: (message) => toast.error(message),
   });
@@ -581,6 +593,7 @@ export function AppShell() {
       onError: (message) => toast.error(message),
       toggleTaskPrivate,
       toggleChatPrivate,
+      markChatDone: handleSidebarMarkChatDone,
       toggleAgentPrivate,
       toggleWorkspacePrivate,
       toggleWorkspaceSshSessionPrivate,
@@ -626,6 +639,7 @@ export function AppShell() {
     toast,
     toggleAgentPrivate,
     toggleChatPrivate,
+    handleSidebarMarkChatDone,
     toggleSshServerPrivate,
     toggleStandaloneSshSessionPrivate,
     toggleTaskPrivate,

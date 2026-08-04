@@ -49,11 +49,12 @@ export class ChatInteractionService implements ChatInteractionPort {
     }
 
     const input = this.normalizeMessageInput(options);
-    if (this.shouldQueueMessage(chat)) {
-      return this.enqueueMessage(chat, input);
+    const activeChat = await this.reactivateDoneChat(chat);
+    if (this.shouldQueueMessage(activeChat)) {
+      return this.enqueueMessage(activeChat, input);
     }
 
-    return this.conversation.dispatchMessage(chat, input);
+    return this.conversation.dispatchMessage(activeChat, input);
   }
 
   async removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {
@@ -197,6 +198,22 @@ export class ChatInteractionService implements ChatInteractionPort {
 
   private shouldQueueMessage(chat: Chat): boolean {
     return isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
+  }
+
+  private async reactivateDoneChat(chat: Chat): Promise<Chat> {
+    if (chat.state.status !== "done") {
+      return chat;
+    }
+
+    return this.state.updateState(chat, {
+      ...chat.state,
+      status: "idle",
+      error: undefined,
+      completedAt: undefined,
+      activeMessageId: undefined,
+      interruptRequested: false,
+      lastActivityAt: createTimestamp(),
+    });
   }
 
   private async enqueueMessage(chat: Chat, input: NormalizedChatMessageInput): Promise<Chat> {

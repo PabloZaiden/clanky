@@ -193,6 +193,10 @@ export class ChatManager {
     return this.services.lifecycle.updateChatStatus(chatId, status);
   }
 
+  async markChatDone(chatId: string): Promise<Chat | null> {
+    return this.services.lifecycle.markChatDone(chatId);
+  }
+
   async attachSession(chatId: string, session: SessionInfo): Promise<Chat | null> {
     return this.services.lifecycle.attachSession(chatId, session);
   }

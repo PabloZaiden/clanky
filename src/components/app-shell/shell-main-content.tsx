@@ -477,10 +477,16 @@ function renderMainContent(props: ShellMainContentProps) {
         />
       );
     }
+    const selectedServerNode = serverNodes.find((node) => node.server.config.id === selectedServer.config.id);
+    const relatedServerChats = [
+      ...(selectedServerNode?.chats ?? []),
+      ...(selectedServerNode?.historyChats ?? []),
+    ].map((chatNode) => chatNode.chat);
     return (
       <SshServerView
         server={selectedServer}
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
+        chats={relatedServerChats}
         onNavigate={navigateWithinShell}
         showPrivateItems={showPrivateItems}
       />

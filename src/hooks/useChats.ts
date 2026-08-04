@@ -81,6 +81,7 @@ export interface UseChatsResult {
   importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
   createSshServerChat: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
+  markChatDone: (id: string) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
   sendMessage: (id: string, request: SendChatMessageRequest) => Promise<boolean>;
   interruptChat: (id: string, request?: InterruptChatRequest) => Promise<Chat | null>;
@@ -247,6 +248,22 @@ export function useChats(): UseChatsResult {
     }
   }, []);
 
+  const markChatDone = useCallback(async (id: string): Promise<Chat | null> => {
+    try {
+      const response = await appFetch(`/api/chats/${id}/done`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to mark chat as done"));
+      }
+      const chat = (await response.json()) as Chat;
+      setChats((prev) => upsertChat(prev, chat));
+      return chat;
+    } catch (doneError) {
+      log.error("Failed to mark chat as done", { chatId: id, error: String(doneError) });
+      setError(String(doneError));
+      return null;
+    }
+  }, []);
+
   const deleteChat = useCallback(async (id: string): Promise<boolean> => {
     try {
       const response = await appFetch(`/api/chats/${id}`, { method: "DELETE" });
@@ -372,6 +389,7 @@ export function useChats(): UseChatsResult {
     importExistingChat,
     createSshServerChat,
     updateChat,
+    markChatDone,
     deleteChat,
     sendMessage,
     interruptChat,

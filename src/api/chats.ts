@@ -9,7 +9,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../core/chat-manager";
 import { taskManager } from "../core/task-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { ChatBranchCheckoutError, ChatBusyError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isTaskChat, type Chat } from "@/shared/chat";
+import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isStandaloneChat, isTaskChat, type Chat } from "@/shared/chat";
 import type { ChatConfig } from "@/shared/chat";
 import type { Task } from "@/shared/task";
 import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";
@@ -32,6 +32,7 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     || error instanceof InvalidCurrentPlanError
     || error instanceof InvalidChatBaseBranchError
     || error instanceof ChatBranchCheckoutError
+    || error instanceof ChatNotMarkableError
     || error instanceof ChatPermissionRequestNotFoundError
     || error instanceof ChatPermissionReplyError
     || error instanceof SshCredentialsRequiredError
@@ -363,6 +364,45 @@ export const chatsRoutes = defineRoutes({
         return internalErrorResponse(error, {
           error: "delete_failed",
           message: "Failed to delete chat",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/chats/:id/done": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Mark a standalone chat as done.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      const chatId = ctx.params["id"]!;
+      const existing = await chatManager.getChat(chatId);
+      if (!existing) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+      if (!isStandaloneChat(existing)) {
+        return errorResponse(
+          "chat_not_markable",
+          "Only standalone chats can be marked as done",
+          409,
+        );
+      }
+
+      try {
+        const updated = await chatManager.markChatDone(chatId);
+        if (!updated) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+        return Response.json(await toLightweightChat(updated));
+      } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        log.error("Failed to mark chat as done", { chatId, error: String(error) });
+        return internalErrorResponse(error, {
+          error: "mark_done_failed",
+          message: "Failed to mark chat as done",
           status: 500,
         });
       }

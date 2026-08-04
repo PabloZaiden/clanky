@@ -8,6 +8,7 @@ import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Worksp
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { appFetch } from "../../lib/public-path";
+import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 import {
   isEffectivelyPrivate,
   privateSidebarPresentation,
@@ -42,6 +43,7 @@ export interface ShellSidebarActionHandlers {
   onError: (message: string) => void;
   toggleTaskPrivate: (task: Task) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
+  markChatDone: (chat: Chat) => void | Promise<void>;
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
   toggleWorkspaceSshSessionPrivate: (session: SshSession) => void | Promise<void>;
@@ -269,6 +271,14 @@ function getChatSidebarActions(
   handlers: ShellSidebarActionHandlers,
 ): ActionMenuItem[] {
   const chatId = chat.config.id;
+  const markDoneAction = !isStandaloneChat(chat) || chat.state.status === "done"
+    ? []
+    : [{
+        id: "mark-done",
+        label: "Mark as Done",
+        disabled: isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting",
+        onClick: () => void handlers.markChatDone(chat),
+      }];
   const baseActions = handlers.route.view === "chat" && handlers.selectedChat?.config.id === chatId
     ? handlers.selectedChatActions
     : sidebarActionItems([
@@ -281,12 +291,34 @@ function getChatSidebarActions(
             chatId,
           }),
         },
+        ...markDoneAction,
       ]);
   return withPrivateToggleAction(
     baseActions,
     chat.config,
     () => void handlers.toggleChatPrivate(chat),
   );
+}
+
+function createChatSidebarNode(
+  chatNode: SidebarWorkspaceGroupNode["workspaces"][number]["chats"][number],
+  ancestors: PrivateEntity[],
+  idPrefix: "chat" | "ssh-server-chat",
+  handlers: ShellSidebarActionHandlers,
+): SidebarNode {
+  const privateHidden = getPrivateHidden(chatNode.chat.config, ancestors, handlers.showPrivateItems);
+  const actions = getChatSidebarActions(chatNode.chat, handlers);
+  return privateSidebarPresentation({
+    type: "item",
+    id: `${idPrefix}:${chatNode.chat.config.id}`,
+    title: chatNode.title,
+    badge: chatNode.badge,
+    badgeVariant: chatNode.badgeVariant,
+    route: { view: "chat", chatId: chatNode.chat.config.id },
+    actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
+    pinnable: true,
+    pinId: `${idPrefix}:${chatNode.chat.config.id}`,
+  }, privateHidden);
 }
 
 function getTaskSidebarActions(
@@ -752,25 +784,20 @@ function buildSidebarNodes(
             ? undefined
             : { view: "compose", kind: "chat", scopeId: workspaceId },
         },
-        children: workspaceNode.chats.map((chatNode): SidebarNode => {
-          const privateHidden = getPrivateHidden(
-            chatNode.chat.config,
-            [workspaceNode.workspace],
-            handlers.showPrivateItems,
-          );
-          const actions = getChatSidebarActions(chatNode.chat, handlers);
-          return privateSidebarPresentation({
-            type: "item",
-            id: `chat:${chatNode.chat.config.id}`,
-            title: chatNode.title,
-            badge: chatNode.badge,
-            badgeVariant: chatNode.badgeVariant,
-            route: { view: "chat", chatId: chatNode.chat.config.id },
-            actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
-            pinnable: true,
-            pinId: `chat:${chatNode.chat.config.id}`,
-          }, privateHidden);
-        }),
+        children: [
+          ...workspaceNode.chats.map((chatNode) =>
+            createChatSidebarNode(chatNode, [workspaceNode.workspace], "chat", handlers)
+          ),
+          ...(workspaceNode.historyChats.length > 0 ? [{
+            type: "section" as const,
+            id: `workspace:${workspaceId}:chat-history`,
+            title: "History",
+            defaultCollapsed: true,
+            children: workspaceNode.historyChats.map((chatNode) =>
+              createChatSidebarNode(chatNode, [workspaceNode.workspace], "chat", handlers)
+            ),
+          }] : []),
+        ],
       },
       {
         type: "section",
@@ -920,25 +947,20 @@ function buildSidebarNodes(
               ? undefined
               : { view: "compose", kind: "ssh-server-chat", scopeId: serverId },
           },
-          children: serverNode.chats.map((chatNode): SidebarNode => {
-            const privateHidden = getPrivateHidden(
-              chatNode.chat.config,
-              [serverNode.server.config],
-              handlers.showPrivateItems,
-            );
-            const actions = getChatSidebarActions(chatNode.chat, handlers);
-            return privateSidebarPresentation({
-              type: "item",
-              id: `ssh-server-chat:${chatNode.chat.config.id}`,
-              title: chatNode.title,
-              badge: chatNode.badge,
-              badgeVariant: chatNode.badgeVariant,
-              route: { view: "chat", chatId: chatNode.chat.config.id },
-              actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
-              pinnable: true,
-              pinId: `ssh-server-chat:${chatNode.chat.config.id}`,
-            }, privateHidden);
-          }),
+          children: [
+            ...serverNode.chats.map((chatNode) =>
+              createChatSidebarNode(chatNode, [serverNode.server.config], "ssh-server-chat", handlers)
+            ),
+            ...(serverNode.historyChats.length > 0 ? [{
+              type: "section" as const,
+              id: `ssh-server:${serverId}:chat-history`,
+              title: "History",
+              defaultCollapsed: true,
+              children: serverNode.historyChats.map((chatNode) =>
+                createChatSidebarNode(chatNode, [serverNode.server.config], "ssh-server-chat", handlers)
+              ),
+            }] : []),
+          ],
         },
       ],
     }, serverPrivateHidden);

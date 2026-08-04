@@ -5,17 +5,20 @@ import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl, appFetch } from "../../lib/public-path";
 import type { Chat, Task } from "@/shared";
+import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 
 interface ChatActionItemOptions {
   chat: Chat;
   hasCodeExplorerAction: boolean;
   spawnPending: boolean;
   spawnCurrentPlanPending: boolean;
+  markDonePending: boolean;
   onSpawnTask: () => void;
   onSpawnTaskFromCurrentPlan: () => void;
   onOpenCodeExplorer: () => void;
   onTranscript: () => void;
   onRename: () => void;
+  onMarkDone: () => void;
   onDelete: () => void;
 }
 
@@ -25,6 +28,7 @@ interface UseChatActionsOptions {
   onOpenCodeExplorer?: (chat: Chat) => void;
   onTaskSpawned?: (task: Task) => void;
   onChatRenamed?: (chat: Chat) => void | Promise<void>;
+  onChatDone?: (chat: Chat) => Chat | null | Promise<Chat | null>;
   onChatDeleted?: (chat: Chat) => void | Promise<void>;
   onActionError: (message: string) => void;
 }
@@ -61,14 +65,16 @@ function buildChatActionItems({
   hasCodeExplorerAction,
   spawnPending,
   spawnCurrentPlanPending,
+  markDonePending,
   onSpawnTask,
   onSpawnTaskFromCurrentPlan,
   onOpenCodeExplorer,
   onTranscript,
   onRename,
+  onMarkDone,
   onDelete,
 }: ChatActionItemOptions): ActionMenuItem[] {
-  const isActive = ["starting", "streaming", "interrupting", "reconnecting"].includes(chat.state.status);
+  const isActive = isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
   const hasMessages = chat.state.hasMessages ?? chat.state.messages.length > 0;
   const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
 
@@ -102,6 +108,12 @@ function buildChatActionItems({
       onAction: onTranscript,
       disabled: !hasTranscript,
     },
+    ...(isStandaloneChat(chat) && chat.state.status !== "done" ? [{
+      id: "mark-done",
+      label: markDonePending ? "Marking as Done..." : "Mark as Done",
+      onAction: onMarkDone,
+      disabled: isActive || markDonePending,
+    }] : []),
     {
       id: "delete",
       label: "Delete",
@@ -117,6 +129,7 @@ export function useChatActions({
   onOpenCodeExplorer,
   onTaskSpawned,
   onChatRenamed,
+  onChatDone,
   onChatDeleted,
   onActionError,
 }: UseChatActionsOptions): ChatActionsController {
@@ -128,6 +141,7 @@ export function useChatActions({
   const [isSpawnPending, setIsSpawnPending] = useState(false);
   const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
+  const [isMarkDonePending, setIsMarkDonePending] = useState(false);
 
   async function handleRename(newName: string): Promise<void> {
     if (!renameTarget) {
@@ -236,6 +250,24 @@ export function useChatActions({
     }
   }
 
+  async function markChatDone(target: Chat): Promise<void> {
+    if (isMarkDonePending || target.state.status === "done" || !isStandaloneChat(target)) {
+      return;
+    }
+
+    setIsMarkDonePending(true);
+    try {
+      const updated = await onChatDone?.(target);
+      if (!updated) {
+        throw new Error("Failed to mark chat as done");
+      }
+    } catch (error) {
+      onActionError(getErrorMessage(error));
+    } finally {
+      setIsMarkDonePending(false);
+    }
+  }
+
   const items = useMemo(() => {
     if (!chat) {
       return [];
@@ -246,14 +278,25 @@ export function useChatActions({
       hasCodeExplorerAction,
       spawnPending: isSpawnPending,
       spawnCurrentPlanPending: isSpawnCurrentPlanPending,
+      markDonePending: isMarkDonePending,
       onSpawnTask: () => void spawnTask(chat),
       onSpawnTaskFromCurrentPlan: () => openSpawnCurrentPlanModal(chat),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat),
       onTranscript: () => setTranscriptTarget(chat),
       onRename: () => setRenameTarget(chat),
+      onMarkDone: () => void markChatDone(chat),
       onDelete: () => setDeleteTarget(chat),
     });
-  }, [chat, hasCodeExplorerAction, isSpawnCurrentPlanPending, isSpawnPending, onActionError, onOpenCodeExplorer, onTaskSpawned]);
+  }, [
+    chat,
+    hasCodeExplorerAction,
+    isMarkDonePending,
+    isSpawnCurrentPlanPending,
+    isSpawnPending,
+    onActionError,
+    onOpenCodeExplorer,
+    onTaskSpawned,
+  ]);
 
   const modals = (
     <>

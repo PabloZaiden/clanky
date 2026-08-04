@@ -41,6 +41,8 @@ export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
       return "error";
     case "stopped":
       return "stopped";
+    case "done":
+      return "completed";
     case "idle":
     default:
       return "success";

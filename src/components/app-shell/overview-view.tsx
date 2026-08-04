@@ -5,6 +5,8 @@ import { StatusBadge, type BadgeVariant } from "../common";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
+  buildChatHistorySidebarItems,
+  type SidebarChatHistoryItem,
   type SidebarActiveWorkItem,
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
@@ -78,6 +80,20 @@ function isActiveWorkPrivateHidden(item: SidebarActiveWorkItem, showPrivateItems
   return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.server.config]), showPrivateItems);
 }
 
+function getChatHistoryRoute(item: SidebarChatHistoryItem): WebAppRoute {
+  return { view: "chat", chatId: item.chatNode.chat.config.id };
+}
+
+function getChatHistorySubtitle(item: SidebarChatHistoryItem): string {
+  return item.kind === "chat" ? item.workspaceName : item.serverName;
+}
+
+function isChatHistoryPrivateHidden(item: SidebarChatHistoryItem, showPrivateItems: boolean): boolean {
+  return item.kind === "chat"
+    ? shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems)
+    : shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.server.config]), showPrivateItems);
+}
+
 export function OverviewView({
   servers,
   sessionsByServerId,
@@ -103,6 +119,10 @@ export function OverviewView({
 }) {
   const activeWorkItems = useMemo(
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }),
+    [serverNodes, sidebarWorkspaceGroups],
+  );
+  const chatHistoryItems = useMemo(
+    () => buildChatHistorySidebarItems(sidebarWorkspaceGroups, { serverNodes }),
     [serverNodes, sidebarWorkspaceGroups],
   );
   const serverMapItems = useMemo(() => {
@@ -140,6 +160,26 @@ export function OverviewView({
                   description={getActiveWorkSubtitle(item)}
                   badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
+                  privateHidden={privateHidden}
+                />
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {chatHistoryItems.length > 0 && (
+        <Panel data-testid="chat-history-card" title="History" description="Chats marked as done.">
+          <div className="space-y-2">
+            {chatHistoryItems.map((item) => {
+              const privateHidden = isChatHistoryPrivateHidden(item, showPrivateItems);
+              return (
+                <ClankyListRow
+                  key={item.key}
+                  title={item.chatNode.title}
+                  description={getChatHistorySubtitle(item)}
+                  badge={<StatusBadge variant={item.chatNode.badgeVariant}>{item.chatNode.badge}</StatusBadge>}
+                  onClick={!privateHidden ? () => onNavigate(getChatHistoryRoute(item)) : undefined}
                   privateHidden={privateHidden}
                 />
               );

@@ -4,6 +4,7 @@ import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
   getChatStatusBadgeVariant,
+  formatStatusLabel,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
@@ -36,8 +37,10 @@ export function WorkspaceView({
 }) {
   const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
   const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
-  const hasActivity = activityTasks.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
-  const historyDescription = "Merged and deleted tasks from this workspace.";
+  const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
+  const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
+  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedSessions.length > 0;
+  const historyDescription = "Completed tasks and chats marked as done.";
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: WebAppRoute = { view: "task", taskId: task.config.id };
@@ -55,6 +58,20 @@ export function WorkspaceView({
     );
   }
 
+  function renderChatRow(chat: Chat) {
+    const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
+    return (
+      <ClankyListRow
+        key={chat.config.id}
+        title={chat.config.name}
+        description="Chat"
+        badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{formatStatusLabel(chat.state.status)}</StatusBadge>}
+        onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
+        privateHidden={privateHidden}
+      />
+    );
+  }
+
   return (
     <div className="min-w-0 space-y-6">
       <Panel data-testid="workspace-activity-card" title="Activity">
@@ -62,19 +79,7 @@ export function WorkspaceView({
           {hasActivity ? (
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
-              {relatedChats.map((chat: Chat) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
-                return (
-                  <ClankyListRow
-                    key={chat.config.id}
-                    title={chat.config.name}
-                    description="Chat"
-                    badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{chat.state.status}</StatusBadge>}
-                    onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
-                    privateHidden={privateHidden}
-                  />
-                );
-              })}
+              {activityChats.map(renderChatRow)}
               {relatedSessions.map((session) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
                 return (
@@ -104,9 +109,12 @@ export function WorkspaceView({
         isAgentPrivateHidden={(agent) => shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems)}
       />
 
-      {historyTasks.length > 0 ? (
+      {historyTasks.length > 0 || historyChats.length > 0 ? (
         <Panel data-testid="workspace-history-card" title="History" description={historyDescription}>
-          <div className="space-y-2">{historyTasks.map((task) => renderTaskRow(task))}</div>
+          <div className="space-y-2">
+            {historyTasks.map((task) => renderTaskRow(task))}
+            {historyChats.map(renderChatRow)}
+          </div>
         </Panel>
       ) : null}
     </div>

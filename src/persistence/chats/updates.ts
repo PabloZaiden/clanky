@@ -2,7 +2,7 @@
  * Partial update operations for chats persistence.
  */
 
-import type { ChatConfig, ChatState, TranscriptChangeSet } from "@/shared";
+import type { ChatConfig, ChatState, ChatStatus, TranscriptChangeSet } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
@@ -22,6 +22,7 @@ export interface UpdateChatStateOptions {
   preserveQueuedMessages?: boolean;
   previousState?: ChatState;
   transcriptChanges?: TranscriptChangeSet;
+  expectedStatus?: ChatStatus;
 }
 
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
@@ -37,6 +38,9 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     }
 
     const chat = rowToChat(row);
+    if (options.expectedStatus !== undefined && chat.state.status !== options.expectedStatus) {
+      return false;
+    }
     shouldCheckpoint = chat.state.status !== state.status;
     chat.state = state;
     const newRow = chatToRow(chat);
@@ -50,8 +54,18 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     const setClause = columns.map((column) => `${column} = ?`).join(", ");
     const values = columns.map((column) => newRow[column as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
     values.push(chatId, userId);
+    const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
+    if (options.expectedStatus !== undefined) {
+      values.push(options.expectedStatus);
+    }
 
-    db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?`).run(...values);
+    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${statusCondition}`).run(...values);
+    if (result.changes === 0 && options.expectedStatus !== undefined) {
+      const latestRow = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
+      if (!latestRow || latestRow["status"] !== options.expectedStatus) {
+        return false;
+      }
+    }
     if (options.transcriptChanges) {
       applyTranscriptChangeSetInTransaction(
         db,

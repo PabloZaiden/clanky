@@ -103,7 +103,8 @@ export type ChatStatus =
   | "interrupting"
   | "reconnecting"
   | "stopped"
-  | "failed";
+  | "failed"
+  | "done";
 
 export interface ChatState {
   id: string;
@@ -157,7 +158,7 @@ export function isChatBusyStatus(status: ChatStatus): boolean {
 }
 
 export function isChatTerminalStatus(status: ChatStatus): boolean {
-  return status === "idle" || status === "stopped" || status === "failed";
+  return status === "idle" || status === "stopped" || status === "failed" || status === "done";
 }
 
 export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
@@ -198,6 +199,16 @@ export class ChatBusyError extends Error {
   constructor(message = "Chat is busy") {
     super(message);
     this.name = "ChatBusyError";
+  }
+}
+
+export class ChatNotMarkableError extends Error {
+  readonly code = "chat_not_markable";
+  readonly status = 409;
+
+  constructor(message = "Only standalone chats can be marked as done") {
+    super(message);
+    this.name = "ChatNotMarkableError";
   }
 }
 
