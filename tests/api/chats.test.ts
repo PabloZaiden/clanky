@@ -250,6 +250,12 @@ describe("Chats API Integration", () => {
     expect(created.config.autoApprovePermissions).toBe(true);
     expect(created.state.status).toBe("idle");
 
+    const persisted = await loadChat(created.config.id);
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+    expect(await updateChatState(created.config.id, persisted.state)).toBe(true);
+
     const listResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
     expect(listResponse.status).toBe(200);
     const chats = await listResponse.json();

@@ -60,8 +60,11 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     }
 
     const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${statusCondition}`).run(...values);
-    if (result.changes === 0) {
-      return false;
+    if (result.changes === 0 && options.expectedStatus !== undefined) {
+      const latestRow = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
+      if (!latestRow || latestRow["status"] !== options.expectedStatus) {
+        return false;
+      }
     }
     if (options.transcriptChanges) {
       applyTranscriptChangeSetInTransaction(

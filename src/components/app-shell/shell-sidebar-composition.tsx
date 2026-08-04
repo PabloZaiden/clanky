@@ -8,7 +8,7 @@ import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Worksp
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { appFetch } from "../../lib/public-path";
-import { isChatBusyStatus } from "@/shared/chat";
+import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 import {
   isEffectivelyPrivate,
   privateSidebarPresentation,
@@ -271,7 +271,7 @@ function getChatSidebarActions(
   handlers: ShellSidebarActionHandlers,
 ): ActionMenuItem[] {
   const chatId = chat.config.id;
-  const markDoneAction = chat.state.status === "done"
+  const markDoneAction = !isStandaloneChat(chat) || chat.state.status === "done"
     ? []
     : [{
         id: "mark-done",
