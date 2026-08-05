@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { WorkspaceSelector } from "../WorkspaceSelector";
+import { Button } from "../common";
 import {
   type CreateTaskFormActionState,
   type CreateTaskFormProps,
@@ -133,6 +134,20 @@ export function CreateTaskForm({
     setAttachments([]);
   }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
 
+  function handleAutofillPrompt() {
+    const normalizedIssueNumber = issueNumber.trim();
+    if (!normalizedIssueNumber) {
+      return;
+    }
+
+    const autofillText = `Address issue #${normalizedIssueNumber}`;
+    setName(autofillText);
+    nameRef.current = autofillText;
+    setPrompt(autofillText);
+    promptRef.current = autofillText;
+    setSelectedTemplate("");
+  }
+
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
       {/* Workspace Selection */}
@@ -241,16 +256,28 @@ export function CreateTaskForm({
         >
           GitHub Issue Number
         </label>
-        <input
-          type="number"
-          id="issueNumber"
-          value={issueNumber}
-          onChange={(e) => setIssueNumber(e.target.value)}
-          min="1"
-          step="1"
-          placeholder="Optional"
-          className="mt-1 block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-        />
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            id="issueNumber"
+            value={issueNumber}
+            onChange={(e) => setIssueNumber(e.target.value)}
+            min="1"
+            step="1"
+            placeholder="Optional"
+            className="block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleAutofillPrompt}
+            disabled={!issueNumber.trim()}
+            className="shrink-0"
+          >
+            Autofill prompt
+          </Button>
+        </div>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Adds <code>Closes #number</code> to an automatically created PR.
         </p>
