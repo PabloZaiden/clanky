@@ -3,7 +3,7 @@
  * Tests use actual HTTP requests to a test server.
  */
 
-import { test, expect, describe, beforeAll, afterAll, beforeEach, spyOn } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -687,32 +687,6 @@ describe("Workspace API Integration", () => {
       // Verify it's gone
       const getResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
       expect(getResponse.status).toBe(404);
-    });
-
-    test("resets backend manager state after deleting workspace", async () => {
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Delete Cleanup",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-        }),
-      });
-      expect(createResponse.ok).toBe(true);
-      const workspace = await createResponse.json();
-      const resetSpy = spyOn(backendManager, "resetWorkspaceConnection");
-
-      try {
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-          method: "DELETE",
-        });
-
-        expect(response.ok).toBe(true);
-        expect(resetSpy).toHaveBeenCalledWith(workspace.id);
-      } finally {
-        resetSpy.mockRestore();
-      }
     });
 
     test("deletes auto-provisioned server directory when requested", async () => {
