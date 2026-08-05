@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { WorkspaceSelector } from "../WorkspaceSelector";
+import { Button } from "../common";
 import {
   type CreateTaskFormActionState,
   type CreateTaskFormProps,
@@ -19,6 +20,7 @@ import { TaskSettings } from "./task-settings";
 import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
 import { UploadedPlanField } from "./uploaded-plan-field";
+import { parsePositiveIssueNumber } from "./issue-number";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { ComposerAttachment } from "@/shared/message-attachments";
@@ -122,6 +124,7 @@ export function CreateTaskForm({
   });
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   const uploadedPlanLocked = !!uploadedPlan;
+  const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
 
   useEffect(() => {
     if (!uploadedPlan) {
@@ -132,6 +135,19 @@ export function CreateTaskForm({
     setSelectedTemplate("");
     setAttachments([]);
   }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
+
+  function handleAutofillPrompt() {
+    if (parsedIssueNumber === undefined) {
+      return;
+    }
+
+    const autofillText = `Address issue #${parsedIssueNumber}`;
+    setName(autofillText);
+    nameRef.current = autofillText;
+    setPrompt(autofillText);
+    promptRef.current = autofillText;
+    setSelectedTemplate("");
+  }
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
@@ -241,16 +257,28 @@ export function CreateTaskForm({
         >
           GitHub Issue Number
         </label>
-        <input
-          type="number"
-          id="issueNumber"
-          value={issueNumber}
-          onChange={(e) => setIssueNumber(e.target.value)}
-          min="1"
-          step="1"
-          placeholder="Optional"
-          className="mt-1 block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-        />
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            id="issueNumber"
+            value={issueNumber}
+            onChange={(e) => setIssueNumber(e.target.value)}
+            min="1"
+            step="1"
+            placeholder="Optional"
+            className="block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleAutofillPrompt}
+            disabled={parsedIssueNumber === undefined}
+            className="shrink-0"
+          >
+            Autofill prompt
+          </Button>
+        </div>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Adds <code>Closes #number</code> to an automatically created PR.
         </p>
