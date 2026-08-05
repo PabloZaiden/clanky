@@ -83,9 +83,21 @@ function meshErrorResponse(error: unknown): Response {
           status: 503,
           message: "The mesh peer could not be reached",
         },
-        mesh_insecure_transport_not_loopback: {
-          status: 400,
-          message: "Insecure mesh HTTP is only allowed for loopback endpoints",
+        mesh_endpoint_not_configured: {
+          status: 503,
+          message: "Set CLANKY_PUBLIC_BASE_URL before using mesh pairing",
+        },
+        mesh_endpoint_invalid: {
+          status: 503,
+          message: "CLANKY_PUBLIC_BASE_URL must be a valid HTTP(S) URL",
+        },
+        mesh_endpoint_protocol_invalid: {
+          status: 503,
+          message: "CLANKY_PUBLIC_BASE_URL must use http or https",
+        },
+        mesh_endpoint_transport_mismatch: {
+          status: 503,
+          message: "CLANKY_PUBLIC_BASE_URL has an invalid transport",
         },
         linked_node_not_active: {
           status: 409,
@@ -171,7 +183,6 @@ export const meshRoutes = defineRoutes({
           user.id,
           user.username,
           parsed.data,
-          req.url,
         );
         return successResponse({ status });
       } catch (error) {
@@ -243,7 +254,6 @@ export const meshRoutes = defineRoutes({
           user.id,
           user.username,
           parsed.data,
-          req.url,
         );
         return successResponse({ status });
       } catch (error) {
@@ -275,7 +285,6 @@ export const meshRoutes = defineRoutes({
           ctx.requireUser().id,
           requestId,
           parsed.data,
-          req.url,
         );
         return successResponse({ status });
       } catch (error) {
@@ -303,7 +312,6 @@ export const meshRoutes = defineRoutes({
             ctx.requireUser().id,
             requestId,
             parsed.data,
-            req.url,
           );
           return successResponse({ status });
         } catch (error) {

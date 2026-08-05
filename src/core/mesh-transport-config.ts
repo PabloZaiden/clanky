@@ -1,19 +1,13 @@
 /**
  * Mesh endpoint and transport policy.
  *
- * Insecure HTTP is intentionally limited to loopback use. HTTPS does not
- * require a publicly trusted certificate.
+ * Mesh endpoints may use HTTP or HTTPS. HTTP is intended for trusted private
+ * networks, while HTTPS remains available for deployments that need transport
+ * confidentiality.
  */
 
 import { DomainError } from "./domain-error";
 import type { MeshTransport } from "@/shared/mesh";
-
-export function isLoopbackHost(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  return normalized === "localhost"
-    || normalized === "127.0.0.1"
-    || normalized === "::1";
-}
 
 export function assertMeshEndpointAllowed(
   endpoint: string,
@@ -39,12 +33,6 @@ export function assertMeshEndpointAllowed(
   if (parsed.search || parsed.hash) {
     throw new DomainError("mesh_endpoint_invalid", "Mesh endpoint must not contain a query or fragment.");
   }
-  if (transport === "http" && !isLoopbackHost(parsed.hostname)) {
-    throw new DomainError(
-      "mesh_insecure_transport_not_loopback",
-      "Insecure mesh HTTP is only allowed for loopback endpoints.",
-    );
-  }
   return parsed;
 }
 
@@ -53,12 +41,15 @@ export function getMeshTransport(endpoint: string): MeshTransport {
   return parsed.protocol === "https:" ? "https" : "http";
 }
 
-export function resolveAdvertisedMeshEndpoint(requestUrl: string): string {
-  const configured = process.env["CLANKY_MESH_ENDPOINT"]?.trim();
-  const endpoint = configured && configured.length > 0
-    ? configured
-    : new URL(requestUrl).origin;
-  const parsed = assertMeshEndpointAllowed(endpoint);
+export function resolveAdvertisedMeshEndpoint(): string {
+  const configured = process.env["CLANKY_PUBLIC_BASE_URL"]?.trim();
+  if (!configured) {
+    throw new DomainError(
+      "mesh_endpoint_not_configured",
+      "CLANKY_PUBLIC_BASE_URL must be configured before using mesh pairing.",
+    );
+  }
+  const parsed = assertMeshEndpointAllowed(configured);
   return parsed.toString().replace(/\/$/, "");
 }
 

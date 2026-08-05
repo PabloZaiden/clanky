@@ -19,6 +19,7 @@ import {
   listMeshNodes,
   listPendingMeshPairingRequests,
   mergeMeshLinkMember,
+  revokeMeshLinkMember,
   saveMeshNode,
 } from "../../src/persistence/mesh";
 import {
@@ -60,6 +61,8 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 let dataDir: string | undefined;
 const createdDataDirs: string[] = [];
+const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
+const originalMeshEndpoint = process.env["CLANKY_MESH_ENDPOINT"];
 
 async function setupDatabase(): Promise<void> {
   dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-"));
@@ -112,6 +115,16 @@ async function seedUserIfMissing(id: string): Promise<void> {
 afterEach(async () => {
   closeDatabase();
   delete process.env["CLANKY_DATA_DIR"];
+  if (originalPublicBaseUrl === undefined) {
+    delete process.env["CLANKY_PUBLIC_BASE_URL"];
+  } else {
+    process.env["CLANKY_PUBLIC_BASE_URL"] = originalPublicBaseUrl;
+  }
+  if (originalMeshEndpoint === undefined) {
+    delete process.env["CLANKY_MESH_ENDPOINT"];
+  } else {
+    process.env["CLANKY_MESH_ENDPOINT"] = originalMeshEndpoint;
+  }
   while (createdDataDirs.length > 0) {
     const path = createdDataDirs.pop();
     if (path) {
@@ -147,6 +160,113 @@ describe("mesh persistence", () => {
     expect((await ensureLocalMeshNodeIdentity()).instanceName).toBe("Primary instance");
     expect((await listMeshNodes()).find((node) => node.nodeId === named.nodeId)?.instanceName)
       .toBe("Primary instance");
+  });
+
+  test("does not contact a peer when the advertised endpoint is not configured", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    await ensureLocalMeshNodeIdentity();
+    await setLocalMeshInstanceName("Local instance");
+    delete process.env["CLANKY_PUBLIC_BASE_URL"];
+
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = Object.assign(async () => {
+      fetchCalls += 1;
+      throw new Error("peer should not be contacted");
+    }, { preconnect: originalFetch.preconnect });
+
+    try {
+      await expect(meshManager.startPairing(
+        "local-user",
+        "local-user",
+        { targetEndpoint: "http://127.0.0.1:4100" },
+      )).rejects.toMatchObject({ code: "mesh_endpoint_not_configured" });
+      expect(fetchCalls).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("rotates a revoked identity before starting a rejoin pairing", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    await ensureLocalMeshNodeIdentity();
+    await setLocalMeshInstanceName("Local instance");
+    const previousIdentity = await ensureLocalMeshNodeIdentity();
+    const remoteKeyPair = generateKeyPairSync("ed25519");
+    const remotePublicKey = remoteKeyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
+    const remoteNodeId = crypto.randomUUID();
+    const remoteFingerprint = getMeshNodeFingerprint(remotePublicKey);
+
+    await saveMeshNode({
+      nodeId: remoteNodeId,
+      instanceName: "Remote instance",
+      publicKey: remotePublicKey,
+      fingerprint: remoteFingerprint,
+      endpoint: "http://remote.example.test",
+      transport: "http",
+      status: "active",
+    });
+    const link = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: previousIdentity.nodeId,
+      localNodeEndpoint: "http://local.example.test",
+      localNodeTransport: "http",
+    });
+    await mergeMeshLinkMember({
+      linkId: link.linkId,
+      nodeId: remoteNodeId,
+      instanceName: "Remote instance",
+      localUserId: "remote-user",
+      endpoint: "http://remote.example.test",
+      transport: "http",
+      status: "active",
+      membershipGeneration: 1,
+      publicKey: remotePublicKey,
+      fingerprint: remoteFingerprint,
+    });
+    await applyMeshLinkTakeover({
+      linkId: link.linkId,
+      nodeId: remoteNodeId,
+      generation: 2,
+      claimedAt: new Date().toISOString(),
+      claimOrigin: "test",
+      signature: "remote-claim",
+    });
+    await revokeMeshLinkMember({
+      linkId: link.linkId,
+      localUserId: "local-user",
+      nodeId: previousIdentity.nodeId,
+    });
+
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://local.example.test/mesh/";
+    const originalFetch = globalThis.fetch;
+    let sentEndpoint = "";
+    let sentAdvertisedEndpoint = "";
+    globalThis.fetch = Object.assign(async (
+      input: Parameters<typeof fetch>[0],
+      init: Parameters<typeof fetch>[1],
+    ) => {
+      sentEndpoint = String(input);
+      const body = JSON.parse(String(init?.body)) as { endpoint: string };
+      sentAdvertisedEndpoint = body.endpoint;
+      return Response.json({ status: "pending" });
+    }, { preconnect: originalFetch.preconnect });
+
+    try {
+      const status = await meshManager.rejoin(
+        "local-user",
+        "local-user",
+        { targetEndpoint: "http://remote.example.test" },
+      );
+      expect(status.node.nodeId).not.toBe(previousIdentity.nodeId);
+      expect(status.pendingPairingRequests).toHaveLength(1);
+      expect(sentEndpoint).toBe("http://remote.example.test/api/mesh/internal/pairing-requests");
+      expect(sentAdvertisedEndpoint).toBe("http://local.example.test/mesh");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("encrypts mesh payloads for the recipient node", async () => {
@@ -632,35 +752,37 @@ describe("mesh persistence", () => {
 
     try {
       await useNodeDatabase(nodeC.dataDir, "user-c");
+      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4101";
       const outgoing = await meshManager.startPairing(
         "user-c",
         "user-c",
         { targetEndpoint: "http://127.0.0.1:4100" },
-        "http://127.0.0.1:4101/api/mesh/status",
       );
       const request = outgoing.pendingPairingRequests[0];
       expect(request?.direction).toBe("outgoing");
       expect(request?.status).toBe("pending");
 
       await useNodeDatabase(nodeA.dataDir, "user-a");
+      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4100";
       const pendingAtA = (await meshManager.getStatus("user-a")).pendingPairingRequests;
       expect(pendingAtA).toHaveLength(1);
+      expect(pendingAtA[0]?.endpoint).toBe("http://127.0.0.1:4101");
       const approvedAtA = await meshManager.approvePairingRequest(
         "user-a",
         pendingAtA[0]!.id,
         {},
-        "http://127.0.0.1:4100/api/mesh/status",
       );
       expect(approvedAtA.links).toHaveLength(1);
 
       await useNodeDatabase(nodeC.dataDir, "user-c");
+      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4101";
       const pendingAtC = (await meshManager.getStatus("user-c")).pendingPairingRequests;
       expect(pendingAtC[0]?.remoteApproval?.fingerprint).toBe(nodeA.identity.fingerprint);
+      expect(pendingAtC[0]?.remoteApproval?.endpoint).toBe("http://127.0.0.1:4100");
       const completedAtC = await meshManager.completePairing(
         "user-c",
         pendingAtC[0]!.id,
         { fingerprint: nodeA.identity.fingerprint },
-        "http://127.0.0.1:4101/api/mesh/status",
       );
       expect(completedAtC.links).toHaveLength(1);
       expect(completedAtC.links[0]!.members).toHaveLength(2);
@@ -673,7 +795,6 @@ describe("mesh persistence", () => {
         "user-c",
         pendingAtC[0]!.id,
         { fingerprint: nodeA.identity.fingerprint },
-        "http://127.0.0.1:4101/api/mesh/status",
       );
       expect(repeated.links[0]?.linkId).toBe(completedAtC.links[0]?.linkId);
 
