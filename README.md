@@ -152,7 +152,7 @@ clanky ws --task-id my-task
 | `CLANKY_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `CLANKY_PORT` | HTTP port | `3000` |
 | `CLANKY_DATA_DIR` | Data directory for SQLite persistence | `./data` |
-| `CLANKY_PUBLIC_BASE_URL` | Stable absolute base URL advertised to remote execution contexts and mesh peers | unset |
+| `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) origin without a path, query, or fragment, advertised to remote execution contexts and mesh peers | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
@@ -216,9 +216,9 @@ For a public deployment, configure the reverse proxy to:
 - mount a durable volume for all of `/app/data` and back it up.
 
 For mesh connections between trusted private-network instances, set
-`CLANKY_PUBLIC_BASE_URL` on each instance to the address reachable by its
-peer, such as `http://192.168.1.20:3000`. Do not expose an HTTP mesh endpoint
-to an untrusted network.
+`CLANKY_PUBLIC_BASE_URL` on each instance to the absolute HTTP(S) origin
+reachable by its peer, such as `http://192.168.1.20:3000`. Do not expose an
+HTTP mesh endpoint to an untrusted network.
 
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
 public deployments. The image's trust-proxy defaults are intentionally unsafe

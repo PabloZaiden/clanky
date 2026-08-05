@@ -24,7 +24,7 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
-function createPairingEnvelope() {
+function createPairingEnvelope(endpoint = "http://127.0.0.1:4101") {
   const keyPair = generateKeyPairSync("ed25519");
   const publicKey = keyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
   const unsigned = {
@@ -35,7 +35,7 @@ function createPairingEnvelope() {
     requestedInstanceName: "Remote instance",
     requestedLocalUserId: "remote-user",
     requestedUsername: "remote",
-    endpoint: "http://127.0.0.1:4101",
+    endpoint,
     transport: "http" as const,
     publicKey,
     fingerprint: getMeshNodeFingerprint(publicKey),
@@ -182,6 +182,22 @@ describe("mesh internal routes", () => {
     expect(response?.status).toBe(400);
     await expect(readJson(response!)).resolves.toMatchObject({
       error: "mesh_peer_signature_invalid",
+    });
+  });
+
+  test("rejects pairing endpoints that contain credentials", async () => {
+    const pairing = createPairingEnvelope("http://mesh-user:mesh-password@127.0.0.1:4101");
+    const route = meshInternalRoutes["/api/mesh/internal/pairing-requests"]!.POST!;
+    const response = await route(createInternalRequest(
+      "/api/mesh/internal/pairing-requests",
+      pairing,
+      pairing.requestedNodeId,
+      pairing.requestId,
+    ), undefined as never);
+
+    expect(response?.status).toBe(400);
+    await expect(readJson(response!)).resolves.toMatchObject({
+      error: "mesh_endpoint_invalid",
     });
   });
 

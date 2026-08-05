@@ -44,18 +44,33 @@ describe("mesh transport configuration", () => {
 
   test("uses the configured public URL and ignores the legacy mesh override", () => {
     process.env["CLANKY_MESH_ENDPOINT"] = "http://legacy.example.test:4100";
-    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://configured.example.test:4200/mesh/";
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://configured.example.test:4200/";
 
-    expect(resolveAdvertisedMeshEndpoint()).toBe("http://configured.example.test:4200/mesh");
+    expect(resolveAdvertisedMeshEndpoint()).toBe("http://configured.example.test:4200");
     expect(resolveMeshRoute(
       resolveAdvertisedMeshEndpoint(),
       "/api/mesh/internal/sync",
-    )).toBe("http://configured.example.test:4200/mesh/api/mesh/internal/sync");
+    )).toBe("http://configured.example.test:4200/api/mesh/internal/sync");
   });
 
   test("rejects endpoints with query strings or fragments", () => {
     expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100?mesh=1")).toThrow(DomainError);
     expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100/mesh#peer")).toThrow(DomainError);
+  });
+
+  test("rejects endpoints with credentials", () => {
+    expect(() => assertMeshEndpointAllowed("http://mesh-user:mesh-password@192.168.1.20:4100"))
+      .toThrow(DomainError);
+  });
+
+  test("requires the public base URL to be an absolute origin", () => {
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://configured.example.test:4200/mesh";
+    expect(() => resolveAdvertisedMeshEndpoint()).toThrow(DomainError);
+    try {
+      resolveAdvertisedMeshEndpoint();
+    } catch (error) {
+      expect(error).toMatchObject({ code: "mesh_public_base_url_invalid" });
+    }
   });
 
   test("rejects transport declarations that do not match the URL", () => {

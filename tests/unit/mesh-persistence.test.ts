@@ -181,7 +181,7 @@ describe("mesh persistence", () => {
         "local-user",
         "local-user",
         { targetEndpoint: "http://127.0.0.1:4100" },
-      )).rejects.toMatchObject({ code: "mesh_endpoint_not_configured" });
+      )).rejects.toMatchObject({ code: "mesh_public_base_url_not_configured" });
       expect(fetchCalls).toBe(0);
     } finally {
       globalThis.fetch = originalFetch;
@@ -240,7 +240,7 @@ describe("mesh persistence", () => {
       nodeId: previousIdentity.nodeId,
     });
 
-    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://local.example.test/mesh/";
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://local.example.test/";
     const originalFetch = globalThis.fetch;
     let sentEndpoint = "";
     let sentAdvertisedEndpoint = "";
@@ -263,7 +263,7 @@ describe("mesh persistence", () => {
       expect(status.node.nodeId).not.toBe(previousIdentity.nodeId);
       expect(status.pendingPairingRequests).toHaveLength(1);
       expect(sentEndpoint).toBe("http://remote.example.test/api/mesh/internal/pairing-requests");
-      expect(sentAdvertisedEndpoint).toBe("http://local.example.test/mesh");
+      expect(sentAdvertisedEndpoint).toBe("http://local.example.test");
     } finally {
       globalThis.fetch = originalFetch;
     }

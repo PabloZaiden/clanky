@@ -27,6 +27,9 @@ export function assertMeshEndpointAllowed(
   if (!transport) {
     throw new DomainError("mesh_endpoint_protocol_invalid", "Mesh endpoint must use http or https.");
   }
+  if (parsed.username || parsed.password) {
+    throw new DomainError("mesh_endpoint_invalid", "Mesh endpoint must not contain credentials.");
+  }
   if (expectedTransport && expectedTransport !== transport) {
     throw new DomainError("mesh_endpoint_transport_mismatch", "Mesh endpoint protocol does not match its transport.");
   }
@@ -45,12 +48,27 @@ export function resolveAdvertisedMeshEndpoint(): string {
   const configured = process.env["CLANKY_PUBLIC_BASE_URL"]?.trim();
   if (!configured) {
     throw new DomainError(
-      "mesh_endpoint_not_configured",
+      "mesh_public_base_url_not_configured",
       "CLANKY_PUBLIC_BASE_URL must be configured before using mesh pairing.",
     );
   }
-  const parsed = assertMeshEndpointAllowed(configured);
-  return parsed.toString().replace(/\/$/, "");
+  let parsed: URL;
+  try {
+    parsed = assertMeshEndpointAllowed(configured);
+  } catch (error) {
+    throw new DomainError(
+      "mesh_public_base_url_invalid",
+      "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
+      { cause: error },
+    );
+  }
+  if (parsed.pathname !== "/") {
+    throw new DomainError(
+      "mesh_public_base_url_invalid",
+      "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
+    );
+  }
+  return parsed.origin;
 }
 
 export function resolveMeshRoute(endpoint: string, route: string): string {
