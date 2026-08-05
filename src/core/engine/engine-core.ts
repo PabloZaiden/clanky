@@ -695,53 +695,56 @@ export class TaskEngine {
 
     try {
       this.emitLog("info", "Starting single-turn plain chat execution");
-      const result = await this.runIteration();
-
-      const currentStatus = this.task.state.status as TaskState["status"];
-      if (this.aborted || currentStatus === "stopped") {
-        await this.triggerPersistence();
-        return;
-      }
-
-      if (result.outcome === "error") {
-        const message = result.error ?? "Unknown error";
-        this.emitLog("error", `Single-turn execution failed: ${message}`);
-        this.updateState({
-          status: "failed",
-          completedAt: createTimestamp(),
-          error: {
-            message,
-            iteration: this.task.state.currentIteration,
-            timestamp: createTimestamp(),
-          },
-        });
-        this.emit({
-          type: "task.error",
-          taskId: this.config.id,
-          error: message,
-          iteration: this.task.state.currentIteration,
-          timestamp: createTimestamp(),
-        });
-        await this.triggerPersistence();
-        return;
-      }
-
-      this.emitLog("info", "Single-turn plain chat execution finished; waiting for manual user action");
-      this.updateState({
-        status: "stopped",
-        completedAt: createTimestamp(),
-        consecutiveErrors: undefined,
-      });
-      this.emit({
-        type: "task.stopped",
-        taskId: this.config.id,
-        reason: "Plain chat turn finished",
-        timestamp: createTimestamp(),
-      });
-      await this.triggerPersistence();
+      const result = await this.runIteration({ skipOutcomeEvaluation: true });
+      await this.handleSingleTurnResult(result);
     } finally {
       this.isTaskRunning = false;
     }
+  }
+
+  private async handleSingleTurnResult(result: IterationResult): Promise<void> {
+    const currentStatus = this.task.state.status;
+    if (this.aborted || currentStatus === "stopped") {
+      await this.triggerPersistence();
+      return;
+    }
+
+    if (result.outcome === "error") {
+      const message = result.error ?? "Unknown error";
+      this.emitLog("error", `Single-turn execution failed: ${message}`);
+      this.updateState({
+        status: "failed",
+        completedAt: createTimestamp(),
+        error: {
+          message,
+          iteration: this.task.state.currentIteration,
+          timestamp: createTimestamp(),
+        },
+      });
+      this.emit({
+        type: "task.error",
+        taskId: this.config.id,
+        error: message,
+        iteration: this.task.state.currentIteration,
+        timestamp: createTimestamp(),
+      });
+      await this.triggerPersistence();
+      return;
+    }
+
+    this.emitLog("info", "Single-turn plain chat execution finished; waiting for manual user action");
+    this.updateState({
+      status: "stopped",
+      completedAt: createTimestamp(),
+      consecutiveErrors: undefined,
+    });
+    this.emit({
+      type: "task.stopped",
+      taskId: this.config.id,
+      reason: "Plain chat turn finished",
+      timestamp: createTimestamp(),
+    });
+    await this.triggerPersistence();
   }
 
   private async runWithExecutionPolicy(): Promise<void> {
@@ -842,7 +845,10 @@ export class TaskEngine {
    * Build the prompt for an iteration.
    */
   private buildPrompt(_iteration: number): PromptInput {
-    this.lastPromptMode = this.task.state.pendingPromptMode ?? "engine_context";
+    const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
+    this.lastPromptMode = isInPlanMode
+      ? "engine_context"
+      : this.task.state.pendingPromptMode ?? "engine_context";
     return buildTaskPrompt(this.makePromptContext(), _iteration);
   }
 
@@ -1156,6 +1162,17 @@ export class TaskEngine {
 
         const iterationResult = await this.runIteration();
         log.debug("[TaskEngine] runTask: runIteration completed", { outcome: iterationResult.outcome });
+
+        if (iterationResult.promptMode === "direct_user") {
+          if (this.injectionPending && this.shouldContinue()) {
+            this.emitLog("debug", "A newer direct user message arrived during the current turn - continuing with the pending message");
+            this.aborted = false;
+            this.injectionPending = false;
+            continue;
+          }
+          await this.handleSingleTurnResult(iterationResult);
+          return;
+        }
 
         // Delegate outcome handling — returns true if the task should exit
         const shouldExit = await this.handleIterationOutcome(iterationResult);
@@ -1544,10 +1561,13 @@ export class TaskEngine {
   /**
    * Run a single iteration with real-time event streaming.
    */
-  private async runIteration(): Promise<IterationResult> {
+  private async runIteration(
+    options: { skipOutcomeEvaluation?: boolean } = {},
+  ): Promise<IterationResult> {
     log.debug("[TaskEngine] runIteration: Entry point");
     const iteration = this.task.state.currentIteration + 1;
     const startedAt = createTimestamp();
+    this.lastPromptMode = "engine_context";
 
     // Check if we're in plan mode - need to check before updating status
     const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
@@ -1596,8 +1616,12 @@ export class TaskEngine {
         ctx.error = undefined;
       }
 
-      // Evaluate whether the response matches a stop/completion pattern
-      this.evaluateOutcome(ctx);
+      // Direct user turns are conversational and must not trigger task markers
+      // or an automatic follow-up iteration.
+      const promptMode = normalizeTaskPromptIntent(this.lastPromptMode);
+      if (!options.skipOutcomeEvaluation && promptMode !== "direct_user") {
+        this.evaluateOutcome(ctx);
+      }
 
       // Commit changes after iteration
       if (ctx.outcome !== "error") {
@@ -1872,6 +1896,7 @@ export class TaskEngine {
 
     return {
       continue: ctx.outcome === "continue",
+      promptMode: this.lastPromptMode,
       outcome: ctx.outcome,
       responseContent: ctx.responseContent,
       error: ctx.error,

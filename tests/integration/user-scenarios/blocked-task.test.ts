@@ -69,9 +69,9 @@ describe("Blocked Task User Scenarios", () => {
       expect(followUp.status).toBe(200);
       expect(followUp.body.success).toBe(true);
 
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-      expect(completedTask.state.status).toBe("completed");
-      expect(completedTask.state.recentIterations[0]?.outcome).toBe("complete");
+      const resumedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+      expect(resumedTask.state.status).toBe("stopped");
+      expect(resumedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
 
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);
     });
