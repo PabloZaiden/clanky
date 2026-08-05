@@ -39,11 +39,11 @@ export async function sendFollowUpImpl(
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
-  // Terminal task follow-ups are user-authored turns that resume the task
-  // loop. Review feedback remains a separate workflow for accepted-local
-  // tasks, so the client never chooses prompt intent.
+  // Terminal task follow-ups are user-authored single turns. Review feedback
+  // remains a separate workflow for accepted-local tasks, so the client never
+  // chooses prompt intent.
   if (task.state.status === "completed" || task.state.status === "pushed") {
-    return startTaskLoopFollowUp(ctx, task, {
+    return startSingleTurnFollowUp(ctx, task, {
       message,
       model: options.model,
       attachments: options.attachments,
@@ -73,7 +73,7 @@ export async function sendFollowUpImpl(
   });
 }
 
-async function startTaskLoopFollowUp(
+async function startSingleTurnFollowUp(
   ctx: TaskCtx,
   task: Task,
   options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
@@ -138,7 +138,7 @@ async function startTaskLoopFollowUp(
       await updateTaskState(taskId, state, options);
     },
     skipGitSetup: true,
-    executionPolicy: "task_loop",
+    executionPolicy: "single_turn",
   });
 
   const previousSessionId = task.state.session?.id;
@@ -159,7 +159,7 @@ async function startTaskLoopFollowUp(
     });
   }
 
-  prepareTaskLoopFollowUpState(engine, options);
+  prepareSingleTurnFollowUpState(engine, options);
   await updateTaskOperationalState(taskId, engine.state);
   ctx.engines.set(taskId, engine);
   startStatePersistenceImpl(ctx, taskId);
@@ -167,7 +167,7 @@ async function startTaskLoopFollowUp(
   engine.continueExecution().catch(async (error) => {
     log.error(`Task follow-up failed for task ${taskId}: ${String(error)}`);
     if (engine.state.status === "running" || engine.state.status === "starting") {
-      assertValidTransition(engine.state.status, "failed", "taskLoopFollowUp");
+      assertValidTransition(engine.state.status, "failed", "singleTurnFollowUp");
       engine.state.status = "failed";
       engine.state.completedAt = createTimestamp();
       engine.state.error = {
@@ -182,17 +182,17 @@ async function startTaskLoopFollowUp(
   return { success: true };
 }
 
-function prepareTaskLoopFollowUpState(
+function prepareSingleTurnFollowUpState(
   engine: TaskEngine,
   options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
 ): void {
   const state = engine.state;
   if (state.status === "completed" || state.status === "pushed") {
-    assertValidTransition(state.status, "starting", "taskLoopFollowUp");
+    assertValidTransition(state.status, "starting", "singleTurnFollowUp");
     state.status = "starting";
   }
 
-  assertValidTransition(state.status, "running", "taskLoopFollowUp");
+  assertValidTransition(state.status, "running", "singleTurnFollowUp");
   state.status = "running";
   state.startedAt ??= createTimestamp();
   state.completedAt = undefined;
