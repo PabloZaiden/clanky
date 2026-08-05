@@ -23,6 +23,7 @@ import {
   initializeGitRepository,
   runGit,
 } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -56,22 +57,22 @@ describe("Tasks Control API Integration", () => {
 
   // Helper function to poll for task completion
   async function waitForTaskCompletion(taskId: string, timeoutMs = 15000): Promise<void> {
-    const startTime = Date.now();
-    let lastStatus = "";
-    while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
-        const data = await response.json();
-        lastStatus = data.state?.status ?? "no state";
-        if (lastStatus === "completed" || lastStatus === "failed") {
-          return;
+    await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return `HTTP ${response.status}`;
         }
-      } else {
-        lastStatus = `HTTP ${response.status}`;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`Task ${taskId} did not complete within ${timeoutMs}ms. Last status: ${lastStatus}`);
+        const data = await response.json() as { state?: { status?: string } };
+        return data.state?.status ?? "no state";
+      },
+      (status) => status === "completed" || status === "failed",
+      {
+        description: `task ${taskId} to complete`,
+        timeoutMs,
+        formatLastObserved: (status) => status,
+      },
+    );
   }
 
   // Helper to create or get a workspace for a directory

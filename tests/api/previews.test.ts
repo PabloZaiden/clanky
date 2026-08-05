@@ -8,6 +8,7 @@ import { previewSessionManager } from "../../src/core/preview-session-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import type { PreviewBridgeServerMessage, Workspace } from "@/shared";
 import { seedTestOwnerUser, testOwnerUser } from "../setup";
+import { pollUntil } from "../helpers/polling";
 
 function buildWorkspace(id: string, name: string): Workspace {
   const now = new Date().toISOString();
@@ -38,15 +39,17 @@ async function waitForBridgeMessage(
   messages: PreviewBridgeServerMessage[],
   predicate: (message: PreviewBridgeServerMessage) => boolean,
 ): Promise<PreviewBridgeServerMessage> {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const message = messages.find(predicate);
-    if (message) {
-      return message;
-    }
-    await Bun.sleep(25);
-  }
-  throw new Error(`Timed out waiting for bridge message. Last messages: ${JSON.stringify(messages)}`);
+  return pollUntil(
+    () => messages.find(predicate),
+    (message): message is PreviewBridgeServerMessage => message !== undefined,
+    {
+      description: "a preview bridge message",
+      timeoutMs: 5000,
+      formatLastObserved: (message) => message === undefined
+        ? "none"
+        : JSON.stringify(message) ?? "unserializable message",
+    },
+  );
 }
 
 describe("workspace previews", () => {

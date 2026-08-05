@@ -16,6 +16,7 @@ import {
 } from "./helpers";
 import type { PromptInput } from "../../../src/backends/types";
 import type { Task } from "@/shared/task";
+import { pollUntil } from "../../helpers/polling";
 
 function promptText(prompt: PromptInput): string {
   return prompt.parts
@@ -29,15 +30,15 @@ async function waitForSentPrompt(
   count: number,
   timeoutMs = 5000,
 ): Promise<Array<{ sessionId: string; prompt: PromptInput }>> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    const prompts = ctx.mockBackend.getSentPrompts();
-    if (prompts.length >= count) {
-      return prompts;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Expected ${count} sent prompts within ${timeoutMs}ms`);
+  return pollUntil(
+    () => ctx.mockBackend.getSentPrompts(),
+    (prompts) => prompts.length >= count,
+    {
+      description: `at least ${count} sent prompts`,
+      timeoutMs,
+      formatLastObserved: (prompts) => `count=${prompts.length}`,
+    },
+  );
 }
 
 describe("Task prompt flow", () => {

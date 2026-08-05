@@ -18,6 +18,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -106,20 +107,22 @@ describe("Tasks CRUD API Integration", () => {
     expectedStatuses: string[],
     timeoutMs = 10000,
   ): Promise<void> {
-    const startTime = Date.now();
-    let lastStatus = "unknown";
-    while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
-        const data = await response.json();
-        lastStatus = data.state?.status ?? "unknown";
-        if (expectedStatuses.includes(lastStatus)) {
-          return;
+    await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return `HTTP ${response.status}`;
         }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`Task ${taskId} did not reach an expected status within ${timeoutMs}ms. Last status: ${lastStatus}`);
+        const data = await response.json() as { state?: { status?: string } };
+        return data.state?.status ?? "unknown";
+      },
+      (status) => expectedStatuses.includes(status),
+      {
+        description: `task ${taskId} to reach an expected status`,
+        timeoutMs,
+        formatLastObserved: (status) => status,
+      },
+    );
   }
 
   // Helper function to poll for task completion

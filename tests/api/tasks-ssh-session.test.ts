@@ -10,6 +10,7 @@ import { taskManager } from "../../src/core/task-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 class TaskSshExecutor extends TestCommandExecutor {
   public deleteCommands: string[] = [];
@@ -162,24 +163,32 @@ describe("Task SSH session API integration", () => {
   }
 
   async function waitForTaskWorktree(taskId: string): Promise<string> {
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
+    const observation = await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return { path: null, status: `HTTP ${response.status}` };
+        }
         const task = await response.json() as {
           config: { directory: string; useWorktree?: boolean };
           state: { git?: { worktreePath?: string } };
         };
-        if (task.state.git?.worktreePath) {
-          return task.state.git.worktreePath;
-        }
-        if (!task.config.useWorktree) {
-          return task.config.directory;
-        }
-      }
-      await Bun.sleep(50);
+        return {
+          path: task.state.git?.worktreePath ?? (task.config.useWorktree ? null : task.config.directory),
+          status: task.state.git?.worktreePath ? "worktree-ready" : "pending",
+        };
+      },
+      (value) => value.path !== null,
+      {
+        description: `worktree path for task ${taskId}`,
+        timeoutMs: 5000,
+        formatLastObserved: (value) => `${value.status}; path=${value.path ?? "none"}`,
+      },
+    );
+    if (observation.path === null) {
+      throw new Error(`Task ${taskId} returned no worktree path after polling`);
     }
-    throw new Error(`Timed out waiting for worktree path for task ${taskId}`);
+    return observation.path;
   }
 
   test("creates and reconnects to the same linked SSH session", async () => {

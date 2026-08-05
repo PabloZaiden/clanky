@@ -14,6 +14,7 @@ import {
   ProvisioningTestExecutor,
   createDevboxStatusOutput,
 } from "../mocks/provisioning-test-executor";
+import { pollUntil } from "../helpers/polling";
 
 interface ProvisioningSnapshotResponse {
     job: {
@@ -50,20 +51,19 @@ async function waitForJobStatus(
   jobId: string,
   expectedStatuses: string[],
 ): Promise<ProvisioningSnapshotResponse> {
-  const deadline = Date.now() + 5000;
-  let lastSnapshot: ProvisioningSnapshotResponse | null = null;
-
-  while (Date.now() < deadline) {
-    const response = await fetch(`${baseUrl}/api/provisioning-jobs/${jobId}`);
-    expect(response.ok).toBe(true);
-    lastSnapshot = await response.json() as ProvisioningSnapshotResponse;
-    if (expectedStatuses.includes(lastSnapshot.job.state.status)) {
-      return lastSnapshot;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  throw new Error(`Timed out waiting for provisioning job ${jobId}. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
+  return pollUntil(
+    async () => {
+      const response = await fetch(`${baseUrl}/api/provisioning-jobs/${jobId}`);
+      expect(response.ok).toBe(true);
+      return await response.json() as ProvisioningSnapshotResponse;
+    },
+    (snapshot) => expectedStatuses.includes(snapshot.job.state.status),
+    {
+      description: `provisioning job ${jobId} to reach status [${expectedStatuses.join(", ")}]`,
+      timeoutMs: 5000,
+      formatLastObserved: (snapshot) => `status=${snapshot.job.state.status}`,
+    },
+  );
 }
 
 describe("Provisioning API integration", () => {

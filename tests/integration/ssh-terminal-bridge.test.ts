@@ -10,6 +10,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { SshTerminalBridge } from "../../src/core/ssh-terminal-bridge";
 import type { SshSession, Workspace } from "@/shared";
 import { initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 interface CommandRunResult {
   exitCode: number;
@@ -76,17 +77,16 @@ async function waitForCondition(
   timeoutMs = 5_000,
   intervalMs = 100,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    if (await predicate()) {
-      return;
-    }
-    if (Date.now() >= deadline) {
-      break;
-    }
-    await Bun.sleep(intervalMs);
-  }
-  throw new Error(failureMessage());
+  await pollUntil(
+    predicate,
+    (ready) => ready,
+    {
+      description: "SSH bridge condition",
+      timeoutMs,
+      intervalMs,
+      formatLastObserved: () => failureMessage(),
+    },
+  );
 }
 
 const canRunRealSshBridge = async () =>
