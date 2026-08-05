@@ -20,6 +20,7 @@ import { TaskSettings } from "./task-settings";
 import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
 import { UploadedPlanField } from "./uploaded-plan-field";
+import { parsePositiveIssueNumber } from "./issue-number";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { ComposerAttachment } from "@/shared/message-attachments";
@@ -123,6 +124,7 @@ export function CreateTaskForm({
   });
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   const uploadedPlanLocked = !!uploadedPlan;
+  const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
 
   useEffect(() => {
     if (!uploadedPlan) {
@@ -135,12 +137,11 @@ export function CreateTaskForm({
   }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
 
   function handleAutofillPrompt() {
-    const normalizedIssueNumber = issueNumber.trim();
-    if (!normalizedIssueNumber) {
+    if (parsedIssueNumber === undefined) {
       return;
     }
 
-    const autofillText = `Address issue #${normalizedIssueNumber}`;
+    const autofillText = `Address issue #${parsedIssueNumber}`;
     setName(autofillText);
     nameRef.current = autofillText;
     setPrompt(autofillText);
@@ -272,7 +273,7 @@ export function CreateTaskForm({
             variant="secondary"
             size="sm"
             onClick={handleAutofillPrompt}
-            disabled={!issueNumber.trim()}
+            disabled={parsedIssueNumber === undefined}
             className="shrink-0"
           >
             Autofill prompt

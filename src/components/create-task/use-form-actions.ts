@@ -11,6 +11,7 @@ import type { CreateTaskFormProps } from "./types";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { toMessageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
+import { parsePositiveIssueNumber } from "./issue-number";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { UploadedPlanFile } from "./types";
@@ -168,17 +169,13 @@ export function useFormActions({
 
         const parsedModel = selectedModel ? parseModelKey(selectedModel) : null;
         if (!asDraft && !parsedModel) return;
-        const parsedIssueNumber = issueNumber.trim() ? Number(issueNumber) : undefined;
+        const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
 
         const request: CreateTaskFormSubmitRequest = {
           name: finalName,
           workspaceId: selectedWorkspaceId,
           prompt: effectivePrompt,
-          issueNumber: parsedIssueNumber !== undefined
-            && Number.isInteger(parsedIssueNumber)
-            && parsedIssueNumber > 0
-            ? parsedIssueNumber
-            : undefined,
+          issueNumber: parsedIssueNumber,
           attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageAttachments(attachments) : [],
           planMode: currentUploadedPlan ? true : planMode,
           autoAcceptPlan: currentUploadedPlan ? true : planMode ? autoAcceptPlan : false,
