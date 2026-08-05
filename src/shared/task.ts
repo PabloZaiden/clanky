@@ -280,8 +280,9 @@ export interface ConsecutiveErrorTracker {
 /**
  * Intent of a pending prompt created by the server.
  *
- * The execution policy (task loop versus single turn) is independent from
- * this intent.
+ * Engine-context prompts participate in the normal task or feedback loop.
+ * Direct-user prompts are always processed as one interaction, regardless of
+ * the engine's default execution policy.
  */
 export type TaskPromptIntent = "engine_context" | "direct_user";
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   createTaskViaAPI,
   discardTaskViaAPI,
+  manualCompleteTaskViaAPI,
   pushTaskViaAPI,
   sendFollowUpViaAPI,
   setupTestServer,
@@ -50,7 +51,7 @@ describe("Task prompt flow", () => {
     await teardownTestServer(ctx);
   });
 
-  test("sends an active user injection directly, then resumes with task context", async () => {
+  test("sends an active user injection as one turn without automatic continuation", async () => {
     ctx.mockBackend.reset([
       "The original turn was interrupted.",
       "Continue the original work.",
@@ -79,23 +80,25 @@ describe("Task prompt flow", () => {
     expect(response.status).toBe(200);
 
     ctx.mockBackend.releaseHeldPrompt();
-    const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-    const prompts = await waitForSentPrompt(ctx, 3);
+    const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+    const prompts = await waitForSentPrompt(ctx, 2);
 
     expect(promptText(prompts[1]!.prompt)).toBe("Prioritize the edge case I just described.");
     expect(promptText(prompts[0]!.prompt)).toContain("- Original Goal: Implement the original feature");
-    expect(promptText(prompts[2]!.prompt)).toContain("- Original Goal: Implement the original feature");
     expect(prompts[1]!.sessionId).toBe(prompts[0]!.sessionId);
-    expect(completedTask.state.messages.filter((message) => message.content.includes("edge case")).length).toBe(1);
+    expect(stoppedTask.state.status).toBe("stopped");
+    expect(stoppedTask.state.currentIteration).toBe(2);
+    expect(stoppedTask.state.recentIterations[1]?.outcome).toBe("continue");
+    expect(stoppedTask.state.messages.filter((message) => message.content.includes("edge case")).length).toBe(1);
+    expect(ctx.mockBackend.getSentPrompts()).toHaveLength(2);
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });
 
-  test("keeps a recoverable session for a terminal follow-up and uses the loop policy", async () => {
+  test("keeps a recoverable session for terminal follow-ups without marker semantics", async () => {
     ctx.mockBackend.reset([
       "Initial work complete. <promise>COMPLETE</promise>",
       "I will continue with the requested follow-up.",
-      "The follow-up work is complete. <promise>COMPLETE</promise>",
     ]);
 
     const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
@@ -120,36 +123,40 @@ describe("Task prompt flow", () => {
       "Please continue from the current implementation.",
     );
     expect(followUp.status).toBe(200);
-    const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-    const prompts = await waitForSentPrompt(ctx, 3);
+    const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+    const prompts = await waitForSentPrompt(ctx, 2);
 
     expect(promptText(prompts[1]!.prompt)).toBe("Please continue from the current implementation.");
-    expect(promptText(prompts[2]!.prompt)).toContain("- Original Goal: Implement the original feature");
     expect(prompts[1]!.sessionId).toBe(initialSessionId);
-    expect(prompts[2]!.sessionId).toBe(initialSessionId);
-    expect(completedTask.state.currentIteration).toBe(3);
-    expect(completedTask.state.messages.filter((message) => message.content.includes("current implementation")).length).toBe(1);
+    expect(stoppedTask.state.status).toBe("stopped");
+    expect(stoppedTask.state.currentIteration).toBe(2);
+    expect(stoppedTask.state.recentIterations[1]?.outcome).toBe("continue");
+    expect(stoppedTask.state.messages.filter((message) => message.content.includes("current implementation")).length).toBe(1);
+    expect(ctx.mockBackend.getSentPrompts()).toHaveLength(2);
+
+    const manualComplete = await manualCompleteTaskViaAPI(ctx.baseUrl, task.config.id);
+    expect(manualComplete.status).toBe(200);
+    expect(manualComplete.body.success).toBe(true);
+    await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
     const push = await pushTaskViaAPI(ctx.baseUrl, task.config.id);
     expect(push.status).toBe(200);
     await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
 
-    ctx.mockBackend.setResponses([
-      "I will continue the pushed task.",
-      "The pushed follow-up is complete. <promise>COMPLETE</promise>",
-    ]);
+    ctx.mockBackend.setResponses(["The pushed follow-up includes a marker. <promise>COMPLETE</promise>"]);
     const pushedFollowUp = await sendFollowUpViaAPI(
       ctx.baseUrl,
       task.config.id,
       "Please continue after the push.",
     );
     expect(pushedFollowUp.status).toBe(200);
-    await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-    const pushedPrompts = await waitForSentPrompt(ctx, 5);
-    expect(promptText(pushedPrompts[3]!.prompt)).toBe("Please continue after the push.");
-    expect(promptText(pushedPrompts[4]!.prompt)).toContain("- Original Goal: Implement the original feature");
-    expect(pushedPrompts[3]!.sessionId).toBe(initialSessionId);
-    expect(pushedPrompts[4]!.sessionId).toBe(initialSessionId);
+    const pushedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+    const pushedPrompts = await waitForSentPrompt(ctx, 3);
+    expect(promptText(pushedPrompts[2]!.prompt)).toBe("Please continue after the push.");
+    expect(pushedPrompts[2]!.sessionId).toBe(initialSessionId);
+    expect(pushedTask.state.status).toBe("stopped");
+    expect(pushedTask.state.recentIterations[2]?.outcome).toBe("continue");
+    expect(ctx.mockBackend.getSentPrompts()).toHaveLength(3);
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });
@@ -203,16 +210,17 @@ describe("Task prompt flow", () => {
       const followUp = await sendFollowUpViaAPI(ctx.baseUrl, task.config.id, scenario.followUp);
       expect(followUp.status).toBe(200);
 
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const stoppedFollowUpTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
       const prompts = await waitForSentPrompt(ctx, 2);
       expect(promptText(prompts[1]!.prompt)).toBe(scenario.followUp);
-      expect(completedTask.state.status).toBe("completed");
+      expect(stoppedFollowUpTask.state.status).toBe("stopped");
+      expect(stoppedFollowUpTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
 
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);
     }
   });
 
-  test("adds a recovery bootstrap only when the terminal session no longer exists", async () => {
+  test("adds a recovery bootstrap without resuming the task loop", async () => {
     ctx.mockBackend.reset([
       "Initial work complete. <promise>COMPLETE</promise>",
       "The recovered follow-up is complete. <promise>COMPLETE</promise>",
@@ -237,13 +245,15 @@ describe("Task prompt flow", () => {
       "Recover the task and continue the implementation.",
     );
     expect(followUp.status).toBe(200);
-    const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+    const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
     const prompts = await waitForSentPrompt(ctx, 2);
 
     expect(prompts[1]!.sessionId).not.toBe(initialSessionId);
     expect(promptText(prompts[1]!.prompt)).toContain("This task is continuing in a new AI session");
     expect(promptText(prompts[1]!.prompt)).toContain("Recover the task and continue the implementation.");
-    expect(completedTask.state.messages.filter((message) => message.content.includes("Recover the task")).length).toBe(1);
+    expect(stoppedTask.state.status).toBe("stopped");
+    expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
+    expect(stoppedTask.state.messages.filter((message) => message.content.includes("Recover the task")).length).toBe(1);
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });

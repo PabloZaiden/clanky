@@ -11,6 +11,7 @@ import type {
   TaskLogEntry,
   ModelConfig,
   TranscriptChangeSet,
+  TaskPromptIntent,
 } from "@/shared";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
@@ -37,8 +38,9 @@ export const MAX_PERSISTED_MESSAGES = 2000;
 export const MAX_PERSISTED_TOOL_CALLS = 5000;
 
 /**
- * Controls whether an engine processes one response or continues the task loop.
- * Prompt construction is intentionally independent from this policy.
+ * Controls the default execution policy for prompts without an explicit
+ * direct-user origin. A prompt marked as direct_user always runs as one turn,
+ * even when the engine's default policy is task_loop.
  */
 export type TaskExecutionPolicy = "task_loop" | "single_turn";
 
@@ -99,6 +101,8 @@ export interface TaskEngineOptions {
 export interface IterationResult {
   /** Whether the task should continue */
   continue: boolean;
+  /** Origin of the prompt that produced this iteration */
+  promptMode: TaskPromptIntent;
   /** The outcome of this iteration */
   outcome: "continue" | "complete" | "blocked" | "error" | "plan_ready";
   /** The full response content from the AI */

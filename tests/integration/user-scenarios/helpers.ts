@@ -762,6 +762,20 @@ export async function sendFollowUpViaAPI(
 }
 
 /**
+ * Manually complete a stopped or failed task via the API.
+ */
+export async function manualCompleteTaskViaAPI(
+  baseUrl: string,
+  taskId: string,
+): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-complete`, {
+    method: "POST",
+  });
+  const body = await response.json();
+  return { status: response.status, body };
+}
+
+/**
  * Update branch (sync with base) for a pushed task via the API.
  */
 export async function updateBranchViaAPI(
