@@ -4,7 +4,7 @@ import type { BadgeVariant } from "@pablozaiden/webapp/web";
 export function getStatusBadgeVariant(status: string): BadgeVariant {
   switch (status) {
     case "idle":
-      return "idle";
+      return "success";
     case "planning":
     case "starting":
     case "running":
@@ -14,14 +14,15 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
     case "completed":
       return "completed";
     case "stopped":
+      return "warning";
     case "max_iterations":
-      return "stopped";
+      return "error";
     case "failed":
       return "failed";
     case "merged":
       return "merged";
     case "pushed":
-      return "pushed";
+      return "success";
     case "deleted":
       return "deleted";
     default:

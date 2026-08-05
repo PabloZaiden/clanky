@@ -25,6 +25,9 @@ const ACTIVE_SYNC_CONFLICT_STATUSES: ReadonlySet<TaskStatus> = new Set([
 
 export type TaskStatusPillVariant =
   | "default"
+  | "success"
+  | "warning"
+  | "error"
   | "idle"
   | "planning"
   | "running"
@@ -65,7 +68,7 @@ type TaskStatusPillState = Pick<TaskState, "status" | "planMode"> & {
 };
 
 const TASK_STATUS_PILLS: Record<TaskStatusPillKey, Omit<TaskStatusPill, "key">> = {
-  idle: { label: "Idle", variant: "idle" },
+  idle: { label: "Idle", variant: "success" },
   draft: { label: "Draft", variant: "default" },
   planning: { label: "Planning", variant: "planning" },
   plan_ready: { label: "Plan Ready", variant: "plan_ready" },
@@ -73,13 +76,13 @@ const TASK_STATUS_PILLS: Record<TaskStatusPillKey, Omit<TaskStatusPill, "key">> 
   running: { label: "Running", variant: "running" },
   waiting: { label: "Waiting", variant: "running" },
   completed: { label: "Completed", variant: "completed" },
-  stopped: { label: "Stopped", variant: "stopped" },
+  stopped: { label: "Stopped", variant: "warning" },
   failed: { label: "Failed", variant: "failed" },
-  max_iterations: { label: "Max Iterations", variant: "stopped" },
+  max_iterations: { label: "Max Iterations", variant: "error" },
   resolving_conflicts: { label: "Resolving Conflicts", variant: "running" },
   accepted_local: { label: "Accepted Locally", variant: "completed" },
   merged: { label: "Merged", variant: "merged" },
-  pushed: { label: "Pushed", variant: "pushed" },
+  pushed: { label: "Pushed", variant: "success" },
   deleted: { label: "Deleted", variant: "deleted" },
 };
 
