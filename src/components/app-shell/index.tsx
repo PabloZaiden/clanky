@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   replaceWebAppRoute,
-  routeToHash,
   useToast,
   WebAppRoot,
   type ActionMenuItem,
@@ -103,7 +102,7 @@ export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [webAppInstanceKey, setWebAppInstanceKey] = useState("initial");
-  const syncedSidebarRouteRef = useRef<string | null>(null);
+  const syncedSidebarTabRef = useRef<string | null>(null);
   const [registeredHeaderActions, setRegisteredHeaderActions] = useState<{
     owner: symbol;
     actions: ReactNode;
@@ -665,14 +664,13 @@ export function AppShell() {
       return;
     }
 
-    const syncKey = `${routeToHash(nextRoute)}:${targetTab}`;
-    if (syncedSidebarRouteRef.current === syncKey) {
+    if (syncedSidebarTabRef.current === targetTab) {
       return;
     }
 
-    syncedSidebarRouteRef.current = syncKey;
+    syncedSidebarTabRef.current = targetTab;
     window.localStorage.setItem(WEBAPP_SIDEBAR_TAB_STORAGE_KEY, targetTab);
-    setWebAppInstanceKey(syncKey);
+    setWebAppInstanceKey(targetTab);
   }, [chats, serverNodes, sidebarWorkspaceGroups]);
 
   useEffect(() => {
