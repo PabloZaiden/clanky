@@ -1,6 +1,7 @@
 import type {
   ActionMenuItem,
   SidebarNode,
+  SidebarTab,
   WebAppRootProps,
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
@@ -20,6 +21,7 @@ import { formatStatusLabel } from "../common";
 import { isTaskActive, isTaskGenerating } from "../../utils";
 import {
   buildActiveWorkSidebarItems,
+  type SidebarActiveWorkItem,
   type SidebarServerNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
@@ -80,6 +82,146 @@ export interface ShellSidebarCompositionOptions {
 export interface ShellSidebarComposition {
   sidebar: NonNullable<WebAppRootProps["sidebar"]>;
   headerNodes: SidebarNode[];
+}
+
+export type SidebarTabId = "active" | "workspaces" | "servers";
+
+export const SIDEBAR_TABS: SidebarTab[] = [
+  { id: "active", title: "Active", label: "Active" },
+  { id: "workspaces", title: "Workspaces", label: "Workspaces" },
+  { id: "servers", title: "Servers", label: "Servers" },
+];
+
+export interface SidebarRouteTabContext {
+  chats: Chat[];
+  sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
+  serverNodes: SidebarServerNode[];
+}
+
+function findActiveWorkItem(
+  route: WebAppRoute,
+  context: SidebarRouteTabContext,
+): SidebarActiveWorkItem | undefined {
+  const activeWorkItems = buildActiveWorkSidebarItems(
+    context.sidebarWorkspaceGroups,
+    { serverNodes: context.serverNodes },
+  );
+  const routeId = getRouteString(route, "taskId")
+    ?? getRouteString(route, "chatId")
+    ?? getRouteString(route, "sshSessionId");
+  if (!routeId) {
+    return undefined;
+  }
+
+  return activeWorkItems.find((item) => {
+    if (route.view === "task" || route.view === "task-files") {
+      return item.kind === "task" && item.taskNode.task.config.id === routeId;
+    }
+    if (route.view === "chat" || route.view === "chat-transcript") {
+      return (
+        (item.kind === "chat" || item.kind === "ssh-server-chat")
+        && item.chatNode.chat.config.id === routeId
+      );
+    }
+    if (route.view === "ssh") {
+      return (
+        (item.kind === "ssh-session" || item.kind === "ssh-server-session")
+        && (item.kind === "ssh-session"
+          ? item.sessionNode.session.config.id === routeId
+          : item.sessionNode.id === routeId)
+      );
+    }
+    return undefined;
+  });
+}
+
+function getChatRouteTab(
+  chatId: string | undefined,
+  context: SidebarRouteTabContext,
+): SidebarTabId {
+  if (!chatId) {
+    return "active";
+  }
+  if (findActiveWorkItem({ view: "chat", chatId }, context)) {
+    return "active";
+  }
+  const chat = context.chats.find((item) => item.config.id === chatId);
+  return chat?.config.source?.kind === "ssh_server" ? "servers" : "workspaces";
+}
+
+function getTaskRouteTab(
+  taskId: string | undefined,
+  context: SidebarRouteTabContext,
+): SidebarTabId {
+  if (!taskId) {
+    return "active";
+  }
+  return findActiveWorkItem({ view: "task", taskId }, context)
+    ? "active"
+    : "workspaces";
+}
+
+export function getSidebarTabForRoute(
+  route: WebAppRoute,
+  context: SidebarRouteTabContext,
+): SidebarTabId | null {
+  switch (route.view) {
+    case "task":
+    case "task-files":
+      return getTaskRouteTab(getRouteString(route, "taskId"), context);
+    case "chat":
+    case "chat-transcript":
+      return getChatRouteTab(getRouteString(route, "chatId"), context);
+    case "ssh":
+      return "active";
+    case "workspace":
+    case "workspace-files":
+    case "workspace-previews":
+    case "workspace-settings":
+    case "rebuild-workspace":
+    case "restart-workspace":
+    case "agents":
+    case "agent":
+    case "agent-run":
+      return "workspaces";
+    case "ssh-server":
+    case "vnc-session":
+    case "ssh-server-settings":
+    case "server-files":
+    case "server-arise":
+      return "servers";
+    case "code-explorer": {
+      const contentType = getRouteString(route, "contentType");
+      if (contentType === "task") {
+        return getTaskRouteTab(getRouteString(route, "taskId"), context);
+      }
+      if (contentType === "chat") {
+        return getChatRouteTab(getRouteString(route, "chatId"), context);
+      }
+      if (contentType === "workspace") {
+        return "workspaces";
+      }
+      if (contentType === "server") {
+        return "servers";
+      }
+      return null;
+    }
+    case "compose": {
+      const kind = getRouteString(route, "kind");
+      if (kind === "ssh-server" || kind === "ssh-server-chat") {
+        return "servers";
+      }
+      if (kind === "ssh-session") {
+        return getRouteString(route, "serverId") ? "servers" : "workspaces";
+      }
+      if (kind === "task" || kind === "chat" || kind === "agent" || kind === "workspace") {
+        return "workspaces";
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
 }
 
 function sidebarActionItems(
@@ -1003,15 +1145,28 @@ function buildSidebarNodes(
   ], "");
 }
 
+function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefined): SidebarNode[] {
+  switch (activeTab) {
+    case "workspaces":
+      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces");
+    case "servers":
+      return nodes.filter((node) => node.id === "ssh-servers");
+    case "active":
+    default:
+      return nodes.filter((node) => node.id === "active-work");
+  }
+}
+
 export function buildShellSidebarComposition(
   options: ShellSidebarCompositionOptions,
 ): ShellSidebarComposition {
-  const getNodes = ({ search }: { search: string }): SidebarNode[] => {
-    const nodes = buildSidebarNodes(options);
+  const getNodes = ({ search, activeTab }: { search: string; activeTab?: string }): SidebarNode[] => {
+    const nodes = selectSidebarTabNodes(buildSidebarNodes(options), activeTab);
     return search ? filterSidebarNodes(nodes as SearchableSidebarNode[], search) : nodes;
   };
   const sidebar = {
     search: true,
+    tabs: SIDEBAR_TABS,
     pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
     topActions: [
       {
@@ -1034,6 +1189,6 @@ export function buildShellSidebarComposition(
 
   return {
     sidebar,
-    headerNodes: flattenSidebarNodes(getNodes({ search: "" })),
+    headerNodes: flattenSidebarNodes(buildSidebarNodes(options)),
   };
 }
