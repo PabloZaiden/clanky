@@ -19,7 +19,7 @@ function installClipboard(clipboard: Clipboard): void {
 }
 
 describe("browser clipboard helper", () => {
-  test("matches text MIME types case-insensitively", async () => {
+  test("matches text MIME types case-insensitively and preserves the original type for getType", async () => {
     const matchedType = "Text/Plain; charset=UTF-8";
     const getType = mock(async () => new Blob(["pasted text"], { type: matchedType }));
     installClipboard({
@@ -28,7 +28,10 @@ describe("browser clipboard helper", () => {
         getType,
       }]),
     } as unknown as Clipboard);
+
     const result = await readClipboardContent();
+
     expect(result).toEqual({ attachmentFiles: [], text: "pasted text" });
+    expect(getType).toHaveBeenCalledWith(matchedType);
   });
 });
