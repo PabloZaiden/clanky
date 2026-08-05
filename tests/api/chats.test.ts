@@ -23,6 +23,12 @@ import type { ChatEvent } from "@/shared/events";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, NeverCompletingMockBackend, defaultTestModel } from "../mocks/mock-backend";
+import {
+  createTempBareGitRepository,
+  getCurrentBranch,
+  initializeGitRepository,
+  runGit,
+} from "../helpers/git-fixtures";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -69,6 +75,7 @@ describe("Chats API Integration", () => {
   let baseUrl: string;
   let testWorkspaceId: string;
   let mockBackend: MockAcpBackend;
+  let defaultBranch = "";
 
   function installMockBackend(responses: string[]): void {
     mockBackend = new MockAcpBackend({
@@ -171,7 +178,7 @@ describe("Chats API Integration", () => {
         updatedAt: now,
         workspaceId: testWorkspaceId,
         model: testModel,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
         useWorktree: true,
         mode: "task",
       },
@@ -186,7 +193,7 @@ describe("Chats API Integration", () => {
         messages: [],
         toolCalls: [],
         git: {
-          originalBranch: "main",
+          originalBranch: defaultBranch,
           workingBranch: `feature/${taskId}`,
           worktreePath: workingDirectory,
           commits: [],
@@ -198,21 +205,16 @@ describe("Chats API Integration", () => {
   beforeAll(async () => {
     testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-data-"));
     testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-work-"));
-    testOriginDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-origin-"));
 
     process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     await initializeDatabase();
 
-    await Bun.$`git init -b main ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
-    await Bun.$`git init --bare ${testOriginDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} remote add origin ${testOriginDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} push -u origin main`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
+    defaultBranch = await getCurrentBranch(testWorkDir);
+    testOriginDir = await createTempBareGitRepository({ prefix: "clanky-api-chats-test-origin-" });
+    await runGit(testWorkDir, ["remote", "add", "origin", testOriginDir]);
+    await runGit(testWorkDir, ["push", "-u", "origin", defaultBranch]);
 
     installMockBackend(["Hello from chat API", "Second response"]);
 
@@ -239,7 +241,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -308,7 +310,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -367,7 +369,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -420,7 +422,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -497,7 +499,7 @@ describe("Chats API Integration", () => {
           workspaceId: testWorkspaceId,
           model: testModel,
           useWorktree: false,
-          baseBranch: "main",
+          baseBranch: defaultBranch,
         }),
       });
       expect(createResponse.status).toBe(201);
@@ -763,7 +765,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -840,7 +842,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -896,7 +898,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -922,7 +924,7 @@ describe("Chats API Integration", () => {
           workspaceId: testWorkspaceId,
           model: testModel,
           useWorktree: false,
-          baseBranch: "main",
+          baseBranch: defaultBranch,
         }),
       });
 
@@ -987,7 +989,7 @@ describe("Chats API Integration", () => {
           workspaceId: testWorkspaceId,
           model: testModel,
           useWorktree: false,
-          baseBranch: "main",
+          baseBranch: defaultBranch,
         }),
       });
       expect(createResponse.status).toBe(201);
@@ -1083,7 +1085,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -1202,7 +1204,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -1233,7 +1235,8 @@ describe("Chats API Integration", () => {
     installMockBackend(["Long Workspace Topic", "Assistant response"]);
     const longWorkspaceDir = await mkdtemp(join(tmpdir(), "clanky-chat-long-workspace-"));
     try {
-      await Bun.$`git -C ${longWorkspaceDir} init --quiet --initial-branch=main`;
+      await initializeGitRepository(longWorkspaceDir, { initialCommit: "empty" });
+      const longWorkspaceBranch = await getCurrentBranch(longWorkspaceDir);
       const longWorkspaceName = `${"Very Long Workspace Name ".repeat(8)}Suffix`;
       const longWorkspaceId = await getOrCreateWorkspace(longWorkspaceDir, longWorkspaceName);
 
@@ -1244,7 +1247,7 @@ describe("Chats API Integration", () => {
           workspaceId: longWorkspaceId,
           model: testModel,
           useWorktree: false,
-          baseBranch: "main",
+          baseBranch: longWorkspaceBranch,
         }),
       });
       expect(createResponse.status).toBe(201);
@@ -1276,7 +1279,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(explicitResponse.status).toBe(201);
@@ -1298,7 +1301,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(generatedResponse.status).toBe(201);
@@ -1339,7 +1342,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: unavailableModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(standardResponse.status).toBe(201);
@@ -1354,7 +1357,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: unavailableModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
         quick: true,
       }),
     });
@@ -1375,7 +1378,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: unavailableModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
         quick: true,
       }),
     });
@@ -1474,7 +1477,7 @@ describe("Chats API Integration", () => {
     expect(created.config.baseBranch).toBeUndefined();
 
     const expectedWorktreePath = getManagedWorktreePath(testWorkDir, created.config.id);
-    expect(created.state.worktree?.originalBranch).toBe("main");
+    expect(created.state.worktree?.originalBranch).toBe(defaultBranch);
     expect(created.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
     expect(created.state.worktree?.worktreePath).toBe(expectedWorktreePath);
 
@@ -1491,7 +1494,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -1554,7 +1557,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -1673,7 +1676,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -1716,7 +1719,7 @@ describe("Chats API Integration", () => {
         model: testModel,
         useWorktree: false,
         autoApprovePermissions: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -1779,11 +1782,11 @@ describe("Chats API Integration", () => {
   });
 
   test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
-    const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const originalBranch = await getCurrentBranch(testWorkDir);
     const selectedBranch = "selected-chat-base";
 
-    await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
-    await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    await runGit(testWorkDir, ["checkout", "-b", selectedBranch]);
+    await runGit(testWorkDir, ["checkout", originalBranch]);
 
     try {
       const branchFormat = "%(refname:short)";
@@ -1814,17 +1817,17 @@ describe("Chats API Integration", () => {
 
       await waitForChatIdle(created.config.id as string);
 
-      const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+      const currentBranch = await getCurrentBranch(testWorkDir);
       expect(currentBranch).toBe(selectedBranch);
 
-      const branches = (await Bun.$`git -C ${testWorkDir} for-each-ref --format=${branchFormat} refs/heads`.text())
+      const branches = (await runGit(testWorkDir, ["for-each-ref", `--format=${branchFormat}`, "refs/heads"])).stdout
         .split("\n")
         .map((branch) => branch.trim())
         .filter(Boolean);
       expect(branches.some((branch) => branch.startsWith("chat-selected-branch-chat-"))).toBe(false);
       expect(branches.includes(selectedBranch)).toBe(true);
     } finally {
-      await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+      await runGit(testWorkDir, ["checkout", originalBranch]);
     }
   });
 
@@ -1861,13 +1864,13 @@ describe("Chats API Integration", () => {
   });
 
   test("does not checkout the base branch when following up on an established standalone chat", async () => {
-    const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const originalBranch = await getCurrentBranch(testWorkDir);
     const selectedBranch = `selected-chat-followup-base-${crypto.randomUUID().slice(0, 8)}`;
     const followupBranch = `selected-chat-followup-current-${crypto.randomUUID().slice(0, 8)}`;
     const dirtyFile = join(testWorkDir, "standalone-chat-dirty.txt");
 
-    await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
-    await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    await runGit(testWorkDir, ["checkout", "-b", selectedBranch]);
+    await runGit(testWorkDir, ["checkout", originalBranch]);
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -1897,7 +1900,7 @@ describe("Chats API Integration", () => {
       expect(firstSendResponse.status).toBe(200);
       await waitForChatIdle(chatId);
 
-      await Bun.$`git -C ${testWorkDir} checkout -b ${followupBranch}`.quiet();
+      await runGit(testWorkDir, ["checkout", "-b", followupBranch]);
       await writeFile(dirtyFile, "dirty working tree\n");
 
       const followupResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
@@ -1911,11 +1914,11 @@ describe("Chats API Integration", () => {
       expect(followupResponse.status).toBe(200);
       await waitForChatIdle(chatId);
 
-      const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+      const currentBranch = await getCurrentBranch(testWorkDir);
       expect(currentBranch).toBe(followupBranch);
     } finally {
       await rm(dirtyFile, { force: true });
-      await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+      await runGit(testWorkDir, ["checkout", originalBranch]);
     }
   });
 
@@ -1928,7 +1931,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2007,7 +2010,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2070,7 +2073,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2109,7 +2112,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2150,7 +2153,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2192,7 +2195,7 @@ describe("Chats API Integration", () => {
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
     const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
-    const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const currentBranch = await getCurrentBranch(testWorkDir);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
     const standaloneCreateResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -2328,7 +2331,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2418,7 +2421,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2445,7 +2448,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2480,7 +2483,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2568,7 +2571,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2636,7 +2639,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2692,7 +2695,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2752,7 +2755,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 
@@ -2791,7 +2794,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
+        baseBranch: defaultBranch,
       }),
     });
 

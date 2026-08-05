@@ -17,10 +17,16 @@ import { closeDatabase } from "../../src/persistence/database";
 import { AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE } from "../../src/core/automatic-pr-flow-github";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
+import {
+  createTempBareGitRepository,
+  getCurrentBranch,
+  initializeGitRepository,
+  runGit,
+} from "../helpers/git-fixtures";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
-const baseCreateTaskPayload = {
+let baseCreateTaskPayload = {
   attachments: [],
   cheapModel: { mode: "same-as-task" as const },
   maxIterations: null,
@@ -31,7 +37,7 @@ const baseCreateTaskPayload = {
     branchPrefix: "",
     commitScope: "",
   },
-  baseBranch: "main",
+  baseBranch: "",
   clearPlanningFolder: false,
   autoAcceptPlan: false,
   fullyAutonomous: false,
@@ -101,6 +107,18 @@ describe("Tasks Control API Integration", () => {
     return directory;
   }
 
+  async function createTrackedBareRepo(prefix: string): Promise<string> {
+    const directory = await createTempBareGitRepository({ prefix });
+    tempDirsToCleanup.add(directory);
+    return directory;
+  }
+
+  async function createTrackedGitRepo(prefix: string): Promise<string> {
+    const directory = await createTrackedTempDir(prefix);
+    await initializeGitRepository(directory, { initialCommit: "readme" });
+    return directory;
+  }
+
   async function cleanupTrackedTempDirs(): Promise<void> {
     const directories = Array.from(tempDirsToCleanup);
     tempDirsToCleanup.clear();
@@ -121,25 +139,19 @@ describe("Tasks Control API Integration", () => {
     await initializeDatabase();
 
     // Initialize git repo
-    await Bun.$`git init -b main ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
+    baseCreateTaskPayload.baseBranch = await getCurrentBranch(testWorkDir);
     
     // Add a fake remote for push tests (using local file path as a valid remote)
-    testBareRepoDir = await mkdtemp(join(tmpdir(), "clanky-api-control-test-bare-"));
-    await Bun.$`git init --bare ${testBareRepoDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} remote add origin ${testBareRepoDir}`.quiet();
-    
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    testBareRepoDir = await createTempBareGitRepository({ prefix: "clanky-api-control-test-bare-" });
+    await runGit(testWorkDir, ["remote", "add", "origin", testBareRepoDir]);
 
     // Create .clanky-planning directory and commit it
     await mkdir(join(testWorkDir, ".clanky-planning"), { recursive: true });
     await writeFile(join(testWorkDir, ".clanky-planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
     await writeFile(join(testWorkDir, ".clanky-planning/status.md"), "# Status\n\nIn progress.");
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Add planning files"`.quiet();
+    await runGit(testWorkDir, ["add", "."]);
+    await runGit(testWorkDir, ["commit", "-m", "Add planning files"]);
 
     // Set up backend manager with test executor factory
     mockBackend = createMockBackend();
@@ -318,7 +330,7 @@ describe("Tasks Control API Integration", () => {
       expect(task).not.toBeNull();
 
       task!.state.git = {
-        originalBranch: "main",
+        originalBranch: baseCreateTaskPayload.baseBranch,
         workingBranch: "missing-worktree",
         worktreePath: join(testDataDir, "missing-worktree"),
         commits: [],
@@ -333,14 +345,13 @@ describe("Tasks Control API Integration", () => {
 
     test("returns diff data for branch-only tasks without a worktree", async () => {
       const diffTestDir = await createTrackedTempDir("clanky-branch-only-diff-");
-      await Bun.$`git init -b main ${diffTestDir}`.quiet();
-      await Bun.$`git -C ${diffTestDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${diffTestDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(diffTestDir, { initialCommit: "none" });
       await writeFile(join(diffTestDir, "README.md"), "# Branch-only diff");
-      await Bun.$`git -C ${diffTestDir} add .`.quiet();
-      await Bun.$`git -C ${diffTestDir} commit -m "Initial commit"`.quiet();
-      await Bun.$`git -C ${diffTestDir} remote add origin ${testBareRepoDir}`.quiet();
-      await Bun.$`git -C ${diffTestDir} push -u -f origin main`.quiet();
+      await runGit(diffTestDir, ["add", "."]);
+      await runGit(diffTestDir, ["commit", "-m", "Initial commit"]);
+      const diffBranch = await getCurrentBranch(diffTestDir);
+      await runGit(diffTestDir, ["remote", "add", "origin", testBareRepoDir]);
+      await runGit(diffTestDir, ["push", "-u", "-f", "origin", diffBranch]);
 
       const workspaceId = await getOrCreateWorkspace(diffTestDir);
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
@@ -350,6 +361,7 @@ describe("Tasks Control API Integration", () => {
           ...baseCreateTaskPayload,
           workspaceId,
           prompt: "Test branch-only diff",
+          baseBranch: diffBranch,
           attachments: [],
           name: "Test Task",
           planMode: false,
@@ -381,27 +393,27 @@ describe("Tasks Control API Integration", () => {
     test("returns plan.md content", async () => {
       // Create a fresh workdir with .clanky-planning to avoid pollution from other tests
       const planTestDir = await createTrackedTempDir("clanky-plan-test-");
-      await Bun.$`git init -b main ${planTestDir}`.quiet();
-      await Bun.$`git -C ${planTestDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${planTestDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(planTestDir, { initialCommit: "none" });
       await writeFile(join(planTestDir, "README.md"), "# Test");
       await mkdir(join(planTestDir, ".clanky-planning"), { recursive: true });
       await writeFile(join(planTestDir, ".clanky-planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
-      await Bun.$`git -C ${planTestDir} add .`.quiet();
-      await Bun.$`git -C ${planTestDir} commit -m "Initial commit"`.quiet();
+      await runGit(planTestDir, ["add", "."]);
+      await runGit(planTestDir, ["commit", "-m", "Initial commit"]);
+      const planBranch = await getCurrentBranch(planTestDir);
 
       // Create workspace for this directory
       const workspaceId = await getOrCreateWorkspace(planTestDir);
 
       // Start the task (non-draft) so a worktree is created.
       // The mock backend completes immediately, and the worktree inherits
-      // the .clanky-planning/plan.md file from the main repo's branch.
+      // the .clanky-planning/plan.md file from the source repository's branch.
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...baseCreateTaskPayload,
           workspaceId,
+          baseBranch: planBranch,
           prompt: "Test",
           attachments: [],
           name: "Test Task",
@@ -435,16 +447,15 @@ describe("Tasks Control API Integration", () => {
 
     test("returns plan.md content for branch-only tasks without a worktree", async () => {
       const branchOnlyPlanDir = await createTrackedTempDir("clanky-branch-only-plan-");
-      await Bun.$`git init -b main ${branchOnlyPlanDir}`.quiet();
-      await Bun.$`git -C ${branchOnlyPlanDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${branchOnlyPlanDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(branchOnlyPlanDir, { initialCommit: "none" });
       await writeFile(join(branchOnlyPlanDir, "README.md"), "# Branch-only plan");
       await mkdir(join(branchOnlyPlanDir, ".clanky-planning"), { recursive: true });
       await writeFile(join(branchOnlyPlanDir, ".clanky-planning/plan.md"), "# Branch-only Plan\n\nPlan content.");
-      await Bun.$`git -C ${branchOnlyPlanDir} add .`.quiet();
-      await Bun.$`git -C ${branchOnlyPlanDir} commit -m "Initial commit"`.quiet();
-      await Bun.$`git -C ${branchOnlyPlanDir} remote add origin ${testBareRepoDir}`.quiet();
-      await Bun.$`git -C ${branchOnlyPlanDir} push -u -f origin main`.quiet();
+      await runGit(branchOnlyPlanDir, ["add", "."]);
+      await runGit(branchOnlyPlanDir, ["commit", "-m", "Initial commit"]);
+      const branchOnlyPlanBranch = await getCurrentBranch(branchOnlyPlanDir);
+      await runGit(branchOnlyPlanDir, ["remote", "add", "origin", testBareRepoDir]);
+      await runGit(branchOnlyPlanDir, ["push", "-u", "-f", "origin", branchOnlyPlanBranch]);
 
       const workspaceId = await getOrCreateWorkspace(branchOnlyPlanDir);
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
@@ -453,6 +464,7 @@ describe("Tasks Control API Integration", () => {
         body: JSON.stringify({
           ...baseCreateTaskPayload,
           workspaceId,
+          baseBranch: branchOnlyPlanBranch,
           prompt: "Read branch-only plan",
           attachments: [],
           name: "Test Task",
@@ -480,12 +492,11 @@ describe("Tasks Control API Integration", () => {
     test("returns 400 for draft task without worktree", async () => {
       // Create a new workdir (with git but without .clanky-planning)
       const emptyWorkDir = await createTrackedTempDir("clanky-empty-work-");
-      await Bun.$`git init -b main ${emptyWorkDir}`.quiet();
-      await Bun.$`git -C ${emptyWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${emptyWorkDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(emptyWorkDir, { initialCommit: "none" });
       await writeFile(join(emptyWorkDir, "README.md"), "# Empty");
-      await Bun.$`git -C ${emptyWorkDir} add .`.quiet();
-      await Bun.$`git -C ${emptyWorkDir} commit -m "Initial commit"`.quiet();
+      await runGit(emptyWorkDir, ["add", "."]);
+      await runGit(emptyWorkDir, ["commit", "-m", "Initial commit"]);
+      const emptyWorkBranch = await getCurrentBranch(emptyWorkDir);
 
       // Create workspace for this directory
       const workspaceId = await getOrCreateWorkspace(emptyWorkDir);
@@ -497,6 +508,7 @@ describe("Tasks Control API Integration", () => {
         body: JSON.stringify({
           ...baseCreateTaskPayload,
           workspaceId,
+          baseBranch: emptyWorkBranch,
           prompt: "Test",
           attachments: [],
           name: "Test Task",
@@ -563,27 +575,27 @@ describe("Tasks Control API Integration", () => {
     test("returns status.md content", async () => {
       // Create a fresh workdir with .clanky-planning to avoid pollution from other tests
       const statusTestDir = await createTrackedTempDir("clanky-status-test-");
-      await Bun.$`git init -b main ${statusTestDir}`.quiet();
-      await Bun.$`git -C ${statusTestDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${statusTestDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(statusTestDir, { initialCommit: "none" });
       await writeFile(join(statusTestDir, "README.md"), "# Test");
       await mkdir(join(statusTestDir, ".clanky-planning"), { recursive: true });
       await writeFile(join(statusTestDir, ".clanky-planning/status.md"), "# Status\n\nIn progress.");
-      await Bun.$`git -C ${statusTestDir} add .`.quiet();
-      await Bun.$`git -C ${statusTestDir} commit -m "Initial commit"`.quiet();
+      await runGit(statusTestDir, ["add", "."]);
+      await runGit(statusTestDir, ["commit", "-m", "Initial commit"]);
+      const statusBranch = await getCurrentBranch(statusTestDir);
 
       // Create workspace for this directory
       const workspaceId = await getOrCreateWorkspace(statusTestDir);
 
       // Start the task (non-draft) so a worktree is created.
       // The mock backend completes immediately, and the worktree inherits
-      // the .clanky-planning/status.md file from the main repo's branch.
+      // the .clanky-planning/status.md file from the source repository's branch.
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...baseCreateTaskPayload,
           workspaceId,
+          baseBranch: statusBranch,
           prompt: "Test",
           attachments: [],
           name: "Test Task",
@@ -617,16 +629,15 @@ describe("Tasks Control API Integration", () => {
 
     test("returns status.md content for branch-only tasks without a worktree", async () => {
       const branchOnlyStatusDir = await createTrackedTempDir("clanky-branch-only-status-");
-      await Bun.$`git init -b main ${branchOnlyStatusDir}`.quiet();
-      await Bun.$`git -C ${branchOnlyStatusDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${branchOnlyStatusDir} config user.name "Test User"`.quiet();
+      await initializeGitRepository(branchOnlyStatusDir, { initialCommit: "none" });
       await writeFile(join(branchOnlyStatusDir, "README.md"), "# Branch-only status");
       await mkdir(join(branchOnlyStatusDir, ".clanky-planning"), { recursive: true });
       await writeFile(join(branchOnlyStatusDir, ".clanky-planning/status.md"), "# Branch-only Status\n\nStatus content.");
-      await Bun.$`git -C ${branchOnlyStatusDir} add .`.quiet();
-      await Bun.$`git -C ${branchOnlyStatusDir} commit -m "Initial commit"`.quiet();
-      await Bun.$`git -C ${branchOnlyStatusDir} remote add origin ${testBareRepoDir}`.quiet();
-      await Bun.$`git -C ${branchOnlyStatusDir} push -u -f origin main`.quiet();
+      await runGit(branchOnlyStatusDir, ["add", "."]);
+      await runGit(branchOnlyStatusDir, ["commit", "-m", "Initial commit"]);
+      const branchOnlyStatusBranch = await getCurrentBranch(branchOnlyStatusDir);
+      await runGit(branchOnlyStatusDir, ["remote", "add", "origin", testBareRepoDir]);
+      await runGit(branchOnlyStatusDir, ["push", "-u", "-f", "origin", branchOnlyStatusBranch]);
 
       const workspaceId = await getOrCreateWorkspace(branchOnlyStatusDir);
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
@@ -635,6 +646,7 @@ describe("Tasks Control API Integration", () => {
         body: JSON.stringify({
           ...baseCreateTaskPayload,
           workspaceId,
+          baseBranch: branchOnlyStatusBranch,
           prompt: "Read branch-only status",
           attachments: [],
           name: "Test Task",
@@ -663,13 +675,7 @@ describe("Tasks Control API Integration", () => {
   describe("Pending Prompt API", () => {
     test("PUT /api/tasks/:id/pending-prompt returns 409 when task is not running", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-pending-prompt-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-prompt-test-");
       
       try {
         // Create workspace for this directory
@@ -713,13 +719,7 @@ describe("Tasks Control API Integration", () => {
 
     test("PUT /api/tasks/:id/pending-prompt requires prompt in body", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-pending-body-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-body-test-");
       
       try {
         // Create workspace for this directory
@@ -759,13 +759,7 @@ describe("Tasks Control API Integration", () => {
 
     test("PUT /api/tasks/:id/pending-prompt rejects empty prompt", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-pending-empty-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-empty-test-");
       
       try {
         // Create workspace for this directory
@@ -805,13 +799,7 @@ describe("Tasks Control API Integration", () => {
 
     test("DELETE /api/tasks/:id/pending-prompt returns 409 when task is not running", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-pending-del-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-del-test-");
       
       try {
         // Create workspace for this directory
@@ -870,13 +858,7 @@ describe("Tasks Control API Integration", () => {
   describe("Review Comments API", () => {
     test("GET /api/tasks/:id/comments returns empty array for new task", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-comments-empty-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-empty-test-");
       
       try {
         // Create workspace for this directory
@@ -917,16 +899,9 @@ describe("Tasks Control API Integration", () => {
 
     test("POST /api/tasks/:id/address-comments stores and returns comment IDs", async () => {
       // Use unique directory with bare repo to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-comments-store-test-");
-      const uniqueBareRepo = await createTrackedTempDir("clanky-comments-store-bare-");
-      await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-store-test-");
+      const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-store-bare-");
+      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
       
       try {
         // Create workspace for this directory
@@ -997,20 +972,13 @@ describe("Tasks Control API Integration", () => {
     });
 
     test("GET /api/tasks/:id/comments includes the deterministic workflow failure comment", async () => {
-      const uniqueWorkDir = await createTrackedTempDir("clanky-auto-pr-comments-test-");
-      const uniqueBareRepo = await createTrackedTempDir("clanky-auto-pr-comments-bare-");
-      await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-auto-pr-comments-test-");
+      const uniqueBareRepo = await createTrackedBareRepo("clanky-auto-pr-comments-bare-");
+      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
 
       try {
-        const currentBranch = (await Bun.$`git -C ${uniqueWorkDir} branch --show-current`.text()).trim();
-        await Bun.$`git -C ${uniqueWorkDir} push origin ${currentBranch}`.quiet();
+        const currentBranch = await getCurrentBranch(uniqueWorkDir);
+        await runGit(uniqueWorkDir, ["push", "origin", currentBranch]);
 
         const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
         const createResponse = await fetch(`${baseUrl}/api/tasks`, {
@@ -1091,13 +1059,7 @@ describe("Tasks Control API Integration", () => {
 
     test("POST /api/tasks/:id/address-comments returns 400 for task not in review mode", async () => {
       // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-comments-notreview-test-");
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-notreview-test-");
       
       try {
         // Create workspace for this directory
@@ -1233,16 +1195,9 @@ describe("Tasks Control API Integration", () => {
 
     test("GET /api/tasks/:id/comments returns comments in correct order", async () => {
       // Use unique directory with bare repo to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-comments-order-test-");
-      const uniqueBareRepo = await createTrackedTempDir("clanky-comments-order-bare-");
-      await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-order-test-");
+      const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-order-bare-");
+      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
       
       try {
         // Create workspace for this directory
@@ -1297,16 +1252,9 @@ describe("Tasks Control API Integration", () => {
 
     test("Comments can be queried via GET endpoint", async () => {
       // Use unique directory with bare repo to avoid conflicts
-      const uniqueWorkDir = await createTrackedTempDir("clanky-comments-get-test-");
-      const uniqueBareRepo = await createTrackedTempDir("clanky-comments-get-bare-");
-      await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-get-test-");
+      const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-get-bare-");
+      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
       
       try {
         // Create workspace for this directory

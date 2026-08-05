@@ -16,6 +16,7 @@ import {
   updateBranchViaAPI,
   type TestServerContext,
 } from "./helpers";
+import { configureGitRepository, runGit } from "../../helpers/git-fixtures";
 import type { Task } from "@/shared/task";
 
 describe("Update Branch User Scenarios", () => {
@@ -113,13 +114,15 @@ describe("Update Branch User Scenarios", () => {
       // (simulate another developer pushing to the base branch)
       const otherClone = join(ctx.dataDir, "other-clone-" + Date.now());
       try {
-        await Bun.$`git clone --branch ${ctx.defaultBranch} ${ctx.remoteDir} ${otherClone}`.quiet();
-        await Bun.$`git -C ${otherClone} config user.email "other@test.com"`.quiet();
-        await Bun.$`git -C ${otherClone} config user.name "Other Developer"`.quiet();
+        if (!ctx.remoteDir) {
+          throw new Error("Expected a remote repository for the update-branch scenario");
+        }
+        await runGit(ctx.dataDir, ["clone", "--branch", ctx.defaultBranch, ctx.remoteDir, otherClone]);
+        await configureGitRepository(otherClone);
         await writeFile(join(otherClone, "remote-only.txt"), "New file from other developer\n");
-        await Bun.$`git -C ${otherClone} add -A`.quiet();
-        await Bun.$`git -C ${otherClone} commit -m "Other developer's commit"`.quiet();
-        await Bun.$`git -C ${otherClone} push`.quiet();
+        await runGit(otherClone, ["add", "-A"]);
+        await runGit(otherClone, ["commit", "-m", "Other developer's commit"]);
+        await runGit(otherClone, ["push"]);
       } finally {
         await Bun.$`rm -rf ${otherClone}`.quiet();
       }

@@ -65,8 +65,10 @@ class GitHubSnapshotExecutor extends TestCommandExecutor {
   }
 }
 
+const fixtureDefaultBranch = "fixture-default";
+
 const navigationGit: PullRequestNavigationGitService = {
-  getDefaultBranch: async () => "main",
+  getDefaultBranch: async () => fixtureDefaultBranch,
   getRemoteUrl: async () => "https://github.com/test-owner/test-repo.git",
   hasRemote: async () => true,
 };
@@ -88,7 +90,7 @@ function createTaskForMonitor(directory: string): Task {
   const state = createInitialState("automatic-pr-flow-task");
   state.status = "pushed";
   state.git = {
-    originalBranch: "main",
+    originalBranch: fixtureDefaultBranch,
     workingBranch: "feature/automatic-pr-flow",
     commits: [],
   };
@@ -124,7 +126,7 @@ function createTaskForMonitor(directory: string): Task {
         branchPrefix: "",
         commitScope: "",
       },
-      baseBranch: "main",
+      baseBranch: fixtureDefaultBranch,
       useWorktree: false,
       clearPlanningFolder: false,
       planMode: false,

@@ -17,6 +17,13 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { taskManager } from "../../src/core/task-manager";
 import { taskFailure } from "../../src/core/task/task-errors";
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
+import {
+  configureGitRepository,
+  createTempBareGitRepository,
+  getCurrentBranch,
+  initializeGitRepository,
+  runGit,
+} from "../helpers/git-fixtures";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -57,6 +64,7 @@ describe("Workspace API Integration", () => {
   let testWorkDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let testDefaultBranch = "";
 
   async function createPullTestRepos(): Promise<{
     originDir: string;
@@ -64,26 +72,19 @@ describe("Workspace API Integration", () => {
     cloneDir: string;
     defaultBranch: string;
   }> {
-    const originDir = await mkdtemp(join(tmpdir(), "clanky-pull-origin-"));
+    const originDir = await createTempBareGitRepository({ prefix: "clanky-pull-origin-" });
     const sourceDir = await mkdtemp(join(tmpdir(), "clanky-pull-source-"));
     const cloneParentDir = await mkdtemp(join(tmpdir(), "clanky-pull-clone-parent-"));
     const cloneDir = join(cloneParentDir, "workspace");
 
-    await Bun.$`git init --bare ${originDir}`.quiet();
-    await Bun.$`git init ${sourceDir}`.quiet();
-    await Bun.$`git -C ${sourceDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${sourceDir} config user.name "Test User"`.quiet();
-    await Bun.write(join(sourceDir, "README.md"), "# Test\n");
-    await Bun.$`git -C ${sourceDir} add README.md`.quiet();
-    await Bun.$`git -C ${sourceDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(sourceDir, { initialCommit: "readme" });
 
-    const defaultBranch = (await Bun.$`git -C ${sourceDir} branch --show-current`.text()).trim();
-    await Bun.$`git -C ${sourceDir} remote add origin ${originDir}`.quiet();
-    await Bun.$`git -C ${sourceDir} push -u origin ${defaultBranch}`.quiet();
-    await Bun.$`git --git-dir=${originDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
-    await Bun.$`git clone ${originDir} ${cloneDir}`.quiet();
-    await Bun.$`git -C ${cloneDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${cloneDir} config user.name "Test User"`.quiet();
+    const defaultBranch = await getCurrentBranch(sourceDir);
+    await runGit(sourceDir, ["remote", "add", "origin", originDir]);
+    await runGit(sourceDir, ["push", "-u", "origin", defaultBranch]);
+    await runGit(originDir, ["--git-dir", originDir, "symbolic-ref", "HEAD", `refs/heads/${defaultBranch}`]);
+    await runGit(cloneParentDir, ["clone", originDir, cloneDir]);
+    await configureGitRepository(cloneDir);
 
     return {
       originDir,
@@ -105,12 +106,8 @@ describe("Workspace API Integration", () => {
     await initializeDatabase();
 
     // Initialize git repo in test work directory
-    await Bun.$`git init ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
+    testDefaultBranch = await getCurrentBranch(testWorkDir);
 
     // Set up backend manager with test executor factory
     backendManager.setBackendForTesting(createMockBackend());
@@ -968,9 +965,9 @@ describe("Workspace API Integration", () => {
 
       try {
         await Bun.write(join(repos.sourceDir, "README.md"), "# Test\nUpdated remotely\n");
-        await Bun.$`git -C ${repos.sourceDir} add README.md`.quiet();
-        await Bun.$`git -C ${repos.sourceDir} commit -m "Update README"`.quiet();
-        await Bun.$`git -C ${repos.sourceDir} push origin ${repos.defaultBranch}`.quiet();
+        await runGit(repos.sourceDir, ["add", "README.md"]);
+        await runGit(repos.sourceDir, ["commit", "-m", "Update README"]);
+        await runGit(repos.sourceDir, ["push", "origin", repos.defaultBranch]);
 
         const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
           method: "POST",
@@ -1019,7 +1016,7 @@ describe("Workspace API Integration", () => {
         expect(createResponse.ok).toBe(true);
         const workspace = await createResponse.json();
 
-        await Bun.$`git -C ${repos.cloneDir} checkout -b feature/test-branch`.quiet();
+        await runGit(repos.cloneDir, ["checkout", "-b", "feature/test-branch"]);
 
         const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
           method: "POST",
@@ -1085,7 +1082,7 @@ describe("Workspace API Integration", () => {
         expect(createResponse.ok).toBe(true);
         const workspace = await createResponse.json();
 
-        await Bun.$`git -C ${repos.cloneDir} remote remove origin`.quiet();
+        await runGit(repos.cloneDir, ["remote", "remove", "origin"]);
 
         const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
           method: "POST",
@@ -1139,7 +1136,7 @@ describe("Workspace API Integration", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: testDefaultBranch,
           useWorktree: true,
           clearPlanningFolder: false,
           planMode: false,
@@ -1182,7 +1179,7 @@ describe("Workspace API Integration", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: testDefaultBranch,
           useWorktree: true,
           clearPlanningFolder: false,
           planMode: false,
@@ -1841,12 +1838,7 @@ describe("Workspace API Integration", () => {
       test("updating one workspace settings does not affect another workspace", async () => {
         // Create two separate git repositories
         const testWorkDir2 = await mkdtemp(join(tmpdir(), "clanky-api-workspace-test-work2-"));
-        await Bun.$`git init ${testWorkDir2}`.quiet();
-        await Bun.$`git -C ${testWorkDir2} config user.email "test@test.com"`.quiet();
-        await Bun.$`git -C ${testWorkDir2} config user.name "Test User"`.quiet();
-        await Bun.$`touch ${testWorkDir2}/README.md`.quiet();
-        await Bun.$`git -C ${testWorkDir2} add .`.quiet();
-        await Bun.$`git -C ${testWorkDir2} commit -m "Initial commit"`.quiet();
+        await initializeGitRepository(testWorkDir2, { initialCommit: "readme" });
 
         try {
           // Create workspace A with specific settings
@@ -2081,8 +2073,8 @@ describe("Workspace API Integration", () => {
       const testWorkDirB = await mkdtemp(join(tmpdir(), "clanky-global-purge-b-"));
 
       try {
-        await Bun.$`git init ${testWorkDirA}`.quiet();
-        await Bun.$`git init ${testWorkDirB}`.quiet();
+        await initializeGitRepository(testWorkDirA, { initialCommit: "empty" });
+        await initializeGitRepository(testWorkDirB, { initialCommit: "empty" });
 
         const createWorkspaceAResponse = await fetch(`${baseUrl}/api/workspaces`, {
           method: "POST",

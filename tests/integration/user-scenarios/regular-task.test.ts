@@ -24,6 +24,7 @@ import {
   type TestServerContext,
 } from "./helpers";
 import type { Task } from "@/shared/task";
+import { runGit } from "../../helpers/git-fixtures";
 
 describe("Regular Task User Scenarios", () => {
   describe("Task Creation Variants", () => {
@@ -45,7 +46,7 @@ describe("Regular Task User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("creates task based on main branch without clearing .clanky-planning folder", async () => {
+    test("creates task based on the default branch without clearing .clanky-planning folder", async () => {
       // Verify .clanky-planning files exist before creating task
       const planContent = await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).text();
       expect(planContent).toContain("# Plan");
@@ -82,7 +83,7 @@ describe("Regular Task User Scenarios", () => {
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);
     });
 
-    test("creates task based on main branch with clearing .clanky-planning folder", async () => {
+    test("creates task based on the default branch with clearing .clanky-planning folder", async () => {
       // Reset mock backend for this test
       ctx.mockBackend.reset([
         "Working on iteration 1...",
@@ -90,7 +91,7 @@ describe("Regular Task User Scenarios", () => {
         "Done! <promise>COMPLETE</promise>",
       ]);
 
-      // Add an ignored file to the main checkout's managed planning directory.
+      // Add an ignored file to the source checkout's managed planning directory.
       // Clearing happens in the task worktree, not in the source checkout.
       await writeFile(join(ctx.workDir, ".clanky-planning/extra.md"), "Extra content");
 
@@ -122,7 +123,7 @@ describe("Regular Task User Scenarios", () => {
 
       // Verify clearPlanningFolder was set
       expect(completedTask.config.clearPlanningFolder).toBe(true);
-      // With worktrees, the clearing happens in the worktree's .clanky-planning dir, not main checkout.
+      // With worktrees, the clearing happens in the worktree's .clanky-planning dir, not the source checkout.
       // Verify the worktree's .clanky-planning was cleared by checking the task completed successfully
       // (clearing happens before iterations start in the worktree).
       const worktreePath = completedTask.state.git?.worktreePath;
@@ -184,8 +185,8 @@ describe("Regular Task User Scenarios", () => {
       expect(completedTask.state.recentIterations[1]?.outcome).toBe("continue");
       expect(completedTask.state.recentIterations[2]?.outcome).toBe("complete");
 
-      // With worktrees, main checkout stays on original branch
-      // Verify the working branch exists (it's checked out in the worktree, not main checkout)
+      // With worktrees, the source checkout stays on the original branch.
+      // Verify the working branch exists (it's checked out in the worktree, not the source checkout).
       const workingBranch = completedTask.state.git!.workingBranch;
       expect(workingBranch).not.toStartWith("clanky/");
       expect(workingBranch).toMatch(/-[0-9a-f]{7}$/);
@@ -249,7 +250,7 @@ describe("Regular Task User Scenarios", () => {
       const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
       const workingBranch = completedTask.state.git!.workingBranch;
 
-      // With worktrees, main checkout stays on original branch throughout
+      // With worktrees, the source checkout stays on the original branch throughout
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
       expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
 
@@ -259,7 +260,7 @@ describe("Regular Task User Scenarios", () => {
       expect(status).toBe(200);
       expect(acceptBody.success).toBe(true);
 
-      // Main checkout stays on original branch (worktrees don't modify it)
+      // Source checkout stays on original branch (worktrees don't modify it)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Verify the working branch was NOT deleted (kept for review mode)
@@ -378,7 +379,7 @@ describe("Regular Task User Scenarios", () => {
       expect(status).toBe(200);
       expect(discardBody.success).toBe(true);
 
-      // Main checkout stays on original branch (worktrees don't modify it)
+      // Source checkout stays on original branch (worktrees don't modify it)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // With worktrees, discard no longer deletes the branch (only purge does)
@@ -415,19 +416,19 @@ describe("Regular Task User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("allows creating task even with uncommitted changes in main checkout", async () => {
-      // Create uncommitted changes in the main checkout
+    test("allows creating task even with uncommitted changes in source checkout", async () => {
+      // Create uncommitted changes in the source checkout
       await writeFile(join(ctx.workDir, "uncommitted.txt"), "uncommitted content");
-      await Bun.$`git -C ${ctx.workDir} add .`.quiet();
+      await runGit(ctx.workDir, ["add", "."]);
 
-      // With worktrees, uncommitted changes in main checkout don't block task creation
+      // With worktrees, uncommitted changes in source checkout don't block task creation
       const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "This should succeed with worktrees",
         planMode: false,
       });
 
-      // Task creation succeeds — worktrees isolate the task from main checkout state
+      // Task creation succeeds — worktrees isolate the task from source checkout state
       expect(status).toBe(201);
       const task = body as Task;
       expect(task.config.id).toBeDefined();
@@ -436,9 +437,9 @@ describe("Regular Task User Scenarios", () => {
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
       // Clean up the uncommitted change
-      await Bun.$`git -C ${ctx.workDir} reset HEAD -- . 2>/dev/null || true`.quiet().nothrow();
-      await Bun.$`git -C ${ctx.workDir} checkout -- . 2>/dev/null || true`.quiet().nothrow();
-      await Bun.$`git -C ${ctx.workDir} clean -fd 2>/dev/null || true`.quiet().nothrow();
+      await runGit(ctx.workDir, ["reset", "HEAD", "--", "."]);
+      await runGit(ctx.workDir, ["checkout", "--", "."]);
+      await runGit(ctx.workDir, ["clean", "-fd"]);
     });
 
     test("returns 404 for non-existent task", async () => {
@@ -448,8 +449,8 @@ describe("Regular Task User Scenarios", () => {
 
     test("cannot accept a task that is not completed", async () => {
       // Clean up any leftover changes from previous tests
-      await Bun.$`git -C ${ctx.workDir} checkout -- . 2>/dev/null || true`.quiet().nothrow();
-      await Bun.$`git -C ${ctx.workDir} clean -fd 2>/dev/null || true`.quiet().nothrow();
+      await runGit(ctx.workDir, ["checkout", "--", "."]);
+      await runGit(ctx.workDir, ["clean", "-fd"]);
       
       // Create a task but don't wait for completion
       ctx.mockBackend.reset([

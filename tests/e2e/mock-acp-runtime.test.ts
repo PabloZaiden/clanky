@@ -11,6 +11,7 @@ import {
   type TestServerContext,
 } from "../integration/user-scenarios/helpers";
 import type { Task } from "@/shared/task";
+import { runGit } from "../helpers/git-fixtures";
 
 const mockAcpModel = {
   providerID: "opencode",
@@ -74,8 +75,8 @@ describe("Mock ACP runtime integration", () => {
   }, { timeout: 60_000 });
 
   test("accepts and executes a ready plan in a local-only repository", async () => {
-    const originUrl = (await Bun.$`git -C ${ctx.workDir} remote get-url origin`.text()).trim();
-    await Bun.$`git -C ${ctx.workDir} remote remove origin`.quiet();
+    const originUrl = (await runGit(ctx.workDir, ["remote", "get-url", "origin"])).stdout.trim();
+    await runGit(ctx.workDir, ["remote", "remove", "origin"]);
 
     try {
       const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
@@ -100,7 +101,7 @@ describe("Mock ACP runtime integration", () => {
       expect(completed.state.status).toBe("completed");
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);
     } finally {
-      await Bun.$`git -C ${ctx.workDir} remote add origin ${originUrl}`.quiet();
+      await runGit(ctx.workDir, ["remote", "add", "origin", originUrl]);
     }
   }, { timeout: 60_000 });
 });

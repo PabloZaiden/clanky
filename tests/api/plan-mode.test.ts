@@ -15,11 +15,17 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { closeDatabase } from "../../src/persistence/database";
 import { PlanModeMockBackend } from "../mocks/mock-backend";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../src/lib/uploaded-plan";
+import {
+  createTempBareGitRepository,
+  getCurrentBranch,
+  initializeGitRepository,
+  runGit,
+} from "../helpers/git-fixtures";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const defaultServerSettings = { agent: { provider: "opencode", transport: "stdio" } };
-const baseCreateTaskPayload = {
+let baseCreateTaskPayload = {
   attachments: [],
   cheapModel: { mode: "same-as-task" as const },
   maxIterations: null,
@@ -30,7 +36,7 @@ const baseCreateTaskPayload = {
     branchPrefix: "",
     commitScope: "",
   },
-  baseBranch: "main",
+  baseBranch: "",
   clearPlanningFolder: false,
   autoAcceptPlan: false,
   fullyAutonomous: false,
@@ -172,18 +178,13 @@ describe("Plan Mode API Integration", () => {
   // Helper to create a unique work directory with git initialized
   async function createTestWorkDir(): Promise<string> {
     const workDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-work-"));
-    await Bun.$`git init -b main ${workDir}`.quiet();
-    await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${workDir}/README.md`.quiet();
-    await Bun.$`git -C ${workDir} add .`.quiet();
-    await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
-    currentRemoteDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-remote-"));
-    await Bun.$`git init --bare ${currentRemoteDir}`.quiet();
-    await Bun.$`git -C ${workDir} remote add origin ${currentRemoteDir}`.quiet();
-    const currentBranch = (await Bun.$`git -C ${workDir} branch --show-current`.text()).trim();
-    await Bun.$`git -C ${workDir} push -u origin ${currentBranch}`.quiet();
-    await Bun.$`git --git-dir=${currentRemoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+    await initializeGitRepository(workDir, { initialCommit: "readme" });
+    const currentBranch = await getCurrentBranch(workDir);
+    baseCreateTaskPayload.baseBranch = currentBranch;
+    currentRemoteDir = await createTempBareGitRepository({ prefix: "clanky-api-plan-test-remote-" });
+    await runGit(workDir, ["remote", "add", "origin", currentRemoteDir]);
+    await runGit(workDir, ["push", "-u", "origin", currentBranch]);
+    await runGit(workDir, ["--git-dir", currentRemoteDir, "symbolic-ref", "HEAD", `refs/heads/${currentBranch}`]);
     return workDir;
   }
 
@@ -534,8 +535,8 @@ describe("Plan Mode API Integration", () => {
     test("returns 400 if task is not in planning status", async () => {
       // Commit any previous changes first
       try {
-        await Bun.$`git -C ${currentTestWorkDir} add -A`.quiet();
-        await Bun.$`git -C ${currentTestWorkDir} commit -m "Test changes" --allow-empty`.quiet();
+        await runGit(currentTestWorkDir, ["add", "-A"]);
+        await runGit(currentTestWorkDir, ["commit", "-m", "Test changes", "--allow-empty"]);
       } catch {
         // Ignore if nothing to commit
       }
@@ -574,8 +575,8 @@ describe("Plan Mode API Integration", () => {
     test("deletes the task", async () => {
       // Commit any previous changes first
       try {
-        await Bun.$`git -C ${currentTestWorkDir} add -A`.quiet();
-        await Bun.$`git -C ${currentTestWorkDir} commit -m "Test changes" --allow-empty`.quiet();
+        await runGit(currentTestWorkDir, ["add", "-A"]);
+        await runGit(currentTestWorkDir, ["commit", "-m", "Test changes", "--allow-empty"]);
       } catch {
         // Ignore if nothing to commit
       }

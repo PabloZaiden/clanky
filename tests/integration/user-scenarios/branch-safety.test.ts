@@ -1,8 +1,8 @@
 /**
  * Integration tests for branch safety with worktrees.
- * With per-task worktrees, tasks never modify the main checkout.
+ * With per-task worktrees, tasks never modify the source checkout.
  * These tests verify that task operations work correctly regardless
- * of the main checkout's branch state (worktree isolation).
+ * of the source checkout's branch state (worktree isolation).
  */
 
 import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
@@ -24,6 +24,7 @@ import {
   type TestServerContext,
 } from "./helpers";
 import type { Task } from "@/shared/task";
+import { runGit } from "../../helpers/git-fixtures";
 
 describe("Branch Safety - Worktree Isolation", () => {
   describe("Task commits correctly with worktree isolation", () => {
@@ -44,7 +45,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       await teardownTestServer(ctx);
     });
 
-    test("task completes without modifying main checkout branch", async () => {
+    test("task completes without modifying source checkout branch", async () => {
       // Get the original branch before creating the task
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
@@ -68,7 +69,7 @@ describe("Branch Safety - Worktree Isolation", () => {
         hasError: false,
       });
 
-      // Main checkout should still be on the original branch (worktree isolation)
+      // Source checkout should still be on the original branch (worktree isolation)
       const currentBranch = await getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(originalBranch);
 
@@ -97,7 +98,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       await teardownTestServer(ctx);
     });
 
-    test("discard succeeds and main checkout stays unchanged", async () => {
+    test("discard succeeds and source checkout stays unchanged", async () => {
       // Get the original branch
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
@@ -111,7 +112,7 @@ describe("Branch Safety - Worktree Isolation", () => {
 
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
-      // Main checkout stays on original branch (worktree isolation)
+      // Source checkout stays on original branch (worktree isolation)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Discard the task
@@ -120,7 +121,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       expect(status).toBe(200);
       expect(discardBody.success).toBe(true);
 
-      // Main checkout still on original branch
+      // Source checkout still on original branch
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Verify the task state is now "deleted"
@@ -131,18 +132,18 @@ describe("Branch Safety - Worktree Isolation", () => {
       });
     });
 
-    test("discard succeeds even when user is on a different branch in main checkout", async () => {
+    test("discard succeeds even when user is on a different branch in source checkout", async () => {
       // Get the original branch
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
-      // Create a third unrelated branch in the main checkout
-      await Bun.$`git -C ${ctx.workDir} checkout -b unrelated-branch`.quiet();
+      // Create a third unrelated branch in the source checkout
+      await runGit(ctx.workDir, ["checkout", "-b", "unrelated-branch"]);
       await writeFile(join(ctx.workDir, "unrelated.txt"), "unrelated content");
-      await Bun.$`git -C ${ctx.workDir} add .`.quiet();
-      await Bun.$`git -C ${ctx.workDir} commit -m "Unrelated commit"`.quiet();
+      await runGit(ctx.workDir, ["add", "."]);
+      await runGit(ctx.workDir, ["commit", "-m", "Unrelated commit"]);
 
       // Switch back to original to create task
-      await Bun.$`git -C ${ctx.workDir} checkout ${originalBranch}`.quiet();
+      await runGit(ctx.workDir, ["checkout", originalBranch]);
 
       // Reset mock for this test
       ctx.mockBackend.reset([
@@ -160,23 +161,23 @@ describe("Branch Safety - Worktree Isolation", () => {
 
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
-      // Now switch to the unrelated branch in main checkout
+      // Now switch to the unrelated branch in source checkout
       await waitForGitAvailable(ctx.workDir);
-      await Bun.$`git -C ${ctx.workDir} checkout unrelated-branch`.quiet();
+      await runGit(ctx.workDir, ["checkout", "unrelated-branch"]);
       expect(await getCurrentBranch(ctx.workDir)).toBe("unrelated-branch");
 
-      // Discard should still work - worktree is independent of main checkout
+      // Discard should still work - worktree is independent of source checkout
       const { status, body: discardBody } = await discardTaskViaAPI(ctx.baseUrl, task.config.id);
 
       expect(status).toBe(200);
       expect(discardBody.success).toBe(true);
 
-      // Main checkout stays on whatever branch the user left it on
+      // Source checkout stays on whatever branch the user left it on
       expect(await getCurrentBranch(ctx.workDir)).toBe("unrelated-branch");
 
       // Clean up the unrelated branch
-      await Bun.$`git -C ${ctx.workDir} checkout ${originalBranch}`.quiet();
-      await Bun.$`git -C ${ctx.workDir} branch -D unrelated-branch`.quiet();
+      await runGit(ctx.workDir, ["checkout", originalBranch]);
+      await runGit(ctx.workDir, ["branch", "-D", "unrelated-branch"]);
     });
   });
 
@@ -197,7 +198,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       await teardownTestServer(ctx);
     });
 
-    test("accept succeeds regardless of main checkout branch state", async () => {
+    test("accept succeeds regardless of source checkout branch state", async () => {
       // Get the original branch
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
@@ -211,16 +212,16 @@ describe("Branch Safety - Worktree Isolation", () => {
 
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
-      // Main checkout stays on original branch (worktree isolation)
+      // Source checkout stays on original branch (worktree isolation)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
-      // Accept should work - merge happens on the main repo
+      // Accept should work - merge happens on the source repository
       const { status, body: acceptBody } = await acceptTaskViaAPI(ctx.baseUrl, task.config.id);
 
       expect(status).toBe(200);
       expect(acceptBody.success).toBe(true);
 
-      // Main checkout stays on original branch after merge
+      // Source checkout stays on original branch after merge
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Verify the task state is now "merged"
@@ -250,7 +251,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       await teardownTestServer(ctx);
     });
 
-    test("push succeeds regardless of main checkout branch state", async () => {
+    test("push succeeds regardless of source checkout branch state", async () => {
       // Verify we have a remote configured
       expect(ctx.remoteDir).toBeDefined();
 
@@ -268,7 +269,7 @@ describe("Branch Safety - Worktree Isolation", () => {
       const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
       const workingBranch = completedTask.state.git!.workingBranch;
 
-      // Main checkout stays on original branch (worktree isolation)
+      // Source checkout stays on original branch (worktree isolation)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Push should work from the worktree

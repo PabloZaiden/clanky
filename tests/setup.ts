@@ -20,6 +20,7 @@ import type { TaskEvent } from "@/shared/events";
 import { getDefaultServerSettings } from "@/shared/settings";
 import { runWithCurrentUser } from "../src/core/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import { initializeGitRepository } from "./helpers/git-fixtures";
 
 /**
  * Default test workspace ID that can be used in tests.
@@ -152,13 +153,10 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   const executor = new TestCommandExecutor();
   const git = new GitService(executor);
   if (initGit) {
-    await Bun.$`git init`.cwd(workDir).quiet();
-    await Bun.$`git config user.email "test@test.com"`.cwd(workDir).quiet();
-    await Bun.$`git config user.name "Test User"`.cwd(workDir).quiet();
-    // Create initial commit so we have a valid branch
-    await writeFile(join(workDir, ".gitkeep"), "");
-    await Bun.$`git add .`.cwd(workDir).quiet();
-    await Bun.$`git commit -m "Initial commit"`.cwd(workDir).quiet();
+    await initializeGitRepository(workDir, {
+      initialCommit: "all",
+      initialFiles: { ".gitkeep": "", ...initialFiles },
+    });
   }
 
   // Set up event emitter

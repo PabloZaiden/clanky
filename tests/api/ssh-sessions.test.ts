@@ -6,6 +6,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
+import { initializeGitRepository } from "../helpers/git-fixtures";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 
@@ -71,12 +72,7 @@ describe("SSH sessions API integration", () => {
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await initializeDatabase();
-    await Bun.$`git init ${workDir}`.quiet();
-    await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${workDir}/README.md`.quiet();
-    await Bun.$`git -C ${workDir} add .`.quiet();
-    await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(workDir, { initialCommit: "readme" });
 
     backendManager.setBackendForTesting(createMockBackend());
     backendManager.setExecutorFactoryForTesting(() => new SshSessionTestExecutor());
@@ -243,12 +239,7 @@ describe("SSH sessions API integration", () => {
     const workspace = await createWorkspace({ transport: "ssh" });
     const otherWorkspaceDir = await mkdtemp(join(tmpdir(), "clanky-ssh-sessions-work-"));
     try {
-      await Bun.$`git init ${otherWorkspaceDir}`.quiet();
-      await Bun.$`git -C ${otherWorkspaceDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${otherWorkspaceDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${otherWorkspaceDir}/README.md`.quiet();
-      await Bun.$`git -C ${otherWorkspaceDir} add .`.quiet();
-      await Bun.$`git -C ${otherWorkspaceDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(otherWorkspaceDir, { initialCommit: "readme" });
       const secondWorkspace = await createWorkspace({
         transport: "ssh",
         name: "Other Workspace",
