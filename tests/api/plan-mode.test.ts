@@ -21,10 +21,19 @@ import {
   initializeGitRepository,
   runGit,
 } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const defaultServerSettings = { agent: { provider: "opencode", transport: "stdio" } };
+interface PlanTaskResponse extends Record<string, unknown> {
+  state?: {
+    status?: string;
+    planMode?: {
+      isPlanReady?: boolean;
+    };
+  };
+}
 let baseCreateTaskPayload = {
   attachments: [],
   cheapModel: { mode: "same-as-task" as const },
@@ -88,38 +97,58 @@ describe("Plan Mode API Integration", () => {
     expectedStatuses: string[],
     timeoutMs = 10000
   ): Promise<Record<string, unknown>> {
-    const startTime = Date.now();
-    let lastStatus = "unknown";
-    while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
-        const task = await response.json();
-        lastStatus = task.state?.status ?? "unknown";
-        if (expectedStatuses.includes(lastStatus)) {
-          return task;
+    const observation = await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return { statusCode: response.status, task: null };
         }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(
-      `Task ${taskId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
+        return {
+          statusCode: response.status,
+          task: await response.json() as PlanTaskResponse,
+        };
+      },
+      (value) => value.task !== null && expectedStatuses.includes(value.task.state?.status ?? "unknown"),
+      {
+        description: `task ${taskId} to reach status [${expectedStatuses.join(", ")}]`,
+        timeoutMs,
+        formatLastObserved: (value) => value.task === null
+          ? `HTTP ${value.statusCode}`
+          : `HTTP ${value.statusCode}; status=${value.task.state?.status ?? "unknown"}`,
+      },
     );
+    if (observation.task === null) {
+      throw new Error(`Task ${taskId} returned no task after polling`);
+    }
+    return observation.task;
   }
 
   // Poll until isPlanReady becomes true
   async function waitForPlanReady(taskId: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
-        const task = await response.json();
-        if (task.state?.planMode?.isPlanReady === true) {
-          return task;
+    const observation = await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return { statusCode: response.status, task: null };
         }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          statusCode: response.status,
+          task: await response.json() as PlanTaskResponse,
+        };
+      },
+      (value) => value.task?.state?.planMode?.isPlanReady === true,
+      {
+        description: `plan for task ${taskId} to become ready`,
+        timeoutMs,
+        formatLastObserved: (value) => value.task === null
+          ? `HTTP ${value.statusCode}`
+          : `HTTP ${value.statusCode}; isPlanReady=${value.task.state?.planMode?.isPlanReady}, status=${value.task.state?.status}`,
+      },
+    );
+    if (observation.task === null) {
+      throw new Error(`Task ${taskId} returned no task after polling`);
     }
-    throw new Error(`Plan for task ${taskId} did not become ready within ${timeoutMs}ms`);
+    return observation.task;
   }
 
   function getPromptText(prompt: { parts?: Array<{ type: string; text?: string }> }): string {
@@ -130,18 +159,25 @@ describe("Plan Mode API Integration", () => {
   }
 
   async function waitForSentPromptContaining(text: string, timeoutMs = 10000): Promise<string> {
-    const startTime = Date.now();
-    let lastPrompt = "";
-    while (Date.now() - startTime < timeoutMs) {
-      const prompts = mockBackend.getSentPrompts().map(getPromptText);
-      const match = prompts.find((prompt) => prompt.includes(text));
-      if (match) {
-        return match;
-      }
-      lastPrompt = prompts.at(-1) ?? "";
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    const observation = await pollUntil(
+      () => {
+        const prompts = mockBackend.getSentPrompts().map(getPromptText);
+        return {
+          prompts,
+          match: prompts.find((prompt) => prompt.includes(text)),
+        };
+      },
+      (value) => value.match !== undefined,
+      {
+        description: `a sent prompt containing "${text}"`,
+        timeoutMs,
+        formatLastObserved: (value) => `lastPrompt=${value.prompts.at(-1) ?? "none"}`,
+      },
+    );
+    if (observation.match === undefined) {
+      throw new Error(`No sent prompt contained "${text}" after polling`);
     }
-    throw new Error(`No sent prompt contained "${text}" within ${timeoutMs}ms. Last prompt: ${lastPrompt}`);
+    return observation.match;
   }
 
   beforeAll(async () => {

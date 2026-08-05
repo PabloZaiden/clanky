@@ -19,6 +19,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { seedTestOwnerUser } from "../setup";
 import { initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
@@ -57,47 +58,64 @@ describe("Agents API Integration", () => {
 
   async function waitForRunTerminal(runId: string, timeoutMs = 5000): Promise<AgentRun> {
     const terminalStatuses = new Set(["completed", "failed", "interrupted", "skipped", "cancelled"]);
-    const start = Date.now();
-    let lastStatus = "unknown";
-    while (Date.now() - start < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/agent-runs/${runId}`);
-      if (response.ok) {
+    const observation = await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/agent-runs/${runId}`);
+        if (!response.ok) {
+          return { statusCode: response.status, run: null };
+        }
         const run = await response.json() as AgentRun;
-        lastStatus = run.status;
-        if (terminalStatuses.has(run.status)) {
-          const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
-          expect(snapshotResponse.status).toBe(200);
-          const snapshot = await snapshotResponse.json() as {
-            transcript: Pick<AgentRun, "messages" | "logs" | "toolCalls">;
-          };
-          return {
+        if (!terminalStatuses.has(run.status)) {
+          return { statusCode: response.status, run };
+        }
+        const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
+        expect(snapshotResponse.status).toBe(200);
+        const snapshot = await snapshotResponse.json() as {
+          transcript: Pick<AgentRun, "messages" | "logs" | "toolCalls">;
+        };
+        return {
+          statusCode: response.status,
+          run: {
             ...run,
             messages: snapshot.transcript.messages,
             logs: snapshot.transcript.logs,
             toolCalls: snapshot.transcript.toolCalls,
-          };
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+          },
+        };
+      },
+      (value) => value.run !== null && terminalStatuses.has(value.run.status),
+      {
+        description: `agent run ${runId} to complete`,
+        timeoutMs,
+        formatLastObserved: (value) => `HTTP ${value.statusCode}; status=${value.run?.status ?? "unavailable"}`,
+      },
+    );
+    if (observation.run === null) {
+      throw new Error(`Agent run ${runId} returned no run after polling`);
     }
-    throw new Error(`Agent run ${runId} did not complete. Last status: ${lastStatus}`);
+    return observation.run;
   }
 
   async function waitForAgentDraft(agentId: string, expectedCode: string, timeoutMs = 5000): Promise<void> {
-    const start = Date.now();
-    let lastCode = "";
-    while (Date.now() - start < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/agents/${agentId}/code/draft`);
-      if (response.ok) {
-        const body = await response.json() as { code?: unknown };
-        lastCode = typeof body.code === "string" ? body.code : "";
-        if (lastCode === expectedCode) {
-          return;
+    await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/agents/${agentId}/code/draft`);
+        if (!response.ok) {
+          return { statusCode: response.status, code: "" };
         }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`Agent draft was not restored within ${timeoutMs}ms. Last code: ${lastCode}`);
+        const body = await response.json() as { code?: unknown };
+        return {
+          statusCode: response.status,
+          code: typeof body.code === "string" ? body.code : "",
+        };
+      },
+      (value) => value.code === expectedCode,
+      {
+        description: `agent ${agentId} draft to be restored`,
+        timeoutMs,
+        formatLastObserved: (value) => `HTTP ${value.statusCode}; code=${value.code}`,
+      },
+    );
   }
 
   async function createAgent(name = "Scheduled build fixer", code?: string) {
@@ -815,13 +833,7 @@ describe("Agents API Integration", () => {
     controller.abort();
     await expect(reader!.read()).rejects.toThrow();
 
-    const start = Date.now();
-    let remainingChats: unknown[] = [];
-    while (Date.now() - start < 5000) {
-      const chatsResponse = await fetch(`${baseUrl}/api/chats`);
-      expect(chatsResponse.ok).toBe(true);
-      remainingChats = await chatsResponse.json() as unknown[];
-      if (!remainingChats.some((chat) => (
+    const hasTestChat = (chats: unknown[]): boolean => chats.some((chat) => (
         typeof chat === "object"
         && chat !== null
         && "config" in chat
@@ -829,20 +841,21 @@ describe("Agents API Integration", () => {
         && chat.config !== null
         && "name" in chat.config
         && chat.config.name === `Test code: ${testName}`
-      ))) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    expect(remainingChats.some((chat) => (
-      typeof chat === "object"
-      && chat !== null
-      && "config" in chat
-      && typeof chat.config === "object"
-      && chat.config !== null
-      && "name" in chat.config
-      && chat.config.name === `Test code: ${testName}`
-    ))).toBe(false);
+      ));
+    const remainingChats = await pollUntil(
+      async () => {
+        const chatsResponse = await fetch(`${baseUrl}/api/chats`);
+        expect(chatsResponse.ok).toBe(true);
+        return await chatsResponse.json() as unknown[];
+      },
+      (chats) => !hasTestChat(chats),
+      {
+        description: `temporary chat ${testName} to be removed`,
+        timeoutMs: 5000,
+        formatLastObserved: (chats) => `matchingChats=${hasTestChat(chats) ? "present" : "absent"}, total=${chats.length}`,
+      },
+    );
+    expect(hasTestChat(remainingChats)).toBe(false);
   });
 
   test("tests large unsaved deterministic code without a module URL length failure", async () => {

@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 
 import { runPreviewCommand } from "../../src/cli/preview";
 import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage } from "@/shared";
+import { pollUntil } from "../helpers/polling";
 
 class FakeBridgeSocket extends EventTarget {
   readyState: number = WebSocket.CONNECTING;
@@ -43,14 +44,16 @@ class FakeBridgeSocket extends EventTarget {
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + 1000;
-  while (Date.now() < deadline) {
-    if (predicate()) {
-      return;
-    }
-    await Bun.sleep(5);
-  }
-  throw new Error("Timed out waiting for preview listener condition");
+  await pollUntil(
+    predicate,
+    (ready) => ready,
+    {
+      description: "preview listener condition",
+      timeoutMs: 1000,
+      intervalMs: 5,
+      formatLastObserved: (ready) => ready ? "ready" : "not ready",
+    },
+  );
 }
 
 describe("CLI preview listener", () => {

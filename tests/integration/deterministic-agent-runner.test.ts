@@ -23,6 +23,7 @@ import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { managedCredentialService } from "../../src/core/managed-credential-service";
 import type { ManagedRuntimeCredential } from "../../src/core/managed-credential-service";
 import { DETERMINISTIC_AGENT_MANAGED_BY } from "../../src/core/managed-credential-service";
+import { pollUntil } from "../helpers/polling";
 import { listContextApiKeyAssociationsForUser } from "../../src/persistence/context-api-keys";
 import { sqliteWebAppStore } from "@pablozaiden/webapp/server";
 import { serveNativeApiRoutes } from "../native-api-server";
@@ -271,13 +272,21 @@ describe("deterministic agent runner — workspace host execution", () => {
         executor,
       });
 
-      // Wait for "start" then abort
-      const startTimeout = Date.now() + 5000;
-      while (!output.run.logs.some((l) => l.message.includes("start"))) {
-        if (Date.now() > startTimeout) break;
-        await new Promise((r) => setTimeout(r, 20));
+      // Wait for "start" then abort.
+      try {
+        await pollUntil(
+          () => output.run.logs.some((log) => log.message.includes("start")),
+          (started) => started,
+          {
+            description: "deterministic runner to emit its start message",
+            timeoutMs: 5000,
+            intervalMs: 20,
+            formatLastObserved: (started) => started ? "observed" : "missing",
+          },
+        );
+      } finally {
+        ac.abort();
       }
-      ac.abort();
 
       await expect(launchPromise).rejects.toThrow(/interrupted/);
     });

@@ -16,6 +16,7 @@ import { closeDatabase } from "../../src/persistence/database";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { NeverCompletingMockBackend } from "../mocks/mock-backend";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" };
@@ -62,18 +63,22 @@ describe("POST /api/tasks/:id/pending", () => {
 
   // Helper to wait for task to reach a specific status
   async function waitForTaskStatus(taskId: string, targetStatus: string[], timeoutMs = 5000): Promise<void> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (targetStatus.includes(data.state?.status)) {
-          return;
+    await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        if (!response.ok) {
+          return `HTTP ${response.status}`;
         }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`Task ${taskId} did not reach status ${targetStatus.join("/")} within ${timeoutMs}ms`);
+        const data = await response.json() as { state?: { status?: string } };
+        return data.state?.status ?? "unknown";
+      },
+      (status) => targetStatus.includes(status),
+      {
+        description: `task ${taskId} to reach status ${targetStatus.join("/")}`,
+        timeoutMs,
+        formatLastObserved: (status) => status,
+      },
+    );
   }
 
   beforeAll(async () => {

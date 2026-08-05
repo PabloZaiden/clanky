@@ -29,6 +29,7 @@ import {
   initializeGitRepository,
   runGit,
 } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -117,19 +118,24 @@ describe("Chats API Integration", () => {
   }
 
   async function waitForChatIdle(chatId: string, timeoutMs = 5000): Promise<Chat> {
-    const start = Date.now();
-
-    while (Date.now() - start < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/chats/${chatId}`);
-      if (response.ok) {
+    const observation = await pollUntil(
+      async () => {
+        const response = await fetch(`${baseUrl}/api/chats/${chatId}`);
+        if (!response.ok) {
+          return { statusCode: response.status, chat: null };
+        }
         const chat = await response.json() as Chat;
-        if (chat.state?.status === "idle" || chat.state?.status === "failed") {
-          const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
-          expect(snapshotResponse.status).toBe(200);
-          const snapshot = await snapshotResponse.json() as {
-            transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;
-          };
-          return {
+        if (chat.state?.status !== "idle" && chat.state?.status !== "failed") {
+          return { statusCode: response.status, chat };
+        }
+        const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
+        expect(snapshotResponse.status).toBe(200);
+        const snapshot = await snapshotResponse.json() as {
+          transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;
+        };
+        return {
+          statusCode: response.status,
+          chat: {
             ...chat,
             state: {
               ...chat.state,
@@ -137,32 +143,41 @@ describe("Chats API Integration", () => {
               logs: snapshot.transcript.logs,
               toolCalls: snapshot.transcript.toolCalls,
             },
-          };
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+          },
+        };
+      },
+      (value) => value.chat?.state?.status === "idle" || value.chat?.state?.status === "failed",
+      {
+        description: `chat ${chatId} to settle`,
+        timeoutMs,
+        formatLastObserved: (value) => value.chat === null
+          ? `HTTP ${value.statusCode}`
+          : `HTTP ${value.statusCode}; status=${value.chat.state?.status ?? "unknown"}`,
+      },
+    );
+    if (observation.chat === null) {
+      throw new Error(`Chat ${chatId} returned no chat after polling`);
     }
-
-    throw new Error(`Timed out waiting for chat ${chatId} to settle`);
+    return observation.chat;
   }
 
   async function waitForStreamingAssistantMessage(chatId: string, timeoutMs = 5000): Promise<Chat> {
-    const start = Date.now();
-
-    while (Date.now() - start < timeoutMs) {
-      const chat = await loadChat(chatId);
-      if (
+    return pollUntil(
+      () => loadChat(chatId),
+      (chat): chat is Chat => Boolean(
         chat
         && chat.state.status === "streaming"
         && chat.state.activeMessageId
-        && chat.state.messages.some((message) => message.id === chat.state.activeMessageId && message.role === "assistant")
-      ) {
-        return chat;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    throw new Error(`Timed out waiting for chat ${chatId} to stream an assistant message`);
+        && chat.state.messages.some((message) => message.id === chat.state.activeMessageId && message.role === "assistant"),
+      ),
+      {
+        description: `chat ${chatId} to stream an assistant message`,
+        timeoutMs,
+        formatLastObserved: (chat) => chat === null
+          ? "not found"
+          : `status=${chat.state.status}, activeMessageId=${chat.state.activeMessageId ?? "none"}`,
+      },
+    );
   }
 
   function createTestTask(taskId: string, workingDirectory: string): Task {
@@ -1156,34 +1171,34 @@ describe("Chats API Integration", () => {
     const firstSendResponse = await firstSendPromise;
     expect(firstSendResponse.status).toBe(200);
 
-    let settled: Awaited<ReturnType<typeof loadChat>> = null;
-    let lastObserved: Awaited<ReturnType<typeof loadChat>> = null;
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < 15000) {
-      const latest = await loadChat(created.config.id);
-      lastObserved = latest;
-      const userMessages = latest?.state.messages.filter((message) => message.role === "user") ?? [];
-      if (latest?.state.status === "idle" && latest.state.queuedMessages?.length === 0 && userMessages.length === 2) {
-        settled = latest;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    if (!settled) {
-      throw new Error(`Timed out waiting for queued chat message to drain: ${JSON.stringify({
-        status: lastObserved?.state.status,
-        queuedMessages: lastObserved?.state.queuedMessages,
-        userMessages: lastObserved?.state.messages.filter((message) => message.role === "user").map((message) => message.content),
-        assistantMessages: lastObserved?.state.messages.filter((message) => message.role === "assistant").map((message) => message.content),
-        error: lastObserved?.state.error,
-      })}`);
-    }
-    expect(settled?.config.name).toBe("Generated Busy Name");
-    expect(settled?.state.messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual([
+    const settled = await pollUntil(
+      () => loadChat(created.config.id),
+      (latest): latest is Chat => {
+        const userMessages = latest?.state.messages.filter((message) => message.role === "user") ?? [];
+        return latest?.state.status === "idle"
+          && latest.state.queuedMessages?.length === 0
+          && userMessages.length === 2;
+      },
+      {
+        description: `queued chat message ${created.config.id} to drain`,
+        timeoutMs: 15000,
+        formatLastObserved: (latest) => latest === null
+          ? "not found"
+          : JSON.stringify({
+            status: latest.state.status,
+            queuedMessages: latest.state.queuedMessages,
+            userMessages: latest.state.messages.filter((message) => message.role === "user").map((message) => message.content),
+            assistantMessages: latest.state.messages.filter((message) => message.role === "assistant").map((message) => message.content),
+            error: latest.state.error,
+          }) ?? "unserializable chat",
+      },
+    );
+    expect(settled.config.name).toBe("Generated Busy Name");
+    expect(settled.state.messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual([
       "Name this chat while busy",
       "Send this queued message\nAlso send this queued message",
     ]);
-    const drainedQueuedMessage = settled?.state.messages.find((message) => message.role === "user" && message.content === "Send this queued message\nAlso send this queued message");
+    const drainedQueuedMessage = settled.state.messages.find((message) => message.role === "user" && message.content === "Send this queued message\nAlso send this queued message");
     expect(drainedQueuedMessage?.attachments?.map((attachment) => attachment.id)).toEqual(["queued-attachment-1"]);
   });
 

@@ -21,6 +21,7 @@ import { getDefaultServerSettings } from "@/shared/settings";
 import { runWithCurrentUser } from "../src/core/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { initializeGitRepository } from "./helpers/git-fixtures";
+import { pollUntil } from "./helpers/polling";
 
 /**
  * Default test workspace ID that can be used in tests.
@@ -232,26 +233,15 @@ export function waitForEvent<T extends TaskEvent["type"]>(
   eventType: T,
   timeout = 5000,
 ): Promise<Extract<TaskEvent, { type: T }>> {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-
-    const check = () => {
-      const event = events.find((e) => e.type === eventType);
-      if (event) {
-        resolve(event as Extract<TaskEvent, { type: T }>);
-        return;
-      }
-
-      if (Date.now() - startTime > timeout) {
-        reject(new Error(`Timeout waiting for event: ${eventType}`));
-        return;
-      }
-
-      setTimeout(check, 50);
-    };
-
-    check();
-  });
+  return pollUntil(
+    () => events.find((event): event is Extract<TaskEvent, { type: T }> => event.type === eventType),
+    (event): event is Extract<TaskEvent, { type: T }> => event !== undefined,
+    {
+      description: `event ${eventType}`,
+      timeoutMs: timeout,
+      formatLastObserved: (event) => event === undefined ? "none" : JSON.stringify(event) ?? "unserializable event",
+    },
+  );
 }
 
 /**
@@ -262,26 +252,15 @@ export function waitForEventMatching<T extends TaskEvent>(
   predicate: (event: TaskEvent) => event is T,
   timeout = 5000,
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-
-    const check = () => {
-      const event = events.find(predicate);
-      if (event) {
-        resolve(event);
-        return;
-      }
-
-      if (Date.now() - startTime > timeout) {
-        reject(new Error(`Timeout waiting for matching event`));
-        return;
-      }
-
-      setTimeout(check, 50);
-    };
-
-    check();
-  });
+  return pollUntil(
+    () => events.find(predicate),
+    (event): event is T => event !== undefined,
+    {
+      description: "a matching event",
+      timeoutMs: timeout,
+      formatLastObserved: (event) => event === undefined ? "none" : JSON.stringify(event) ?? "unserializable event",
+    },
+  );
 }
 
 /**
@@ -317,20 +296,15 @@ export async function waitForTaskStatus(
   expectedStatuses: string[],
   timeoutMs = 10000
 ): Promise<import("@/shared").Task> {
-  const startTime = Date.now();
-  let lastStatus = "unknown";
-  while (Date.now() - startTime < timeoutMs) {
-    const task = await manager.getTask(taskId);
-    if (task) {
-      lastStatus = task.state?.status ?? "unknown";
-      if (expectedStatuses.includes(lastStatus)) {
-        return task;
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(
-    `Task ${taskId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
+  return pollUntil(
+    () => manager.getTask(taskId),
+    (task): task is import("@/shared").Task =>
+      task !== null && expectedStatuses.includes(task.state?.status ?? "unknown"),
+    {
+      description: `task ${taskId} to reach status [${expectedStatuses.join(", ")}]`,
+      timeoutMs,
+      formatLastObserved: (task) => task === null ? "not found" : `status=${task.state?.status ?? "unknown"}`,
+    },
   );
 }
 
@@ -342,17 +316,16 @@ export async function waitForPlanReady(
   taskId: string,
   timeoutMs = 10000
 ): Promise<import("@/shared").Task> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    const task = await manager.getTask(taskId);
-    if (task?.state.planMode?.isPlanReady === true) {
-      return task;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  const finalTask = await manager.getTask(taskId);
-  throw new Error(
-    `Plan did not become ready within ${timeoutMs}ms. isPlanReady: ${finalTask?.state.planMode?.isPlanReady}, status: ${finalTask?.state.status}`
+  return pollUntil(
+    () => manager.getTask(taskId),
+    (task): task is import("@/shared").Task => task?.state.planMode?.isPlanReady === true,
+    {
+      description: `plan for task ${taskId} to become ready`,
+      timeoutMs,
+      formatLastObserved: (task) => task === null
+        ? "not found"
+        : `isPlanReady=${task.state.planMode?.isPlanReady}, status=${task.state.status}`,
+    },
   );
 }
 
@@ -367,17 +340,16 @@ export async function waitForPersistedPlanReady(
   taskId: string,
   timeoutMs = 10000
 ): Promise<import("@/shared").Task> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    const task = await loadTask(taskId);
-    if (task?.state.planMode?.isPlanReady === true) {
-      return task;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  const finalTask = await loadTask(taskId);
-  throw new Error(
-    `Plan isPlanReady not persisted within ${timeoutMs}ms. Persisted isPlanReady: ${finalTask?.state.planMode?.isPlanReady}, status: ${finalTask?.state.status}`
+  return pollUntil(
+    () => loadTask(taskId),
+    (task): task is import("@/shared").Task => task?.state.planMode?.isPlanReady === true,
+    {
+      description: `plan for task ${taskId} to be persisted as ready`,
+      timeoutMs,
+      formatLastObserved: (task) => task === null
+        ? "not found"
+        : `isPlanReady=${task.state.planMode?.isPlanReady}, status=${task.state.status}`,
+    },
   );
 }
 
@@ -385,26 +357,28 @@ export async function waitForPersistedPlanReady(
  * Poll until file no longer exists.
  */
 export async function waitForFileDeleted(filePath: string, timeoutMs = 5000): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    if (!(await Bun.file(filePath).exists())) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`File ${filePath} was not deleted within ${timeoutMs}ms`);
+  await pollUntil(
+    () => Bun.file(filePath).exists(),
+    (exists) => !exists,
+    {
+      description: `file ${filePath} to be deleted`,
+      timeoutMs,
+      formatLastObserved: (exists) => exists ? "present" : "absent",
+    },
+  );
 }
 
 /**
  * Poll until file exists.
  */
 export async function waitForFileExists(filePath: string, timeoutMs = 5000): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
-    if (await Bun.file(filePath).exists()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`File ${filePath} did not appear within ${timeoutMs}ms`);
+  await pollUntil(
+    () => Bun.file(filePath).exists(),
+    (exists) => exists,
+    {
+      description: `file ${filePath} to exist`,
+      timeoutMs,
+      formatLastObserved: (exists) => exists ? "present" : "absent",
+    },
+  );
 }

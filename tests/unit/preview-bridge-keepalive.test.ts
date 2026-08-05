@@ -3,17 +3,19 @@ import type { ServerWebSocket } from "bun";
 
 import { close, startPreviewBridgeKeepalive } from "../../src/api/websocket/connection";
 import type { WebSocketData } from "../../src/api/websocket/types";
+import { pollUntil } from "../helpers/polling";
 
 async function waitForMessage(messages: string[], predicate: (message: string) => boolean): Promise<string> {
-  const deadline = Date.now() + 1000;
-  while (Date.now() < deadline) {
-    const message = messages.find(predicate);
-    if (message) {
-      return message;
-    }
-    await Bun.sleep(5);
-  }
-  throw new Error(`Timed out waiting for message. Last messages: ${JSON.stringify(messages)}`);
+  return pollUntil(
+    () => messages.find(predicate),
+    (message): message is string => message !== undefined,
+    {
+      description: "the expected preview bridge message",
+      timeoutMs: 1000,
+      intervalMs: 5,
+      formatLastObserved: (message) => message ?? "none",
+    },
+  );
 }
 
 function createPreviewBridgeSocket(messages: string[]): ServerWebSocket<WebSocketData> {

@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initializeGitRepository } from "../helpers/git-fixtures";
+import { pollUntil } from "../helpers/polling";
 
 interface MeshMember {
   nodeId: string;
@@ -107,19 +108,23 @@ async function waitForCondition(
   message: string,
   timeoutMs = 5_000,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastError = "";
-  while (Date.now() < deadline) {
-    try {
-      if (await predicate()) {
-        return;
+  await pollUntil(
+    async () => {
+      try {
+        return { ready: await predicate() };
+      } catch (error) {
+        return { ready: false, error: String(error) };
       }
-    } catch (error) {
-      lastError = String(error);
-    }
-    await Bun.sleep(50);
-  }
-  throw new Error(`${message}${lastError ? ` Last error: ${lastError}` : ""}`);
+    },
+    (observation) => observation.ready,
+    {
+      description: message,
+      timeoutMs,
+      formatLastObserved: (observation) => observation.error
+        ? `ready=false; error=${observation.error}`
+        : `ready=${observation.ready}`,
+    },
+  );
 }
 
 async function startMeshNode(

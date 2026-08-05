@@ -34,6 +34,7 @@ import {
   initializeGitRepository,
   runGit,
 } from "../../helpers/git-fixtures";
+import { pollUntil } from "../../helpers/polling";
 
 export { getCurrentBranch } from "../../helpers/git-fixtures";
 
@@ -635,28 +636,19 @@ export async function waitForTaskStatus(
   timeoutMs = 15000
 ): Promise<Task> {
   const statuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
-  const startTime = Date.now();
-  let lastStatus = "";
-  let lastTask: Task | null = null;
-
-  while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
-    if (status === 200) {
-      const task = body as Task;
-      lastTask = task;
-      lastStatus = task.state?.status ?? "no state";
-      if (statuses.includes(task.state.status)) {
-        return hydrateTaskTranscriptFromSnapshot(baseUrl, task);
-      }
-    } else {
-      lastStatus = `HTTP ${status}`;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(
-    `Task ${taskId} did not reach status [${statuses.join(", ")}] within ${timeoutMs}ms. Last status: ${lastStatus}${lastTask?.state?.error ? `, error: ${lastTask.state.error.message}` : ""}`
+  const observation = await pollUntil(
+    () => getTaskViaAPI(baseUrl, taskId),
+    ({ status, body }) => status === 200 && statuses.includes((body as Task).state.status),
+    {
+      description: `task ${taskId} to reach status [${statuses.join(", ")}]`,
+      timeoutMs,
+      formatLastObserved: formatTaskApiObservation,
+    },
   );
+  if (observation.status !== 200) {
+    throw new Error(`Task ${taskId} returned HTTP ${observation.status} after polling`);
+  }
+  return hydrateTaskTranscriptFromSnapshot(baseUrl, observation.body as Task);
 }
 
 export async function waitForTaskCondition(
@@ -666,28 +658,19 @@ export async function waitForTaskCondition(
   description: string,
   timeoutMs = 15000,
 ): Promise<Task> {
-  const startTime = Date.now();
-  let lastStatus = "";
-  let lastTask: Task | null = null;
-
-  while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
-    if (status === 200) {
-      const task = body as Task;
-      lastTask = task;
-      lastStatus = task.state?.status ?? "no state";
-      if (predicate(task)) {
-        return hydrateTaskTranscriptFromSnapshot(baseUrl, task);
-      }
-    } else {
-      lastStatus = `HTTP ${status}`;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(
-    `Task ${taskId} did not satisfy condition "${description}" within ${timeoutMs}ms. Last status: ${lastStatus}${lastTask?.state?.error ? `, error: ${lastTask.state.error.message}` : ""}`,
+  const observation = await pollUntil(
+    () => getTaskViaAPI(baseUrl, taskId),
+    ({ status, body }) => status === 200 && predicate(body as Task),
+    {
+      description: `task ${taskId} to satisfy condition "${description}"`,
+      timeoutMs,
+      formatLastObserved: formatTaskApiObservation,
+    },
   );
+  if (observation.status !== 200) {
+    throw new Error(`Task ${taskId} returned HTTP ${observation.status} after polling`);
+  }
+  return hydrateTaskTranscriptFromSnapshot(baseUrl, observation.body as Task);
 }
 
 /**
@@ -698,26 +681,30 @@ export async function waitForPlanReady(
   taskId: string,
   timeoutMs = 15000
 ): Promise<Task> {
-  const startTime = Date.now();
-  let lastIsPlanReady: boolean | undefined;
-  let lastTask: Task | null = null;
-
-  while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
-    if (status === 200) {
-      const task = body as Task;
-      lastTask = task;
-      lastIsPlanReady = task.state.planMode?.isPlanReady;
-      if (lastIsPlanReady === true) {
-        return task;
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(
-    `Task ${taskId} plan did not become ready within ${timeoutMs}ms. Last isPlanReady: ${lastIsPlanReady}, status: ${lastTask?.state.status}`
+  const observation = await pollUntil(
+    () => getTaskViaAPI(baseUrl, taskId),
+    ({ status, body }) => status === 200 && (body as Task).state.planMode?.isPlanReady === true,
+    {
+      description: `plan for task ${taskId} to become ready`,
+      timeoutMs,
+      formatLastObserved: formatTaskApiObservation,
+    },
   );
+  if (observation.status !== 200) {
+    throw new Error(`Task ${taskId} returned HTTP ${observation.status} after polling`);
+  }
+  return observation.body as Task;
+}
+
+function formatTaskApiObservation(
+  observation: Awaited<ReturnType<typeof getTaskViaAPI>>,
+): string {
+  if (observation.status !== 200) {
+    return `HTTP ${observation.status}`;
+  }
+  const task = observation.body as Task;
+  const error = task.state?.error?.message;
+  return `HTTP 200; status=${task.state?.status ?? "no state"}${error ? `, error=${error}` : ""}`;
 }
 
 /**
@@ -909,21 +896,15 @@ export async function getTaskStatusFileViaAPI(
  * This helps prevent race conditions between tests that share a working directory.
  */
 export async function waitForGitAvailable(workDir: string, timeoutMs = 5000): Promise<void> {
-  const startTime = Date.now();
   const lockFile = join(workDir, ".git/index.lock");
-  let lastLockExists = false;
-
-  while (Date.now() - startTime < timeoutMs) {
-    const lockExists = await Bun.file(lockFile).exists();
-    lastLockExists = lockExists;
-    if (!lockExists) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  throw new Error(
-    `Git remained locked at ${lockFile} for ${timeoutMs}ms. Last observed lock state: ${lastLockExists ? "present" : "absent"}.`,
+  await pollUntil(
+    () => Bun.file(lockFile).exists(),
+    (lockExists) => !lockExists,
+    {
+      description: `git lock ${lockFile} to be absent`,
+      timeoutMs,
+      formatLastObserved: (lockExists) => lockExists ? "present" : "absent",
+    },
   );
 }
 
