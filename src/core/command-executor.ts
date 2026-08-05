@@ -136,3 +136,5 @@ export interface CommandExecutor {
    */
   writeFile(path: string, content: string): Promise<boolean>;
 }
+
+export { MeshCommandExecutor, MeshCommandExecutorClient } from "./mesh-command-executor";

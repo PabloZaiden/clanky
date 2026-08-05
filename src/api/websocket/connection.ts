@@ -5,6 +5,7 @@ import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
 import { runWithCurrentUser } from "../../core/user-context";
 import { previewSessionManager } from "../../core/preview-session-manager";
+import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 
 const log = createLogger("api:websocket");
 
@@ -51,6 +52,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     vncMode,
     vncSessionId,
     previewBridgeMode,
+    meshAcpMode,
+    meshAcpSessionId,
+    meshAcpSessionToken,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -81,6 +85,17 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   if (previewBridgeMode) {
     ws.send(JSON.stringify({ type: "connected" }));
     ws.data.previewBridgeKeepalive = startPreviewBridgeKeepalive(ws);
+    return;
+  }
+
+  if (meshAcpMode && meshAcpSessionId && meshAcpSessionToken) {
+    void meshAcpGateway.open(ws, meshAcpSessionId, meshAcpSessionToken).catch((error: Error) => {
+      log.warn("Failed to open mesh ACP relay", {
+        sessionId: meshAcpSessionId,
+        error: String(error),
+      });
+      ws.close(1011, "Mesh ACP relay unavailable");
+    });
     return;
   }
 
@@ -157,6 +172,9 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
+  if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
+    void meshAcpGateway.close(ws.data.meshAcpSessionId);
+  }
   clearPreviewBridgeKeepalive(ws);
 }
 
@@ -185,6 +203,9 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   }
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
+  }
+  if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
+    void meshAcpGateway.close(ws.data.meshAcpSessionId);
   }
   clearPreviewBridgeKeepalive(ws);
 }

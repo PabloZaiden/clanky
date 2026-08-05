@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { AcpBackend } from "../../src/backends/acp/acp-backend";
+import type {
+  AcpTransportClosedEvent,
+  AcpTransportLifecycle,
+  AcpTransportSession,
+  RpcPendingController,
+  RpcRequester,
+} from "../../src/backends/acp/contracts";
+import type { JsonRpcMessage } from "../../src/backends/acp/types";
+import type { AgentProvider } from "../../src/shared/settings";
 
 const directory = process.cwd();
 
@@ -109,6 +118,73 @@ function createControlledProcess(): ControlledProcess {
   };
 }
 
+class InjectedTransportLifecycle implements AcpTransportLifecycle {
+  private connected = false;
+  private directory = "";
+  private provider: AgentProvider = "opencode";
+  private messageHandler: ((message: JsonRpcMessage) => void) | null = null;
+  disconnectCount = 0;
+
+  readonly transport = {
+    write: (message: JsonRpcMessage): void => {
+      if (message.method !== "initialize" || typeof message.id !== "number") {
+        return;
+      }
+      queueMicrotask(() => {
+        this.messageHandler?.({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {},
+        });
+      });
+    },
+    isWritable: (): boolean => this.connected,
+  };
+
+  async connect(
+    config: Parameters<AcpTransportLifecycle["connect"]>[0],
+    _signal: AbortSignal | undefined,
+    requester: RpcRequester & RpcPendingController,
+  ): Promise<unknown> {
+    this.connected = true;
+    this.directory = config.directory;
+    this.provider = config.provider ?? "opencode";
+    return requester.sendRequest("initialize", {});
+  }
+
+  async disconnect(): Promise<void> {
+    this.disconnectCount += 1;
+    this.connected = false;
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getProvider(): AgentProvider {
+    return this.provider;
+  }
+
+  getConnectionInfo(): { baseUrl: string; authHeaders: Record<string, string> } | null {
+    return this.connected ? { baseUrl: "acp://injected", authHeaders: {} } : null;
+  }
+
+  getSession(): AcpTransportSession | null {
+    return this.connected ? { id: "injected-session", kind: "remote" } : null;
+  }
+
+  setMessageHandler(handler: (message: JsonRpcMessage) => void): void {
+    this.messageHandler = handler;
+  }
+
+  setTransportClosedHandler(_handler: (event: AcpTransportClosedEvent) => void): void {
+  }
+}
+
 describe("AcpBackend lifecycle", () => {
   let backend: AcpBackend | undefined;
 
@@ -145,6 +221,23 @@ describe("AcpBackend lifecycle", () => {
     expect(backend.getDirectory()).toBe("");
     expect(backend.getConnectionInfo()).toBeNull();
     expect(backend.getSdkClient()).toBeNull();
+  });
+
+  test("accepts an injected wire lifecycle without changing the backend contract", async () => {
+    const lifecycle = new InjectedTransportLifecycle();
+    backend = new AcpBackend({ transportLifecycle: lifecycle });
+
+    await backend.connect(buildConnectionConfig("unused"));
+
+    expect(backend.isConnected()).toBe(true);
+    expect(backend.getDirectory()).toBe(directory);
+    expect(backend.getConnectionInfo()).toEqual({
+      baseUrl: "acp://injected",
+      authHeaders: {},
+    });
+
+    await backend.disconnect();
+    expect(lifecycle.disconnectCount).toBe(1);
   });
 
   test("ignores buffered output from a replaced process", async () => {

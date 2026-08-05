@@ -220,6 +220,13 @@ For mesh connections between trusted private-network instances, set
 reachable by its peer, such as `http://192.168.1.20:3000`. Do not expose an
 HTTP mesh endpoint to an untrusted network.
 
+Mesh can also relay `stdio` workspaces: the active instance remains the
+authority, while ACP processes and file/command operations run on the
+workspace's persisted execution owner. Keep mesh peers on a trusted network
+and use HTTPS (including WebSocket upgrades) when prompts, environment values,
+or file contents could cross an untrusted network. SSH-backed workspaces keep
+their existing routing and are not moved by mesh execution.
+
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
 public deployments. The image's trust-proxy defaults are intentionally unsafe
 for direct, unproxied exposure because forwarded headers are then

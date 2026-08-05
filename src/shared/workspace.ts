@@ -27,6 +27,8 @@ export interface Workspace {
   name: string;
   /** Absolute path to the directory (must be a git repository) */
   directory: string;
+  /** Mesh node that owns execution of this workspace when using stdio transport */
+  executionNodeId?: string | null;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */

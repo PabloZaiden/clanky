@@ -978,6 +978,69 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 33,
+    name: "add_workspace_execution_node",
+    up: (db) => {
+      if (!tableExists(db, "workspaces")) {
+        return;
+      }
+      const columns = getTableColumns(db, "workspaces");
+      if (!columns.includes("execution_node_id")) {
+        db.run("ALTER TABLE workspaces ADD COLUMN execution_node_id TEXT");
+      }
+
+      if (!tableExists(db, "mesh_node_identity")) {
+        return;
+      }
+
+      const identity = db.query(`
+        SELECT node_id
+        FROM mesh_node_identity
+        WHERE singleton = 1
+      `).get() as { node_id: string } | null;
+
+      const rows = db.query(`
+        SELECT id, server_settings, execution_node_id
+        FROM workspaces
+      `).all() as Array<{
+        id: string;
+        server_settings: string | null;
+        execution_node_id: string | null;
+      }>;
+      const assign = db.prepare(`
+        UPDATE workspaces
+        SET execution_node_id = ?
+        WHERE id = ? AND execution_node_id IS NULL
+      `);
+      const clear = db.prepare(`
+        UPDATE workspaces
+        SET execution_node_id = NULL
+        WHERE id = ?
+      `);
+
+      for (const row of rows) {
+        let parsed: unknown;
+        try {
+          parsed = row.server_settings ? JSON.parse(row.server_settings) : null;
+        } catch (error) {
+          log.warn("Skipping workspace execution ownership migration for invalid settings", {
+            workspaceId: row.id,
+            error: String(error),
+          });
+          continue;
+        }
+        const agent = isRecord(parsed) && isRecord(parsed["agent"]) ? parsed["agent"] : null;
+        if (agent?.["transport"] === "stdio") {
+          if (identity?.node_id && row.execution_node_id === null) {
+            assign.run(identity.node_id, row.id);
+          }
+        } else if (agent?.["transport"] === "ssh" && row.execution_node_id !== null) {
+          clear.run(row.id);
+        }
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

@@ -312,6 +312,57 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
   ]);
 }
 
+function backfillWorkspaceExecutionNodeOwnership(nodeId: string): void {
+  const db = getDatabase();
+  if (!db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get("workspaces")) {
+    return;
+  }
+
+  const rows = db.query(`
+    SELECT id, server_settings, execution_node_id
+    FROM workspaces
+  `).all() as Array<{
+    id: string;
+    server_settings: string | null;
+    execution_node_id: string | null;
+  }>;
+  const assign = db.prepare(`
+    UPDATE workspaces
+    SET execution_node_id = ?
+    WHERE id = ? AND execution_node_id IS NULL
+  `);
+  const clear = db.prepare(`
+    UPDATE workspaces
+    SET execution_node_id = NULL
+    WHERE id = ?
+  `);
+
+  for (const row of rows) {
+    let parsed: unknown;
+    try {
+      parsed = row.server_settings ? JSON.parse(row.server_settings) : null;
+    } catch (error) {
+      log.warn("Skipping workspace execution ownership backfill for invalid settings", {
+        workspaceId: row.id,
+        error: String(error),
+      });
+      continue;
+    }
+    const agent = typeof parsed === "object" && parsed !== null
+      && typeof (parsed as Record<string, unknown>)["agent"] === "object"
+      && (parsed as Record<string, unknown>)["agent"] !== null
+      ? (parsed as Record<string, unknown>)["agent"] as Record<string, unknown>
+      : null;
+    if (agent?.["transport"] === "stdio") {
+      if (row.execution_node_id === null) {
+        assign.run(nodeId, row.id);
+      }
+    } else if (agent?.["transport"] === "ssh" && row.execution_node_id !== null) {
+      clear.run(row.id);
+    }
+  }
+}
+
 /**
  * Ensure that this data directory has a durable node identity.
  */
@@ -368,6 +419,7 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
     });
   }
   upsertIdentityRows(identity);
+  backfillWorkspaceExecutionNodeOwnership(identity.nodeId);
   return publicIdentity(identity);
 }
 

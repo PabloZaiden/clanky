@@ -78,6 +78,17 @@ export class RpcClient implements RpcRequester {
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     this.deps.ensureUsable();
+    if (this.deps.transport.waitForWritable) {
+      try {
+        await this.deps.transport.waitForWritable();
+      } catch (error) {
+        throw error instanceof AcpError
+          ? error
+          : new AcpError("acp_transport_unavailable", "ACP transport is not writable", {
+              cause: error,
+            });
+      }
+    }
 
     const id = this.nextRequestId;
     this.nextRequestId += 1;
@@ -117,7 +128,13 @@ export class RpcClient implements RpcRequester {
       } catch (error) {
         clearTimeout(timeout);
         this.pendingRequests.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(error instanceof AcpError
+          ? error
+          : new AcpError(
+              "acp_transport_write_failed",
+              `Failed to write ACP message: ${error instanceof Error ? error.message : String(error)}`,
+              { cause: error },
+            ));
       }
     });
   }

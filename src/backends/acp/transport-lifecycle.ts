@@ -4,7 +4,7 @@
  * Sole owner of the ACP subprocess, stdout/stderr readers, recent diagnostic
  * output buffering, process-exit observation, and graceful/forced shutdown. It
  * exposes a narrow {@link RpcTransport} to the RPC client for writing wire
- * messages and forwards parsed inbound messages back to the RPC client. It does
+ * messages and forwards parsed inbound messages to a configured sink. It does
  * not own JSON-RPC request bookkeeping or any session behavior.
  */
 
@@ -21,26 +21,34 @@ import { sanitizeSpawnArgsForLogging, getProcessExitHint } from "./process-utils
 import { AcpError, createAcpProcessError, getAcpErrorMessage } from "./errors";
 import { MAX_RECENT_PROCESS_LINES } from "./types";
 import type { JsonRpcMessage } from "./types";
-import type { RpcTransport } from "./contracts";
-import type { RpcClient } from "./rpc-client";
+import type {
+  AcpTransportClosedEvent,
+  AcpTransportLifecycle,
+  AcpTransportSession,
+  RpcPendingController,
+  RpcRequester,
+  RpcTransport,
+} from "./contracts";
 
 const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
 const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
 const ACP_SSH_INITIALIZE_ATTEMPTS = 3;
 const ACP_SSH_INITIALIZE_RETRY_DELAY_MS = 250;
 
-export class AcpTransportLifecycle {
+export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   private process: Bun.Subprocess | null = null;
   private connected = false;
   private directory = "";
   private provider: AgentProvider | null = null;
   private connectionInfo: ConnectionInfo | null = null;
+  private session: AcpTransportSession | null = null;
 
   /** Recent non-JSON ACP process output lines for diagnostics. */
   private recentProcessLines: string[] = [];
 
-  private rpc!: RpcClient;
-  private onTransportClosed: ((error: AcpError) => void) | null = null;
+  private requester: (RpcRequester & RpcPendingController) | null = null;
+  private onMessage: ((message: JsonRpcMessage) => void) | null = null;
+  private onTransportClosed: ((event: AcpTransportClosedEvent) => void) | null = null;
 
   /** Narrow transport exposed to the RPC client for writing wire messages. */
   readonly transport: RpcTransport = {
@@ -51,12 +59,12 @@ export class AcpTransportLifecycle {
     },
   };
 
-  /** Wire the RPC client after both collaborators are constructed. */
-  setRpcClient(rpc: RpcClient): void {
-    this.rpc = rpc;
+  /** Wire the parsed-message sink after both collaborators are constructed. */
+  setMessageHandler(handler: (message: JsonRpcMessage) => void): void {
+    this.onMessage = handler;
   }
 
-  setTransportClosedHandler(handler: (error: AcpError) => void): void {
+  setTransportClosedHandler(handler: (event: AcpTransportClosedEvent) => void): void {
     this.onTransportClosed = handler;
   }
 
@@ -84,21 +92,21 @@ export class AcpTransportLifecycle {
     return this.connectionInfo;
   }
 
+  getSession(): AcpTransportSession | null {
+    return this.session;
+  }
+
   ensureConnected(): void {
     if (!this.connected || !this.process) {
       throw new Error("Not connected. Call connect() first.");
     }
   }
 
-  /**
-   * Connect to an ACP-capable agent by spawning the configured CLI over an ACP
-   * stdio transport. On failure the provided teardown callback runs so the
-   * facade can clear all collaborator state before the error propagates.
-   */
+  /** Connect to an ACP-capable agent by spawning the configured CLI. */
   async connect(
     config: BackendConnectionConfig,
     signal: AbortSignal | undefined,
-    teardown: () => Promise<void>,
+    requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
     if (this.connected) {
       throw new Error("Already connected. Call disconnect() first.");
@@ -106,6 +114,11 @@ export class AcpTransportLifecycle {
 
     this.directory = config.directory;
     this.provider = config.provider ?? "opencode";
+    this.session = {
+      id: crypto.randomUUID(),
+      kind: "local",
+    };
+    this.requester = requester;
     log.debug("[AcpBackend] connect requested", {
       transport: config.transport,
       provider: config.provider,
@@ -113,6 +126,13 @@ export class AcpTransportLifecycle {
     });
 
     try {
+      if (config.mesh) {
+        throw new AcpError(
+          "acp_transport_unavailable",
+          "Remote stdio requires MeshAcpTransport; local ACP fallback is disabled.",
+          { details: config.mesh },
+        );
+      }
       if (config.mode !== "spawn") {
         throw new Error("Connect mode is not supported by ACP runtime. Use stdio or ssh transport.");
       }
@@ -125,7 +145,7 @@ export class AcpTransportLifecycle {
       }
 
       this.connected = true;
-      return await this.connectSpawn(config, signal, teardown);
+      return await this.connectSpawn(config, signal, requester);
     } catch (error) {
       const process = this.detachForShutdown();
       await this.terminateProcess(process);
@@ -136,7 +156,7 @@ export class AcpTransportLifecycle {
   private async connectSpawn(
     config: BackendConnectionConfig,
     signal: AbortSignal | undefined,
-    teardown: () => Promise<void>,
+    requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
     const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
     const command = config.command ?? providerCommand.command;
@@ -184,7 +204,7 @@ export class AcpTransportLifecycle {
       this.startProcessReaders(command);
 
       try {
-        initializeResult = await this.rpc.sendRequest("initialize", {
+        initializeResult = await requester.sendRequest("initialize", {
           protocolVersion: 1,
           clientInfo: {
             name: "clanky",
@@ -198,7 +218,7 @@ export class AcpTransportLifecycle {
         if (this.process === process) {
           this.process = null;
         }
-        this.rpc.clearPending();
+        requester.clearPending();
 
         const failure = error instanceof AcpError
           ? error
@@ -208,7 +228,6 @@ export class AcpTransportLifecycle {
               { cause: error },
             );
         if (failure.code !== "acp_ssh_authentication_failed" || attempt >= maxAttempts) {
-          await teardown();
           throw failure;
         }
 
@@ -252,8 +271,15 @@ export class AcpTransportLifecycle {
     this.directory = "";
     this.provider = null;
     this.connectionInfo = null;
+    this.session = null;
     this.recentProcessLines = [];
+    this.requester = null;
     return process;
+  }
+
+  async disconnect(): Promise<void> {
+    const process = this.detachForShutdown();
+    await this.terminateProcess(process);
   }
 
   private startProcessReaders(command: string): void {
@@ -288,11 +314,23 @@ export class AcpTransportLifecycle {
         command,
         exitCode,
       });
+      const session = this.session;
+      const requester = this.requester;
       this.connected = false;
       this.process = null;
+      this.directory = "";
+      this.provider = null;
       this.connectionInfo = null;
-      this.rpc.rejectPending(error);
-      this.onTransportClosed?.(error);
+      this.session = null;
+      this.requester = null;
+      requester?.rejectPending(error);
+      if (session) {
+        this.onTransportClosed?.({
+          session,
+          reason: "process-exit",
+          error,
+        });
+      }
     });
   }
 
@@ -412,7 +450,7 @@ export class AcpTransportLifecycle {
       return;
     }
 
-    this.rpc.handleMessage(message);
+    this.onMessage?.(message);
   }
 
   private writeRpcMessage(message: JsonRpcMessage): void {

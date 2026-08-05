@@ -188,3 +188,10 @@ export {
   type MeshSyncPush,
   type MeshSyncAck,
 } from "./mesh";
+
+export {
+  MeshExecutionSessionRequestSchema,
+  MeshExecutionRpcRequestSchema,
+  type MeshExecutionSessionRequest,
+  type MeshExecutionRpcRequest,
+} from "./mesh-execution";

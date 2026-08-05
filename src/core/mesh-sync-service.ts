@@ -10,6 +10,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { Agent, AgentRun } from "@/shared/agent";
 import type { Chat, Task, Workspace } from "@/shared";
 import type { SshServerConfig, SshServerPublicKey, SshServerSession, SshSession } from "@/shared";
+import { AGENT_PROVIDER_IDS, type AgentProvider, type ServerSettings } from "@/shared/settings";
 import type { MeshSshServerPayload } from "../persistence/ssh-servers";
 import type {
   MeshPairingMemberRecord,
@@ -99,6 +100,10 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function jsonEqual(left: unknown, right: unknown): boolean {
   if (left === right) {
     return true;
@@ -148,19 +153,114 @@ function isMeshWorkspacePayload(value: unknown): value is MeshWorkspacePayload {
   return typeof identityFile["configured"] === "boolean";
 }
 
-async function parseMeshWorkspacePayload(value: unknown): Promise<MeshWorkspacePayload> {
+function parseWorkspaceServerSettings(value: unknown): ServerSettings {
+  if (!isJsonObject(value) || !isJsonObject(value["agent"])) {
+    throw new Error("Workspace checkpoint server settings have an invalid shape.");
+  }
+  const agent = value["agent"];
+  const provider = agent["provider"];
+  const transport = agent["transport"];
+  if (
+    typeof provider !== "string"
+    || !AGENT_PROVIDER_IDS.includes(provider as AgentProvider)
+    || (transport !== "stdio" && transport !== "ssh")
+  ) {
+    throw new Error("Workspace checkpoint agent settings have an invalid shape.");
+  }
+  if (transport === "stdio") {
+    if (Object.hasOwn(agent, "hostname")
+      || Object.hasOwn(agent, "port")
+      || Object.hasOwn(agent, "username")
+      || Object.hasOwn(agent, "password")
+      || Object.hasOwn(agent, "identityFile")) {
+      throw new Error("Workspace checkpoint stdio settings contain SSH fields.");
+    }
+    return { agent: { provider: provider as AgentProvider, transport } };
+  }
+  if (
+    typeof agent["hostname"] !== "string"
+    || agent["hostname"].trim().length === 0
+    || (agent["port"] !== undefined
+      && (typeof agent["port"] !== "number" || !Number.isInteger(agent["port"]) || agent["port"] < 1 || agent["port"] > 65535))
+    || (agent["username"] !== undefined && typeof agent["username"] !== "string")
+    || (agent["password"] !== undefined && typeof agent["password"] !== "string")
+    || (agent["identityFile"] !== undefined && typeof agent["identityFile"] !== "string")
+  ) {
+    throw new Error("Workspace checkpoint SSH settings have an invalid shape.");
+  }
+  return {
+    agent: {
+      provider: provider as AgentProvider,
+      transport,
+      hostname: agent["hostname"],
+      ...(agent["port"] === undefined ? {} : { port: agent["port"] }),
+      ...(agent["username"] === undefined ? {} : { username: agent["username"] }),
+      ...(agent["password"] === undefined ? {} : { password: agent["password"] }),
+      ...(agent["identityFile"] === undefined ? {} : { identityFile: agent["identityFile"] }),
+    },
+  };
+}
+
+function parseWorkspace(value: unknown): Workspace {
+  if (!isJsonObject(value)
+    || !isNonEmptyString(value["id"])
+    || !isNonEmptyString(value["name"])
+    || !isNonEmptyString(value["directory"])
+    || !isNonEmptyString(value["createdAt"])
+    || !isNonEmptyString(value["updatedAt"])
+  ) {
+    throw new Error("Workspace checkpoint payload has an invalid shape.");
+  }
+  const optionalStringFields = [
+    "sourceDirectory",
+    "sshServerId",
+    "repoUrl",
+    "basePath",
+    "devcontainerSubpath",
+  ];
+  for (const field of optionalStringFields) {
+    if (value[field] !== undefined && typeof value[field] !== "string") {
+      throw new Error(`Workspace checkpoint field is invalid: ${field}.`);
+    }
+  }
+  for (const field of ["isPrivate", "archived", "allowClankyContext"]) {
+    if (value[field] !== undefined && typeof value[field] !== "boolean") {
+      throw new Error(`Workspace checkpoint field is invalid: ${field}.`);
+    }
+  }
+  if (value["provider"] !== undefined
+    && (typeof value["provider"] !== "string"
+      || !AGENT_PROVIDER_IDS.includes(value["provider"] as AgentProvider))) {
+    throw new Error("Workspace checkpoint provider is invalid.");
+  }
+  if (
+    value["executionNodeId"] !== undefined
+    && value["executionNodeId"] !== null
+    && !isNonEmptyString(value["executionNodeId"])
+  ) {
+    throw new Error("Workspace checkpoint execution ownership is invalid.");
+  }
+  return {
+    ...value,
+    serverSettings: parseWorkspaceServerSettings(value["serverSettings"]),
+  } as unknown as Workspace;
+}
+
+export async function parseMeshWorkspacePayload(value: unknown): Promise<MeshWorkspacePayload> {
   if (isMeshWorkspacePayload(value)) {
+    const workspace = parseWorkspace(value["workspace"]);
+    const identityFileConfigured = value["identityFile"]["configured"] as boolean;
+    if (identityFileConfigured && workspace.serverSettings.agent.transport !== "ssh") {
+      throw new Error("Stdio workspace checkpoints cannot configure an identity file.");
+    }
     return {
-      workspace: workspaceWithoutIdentityFileForLegacyPayload(value["workspace"] as unknown as Workspace),
+      workspace: workspaceWithoutIdentityFileForLegacyPayload(workspace),
       identityFile: {
-        configured: value["identityFile"]["configured"] as boolean,
+        configured: identityFileConfigured,
       },
     };
   }
-  if (!isJsonObject(value) || typeof value["id"] !== "string") {
-    throw new Error("Workspace checkpoint payload has an invalid shape.");
-  }
-  const workspace = value as unknown as Workspace;
+  const workspace = parseWorkspace(value);
   return {
     workspace: workspaceWithoutIdentityFileForLegacyPayload(workspace),
     identityFile: workspace.serverSettings.agent.transport === "ssh" && workspace.serverSettings.agent.identityFile
@@ -178,6 +278,15 @@ function workspaceWithoutIdentityFileForLegacyPayload(workspace: Workspace): Wor
     ...workspace,
     serverSettings: { agent },
   };
+}
+
+function assertWorkspaceExecutionMetadata(workspace: Workspace): void {
+  const executionNodeId = workspace.executionNodeId;
+  if (workspace.serverSettings.agent.transport === "ssh") {
+    if (executionNodeId !== undefined && executionNodeId !== null) {
+      throw new Error("SSH workspace checkpoint must not claim a stdio execution owner.");
+    }
+  }
 }
 
 function parseMeshSshServerPayload(value: unknown): MeshSshServerPayload {
@@ -449,6 +558,9 @@ export async function applyMeshCheckpoint(
       : checkpoint.aggregateType === "ssh_server"
         ? parseMeshSshServerPayload(checkpoint.payload)
         : checkpoint.payload;
+  if (checkpoint.aggregateType === "workspace" && remote !== null && remote !== undefined) {
+    assertWorkspaceExecutionMetadata((remote as MeshWorkspacePayload).workspace);
+  }
   const normalizedCheckpoint = checkpoint.aggregateType === "workspace"
     || checkpoint.aggregateType === "ssh_server"
     ? {

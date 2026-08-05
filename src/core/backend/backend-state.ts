@@ -31,6 +31,8 @@ export interface WorkspaceConnectionState {
   backend: Backend;
   settings: ServerSettings;
   connectionError: string | null;
+  executionNodeId?: string | null;
+  localNodeId?: string | null;
 }
 
 /**

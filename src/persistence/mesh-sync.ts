@@ -160,28 +160,44 @@ function conflictFromRow(row: MeshSyncConflictRow): MeshSyncConflictRecord {
   };
 }
 
-function isSshWorkspace(userId: string, workspaceId: string): boolean {
+function getWorkspaceTransport(userId: string, workspaceId: string): "stdio" | "ssh" | null {
   const row = getDatabase().query(`
     SELECT server_settings
     FROM workspaces
     WHERE id = ? AND user_id = ?
   `).get(workspaceId, userId) as { server_settings?: string } | null;
   if (!row?.server_settings) {
-    return false;
+    return null;
   }
   try {
     const settings = JSON.parse(row.server_settings) as Record<string, unknown>;
     const agent = settings["agent"];
-    return typeof agent === "object"
-      && agent !== null
-      && (agent as Record<string, unknown>)["transport"] === "ssh";
+    if (typeof agent !== "object" || agent === null) {
+      return null;
+    }
+    const transport = (agent as Record<string, unknown>)["transport"];
+    return transport === "stdio" || transport === "ssh" ? transport : null;
   } catch (error) {
     log.warn("Skipping mesh eligibility for invalid workspace settings", {
       workspaceId,
       error: String(error),
     });
-    return false;
+    return null;
   }
+}
+
+function isSshWorkspace(userId: string, workspaceId: string): boolean {
+  return getWorkspaceTransport(userId, workspaceId) === "ssh";
+}
+
+/**
+ * Workspace descriptors are portable for both execution transports. The
+ * execution-bound aggregates below intentionally remain SSH-only: an SSH
+ * workspace points at a shared remote host, while stdio execution is owned by
+ * the originating node and must not be replayed on another node.
+ */
+function isWorkspaceDescriptorEligible(userId: string, workspaceId: string): boolean {
+  return getWorkspaceTransport(userId, workspaceId) !== null;
 }
 
 export function isMeshAggregateEligible(
@@ -195,20 +211,7 @@ export function isMeshAggregateEligible(
       return db.query("SELECT 1 FROM mesh_links WHERE link_id = ? AND local_user_id = ?")
         .get(aggregateId, userId) !== null;
     case "workspace": {
-      const row = db.query("SELECT server_settings FROM workspaces WHERE id = ? AND user_id = ?")
-        .get(aggregateId, userId) as { server_settings?: string } | null;
-      if (!row?.server_settings) {
-        return false;
-      }
-      try {
-        const settings = JSON.parse(row.server_settings) as Record<string, unknown>;
-        const agent = settings["agent"];
-        return typeof agent === "object"
-          && agent !== null
-          && (agent as Record<string, unknown>)["transport"] === "ssh";
-      } catch {
-        return false;
-      }
+      return isWorkspaceDescriptorEligible(userId, aggregateId);
     }
     case "ssh_server":
       return db.query("SELECT 1 FROM ssh_servers WHERE id = ? AND user_id = ?")

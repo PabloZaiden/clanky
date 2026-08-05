@@ -162,7 +162,10 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
  */
 export async function updateWorkspace(
   id: string,
-  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext">>
+  updates: Partial<Pick<
+    Workspace,
+    "name" | "serverSettings" | "executionNodeId" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+  >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
@@ -189,6 +192,11 @@ export async function updateWorkspace(
     values.push(JSON.stringify(updates.serverSettings));
     setClauses.push("server_fingerprint = ?");
     values.push(getServerFingerprint(updates.serverSettings));
+  }
+
+  if (updates.executionNodeId !== undefined) {
+    setClauses.push("execution_node_id = ?");
+    values.push(updates.executionNodeId);
   }
 
   if (updates.devcontainerSubpath !== undefined) {

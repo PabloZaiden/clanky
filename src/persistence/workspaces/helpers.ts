@@ -22,6 +22,9 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     user_id: requirePersistenceUserId(),
     name: workspace.name,
     directory: workspace.directory,
+    execution_node_id: workspace.serverSettings.agent.transport === "stdio"
+      ? workspace.executionNodeId ?? null
+      : null,
     server_fingerprint: getServerFingerprint(workspace.serverSettings),
     server_settings: JSON.stringify(workspace.serverSettings),
     created_at: workspace.createdAt,
@@ -57,6 +60,7 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     id: row["id"] as string,
     name: row["name"] as string,
     directory: row["directory"] as string,
+    executionNodeId: (row["execution_node_id"] as string | null) ?? null,
     serverSettings: parseServerSettings(row["server_settings"] as string | null),
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,

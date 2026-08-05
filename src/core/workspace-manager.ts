@@ -23,6 +23,7 @@ import {
   type DeleteWorkspaceResult,
 } from "./workspace-deletion";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
 
 const log = createLogger("core:workspace-manager");
 
@@ -37,7 +38,10 @@ export interface CreateWorkspaceInput {
 
 export type UpdateWorkspaceInput = Partial<
   Pick<Workspace, "name" | "serverSettings" | "isPrivate" | "archived" | "allowClankyContext">
->;
+> & {
+  /** Internal ownership assignment; never accepted from API request bodies. */
+  executionNodeId?: string | null;
+};
 
 export type WorkspaceDirectoryValidation = Awaited<
   ReturnType<typeof backendManager.validateRemoteDirectory>
@@ -92,6 +96,7 @@ function createWorkspaceRecordFromInput(
     id: crypto.randomUUID(),
     name: input.name,
     directory: input.directory,
+    executionNodeId: null,
     serverSettings: input.serverSettings,
     createdAt: now,
     updatedAt: now,
@@ -150,7 +155,13 @@ export class WorkspaceManager {
       });
     }
 
+    const localNodeId = normalized.serverSettings.agent.transport === "stdio"
+      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      : null;
     const workspace = createWorkspaceRecordFromInput(normalized);
+    workspace.executionNodeId = normalized.serverSettings.agent.transport === "stdio"
+      ? localNodeId
+      : null;
     await createWorkspaceRecord(workspace);
     log.info("Workspace created", {
       workspaceId: workspace.id,
@@ -172,6 +183,8 @@ export class WorkspaceManager {
     const nameChanged = updates.name !== undefined && updates.name !== current.name;
     const serverSettingsChanged = updates.serverSettings !== undefined
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
+    const transportChanged = serverSettingsChanged
+      && current.serverSettings.agent.transport !== updates.serverSettings?.agent.transport;
     const privateChanged = updates.isPrivate !== undefined
       && updates.isPrivate !== (current.isPrivate === true);
     const archivedChanged = updates.archived !== undefined
@@ -189,6 +202,11 @@ export class WorkspaceManager {
     }
     if (serverSettingsChanged) {
       normalizedUpdates.serverSettings = updates.serverSettings;
+    }
+    if (transportChanged) {
+      normalizedUpdates.executionNodeId = updates.serverSettings?.agent.transport === "stdio"
+        ? (await ensureLocalMeshNodeIdentity()).nodeId
+        : null;
     }
     if (privateChanged) {
       normalizedUpdates.isPrivate = updates.isPrivate;

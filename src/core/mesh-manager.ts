@@ -67,6 +67,7 @@ import { DomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
 import { bootstrapMeshPeerForUser } from "./mesh-sync-bootstrap";
 import { listTasksForUser } from "../persistence/tasks";
+import { backendManager } from "./backend/backend-manager";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
@@ -319,6 +320,7 @@ export class MeshManager {
       localUserId,
       nodeId,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     await recordMeshMembershipCheckpoint(localUserId, { includeRevokedPeers: true });
     return await this.getStatus(localUserId);
   }
@@ -503,6 +505,7 @@ export class MeshManager {
       });
     }
     await setMeshPairingApprovalStatus(requestId, "accepted");
+    await backendManager.invalidateMeshExecutionConnections();
     await recordMeshMembershipCheckpoint(localUserId);
     queueMicrotask(() => {
       void bootstrapMeshPeerForUser(localUserId).catch((error) => {
@@ -659,6 +662,7 @@ export class MeshManager {
       generation: claim.generation,
       signature,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     const activeTasks = (await listTasksForUser(localUserId))
       .filter((task) => ["idle", "planning", "starting", "running", "waiting"].includes(task.state.status));
     const warnings: string[] = activeTasks.length > 0
@@ -730,6 +734,7 @@ export class MeshManager {
       claimOrigin: envelope.claimOrigin,
       signature: envelope.signature,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     return { generation: claim.generation, status: "accepted" };
   }
 }

@@ -238,4 +238,6 @@ export interface ConnectionStatus {
   isGitRepo?: boolean;
   /** Error message if connection check failed */
   error?: string;
+  /** Derived availability of the workspace execution host. */
+  executionAvailability?: "local" | "remote-connected" | "remote-unavailable" | "unsupported";
 }

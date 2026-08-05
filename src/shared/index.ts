@@ -8,6 +8,7 @@ export * from "./events";
 export * from "./task";
 export * from "./message-attachments";
 export * from "./mesh";
+export * from "./mesh-execution";
 export * from "./model";
 export * from "./preferences";
 export * from "./provisioning";
