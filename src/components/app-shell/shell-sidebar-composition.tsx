@@ -87,9 +87,9 @@ export interface ShellSidebarComposition {
 export type SidebarTabId = "active" | "workspaces" | "servers";
 
 export const SIDEBAR_TABS: SidebarTab[] = [
-  { id: "active", title: "Active" },
-  { id: "workspaces", title: "Workspaces" },
-  { id: "servers", title: "Servers" },
+  { id: "active", title: "Active", label: "Active" },
+  { id: "workspaces", title: "Workspaces", label: "Workspaces" },
+  { id: "servers", title: "Servers", label: "Servers" },
 ];
 
 export interface SidebarRouteTabContext {
