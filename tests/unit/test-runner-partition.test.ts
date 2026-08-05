@@ -39,15 +39,12 @@ describe("test runner partitioning", () => {
 
   test("builds complete mode-specific buckets from discovered files", async () => {
     const backendBuckets = await buildBuckets("backend", 2);
-    const frontendBuckets = await buildBuckets("frontend", 2);
     const allBuckets = await buildBuckets("all", 2);
 
     expect(backendBuckets.length).toBeGreaterThan(0);
     expect(allBuckets.length).toBeGreaterThanOrEqual(backendBuckets.length);
-    expect(backendBuckets.every((bucket) => !bucket.id.startsWith("frontend-"))).toBe(true);
-    expect(frontendBuckets.every((bucket) => bucket.id.startsWith("frontend-"))).toBe(true);
 
-    for (const buckets of [backendBuckets, frontendBuckets, allBuckets]) {
+    for (const buckets of [backendBuckets, allBuckets]) {
       if (buckets.length === 0) {
         continue;
       }

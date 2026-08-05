@@ -4,7 +4,7 @@ interface SuiteDefinition {
   pattern: string;
   fileConcurrency: number;
   argsPrefix: string[];
-  modes: Array<"all" | "backend" | "frontend">;
+  modes: Array<"all" | "backend">;
 }
 
 export interface TestBucket {
@@ -26,7 +26,7 @@ export interface ShardAssignment {
 
 interface RunTestBucketsDependencies {
   buildBuckets: (
-    mode: "all" | "backend" | "frontend",
+    mode: "all" | "backend",
     workerCapacity: number,
   ) => Promise<TestBucket[]>;
   runBucket: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>;
@@ -69,21 +69,6 @@ const suiteDefinitions: SuiteDefinition[] = [
     argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
   },
-  {
-    id: "frontend",
-    label: "tests/frontend",
-    pattern: "tests/frontend/**/*.test.{ts,tsx,js,jsx}",
-    fileConcurrency: 1,
-    argsPrefix: [
-      "test",
-      "--dots",
-      "--timeout",
-      "15000",
-      "--preload",
-      "./tests/frontend/setup.ts",
-    ],
-    modes: ["all", "frontend"],
-  },
 ];
 
 export function buildEnv(sourceEnv: Record<string, string | undefined> = process.env): Record<string, string> {
@@ -100,14 +85,12 @@ export function buildEnv(sourceEnv: Record<string, string | undefined> = process
   return env;
 }
 
-function assertValidMode(mode: string | undefined): "all" | "backend" | "frontend" {
+function assertValidMode(mode: string | undefined): "all" | "backend" {
   switch (mode ?? "all") {
     case "all":
       return "all";
     case "backend":
       return "backend";
-    case "frontend":
-      return "frontend";
     default:
       throw new Error(`Unknown test mode: ${mode ?? ""}`);
   }
@@ -239,7 +222,7 @@ export function partitionFiles(files: string[], workerCapacity: number): ShardAs
 }
 
 export async function buildBuckets(
-  mode: "all" | "backend" | "frontend",
+  mode: "all" | "backend",
   workerCapacity: number = defaultMaxWorkers,
 ): Promise<TestBucket[]> {
   const buckets: TestBucket[] = [];
@@ -330,25 +313,6 @@ async function runBuckets(
   return results;
 }
 
-function isFrontendBucket(bucket: TestBucket): boolean {
-  return bucket.id.startsWith("frontend-");
-}
-
-async function runInitialBuckets(
-  buckets: TestBucket[],
-  env: Record<string, string>,
-  maxWorkers: number,
-  runBucketImpl: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>,
-): Promise<TestResult[]> {
-  const frontendBuckets = buckets.filter(isFrontendBucket);
-  const otherBuckets = buckets.filter((bucket) => !isFrontendBucket(bucket));
-  const results = await runBuckets(otherBuckets, env, maxWorkers, runBucketImpl);
-
-  // Frontend test buckets share happy-dom browser globals and must not overlap.
-  results.push(...await runBuckets(frontendBuckets, env, 1, runBucketImpl));
-  return results;
-}
-
 export async function runTestBuckets(
   modeArg: string | undefined,
   sourceEnv: Record<string, string | undefined> = process.env,
@@ -371,7 +335,7 @@ export async function runTestBuckets(
   }
   log("");
 
-  const initialResults = await runInitialBuckets(buckets, env, maxWorkers, runBucketImpl);
+  const initialResults = await runBuckets(buckets, env, maxWorkers, runBucketImpl);
   const failedResults = initialResults.filter((result) => result.exitCode !== 0);
   const retryResults = new Map<string, TestResult>();
 

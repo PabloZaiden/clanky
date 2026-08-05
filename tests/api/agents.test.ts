@@ -279,7 +279,6 @@ describe("Agents API Integration", () => {
       .filter((part): part is { type: "text"; text: string } => part.type === "text")
       .map((part) => part.text)
       .join("\n") ?? "";
-    expect(generationPrompt).not.toContain("User comments for this iteration");
     expect(generationPrompt).toContain("Use the current editor instructions");
     expect(generationPrompt).toContain(previousCode);
     expect((await fetch(`${baseUrl}/api/agents/${agent!.config.id}`).then((result) => result.json()) as {

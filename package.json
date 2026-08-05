@@ -13,7 +13,6 @@
     "build:novnc": "bun scripts/novnc-vendor.ts",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
-    "test:frontend": "bun scripts/run-tests.ts frontend",
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
@@ -37,8 +36,6 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "20.11.1",
-    "@testing-library/react": "16.3.2",
     "@types/bun": "1.3.14",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",

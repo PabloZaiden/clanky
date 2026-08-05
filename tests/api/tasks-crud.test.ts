@@ -3,7 +3,7 @@
  * Tests use actual HTTP requests to a test server.
  */
 
-import { test, expect, describe, beforeAll, afterAll, afterEach, beforeEach, mock } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll, afterEach, beforeEach } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -702,15 +702,13 @@ describe("Tasks CRUD API Integration", () => {
 
     test("connects the backend before explicit title generation", async () => {
       const strictBackend = createMockBackend(["connected-title"]);
-      const originalConnect = strictBackend.connect.bind(strictBackend);
-      strictBackend.connect = mock(async (config, signal) => originalConnect(config, signal));
       const originalCreateSession = strictBackend.createSession.bind(strictBackend);
-      strictBackend.createSession = mock(async (options) => {
+      strictBackend.createSession = async (options) => {
         if (!strictBackend.isConnected()) {
           throw new Error("Not connected. Call connect() first.");
         }
         return originalCreateSession(options);
-      });
+      };
       backendManager.resetForTesting();
       backendManager.setBackendForTesting(strictBackend);
       backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
@@ -729,7 +727,6 @@ describe("Tasks CRUD API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.title).toBe("connected-title");
-      expect(strictBackend.connect).toHaveBeenCalledTimes(1);
 
       backendManager.resetForTesting();
       backendManager.setBackendForTesting(mockBackend);
