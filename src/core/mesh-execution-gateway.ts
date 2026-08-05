@@ -263,6 +263,15 @@ export class MeshExecutionGateway {
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
+    if (
+      typeof request.callerEncryptionPublicKey !== "string"
+      || request.callerEncryptionPublicKey.trim().length === 0
+    ) {
+      throw new DomainError(
+        "mesh_execution_encryption_key_invalid",
+        "A non-empty caller encryption public key is required.",
+      );
+    }
     if (new Date(request.expiresAt).getTime() <= Date.now()) {
       throw new DomainError("mesh_execution_session_expired", "The execution session request has expired.");
     }
@@ -305,7 +314,7 @@ export class MeshExecutionGateway {
       channel: request.channel,
       authorityGeneration,
       expiresAt,
-      callerEncryptionPublicKey: request.callerEncryptionPublicKey ?? "",
+      callerEncryptionPublicKey: request.callerEncryptionPublicKey,
       executor: new CommandExecutorImpl({
         provider: "local",
         directory: workspace.directory,

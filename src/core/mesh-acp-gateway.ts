@@ -193,13 +193,21 @@ export class MeshAcpGateway {
     } catch {
       return;
     }
-    await Promise.race([
-      process.exited,
-      new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, 500);
-        timer.unref?.();
-      }),
-    ]);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        process.exited,
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 500);
+          timeoutId = timer;
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
     if (process.exitCode === null) {
       try {
         process.kill("SIGKILL");

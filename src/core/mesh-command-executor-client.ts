@@ -121,6 +121,15 @@ export class MeshCommandExecutorClient {
   async openSession(): Promise<void> {
     this.closeSession();
     const identity = await ensureLocalMeshNodeIdentity();
+    if (
+      typeof identity.encryptionPublicKey !== "string"
+      || identity.encryptionPublicKey.trim().length === 0
+    ) {
+      throw new DomainError(
+        "mesh_execution_encryption_key_invalid",
+        "The local mesh identity has no usable encryption public key.",
+      );
+    }
     const localUserId = this.localUserId ?? requireCurrentUserId();
     const link = await getMeshLinkForLocalUser(localUserId);
     if (!link) {

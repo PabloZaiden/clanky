@@ -15,7 +15,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   callerNodeId: z.string().trim().min(1).max(200),
   callerPublicKey: z.string().min(1).max(16_384),
   callerFingerprint: z.string().trim().min(1).max(200),
-  callerEncryptionPublicKey: z.string().min(1).max(16_384).optional(),
+  callerEncryptionPublicKey: z.string().min(1).max(16_384),
   targetNodeId: z.string().trim().min(1).max(200),
   workspaceId: z.string().trim().min(1).max(200),
   directory: MeshExecutionPathSchema,

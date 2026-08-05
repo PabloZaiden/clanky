@@ -161,6 +161,13 @@ export const meshInternalRoutes = defineRoutes({
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshExecutionSessionRequestSchema, req);
       if (!parsed.success) return parsed.response;
+      if (parsed.data.callerEncryptionPublicKey.trim().length === 0) {
+        return errorResponse(
+          "mesh_execution_encryption_key_invalid",
+          "A non-empty caller encryption public key is required.",
+          400,
+        );
+      }
       const nodeId = req.headers.get("x-clanky-mesh-node-id");
       const requestId = req.headers.get("x-clanky-mesh-request-id");
       if (nodeId !== parsed.data.callerNodeId || requestId !== parsed.data.requestId) {
@@ -175,7 +182,7 @@ export const meshInternalRoutes = defineRoutes({
           expiresAt: session.expiresAt,
           encryptedPayload: encryptMeshPayload(
             { sessionToken: session.sessionToken },
-            parsed.data.callerEncryptionPublicKey as string,
+            parsed.data.callerEncryptionPublicKey,
           ),
         });
       } catch (error) {

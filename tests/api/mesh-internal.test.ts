@@ -105,6 +105,71 @@ describe("mesh internal routes", () => {
     });
   });
 
+  test("rejects execution sessions without a usable caller encryption key", async () => {
+    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
+    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "caller-1",
+        "x-clanky-mesh-request-id": "request-1",
+      },
+      body: JSON.stringify({
+        protocolVersion: 1,
+        requestId: "request-1",
+        linkId: "link-1",
+        callerNodeId: "caller-1",
+        callerPublicKey: "key",
+        callerFingerprint: "fingerprint",
+        callerEncryptionPublicKey: "   ",
+        targetNodeId: "target-1",
+        workspaceId: "workspace-1",
+        directory: "/workspace",
+        channel: "command-executor",
+        nonce: "nonce-1",
+        expiresAt: new Date(Date.now() + 10_000).toISOString(),
+        signature: "signature",
+      }),
+    }), undefined as never);
+
+    expect(response?.status).toBe(400);
+    await expect(readJson(response!)).resolves.toMatchObject({
+      error: "mesh_execution_encryption_key_invalid",
+    });
+  });
+
+  test("requires the caller encryption key in the session schema", async () => {
+    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
+    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "caller-1",
+        "x-clanky-mesh-request-id": "request-1",
+      },
+      body: JSON.stringify({
+        protocolVersion: 1,
+        requestId: "request-1",
+        linkId: "link-1",
+        callerNodeId: "caller-1",
+        callerPublicKey: "key",
+        callerFingerprint: "fingerprint",
+        targetNodeId: "target-1",
+        workspaceId: "workspace-1",
+        directory: "/workspace",
+        channel: "command-executor",
+        nonce: "nonce-1",
+        expiresAt: new Date(Date.now() + 10_000).toISOString(),
+        signature: "signature",
+      }),
+    }), undefined as never);
+
+    expect(response?.status).toBe(400);
+    await expect(readJson(response!)).resolves.toMatchObject({
+      error: "validation_error",
+    });
+  });
+
   test("rejects execution RPCs with mismatched session headers before dispatch", async () => {
     const route = meshInternalRoutes["/api/mesh/internal/execution/rpc"]!.POST!;
     const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/rpc", {
