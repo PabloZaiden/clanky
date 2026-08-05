@@ -31,7 +31,6 @@ import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identit
 import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
-import { meshExecutionGateway } from "../mesh-execution-gateway";
 
 /**
  * Backend manager supporting multiple workspace connections.
@@ -349,7 +348,6 @@ class BackendManager {
    */
   async invalidateMeshExecutionConnections(): Promise<void> {
     await meshAcpGateway.closeAll();
-    meshExecutionGateway.closeAll();
 
     for (const [workspaceId, state] of this.connections) {
       if (
@@ -609,6 +607,9 @@ class BackendManager {
       status.connected = status.connected && directoryExists;
     } catch (error) {
       status.connected = false;
+      if (status.executionAvailability === "remote-connected") {
+        status.executionAvailability = "remote-unavailable";
+      }
       status.error = state?.connectionError ?? String(error);
     }
 

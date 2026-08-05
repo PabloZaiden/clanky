@@ -10,6 +10,10 @@ import {
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
+  MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
+  MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
+  MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
+  MESH_ACP_SESSION_TTL_MS,
 } from "@/shared/mesh-execution";
 import {
   getMeshNode,
@@ -29,11 +33,6 @@ import type {
   CommandOptions,
   CommandResult,
 } from "./command-executor";
-
-const DEFAULT_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
-const SESSION_REQUEST_TIMEOUT_MS = 10_000;
-const SESSION_REQUEST_TTL_MS = 45_000;
-const ACP_SESSION_REQUEST_TTL_MS = 30 * 60 * 1000;
 
 export interface MeshCommandExecutorClientConfig {
   workspaceId: string;
@@ -111,11 +110,13 @@ export class MeshCommandExecutorClient {
     this.directory = config.directory;
     this.executionNodeId = config.executionNodeId;
     this.localUserId = config.localUserId;
-    this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.requestTimeoutMs = config.requestTimeoutMs ?? MESH_EXECUTION_DEFAULT_TIMEOUT_MS;
     this.fetchImpl = config.fetch ?? globalThis.fetch;
     this.channel = config.channel ?? MESH_EXECUTION_CHANNEL;
     this.sessionTtlMs = config.sessionTtlMs
-      ?? (this.channel === MESH_ACP_CHANNEL ? ACP_SESSION_REQUEST_TTL_MS : SESSION_REQUEST_TTL_MS);
+      ?? (this.channel === MESH_ACP_CHANNEL
+        ? MESH_ACP_SESSION_TTL_MS
+        : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
   }
 
   async openSession(): Promise<void> {
@@ -136,10 +137,10 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_link_not_found", "The workspace owner mesh link was not found.");
     }
 
-    if (link.status !== "active" || link.activeNodeId !== this.executionNodeId) {
+    if (link.status !== "active" || link.activeNodeId !== identity.nodeId) {
       throw new DomainError(
         "mesh_execution_owner_unavailable",
-        "The workspace execution owner is not the active mesh node.",
+        "The local mesh node is not the active mesh node.",
       );
     }
 
@@ -179,7 +180,7 @@ export class MeshCommandExecutorClient {
     const response = await this.post(route, request, {
       "x-clanky-mesh-node-id": identity.nodeId,
       "x-clanky-mesh-request-id": request.requestId,
-    }, undefined, SESSION_REQUEST_TIMEOUT_MS);
+    }, undefined, MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS);
     const body = parseResponseShape<MeshSessionResponse>(
       response,
       ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],

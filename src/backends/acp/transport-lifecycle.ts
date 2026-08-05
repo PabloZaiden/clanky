@@ -20,6 +20,7 @@ import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 import { sanitizeSpawnArgsForLogging, getProcessExitHint } from "./process-utils";
 import { AcpError, createAcpProcessError, getAcpErrorMessage } from "./errors";
 import { MAX_RECENT_PROCESS_LINES } from "./types";
+import { AcpProcess } from "./acp-process";
 import type { JsonRpcMessage } from "./types";
 import type {
   AcpTransportClosedEvent,
@@ -30,13 +31,11 @@ import type {
   RpcTransport,
 } from "./contracts";
 
-const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
-const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
 const ACP_SSH_INITIALIZE_ATTEMPTS = 3;
 const ACP_SSH_INITIALIZE_RETRY_DELAY_MS = 250;
 
 export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
-  private process: Bun.Subprocess | null = null;
+  private process: AcpProcess | null = null;
   private connected = false;
   private directory = "";
   private provider: AgentProvider | null = null;
@@ -55,7 +54,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     write: (message: JsonRpcMessage): void => this.writeRpcMessage(message),
     isWritable: (): boolean => {
       const process = this.process;
-      return !!process && !!process.stdin && typeof process.stdin !== "number";
+      return process?.isWritable() ?? false;
     },
   };
 
@@ -77,7 +76,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   }
 
   getProcess(): Bun.Subprocess | null {
-    return this.process;
+    return this.process?.getChild() ?? null;
   }
 
   getDirectory(): string {
@@ -181,27 +180,43 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       this.throwIfAborted(signal);
       this.recentProcessLines = [];
-      let process: Bun.Subprocess;
+      let processHandle: AcpProcess | null = null;
       try {
-        process = Bun.spawn([command, ...args], {
+        const spawned = await AcpProcess.spawn({
+          command,
+          args,
           cwd: spawnCwd,
           env: spawnEnv,
-          stdin: "pipe",
-          stdout: "pipe",
-          stderr: "pipe",
+          onLine: (source, line) => {
+            if (processHandle) {
+              this.handleRpcLine(processHandle, line, source);
+            }
+          },
+          onExit: (exitCode) => {
+            if (processHandle) {
+              this.handleProcessExit(processHandle, command, exitCode);
+            }
+          },
+          onStreamError: (source, error) => {
+            log.warn(`[AcpBackend] ACP ${source} stream ended with error`, {
+              error: String(error),
+            });
+          },
         });
+        processHandle = spawned;
       } catch (error) {
         throw new Error(`Failed to spawn ACP process (${command}) in cwd '${spawnCwd}': ${String(error)}`);
       }
 
+      const process = processHandle;
+      if (!process) {
+        throw new Error("ACP process was not created.");
+      }
       this.process = process;
       if (config.startupStdin) {
-        if (!process.stdin || typeof process.stdin === "number") {
-          throw new Error("ACP process stdin is not writable for runtime bootstrap");
-        }
-        process.stdin.write(config.startupStdin);
+        process.write(config.startupStdin);
       }
-      this.startProcessReaders(command);
+      process.start();
 
       try {
         initializeResult = await requester.sendRequest("initialize", {
@@ -264,7 +279,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   }
 
   /** Reset connection metadata and diagnostics; returns the detached process. */
-  detachForShutdown(): Bun.Subprocess | null {
+  detachForShutdown(): AcpProcess | null {
     const process = this.process;
     this.process = null;
     this.connected = false;
@@ -282,58 +297,6 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     await this.terminateProcess(process);
   }
 
-  private startProcessReaders(command: string): void {
-    const process = this.process;
-    if (
-      !process
-      || !process.stdout
-      || !process.stderr
-      || typeof process.stdout === "number"
-      || typeof process.stderr === "number"
-    ) {
-      return;
-    }
-
-    void this.readRpcStream(process, process.stdout, "stdout");
-    void this.readRpcStream(process, process.stderr, "stderr");
-    void process.exited.then((exitCode) => {
-      if (this.process !== process || !this.connected) {
-        return;
-      }
-      const hint = getProcessExitHint(command, exitCode);
-      const details = this.recentProcessLines.slice(-5).join(" | ");
-      const parts = [`ACP process exited with code ${exitCode}`];
-      if (details.length > 0) {
-        parts.push(details);
-      }
-      if (hint) {
-        parts.push(hint);
-      }
-      const reason = parts.join(": ");
-      const error = createAcpProcessError(reason, {
-        command,
-        exitCode,
-      });
-      const session = this.session;
-      const requester = this.requester;
-      this.connected = false;
-      this.process = null;
-      this.directory = "";
-      this.provider = null;
-      this.connectionInfo = null;
-      this.session = null;
-      this.requester = null;
-      requester?.rejectPending(error);
-      if (session) {
-        this.onTransportClosed?.({
-          session,
-          reason: "process-exit",
-          error,
-        });
-      }
-    });
-  }
-
   private pushProcessLine(line: string): void {
     this.recentProcessLines.push(line);
     if (this.recentProcessLines.length > MAX_RECENT_PROCESS_LINES) {
@@ -341,98 +304,44 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     }
   }
 
-  async terminateProcess(process: Bun.Subprocess | null): Promise<void> {
-    if (!process || process.exitCode !== null) {
+  private handleProcessExit(process: AcpProcess, command: string, exitCode: number): void {
+    if (this.process !== process || !this.connected) {
       return;
     }
-
-    try {
-      process.kill("SIGTERM");
-    } catch (error) {
-      log.debug("[AcpBackend] Failed to send SIGTERM while disconnecting ACP runtime", {
-        error: String(error),
+    const hint = getProcessExitHint(command, exitCode);
+    const details = this.recentProcessLines.slice(-5).join(" | ");
+    const parts = [`ACP process exited with code ${exitCode}`];
+    if (details.length > 0) {
+      parts.push(details);
+    }
+    if (hint) {
+      parts.push(hint);
+    }
+    const reason = parts.join(": ");
+    const error = createAcpProcessError(reason, {
+      command,
+      exitCode,
+    });
+    const session = this.session;
+    const requester = this.requester;
+    this.connected = false;
+    this.process = null;
+    this.directory = "";
+    this.provider = null;
+    this.connectionInfo = null;
+    this.session = null;
+    this.requester = null;
+    requester?.rejectPending(error);
+    if (session) {
+      this.onTransportClosed?.({
+        session,
+        reason: "process-exit",
+        error,
       });
-    }
-
-    const exitedAfterTerminate = await this.waitForProcessExit(process, ACP_PROCESS_FORCE_KILL_WAIT_MS);
-    if (exitedAfterTerminate) {
-      return;
-    }
-
-    try {
-      process.kill("SIGKILL");
-    } catch (error) {
-      log.debug("[AcpBackend] Failed to send SIGKILL while disconnecting ACP runtime", {
-        error: String(error),
-      });
-    }
-
-    await this.waitForProcessExit(process, ACP_PROCESS_EXIT_WAIT_MS);
-  }
-
-  private async waitForProcessExit(process: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
-    if (process.exitCode !== null) {
-      return true;
-    }
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const exited = await Promise.race<boolean>([
-        process.exited.then(() => true),
-        new Promise<boolean>((resolve) => {
-          timer = setTimeout(() => resolve(false), timeoutMs);
-        }),
-      ]);
-      return exited || process.exitCode !== null;
-    } finally {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
     }
   }
 
-  private async readRpcStream(
-    process: Bun.Subprocess,
-    stream: ReadableStream<Uint8Array>,
-    source: "stdout" | "stderr",
-  ): Promise<void> {
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex = buffer.indexOf("\n");
-        while (newlineIndex >= 0) {
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (line.length > 0) {
-            this.handleRpcLine(process, line, source);
-          }
-          newlineIndex = buffer.indexOf("\n");
-        }
-      }
-
-      const rest = buffer.trim();
-      if (rest.length > 0) {
-        this.handleRpcLine(process, rest, source);
-      }
-    } catch (error) {
-      log.warn(`[AcpBackend] ACP ${source} stream ended with error`, {
-        error: String(error),
-      });
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
-  private handleRpcLine(process: Bun.Subprocess, line: string, source: "stdout" | "stderr"): void {
+  private handleRpcLine(process: AcpProcess, line: string, source: "stdout" | "stderr"): void {
     if (this.process !== process || !this.connected) {
       return;
     }
@@ -453,13 +362,14 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     this.onMessage?.(message);
   }
 
+  async terminateProcess(process: AcpProcess | null): Promise<void> {
+    await process?.stop();
+  }
+
   private writeRpcMessage(message: JsonRpcMessage): void {
     const process = this.process;
-    if (!process || !process.stdin) {
+    if (!process) {
       throw new Error("ACP process is not available");
-    }
-    if (typeof process.stdin === "number") {
-      throw new Error("ACP process stdin is not writable");
     }
 
     log.trace("[AcpBackend] Writing RPC message", {
@@ -468,6 +378,6 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       params: message.params,
     });
 
-    process.stdin.write(`${JSON.stringify(message)}\n`);
+    process.write(`${JSON.stringify(message)}\n`);
   }
 }

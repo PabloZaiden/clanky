@@ -6,6 +6,10 @@
  */
 
 import type { AgentProvider } from "@/shared/settings";
+import {
+  MESH_ACP_WEBSOCKET_OPEN_TIMEOUT_MS,
+  MESH_EXECUTION_MAX_MESSAGE_BYTES,
+} from "@/shared/mesh-execution";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 import { AcpError } from "./errors";
 import {
@@ -185,7 +189,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       this.failConnection("Mesh ACP returned a non-text WebSocket message.");
       return;
     }
-    if (text.length > 2 * 1024 * 1024) {
+    if (Buffer.byteLength(text, "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       this.failConnection("Mesh ACP message exceeds the size limit.");
       return;
     }
@@ -252,7 +256,7 @@ async function waitForWebSocketOpen(socket: WebSocket, signal?: AbortSignal): Pr
       cleanup();
       socket.close();
       reject(new AcpError("acp_transport_unavailable", "The Mesh ACP WebSocket open timed out."));
-    }, 10_000);
+    }, MESH_ACP_WEBSOCKET_OPEN_TIMEOUT_MS);
     signal?.addEventListener("abort", abort, { once: true });
     socket.addEventListener("open", onOpen);
     socket.addEventListener("error", onError);

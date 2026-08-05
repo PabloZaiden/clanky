@@ -53,6 +53,7 @@ interface ApiResult {
 
 let meshNodes: MeshNodeProcess[] = [];
 let meshDataDirs: string[] = [];
+let meshRepositories: string[] = [];
 
 async function getAvailablePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -298,8 +299,12 @@ describe("three-process mesh cluster", () => {
     for (const dataDir of meshDataDirs) {
       await rm(dataDir, { recursive: true, force: true });
     }
+    for (const repository of meshRepositories) {
+      await rm(repository, { recursive: true, force: true });
+    }
     meshNodes = [];
     meshDataDirs = [];
+    meshRepositories = [];
   });
 
   test("pairs, synchronizes, takes over, and survives a peer restart", async () => {
@@ -359,5 +364,138 @@ describe("three-process mesh cluster", () => {
       "Instance B",
       "Instance C",
     ]);
+  });
+
+  test("routes stdio workspace execution through its owner and reports owner outages", async () => {
+    for (const name of ["A", "B"]) {
+      meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-execution-${name.toLowerCase()}-`)));
+    }
+    const repository = await mkdtemp(join(tmpdir(), "clanky-mesh-execution-repo-"));
+    meshRepositories.push(repository);
+    await Bun.$`git -C ${repository} init -q`.quiet();
+    await Bun.$`git -C ${repository} config user.email test@example.com`.quiet();
+    await Bun.$`git -C ${repository} config user.name "Mesh Test"`.quiet();
+    await Bun.write(join(repository, "README.md"), "mesh execution\n");
+    await Bun.$`git -C ${repository} add README.md`.quiet();
+    await Bun.$`git -C ${repository} commit -qm initial`.quiet();
+
+    meshNodes.push(await startMeshNode("A", meshDataDirs[0]!));
+    meshNodes.push(await startMeshNode("B", meshDataDirs[1]!));
+    const nodeA = meshNodes[0]!;
+    const nodeB = meshNodes[1]!;
+
+    for (const node of meshNodes) {
+      const result = await postJson(node, "/api/mesh/instance-name", {
+        instanceName: `Instance ${node.name}`,
+      });
+      expect(result.status).toBe(200);
+    }
+
+    const workspaceResult = await postJson(nodeA, "/api/workspaces", {
+      name: "Remote execution workspace",
+      directory: repository,
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+    });
+    expect(workspaceResult.status).toBe(201);
+    const workspace = workspaceResult.body as {
+      id: string;
+      executionNodeId: string | null;
+    };
+    expect(workspace.executionNodeId).toBe((await getStatus(nodeA)).node.nodeId);
+
+    await pairNodes(nodeA, nodeB);
+    await waitForCondition(async () => {
+      const status = await getStatus(nodeB);
+      return status.links[0]?.members.length === 2
+        && status.links[0].members.every((member) => member.endpoint !== null);
+    }, "The execution mesh did not converge.");
+
+    await waitForCondition(async () => {
+      const result = await request(nodeB, "/api/workspaces");
+      return result.status === 200
+        && Array.isArray(result.body)
+        && result.body.some((candidate) => (
+          typeof candidate === "object"
+          && candidate !== null
+          && "id" in candidate
+          && candidate.id === workspace.id
+        ));
+    }, "The stdio workspace did not replicate to the active node.");
+
+    const remoteStatus = await request(
+      nodeB,
+      `/api/workspaces/${workspace.id}/server-settings/status`,
+    );
+    expect(remoteStatus.status).toBe(200);
+    expect(remoteStatus.body).toMatchObject({
+      executionAvailability: "remote-connected",
+      directoryExists: true,
+      isGitRepo: true,
+    });
+
+    const remoteRead = await request(
+      nodeB,
+      `/api/workspaces/${workspace.id}/files/content?path=README.md`,
+    );
+    expect(remoteRead.status).toBe(200);
+    expect(remoteRead.body).toMatchObject({
+      workspaceId: workspace.id,
+      content: "mesh execution\n",
+    });
+
+    const remoteWrite = await postJson(
+      nodeB,
+      `/api/workspaces/${workspace.id}/files/write`,
+      {
+        path: "remote.txt",
+        content: "written through owner\n",
+        expectedVersionToken: null,
+        overwrite: true,
+        startDirectory: null,
+      },
+    );
+    expect(remoteWrite.status).toBe(200);
+    expect(await Bun.file(join(repository, "remote.txt")).text()).toBe("written through owner\n");
+
+    await stopMeshNode(nodeA);
+    await waitForCondition(
+      async () => {
+        const status = await request(
+          nodeB,
+          `/api/workspaces/${workspace.id}/server-settings/status`,
+        );
+        return status.status === 200
+          && (status.body as { executionAvailability?: string }).executionAvailability === "remote-unavailable";
+      },
+      "The active node did not observe the execution owner outage.",
+      15_000,
+    );
+
+    const unavailableRead = await request(
+      nodeB,
+      `/api/workspaces/${workspace.id}/files/content?path=README.md`,
+    );
+    expect(unavailableRead.status).toBe(500);
+    expect(unavailableRead.body).toMatchObject({ error: "workspace_file_error" });
+
+    meshNodes[0] = await startMeshNode("A-restarted", nodeA.dataDir, nodeA.port);
+    await waitForCondition(
+      async () => {
+        const status = await request(
+          nodeB,
+          `/api/workspaces/${workspace.id}/server-settings/status`,
+        );
+        return status.status === 200
+          && (status.body as { executionAvailability?: string }).executionAvailability === "remote-connected";
+      },
+      "The active node did not recover remote execution after the owner restart.",
+      15_000,
+    );
+
+    const recoveredRead = await request(
+      nodeB,
+      `/api/workspaces/${workspace.id}/files/content?path=README.md`,
+    );
+    expect(recoveredRead.status).toBe(200);
   });
 });

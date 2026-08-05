@@ -3,6 +3,8 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
+import { MESH_EXECUTION_MAX_MESSAGE_BYTES } from "@/shared/mesh-execution";
+import { AcpProcess } from "../backends/acp/acp-process";
 import {
   buildProviderSpawnEnvironment,
   getProviderAcpCommand,
@@ -12,7 +14,6 @@ import { DomainError } from "./domain-error";
 
 const log = createLogger("core:mesh-acp-gateway");
 const MAX_RELAY_SESSIONS = 64;
-const MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 
 export interface MeshAcpSocket {
   send(data: string): void;
@@ -21,7 +22,7 @@ export interface MeshAcpSocket {
 
 interface RelayState {
   socket: MeshAcpSocket;
-  process: Bun.Subprocess;
+  process: AcpProcess;
   expiryTimer: ReturnType<typeof setTimeout>;
 }
 
@@ -39,8 +40,26 @@ function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
 
 export class MeshAcpGateway {
   private readonly relays = new Map<string, RelayState>();
+  private readonly opening = new Map<string, Promise<void>>();
+  private readonly closing = new Set<string>();
 
   async open(
+    socket: MeshAcpSocket,
+    sessionId: string,
+    sessionToken: string,
+  ): Promise<void> {
+    const opening = this.openRelay(socket, sessionId, sessionToken);
+    this.opening.set(sessionId, opening);
+    try {
+      await opening;
+    } finally {
+      if (this.opening.get(sessionId) === opening) {
+        this.opening.delete(sessionId);
+      }
+    }
+  }
+
+  private async openRelay(
     socket: MeshAcpSocket,
     sessionId: string,
     sessionToken: string,
@@ -49,24 +68,65 @@ export class MeshAcpGateway {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is at capacity.");
     }
     const config = await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
-    await this.close(sessionId);
+    await this.closeRelay(sessionId);
     const providerCommand = getProviderAcpCommand(config.provider, "stdio");
-    const child: Bun.Subprocess = Bun.spawn([providerCommand.command, ...providerCommand.args], {
-      cwd: config.directory,
-      env: buildProviderSpawnEnvironment(providerCommand, globalThis.process.env),
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    if (
-      !child.stdin
-      || typeof child.stdin === "number"
-      || !child.stdout
-      || typeof child.stdout === "number"
-    ) {
-      await this.terminate(child);
-      throw new DomainError("mesh_acp_process_failed", "The mesh ACP process did not expose usable streams.");
+    let processHandle: AcpProcess | null = null;
+    let processExited = false;
+    let outputLimitExceeded = false;
+    try {
+      const spawned = await AcpProcess.spawn({
+        command: providerCommand.command,
+        args: providerCommand.args,
+        cwd: config.directory,
+        env: buildProviderSpawnEnvironment(providerCommand, globalThis.process.env),
+        maxBufferedBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
+        maxLineBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
+        onLine: (source, line) => {
+          if (source === "stdout") {
+            this.sendLine(sessionId, line);
+          }
+        },
+        onExit: () => {
+          processExited = true;
+          if (processHandle) {
+            void this.handleProcessExit(sessionId, processHandle);
+          }
+        },
+        onOutputLimitExceeded: () => {
+          outputLimitExceeded = true;
+          if (this.relays.has(sessionId)) {
+            void this.close(sessionId);
+          }
+        },
+        onStreamError: (source, error) => {
+          log.warn("Mesh ACP process stream failed", {
+            sessionId,
+            source,
+            error: String(error),
+          });
+        },
+      });
+      processHandle = spawned;
+    } catch (error) {
+      throw new DomainError(
+        "mesh_acp_process_failed",
+        "The mesh ACP process did not expose usable streams.",
+        { cause: error },
+      );
     }
+    const process = processHandle;
+    if (!process) {
+      throw new DomainError("mesh_acp_process_failed", "The mesh ACP process was not created.");
+    }
+    if (this.closing.has(sessionId)) {
+      await process.stop({
+        gracefulWaitMs: 500,
+        forceWaitMs: 0,
+      });
+      meshExecutionGateway.closeSession(sessionId);
+      return;
+    }
+
     const expiryTimer = setTimeout(() => {
       void this.close(sessionId);
       try {
@@ -76,38 +136,54 @@ export class MeshAcpGateway {
       }
     }, Math.max(1, config.expiresAt - Date.now()));
     expiryTimer.unref?.();
-    this.relays.set(sessionId, { socket, process: child, expiryTimer });
-    void this.forwardOutput(sessionId, child.stdout);
-    if (child.stderr && typeof child.stderr !== "number") {
-      void this.drainErrorOutput(sessionId, child.stderr);
+    this.relays.set(sessionId, { socket, process, expiryTimer });
+    process.start();
+
+    if (outputLimitExceeded) {
+      await this.closeRelay(sessionId);
+      return;
     }
-    void child.exited.then(() => {
-      const relay = this.relays.get(sessionId);
-      if (relay?.process !== child) return;
-      this.relays.delete(sessionId);
-      clearTimeout(relay.expiryTimer);
-      try {
-        socket.close(1011, "ACP process exited");
-      } catch (error) {
-        log.debug("Failed to close mesh ACP socket after process exit", { error: String(error) });
-      }
-    });
+    if (processExited || process.exitCode !== null) {
+      await this.handleProcessExit(sessionId, process);
+    }
   }
 
   async message(sessionId: string, value: string | Buffer): Promise<void> {
+    const opening = this.opening.get(sessionId);
+    if (opening) {
+      await opening;
+    }
     const relay = this.relays.get(sessionId);
-    if (!relay || !relay.process.stdin || typeof relay.process.stdin === "number") {
+    if (!relay || !relay.process.isWritable()) {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
     }
     const text = typeof value === "string" ? value : value.toString("utf8");
-    if (Buffer.byteLength(text, "utf8") > MAX_MESSAGE_BYTES) {
+    if (Buffer.byteLength(text, "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError("mesh_acp_message_too_large", "The mesh ACP message exceeds the size limit.");
     }
     const message = assertJsonRpcMessage(JSON.parse(text) as unknown);
-    relay.process.stdin.write(`${JSON.stringify(message)}\n`);
+    relay.process.write(`${JSON.stringify(message)}\n`);
   }
 
   async close(sessionId: string): Promise<void> {
+    const opening = this.opening.get(sessionId);
+    if (opening) {
+      this.closing.add(sessionId);
+      try {
+        await opening;
+      } catch (error) {
+        log.debug("Mesh ACP relay opening failed while closing", {
+          sessionId,
+          error: String(error),
+        });
+      } finally {
+        this.closing.delete(sessionId);
+      }
+    }
+    await this.closeRelay(sessionId);
+  }
+
+  private async closeRelay(sessionId: string): Promise<void> {
     const relay = this.relays.get(sessionId);
     if (!relay) {
       meshExecutionGateway.closeSession(sessionId);
@@ -115,64 +191,39 @@ export class MeshAcpGateway {
     }
     this.relays.delete(sessionId);
     clearTimeout(relay.expiryTimer);
-    await this.terminate(relay.process);
+    await relay.process.stop({
+      gracefulWaitMs: 500,
+      forceWaitMs: 0,
+    });
     meshExecutionGateway.closeSession(sessionId);
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.relays.keys()].map((sessionId) => this.close(sessionId)));
+    const sessionIds = new Set([...this.relays.keys(), ...this.opening.keys()]);
+    await Promise.all([...sessionIds].map((sessionId) => this.close(sessionId)));
     meshExecutionGateway.closeAll();
   }
 
-  private async forwardOutput(sessionId: string, stream: ReadableStream<Uint8Array>): Promise<void> {
+  private async handleProcessExit(sessionId: string, process: AcpProcess): Promise<void> {
     const relay = this.relays.get(sessionId);
-    if (!relay) return;
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        if (Buffer.byteLength(buffer, "utf8") > MAX_MESSAGE_BYTES) {
-          await this.close(sessionId);
-          return;
-        }
-        let newline = buffer.indexOf("\n");
-        while (newline >= 0) {
-          const line = buffer.slice(0, newline).trim();
-          buffer = buffer.slice(newline + 1);
-          if (line) this.sendLine(sessionId, line);
-          newline = buffer.indexOf("\n");
-        }
-
-      }
-      const rest = buffer.trim();
-      if (rest) this.sendLine(sessionId, rest);
-    } catch (error) {
-      log.warn("Mesh ACP output relay failed", { sessionId, error: String(error) });
-    } finally {
-      reader.releaseLock();
+    if (!relay || relay.process !== process) {
+      return;
     }
-  }
-
-  private async drainErrorOutput(sessionId: string, stream: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = stream.getReader();
+    this.relays.delete(sessionId);
+    clearTimeout(relay.expiryTimer);
+    meshExecutionGateway.closeSession(sessionId);
     try {
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
+      relay.socket.close(1011, "ACP process exited");
     } catch (error) {
-      log.debug("Mesh ACP stderr relay ended", { sessionId, error: String(error) });
-    } finally {
-      reader.releaseLock();
+      log.debug("Failed to close mesh ACP socket after process exit", {
+        sessionId,
+        error: String(error),
+      });
     }
   }
 
   private sendLine(sessionId: string, line: string): void {
-    if (Buffer.byteLength(line, "utf8") > MAX_MESSAGE_BYTES) {
+    if (Buffer.byteLength(line, "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       void this.close(sessionId);
       return;
     }
@@ -183,37 +234,6 @@ export class MeshAcpGateway {
       relay.socket.send(line);
     } catch (error) {
       log.warn("Mesh ACP output was not valid JSON-RPC", { sessionId, error: String(error) });
-    }
-  }
-
-  private async terminate(process: Bun.Subprocess): Promise<void> {
-    if (process.exitCode !== null) return;
-    try {
-      process.kill("SIGTERM");
-    } catch {
-      return;
-    }
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        process.exited,
-        new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, 500);
-          timeoutId = timer;
-          timer.unref?.();
-        }),
-      ]);
-    } finally {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-      }
-    }
-    if (process.exitCode === null) {
-      try {
-        process.kill("SIGKILL");
-      } catch {
-        // The process may have exited between the checks.
-      }
     }
   }
 }

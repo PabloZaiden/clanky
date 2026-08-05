@@ -4,6 +4,8 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_OPERATIONS,
   MESH_EXECUTION_PROTOCOL_VERSION,
+  MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
+  MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
@@ -34,10 +36,10 @@ export const MeshExecutionRpcRequestSchema = z.object({
   command: z.string().min(1).max(4_096).optional(),
   args: z.array(z.string().max(16_384)).max(256).optional(),
   cwd: MeshExecutionPathSchema.optional(),
-  timeout: z.number().int().min(1).max(30 * 60 * 1000).nullable().optional(),
+  timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
   path: MeshExecutionPathSchema.optional(),
-  content: z.string().max(8 * 1024 * 1024).optional(),
+  content: z.string().max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   includeHidden: z.boolean().optional(),
 });
 

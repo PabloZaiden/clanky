@@ -18,17 +18,19 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
+  MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
+  MESH_EXECUTION_MAX_RESULT_BYTES,
+  MESH_EXECUTION_SESSION_TTL_MS,
+  MESH_ACP_SESSION_TTL_MS,
 } from "@/shared/mesh-execution";
 import { getWorkspace } from "../persistence/workspaces";
 import { getDatabase } from "../persistence/database";
 import {
   getMeshLinkById,
-  getMeshNode,
   listMeshLinkMembers,
 } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
-  getMeshNodeFingerprint,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -37,13 +39,12 @@ import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { runWithCurrentUser } from "./user-context";
 import type { AgentProvider } from "@/shared/settings";
+import { requireTrustedMeshPeer } from "./mesh-peer-auth";
 import {
   assertManagedWorktreePath,
 } from "./git";
 
-const SESSION_TTL_MS = 60_000;
 const MAX_SESSIONS = 256;
-const MAX_RESULT_BYTES = 8 * 1024 * 1024;
 const MAX_IN_FLIGHT_REQUESTS = 8;
 const MAX_REQUEST_IDS = 512;
 
@@ -68,6 +69,7 @@ interface MeshExecutionSession {
   executor: CommandExecutor;
   requestIds: Set<string>;
   inFlight: number;
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface MeshExecutionSessionResponse {
@@ -85,6 +87,17 @@ export interface MeshAcpSessionConfig {
   expiresAt: number;
 }
 
+interface ValidatedExecutionSession {
+  session: MeshExecutionSession;
+  workspace: RoutedWorkspace;
+}
+
+interface SessionValidationOptions {
+  expectedChannel?: typeof MESH_ACP_CHANNEL;
+  memberErrorCode: "mesh_execution_authority_changed" | "mesh_peer_not_trusted";
+  workspaceErrorCode: "mesh_execution_authority_changed" | "mesh_execution_owner_mismatch";
+}
+
 type MeshExecutionRpcResult =
   | CommandResult
   | boolean
@@ -93,7 +106,7 @@ type MeshExecutionRpcResult =
   | null;
 
 function assertStringSize(value: string, field: string): void {
-  if (Buffer.byteLength(value, "utf8") > MAX_RESULT_BYTES) {
+  if (Buffer.byteLength(value, "utf8") > MESH_EXECUTION_MAX_RESULT_BYTES) {
     throw new DomainError(
       "mesh_execution_result_too_large",
       `The ${field} exceeds the mesh execution size limit.`,
@@ -174,34 +187,17 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
     throw new DomainError("mesh_execution_target_invalid", "The execution request targets another mesh node.");
   }
 
-  let fingerprint: string;
-  try {
-    fingerprint = getMeshNodeFingerprint(request.callerPublicKey);
-  } catch (error) {
-    throw new DomainError("mesh_peer_identity_invalid", "The execution caller identity is invalid.", { cause: error });
-  }
-  if (fingerprint !== request.callerFingerprint) {
-    throw new DomainError("mesh_peer_identity_mismatch", "The execution caller fingerprint does not match its public key.");
-  }
-
-  const node = await getMeshNode(request.callerNodeId);
-  if (!node || node.status !== "active") {
-    throw new DomainError("mesh_peer_not_trusted", "The execution caller is not a trusted mesh node.");
-  }
-  if (node.fingerprint !== request.callerFingerprint || node.publicKey !== request.callerPublicKey) {
-    throw new DomainError("mesh_peer_not_trusted", "The execution caller identity does not match the trusted node.");
-  }
-  if (
-    node.encryptionPublicKey
-    && node.encryptionPublicKey !== request.callerEncryptionPublicKey
-  ) {
-    throw new DomainError("mesh_peer_not_trusted", "The execution caller encryption identity does not match the trusted node.");
-  }
-
-  const link = await getMeshLinkById(request.linkId);
-  if (!link) {
-    throw new DomainError("mesh_link_not_found", "The mesh execution link was not found.");
-  }
+  const { link } = await requireTrustedMeshPeer({
+    linkId: request.linkId,
+    nodeId: request.callerNodeId,
+    publicKey: request.callerPublicKey,
+    fingerprint: request.callerFingerprint,
+    encryptionPublicKey: request.callerEncryptionPublicKey,
+    requireEncryptionKey: false,
+    requireActiveNode: true,
+    requireActiveMember: true,
+    context: "execution caller",
+  });
   if (link.status === "revoked") {
     throw new DomainError("mesh_link_revoked", "The mesh execution link has been revoked.");
   }
@@ -211,13 +207,7 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
   if (link.activeNodeId !== request.callerNodeId) {
     throw new DomainError("mesh_execution_caller_not_active", "Only the active mesh node may open an execution session.");
   }
-  const member = (await listMeshLinkMembers(request.linkId))
-    .find((candidate) => candidate.nodeId === request.callerNodeId);
-  if (!member || member.status !== "active") {
-    throw new DomainError("mesh_peer_not_trusted", "The execution caller is not an active member of this mesh link.");
-  }
-
-  const localUser = getMeshUser(member.localUserId);
+  const localUser = getMeshUser(link.localUserId);
   const workspace = await runWithCurrentUser(localUser, () => getWorkspace(request.workspaceId));
   if (!workspace) {
     throw new DomainError("workspace_not_found", "The requested workspace is not owned by this mesh member.");
@@ -261,6 +251,71 @@ export class MeshExecutionGateway {
     }
   }
 
+  private requireSessionRecord(
+    sessionId: string,
+    sessionToken: string,
+    expiredCode: "mesh_execution_session_expired" | "mesh_execution_session_invalid" =
+      "mesh_execution_session_expired",
+  ): MeshExecutionSession {
+    this.pruneExpired();
+    const session = this.sessions.get(sessionId);
+    if (!session || session.sessionToken !== sessionToken) {
+      throw new DomainError("mesh_execution_session_invalid", "The execution session is invalid.");
+    }
+    if (session.expiresAt <= Date.now()) {
+      this.closeSession(session.sessionId);
+      throw new DomainError(expiredCode, "The execution session has expired.");
+    }
+    return session;
+  }
+
+  private async requireValidatedSession(
+    sessionId: string,
+    sessionToken: string,
+    options: SessionValidationOptions,
+  ): Promise<ValidatedExecutionSession> {
+    const session = this.requireSessionRecord(sessionId, sessionToken);
+    const link = await getMeshLinkById(session.linkId);
+    if (
+      !link
+      || link.status !== "active"
+      || link.activeNodeId !== session.callerNodeId
+      || link.takeoverGeneration !== session.authorityGeneration
+    ) {
+      this.closeSession(session.sessionId);
+      throw new DomainError("mesh_execution_authority_changed", "The mesh execution authority has changed.");
+    }
+
+    const member = (await listMeshLinkMembers(session.linkId))
+      .find((candidate) => candidate.nodeId === session.callerNodeId);
+    if (
+      !member
+      || member.status !== "active"
+    ) {
+      this.closeSession(session.sessionId);
+      throw new DomainError(options.memberErrorCode, "The execution caller is no longer an active member.");
+    }
+
+    const identity = await ensureLocalMeshNodeIdentity();
+    const workspace = await runWithCurrentUser(
+      session.localUser,
+      () => getWorkspace(session.workspaceId),
+    );
+    const routedWorkspace = workspace as RoutedWorkspace | null;
+    if (
+      !routedWorkspace
+      || routedWorkspace.serverSettings.agent.transport !== "stdio"
+      || routedWorkspace.executionNodeId !== identity.nodeId
+      || routedWorkspace.directory !== session.workspaceRoot
+      || (options.expectedChannel !== undefined && session.channel !== options.expectedChannel)
+    ) {
+      this.closeSession(session.sessionId);
+      throw new DomainError(options.workspaceErrorCode, "The workspace execution ownership has changed.");
+    }
+
+    return { session, workspace: routedWorkspace };
+  }
+
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
     if (
@@ -276,8 +331,8 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_session_expired", "The execution session request has expired.");
     }
     const maxSessionTtl = request.channel === MESH_ACP_CHANNEL
-      ? 30 * 60 * 1000
-      : SESSION_TTL_MS;
+      ? MESH_ACP_SESSION_TTL_MS
+      : MESH_EXECUTION_SESSION_TTL_MS;
     if (new Date(request.expiresAt).getTime() > Date.now() + maxSessionTtl) {
       throw new DomainError("mesh_execution_session_expiry_invalid", "The execution session expiry is too far in the future.");
     }
@@ -301,7 +356,7 @@ export class MeshExecutionGateway {
       new Date(request.expiresAt).getTime(),
       Date.now() + maxSessionTtl,
     );
-    this.sessions.set(sessionId, {
+    const sessionRecord: MeshExecutionSession = {
       sessionId,
       sessionToken,
       linkId: request.linkId,
@@ -318,11 +373,17 @@ export class MeshExecutionGateway {
       executor: new CommandExecutorImpl({
         provider: "local",
         directory: workspace.directory,
-        timeoutMs: 30 * 60 * 1000,
+        timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
       }),
       requestIds: new Set(),
       inFlight: 0,
-    });
+    };
+    const expiryTimer = setTimeout(() => {
+      this.closeSession(sessionId);
+    }, Math.max(1, expiresAt - Date.now()));
+    expiryTimer.unref?.();
+    sessionRecord.expiryTimer = expiryTimer;
+    this.sessions.set(sessionId, sessionRecord);
     return {
       protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
       sessionId,
@@ -335,42 +396,11 @@ export class MeshExecutionGateway {
     sessionId: string,
     sessionToken: string,
   ): Promise<MeshAcpSessionConfig> {
-    this.pruneExpired();
-    const session = this.sessions.get(sessionId);
-    if (!session || session.sessionToken !== sessionToken) {
-      throw new DomainError("mesh_execution_session_invalid", "The execution session is invalid.");
-    }
-    if (session.expiresAt <= Date.now()) {
-      this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_session_expired", "The execution session has expired.");
-    }
-
-    const link = await getMeshLinkById(session.linkId);
-    const member = link
-      ? (await listMeshLinkMembers(session.linkId))
-        .find((candidate) => candidate.nodeId === session.callerNodeId)
-      : undefined;
-    const identity = await ensureLocalMeshNodeIdentity();
-    const workspace = await runWithCurrentUser(
-      session.localUser,
-      () => getWorkspace(session.workspaceId),
-    );
-    if (
-      !link
-      || link.status !== "active"
-      || link.activeNodeId !== session.callerNodeId
-      || link.takeoverGeneration !== session.authorityGeneration
-      || !member
-      || member.status !== "active"
-      || !workspace
-      || workspace.serverSettings.agent.transport !== "stdio"
-      || workspace.executionNodeId !== identity.nodeId
-      || workspace.directory !== session.workspaceRoot
-      || session.channel !== MESH_ACP_CHANNEL
-    ) {
-      this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_authority_changed", "The mesh execution authority has changed.");
-    }
+    const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
+      expectedChannel: MESH_ACP_CHANNEL,
+      memberErrorCode: "mesh_execution_authority_changed",
+      workspaceErrorCode: "mesh_execution_authority_changed",
+    });
     return {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -381,10 +411,7 @@ export class MeshExecutionGateway {
   }
 
   getSessionEncryptionPublicKey(sessionId: string, sessionToken: string): string {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.sessionToken !== sessionToken || session.expiresAt <= Date.now()) {
-      throw new DomainError("mesh_execution_session_invalid", "The execution session is invalid.");
-    }
+    const session = this.requireSessionRecord(sessionId, sessionToken, "mesh_execution_session_invalid");
     if (!session.callerEncryptionPublicKey) {
       throw new DomainError("mesh_execution_encryption_unavailable", "The execution session has no encryption identity.");
     }
@@ -392,47 +419,14 @@ export class MeshExecutionGateway {
   }
 
   async execute(request: MeshExecutionRpcRequest): Promise<MeshExecutionRpcResult> {
-    this.pruneExpired();
-    const session = this.sessions.get(request.sessionId);
-    if (!session || session.sessionToken !== request.sessionToken) {
-      throw new DomainError("mesh_execution_session_invalid", "The execution session is invalid.");
-    }
-    if (session.expiresAt <= Date.now()) {
-      this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_session_expired", "The execution session has expired.");
-    }
-
-    const link = await getMeshLinkById(session.linkId);
-    if (
-      !link
-      || link.status !== "active"
-      || link.activeNodeId !== session.callerNodeId
-      || link.takeoverGeneration !== session.authorityGeneration
-    ) {
-      this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_authority_changed", "The mesh execution authority has changed.");
-    }
-    const member = (await listMeshLinkMembers(session.linkId))
-      .find((candidate) => candidate.nodeId === session.callerNodeId);
-    if (!member || member.status !== "active" || member.localUserId !== session.localUser.id) {
-      this.sessions.delete(session.sessionId);
-      throw new DomainError("mesh_peer_not_trusted", "The execution caller is no longer an active member.");
-    }
-    const identity = await ensureLocalMeshNodeIdentity();
-    const workspace = await runWithCurrentUser(
-      session.localUser,
-      () => getWorkspace(session.workspaceId),
+    const { session } = await this.requireValidatedSession(
+      request.sessionId,
+      request.sessionToken,
+      {
+        memberErrorCode: "mesh_peer_not_trusted",
+        workspaceErrorCode: "mesh_execution_owner_mismatch",
+      },
     );
-    const routedWorkspace = workspace as RoutedWorkspace | null;
-    if (
-      !routedWorkspace
-      || routedWorkspace.serverSettings.agent.transport !== "stdio"
-      || routedWorkspace.executionNodeId !== identity.nodeId
-      || routedWorkspace.directory !== session.workspaceRoot
-    ) {
-      this.sessions.delete(session.sessionId);
-      throw new DomainError("mesh_execution_owner_mismatch", "The workspace execution ownership has changed.");
-    }
 
     if (session.requestIds.has(request.requestId)) {
       throw new DomainError("mesh_execution_replay", "The execution request has already been used.");
@@ -504,12 +498,22 @@ export class MeshExecutionGateway {
   }
 
   closeAll(): void {
-    this.sessions.clear();
+    for (const sessionId of this.sessions.keys()) {
+      this.closeSession(sessionId);
+    }
     this.usedNonces.clear();
   }
 
   closeSession(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
     this.sessions.delete(sessionId);
+    if (session.expiryTimer !== undefined) {
+      clearTimeout(session.expiryTimer);
+      session.expiryTimer = undefined;
+    }
   }
 }
 
