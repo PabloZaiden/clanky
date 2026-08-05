@@ -677,7 +677,8 @@ export class TaskEngine {
   }
 
   /**
-   * Run exactly one plain chat turn without applying normal task completion-marker semantics.
+   * Run exactly one user-initiated turn without applying normal task
+   * completion-marker semantics.
    */
   async runSingleTurn(): Promise<void> {
     if (this.task.state.status !== "running") {
@@ -694,7 +695,7 @@ export class TaskEngine {
     this.isTaskRunning = true;
 
     try {
-      this.emitLog("info", "Starting single-turn plain chat execution");
+      this.emitLog("info", "Starting single-turn execution");
       const result = await this.runIteration({ skipOutcomeEvaluation: true });
       await this.handleSingleTurnResult(result);
     } finally {
@@ -732,7 +733,7 @@ export class TaskEngine {
       return;
     }
 
-    this.emitLog("info", "Single-turn plain chat execution finished; waiting for manual user action");
+    this.emitLog("info", "Single-turn execution finished; waiting for manual user action");
     this.updateState({
       status: "stopped",
       completedAt: createTimestamp(),
@@ -741,7 +742,7 @@ export class TaskEngine {
     this.emit({
       type: "task.stopped",
       taskId: this.config.id,
-      reason: "Plain chat turn finished",
+      reason: "Single-turn execution finished",
       timestamp: createTimestamp(),
     });
     await this.triggerPersistence();
