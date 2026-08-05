@@ -24,7 +24,6 @@ export {
   getSshSessionStatusLabel,
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
-  getStatusBadgeVariant,
 } from "./status-variants";
 export {
   ChatIcon,

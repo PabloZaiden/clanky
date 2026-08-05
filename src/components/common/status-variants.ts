@@ -1,34 +1,6 @@
 import type { AgentStatus, ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
 import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
-export function getStatusBadgeVariant(status: string): BadgeVariant {
-  switch (status) {
-    case "idle":
-      return "idle";
-    case "planning":
-    case "starting":
-    case "running":
-    case "waiting":
-    case "resolving_conflicts":
-      return "running";
-    case "completed":
-      return "completed";
-    case "stopped":
-    case "max_iterations":
-      return "stopped";
-    case "failed":
-      return "failed";
-    case "merged":
-      return "merged";
-    case "pushed":
-      return "pushed";
-    case "deleted":
-      return "deleted";
-    default:
-      return "default";
-  }
-}
-
 export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
   switch (status) {
     case "starting":
