@@ -24,13 +24,7 @@
 
     "paths": {
       "*": ["./*"],
-      "@/*": ["./src/*"],
-      "@clanky/shared": ["./packages/shared/src/index.ts"],
-      "@clanky/shared/*": ["./packages/shared/src/*"],
-      "@clanky/contracts": ["./packages/contracts/src/index.ts"],
-      "@clanky/contracts/*": ["./packages/contracts/src/*"],
-      "@clanky/client-sdk": ["./packages/client-sdk/src/index.ts"],
-      "@clanky/client-sdk/*": ["./packages/client-sdk/src/*"]
+      "@/*": ["./src/*"]
     },
 
     "noUnusedLocals": true,
