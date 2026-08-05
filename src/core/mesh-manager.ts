@@ -226,12 +226,11 @@ export class MeshManager {
     localUserId: string,
     localUsername: string,
     input: StartMeshPairingRequest,
-    requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
     const instanceName = requireMeshInstanceName(identity);
     const localLink = await getMeshLinkForLocalUser(localUserId);
-    const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
+    const localEndpoint = resolveAdvertisedMeshEndpoint();
     const localTransport = getMeshTransport(localEndpoint);
     assertMeshEndpointAllowed(input.targetEndpoint);
     const requestId = crypto.randomUUID();
@@ -287,7 +286,6 @@ export class MeshManager {
     localUserId: string,
     localUsername: string,
     input: StartMeshPairingRequest,
-    requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
     requireMeshInstanceName(identity);
@@ -305,7 +303,7 @@ export class MeshManager {
       );
     }
     await rotateLocalMeshNodeIdentity();
-    return await this.startPairing(localUserId, localUsername, input, requestUrl);
+    return await this.startPairing(localUserId, localUsername, input);
   }
 
   async revokeMember(
@@ -440,7 +438,6 @@ export class MeshManager {
     localUserId: string,
     requestId: string,
     input: CompleteMeshPairingRequest,
-    requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const request = await getMeshPairingRequest(requestId);
     if (!request || request.direction !== "outgoing" || request.requestedLocalUserId !== localUserId) {
@@ -461,7 +458,7 @@ export class MeshManager {
     }
     const identity = await ensureLocalMeshNodeIdentity();
     requireMeshInstanceName(identity);
-    const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
+    const localEndpoint = resolveAdvertisedMeshEndpoint();
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
@@ -523,7 +520,6 @@ export class MeshManager {
     localUserId: string,
     requestId: string,
     input: ApproveMeshPairingRequest,
-    requestUrl: string,
   ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
     const instanceName = requireMeshInstanceName(identity);
@@ -537,7 +533,7 @@ export class MeshManager {
         "The requesting instance must have a name before it can join this mesh.",
       );
     }
-    const localEndpoint = resolveAdvertisedMeshEndpoint(requestUrl);
+    const localEndpoint = resolveAdvertisedMeshEndpoint();
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
