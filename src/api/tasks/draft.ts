@@ -28,6 +28,7 @@ export const tasksDraftRoutes = defineRoutes({
      *
      * Errors:
      * - 400: Task is not in draft status or invalid body
+     * - 409: Another startup operation for this task is already in progress
      * - 404: Task not found
      *
      * @returns Updated Task object

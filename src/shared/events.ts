@@ -92,6 +92,7 @@ export interface ToolCallData extends ToolCallRecord {}
  */
 export type TaskEvent =
   | TaskCreatedEvent
+  | TaskStartingEvent
   | TaskStartedEvent
   | TaskIterationStartEvent
   | TaskIterationEndEvent
@@ -399,6 +400,18 @@ export interface TaskCreatedEvent {
   taskId: string;
   /** Full configuration of the task */
   config: TaskConfig;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/**
+ * Emitted when a draft task is claimed for startup, before git and backend
+ * setup completes.
+ */
+export interface TaskStartingEvent {
+  type: "task.starting";
+  /** ID of the task that entered startup */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

@@ -76,6 +76,14 @@ export function startErrorResponse(
       });
       return errorResponse("directory_in_use", error.message, 409);
     }
+
+    if (error.code === "operation_in_progress") {
+      log.warn("Task start blocked because another start is already in progress", {
+        ...context,
+        error: error.message,
+      });
+      return errorResponse("operation_in_progress", error.message, 409);
+    }
   }
 
   log.error("Task start failed", {

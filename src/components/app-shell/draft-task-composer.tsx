@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Task, Workspace } from "@/shared";
 import { useDashboardData } from "../../hooks";
 import {
@@ -32,6 +32,8 @@ export function DraftTaskComposer({
   workspacesLoading,
   onRefresh,
   onDeleteDraft,
+  onMarkTaskStarting,
+  onClearOptimisticTaskStart,
   onNavigate,
 }: {
   task: Task;
@@ -52,12 +54,15 @@ export function DraftTaskComposer({
   workspacesLoading: boolean;
   onRefresh: () => Promise<void>;
   onDeleteDraft: (id: string) => Promise<boolean>;
+  onMarkTaskStarting: (id: string, status: "starting" | "planning") => void;
+  onClearOptimisticTaskStart: (id: string) => void;
   onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [actionState, setActionState] = useState<CreateTaskFormActionState | null>(null);
+  const startRequestedRef = useRef(false);
 
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === task.config.workspaceId) ?? null;
   const exitRoute = useMemo(
@@ -92,35 +97,55 @@ export function DraftTaskComposer({
       });
     }
 
+    if (startRequestedRef.current) {
+      return false;
+    }
+    startRequestedRef.current = true;
+    const optimisticStatus = request.planMode ? "planning" : "starting";
+    onMarkTaskStarting(task.config.id, optimisticStatus);
+
     void (async () => {
-      const persisted = await persistDraftChanges({
-        taskId: task.config.id,
-        request,
-        workspaces,
-        setLastModel,
-        setLastCheapModel,
-        onRefresh,
-        onUpdateError: (message) => {
-          toast.error(message);
-        },
-      });
-      if (!persisted) {
-        return;
-      }
+      const resetFailedStart = async (): Promise<void> => {
+        startRequestedRef.current = false;
+        onClearOptimisticTaskStart(task.config.id);
+        await onRefresh();
+      };
 
-      const result = await startDraftTask({
-        taskId: task.config.id,
-        request,
-        onRefresh,
-      });
+      try {
+        const persisted = await persistDraftChanges({
+          taskId: task.config.id,
+          request,
+          workspaces,
+          setLastModel,
+          setLastCheapModel,
+          onRefresh,
+          onUpdateError: (message) => {
+            toast.error(message);
+          },
+        });
+        if (!persisted) {
+          await resetFailedStart();
+          return;
+        }
 
-      if (result.status === "uncommitted_changes") {
-        toast.error("Uncommitted changes blocked the new run. Resolve them and try again.");
-        return;
-      }
+        const result = await startDraftTask({
+          taskId: task.config.id,
+          request,
+          onRefresh,
+        });
 
-      if (result.status === "failed") {
-        toast.error(result.message);
+        if (result.status === "uncommitted_changes") {
+          toast.error("Uncommitted changes blocked the new run. Resolve them and try again.");
+        } else if (result.status === "failed") {
+          toast.error(result.message);
+        }
+
+        if (result.status !== "started") {
+          await resetFailedStart();
+        }
+      } catch (error) {
+        toast.error(String(error));
+        await resetFailedStart();
       }
     })();
 

@@ -218,6 +218,9 @@ export function publishClankyDomainEvent(
     case "task.created":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
+    case "task.starting":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
+      return;
     case "task.deleted":
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;

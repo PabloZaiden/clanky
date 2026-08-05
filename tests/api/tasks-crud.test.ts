@@ -38,6 +38,60 @@ const baseCreateTaskPayload = {
   draft: false,
 };
 
+class SetupGateExecutor extends TestCommandExecutor {
+  private readonly blockSetup: boolean;
+  private readonly failSetup: boolean;
+  private setupBlocked = false;
+  private readonly setupStartedPromise: Promise<void>;
+  private resolveSetupStarted!: () => void;
+  private readonly setupReleasePromise: Promise<void>;
+  private resolveSetupRelease!: () => void;
+
+  constructor(options: { blockSetup?: boolean; failSetup?: boolean } = {}) {
+    super();
+    this.blockSetup = options.blockSetup ?? false;
+    this.failSetup = options.failSetup ?? false;
+    this.setupStartedPromise = new Promise((resolve) => {
+      this.resolveSetupStarted = resolve;
+    });
+    this.setupReleasePromise = new Promise((resolve) => {
+      this.resolveSetupRelease = resolve;
+    });
+  }
+
+  async waitForSetupStart(): Promise<void> {
+    return this.setupStartedPromise;
+  }
+
+  releaseSetup(): void {
+    this.resolveSetupRelease();
+  }
+
+  override async exec(
+    command: string,
+    args: string[],
+    options?: Parameters<TestCommandExecutor["exec"]>[2],
+  ) {
+    if (command === "git" && !this.setupBlocked) {
+      this.setupBlocked = true;
+      this.resolveSetupStarted();
+      if (this.blockSetup) {
+        await this.setupReleasePromise;
+      }
+      if (this.failSetup) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: "blocked setup failure",
+          exitCode: 1,
+        };
+      }
+    }
+
+    return super.exec(command, args, options);
+  }
+}
+
 describe("Tasks CRUD API Integration", () => {
   let testDataDir: string;
   let testWorkDir: string;
@@ -46,8 +100,11 @@ describe("Tasks CRUD API Integration", () => {
   let testWorkspaceId: string;
   let mockBackend: ReturnType<typeof createMockBackend>;
 
-  // Helper function to poll for task completion
-  async function waitForTaskCompletion(taskId: string, timeoutMs = 10000): Promise<void> {
+  async function waitForTaskStatus(
+    taskId: string,
+    expectedStatuses: string[],
+    timeoutMs = 10000,
+  ): Promise<void> {
     const startTime = Date.now();
     let lastStatus = "unknown";
     while (Date.now() - startTime < timeoutMs) {
@@ -55,13 +112,18 @@ describe("Tasks CRUD API Integration", () => {
       if (response.ok) {
         const data = await response.json();
         lastStatus = data.state?.status ?? "unknown";
-        if (lastStatus === "completed" || lastStatus === "failed") {
+        if (expectedStatuses.includes(lastStatus)) {
           return;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error(`Task ${taskId} did not complete within ${timeoutMs}ms. Last status: ${lastStatus}`);
+    throw new Error(`Task ${taskId} did not reach an expected status within ${timeoutMs}ms. Last status: ${lastStatus}`);
+  }
+
+  // Helper function to poll for task completion
+  async function waitForTaskCompletion(taskId: string, timeoutMs = 10000): Promise<void> {
+    await waitForTaskStatus(taskId, ["completed", "failed"], timeoutMs);
   }
 
   // Helper to create or get a workspace for a directory
@@ -1683,6 +1745,131 @@ describe("Tasks CRUD API Integration", () => {
       expect(getBody.state.git).toBeDefined();
     });
 
+    test("keeps a draft when main-checkout preflight finds uncommitted changes", async () => {
+      const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-preflight-test-"));
+      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
+      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const defaultBranch = (await Bun.$`git -C ${uniqueWorkDir} branch --show-current`.text()).trim();
+
+      try {
+        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId,
+            baseBranch: defaultBranch,
+            prompt: "Preflight draft task",
+            name: "Preflight Draft Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: false,
+          }),
+        });
+        expect(createResponse.status).toBe(201);
+        const taskId = (await createResponse.json()).config.id as string;
+
+        await Bun.write(join(uniqueWorkDir, "README.md"), "uncommitted change\n");
+
+        const blockedStartResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(blockedStartResponse.status).toBe(409);
+        expect((await blockedStartResponse.json()).error).toBe("uncommitted_changes");
+
+        const draftResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        expect(draftResponse.status).toBe(200);
+        expect((await draftResponse.json()).state.status).toBe("draft");
+
+        await Bun.write(join(uniqueWorkDir, "README.md"), "");
+        const retryResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(retryResponse.status).toBe(200);
+        expect((await retryResponse.json()).state.status).not.toBe("draft");
+        await waitForTaskCompletion(taskId);
+      } finally {
+        await rm(uniqueWorkDir, { recursive: true, force: true });
+      }
+    });
+
+    test("claims an immediate draft before setup and blocks stale edits and retries", async () => {
+      const executor = new SetupGateExecutor({ blockSetup: true });
+      backendManager.setExecutorFactoryForTesting(() => executor);
+      let startPromise: Promise<Response> | undefined;
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Blocked immediate startup",
+            name: "Blocked Immediate Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        const createBody = await createResponse.json();
+        const taskId = createBody.config.id as string;
+
+        startPromise = fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        await executor.waitForSetupStart();
+
+        const [detailResponse, listResponse, retryResponse, updateResponse] = await Promise.all([
+          fetch(`${baseUrl}/api/tasks/${taskId}`),
+          fetch(`${baseUrl}/api/tasks`),
+          fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planMode: false, attachments: [] }),
+          }),
+          fetch(`${baseUrl}/api/tasks/${taskId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: "Should be rejected" }),
+          }),
+        ]);
+
+        const detail = await detailResponse.json();
+        const listed = (await listResponse.json()).find(
+          (task: { config: { id: string } }) => task.config.id === taskId,
+        );
+        expect(detail.state.status).toBe("starting");
+        expect(listed?.state.status).toBe("starting");
+        expect(retryResponse.status).toBe(400);
+        expect((await retryResponse.json()).error).toBe("not_draft");
+        expect(updateResponse.status).toBe(400);
+        expect((await updateResponse.json()).error).toBe("not_draft");
+
+        executor.releaseSetup();
+        const startResponse = await startPromise;
+        expect(startResponse.status).toBe(200);
+        expect((await startResponse.json()).state.status).not.toBe("draft");
+        await waitForTaskCompletion(taskId);
+      } finally {
+        executor.releaseSetup();
+        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      }
+    });
+
     test("can start draft as plan mode", async () => {
       // Use a unique directory to avoid branch collision with previous test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-plan-test-"));
@@ -1730,6 +1917,126 @@ describe("Tasks CRUD API Integration", () => {
         expect(startBody.state.status).toBe("planning");
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
+      }
+    });
+
+    test("claims a plan-mode draft before git setup and blocks stale edits and retries", async () => {
+      const executor = new SetupGateExecutor({ blockSetup: true });
+      backendManager.setExecutorFactoryForTesting(() => executor);
+      let startPromise: Promise<Response> | undefined;
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Blocked plan startup",
+            name: "Blocked Plan Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        const createBody = await createResponse.json();
+        const taskId = createBody.config.id as string;
+
+        startPromise = fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: true, attachments: [] }),
+        });
+        await executor.waitForSetupStart();
+
+        const [detailResponse, retryResponse, updateResponse] = await Promise.all([
+          fetch(`${baseUrl}/api/tasks/${taskId}`),
+          fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ planMode: true, attachments: [] }),
+          }),
+          fetch(`${baseUrl}/api/tasks/${taskId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: "Should be rejected" }),
+          }),
+        ]);
+
+        expect((await detailResponse.json()).state.status).toBe("planning");
+        expect(retryResponse.status).toBe(400);
+        expect((await retryResponse.json()).error).toBe("not_draft");
+        expect(updateResponse.status).toBe(400);
+        expect((await updateResponse.json()).error).toBe("not_draft");
+
+        executor.releaseSetup();
+        const startResponse = await startPromise;
+        expect(startResponse.status).toBe(200);
+        expect((await startResponse.json()).state.status).toBe("planning");
+      } finally {
+        executor.releaseSetup();
+        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      }
+    });
+
+    test("keeps a draft non-draft and restartable after setup failure", async () => {
+      const executor = new SetupGateExecutor({ failSetup: true });
+      backendManager.setExecutorFactoryForTesting(() => executor);
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Fail during startup",
+            name: "Failed Startup Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        const createBody = await createResponse.json();
+        const taskId = createBody.config.id as string;
+
+        const startResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(startResponse.status).toBe(200);
+        expect((await startResponse.json()).state.status).not.toBe("draft");
+
+        await waitForTaskCompletion(taskId);
+        const failedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        const failedTask = await failedResponse.json();
+        expect(failedTask.state.status).toBe("failed");
+
+        const retryResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(retryResponse.status).toBe(400);
+        expect((await retryResponse.json()).error).toBe("not_draft");
+
+        const followUpResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/follow-up`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "Retry after setup failure",
+            model: null,
+            attachments: [],
+          }),
+        });
+        expect(followUpResponse.status).toBe(200);
+        expect((await followUpResponse.json()).success).toBe(true);
+        await waitForTaskStatus(taskId, ["stopped"]);
+      } finally {
+        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
       }
     });
 

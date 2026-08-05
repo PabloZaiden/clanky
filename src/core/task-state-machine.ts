@@ -22,10 +22,11 @@ const TRANSITION_TABLE: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
   idle: new Set(["starting", "planning", "draft", "deleted"]),
 
   // draft is a saved task that hasn't been started yet
-  // → idle: start immediately (API draft/start handler)
+  // → idle: legacy transitional state for immediate starts
+  // → starting: claim an immediate start before setup begins
   // → planning: start in plan mode (API draft/start handler)
   // → deleted: delete the draft
-  draft: new Set(["idle", "planning", "deleted"]),
+  draft: new Set(["idle", "starting", "planning", "deleted"]),
 
   // planning: AI is generating a plan, awaiting user approval
   // → starting: plan accepted and pre-execution sync/setup begins (acceptPlan start_task)

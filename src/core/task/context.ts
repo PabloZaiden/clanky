@@ -17,6 +17,7 @@ export interface TaskCtx {
   engines: Map<string, TaskEngine>;
   emitter: SimpleEventEmitter<TaskEvent>;
   tasksBeingAccepted: Set<string>;
+  tasksBeingStarted: Set<string>;
   // Cross-module callbacks (bound in TaskManager constructor)
   stopTask(taskId: string, reason?: string): Promise<void>;
   deleteTask(taskId: string): Promise<boolean>;
