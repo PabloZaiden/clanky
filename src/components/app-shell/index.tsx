@@ -37,6 +37,7 @@ import {
 import {
   buildShellSidebarComposition,
   getHeaderOwnerRoute,
+  getSidebarTabForRoute,
   sidebarNodeMatchesRoute,
   type ShellSidebarActionHandlers,
 } from "./shell-sidebar-composition";
@@ -58,6 +59,9 @@ import { findRegisteredSshServer } from "@/shared";
 import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 
 const HOME_ROUTE: WebAppRoute = { view: "home" };
+// WebAppRoot owns tab state internally; sync its per-app preference before remounting
+// so direct entity routes can select the tab that contains the entity.
+const WEBAPP_SIDEBAR_TAB_STORAGE_KEY = "webapp.clanky.sidebar.tab";
 
 interface HeaderModel {
   title?: string;
@@ -97,6 +101,8 @@ function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; default
 export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
+  const [webAppInstanceKey, setWebAppInstanceKey] = useState("initial");
+  const syncedSidebarTabRef = useRef<string | null>(null);
   const [registeredHeaderActions, setRegisteredHeaderActions] = useState<{
     owner: symbol;
     actions: ReactNode;
@@ -654,6 +660,29 @@ export function AppShell() {
     toggleWorkspaceSshSessionPrivate,
     workspaces,
   ]);
+  const syncSidebarTabForRoute = useCallback((nextRoute: WebAppRoute) => {
+    const targetTab = getSidebarTabForRoute(nextRoute, {
+      chats,
+      sidebarWorkspaceGroups,
+      serverNodes,
+    });
+    if (!targetTab) {
+      return;
+    }
+
+    if (syncedSidebarTabRef.current === targetTab) {
+      return;
+    }
+
+    syncedSidebarTabRef.current = targetTab;
+    window.localStorage.setItem(WEBAPP_SIDEBAR_TAB_STORAGE_KEY, targetTab);
+    setWebAppInstanceKey(targetTab);
+  }, [chats, serverNodes, sidebarWorkspaceGroups]);
+
+  useEffect(() => {
+    syncSidebarTabForRoute(route);
+  }, [route, syncSidebarTabForRoute]);
+
   const headerNodes = sidebarComposition.headerNodes;
   const headerOwnerRoute = useMemo(() => getHeaderOwnerRoute(route), [route]);
   const headerNode = useMemo(
@@ -992,6 +1021,7 @@ export function AppShell() {
   return (
     <ShellHeaderActionsContext.Provider value={shellHeaderActionsContextValue}>
       <WebAppRoot
+        key={webAppInstanceKey}
         appName="Clanky"
         homeRoute={HOME_ROUTE}
         sidebar={sidebarComposition.sidebar}
