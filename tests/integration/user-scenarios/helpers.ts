@@ -28,6 +28,14 @@ import type {
 } from "../../../src/backends/types";
 import { createEventStream, type EventStream } from "../../../src/utils/event-stream";
 import type { Task } from "@/shared/task";
+import {
+  createTempBareGitRepository,
+  getCurrentBranch as getCurrentBranchFromFixture,
+  initializeGitRepository,
+  runGit,
+} from "../../helpers/git-fixtures";
+
+export { getCurrentBranch } from "../../helpers/git-fixtures";
 
 /**
  * Test context containing all test dependencies.
@@ -387,14 +395,8 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   }
 
   // Initialize git repo
-  await Bun.$`git init -b main ${workDir}`.quiet();
-  await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
-  await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
-  await writeFile(join(workDir, "README.md"), "# Test Project\n");
-  await Bun.$`git -C ${workDir} add .`.quiet();
-  await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
-  const defaultBranchResult = await Bun.$`git -C ${workDir} branch --show-current`.quiet();
-  const defaultBranch = defaultBranchResult.text().trim() || "main";
+  await initializeGitRepository(workDir, { initialCommit: "readme" });
+  const defaultBranch = await getCurrentBranchFromFixture(workDir);
 
   // Create .clanky-planning directory if requested
   if (withPlanningDir) {
@@ -402,19 +404,21 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "# Plan\n\nThis is the plan.");
     await writeFile(join(planningDir, "status.md"), "# Status\n\nIn progress.");
-    await Bun.$`git -C ${workDir} add .`.quiet();
-    await Bun.$`git -C ${workDir} commit -m "Add planning files"`.quiet();
+    await runGit(workDir, ["add", "."]);
+    await runGit(workDir, ["commit", "-m", "Add planning files"]);
   }
 
   // Create local git remote if requested
   let remoteDir: string | undefined;
   if (withRemote) {
-    remoteDir = await realpath(await mkdtemp(join(tmpdir(), "clanky-scenario-remote-")));
-    await Bun.$`git init --bare ${remoteDir}`.quiet();
-    await Bun.$`git -C ${workDir} remote add origin ${remoteDir}`.quiet();
-    await Bun.$`git -C ${workDir} push -u origin ${defaultBranch}`.quiet();
+    remoteDir = await createTempBareGitRepository({
+      prefix: "clanky-scenario-remote-",
+      resolveRealpath: true,
+    });
+    await runGit(workDir, ["remote", "add", "origin", remoteDir]);
+    await runGit(workDir, ["push", "-u", "origin", defaultBranch]);
     // Set bare repo HEAD to the pushed branch so clones work regardless of git defaults
-    await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
+    await runGit(remoteDir, ["--git-dir", remoteDir, "symbolic-ref", "HEAD", `refs/heads/${defaultBranch}`]);
   }
 
   // Reset task manager to clear any stale engines from previous tests
@@ -577,7 +581,7 @@ export async function createTaskViaAPI(
         branchPrefix: "",
         commitScope: "",
       },
-      baseBranch: restOptions.baseBranch ?? "main",
+      baseBranch: restOptions.baseBranch ?? await getCurrentBranchFromFixture(options.directory),
       clearPlanningFolder: restOptions.clearPlanningFolder ?? false,
       autoAcceptPlan: restOptions.autoAcceptPlan ?? (restOptions.planMode ? true : false),
       fullyAutonomous: restOptions.fullyAutonomous ?? false,
@@ -901,14 +905,6 @@ export async function getTaskStatusFileViaAPI(
 }
 
 /**
- * Get the current git branch in a directory.
- */
-export async function getCurrentBranch(workDir: string): Promise<string> {
-  const result = await Bun.$`git -C ${workDir} rev-parse --abbrev-ref HEAD`.quiet();
-  return result.stdout.toString().trim();
-}
-
-/**
  * Wait for git to be available (no lock file).
  * This helps prevent race conditions between tests that share a working directory.
  */
@@ -936,8 +932,8 @@ export async function waitForGitAvailable(workDir: string, timeoutMs = 5000): Pr
  */
 export async function branchExists(workDir: string, branchName: string): Promise<boolean> {
   try {
-    const result = await Bun.$`git -C ${workDir} show-ref --verify --quiet refs/heads/${branchName}`.nothrow();
-    return result.exitCode === 0;
+    await runGit(workDir, ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`]);
+    return true;
   } catch {
     return false;
   }
@@ -949,9 +945,9 @@ export async function branchExists(workDir: string, branchName: string): Promise
 export async function remoteBranchExists(workDir: string, branchName: string, remote = "origin"): Promise<boolean> {
   try {
     // Fetch first to update remote refs
-    await Bun.$`git -C ${workDir} fetch ${remote}`.nothrow();
-    const result = await Bun.$`git -C ${workDir} show-ref --verify --quiet refs/remotes/${remote}/${branchName}`.nothrow();
-    return result.exitCode === 0;
+    await runGit(workDir, ["fetch", remote]);
+    await runGit(workDir, ["show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branchName}`]);
+    return true;
   } catch {
     return false;
   }

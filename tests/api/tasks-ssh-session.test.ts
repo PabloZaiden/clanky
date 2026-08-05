@@ -9,6 +9,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
+import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
 
 class TaskSshExecutor extends TestCommandExecutor {
   public deleteCommands: string[] = [];
@@ -41,6 +42,7 @@ describe("Task SSH session API integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let executor: TaskSshExecutor;
+  let defaultBranch = "";
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-task-ssh-data-"));
@@ -86,12 +88,8 @@ describe("Task SSH session API integration", () => {
 
   async function createGitRepo(): Promise<string> {
     const directory = await mkdtemp(join(tmpdir(), "clanky-task-ssh-work-"));
-    await Bun.$`git init -b main ${directory}`.quiet();
-    await Bun.$`git -C ${directory} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${directory} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${directory}/README.md`.quiet();
-    await Bun.$`git -C ${directory} add .`.quiet();
-    await Bun.$`git -C ${directory} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(directory, { initialCommit: "readme" });
+    defaultBranch = await getCurrentBranch(directory);
     return directory;
   }
 
@@ -147,7 +145,7 @@ describe("Task SSH session API integration", () => {
           branchPrefix: "",
           commitScope: "",
         },
-        baseBranch: "main",
+        baseBranch: defaultBranch,
         useWorktree: true,
         clearPlanningFolder: false,
         planMode: true,

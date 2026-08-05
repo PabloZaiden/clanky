@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { initializeGitRepository } from "../helpers/git-fixtures";
 
 interface MeshMember {
   nodeId: string;
@@ -372,12 +373,11 @@ describe("three-process mesh cluster", () => {
     }
     const repository = await mkdtemp(join(tmpdir(), "clanky-mesh-execution-repo-"));
     meshRepositories.push(repository);
-    await Bun.$`git -C ${repository} init -q`.quiet();
-    await Bun.$`git -C ${repository} config user.email test@example.com`.quiet();
-    await Bun.$`git -C ${repository} config user.name "Mesh Test"`.quiet();
-    await Bun.write(join(repository, "README.md"), "mesh execution\n");
-    await Bun.$`git -C ${repository} add README.md`.quiet();
-    await Bun.$`git -C ${repository} commit -qm initial`.quiet();
+    await initializeGitRepository(repository, {
+      initialCommit: "readme",
+      initialFiles: { "README.md": "mesh execution\n" },
+      initialCommitMessage: "initial",
+    });
 
     meshNodes.push(await startMeshNode("A", meshDataDirs[0]!));
     meshNodes.push(await startMeshNode("B", meshDataDirs[1]!));

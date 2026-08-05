@@ -9,6 +9,7 @@ import { saveSshSession } from "../../src/persistence/ssh-sessions";
 import { backendManager } from "../../src/core/backend-manager";
 import { SshTerminalBridge } from "../../src/core/ssh-terminal-bridge";
 import type { SshSession, Workspace } from "@/shared";
+import { initializeGitRepository } from "../helpers/git-fixtures";
 
 interface CommandRunResult {
   exitCode: number;
@@ -145,12 +146,7 @@ describe("SshTerminalBridge integration", () => {
     await mkdir(serverDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
 
-    await Bun.$`git init ${workspaceDir}`.quiet();
-    await Bun.$`git -C ${workspaceDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${workspaceDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${workspaceDir}/README.md`.quiet();
-    await Bun.$`git -C ${workspaceDir} add .`.quiet();
-    await Bun.$`git -C ${workspaceDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(workspaceDir, { initialCommit: "readme" });
 
     await runQuiet(["ssh-keygen", "-q", "-t", "rsa", "-N", "", "-f", join(sshDir, "id_rsa")]);
     const publicKey = await readFile(join(sshDir, "id_rsa.pub"), "utf8");

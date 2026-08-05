@@ -10,6 +10,7 @@ import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
 import { mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
+import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
 
 describe("workspace files API integration", () => {
   const previousDownloadLimitBytes = 100 * 1024 * 1024;
@@ -26,16 +27,14 @@ describe("workspace files API integration", () => {
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await initializeDatabase();
-    await Bun.$`git init ${workDir}`.quiet();
-    await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
+    await initializeGitRepository(workDir, { initialCommit: "none" });
     await mkdir(join(workDir, "src"), { recursive: true });
     await mkdir(join(workDir, "assets.png"), { recursive: true });
     await writeFile(join(workDir, "README.md"), "# Workspace files\n");
     await writeFile(join(workDir, "src", "index.ts"), "export const value = 1;\n");
     await writeFile(join(workDir, "logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n");
-    await Bun.$`git -C ${workDir} add .`.quiet();
-    await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
+    await runGit(workDir, ["add", "."]);
+    await runGit(workDir, ["commit", "-m", "Initial commit"]);
     await mkdir(join(alternateRootDir, "notes"), { recursive: true });
     await writeFile(join(alternateRootDir, "notes", "todo.txt"), "alternate root note\n");
 

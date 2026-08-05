@@ -63,7 +63,7 @@ describe("Review Cycle User Scenarios", () => {
       expect(pushedTask.state.reviewMode?.completionAction).toBe("push");
       expect(pushedTask.state.reviewMode?.reviewCycles).toBe(0);
 
-      // With worktrees, main checkout stays on original branch — verify branch exists in git
+      // With worktrees, source checkout stays on original branch — verify branch exists in git
       expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
 
       // Address reviewer comments

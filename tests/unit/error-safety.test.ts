@@ -33,7 +33,7 @@ describe("typed error safety boundaries", () => {
   });
 
   test("uses a fixed message and safe details for git sync failures", () => {
-    const result = createGitSyncFailure("task-1", "main");
+    const result = createGitSyncFailure("task-1", "fixture-default");
 
     if (result.success) {
       throw new Error("Expected git sync failure");
@@ -46,7 +46,7 @@ describe("typed error safety boundaries", () => {
         message: "Task git operation failed",
         details: {
           taskId: "task-1",
-          branch: "main",
+          branch: "fixture-default",
         },
       },
     });

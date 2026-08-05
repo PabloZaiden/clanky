@@ -15,6 +15,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { getDefaultServerSettings } from "@/shared/settings";
+import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
 
 describe("Git API Integration", () => {
   let testDataDir: string;
@@ -32,15 +33,10 @@ describe("Git API Integration", () => {
     await initializeDatabase();
 
     // Initialize git repo with a couple branches
-    await Bun.$`git init ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
     // Create a second branch
-    await Bun.$`git -C ${testWorkDir} branch feature-branch`.quiet();
-    await Bun.$`git -C ${testWorkDir} remote add origin git@github.com:owner/repo.git`.quiet();
+    await runGit(testWorkDir, ["branch", "feature-branch"]);
+    await runGit(testWorkDir, ["remote", "add", "origin", "git@github.com:owner/repo.git"]);
 
     // Create workspace for test directory
     await createWorkspace({
@@ -173,7 +169,7 @@ describe("Git API Integration", () => {
     });
 
     test("returns false when origin is not configured", async () => {
-      await Bun.$`git -C ${testWorkDir} remote remove origin`.quiet();
+      await runGit(testWorkDir, ["remote", "remove", "origin"]);
 
       try {
         const res = await fetch(
@@ -187,7 +183,7 @@ describe("Git API Integration", () => {
           hasRemote: false,
         });
       } finally {
-        await Bun.$`git -C ${testWorkDir} remote add origin git@github.com:owner/repo.git`.quiet();
+        await runGit(testWorkDir, ["remote", "add", "origin", "git@github.com:owner/repo.git"]);
       }
     });
 
@@ -272,7 +268,7 @@ describe("Git API Integration", () => {
     });
 
     test("returns null for non-GitHub remotes", async () => {
-      await Bun.$`git -C ${testWorkDir} remote set-url origin git@gitlab.com:owner/repo.git`.quiet();
+      await runGit(testWorkDir, ["remote", "set-url", "origin", "git@gitlab.com:owner/repo.git"]);
 
       try {
         const res = await fetch(
@@ -285,7 +281,7 @@ describe("Git API Integration", () => {
           githubUrl: null,
         });
       } finally {
-        await Bun.$`git -C ${testWorkDir} remote set-url origin git@github.com:owner/repo.git`.quiet();
+        await runGit(testWorkDir, ["remote", "set-url", "origin", "git@github.com:owner/repo.git"]);
       }
     });
 

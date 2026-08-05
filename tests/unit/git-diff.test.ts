@@ -6,6 +6,7 @@ import {
   teardownTestContext,
   type TestContext,
 } from "../setup";
+import { getCurrentBranch } from "../helpers/git-fixtures";
 
 describe("GitService diff", () => {
   let ctx: TestContext;
@@ -19,7 +20,7 @@ describe("GitService diff", () => {
   });
 
   test("falls back from a missing remote base ref to the local branch", async () => {
-    const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+    const currentBranch = await getCurrentBranch(ctx.workDir);
     await Bun.write(join(ctx.workDir, ".gitkeep"), "<h1>Hello world</h1>\n");
 
     const diff = await ctx.git.getDiffWithContent(ctx.workDir, `origin/${currentBranch}`);

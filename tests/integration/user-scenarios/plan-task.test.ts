@@ -27,6 +27,7 @@ import {
 import type { Task } from "@/shared/task";
 import { backendManager } from "../../../src/core/backend-manager";
 import { TestCommandExecutor } from "../../mocks/mock-executor";
+import { runGit } from "../../helpers/git-fixtures";
 
 class GitHubMockExecutor extends TestCommandExecutor {
   private pullRequestCreated = false;
@@ -213,7 +214,7 @@ describe("Plan + Task User Scenarios", () => {
       });
 
       // In plan mode, the git branch and worktree are created at plan mode start.
-      // The main checkout should still be on the default branch (worktree is separate).
+      // The source checkout should still be on the default branch (worktree is separate).
       const currentBranch = await getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(ctx.defaultBranch);
 
@@ -240,7 +241,7 @@ describe("Plan + Task User Scenarios", () => {
       // also free of an active git lock before starting the next task.
       await waitForGitAvailable(ctx.workDir);
 
-      // Add an ignored file to the main checkout's managed planning directory.
+      // Add an ignored file to the source checkout's managed planning directory.
       // Plan-mode clearing happens in the worktree, not in the source checkout.
       await writeFile(join(ctx.workDir, ".clanky-planning/extra-plan.md"), "Extra plan content");
 
@@ -263,7 +264,7 @@ describe("Plan + Task User Scenarios", () => {
       // Wait for planning status
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
 
-      // Verify .clanky-planning was cleared in the worktree (not the main checkout)
+      // Verify .clanky-planning was cleared in the worktree (not the source checkout)
       const planTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
       const worktreePath = planTask.state.git?.worktreePath;
       expect(worktreePath).toBeDefined();
@@ -355,8 +356,13 @@ describe("Plan + Task User Scenarios", () => {
         expect(fullyAutonomousTask.state.automaticPrFlow?.enabled).toBe(true);
         expect(fullyAutonomousTask.state.automaticPrFlow?.pullRequestNumber).toBe(123);
 
-        const pushRef = await Bun.$`git --git-dir=${ctx.remoteDir!} show-ref --verify refs/heads/${pushedTask.state.git!.workingBranch}`.nothrow();
-        expect(pushRef.exitCode).toBe(0);
+        await runGit(ctx.workDir, [
+          "--git-dir",
+          ctx.remoteDir!,
+          "show-ref",
+          "--verify",
+          `refs/heads/${pushedTask.state.git!.workingBranch}`,
+        ]);
 
         await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       } finally {
@@ -419,8 +425,13 @@ describe("Plan + Task User Scenarios", () => {
         expect(fullyAutonomousTask.state.automaticPrFlow?.enabled).toBe(true);
         expect(fullyAutonomousTask.state.automaticPrFlow?.pullRequestNumber).toBe(123);
 
-        const pushRef = await Bun.$`git --git-dir=${ctx.remoteDir!} show-ref --verify refs/heads/${pushedTask.state.git!.workingBranch}`.nothrow();
-        expect(pushRef.exitCode).toBe(0);
+        await runGit(ctx.workDir, [
+          "--git-dir",
+          ctx.remoteDir!,
+          "show-ref",
+          "--verify",
+          `refs/heads/${pushedTask.state.git!.workingBranch}`,
+        ]);
 
         await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       } finally {
@@ -460,7 +471,7 @@ describe("Plan + Task User Scenarios", () => {
       const planningTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
 
       // In plan mode, the git branch and worktree are created at plan mode start.
-      // The main checkout should still be on the original branch (worktree is separate).
+      // The source checkout should still be on the original branch (worktree is separate).
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
       expect(planningTask.state.git).toBeDefined();
       expect(planningTask.state.git?.workingBranch).toBeDefined();

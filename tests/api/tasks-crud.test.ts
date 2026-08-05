@@ -17,10 +17,11 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
+import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
-const baseCreateTaskPayload = {
+let baseCreateTaskPayload = {
   attachments: [],
   cheapModel: { mode: "same-as-task" as const },
   maxIterations: null,
@@ -31,7 +32,7 @@ const baseCreateTaskPayload = {
     branchPrefix: "",
     commitScope: "",
   },
-  baseBranch: "main",
+  baseBranch: "",
   clearPlanningFolder: false,
   autoAcceptPlan: false,
   fullyAutonomous: false,
@@ -162,12 +163,8 @@ describe("Tasks CRUD API Integration", () => {
     await initializeDatabase();
 
     // Initialize git repo in test work directory
-    await Bun.$`git init -b main ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
+    baseCreateTaskPayload.baseBranch = await getCurrentBranch(testWorkDir);
 
     // Set up backend manager with test executor factory.
     // The mocked backend is also used by the explicit title-generation endpoint tests.
@@ -1311,7 +1308,7 @@ describe("Tasks CRUD API Integration", () => {
         ...task!.state,
         status: "completed",
         git: {
-          originalBranch: "master",
+          originalBranch: baseCreateTaskPayload.baseBranch,
           workingBranch: `${taskId}-a1b2c3d`,
           worktreePath: getManagedWorktreePath(testWorkDir, taskId),
           commits: [],
@@ -1535,12 +1532,7 @@ describe("Tasks CRUD API Integration", () => {
     test("non-draft tasks still auto-start", async () => {
       // Create a unique directory for this test to avoid conflicts with other tests
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-non-draft-test-"));
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
       
       try {
         // Create workspace for this directory
@@ -1651,12 +1643,7 @@ describe("Tasks CRUD API Integration", () => {
     test("cannot update non-draft task via PUT", async () => {
       // Create a unique directory for this test to avoid conflicts
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-put-test-"));
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
       
       try {
         // Create workspace for this directory
@@ -1742,15 +1729,13 @@ describe("Tasks CRUD API Integration", () => {
       expect(getBody.state.git).toBeDefined();
     });
 
-    test("keeps a draft when main-checkout preflight finds uncommitted changes", async () => {
+    test("keeps a draft when source-checkout preflight finds uncommitted changes", async () => {
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-preflight-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
-      const defaultBranch = (await Bun.$`git -C ${uniqueWorkDir} branch --show-current`.text()).trim();
+      await initializeGitRepository(uniqueWorkDir, {
+        initialCommit: "all",
+        initialFiles: { "README.md": "" },
+      });
+      const defaultBranch = await getCurrentBranch(uniqueWorkDir);
 
       try {
         const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
@@ -1870,12 +1855,7 @@ describe("Tasks CRUD API Integration", () => {
     test("can start draft as plan mode", async () => {
       // Use a unique directory to avoid branch collision with previous test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-plan-test-"));
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
 
       try {
         // Create workspace for this directory
@@ -2040,12 +2020,7 @@ describe("Tasks CRUD API Integration", () => {
     test("cannot start non-draft task via draft/start", async () => {
       // Create a unique directory for this test to avoid conflicts
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-start-test-"));
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
       
       try {
         // Create workspace for this directory
@@ -2586,12 +2561,7 @@ Updated line 3`;
     test("rejects renaming a completed task while allowing other updates", async () => {
       // Create a unique directory for this test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-rename-test-"));
-      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
-      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
 
       try {
         const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);

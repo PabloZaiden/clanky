@@ -19,6 +19,7 @@ import {
   type TestServerContext,
 } from "./helpers";
 import type { Task } from "@/shared/task";
+import { runGit } from "../../helpers/git-fixtures";
 
 function createPlanModeMockResponses(options: {
   planIterations?: number;
@@ -80,7 +81,7 @@ describe("Base Branch Invariant - Plan Mode", () => {
       expect(planningTask.state.git?.originalBranch).toBe(originalBranch);
       expect(planningTask.state.git?.workingBranch).toBeDefined();
       expect(planningTask.state.git?.worktreePath).toBeDefined();
-      // Main checkout should still be on the original branch (worktree is separate)
+      // Source checkout should still be on the original branch (worktree is separate)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       await waitForPlanReady(ctx.baseUrl, task.config.id);
@@ -210,8 +211,8 @@ describe("Base Branch Invariant - Plan Mode", () => {
   });
 });
 
-describe("Default Base Branch - Auto-Detection", () => {
-  describe("Task creation without explicit baseBranch", () => {
+describe("Default Base Branch - Fixture Discovery", () => {
+  describe("Task creation with the repository default branch", () => {
     let ctx: TestServerContext;
 
     beforeAll(async () => {
@@ -228,29 +229,30 @@ describe("Default Base Branch - Auto-Detection", () => {
       await teardownTestServer(ctx);
     });
 
-    test("task created without baseBranch uses repository's default branch", async () => {
+    test("task keeps the repository default branch while checkout is on a feature branch", async () => {
       // Create a feature branch and switch to it
-      await Bun.$`git -C ${ctx.workDir} checkout -b feature/some-work`.quiet();
+      await runGit(ctx.workDir, ["checkout", "-b", "feature/some-work"]);
       
       // Verify we're on the feature branch
       const currentBranch = await getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe("feature/some-work");
 
-      // Create a task WITHOUT specifying baseBranch
+      // Create a task using the repository default branch while the checkout
+      // is currently on a feature branch.
       const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Do some work",
         planMode: false, // Regular execution, not plan mode
-        // Note: baseBranch is NOT specified
+        baseBranch: ctx.defaultBranch,
       });
 
       expect(status).toBe(201);
       const task = body as Task;
 
-      // The task's baseBranch should be the repository's default branch (main/master),
+      // The task's baseBranch should remain the repository's default branch,
       // NOT the current branch (feature/some-work)
       expect(task.config.baseBranch).toBeDefined();
-      expect(["main", "master"]).toContain(task.config.baseBranch ?? "");
+      expect(task.config.baseBranch).toBe(ctx.defaultBranch);
       expect(task.config.baseBranch).not.toBe("feature/some-work");
 
       // Wait for completion and verify git state
@@ -284,8 +286,8 @@ describe("Default Base Branch - Auto-Detection", () => {
 
     test("task created with explicit baseBranch uses that branch", async () => {
       // Create a develop branch
-      await Bun.$`git -C ${ctx.workDir} checkout -b develop`.quiet();
-      await Bun.$`git -C ${ctx.workDir} checkout ${ctx.defaultBranch}`.quiet();
+      await runGit(ctx.workDir, ["checkout", "-b", "develop"]);
+      await runGit(ctx.workDir, ["checkout", ctx.defaultBranch]);
 
       // Verify we're on the default branch
       const currentBranch = await getCurrentBranch(ctx.workDir);

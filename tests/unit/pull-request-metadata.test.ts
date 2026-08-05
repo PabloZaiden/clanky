@@ -10,7 +10,7 @@ import {
 const baseMetadata: PullRequestMetadataInput = {
   taskName: "Improve task creation",
   originalPrompt: "Add issue linking to tasks.",
-  baseBranch: "main",
+  baseBranch: "fixture-default",
   workingBranch: "feature/issue-linking",
   commitMessages: ["feat(tasks): link tasks to GitHub issues"],
   changedFiles: [{

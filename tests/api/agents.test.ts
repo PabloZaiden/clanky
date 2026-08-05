@@ -18,6 +18,7 @@ import { agentEventEmitter } from "../../src/core/event-emitter";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { seedTestOwnerUser } from "../setup";
+import { initializeGitRepository } from "../helpers/git-fixtures";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
@@ -133,12 +134,7 @@ describe("Agents API Integration", () => {
     await initializeDatabase();
     seedTestOwnerUser();
 
-    await Bun.$`git init ${testWorkDir}`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-    await Bun.$`touch ${testWorkDir}/README.md`.quiet();
-    await Bun.$`git -C ${testWorkDir} add .`.quiet();
-    await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
 
     mockBackend = new MockAcpBackend({
       responses: ["```typescript\nexport default async function run(ctx) {\n  ctx.stdout.write(\"Agent run completed\");"],

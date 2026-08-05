@@ -4,7 +4,7 @@
  */
 
 import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
+import { mkdtemp, rm, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { type Server } from "bun";
@@ -15,6 +15,7 @@ import { taskManager } from "../../src/core/task-manager";
 import { closeDatabase } from "../../src/persistence/database";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { NeverCompletingMockBackend } from "../mocks/mock-backend";
+import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" };
@@ -23,6 +24,7 @@ describe("POST /api/tasks/:id/pending", () => {
   let testDataDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let currentDefaultBranch = "";
 
   // Helper to get or create a workspace for a directory
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
@@ -51,12 +53,8 @@ describe("POST /api/tasks/:id/pending", () => {
   // Helper to create a unique work directory with git AND workspace
   async function createTestWorkDirWithWorkspace(): Promise<{ workDir: string; workspaceId: string }> {
     const workDir = await mkdtemp(join(tmpdir(), "clanky-pending-test-work-"));
-    await Bun.$`git init -b main ${workDir}`.quiet();
-    await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
-    await writeFile(join(workDir, "README.md"), "# Test");
-    await Bun.$`git -C ${workDir} add .`.quiet();
-    await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
+    await initializeGitRepository(workDir, { initialCommit: "readme" });
+    currentDefaultBranch = await getCurrentBranch(workDir);
     await mkdir(join(workDir, ".clanky-planning"), { recursive: true });
     const workspaceId = await getOrCreateWorkspace(workDir, "Test Workspace");
     return { workDir, workspaceId };
@@ -194,7 +192,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -254,7 +252,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -314,7 +312,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -375,7 +373,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -439,7 +437,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           useWorktree: false,
           clearPlanningFolder: false,
           planMode: false,
@@ -489,7 +487,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           useWorktree: false,
           clearPlanningFolder: false,
           planMode: false,
@@ -549,7 +547,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -600,7 +598,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -654,7 +652,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -709,7 +707,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -765,7 +763,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -827,7 +825,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -893,7 +891,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -963,7 +961,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
@@ -1031,7 +1029,7 @@ describe("POST /api/tasks/:id/pending", () => {
           activityTimeoutSeconds: 300,
           stopPattern: "<promise>COMPLETE</promise>$",
           git: { branchPrefix: "", commitScope: "" },
-          baseBranch: "main",
+          baseBranch: currentDefaultBranch,
           clearPlanningFolder: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
