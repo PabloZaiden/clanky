@@ -191,6 +191,7 @@ function createTables(database: Database): void {
         user_id TEXT NOT NULL,
         name TEXT NOT NULL,
         directory TEXT NOT NULL,
+        execution_node_id TEXT,
         server_fingerprint TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,

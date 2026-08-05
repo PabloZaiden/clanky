@@ -14,7 +14,6 @@ import {
 } from "../persistence/mesh-sync";
 import {
   getMeshNode,
-  getMeshLinkById,
   getActiveMeshLinkTakeover,
   applyMeshLinkTakeover,
   listMeshLinkMembers,
@@ -22,7 +21,6 @@ import {
 } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
-  getMeshNodeFingerprint,
   signMeshPayload,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
@@ -36,25 +34,10 @@ import { resolveMeshRoute } from "./mesh-transport-config";
 import { applyMeshCheckpoint } from "./mesh-sync-service";
 import { DomainError } from "./domain-error";
 import { decryptMeshCheckpoint, encryptMeshCheckpoint } from "./mesh-payload-crypto";
-
-function assertPeerIdentity(
-  nodeId: string,
-  publicKey: string,
-  fingerprint: string,
-): void {
-  let derivedFingerprint: string;
-  try {
-    derivedFingerprint = getMeshNodeFingerprint(publicKey);
-  } catch (error) {
-    throw new DomainError("mesh_peer_identity_invalid", "The mesh sync public key is invalid.", {
-      cause: error,
-    });
-  }
-  if (derivedFingerprint !== fingerprint) {
-    throw new DomainError("mesh_peer_identity_mismatch", "The mesh sync fingerprint does not match its public key.");
-  }
-  return void nodeId;
-}
+import {
+  assertMeshPeerIdentity,
+  requireTrustedMeshPeer,
+} from "./mesh-peer-auth";
 
 async function assertTrustedPeer(
   linkId: string,
@@ -64,36 +47,15 @@ async function assertTrustedPeer(
   encryptionPublicKey?: string,
   options: { requireEncryptionKey?: boolean } = {},
 ): Promise<void> {
-  assertPeerIdentity(nodeId, publicKey, fingerprint);
-  const node = await getMeshNode(nodeId);
-  if (!node) {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender is not a known mesh node.");
-  }
-  if (node.fingerprint !== fingerprint) {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender identity does not match the trusted mesh node.");
-  }
-  if (
-    options.requireEncryptionKey !== false
-    &&
-    node.encryptionPublicKey
-    && (!encryptionPublicKey || node.encryptionPublicKey !== encryptionPublicKey)
-  ) {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender encryption identity does not match the trusted mesh node.");
-  }
-  if (node.status === "revoked") {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender has been revoked.");
-  }
-  const link = await getMeshLinkById(linkId);
-  if (!link) {
-    throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-  }
-  const member = (await listMeshLinkMembers(linkId)).find((candidate) => candidate.nodeId === nodeId);
-  if (!member) {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender is not a member of this link.");
-  }
-  if (member.status === "revoked") {
-    throw new DomainError("mesh_peer_not_trusted", "The mesh sync sender membership has been revoked.");
-  }
+  await requireTrustedMeshPeer({
+    linkId,
+    nodeId,
+    publicKey,
+    fingerprint,
+    encryptionPublicKey,
+    requireEncryptionKey: options.requireEncryptionKey,
+    context: "mesh sync sender",
+  });
 }
 
 async function getMeshLinkMemberSnapshots(linkId: string): Promise<Array<{
@@ -185,18 +147,7 @@ export async function receiveMeshSyncPush(
   }
 
   for (const member of envelope.members ?? []) {
-    let memberFingerprint: string;
-    try {
-      memberFingerprint = getMeshNodeFingerprint(member.publicKey);
-    } catch (error) {
-      throw new DomainError("mesh_peer_identity_invalid", "A mesh sync member public key is invalid.", {
-        cause: error,
-      });
-    }
-
-    if (memberFingerprint !== member.fingerprint) {
-      throw new DomainError("mesh_peer_identity_mismatch", "A mesh sync member fingerprint does not match its public key.");
-    }
+    assertMeshPeerIdentity(member.publicKey, member.fingerprint, "mesh sync member");
     await mergeMeshLinkMember({
       linkId: envelope.linkId,
       nodeId: member.nodeId,

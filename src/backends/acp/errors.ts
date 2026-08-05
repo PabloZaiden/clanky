@@ -7,6 +7,9 @@ export type AcpErrorCode =
   | "acp_session_not_found"
   | "acp_request_timed_out"
   | "acp_process_failed"
+  | "acp_transport_closed"
+  | "acp_transport_unavailable"
+  | "acp_transport_write_failed"
   | "acp_ssh_authentication_failed"
   | "acp_unsupported_prompt_capability";
 

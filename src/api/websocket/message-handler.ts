@@ -4,6 +4,7 @@ import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 import type { startTerminalBridge, sendTerminalAuthError } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
+import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 
 const log = createLogger("api:websocket");
 
@@ -19,6 +20,17 @@ type TerminalHelpers = {
  */
 export function createMessageHandler(helpers: TerminalHelpers) {
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
+    if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
+      void meshAcpGateway.message(ws.data.meshAcpSessionId, msg).catch((error: Error) => {
+        log.warn("Mesh ACP relay message failed", {
+          sessionId: ws.data.meshAcpSessionId,
+          error: String(error),
+        });
+        ws.close(1003, "Invalid mesh ACP message");
+      });
+      return;
+    }
+
     if (ws.data.previewBridgeMode) {
       if (!ws.data.user) {
         ws.close(1008, "Authenticated user context is required for preview bridges");

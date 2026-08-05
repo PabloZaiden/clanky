@@ -5,7 +5,7 @@
  * focused, single-responsibility collaborators with strictly one-way
  * dependencies:
  *
- * - {@link AcpTransportLifecycle} owns the subprocess, readers, and shutdown.
+ * - {@link AcpTransportLifecycle} owns wire resources, readers, and shutdown.
  * - {@link RpcClient} owns JSON-RPC request bookkeeping and dispatch.
  * - {@link SessionStateStore} is the single owner of per-session/run state.
  * - {@link SessionService} owns session CRUD and prompt orchestration.
@@ -42,7 +42,11 @@ import { isRecord } from "./json-helpers";
 import { AcpError } from "./errors";
 import type { JsonRpcMessage } from "./types";
 
-import { AcpTransportLifecycle } from "./transport-lifecycle";
+import type {
+  AcpTransportLifecycle,
+  AcpTransportLifecycleFactory,
+} from "./contracts";
+import { LocalAcpTransportLifecycle } from "./transport-lifecycle";
 import { RpcClient } from "./rpc-client";
 import { SessionStateStore } from "./session-state";
 import { CapabilityService } from "./capability-service";
@@ -50,6 +54,15 @@ import { AcpEventTranslator } from "./event-translator";
 import { SubscriptionService } from "./subscription-service";
 import { PermissionCoordinator } from "./permission-coordinator";
 import { SessionService } from "./session-service";
+
+export interface AcpBackendOptions {
+  /**
+   * Inject a transport lifecycle without exposing its implementation details
+   * to this facade. The factory form lets each backend own its lifecycle.
+   */
+  transportLifecycle?: AcpTransportLifecycle;
+  transportLifecycleFactory?: AcpTransportLifecycleFactory;
+}
 
 export class AcpBackend implements Backend {
   readonly name = "acp";
@@ -63,16 +76,19 @@ export class AcpBackend implements Backend {
   private readonly permissions: PermissionCoordinator;
   private readonly sessions: SessionService;
 
-  constructor() {
+  constructor(options: AcpBackendOptions = {}) {
     this.state = new SessionStateStore();
-    this.lifecycle = new AcpTransportLifecycle();
+    this.lifecycle =
+      options.transportLifecycle
+      ?? options.transportLifecycleFactory?.()
+      ?? new LocalAcpTransportLifecycle();
     this.rpc = new RpcClient({
       transport: this.lifecycle.transport,
-      ensureUsable: () => this.lifecycle.ensureConnected(),
+      ensureUsable: () => this.ensureConnected(),
       onNotification: (message) => this.dispatchNotification(message),
     });
-    this.lifecycle.setRpcClient(this.rpc);
-    this.lifecycle.setTransportClosedHandler((error) => this.handleTransportClosed(error));
+    this.lifecycle.setMessageHandler((message) => this.rpc.handleMessage(message));
+    this.lifecycle.setTransportClosedHandler(({ error }) => this.handleTransportClosed(error));
     this.capability = new CapabilityService(this.rpc);
     this.translator = new AcpEventTranslator(this.state, this.capability);
     this.subscriptions = new SubscriptionService(this.state);
@@ -81,7 +97,7 @@ export class AcpBackend implements Backend {
       this.rpc,
       this.state,
       this.capability,
-      () => this.lifecycle.ensureConnected(),
+      () => this.ensureConnected(),
     );
   }
 
@@ -91,7 +107,7 @@ export class AcpBackend implements Backend {
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     try {
-      const initializeResult = await this.lifecycle.connect(config, signal, () => this.disconnect());
+      const initializeResult = await this.lifecycle.connect(config, signal, this.rpc);
       this.state.setDefaultDirectory(this.lifecycle.getDirectory());
       this.capability.setProvider(this.lifecycle.getProvider());
       this.capability.setInitializeResult(initializeResult);
@@ -102,10 +118,8 @@ export class AcpBackend implements Backend {
   }
 
   async disconnect(): Promise<void> {
-    const process = this.lifecycle.getProcess();
-    if (this.lifecycle.isConnected() || process) {
+    if (this.lifecycle.isConnected()) {
       log.debug("[AcpBackend] Disconnecting ACP runtime", {
-        hasProcess: !!process,
         directory: this.lifecycle.getDirectory(),
       });
     }
@@ -113,8 +127,7 @@ export class AcpBackend implements Backend {
     this.rpc.rejectPending(new AcpError("acp_process_failed", "Disconnected"));
     this.clearConnectionState();
 
-    const detached = this.lifecycle.detachForShutdown();
-    await this.lifecycle.terminateProcess(detached);
+    await this.lifecycle.disconnect();
   }
 
   private clearConnectionState(): void {
@@ -127,9 +140,16 @@ export class AcpBackend implements Backend {
 
   private handleTransportClosed(error: AcpError): void {
     try {
+      this.rpc.rejectPending(error);
       this.state.emitActivePromptError(error);
     } finally {
       this.clearConnectionState();
+    }
+  }
+
+  private ensureConnected(): void {
+    if (!this.lifecycle.isConnected()) {
+      throw new Error("Not connected. Call connect() first.");
     }
   }
 
@@ -252,17 +272,17 @@ export class AcpBackend implements Backend {
   }
 
   async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
-    this.lifecycle.ensureConnected();
+    this.ensureConnected();
     return this.subscriptions.subscribe(sessionId);
   }
 
   async replyToPermission(requestId: string, response: string): Promise<void> {
-    this.lifecycle.ensureConnected();
+    this.ensureConnected();
     await this.permissions.replyToPermission(requestId, response);
   }
 
   async replyToQuestion(requestId: string, answers: string[][]): Promise<void> {
-    this.lifecycle.ensureConnected();
+    this.ensureConnected();
     await this.permissions.replyToQuestion(requestId, answers);
   }
 }

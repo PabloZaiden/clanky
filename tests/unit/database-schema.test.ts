@@ -95,6 +95,7 @@ describe("database schema", () => {
       }
       expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("workspaces")).toContain("allow_clanky_context");
+      expect(columnNames("workspaces")).toContain("execution_node_id");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
       expect(tableNames()).toContain("clanky_context_api_keys");
@@ -361,6 +362,53 @@ describe("database schema", () => {
     }
   });
 
+  test("migration v33 assigns stdio ownership and clears SSH ownership idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 33);
+    if (!migration) {
+      throw new Error("Migration v33 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          server_settings TEXT,
+          execution_node_id TEXT
+        );
+        CREATE TABLE mesh_node_identity (
+          singleton INTEGER PRIMARY KEY,
+          node_id TEXT NOT NULL
+        );
+      `);
+      db.run("INSERT INTO mesh_node_identity (singleton, node_id) VALUES (1, ?)", ["local-node"]);
+      db.run("INSERT INTO workspaces (id, server_settings) VALUES (?, ?)", [
+        "stdio-workspace",
+        JSON.stringify({ agent: { transport: "stdio" } }),
+      ]);
+      db.run("INSERT INTO workspaces (id, server_settings, execution_node_id) VALUES (?, ?, ?)", [
+        "ssh-workspace",
+        JSON.stringify({ agent: { transport: "ssh" } }),
+        "stale-node",
+      ]);
+
+      migration.up(db);
+      migration.up(db);
+
+      expect(
+        (db.query("SELECT execution_node_id FROM workspaces WHERE id = ?").get("stdio-workspace") as {
+          execution_node_id: string | null;
+        }).execution_node_id,
+      ).toBe("local-node");
+      expect(
+        (db.query("SELECT execution_node_id FROM workspaces WHERE id = ?").get("ssh-workspace") as {
+          execution_node_id: string | null;
+        }).execution_node_id,
+      ).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   test("migration v12 creates managed context-key associations idempotently", () => {
     const migration = migrations.find((candidate) => candidate.version === 12);
     if (!migration) {
@@ -555,12 +603,12 @@ describe("database schema", () => {
       }
 
       expect(migration.transactional).toBe(false);
-      expect(runMigrations(db)).toBe(15);
+      expect(runMigrations(db)).toBe(16);
       expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
       expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
       expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
       expect(runMigrations(db)).toBe(0);
-      expect(getSchemaVersion(db)).toBe(32);
+      expect(getSchemaVersion(db)).toBe(33);
     } finally {
       db.close();
       await rm(dataDir, { recursive: true, force: true });

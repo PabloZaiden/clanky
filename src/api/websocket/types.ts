@@ -30,4 +30,10 @@ export interface WebSocketData {
   pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: SshTerminalBridge;
+  /** Whether this socket relays a mesh ACP session */
+  meshAcpMode?: boolean;
+  /** Mesh ACP session identifier */
+  meshAcpSessionId?: string;
+  /** Mesh ACP session bearer token */
+  meshAcpSessionToken?: string;
 }

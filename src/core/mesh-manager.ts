@@ -45,7 +45,6 @@ import {
 import { recordMeshMembershipCheckpoint } from "../persistence/mesh-sync";
 import {
   ensureLocalMeshNodeIdentity,
-  getMeshNodeFingerprint,
   requireMeshInstanceName,
   rotateLocalMeshNodeIdentity,
   setLocalMeshInstanceName,
@@ -67,6 +66,8 @@ import { DomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
 import { bootstrapMeshPeerForUser } from "./mesh-sync-bootstrap";
 import { listTasksForUser } from "../persistence/tasks";
+import { backendManager } from "./backend/backend-manager";
+import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
@@ -142,17 +143,7 @@ export class MeshManager {
       throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
     }
 
-    let fingerprint: string;
-    try {
-      fingerprint = getMeshNodeFingerprint(envelope.publicKey);
-    } catch (error) {
-      throw new DomainError("mesh_peer_identity_invalid", "The pairing request public key is invalid.", {
-        cause: error,
-      });
-    }
-    if (fingerprint !== envelope.fingerprint) {
-      throw new DomainError("mesh_peer_identity_mismatch", "The pairing request fingerprint does not match its public key.");
-    }
+    assertMeshPeerIdentity(envelope.publicKey, envelope.fingerprint, "pairing request");
     if (!envelope.requestedInstanceName) {
       throw new DomainError(
         "mesh_instance_name_required",
@@ -319,6 +310,7 @@ export class MeshManager {
       localUserId,
       nodeId,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     await recordMeshMembershipCheckpoint(localUserId, { includeRevokedPeers: true });
     return await this.getStatus(localUserId);
   }
@@ -327,17 +319,7 @@ export class MeshManager {
     envelope: MeshPeerPairingApproval,
   ): Promise<{ requestId: string; status: string; fingerprint: string }> {
     assertMeshEndpointAllowed(envelope.endpoint, envelope.transport);
-    let fingerprint: string;
-    try {
-      fingerprint = getMeshNodeFingerprint(envelope.publicKey);
-    } catch (error) {
-      throw new DomainError("mesh_peer_identity_invalid", "The pairing approval public key is invalid.", {
-        cause: error,
-      });
-    }
-    if (fingerprint !== envelope.fingerprint) {
-      throw new DomainError("mesh_peer_identity_mismatch", "The pairing approval fingerprint does not match its public key.");
-    }
+    assertMeshPeerIdentity(envelope.publicKey, envelope.fingerprint, "pairing approval");
     if (!envelope.approvedByInstanceName) {
       throw new DomainError(
         "mesh_instance_name_required",
@@ -346,17 +328,7 @@ export class MeshManager {
     }
     const members = envelope.members ?? [];
     for (const member of members) {
-      let memberFingerprint: string;
-      try {
-        memberFingerprint = getMeshNodeFingerprint(member.publicKey);
-      } catch (error) {
-        throw new DomainError("mesh_peer_identity_invalid", "A pairing approval member public key is invalid.", {
-          cause: error,
-        });
-      }
-      if (memberFingerprint !== member.fingerprint) {
-        throw new DomainError("mesh_peer_identity_mismatch", "A pairing approval member fingerprint does not match its public key.");
-      }
+      assertMeshPeerIdentity(member.publicKey, member.fingerprint, "pairing approval member");
       if (member.endpoint) {
         assertMeshEndpointAllowed(member.endpoint, member.transport);
       }
@@ -503,6 +475,7 @@ export class MeshManager {
       });
     }
     await setMeshPairingApprovalStatus(requestId, "accepted");
+    await backendManager.invalidateMeshExecutionConnections();
     await recordMeshMembershipCheckpoint(localUserId);
     queueMicrotask(() => {
       void bootstrapMeshPeerForUser(localUserId).catch((error) => {
@@ -659,6 +632,7 @@ export class MeshManager {
       generation: claim.generation,
       signature,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     const activeTasks = (await listTasksForUser(localUserId))
       .filter((task) => ["idle", "planning", "starting", "running", "waiting"].includes(task.state.status));
     const warnings: string[] = activeTasks.length > 0
@@ -700,18 +674,8 @@ export class MeshManager {
     if (!node || node.status === "revoked") {
       throw new DomainError("mesh_peer_not_member", "The takeover sender is not a trusted mesh member.");
     }
-    let fingerprint: string;
-    try {
-      fingerprint = getMeshNodeFingerprint(envelope.senderPublicKey);
-    } catch (error) {
-      throw new DomainError("mesh_peer_identity_invalid", "The takeover sender public key is invalid.", {
-        cause: error,
-      });
-    }
-    if (
-      fingerprint !== envelope.senderFingerprint
-      || fingerprint !== node.fingerprint
-    ) {
+    assertMeshPeerIdentity(envelope.senderPublicKey, envelope.senderFingerprint, "takeover sender");
+    if (envelope.senderFingerprint !== node.fingerprint) {
       throw new DomainError("mesh_peer_identity_mismatch", "The takeover sender fingerprint does not match the trusted node.");
     }
     const { signature, ...unsigned } = envelope;
@@ -730,6 +694,7 @@ export class MeshManager {
       claimOrigin: envelope.claimOrigin,
       signature: envelope.signature,
     });
+    await backendManager.invalidateMeshExecutionConnections();
     return { generation: claim.generation, status: "accepted" };
   }
 }

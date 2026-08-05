@@ -47,6 +47,11 @@ export interface BackendConnectionConfig {
   startupStdin?: string;
   /** Working directory for the backend */
   directory: string;
+  /** Mesh ownership metadata for remote stdio ACP transport. */
+  mesh?: {
+    workspaceId: string;
+    executionNodeId: string;
+  };
 }
 
 /**

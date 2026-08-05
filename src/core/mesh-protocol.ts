@@ -9,12 +9,14 @@ import type {
   MeshSyncPush,
   MeshTakeoverEnvelope,
 } from "@/contracts/schemas/mesh";
+import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
 type UnsignedPairingRequest = Omit<MeshPeerPairingRequest, "signature">;
 type UnsignedPairingApproval = Omit<MeshPeerPairingApproval, "signature">;
 type UnsignedSyncPush = Omit<MeshSyncPush, "signature">;
 type UnsignedSyncAck = Omit<MeshSyncAck, "signature">;
 type UnsignedTakeover = Omit<MeshTakeoverEnvelope, "signature">;
+type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 
 export function buildMeshPairingRequestSigningPayload(
   envelope: UnsignedPairingRequest,
@@ -102,5 +104,26 @@ export function buildMeshTakeoverSigningPayload(envelope: UnsignedTakeover): str
     envelope.generation,
     envelope.claimedAt,
     envelope.claimOrigin,
+  ]);
+}
+
+export function buildMeshExecutionSessionSigningPayload(
+  envelope: UnsignedExecutionSession,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-execution-session-v1",
+    envelope.protocolVersion,
+    envelope.requestId,
+    envelope.linkId,
+    envelope.callerNodeId,
+    envelope.callerPublicKey,
+    envelope.callerFingerprint,
+    envelope.callerEncryptionPublicKey ?? null,
+    envelope.targetNodeId,
+    envelope.workspaceId,
+    envelope.directory,
+    envelope.channel,
+    envelope.nonce,
+    envelope.expiresAt,
   ]);
 }

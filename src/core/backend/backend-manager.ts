@@ -6,7 +6,7 @@
  * allowing parallel operation of tasks across different workspaces.
  */
 
-import { AcpBackend } from "../../backends/acp";
+import { AcpBackend, WorkspaceAcpTransportLifecycle } from "../../backends/acp";
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
 import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
@@ -14,6 +14,7 @@ import { taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
+import { MeshCommandExecutor } from "../mesh-command-executor";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
@@ -26,6 +27,10 @@ import {
   type ServerEvent,
 } from "./backend-state";
 import type { CommandExecutorFactory } from "./backend-executor-factory";
+import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
+import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../../persistence/mesh";
+import { requireCurrentUserId } from "../user-context";
+import { meshAcpGateway } from "../mesh-acp-gateway";
 
 /**
  * Backend manager supporting multiple workspace connections.
@@ -53,14 +58,28 @@ class BackendManager {
   /**
    * Create a backend instance for the configured agent provider.
    */
-  private createBackendForSettings(settings: ServerSettings): Backend {
+  private createBackendForSettings(
+    settings: ServerSettings,
+    workspaceOptions?: {
+      workspaceId: string;
+      localNodeId: string | null;
+      executionNodeId: string | null;
+    },
+  ): Backend {
+    const transportLifecycleFactory = workspaceOptions && settings.agent.transport === "stdio"
+      ? () => new WorkspaceAcpTransportLifecycle({
+          workspaceId: workspaceOptions.workspaceId,
+          localNodeId: workspaceOptions.localNodeId ?? "",
+          executionNodeId: workspaceOptions.executionNodeId,
+        })
+      : undefined;
     switch (settings.agent.provider) {
       case "opencode":
       case "copilot":
         // Both providers use the same backend implementation for now.
-        return new AcpBackend();
+        return new AcpBackend({ transportLifecycleFactory });
       default:
-        return new AcpBackend();
+        return new AcpBackend({ transportLifecycleFactory });
     }
   }
 
@@ -84,23 +103,42 @@ class BackendManager {
     }
 
     const settings = workspace.serverSettings;
+    const localNodeId = settings.agent.transport === "stdio"
+      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      : null;
+    const executionNodeId = settings.agent.transport === "stdio"
+      ? (workspace.executionNodeId ?? localNodeId)
+      : null;
     let state = this.connections.get(workspaceId);
     if (!state) {
       state = {
-        backend: this.createBackendForSettings(settings),
+        backend: this.createBackendForSettings(settings, {
+          workspaceId,
+          localNodeId,
+          executionNodeId,
+        }),
         settings,
         connectionError: null,
+        executionNodeId,
+        localNodeId,
       };
       this.connections.set(workspaceId, state);
       return state;
     }
 
-    if (state.settings.agent.provider !== settings.agent.provider) {
+    if (
+      state.settings.agent.provider !== settings.agent.provider
+      || state.executionNodeId !== executionNodeId
+    ) {
       const previousBackend = state.backend;
       if (previousBackend.isConnected()) {
         await previousBackend.disconnect();
       }
-      state.backend = this.createBackendForSettings(settings);
+      state.backend = this.createBackendForSettings(settings, {
+        workspaceId,
+        localNodeId,
+        executionNodeId,
+      });
       state.connectionError = null;
       this.clearCommandExecutorsForWorkspace(workspaceId);
     }
@@ -109,6 +147,8 @@ class BackendManager {
       this.clearCommandExecutorsForWorkspace(workspaceId);
     }
     state.settings = settings;
+    state.executionNodeId = executionNodeId;
+    state.localNodeId = localNodeId;
     return state;
   }
 
@@ -119,6 +159,9 @@ class BackendManager {
       directory,
       provider: execution.provider,
       sshTarget: execution.sshTarget ?? null,
+      executionNodeId: settings.agent.transport === "stdio"
+        ? (this.connections.get(workspaceId)?.executionNodeId ?? null)
+        : null,
     });
   }
 
@@ -297,6 +340,49 @@ class BackendManager {
       workspaceId,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Invalidate only mesh-owned stdio execution resources. SSH connections are
+   * intentionally left untouched when mesh authority or membership changes.
+   */
+  async invalidateMeshExecutionConnections(): Promise<void> {
+    await meshAcpGateway.closeAll();
+
+    for (const [workspaceId, state] of this.connections) {
+      if (
+        state.settings.agent.transport !== "stdio"
+        || !state.executionNodeId
+        || state.executionNodeId === state.localNodeId
+      ) {
+        continue;
+      }
+      await this.resetWorkspaceConnection(workspaceId);
+    }
+    for (const [taskId, state] of this.taskConnections) {
+      const workspace = await getWorkspace(state.workspaceId);
+      if (
+        workspace?.serverSettings.agent.transport !== "stdio"
+        || !workspace.executionNodeId
+      ) {
+        continue;
+      }
+      await this.disconnectTask(taskId);
+    }
+    for (const key of this.commandExecutors.keys()) {
+      try {
+        const parsed = JSON.parse(key) as { executionNodeId?: string | null };
+        if (parsed.executionNodeId) {
+          const executor = this.commandExecutors.get(key);
+          if (executor && "close" in executor && typeof executor.close === "function") {
+            (executor as CommandExecutor & { close: () => void }).close();
+          }
+          this.commandExecutors.delete(key);
+        }
+      } catch {
+        this.commandExecutors.delete(key);
+      }
+    }
   }
 
   /**
@@ -484,6 +570,30 @@ class BackendManager {
       return status;
     }
 
+    if (settings.agent.transport === "stdio") {
+      const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
+      const executionNodeId = workspace.executionNodeId ?? localNodeId;
+      if (executionNodeId === localNodeId) {
+        status.executionAvailability = "local";
+      } else {
+        const link = await getMeshLinkForLocalUser(requireCurrentUserId());
+        const member = link
+          ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === executionNodeId)
+          : undefined;
+        const node = await getMeshNode(executionNodeId);
+        status.executionAvailability = (
+          link?.status === "active"
+          && member?.status === "active"
+          && node?.status === "active"
+          && Boolean(member.endpoint ?? node.endpoint)
+        )
+          ? "remote-connected"
+          : "remote-unavailable";
+      }
+    } else {
+      status.executionAvailability = "local";
+    }
+
     try {
       const executor = await this.getCommandExecutorAsync(workspaceId, workspace.directory);
       const directoryExists = await executor.directoryExists(workspace.directory);
@@ -497,6 +607,9 @@ class BackendManager {
       status.connected = status.connected && directoryExists;
     } catch (error) {
       status.connected = false;
+      if (status.executionAvailability === "remote-connected") {
+        status.executionAvailability = "remote-unavailable";
+      }
       status.error = state?.connectionError ?? String(error);
     }
 
@@ -603,8 +716,17 @@ class BackendManager {
     }
 
     // Create a new dedicated backend for this task
-    const settings = this.connections.get(workspaceId)?.settings ?? getDefaultServerSettings();
-    const backend = this.createBackendForSettings(settings);
+    const workspaceState = this.connections.get(workspaceId);
+    if (!workspaceState) {
+      throw new Error(
+        `[BackendManager] Workspace ${workspaceId} not initialized. Use getBackendAsync() or connect() first.`,
+      );
+    }
+    const backend = this.createBackendForSettings(workspaceState.settings, {
+      workspaceId,
+      localNodeId: workspaceState.localNodeId ?? null,
+      executionNodeId: workspaceState.executionNodeId ?? null,
+    });
     this.taskConnections.set(taskId, {
       backend,
       workspaceId,
@@ -696,15 +818,26 @@ class BackendManager {
       ...(execution.sshTarget?.username ? { user: execution.sshTarget.username } : {}),
     };
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
-    const executor = new CommandExecutorImpl({
-      provider: execution.provider,
-      directory: dir,
-      host: execution.sshTarget?.host,
-      port: execution.sshTarget?.port,
-      user: execution.sshTarget?.username,
-      password: execution.sshTarget?.password,
-      identityFile: execution.sshTarget?.identityFile,
-    });
+    const executionNodeId = state.executionNodeId;
+    const executor = state.settings.agent.transport === "stdio"
+      && executionNodeId
+      && state.localNodeId
+      && executionNodeId !== state.localNodeId
+      ? new MeshCommandExecutor({
+        workspaceId,
+        directory: dir,
+        executionNodeId,
+        localUserId: requireCurrentUserId(),
+      })
+      : new CommandExecutorImpl({
+        provider: execution.provider,
+        directory: dir,
+        host: execution.sshTarget?.host,
+        port: execution.sshTarget?.port,
+        user: execution.sshTarget?.username,
+        password: execution.sshTarget?.password,
+        identityFile: execution.sshTarget?.identityFile,
+      });
     this.commandExecutors.set(cacheKey, executor);
     return executor;
   }

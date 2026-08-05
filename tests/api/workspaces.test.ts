@@ -309,6 +309,45 @@ describe("Workspace API Integration", () => {
       expect(data.allowClankyContext).toBe(false);
     });
 
+    test("assigns stdio ownership server-side instead of accepting a client node", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Owned Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings(),
+          executionNodeId: "attacker-node",
+        }),
+      });
+
+      expect(response.ok).toBe(true);
+      const created = await response.json() as { id: string; executionNodeId?: string | null };
+      expect(created.executionNodeId).toBeTruthy();
+      expect(created.executionNodeId).not.toBe("attacker-node");
+      const persistedResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
+      expect((await persistedResponse.json()).executionNodeId).toBe(created.executionNodeId);
+    });
+
+    test("keeps SSH workspace execution ownership null", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "SSH Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings({ mode: "connect" }),
+          executionNodeId: "attacker-node",
+        }),
+      });
+
+      expect(response.ok).toBe(true);
+      const created = await response.json() as { id: string; executionNodeId?: string | null };
+      expect(created.executionNodeId).toBeNull();
+      const persistedResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
+      expect((await persistedResponse.json()).executionNodeId).toBeNull();
+    });
+
     test("persists an opted-in Clanky context setting", async () => {
       const response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -1630,6 +1669,7 @@ describe("Workspace API Integration", () => {
 
         expect(updated.name).toBe("New Name");
         expect(updated.serverSettings.agent.transport).toBe("ssh");
+        expect(updated.executionNodeId).toBeNull();
         expect(updated.serverSettings.agent.hostname).toBe("new-server.com");
         expect(updated.serverSettings.agent.port).toBe(7000);
       });
