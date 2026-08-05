@@ -105,6 +105,12 @@ export function DraftTaskComposer({
     onMarkTaskStarting(task.config.id, optimisticStatus);
 
     void (async () => {
+      const resetFailedStart = async (): Promise<void> => {
+        startRequestedRef.current = false;
+        onClearOptimisticTaskStart(task.config.id);
+        await onRefresh();
+      };
+
       try {
         const persisted = await persistDraftChanges({
           taskId: task.config.id,
@@ -118,8 +124,7 @@ export function DraftTaskComposer({
           },
         });
         if (!persisted) {
-          onClearOptimisticTaskStart(task.config.id);
-          await onRefresh();
+          await resetFailedStart();
           return;
         }
 
@@ -136,11 +141,11 @@ export function DraftTaskComposer({
         }
 
         if (result.status !== "started") {
-          await onRefresh();
+          await resetFailedStart();
         }
       } catch (error) {
         toast.error(String(error));
-        await onRefresh();
+        await resetFailedStart();
       }
     })();
 

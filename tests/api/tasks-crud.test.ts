@@ -1745,6 +1745,64 @@ describe("Tasks CRUD API Integration", () => {
       expect(getBody.state.git).toBeDefined();
     });
 
+    test("keeps a draft when main-checkout preflight finds uncommitted changes", async () => {
+      const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-preflight-test-"));
+      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
+      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+      const defaultBranch = (await Bun.$`git -C ${uniqueWorkDir} branch --show-current`.text()).trim();
+
+      try {
+        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId,
+            baseBranch: defaultBranch,
+            prompt: "Preflight draft task",
+            name: "Preflight Draft Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: false,
+          }),
+        });
+        expect(createResponse.status).toBe(201);
+        const taskId = (await createResponse.json()).config.id as string;
+
+        await Bun.write(join(uniqueWorkDir, "README.md"), "uncommitted change\n");
+
+        const blockedStartResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(blockedStartResponse.status).toBe(409);
+        expect((await blockedStartResponse.json()).error).toBe("uncommitted_changes");
+
+        const draftResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        expect(draftResponse.status).toBe(200);
+        expect((await draftResponse.json()).state.status).toBe("draft");
+
+        await Bun.write(join(uniqueWorkDir, "README.md"), "");
+        const retryResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planMode: false, attachments: [] }),
+        });
+        expect(retryResponse.status).toBe(200);
+        expect((await retryResponse.json()).state.status).not.toBe("draft");
+        await waitForTaskCompletion(taskId);
+      } finally {
+        await rm(uniqueWorkDir, { recursive: true, force: true });
+      }
+    });
+
     test("claims an immediate draft before setup and blocks stale edits and retries", async () => {
       const executor = new SetupGateExecutor({ blockSetup: true });
       backendManager.setExecutorFactoryForTesting(() => executor);

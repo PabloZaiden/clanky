@@ -288,6 +288,18 @@ export async function startDraftImpl(
       );
     }
 
+    if (!task.config.useWorktree) {
+      const preflightExecutor = await backendManager.getCommandExecutorAsync(
+        task.config.workspaceId,
+        task.config.directory,
+      );
+      await validateMainCheckoutStartImpl(
+        ctx,
+        task,
+        GitService.withExecutor(preflightExecutor),
+      );
+    }
+
     const nextStatus = options.planMode ? "planning" : "starting";
     assertValidTransition(task.state.status, nextStatus, "startDraft");
     task.state.status = nextStatus;
