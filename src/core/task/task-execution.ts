@@ -23,6 +23,81 @@ export { validateMainCheckoutStartImpl, ensureTaskBranchCheckedOutImpl } from ".
 export { clearPlanningFilesImpl } from "./task-planning-files";
 export { recoverPlanningEngineImpl } from "./task-engine-recovery";
 
+function runEngineInBackground(
+  ctx: TaskCtx,
+  taskId: string,
+  engine: TaskEngine,
+  failureMessage: string,
+): void {
+  // Engine execution is intentionally detached because it can run for hours.
+  void (async () => {
+    let startFailed = false;
+    try {
+      await engine.start();
+    } catch (error) {
+      startFailed = true;
+      log.error(failureMessage, {
+        taskId,
+        error: String(error),
+      });
+    }
+
+    if (ctx.engines.get(taskId) !== engine) {
+      return;
+    }
+
+    if (
+      !startFailed
+      && !["completed", "stopped", "failed", "max_iterations"].includes(engine.state.status)
+    ) {
+      return;
+    }
+
+    ctx.engines.delete(taskId);
+    try {
+      await backendManager.disconnectTask(taskId);
+    } catch (error) {
+      log.error("Failed to disconnect task backend after engine completion", {
+        taskId,
+        error: String(error),
+      });
+    }
+  })();
+}
+
+async function persistDraftStartFailure(
+  ctx: TaskCtx,
+  taskId: string,
+  cause: unknown,
+): Promise<void> {
+  if (ctx.engines.has(taskId)) {
+    return;
+  }
+
+  const task = await loadTask(taskId);
+  if (!task || (task.state.status !== "starting" && task.state.status !== "planning")) {
+    return;
+  }
+
+  const message = String(cause);
+  assertValidTransition(task.state.status, "failed", "startDraft");
+  task.state.status = "failed";
+  task.state.completedAt = createTimestamp();
+  task.state.error = {
+    message,
+    iteration: task.state.currentIteration,
+    timestamp: createTimestamp(),
+  };
+  await updateTaskOperationalState(taskId, task.state);
+  ctx.emitter.emit({
+    type: "task.error",
+    taskId,
+    error: message,
+    iteration: task.state.currentIteration,
+    timestamp: createTimestamp(),
+  });
+}
+
 export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: StartTaskOptions): Promise<void> {
   const task = await loadTask(taskId);
   if (!task) {
@@ -72,12 +147,7 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
     taskId,
     workspaceId: task.config.workspaceId,
   });
-  engine.start().catch((error) => {
-    log.error("Task execution failed after start", {
-      taskId,
-      error: String(error),
-    });
-  });
+  runEngineInBackground(ctx, taskId, engine, "Task execution failed after start");
 }
 
 export async function stopTaskImpl(ctx: TaskCtx, taskId: string, reason = "User requested stop"): Promise<void> {
@@ -185,12 +255,7 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
     taskId,
     workspaceId: task.config.workspaceId,
   });
-  engine.start().catch((error) => {
-    log.error("Task plan mode failed after start", {
-      taskId,
-      error: String(error),
-    });
-  });
+  runEngineInBackground(ctx, taskId, engine, "Task plan mode failed after start");
 }
 
 export async function startDraftImpl(
@@ -198,41 +263,64 @@ export async function startDraftImpl(
   taskId: string,
   options: { planMode: boolean; attachments?: StartTaskOptions["attachments"] }
 ): Promise<Task> {
-  const task = await loadTask(taskId);
-  if (!task) {
-    throw new TaskOperationError("task_not_found", "Task not found", {
-      details: { taskId },
-    });
-  }
-
-  if (task.state.status !== "draft") {
+  if (ctx.tasksBeingStarted.has(taskId)) {
     throw new TaskOperationError(
-      "invalid_task_state",
-      `Task is not in draft status: ${task.state.status}`,
-      { details: { taskId, status: task.state.status } },
+      "operation_in_progress",
+      "Task start is already in progress",
+      { details: { taskId } },
     );
   }
 
-  if (options.planMode) {
-    assertValidTransition(task.state.status, "planning", "startDraft");
-    task.state.status = "planning";
-    task.state.planMode = {
-      active: true,
-      feedbackRounds: 0,
-      planningFolderCleared: false,
-      isPlanReady: false,
-    };
-    await updateTaskOperationalState(taskId, task.state);
+  ctx.tasksBeingStarted.add(taskId);
+  try {
+    const task = await loadTask(taskId);
+    if (!task) {
+      throw new TaskOperationError("task_not_found", "Task not found", {
+        details: { taskId },
+      });
+    }
 
-    await startPlanModeImpl(ctx, taskId, { attachments: options.attachments });
-  } else {
-    assertValidTransition(task.state.status, "idle", "startDraft");
-    task.state.status = "idle";
-    await updateTaskOperationalState(taskId, task.state);
+    if (task.state.status !== "draft") {
+      throw new TaskOperationError(
+        "invalid_task_state",
+        `Task is not in draft status: ${task.state.status}`,
+        { details: { taskId, status: task.state.status } },
+      );
+    }
 
-    await startTaskImpl(ctx, taskId, { attachments: options.attachments });
+    const nextStatus = options.planMode ? "planning" : "starting";
+    assertValidTransition(task.state.status, nextStatus, "startDraft");
+    task.state.status = nextStatus;
+    task.state.startedAt ??= createTimestamp();
+    task.state.completedAt = undefined;
+    task.state.error = undefined;
+    if (options.planMode) {
+      task.state.planMode = {
+        active: true,
+        feedbackRounds: 0,
+        planningFolderCleared: false,
+        isPlanReady: false,
+      };
+    }
+    await updateTaskOperationalState(taskId, task.state);
+    ctx.emitter.emit({
+      type: "task.starting",
+      taskId,
+      timestamp: createTimestamp(),
+    });
+
+    if (options.planMode) {
+      await startPlanModeImpl(ctx, taskId, { attachments: options.attachments });
+    } else {
+      await startTaskImpl(ctx, taskId, { attachments: options.attachments });
+    }
+
+    const updatedTask = await ctx.getTask(taskId);
+    return updatedTask ?? task;
+  } catch (error) {
+    await persistDraftStartFailure(ctx, taskId, error);
+    throw error;
+  } finally {
+    ctx.tasksBeingStarted.delete(taskId);
   }
-
-  const updatedTask = await ctx.getTask(taskId);
-  return updatedTask ?? task;
 }

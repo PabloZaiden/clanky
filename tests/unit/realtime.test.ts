@@ -103,6 +103,25 @@ describe("Clanky realtime migration", () => {
     expect(recording.streams).toEqual([]);
   });
 
+  test("invalidates tasks when startup is claimed", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "task.starting",
+      taskId: "task-1",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    expect(recording.resources).toEqual([{
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.tasks,
+      action: "changed",
+      id: "task-1",
+      scope: undefined,
+    }]);
+    expect(recording.streams).toEqual([]);
+  });
+
   test("retains incremental events while also invalidating authoritative state", () => {
     const recording = createRecordingPublisher();
 

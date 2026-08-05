@@ -501,6 +501,7 @@ export async function forceResetAllImpl(ctx: TaskCtx): Promise<{ enginesCleared:
 
   ctx.engines.clear();
   ctx.tasksBeingAccepted.clear();
+  ctx.tasksBeingStarted.clear();
 
   const tasksReset = await resetStaleTasks();
 
@@ -517,4 +518,5 @@ export async function forceResetAllImpl(ctx: TaskCtx): Promise<{ enginesCleared:
 export function resetForTestingImpl(ctx: TaskCtx): void {
   ctx.engines.clear();
   ctx.tasksBeingAccepted.clear();
+  ctx.tasksBeingStarted.clear();
 }

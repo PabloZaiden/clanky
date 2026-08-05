@@ -15,6 +15,8 @@ export interface UseTasksStateResult {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   refresh: (options?: { showLoading?: boolean }) => Promise<void>;
   refreshTask: (id: string) => Promise<void>;
+  markTaskStarting: (id: string, status: "starting" | "planning") => void;
+  clearOptimisticTaskStart: (id: string) => void;
   getTask: (id: string) => Task | undefined;
 }
 
@@ -25,6 +27,45 @@ export function useTasksState(): UseTasksStateResult {
 
   // AbortController for cancelling in-flight fetch requests on unmount
   const abortControllerRef = useRef<AbortController | null>(null);
+  const optimisticTaskStatusesRef = useRef<Map<string, "starting" | "planning">>(new Map());
+
+  const reconcileTasks = useCallback((
+    nextTasks: Task[],
+    options: { removeMissingOptimisticTasks?: boolean } = {},
+  ): Task[] => {
+    const returnedTaskIds = new Set<string>();
+    const reconciledTasks = nextTasks.map((task) => {
+      const taskId = task.config.id;
+      returnedTaskIds.add(taskId);
+      const optimisticStatus = optimisticTaskStatusesRef.current.get(taskId);
+      if (!optimisticStatus) {
+        return task;
+      }
+
+      if (task.state.status !== "draft") {
+        optimisticTaskStatusesRef.current.delete(taskId);
+        return task;
+      }
+
+      return {
+        ...task,
+        state: {
+          ...task.state,
+          status: optimisticStatus,
+        },
+      };
+    });
+
+    if (options.removeMissingOptimisticTasks ?? true) {
+      for (const taskId of optimisticTaskStatusesRef.current.keys()) {
+        if (!returnedTaskIds.has(taskId)) {
+          optimisticTaskStatusesRef.current.delete(taskId);
+        }
+      }
+    }
+
+    return reconciledTasks;
+  }, []);
 
   const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
     const showLoading = options.showLoading ?? true;
@@ -44,7 +85,7 @@ export function useTasksState(): UseTasksStateResult {
         throw new Error(`Failed to fetch tasks: ${response.statusText}`);
       }
       const data = (await response.json()) as Task[];
-      setTasks(data);
+      setTasks(reconcileTasks(data));
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setError(String(err));
@@ -53,7 +94,7 @@ export function useTasksState(): UseTasksStateResult {
         setLoading(false);
       }
     }
-  }, []);
+  }, [reconcileTasks]);
 
   const refreshTask = useCallback(async (id: string) => {
     try {
@@ -61,6 +102,7 @@ export function useTasksState(): UseTasksStateResult {
       if (!response.ok) {
         if (response.status === 404) {
           // Task was deleted
+          optimisticTaskStatusesRef.current.delete(id);
           setTasks((prev) => prev.filter((task) => task.config.id !== id));
           return;
         }
@@ -69,21 +111,44 @@ export function useTasksState(): UseTasksStateResult {
       const tasks = await response.json() as Task[];
       const task = tasks.find((item) => item.config.id === id);
       if (!task) {
+        optimisticTaskStatusesRef.current.delete(id);
         setTasks((prev) => prev.filter((item) => item.config.id !== id));
         return;
       }
+      const reconciledTask = reconcileTasks([task], {
+        removeMissingOptimisticTasks: false,
+      })[0] ?? task;
       setTasks((prev) => {
         const index = prev.findIndex((l) => l.config.id === id);
         if (index >= 0) {
           const newTasks = [...prev];
-          newTasks[index] = task;
+          newTasks[index] = reconciledTask;
           return newTasks;
         }
-        return [...prev, task];
+        return [...prev, reconciledTask];
       });
     } catch (err) {
       log.error("Failed to refresh task:", err);
     }
+  }, [reconcileTasks]);
+
+  const markTaskStarting = useCallback((id: string, status: "starting" | "planning") => {
+    optimisticTaskStatusesRef.current.set(id, status);
+    setTasks((prev) => prev.map((task) => (
+      task.config.id === id
+        ? {
+            ...task,
+            state: {
+              ...task.state,
+              status,
+            },
+          }
+        : task
+    )));
+  }, []);
+
+  const clearOptimisticTaskStart = useCallback((id: string) => {
+    optimisticTaskStatusesRef.current.delete(id);
   }, []);
 
   const getTask = useCallback(
@@ -102,5 +167,16 @@ export function useTasksState(): UseTasksStateResult {
     };
   }, [refresh]);
 
-  return { tasks, loading, error, setTasks, setError, refresh, refreshTask, getTask };
+  return {
+    tasks,
+    loading,
+    error,
+    setTasks,
+    setError,
+    refresh,
+    refreshTask,
+    markTaskStarting,
+    clearOptimisticTaskStart,
+    getTask,
+  };
 }

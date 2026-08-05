@@ -49,11 +49,13 @@ export class TaskManager {
     this.engines = new Map<string, TaskEngine>();
     const emitter = options?.eventEmitter ?? taskEventEmitter;
     const tasksBeingAccepted = new Set<string>();
+    const tasksBeingStarted = new Set<string>();
 
     this.ctx = {
       engines: this.engines,
       emitter,
       tasksBeingAccepted,
+      tasksBeingStarted,
       stopTask: (id, reason) => this.stopTask(id, reason),
       deleteTask: (id) => this.deleteTask(id),
       discardTask: (id) => this.discardTask(id),

@@ -60,6 +60,8 @@ export interface ShellMainContentProps {
 
   // Task actions
   refreshTasks: () => Promise<void>;
+  markTaskStarting: (taskId: string, status: "starting" | "planning") => void;
+  clearOptimisticTaskStart: (taskId: string) => void;
   refreshChats: () => Promise<void>;
   purgeTask: (taskId: string) => Promise<boolean>;
   refreshSshSessions: () => Promise<void>;
@@ -272,6 +274,8 @@ function renderMainContent(props: ShellMainContentProps) {
           workspacesLoading={workspacesLoading}
           onRefresh={refreshTasks}
           onDeleteDraft={purgeTask}
+          onMarkTaskStarting={props.markTaskStarting}
+          onClearOptimisticTaskStart={props.clearOptimisticTaskStart}
           onNavigate={navigateWithinShell}
         />
       );

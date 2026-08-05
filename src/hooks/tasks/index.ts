@@ -30,6 +30,10 @@ export interface UseTasksResult {
   updateTask: (id: string, request: UpdateTaskRequest) => Promise<Task | null>;
   /** Delete a task */
   deleteTask: (id: string) => Promise<boolean>;
+  /** Optimistically remove a draft status before startup setup begins */
+  markTaskStarting: (id: string, status: "starting" | "planning") => void;
+  /** Stop overlaying an optimistic startup status after a pre-claim failure */
+  clearOptimisticTaskStart: (id: string) => void;
   /** Accept a task's committed changes locally */
   acceptTask: (id: string) => Promise<AcceptTaskResult>;
   /** Push a task's branch to remote */
@@ -52,7 +56,18 @@ export interface UseTasksResult {
  * Hook for managing tasks state with framework realtime resource updates.
  */
 export function useTasks(): UseTasksResult {
-  const { tasks, loading, error, setTasks, setError, refresh, refreshTask, getTask } = useTasksState();
+  const {
+    tasks,
+    loading,
+    error,
+    setTasks,
+    setError,
+    refresh,
+    refreshTask,
+    markTaskStarting,
+    clearOptimisticTaskStart,
+    getTask,
+  } = useTasksState();
 
   useRealtimeRefreshWithRecovery({
     resources: ["tasks"],
@@ -74,6 +89,8 @@ export function useTasks(): UseTasksResult {
     createTask,
     updateTask,
     deleteTask,
+    markTaskStarting,
+    clearOptimisticTaskStart,
     acceptTask,
     pushTask,
     updateBranch,
