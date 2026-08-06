@@ -147,17 +147,25 @@ export function CreateTaskForm({
     setAttachments([]);
   }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
 
+  function applyIssueAutofill(issueNumberValue: number, issueTitle?: string) {
+    const autofillText = `Address issue #${issueNumberValue}`;
+    const autofillTitle = issueTitle === undefined
+      ? autofillText
+      : `${autofillText}: ${issueTitle}`.slice(0, 100);
+
+    setName(autofillTitle);
+    nameRef.current = autofillTitle;
+    setPrompt(autofillText);
+    promptRef.current = autofillText;
+    setSelectedTemplate("");
+  }
+
   function handleAutofillPrompt() {
     if (parsedIssueNumber === undefined) {
       return;
     }
 
-    const autofillText = `Address issue #${parsedIssueNumber}`;
-    setName(autofillText);
-    nameRef.current = autofillText;
-    setPrompt(autofillText);
-    promptRef.current = autofillText;
-    setSelectedTemplate("");
+    applyIssueAutofill(parsedIssueNumber);
   }
 
   return (
@@ -284,7 +292,17 @@ export function CreateTaskForm({
             <select
               id="issueNumber"
               value={issueNumber}
-              onChange={(e) => setIssueNumber(e.target.value)}
+              onChange={(e) => {
+                const selectedIssueNumber = e.target.value;
+                setIssueNumber(selectedIssueNumber);
+
+                const selectedIssue = githubIssues.find(
+                  (issue) => String(issue.number) === selectedIssueNumber,
+                );
+                if (selectedIssue) {
+                  applyIssueAutofill(selectedIssue.number, selectedIssue.title);
+                }
+              }}
               className="block min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
             >
               <option value="">Optional</option>
@@ -308,16 +326,18 @@ export function CreateTaskForm({
               Fetch issues
             </Button>
           )}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleAutofillPrompt}
-            disabled={parsedIssueNumber === undefined}
-            className="shrink-0"
-          >
-            Autofill
-          </Button>
+          {githubIssues === null && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleAutofillPrompt}
+              disabled={parsedIssueNumber === undefined}
+              className="shrink-0"
+            >
+              Autofill
+            </Button>
+          )}
         </div>
         {githubIssuesError && (
           <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
