@@ -326,7 +326,11 @@ function WorkspaceFileTreeComponent({
       {!collapsed && (
         <div
           data-testid="workspace-file-tree-scroll"
-          className="min-h-0 flex-1 overflow-auto p-2"
+          aria-busy={loading}
+          className={[
+            "relative min-h-0 flex-1 overflow-auto p-2",
+            loading ? "min-h-32" : "",
+          ].join(" ")}
         >
           {error && (
             <div
@@ -339,6 +343,22 @@ function WorkspaceFileTreeComponent({
           <div data-testid="workspace-file-tree-content" className="min-w-full w-max">
             {renderedTree}
           </div>
+          {loading && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 px-4 text-center text-sm text-gray-500 backdrop-blur-[1px] dark:bg-neutral-900/80 dark:text-gray-400"
+            >
+              <div
+                aria-hidden="true"
+                className="h-6 w-6 animate-spin rounded-full border-2 border-gray-400 border-t-transparent dark:border-gray-500"
+              />
+              <div>
+                <p className="font-medium text-gray-700 dark:text-gray-200">Loading file tree...</p>
+                <p className="mt-1">Fetching workspace files</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
