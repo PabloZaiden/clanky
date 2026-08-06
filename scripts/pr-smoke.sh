@@ -73,8 +73,9 @@ normalize_url() {
 }
 
 content_type_for_headers() {
-  grep -i '^content-type:' "$1" \
-    | tail -n 1 \
+  local content_type
+  content_type="$(grep -i '^content-type:' "$1" | tail -n 1 || true)"
+  printf '%s\n' "$content_type" \
     | cut -d ':' -f 2- \
     | tr -d '\r' \
     | sed -E 's/^[[:space:]]*//' \
@@ -112,7 +113,7 @@ fetch_resource() {
 require_content_type() {
   local label="$1"
   local expected="$2"
-  if [[ "$CONTENT_TYPE" != $expected ]]; then
+  if [[ "$CONTENT_TYPE" != "$expected" ]]; then
     fail "${label} returned Content-Type ${CONTENT_TYPE}, expected ${expected}"
   fi
 }
