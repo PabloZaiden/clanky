@@ -3,9 +3,15 @@ import type { Server } from "bun";
 import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
 
-export function serveNativeApiRoutes(): Server<unknown> {
+export interface NativeApiServerOptions {
+  /** Bun.serve's idleTimeout value, expressed in seconds. */
+  idleTimeout?: number;
+}
+
+export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Server<unknown> {
   return Bun.serve({
     port: 0,
+    ...(options.idleTimeout === undefined ? {} : { idleTimeout: options.idleTimeout }),
     fetch: async (req, server) => {
       const matched = matchRoute(apiRoutes, new URL(req.url).pathname);
       if (!matched) {

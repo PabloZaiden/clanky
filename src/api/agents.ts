@@ -30,7 +30,7 @@ import {
 
 const log = createLogger("api:agents");
 const GENERATE_CODE_HEARTBEAT_INTERVAL_MS = 4_000;
-const TEST_CODE_HEARTBEAT_INTERVAL_MS = 4_000;
+export const TEST_CODE_HEARTBEAT_INTERVAL_MS = 4_000;
 
 function transcriptResponseHeaders(revision: string): Headers {
   return new Headers({

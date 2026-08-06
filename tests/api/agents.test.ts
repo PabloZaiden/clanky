@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
+import { TEST_CODE_HEARTBEAT_INTERVAL_MS } from "../../src/api/agents";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -22,6 +23,13 @@ import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const TEST_HTTP_IDLE_TIMEOUT_SECONDS = 1;
+const TEST_HTTP_IDLE_TIMEOUT_MS = TEST_HTTP_IDLE_TIMEOUT_SECONDS * 1000;
+const TEST_IDLE_TIMEOUT_MARGIN_MS = 500;
+const TEST_STREAM_SILENCE_MS = Math.max(
+  TEST_HTTP_IDLE_TIMEOUT_MS,
+  TEST_CODE_HEARTBEAT_INTERVAL_MS,
+) + TEST_IDLE_TIMEOUT_MARGIN_MS;
 
 describe("Agents API Integration", () => {
   let testDataDir: string;
@@ -182,7 +190,7 @@ describe("Agents API Integration", () => {
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
-    server = serveNativeApiRoutes();
+    server = serveNativeApiRoutes({ idleTimeout: TEST_HTTP_IDLE_TIMEOUT_SECONDS });
     baseUrl = server.url.toString().replace(/\/$/, "");
     workspaceId = await getOrCreateWorkspace(testWorkDir);
   });
@@ -552,9 +560,12 @@ describe("Agents API Integration", () => {
     writeGenerationSource = false;
     mockBackend.setResponseGate(() => providerGate);
 
-    // Deliberately cross Bun's default idle timeout to prove this request has
-    // an explicit unlimited timeout rather than relying only on heartbeats.
-    const releaseTimer = setTimeout(releaseProvider, 11_000);
+    // Deliberately cross the configured test idle timeout to prove this request
+    // has an explicit unlimited timeout rather than relying only on heartbeats.
+    const releaseTimer = setTimeout(
+      releaseProvider,
+      TEST_HTTP_IDLE_TIMEOUT_MS + TEST_IDLE_TIMEOUT_MARGIN_MS,
+    );
     try {
       const agent = await createAgent("Idle timeout generation agent");
       const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
@@ -733,7 +744,7 @@ describe("Agents API Integration", () => {
         prompt: "Run the long-running draft",
         code: `export default async function run(ctx) {
   ctx.stdout.write("long-running stdout\\n");
-  await new Promise((resolve) => setTimeout(resolve, 11_000));
+  await new Promise((resolve) => setTimeout(resolve, ${TEST_STREAM_SILENCE_MS}));
   ctx.stderr.write("long-running stderr\\n");
 }`,
         workspaceId,
@@ -779,7 +790,7 @@ describe("Agents API Integration", () => {
     }
 
     expect(terminalResult?.status).toBe("completed");
-    expect(blankLineCount).toBeGreaterThanOrEqual(3);
+    expect(blankLineCount).toBeGreaterThanOrEqual(2);
     expect(logMessages.some((message) => message.includes("long-running stdout"))).toBe(true);
     expect(logMessages.some((message) => message.includes("long-running stderr"))).toBe(true);
     expect(terminalResult?.logs.some((entry) => entry.message.includes("long-running stdout"))).toBe(true);
