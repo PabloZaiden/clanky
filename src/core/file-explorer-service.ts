@@ -13,10 +13,14 @@ import {
   fileExplorerOperationError,
 } from "./file-explorer-errors";
 import { getBrowserImageMimeType } from "../utils/workspace-file-images";
+import { createLogger } from "@pablozaiden/webapp/server";
 
 export { FileExplorerConflictError } from "./file-explorer-errors";
 
+const log = createLogger("core:file-explorer-service");
 const LIST_SEPARATOR = "\t";
+const FULL_TREE_FIELD_SEPARATOR = "\0";
+const FULL_TREE_RECORD_SEPARATOR = "\0\0";
 const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
   ".git",
   "node_modules",
@@ -48,6 +52,39 @@ const FULL_TREE_DEFERRED_DIRECTORY_NAME_SET = new Set<string>(FULL_TREE_DEFERRED
 const FULL_TREE_DEFERRED_FIND_PATTERN = FULL_TREE_DEFERRED_DIRECTORY_NAMES
   .map((name) => `-name '${name}'`)
   .join(" -o ");
+
+const FULL_TREE_CAPABILITY_SCRIPT = [
+  "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
+  "if ! command -v find >/dev/null 2>&1 || ! command -v stat >/dev/null 2>&1; then exit 3; fi;",
+  "if ! find \"$root\" -prune -exec true {} + >/dev/null 2>&1; then exit 3; fi;",
+  "if stat -c '%f' \"$root\" >/dev/null 2>&1; then printf 'gnu';",
+  "else bsdMode=$(stat -f '%p' \"$root\" 2>/dev/null) || bsdMode=;",
+  "case \"$bsdMode\" in [0-7][0-7][0-7][0-7][0-7]|[0-7][0-7][0-7][0-7][0-7][0-7]) printf 'bsd';; *) exit 3;; esac; fi",
+].join(" ");
+const FULL_TREE_EMIT_SCRIPT =
+  "source=\"$1\"; statFlag=\"$2\"; statFormat=\"$3\"; followFlag=\"$4\"; shift 4; for path do if [ \"$followFlag\" = \"1\" ]; then mode=$(stat -L \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); else mode=$(stat \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); fi; if [ -z \"$mode\" ]; then printf \"error\\0%s\\0stat_failed\\0\\0\" \"$path\"; else printf \"%s\\0%s\\0%s\\0\\0\" \"$source\" \"$path\" \"$mode\"; fi; done";
+
+type FullTreeStatFormat = {
+  family: "gnu" | "bsd";
+  flag: "-c" | "-f";
+  format: "%f" | "%p";
+  modeBase: 8 | 16;
+};
+
+const FULL_TREE_STAT_FORMATS: Record<FullTreeStatFormat["family"], FullTreeStatFormat> = {
+  gnu: {
+    family: "gnu",
+    flag: "-c",
+    format: "%f",
+    modeBase: 16,
+  },
+  bsd: {
+    family: "bsd",
+    flag: "-f",
+    format: "%p",
+    modeBase: 8,
+  },
+};
 
 export interface FileExplorerTarget {
   id: string;
@@ -539,28 +576,25 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
   return entriesByDirectory;
 }
 
-function normalizeFullTreeLine(line: string): string {
-  return line.endsWith("\r") ? line.slice(0, -1) : line;
+function parseModeText(modeText: string, base: 8 | 16): number | null {
+  const pattern = base === 8 ? /^[0-7]+$/ : /^[0-9a-fA-F]+$/;
+  if (!pattern.test(modeText)) {
+    return null;
+  }
+
+  const mode = Number.parseInt(modeText, base);
+  return Number.isSafeInteger(mode) ? mode : null;
 }
 
-function parseModeText(modeText: string): { mode: number; base: 8 | 16 } {
-  if (/^[0-7]+$/.test(modeText)) {
-    return {
-      mode: Number.parseInt(modeText, 8),
-      base: 8,
-    };
+function parseModeKind(
+  modeText: string,
+  base: 8 | 16,
+): "directory" | "file" | "symlink" | null {
+  const mode = parseModeText(modeText, base);
+  if (mode === null) {
+    return null;
   }
-  if (/^[0-9a-fA-F]+$/.test(modeText)) {
-    return {
-      mode: Number.parseInt(modeText, 16),
-      base: 16,
-    };
-  }
-  throw fileExplorerOperationError("Invalid file mode");
-}
 
-function parseModeKind(modeText: string): "directory" | "file" | "symlink" {
-  const { mode, base } = parseModeText(modeText);
   const fileType = base === 8 ? mode & 0o170000 : mode & 0xf000;
   if (fileType === (base === 8 ? 0o040000 : 0x4000)) {
     return "directory";
@@ -571,61 +605,158 @@ function parseModeKind(modeText: string): "directory" | "file" | "symlink" {
   return "file";
 }
 
-function parseFullTreeLine(line: string): {
+interface FullTreeParsedEntry {
   source: "base" | "link";
   absolutePath: string;
   kind: "directory" | "file" | "symlink";
-} {
-  const normalizedLine = normalizeFullTreeLine(line);
-  if (!normalizedLine) {
-    throw fileExplorerOperationError("Failed to parse file tree");
+}
+
+interface FullTreeParseResult {
+  entries: FullTreeParsedEntry[];
+  skippedRecordReasons: Record<string, number>;
+}
+
+function isFullTreePathWithinRoot(rootDirectory: string, absolutePath: string): boolean {
+  if (!pathPosix.isAbsolute(absolutePath)) {
+    return false;
   }
 
-  const firstSeparatorIndex = normalizedLine.indexOf(LIST_SEPARATOR);
-  const lastSeparatorIndex = normalizedLine.lastIndexOf(LIST_SEPARATOR);
-  if (
-    firstSeparatorIndex <= 0
-    || lastSeparatorIndex <= firstSeparatorIndex
-    || lastSeparatorIndex === normalizedLine.length - 1
-  ) {
-    throw fileExplorerOperationError("Failed to parse file tree");
+  const root = normalizeRootDirectory(rootDirectory);
+  const relativePath = pathPosix.relative(root, pathPosix.normalize(absolutePath));
+  return relativePath === ""
+    || (!relativePath.startsWith("..") && !pathPosix.isAbsolute(relativePath));
+}
+
+function parseFullTreeOutput(
+  stdout: string,
+  rootDirectory: string,
+  statFormat: FullTreeStatFormat,
+): FullTreeParseResult {
+  if (!stdout) {
+    return {
+      entries: [],
+      skippedRecordReasons: {},
+    };
+  }
+  if (!stdout.endsWith(FULL_TREE_RECORD_SEPARATOR)) {
+    throw fileExplorerOperationError("Failed to parse file tree: incomplete record");
   }
 
-  const source = normalizedLine.slice(0, firstSeparatorIndex);
-  if (source !== "base" && source !== "link") {
-    throw fileExplorerOperationError("Failed to parse file tree");
+  const payload = stdout.slice(0, -FULL_TREE_RECORD_SEPARATOR.length);
+  if (!payload) {
+    return {
+      entries: [],
+      skippedRecordReasons: {},
+    };
   }
 
-  const absolutePath = normalizedLine.slice(firstSeparatorIndex + LIST_SEPARATOR.length, lastSeparatorIndex);
-  const modeText = normalizedLine.slice(lastSeparatorIndex + LIST_SEPARATOR.length).trim();
-  if (!absolutePath) {
-    throw fileExplorerOperationError("Failed to parse file tree");
-  }
-  if (!modeText) {
-    throw fileExplorerOperationError("Failed to parse file tree");
+  const entries: FullTreeParsedEntry[] = [];
+  const skippedRecordReasons = new Map<string, number>();
+  const skipRecord = (reason: string): void => {
+    skippedRecordReasons.set(reason, (skippedRecordReasons.get(reason) ?? 0) + 1);
+  };
+
+  for (const record of payload.split(FULL_TREE_RECORD_SEPARATOR)) {
+    const fields = record.split(FULL_TREE_FIELD_SEPARATOR);
+    if (fields.length !== 3) {
+      skipRecord("invalid_field_count");
+      continue;
+    }
+
+    const source = fields[0];
+    const absolutePath = fields[1];
+    const value = fields[2];
+    if (!source || !absolutePath || !value) {
+      skipRecord("empty_field");
+      continue;
+    }
+    if (source === "error") {
+      skipRecord("remote_entry_error");
+      continue;
+    }
+    if (source !== "base" && source !== "link") {
+      skipRecord("invalid_source");
+      continue;
+    }
+    if (!isFullTreePathWithinRoot(rootDirectory, absolutePath)) {
+      skipRecord("path_outside_root");
+      continue;
+    }
+
+    const kind = parseModeKind(value, statFormat.modeBase);
+    if (!kind) {
+      skipRecord("invalid_mode");
+      continue;
+    }
+
+    entries.push({
+      source,
+      absolutePath,
+      kind,
+    });
   }
 
   return {
-    source,
-    absolutePath,
-    kind: parseModeKind(modeText),
+    entries,
+    skippedRecordReasons: Object.fromEntries(skippedRecordReasons),
   };
+}
+
+async function detectFullTreeStatFormat(
+  executor: CommandExecutor,
+  rootDirectory: string,
+): Promise<FullTreeStatFormat> {
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      FULL_TREE_CAPABILITY_SCRIPT,
+      "file-explorer-tree-capabilities",
+      rootDirectory,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+
+  if (!result.success) {
+    if (result.exitCode === 2) {
+      throw new FileExplorerError("file_not_found", "Requested path does not exist");
+    }
+    throw fileExplorerOperationError(
+      "Workspace host does not support structured file-tree discovery",
+      result.stderr || `Capability probe exited with code ${result.exitCode}`,
+    );
+  }
+
+  const family = result.stdout.trim();
+  if (family !== "gnu" && family !== "bsd") {
+    throw fileExplorerOperationError("Failed to parse file-tree capability result");
+  }
+  return FULL_TREE_STAT_FORMATS[family];
+}
+
+function buildFullTreeCommand(): string {
+  const baseFindCommand =
+    `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-entry "base" "$statFlag" "$statFormat" "0" {} + \\) -o -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-entry "base" "$statFlag" "$statFormat" "0" {} +`;
+  const linkFindCommand =
+    `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-link "link" "$statFlag" "$statFormat" "1" {} +`;
+  return `root="$1"; statFlag="$2"; statFormat="$3"; if [ ! -d "$root" ]; then exit 2; fi; ${baseFindCommand}; ${linkFindCommand}`;
 }
 
 async function runFullTreeCommand(
   target: FileExplorerTarget,
 ): Promise<WorkspaceFileNode[]> {
-  const gnuFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec stat -c $'base\\t%n\\t%f\\n' {} + \\) -o -exec stat -c $'base\\t%n\\t%f\\n' {} +`;
-  const gnuLinkFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} +`;
-  const bsdFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec stat -f $'base\\t%N\\t%p\\n' {} + \\) -o -exec stat -f $'base\\t%N\\t%p\\n' {} +`;
-  const bsdLinkFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec stat -Lf $'link\\t%N\\t%p\\n' {} +`;
+  const statFormat = await detectFullTreeStatFormat(target.executor, target.rootDirectory);
   const result = await target.executor.exec(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then ${gnuFindCommand}; ${gnuLinkFindCommand} 2>/dev/null || true; else ${bsdFindCommand}; ${bsdLinkFindCommand} 2>/dev/null || true; fi`,
+      buildFullTreeCommand(),
       "file-explorer-tree",
       target.rootDirectory,
+      statFormat.flag,
+      statFormat.format,
     ],
     {
       logFailures: false,
@@ -639,33 +770,31 @@ async function runFullTreeCommand(
     throw commandFailure(result, "Failed to load file tree");
   }
 
-  if (!result.stdout.trim()) {
-    return [];
+  const parsedOutput = parseFullTreeOutput(result.stdout, target.rootDirectory, statFormat);
+  if (Object.keys(parsedOutput.skippedRecordReasons).length > 0) {
+    log.warn("Skipped invalid file-tree records", {
+      reasons: parsedOutput.skippedRecordReasons,
+    });
   }
 
-  const parsedEntries = result.stdout
-    .trimEnd()
-    .split("\n")
-    .filter((line) => normalizeFullTreeLine(line).length > 0)
-    .map((line) => parseFullTreeLine(line))
-    .reduce<{
-      baseEntries: Array<{ absolutePath: string; kind: "directory" | "file" | "symlink" }>;
-      linkKinds: Map<string, "directory" | "file">;
-    }>((accumulator, entry) => {
-      if (entry.source === "link") {
-        accumulator.linkKinds.set(entry.absolutePath, entry.kind === "directory" ? "directory" : "file");
-        return accumulator;
-      }
-
-      accumulator.baseEntries.push({
-        absolutePath: entry.absolutePath,
-        kind: entry.kind,
-      });
+  const parsedEntries = parsedOutput.entries.reduce<{
+    baseEntries: Array<{ absolutePath: string; kind: "directory" | "file" | "symlink" }>;
+    linkKinds: Map<string, "directory" | "file">;
+  }>((accumulator, entry) => {
+    if (entry.source === "link") {
+      accumulator.linkKinds.set(entry.absolutePath, entry.kind === "directory" ? "directory" : "file");
       return accumulator;
-    }, {
-      baseEntries: [],
-      linkKinds: new Map<string, "directory" | "file">(),
+    }
+
+    accumulator.baseEntries.push({
+      absolutePath: entry.absolutePath,
+      kind: entry.kind,
     });
+    return accumulator;
+  }, {
+    baseEntries: [],
+    linkKinds: new Map<string, "directory" | "file">(),
+  });
 
   return parsedEntries.baseEntries
     .map((entry) => toFileNode(
