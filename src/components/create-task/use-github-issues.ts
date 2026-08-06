@@ -96,10 +96,10 @@ export function useGitHubIssues({
       try {
         body = await response.json();
       } catch (parseError) {
-        throw new Error("GitHub returned an invalid issues response", { cause: parseError });
+        throw new Error("Clanky API returned an invalid GitHub issues response", { cause: parseError });
       }
       if (!isGitHubIssuesResponse(body)) {
-        throw new Error("GitHub returned an invalid issues response");
+        throw new Error("Clanky API returned an invalid GitHub issues response");
       }
 
       if (issueNumber && !body.issues.some((issue) => String(issue.number) === issueNumber)) {

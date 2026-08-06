@@ -329,7 +329,7 @@ export const gitRoutes = defineRoutes({
             },
             github_issues_invalid_response: {
               error: "github_issues_invalid_response",
-              message: "GitHub returned an invalid issues response",
+              message: "Clanky API returned an invalid GitHub issues response",
               status: 502,
             },
           },
