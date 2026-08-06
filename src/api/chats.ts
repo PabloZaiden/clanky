@@ -60,11 +60,6 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "SSH authentication failed",
         status: 401,
       },
-      acp_connection_timed_out: {
-        error: "ssh_connection_timeout",
-        message: "The SSH connection timed out before the agent became ready",
-        status: 504,
-      },
       acp_connection_aborted: {
         error: "connection_aborted",
         message: "The connection was aborted",
@@ -76,6 +71,16 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         status: 422,
       },
     } as const;
+    if (error.code === "acp_connection_timed_out") {
+      const isSsh = error.details["transport"] === "ssh";
+      return errorResponse(
+        isSsh ? "ssh_connection_timeout" : "connection_timeout",
+        isSsh
+          ? "The SSH connection timed out before the agent became ready"
+          : "The agent connection timed out before it became ready",
+        504,
+      );
+    }
     const mapping = mappings[error.code as keyof typeof mappings];
     if (mapping) {
       return errorResponse(mapping.error, mapping.message, mapping.status);

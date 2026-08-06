@@ -298,7 +298,12 @@ export interface Backend {
   // Core methods (used by TaskEngine)
   // ============================================
 
-  /** Connect to the backend server. Optional signal allows aborting the connection attempt. */
+  /**
+   * Connect to the backend server.
+   *
+   * Implementations must observe the optional signal, reject promptly after
+   * abort, and complete transport cleanup before the rejection settles.
+   */
   connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void>;
 
   /** Disconnect from the backend server */

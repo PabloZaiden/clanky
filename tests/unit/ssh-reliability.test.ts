@@ -11,6 +11,7 @@ import {
 } from "../../src/core/remote-executor/ssh-helpers";
 import { SshConnectionGate } from "../../src/core/ssh-connection-gate";
 import {
+  buildSshConnectionKey,
   getSshReliabilityPolicy,
   type SshReliabilityPolicy,
 } from "../../src/core/ssh-reliability-policy";
@@ -67,6 +68,55 @@ describe("SSH reliability policy", () => {
     expect(configured.serverAliveIntervalSeconds).toBe(45);
     expect(configured.serverAliveCountMax).toBe(4);
     expect(configured.maxConcurrentHandshakes).toBe(2);
+  });
+
+  test("rounds each OpenSSH attempt up when deriving the outer deadline", () => {
+    process.env["CLANKY_SSH_CONNECT_TIMEOUT_MS"] = "1001";
+    process.env["CLANKY_SSH_CONNECTION_ATTEMPTS"] = "2";
+    process.env["CLANKY_SSH_CONNECTION_TIMEOUT_MS"] = "18999";
+
+    expect(() => getSshReliabilityPolicy()).toThrow(
+      "CLANKY_SSH_CONNECTION_TIMEOUT_MS must be an integer between 19000 and 1800000",
+    );
+  });
+
+  test("normalizes SSH connection keys and separates authentication modes", () => {
+    const identityKey = JSON.parse(buildSshConnectionKey({
+      hostname: " Example.TEST ",
+      username: " Root ",
+      identityFile: " /keys/id_ed25519 ",
+    })) as Record<string, unknown>;
+    const passwordKey = JSON.parse(buildSshConnectionKey({
+      hostname: "example.test",
+      username: "root",
+      password: "test-secret",
+    })) as Record<string, unknown>;
+    const agentKey = JSON.parse(buildSshConnectionKey({
+      hostname: "example.test",
+      username: "root",
+    })) as Record<string, unknown>;
+
+    expect(identityKey).toEqual({
+      hostname: "example.test",
+      port: 22,
+      username: "root",
+      authMode: "identity",
+      identityFile: "/keys/id_ed25519",
+    });
+    expect(passwordKey).toMatchObject({
+      hostname: "example.test",
+      port: 22,
+      username: "root",
+      authMode: "password",
+      identityFile: "",
+    });
+    expect(agentKey).toMatchObject({
+      hostname: "example.test",
+      port: 22,
+      username: "root",
+      authMode: "agent",
+      identityFile: "",
+    });
   });
 
   test("classifies SSH authentication only from the documented sshpass exit code", () => {

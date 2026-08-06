@@ -53,8 +53,9 @@ export function getSshReliabilityPolicy(): SshReliabilityPolicy {
     1,
     5,
   );
+  const connectTimeoutSeconds = Math.ceil(connectTimeoutMs / 1_000);
   const minimumConnectionTimeoutMs =
-    connectTimeoutMs * connectionAttempts + SSH_CONNECTION_STARTUP_GRACE_MS;
+    connectTimeoutSeconds * 1_000 * connectionAttempts + SSH_CONNECTION_STARTUP_GRACE_MS;
   const configuredConnectionTimeoutMs = process.env["CLANKY_SSH_CONNECTION_TIMEOUT_MS"]?.trim();
   const connectionTimeoutMs = configuredConnectionTimeoutMs
     ? readIntegerEnv(
@@ -67,7 +68,7 @@ export function getSshReliabilityPolicy(): SshReliabilityPolicy {
 
   return {
     connectTimeoutMs,
-    connectTimeoutSeconds: Math.ceil(connectTimeoutMs / 1_000),
+    connectTimeoutSeconds,
     connectionAttempts,
     serverAliveIntervalSeconds: readIntegerEnv(
       "CLANKY_SSH_SERVER_ALIVE_INTERVAL_SECONDS",

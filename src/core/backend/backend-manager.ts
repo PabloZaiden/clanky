@@ -234,6 +234,9 @@ class BackendManager {
         () => abortController.abort(timeoutError),
         this.connectionTimeoutMs,
       );
+      // Production backends are abort-aware and settle only after their
+      // transport cleanup. A Promise.race here would return on timeout while
+      // leaving a connection lifecycle running in the background.
       await state.backend.connect(config, abortController.signal);
 
       this.emitEvent({
