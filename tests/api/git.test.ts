@@ -3,7 +3,7 @@
  * Tests use actual HTTP requests to a test server with real git repos.
  */
 
-import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll, afterEach } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -13,6 +13,7 @@ import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
+import type { CommandOptions, CommandResult } from "../../src/core/command-executor";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { getDefaultServerSettings } from "@/shared/settings";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
@@ -22,6 +23,20 @@ describe("Git API Integration", () => {
   let testWorkDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let githubIssuesCommandResult: CommandResult | null = null;
+
+  class GitHubIssuesTestExecutor extends TestCommandExecutor {
+    override async exec(
+      command: string,
+      args: string[],
+      options?: CommandOptions,
+    ): Promise<CommandResult> {
+      if (command === "gh" && args[0] === "issue" && githubIssuesCommandResult) {
+        return githubIssuesCommandResult;
+      }
+      return await super.exec(command, args, options);
+    }
+  }
 
   beforeAll(async () => {
     // Create temp directories
@@ -50,7 +65,7 @@ describe("Git API Integration", () => {
 
     // Set up backend manager with test executor factory
     backendManager.setBackendForTesting(createMockBackend());
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting(() => new GitHubIssuesTestExecutor());
 
     // Start test server
     server = serveNativeApiRoutes();
@@ -193,6 +208,102 @@ describe("Git API Integration", () => {
 
       const body = await res.json();
       expect(body.error).toBe("missing_workspace_id");
+    });
+  });
+
+  describe("GET /api/git/github-issues", () => {
+    afterEach(() => {
+      githubIssuesCommandResult = null;
+    });
+
+    test("returns open issues sorted by number", async () => {
+      githubIssuesCommandResult = {
+        success: true,
+        stdout: JSON.stringify([
+          { number: 42, title: "Later issue" },
+          { number: 7, title: "First issue" },
+          { number: 19, title: "Middle issue" },
+        ]),
+        stderr: "",
+        exitCode: 0,
+      };
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace`,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        issues: [
+          { number: 7, title: "First issue" },
+          { number: 19, title: "Middle issue" },
+          { number: 42, title: "Later issue" },
+        ],
+      });
+    });
+
+    test("returns an empty issue list when the repository has no open issues", async () => {
+      githubIssuesCommandResult = {
+        success: true,
+        stdout: "[]",
+        stderr: "",
+        exitCode: 0,
+      };
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace`,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ issues: [] });
+    });
+
+    test("returns a safe error when gh fails", async () => {
+      githubIssuesCommandResult = {
+        success: false,
+        stdout: "",
+        stderr: "authentication token: secret-value",
+        exitCode: 1,
+      };
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace`,
+      );
+      expect(res.status).toBe(502);
+
+      const body = await res.json();
+      expect(body.error).toBe("github_issues_unavailable");
+      expect(body.message).not.toContain("secret-value");
+    });
+
+    test("returns a safe error when gh returns invalid JSON", async () => {
+      githubIssuesCommandResult = {
+        success: true,
+        stdout: "{not-json",
+        stderr: "",
+        exitCode: 0,
+      };
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace`,
+      );
+      expect(res.status).toBe(502);
+
+      const body = await res.json();
+      expect(body.error).toBe("github_issues_invalid_response");
+    });
+
+    test("returns 400 when workspaceId parameter is missing", async () => {
+      const res = await fetch(`${baseUrl}/api/git/github-issues`);
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.error).toBe("missing_workspace_id");
+    });
+
+    test("returns 404 for an unknown workspace", async () => {
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=unknown-workspace`,
+      );
+      expect(res.status).toBe(404);
     });
   });
 

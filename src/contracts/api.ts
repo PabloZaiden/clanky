@@ -113,6 +113,23 @@ export interface GitHubRepositoryUrlResponse {
 }
 
 /**
+ * A minimal open GitHub issue returned by GET /api/git/github-issues.
+ */
+export interface GitHubIssueSummary {
+  /** Issue number */
+  number: number;
+  /** Issue title */
+  title: string;
+}
+
+/**
+ * Response from GET /api/git/github-issues.
+ */
+export interface GitHubIssuesResponse {
+  issues: GitHubIssueSummary[];
+}
+
+/**
  * Response from GET /api/git/remote-status.
  */
 export interface GitRemoteStatusResponse {
