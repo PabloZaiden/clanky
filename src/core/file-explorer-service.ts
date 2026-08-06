@@ -148,6 +148,7 @@ interface FileExplorerUploadSession {
   lastTouchedAt: number;
 }
 
+const UPLOAD_TEMP_DIRECTORY_NAME = ".clanky-upload-tmp";
 const UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_UPLOAD_SESSIONS = 100;
 const uploadSessions = new Map<string, FileExplorerUploadSession>();
@@ -267,6 +268,10 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
   }
 
   return normalizedPath;
+}
+
+function resolveUploadTempDirectory(target: FileExplorerTarget): string {
+  return resolveTargetPath(target, UPLOAD_TEMP_DIRECTORY_NAME);
 }
 
 function assertSafeBaseName(name: string): string {
@@ -1051,9 +1056,9 @@ export class FileExplorerService {
 
     const uploadId = randomUUID();
     const now = Date.now();
-    const tempAbsolutePath = resolveTargetPath(
-      target,
-      pathPosix.join(".clanky-upload-tmp", `${uploadId}-${safeName}`),
+    const tempAbsolutePath = pathPosix.join(
+      resolveUploadTempDirectory(target),
+      `${uploadId}-${safeName}`,
     );
     const session: FileExplorerUploadSession = {
       id: uploadId,
@@ -1246,7 +1251,7 @@ export class FileExplorerService {
   }
 
   private async cleanupAbandonedUploadTempFiles(target: FileExplorerTarget): Promise<void> {
-    const tempDirectory = resolveTargetPath(target, ".clanky-upload-tmp");
+    const tempDirectory = resolveUploadTempDirectory(target);
     const ttlMinutes = String(Math.max(1, Math.floor(UPLOAD_SESSION_TTL_MS / 60_000)));
     await target.executor.exec("bash", [
       "-lc",
