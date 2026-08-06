@@ -9,8 +9,8 @@ import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "f
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
-import { domainErrorResponse } from "./api/helpers";
 import { meshInternalRoutes } from "./api/mesh-internal";
+import { authorizedRawWebSocketUpgrade } from "./api/raw-websocket-upgrade";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
@@ -40,7 +40,6 @@ import {
   type ClankyRealtimeEvent,
 } from "./realtime";
 import { CLANKY_VERSION } from "./version";
-import { assertLocalMeshActive } from "./core/mesh-activity";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 
@@ -109,30 +108,6 @@ function unregisterClankyRealtimeBridge(): void {
   realtimeBridgeUnsubscribers = undefined;
 }
 
-function meshAuthorityErrorResponse(error: unknown): Response {
-  return domainErrorResponse(error, {
-    fallback: {
-      error: "mesh_authority_check_failed",
-      message: "Mesh authority could not be verified",
-      status: 500,
-    },
-    mappings: {
-      linked_node_not_active: {
-        status: 409,
-        message: "This Clanky instance is not the active mesh node",
-      },
-      mesh_link_conflict: {
-        status: 409,
-        message: "The linked mesh has an unresolved authority conflict",
-      },
-      mesh_link_revoked: {
-        status: 403,
-        message: "The linked mesh membership has been revoked",
-      },
-    },
-  });
-}
-
 export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
@@ -140,19 +115,17 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     description: "Open the raw websocket bridge for a workspace preview.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
-      return assertLocalMeshActive(user.id)
-        .then(() => {
-          ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
-          const upgraded = ctx.server?.upgrade(req, {
-            data: {
-              webappSocketHandler: "clanky",
-              previewBridgeMode: true,
-              user,
-            },
-          });
-          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-        })
-        .catch((error: unknown) => meshAuthorityErrorResponse(error));
+      return authorizedRawWebSocketUpgrade(user.id, () => {
+        ctx.server?.timeout(req, PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS);
+        const upgraded = ctx.server?.upgrade(req, {
+          data: {
+            webappSocketHandler: "clanky",
+            previewBridgeMode: true,
+            user,
+          },
+        });
+        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      });
     },
   },
   "/api/ssh-terminal": {
@@ -169,20 +142,18 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
       }
 
-      return assertLocalMeshActive(user.id)
-        .then(() => {
-          const upgraded = ctx.server?.upgrade(req, {
-            data: {
-              webappSocketHandler: "clanky",
-              sshSessionId,
-              sshServerSessionId,
-              terminalMode: true,
-              user,
-            },
-          });
-          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-        })
-        .catch((error: unknown) => meshAuthorityErrorResponse(error));
+      return authorizedRawWebSocketUpgrade(user.id, () => {
+        const upgraded = ctx.server?.upgrade(req, {
+          data: {
+            webappSocketHandler: "clanky",
+            sshSessionId,
+            sshServerSessionId,
+            terminalMode: true,
+            user,
+          },
+        });
+        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      });
     },
   },
   "/api/vnc": {
@@ -196,19 +167,17 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
       if (!vncSessionId) {
         return new Response("vncSessionId is required", { status: 400 });
       }
-      return assertLocalMeshActive(user.id)
-        .then(() => {
-          const upgraded = ctx.server?.upgrade(req, {
-            data: {
-              webappSocketHandler: "clanky",
-              vncSessionId,
-              vncMode: true,
-              user,
-            },
-          });
-          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-        })
-        .catch((error: unknown) => meshAuthorityErrorResponse(error));
+      return authorizedRawWebSocketUpgrade(user.id, () => {
+        const upgraded = ctx.server?.upgrade(req, {
+          data: {
+            webappSocketHandler: "clanky",
+            vncSessionId,
+            vncMode: true,
+            user,
+          },
+        });
+        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      });
     },
   },
   ...apiRoutes,
