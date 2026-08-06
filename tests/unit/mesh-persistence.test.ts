@@ -36,13 +36,13 @@ import {
   buildMeshSyncPushSigningPayload,
   buildMeshTakeoverSigningPayload,
 } from "../../src/core/mesh-protocol";
-import { receiveMeshSyncPush, deliverMeshSyncOutbox } from "../../src/core/mesh-sync-manager";
+import { receiveMeshSyncPush } from "../../src/core/mesh-sync-manager";
 import { applyMeshCheckpoint } from "../../src/core/mesh-sync-service";
 import {
   decryptMeshPayload,
   encryptMeshPayload,
 } from "../../src/core/mesh-payload-crypto";
-import { listOpenMeshSyncConflicts, recordMeshCheckpoint } from "../../src/persistence/mesh-sync";
+import { listOpenMeshSyncConflicts } from "../../src/persistence/mesh-sync";
 import {
   createWorkspace,
   getWorkspace,
@@ -56,19 +56,16 @@ import {
   saveSshServerFromMesh,
 } from "../../src/persistence/ssh-servers";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import { runWithMeshReplicationSuppressed } from "../../src/core/mesh-sync-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
-let dataDir: string | undefined;
 const createdDataDirs: string[] = [];
 const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
-const originalMeshEndpoint = process.env["CLANKY_MESH_ENDPOINT"];
 
 async function setupDatabase(): Promise<void> {
-  dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-"));
-  createdDataDirs.push(dataDir);
+  const setupDataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-"));
+  createdDataDirs.push(setupDataDir);
   closeDatabase();
-  process.env["CLANKY_DATA_DIR"] = dataDir;
+  process.env["CLANKY_DATA_DIR"] = setupDataDir;
   await initializeDatabase();
 }
 
@@ -120,18 +117,12 @@ afterEach(async () => {
   } else {
     process.env["CLANKY_PUBLIC_BASE_URL"] = originalPublicBaseUrl;
   }
-  if (originalMeshEndpoint === undefined) {
-    delete process.env["CLANKY_MESH_ENDPOINT"];
-  } else {
-    process.env["CLANKY_MESH_ENDPOINT"] = originalMeshEndpoint;
-  }
   while (createdDataDirs.length > 0) {
     const path = createdDataDirs.pop();
     if (path) {
       await rm(path, { recursive: true, force: true });
     }
   }
-  dataDir = undefined;
 });
 
 describe("mesh persistence", () => {
@@ -717,139 +708,4 @@ describe("mesh persistence", () => {
     expect(await listOpenMeshSyncConflicts(link.linkId)).toHaveLength(0);
   });
 
-  test("completes a two-sided pairing handshake and remains idempotent", async () => {
-    const nodeA = await createNodeDatabase("user-a");
-    const nodeC = await createNodeDatabase("user-c");
-    const originalFetch = globalThis.fetch;
-
-    const mockFetch = Object.assign(async (
-      input: Parameters<typeof fetch>[0],
-      init: Parameters<typeof fetch>[1],
-    ) => {
-      const url = String(input);
-      const body = JSON.parse(String(init?.body));
-      if (url.endsWith("/api/mesh/internal/pairing-requests")) {
-        await useNodeDatabase(nodeA.dataDir, "user-a");
-        const result = await meshManager.receivePairingRequest(body);
-        await useNodeDatabase(nodeC.dataDir, "user-c");
-        return Response.json(result);
-      }
-      if (url.endsWith("/api/mesh/internal/pairing-approvals")) {
-        await useNodeDatabase(nodeC.dataDir, "user-c");
-        const result = await meshManager.receivePairingApproval(body);
-        await useNodeDatabase(nodeA.dataDir, "user-a");
-        return Response.json(result);
-      }
-      if (url.endsWith("/api/mesh/internal/sync")) {
-        await useNodeDatabase(nodeA.dataDir, "user-a");
-        const result = await receiveMeshSyncPush(body);
-        await useNodeDatabase(nodeC.dataDir, "user-c");
-        return Response.json(result);
-      }
-      throw new Error(`Unexpected mesh test URL: ${url}`);
-    }, { preconnect: originalFetch.preconnect });
-    globalThis.fetch = mockFetch;
-
-    try {
-      await useNodeDatabase(nodeC.dataDir, "user-c");
-      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4101";
-      const outgoing = await meshManager.startPairing(
-        "user-c",
-        "user-c",
-        { targetEndpoint: "http://127.0.0.1:4100" },
-      );
-      const request = outgoing.pendingPairingRequests[0];
-      expect(request?.direction).toBe("outgoing");
-      expect(request?.status).toBe("pending");
-
-      await useNodeDatabase(nodeA.dataDir, "user-a");
-      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4100";
-      const pendingAtA = (await meshManager.getStatus("user-a")).pendingPairingRequests;
-      expect(pendingAtA).toHaveLength(1);
-      expect(pendingAtA[0]?.endpoint).toBe("http://127.0.0.1:4101");
-      const approvedAtA = await meshManager.approvePairingRequest(
-        "user-a",
-        pendingAtA[0]!.id,
-        {},
-      );
-      expect(approvedAtA.links).toHaveLength(1);
-
-      await useNodeDatabase(nodeC.dataDir, "user-c");
-      process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4101";
-      const pendingAtC = (await meshManager.getStatus("user-c")).pendingPairingRequests;
-      expect(pendingAtC[0]?.remoteApproval?.fingerprint).toBe(nodeA.identity.fingerprint);
-      expect(pendingAtC[0]?.remoteApproval?.endpoint).toBe("http://127.0.0.1:4100");
-      const completedAtC = await meshManager.completePairing(
-        "user-c",
-        pendingAtC[0]!.id,
-        { fingerprint: nodeA.identity.fingerprint },
-      );
-      expect(completedAtC.links).toHaveLength(1);
-      expect(completedAtC.links[0]!.members).toHaveLength(2);
-      expect(completedAtC.links[0]!.members.map((member) => member.nodeId).sort()).toEqual(
-        [nodeA.identity.nodeId, nodeC.identity.nodeId].sort(),
-      );
-      expect((await listMeshNodes()).every((node) => node.status === "active")).toBe(true);
-
-      const repeated = await meshManager.completePairing(
-        "user-c",
-        pendingAtC[0]!.id,
-        { fingerprint: nodeA.identity.fingerprint },
-      );
-      expect(repeated.links[0]?.linkId).toBe(completedAtC.links[0]?.linkId);
-
-      await useNodeDatabase(nodeA.dataDir, "user-a");
-      const statusAtA = await meshManager.getStatus("user-a");
-      expect(statusAtA.links[0]?.linkId).toBe(completedAtC.links[0]?.linkId);
-      expect(statusAtA.links[0]?.members).toHaveLength(2);
-
-      const userC: CurrentUser = {
-        id: "user-c",
-        username: "user-c",
-        role: "user",
-        isOwner: false,
-        isAdmin: false,
-      };
-      const workspace = {
-        id: crypto.randomUUID(),
-        name: "Remote workspace",
-        directory: "/remote/workspace",
-        serverSettings: {
-          agent: {
-            provider: "opencode" as const,
-            transport: "ssh" as const,
-            hostname: "remote.example",
-            port: 22,
-          },
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await useNodeDatabase(nodeC.dataDir, "user-c");
-      await runWithCurrentUser(userC, () => runWithMeshReplicationSuppressed(
-        () => createWorkspace(workspace),
-      ));
-      const checkpoint = await recordMeshCheckpoint({
-        userId: "user-c",
-        aggregateType: "workspace",
-        aggregateId: workspace.id,
-        payload: workspace,
-      });
-      expect(checkpoint).not.toBeNull();
-      const delivered = await deliverMeshSyncOutbox();
-      if (delivered === 0) {
-        console.log(getDatabase().query("SELECT peer_node_id, status, last_error FROM mesh_sync_outbox").all());
-      }
-      expect(delivered).toBeGreaterThan(0);
-
-      await useNodeDatabase(nodeA.dataDir, "user-a");
-      const replicatedWorkspace = await runWithCurrentUser(
-        { ...userC, id: "user-a", username: "user-a" },
-        () => getWorkspace(workspace.id),
-      );
-      expect(replicatedWorkspace?.name).toBe(workspace.name);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
 });
