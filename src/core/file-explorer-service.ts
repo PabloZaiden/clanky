@@ -55,36 +55,14 @@ const FULL_TREE_DEFERRED_FIND_PATTERN = FULL_TREE_DEFERRED_DIRECTORY_NAMES
 
 const FULL_TREE_CAPABILITY_SCRIPT = [
   "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
-  "if ! command -v find >/dev/null 2>&1 || ! command -v stat >/dev/null 2>&1; then exit 3; fi;",
-  "if ! find \"$root\" -prune -exec true {} + >/dev/null 2>&1; then exit 3; fi;",
-  "if stat -c '%f' \"$root\" >/dev/null 2>&1; then printf 'gnu';",
-  "else bsdMode=$(stat -f '%p' \"$root\" 2>/dev/null) || bsdMode=;",
-  "case \"$bsdMode\" in [0-7][0-7][0-7][0-7][0-7]|[0-7][0-7][0-7][0-7][0-7][0-7]) printf 'bsd';; *) exit 3;; esac; fi",
+  "if ! command -v find >/dev/null 2>&1 || ! command -v sh >/dev/null 2>&1; then exit 3; fi;",
+  "if ! find \"$root\" -prune -exec sh -c 'exit 0' file {} + >/dev/null 2>&1; then exit 3; fi;",
+  "printf 'nul-batched';",
 ].join(" ");
-const FULL_TREE_EMIT_SCRIPT =
-  "source=\"$1\"; statFlag=\"$2\"; statFormat=\"$3\"; followFlag=\"$4\"; shift 4; for path do if [ \"$followFlag\" = \"1\" ]; then mode=$(stat -L \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); else mode=$(stat \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); fi; if [ -z \"$mode\" ]; then printf \"error\\0%s\\0stat_failed\\0\\0\" \"$path\"; else printf \"%s\\0%s\\0%s\\0\\0\" \"$source\" \"$path\" \"$mode\"; fi; done";
-
-type FullTreeStatFormat = {
-  family: "gnu" | "bsd";
-  flag: "-c" | "-f";
-  format: "%f" | "%p";
-  modeBase: 8 | 16;
-};
-
-const FULL_TREE_STAT_FORMATS: Record<FullTreeStatFormat["family"], FullTreeStatFormat> = {
-  gnu: {
-    family: "gnu",
-    flag: "-c",
-    format: "%f",
-    modeBase: 16,
-  },
-  bsd: {
-    family: "bsd",
-    flag: "-f",
-    format: "%p",
-    modeBase: 8,
-  },
-};
+const FULL_TREE_EMIT_BASE_SCRIPT =
+  "kind=\"$1\"; shift; for path do if [ ! -e \"$path\" ]; then printf \"error\\0%s\\0entry_missing\\0\\0\" \"$path\"; else printf \"base\\0%s\\0%s\\0\\0\" \"$path\" \"$kind\"; fi; done";
+const FULL_TREE_EMIT_LINK_SCRIPT =
+  "for path do if [ -d \"$path\" ]; then targetKind=\"directory\"; else targetKind=\"file\"; fi; printf \"base\\0%s\\0symlink\\0\\0link\\0%s\\0%s\\0\\0\" \"$path\" \"$path\" \"$targetKind\"; done";
 
 export interface FileExplorerTarget {
   id: string;
@@ -576,39 +554,12 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
   return entriesByDirectory;
 }
 
-function parseModeText(modeText: string, base: 8 | 16): number | null {
-  const pattern = base === 8 ? /^[0-7]+$/ : /^[0-9a-fA-F]+$/;
-  if (!pattern.test(modeText)) {
-    return null;
-  }
-
-  const mode = Number.parseInt(modeText, base);
-  return Number.isSafeInteger(mode) ? mode : null;
-}
-
-function parseModeKind(
-  modeText: string,
-  base: 8 | 16,
-): "directory" | "file" | "symlink" | null {
-  const mode = parseModeText(modeText, base);
-  if (mode === null) {
-    return null;
-  }
-
-  const fileType = base === 8 ? mode & 0o170000 : mode & 0xf000;
-  if (fileType === (base === 8 ? 0o040000 : 0x4000)) {
-    return "directory";
-  }
-  if (fileType === (base === 8 ? 0o120000 : 0xa000)) {
-    return "symlink";
-  }
-  return "file";
-}
+type FullTreeEntryKind = "directory" | "file" | "symlink";
 
 interface FullTreeParsedEntry {
   source: "base" | "link";
   absolutePath: string;
-  kind: "directory" | "file" | "symlink";
+  kind: FullTreeEntryKind;
 }
 
 interface FullTreeParseResult {
@@ -630,7 +581,6 @@ function isFullTreePathWithinRoot(rootDirectory: string, absolutePath: string): 
 function parseFullTreeOutput(
   stdout: string,
   rootDirectory: string,
-  statFormat: FullTreeStatFormat,
 ): FullTreeParseResult {
   if (!stdout) {
     return {
@@ -683,9 +633,11 @@ function parseFullTreeOutput(
       continue;
     }
 
-    const kind = parseModeKind(value, statFormat.modeBase);
-    if (!kind) {
-      skipRecord("invalid_mode");
+    const kind: FullTreeEntryKind | null = source === "base"
+      ? value === "directory" || value === "file" || value === "symlink" ? value : null
+      : value === "directory" || value === "file" ? value : null;
+    if (kind === null) {
+      skipRecord("invalid_kind");
       continue;
     }
 
@@ -702,10 +654,10 @@ function parseFullTreeOutput(
   };
 }
 
-async function detectFullTreeStatFormat(
+async function verifyFullTreeCapabilities(
   executor: CommandExecutor,
   rootDirectory: string,
-): Promise<FullTreeStatFormat> {
+): Promise<void> {
   const result = await executor.exec(
     "bash",
     [
@@ -729,25 +681,26 @@ async function detectFullTreeStatFormat(
     );
   }
 
-  const family = result.stdout.trim();
-  if (family !== "gnu" && family !== "bsd") {
+  if (result.stdout.trim() !== "nul-batched") {
     throw fileExplorerOperationError("Failed to parse file-tree capability result");
   }
-  return FULL_TREE_STAT_FORMATS[family];
 }
 
 function buildFullTreeCommand(): string {
-  const baseFindCommand =
-    `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-entry "base" "$statFlag" "$statFormat" "0" {} + \\) -o -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-entry "base" "$statFlag" "$statFormat" "0" {} +`;
-  const linkFindCommand =
-    `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec sh -c '${FULL_TREE_EMIT_SCRIPT}' file-explorer-tree-link "link" "$statFlag" "$statFormat" "1" {} +`;
-  return `root="$1"; statFlag="$2"; statFormat="$3"; if [ ! -d "$root" ]; then exit 2; fi; ${baseFindCommand}; ${linkFindCommand}`;
+  return [
+    "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
+    `find "$root" ! -path "$root" \\(`,
+    `-type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
+    `\\) -o \\( -type d -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
+    `\\) -o \\( -type l -exec sh -c '${FULL_TREE_EMIT_LINK_SCRIPT}' file-explorer-tree-link {} +`,
+    `\\) -o -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-entry "file" {} +`,
+  ].join(" ");
 }
 
 async function runFullTreeCommand(
   target: FileExplorerTarget,
 ): Promise<WorkspaceFileNode[]> {
-  const statFormat = await detectFullTreeStatFormat(target.executor, target.rootDirectory);
+  await verifyFullTreeCapabilities(target.executor, target.rootDirectory);
   const result = await target.executor.exec(
     "bash",
     [
@@ -755,8 +708,6 @@ async function runFullTreeCommand(
       buildFullTreeCommand(),
       "file-explorer-tree",
       target.rootDirectory,
-      statFormat.flag,
-      statFormat.format,
     ],
     {
       logFailures: false,
@@ -770,7 +721,7 @@ async function runFullTreeCommand(
     throw commandFailure(result, "Failed to load file tree");
   }
 
-  const parsedOutput = parseFullTreeOutput(result.stdout, target.rootDirectory, statFormat);
+  const parsedOutput = parseFullTreeOutput(result.stdout, target.rootDirectory);
   if (Object.keys(parsedOutput.skippedRecordReasons).length > 0) {
     log.warn("Skipped invalid file-tree records", {
       reasons: parsedOutput.skippedRecordReasons,
