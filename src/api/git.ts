@@ -14,9 +14,16 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 
 import { backendManager } from "../core/backend-manager";
 import { GitCommandError, GitService } from "../core/git";
+import { listOpenGitHubIssues } from "../core/github-issues";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 import type { Workspace } from "@/shared";
-import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse } from "@/contracts";
+import type {
+  BranchInfo,
+  GitHubIssuesResponse,
+  GitHubRepositoryUrlResponse,
+  GitRemoteStatusResponse,
+} from "@/contracts";
+import type { CommandExecutor } from "../core/command-executor";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse, requireWorkspace } from "./helpers";
 
@@ -84,22 +91,9 @@ async function createGitServiceForWorkspace(workspace: Workspace): Promise<GitSe
   return GitService.withExecutor(executor);
 }
 
-/**
- * Get a GitService configured for the current execution provider.
- * Uses deterministic command execution (local/SSH), independent of agent transport.
- *
- * @param workspace - Workspace containing the repository
- * @returns Configured GitService instance
- */
-async function getGitService(workspace: Workspace): Promise<GitService> {
-  log.debug("Getting GitService for workspace", { workspaceId: workspace.id, directory: workspace.directory });
-  log.debug("GitService created", { workspaceId: workspace.id });
-  return createGitServiceForWorkspace(workspace);
-}
-
 /** Validate a workspace git request and verify its repository. */
 async function validateGitRequest(req: Request): Promise<
-  { git: GitService; directory: string } | Response
+  { git: GitService; executor: CommandExecutor; directory: string } | Response
 > {
   const url = new URL(req.url);
   const workspaceId = url.searchParams.get("workspaceId");
@@ -114,7 +108,8 @@ async function validateGitRequest(req: Request): Promise<
     return workspace;
   }
 
-  const git = await getGitService(workspace);
+  const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+  const git = GitService.withExecutor(executor);
   const directory = workspace.directory;
   const isGitRepo = await git.isGitRepo(directory);
   if (!isGitRepo) {
@@ -125,7 +120,7 @@ async function validateGitRequest(req: Request): Promise<
     return errorResponse("not_git_repo", "Workspace directory is not a git repository");
   }
 
-  return { git, directory };
+  return { git, executor, directory };
 }
 
 /**
@@ -295,6 +290,50 @@ export const gitRoutes = defineRoutes({
           message: "Failed to determine the GitHub repository URL",
           status: 500,
         });
+      }
+    },
+  },
+
+  "/api/git/github-issues": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List open GitHub issues for a workspace repository.",
+    async GET(req: Request, _ctx): Promise<Response> {
+      log.debug("GET /api/git/github-issues");
+
+      try {
+        const result = await validateGitRequest(req);
+        if (result instanceof Response) return result;
+
+        const issues = await listOpenGitHubIssues(result.executor, result.directory);
+        const response: GitHubIssuesResponse = { issues };
+        log.debug("GitHub issues retrieved", {
+          directory: result.directory,
+          issueCount: issues.length,
+        });
+        return Response.json(response);
+      } catch (error) {
+        log.warn("GitHub issues error", { error: String(error) });
+        return internalErrorResponse(
+          error,
+          {
+            error: "github_issues_error",
+            message: "Failed to list GitHub issues",
+            status: 500,
+          },
+          {
+            github_issues_command_failed: {
+              error: "github_issues_unavailable",
+              message: "GitHub issues could not be fetched for this workspace",
+              status: 502,
+            },
+            github_issues_invalid_response: {
+              error: "github_issues_invalid_response",
+              message: "GitHub returned an invalid issues response",
+              status: 502,
+            },
+          },
+        );
       }
     },
   },
