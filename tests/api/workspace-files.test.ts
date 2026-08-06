@@ -9,7 +9,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
-import { mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
+import { chmod, mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
 
@@ -265,10 +265,39 @@ describe("workspace files API integration", () => {
     }
   }
 
-  async function loadFixtureTree(executor: TestCommandExecutor) {
+  class FalseBsdCapabilityExecutor extends TestCommandExecutor {
+    treeCommandCalled = false;
+
+    constructor(private readonly fakeToolDirectory: string) {
+      super();
+    }
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      if (command === "bash" && commandLabel === "file-explorer-tree-capabilities") {
+        return await super.exec(command, args, {
+          ...options,
+          env: {
+            ...process.env,
+            ...(options?.env ?? {}),
+            PATH: `${this.fakeToolDirectory}:${process.env["PATH"] ?? ""}`,
+          },
+        });
+      }
+      if (command === "bash" && commandLabel === "file-explorer-tree") {
+        this.treeCommandCalled = true;
+      }
+      return await super.exec(command, args, options);
+    }
+  }
+
+  async function loadFixtureTree(
+    executor: TestCommandExecutor,
+    rootDirectory = "/workspace/project",
+  ) {
     return await fileExplorerService.loadTree({
       id: "fixture-workspace",
-      rootDirectory: "/workspace/project",
+      rootDirectory,
       pathScopeLabel: "workspace root",
       executor,
     });
@@ -585,6 +614,31 @@ describe("workspace files API integration", () => {
     await expect(loadFixtureTree(executor)).rejects.toMatchObject({
       code: "operation_failed",
     });
+  });
+
+  test("rejects a successful BSD probe that does not return an octal mode", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-probe-root-"));
+    const fakeToolDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-probe-tools-"));
+    const fakeFindPath = join(fakeToolDirectory, "find");
+    const fakeStatPath = join(fakeToolDirectory, "stat");
+    await writeFile(fakeFindPath, "#!/bin/sh\nexit 0\n");
+    await writeFile(
+      fakeStatPath,
+      "#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then exit 1; fi\nif [ \"$1\" = \"-f\" ]; then printf 'filesystem report\\n'; exit 0; fi\nexit 1\n",
+    );
+    await chmod(fakeFindPath, 0o755);
+    await chmod(fakeStatPath, 0o755);
+
+    const executor = new FalseBsdCapabilityExecutor(fakeToolDirectory);
+    try {
+      await expect(loadFixtureTree(executor, rootDirectory)).rejects.toMatchObject({
+        code: "operation_failed",
+      });
+      expect(executor.treeCommandCalled).toBe(false);
+    } finally {
+      await rm(rootDirectory, { recursive: true, force: true });
+      await rm(fakeToolDirectory, { recursive: true, force: true });
+    }
   });
 
   test("loads the full file tree from the selected root", async () => {

@@ -53,8 +53,14 @@ const FULL_TREE_DEFERRED_FIND_PATTERN = FULL_TREE_DEFERRED_DIRECTORY_NAMES
   .map((name) => `-name '${name}'`)
   .join(" -o ");
 
-const FULL_TREE_CAPABILITY_SCRIPT =
-  "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; if ! command -v find >/dev/null 2>&1 || ! command -v stat >/dev/null 2>&1; then exit 3; fi; if ! find \"$root\" -prune -exec true {} + >/dev/null 2>&1; then exit 3; fi; if stat -c '%f' \"$root\" >/dev/null 2>&1; then printf 'gnu'; elif stat -f '%p' \"$root\" >/dev/null 2>&1; then printf 'bsd'; else exit 3; fi";
+const FULL_TREE_CAPABILITY_SCRIPT = [
+  "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
+  "if ! command -v find >/dev/null 2>&1 || ! command -v stat >/dev/null 2>&1; then exit 3; fi;",
+  "if ! find \"$root\" -prune -exec true {} + >/dev/null 2>&1; then exit 3; fi;",
+  "if stat -c '%f' \"$root\" >/dev/null 2>&1; then printf 'gnu';",
+  "else bsdMode=$(stat -f '%p' \"$root\" 2>/dev/null) || bsdMode=;",
+  "case \"$bsdMode\" in [0-7][0-7][0-7][0-7][0-7]|[0-7][0-7][0-7][0-7][0-7][0-7]) printf 'bsd';; *) exit 3;; esac; fi",
+].join(" ");
 const FULL_TREE_EMIT_SCRIPT =
   "source=\"$1\"; statFlag=\"$2\"; statFormat=\"$3\"; followFlag=\"$4\"; shift 4; for path do if [ \"$followFlag\" = \"1\" ]; then mode=$(stat -L \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); else mode=$(stat \"$statFlag\" \"$statFormat\" \"$path\" 2>/dev/null); fi; if [ -z \"$mode\" ]; then printf \"error\\0%s\\0stat_failed\\0\\0\" \"$path\"; else printf \"%s\\0%s\\0%s\\0\\0\" \"$source\" \"$path\" \"$mode\"; fi; done";
 
