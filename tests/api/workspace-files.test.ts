@@ -9,7 +9,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { join } from "path";
-import { chmod, mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
+import { mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
 
@@ -226,7 +226,7 @@ describe("workspace files API integration", () => {
     readonly treeArgumentSets: string[][] = [];
 
     constructor(
-      private readonly capabilityFamily: "gnu" | "bsd" | "unsupported",
+      private readonly capabilityFamily: "supported" | "invalid" | "unsupported",
       private readonly treeOutput: string,
     ) {
       super();
@@ -244,9 +244,17 @@ describe("workspace files API integration", () => {
             exitCode: 3,
           };
         }
+        if (this.capabilityFamily === "invalid") {
+          return {
+            success: true,
+            stdout: "legacy",
+            stderr: "",
+            exitCode: 0,
+          };
+        }
         return {
           success: true,
-          stdout: this.capabilityFamily,
+          stdout: "nul-batched",
           stderr: "",
           exitCode: 0,
         };
@@ -265,29 +273,15 @@ describe("workspace files API integration", () => {
     }
   }
 
-  class FalseBsdCapabilityExecutor extends TestCommandExecutor {
-    treeCommandCalled = false;
-
-    constructor(private readonly fakeToolDirectory: string) {
-      super();
-    }
+  class TreeOutputRecordingExecutor extends TestCommandExecutor {
+    treeOutput = "";
 
     override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
-      const commandLabel = args[2];
-      if (command === "bash" && commandLabel === "file-explorer-tree-capabilities") {
-        return await super.exec(command, args, {
-          ...options,
-          env: {
-            ...process.env,
-            ...(options?.env ?? {}),
-            PATH: `${this.fakeToolDirectory}:${process.env["PATH"] ?? ""}`,
-          },
-        });
+      const result = await super.exec(command, args, options);
+      if (command === "bash" && args[2] === "file-explorer-tree") {
+        this.treeOutput = result.stdout;
       }
-      if (command === "bash" && commandLabel === "file-explorer-tree") {
-        this.treeCommandCalled = true;
-      }
-      return await super.exec(command, args, options);
+      return result;
     }
   }
 
@@ -537,18 +531,18 @@ describe("workspace files API integration", () => {
     }
   });
 
-  test("decodes GNU-compatible records and skips isolated malformed entries", async () => {
+  test("decodes batched type records and skips isolated malformed entries", async () => {
     const rootDirectory = "/workspace/project";
     const specialPath = `${rootDirectory}/name\nwith\tfields`;
     const executor = new StructuredTreeFixtureExecutor(
-      "gnu",
+      "supported",
       [
         structuredTreeRecord("base", `${rootDirectory}/malformed`),
-        structuredTreeRecord("base", specialPath, "81a4"),
-        structuredTreeRecord("base", `${rootDirectory}/src`, "41ed"),
-        structuredTreeRecord("base", `${rootDirectory}/src-link`, "a1ff"),
-        structuredTreeRecord("link", `${rootDirectory}/src-link`, "41ed"),
-        structuredTreeRecord("error", `${rootDirectory}/unreadable`, "stat_failed"),
+        structuredTreeRecord("base", specialPath, "file"),
+        structuredTreeRecord("base", `${rootDirectory}/src`, "directory"),
+        structuredTreeRecord("base", `${rootDirectory}/src-link`, "symlink"),
+        structuredTreeRecord("link", `${rootDirectory}/src-link`, "directory"),
+        structuredTreeRecord("error", `${rootDirectory}/unreadable`, "entry_missing"),
       ].join(""),
     );
 
@@ -561,23 +555,26 @@ describe("workspace files API integration", () => {
     expect(result.entriesByDirectory[""]?.find((entry) => entry.name === "src-link")?.kind).toBe("directory");
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
     expect(result.entriesByDirectory[""]?.some((entry) => entry.name === "malformed")).toBe(false);
-    expect(executor.capabilityScripts[0]).toContain("stat -c '%f'");
-    expect(executor.capabilityScripts[0]).not.toContain("stat --version");
+    expect(executor.capabilityScripts[0]).toContain("find \"$root\" -prune -exec sh -c");
+    expect(executor.capabilityScripts[0]).not.toContain("stat");
     expect(executor.treeScripts[0]).toContain("\\0%s\\0");
-    expect(executor.treeArgumentSets[0]?.[4]).toBe("-c");
-    expect(executor.treeArgumentSets[0]?.[5]).toBe("%f");
+    expect(executor.treeScripts[0]).toContain("{} +");
+    expect(executor.treeScripts[0]).not.toContain("stat");
+    expect(executor.treeScripts[0]).toContain("! -path \"$root\" \\(");
+    expect(executor.treeScripts[0]).toEndWith("\\)");
+    expect(executor.treeArgumentSets[0]).toHaveLength(4);
   });
 
-  test("decodes BSD-compatible octal modes for files and symlink targets", async () => {
+  test("decodes symlink target types from batched records", async () => {
     const rootDirectory = "/workspace/project";
     const executor = new StructuredTreeFixtureExecutor(
-      "bsd",
+      "supported",
       [
-        structuredTreeRecord("base", `${rootDirectory}/src`, "040755"),
-        structuredTreeRecord("base", `${rootDirectory}/src-link`, "120777"),
-        structuredTreeRecord("base", `${rootDirectory}/readme-link`, "120777"),
-        structuredTreeRecord("link", `${rootDirectory}/src-link`, "040755"),
-        structuredTreeRecord("link", `${rootDirectory}/readme-link`, "100644"),
+        structuredTreeRecord("base", `${rootDirectory}/src`, "directory"),
+        structuredTreeRecord("base", `${rootDirectory}/src-link`, "symlink"),
+        structuredTreeRecord("base", `${rootDirectory}/readme-link`, "symlink"),
+        structuredTreeRecord("link", `${rootDirectory}/src-link`, "directory"),
+        structuredTreeRecord("link", `${rootDirectory}/readme-link`, "file"),
       ].join(""),
     );
 
@@ -594,14 +591,15 @@ describe("workspace files API integration", () => {
       "file",
     ]);
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
-    expect(executor.treeArgumentSets[0]?.[4]).toBe("-f");
-    expect(executor.treeArgumentSets[0]?.[5]).toBe("%p");
+    expect(executor.treeScripts[0]).toContain("{} +");
+    expect(executor.treeScripts[0]).not.toContain("stat");
+    expect(executor.treeArgumentSets[0]).toHaveLength(4);
   });
 
   test("fails instead of parsing a truncated tree record", async () => {
     const rootDirectory = "/workspace/project";
-    const completeRecord = structuredTreeRecord("base", `${rootDirectory}/README.md`, "81a4");
-    const executor = new StructuredTreeFixtureExecutor("gnu", completeRecord.slice(0, -2));
+    const completeRecord = structuredTreeRecord("base", `${rootDirectory}/README.md`, "file");
+    const executor = new StructuredTreeFixtureExecutor("supported", completeRecord.slice(0, -2));
 
     await expect(loadFixtureTree(executor)).rejects.toMatchObject({
       code: "operation_failed",
@@ -616,29 +614,13 @@ describe("workspace files API integration", () => {
     });
   });
 
-  test("rejects a successful BSD probe that does not return an octal mode", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-probe-root-"));
-    const fakeToolDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-probe-tools-"));
-    const fakeFindPath = join(fakeToolDirectory, "find");
-    const fakeStatPath = join(fakeToolDirectory, "stat");
-    await writeFile(fakeFindPath, "#!/bin/sh\nexit 0\n");
-    await writeFile(
-      fakeStatPath,
-      "#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then exit 1; fi\nif [ \"$1\" = \"-f\" ]; then printf 'filesystem report\\n'; exit 0; fi\nexit 1\n",
-    );
-    await chmod(fakeFindPath, 0o755);
-    await chmod(fakeStatPath, 0o755);
+  test("rejects a successful capability probe with an unknown protocol", async () => {
+    const executor = new StructuredTreeFixtureExecutor("invalid", "");
 
-    const executor = new FalseBsdCapabilityExecutor(fakeToolDirectory);
-    try {
-      await expect(loadFixtureTree(executor, rootDirectory)).rejects.toMatchObject({
-        code: "operation_failed",
-      });
-      expect(executor.treeCommandCalled).toBe(false);
-    } finally {
-      await rm(rootDirectory, { recursive: true, force: true });
-      await rm(fakeToolDirectory, { recursive: true, force: true });
-    }
+    await expect(loadFixtureTree(executor)).rejects.toMatchObject({
+      code: "operation_failed",
+    });
+    expect(executor.treeScripts).toHaveLength(0);
   });
 
   test("loads the full file tree from the selected root", async () => {
@@ -652,6 +634,24 @@ describe("workspace files API integration", () => {
     };
     expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "assets.png", "src", "logo.svg", "README.md"]);
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
+  });
+
+  test("does not emit the selected root as a tree entry", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-root-"));
+    const executor = new TreeOutputRecordingExecutor();
+
+    try {
+      await writeFile(join(rootDirectory, "README.md"), "root exclusion\n");
+
+      const result = await loadFixtureTree(executor, rootDirectory);
+
+      expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["README.md"]);
+      expect(executor.treeOutput).not.toContain(
+        `base\0${rootDirectory}\0directory\0\0`,
+      );
+    } finally {
+      await rm(rootDirectory, { recursive: true, force: true });
+    }
   });
 
   test("keeps symlinked directories as directory entries without traversing into them", async () => {
