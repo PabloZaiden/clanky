@@ -347,7 +347,7 @@ function WorkspaceFileTreeComponent({
             <div
               role="status"
               aria-live="polite"
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 px-4 text-center text-sm text-gray-500 backdrop-blur-[1px] dark:bg-neutral-900/80 dark:text-gray-400"
+              className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 px-4 text-center text-sm text-gray-500 backdrop-blur-[1px] dark:bg-neutral-900/80 dark:text-gray-400"
             >
               <div
                 aria-hidden="true"
