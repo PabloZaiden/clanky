@@ -17,6 +17,10 @@ import { requireWorkspace, errorResponse, internalErrorResponse, successResponse
 import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "../core/model-discovery";
 import { isDomainError } from "../core/domain-error";
+import {
+  isAcpSshTransportFailure,
+  isAcpErrorCode,
+} from "../backends/acp";
 import { preferencesManager } from "../core/preferences-manager";
 import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
 import {
@@ -56,6 +60,16 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "SSH authentication failed",
         status: 401,
       },
+      acp_connection_timed_out: {
+        error: "ssh_connection_timeout",
+        message: "The SSH connection timed out before the agent became ready",
+        status: 504,
+      },
+      acp_connection_aborted: {
+        error: "connection_aborted",
+        message: "The connection was aborted",
+        status: 409,
+      },
       acp_unsupported_prompt_capability: {
         error: "unsupported_prompt_capability",
         message: "The connected agent does not support embedded document attachments",
@@ -65,6 +79,16 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     const mapping = mappings[error.code as keyof typeof mappings];
     if (mapping) {
       return errorResponse(mapping.error, mapping.message, mapping.status);
+    }
+    if (
+      isAcpSshTransportFailure(error)
+      && !isAcpErrorCode(error, "acp_connection_aborted")
+    ) {
+      return errorResponse(
+        "ssh_transport_unavailable",
+        "The SSH agent connection is unavailable; reconnect before sending another message",
+        503,
+      );
     }
   }
   return null;
