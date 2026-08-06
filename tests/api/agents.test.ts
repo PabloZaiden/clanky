@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
+import { TEST_CODE_HEARTBEAT_INTERVAL_MS } from "../../src/api/agents";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -25,11 +26,9 @@ const testModel = { providerID: "test-provider", modelID: "test-model", variant:
 const TEST_HTTP_IDLE_TIMEOUT_SECONDS = 1;
 const TEST_HTTP_IDLE_TIMEOUT_MS = TEST_HTTP_IDLE_TIMEOUT_SECONDS * 1000;
 const TEST_IDLE_TIMEOUT_MARGIN_MS = 500;
-// Keep one production heartbeat in the shortened silent stream window.
-const TEST_STREAM_HEARTBEAT_INTERVAL_MS = 4_000;
 const TEST_STREAM_SILENCE_MS = Math.max(
   TEST_HTTP_IDLE_TIMEOUT_MS,
-  TEST_STREAM_HEARTBEAT_INTERVAL_MS,
+  TEST_CODE_HEARTBEAT_INTERVAL_MS,
 ) + TEST_IDLE_TIMEOUT_MARGIN_MS;
 
 describe("Agents API Integration", () => {

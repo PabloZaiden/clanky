@@ -4,6 +4,7 @@ import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
 
 export interface NativeApiServerOptions {
+  /** Bun.serve's idleTimeout value, expressed in seconds. */
   idleTimeout?: number;
 }
 
