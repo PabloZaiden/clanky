@@ -81,7 +81,9 @@ export async function fetchBranch(
   }
 
   const fetchArgs = ["fetch", remote, branchName];
-  const fetchResult = await runGitCommand(executor, directory, fetchArgs);
+  const fetchResult = await runGitCommand(executor, directory, fetchArgs, {
+    allowFailure: true,
+  });
   if (!fetchResult.success) {
     if (isMissingRemoteRefError(fetchResult)) {
       log.debug(`[GitService] Remote branch '${branchName}' does not exist, skipping fetch`);
@@ -107,7 +109,9 @@ export async function pull(
   const branch = branchName ?? (await getCurrentBranch(executor, directory));
 
   const fetchArgs = ["fetch", remote, branch];
-  const fetchResult = await runGitCommand(executor, directory, fetchArgs);
+  const fetchResult = await runGitCommand(executor, directory, fetchArgs, {
+    allowFailure: true,
+  });
   if (!fetchResult.success) {
     if (isMissingRemoteRefError(fetchResult)) {
       log.debug(`[GitService] Remote branch '${branch}' does not exist, skipping pull`);
