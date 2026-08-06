@@ -5,6 +5,7 @@
 import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import { runGitCommand, gitError } from "./git-core";
+import type { GitCommandResult } from "./git-types";
 import { getCurrentBranch } from "./git-repo-query";
 
 export async function getRemoteUrl(
@@ -44,6 +45,16 @@ function isMissingRemoteError(stderr: string, remote: string): boolean {
   return stderr.includes(`No such remote '${remote}'`) || stderr.includes(`No such remote: ${remote}`);
 }
 
+/**
+ * Git reports a missing remote ref through stderr rather than a dedicated
+ * command error, so keep that wording compatibility at this boundary.
+ */
+function isMissingRemoteRefError(result: GitCommandResult): boolean {
+  return !result.success &&
+    result.exitCode === 128 &&
+    result.stderr.includes("couldn't find remote ref");
+}
+
 export async function pushBranch(
   executor: CommandExecutor,
   directory: string,
@@ -69,17 +80,16 @@ export async function fetchBranch(
     return false;
   }
 
-  const fetchResult = await runGitCommand(executor, directory, ["fetch", remote, branchName]);
+  const fetchArgs = ["fetch", remote, branchName];
+  const fetchResult = await runGitCommand(executor, directory, fetchArgs, {
+    allowFailure: true,
+  });
   if (!fetchResult.success) {
-    if (
-      fetchResult.stderr.includes("couldn't find remote ref") ||
-      fetchResult.stderr.includes("fatal: couldn't find remote ref")
-    ) {
+    if (isMissingRemoteRefError(fetchResult)) {
       log.debug(`[GitService] Remote branch '${branchName}' does not exist, skipping fetch`);
       return false;
     }
-    log.debug(`[GitService] Fetch failed: ${fetchResult.stderr}`);
-    return false;
+    throw gitError(`Failed to fetch ${remote}/${branchName}`, fetchResult, fetchArgs);
   }
 
   return true;
@@ -98,17 +108,16 @@ export async function pull(
 
   const branch = branchName ?? (await getCurrentBranch(executor, directory));
 
-  const fetchResult = await runGitCommand(executor, directory, ["fetch", remote, branch]);
+  const fetchArgs = ["fetch", remote, branch];
+  const fetchResult = await runGitCommand(executor, directory, fetchArgs, {
+    allowFailure: true,
+  });
   if (!fetchResult.success) {
-    if (
-      fetchResult.stderr.includes("couldn't find remote ref") ||
-      fetchResult.stderr.includes("fatal: couldn't find remote ref")
-    ) {
+    if (isMissingRemoteRefError(fetchResult)) {
       log.debug(`[GitService] Remote branch '${branch}' does not exist, skipping pull`);
       return false;
     }
-    log.debug(`[GitService] Fetch failed: ${fetchResult.stderr}`);
-    return false;
+    throw gitError(`Failed to fetch ${remote}/${branch}`, fetchResult, fetchArgs);
   }
 
   const mergeResult = await runGitCommand(executor, directory, [
