@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { fileExplorerService } from "../../src/core/file-explorer-service";
 import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -11,6 +12,10 @@ import { join } from "path";
 import { mkdtemp, rm, mkdir, readFile, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
+
+function structuredTreeRecord(...fields: string[]): string {
+  return `${fields.join("\0")}\0\0`;
+}
 
 describe("workspace files API integration", () => {
   const previousDownloadLimitBytes = 100 * 1024 * 1024;
@@ -215,6 +220,60 @@ describe("workspace files API integration", () => {
     }
   }
 
+  class StructuredTreeFixtureExecutor extends TestCommandExecutor {
+    readonly capabilityScripts: string[] = [];
+    readonly treeScripts: string[] = [];
+    readonly treeArgumentSets: string[][] = [];
+
+    constructor(
+      private readonly capabilityFamily: "gnu" | "bsd" | "unsupported",
+      private readonly treeOutput: string,
+    ) {
+      super();
+    }
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      if (command === "bash" && commandLabel === "file-explorer-tree-capabilities") {
+        this.capabilityScripts.push(args[1] ?? "");
+        if (this.capabilityFamily === "unsupported") {
+          return {
+            success: false,
+            stdout: "",
+            stderr: "unsupported tree host",
+            exitCode: 3,
+          };
+        }
+        return {
+          success: true,
+          stdout: this.capabilityFamily,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command === "bash" && commandLabel === "file-explorer-tree") {
+        this.treeScripts.push(args[1] ?? "");
+        this.treeArgumentSets.push([...args]);
+        return {
+          success: true,
+          stdout: this.treeOutput,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      return await super.exec(command, args, options);
+    }
+  }
+
+  async function loadFixtureTree(executor: TestCommandExecutor) {
+    return await fileExplorerService.loadTree({
+      id: "fixture-workspace",
+      rootDirectory: "/workspace/project",
+      pathScopeLabel: "workspace root",
+      executor,
+    });
+  }
+
   test("lists root directory entries as lightweight explorer nodes", async () => {
     const workspace = await createWorkspace();
 
@@ -416,6 +475,116 @@ describe("workspace files API integration", () => {
     expect(data.file.kind).toBe("directory");
     expect(data.file.isImage).toBeUndefined();
     expect(data.file.mimeType).toBeUndefined();
+  });
+
+  test("preserves filenames containing newlines, tabs, and shell characters in the full tree", async () => {
+    const workspace = await createWorkspace();
+    const directoryName = "directory\nwith\tquotes'and$chars";
+    const fileName = "file\nwith\tquotes'and$chars.txt";
+    const directoryPath = join(workDir, directoryName);
+    await mkdir(directoryPath);
+    await writeFile(join(directoryPath, fileName), "special filename\n");
+
+    try {
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/tree`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json() as {
+        entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
+      };
+      const directoryEntry = data.entriesByDirectory[""]?.find((entry) => entry.name === directoryName);
+      expect(directoryEntry).toMatchObject({
+        name: directoryName,
+        path: directoryName,
+        kind: "directory",
+      });
+      expect(data.entriesByDirectory[directoryName]).toEqual([{
+        name: fileName,
+        path: `${directoryName}/${fileName}`,
+        kind: "file",
+      }]);
+    } finally {
+      await rm(directoryPath, { recursive: true, force: true });
+    }
+  });
+
+  test("decodes GNU-compatible records and skips isolated malformed entries", async () => {
+    const rootDirectory = "/workspace/project";
+    const specialPath = `${rootDirectory}/name\nwith\tfields`;
+    const executor = new StructuredTreeFixtureExecutor(
+      "gnu",
+      [
+        structuredTreeRecord("base", `${rootDirectory}/malformed`),
+        structuredTreeRecord("base", specialPath, "81a4"),
+        structuredTreeRecord("base", `${rootDirectory}/src`, "41ed"),
+        structuredTreeRecord("base", `${rootDirectory}/src-link`, "a1ff"),
+        structuredTreeRecord("link", `${rootDirectory}/src-link`, "41ed"),
+        structuredTreeRecord("error", `${rootDirectory}/unreadable`, "stat_failed"),
+      ].join(""),
+    );
+
+    const result = await loadFixtureTree(executor);
+
+    expect(result.entriesByDirectory[""]?.find((entry) => entry.name === "name\nwith\tfields")).toMatchObject({
+      path: "name\nwith\tfields",
+      kind: "file",
+    });
+    expect(result.entriesByDirectory[""]?.find((entry) => entry.name === "src-link")?.kind).toBe("directory");
+    expect(result.entriesByDirectory["src-link"]).toEqual([]);
+    expect(result.entriesByDirectory[""]?.some((entry) => entry.name === "malformed")).toBe(false);
+    expect(executor.capabilityScripts[0]).toContain("stat -c '%f'");
+    expect(executor.capabilityScripts[0]).not.toContain("stat --version");
+    expect(executor.treeScripts[0]).toContain("\\0%s\\0");
+    expect(executor.treeArgumentSets[0]?.[4]).toBe("-c");
+    expect(executor.treeArgumentSets[0]?.[5]).toBe("%f");
+  });
+
+  test("decodes BSD-compatible octal modes for files and symlink targets", async () => {
+    const rootDirectory = "/workspace/project";
+    const executor = new StructuredTreeFixtureExecutor(
+      "bsd",
+      [
+        structuredTreeRecord("base", `${rootDirectory}/src`, "040755"),
+        structuredTreeRecord("base", `${rootDirectory}/src-link`, "120777"),
+        structuredTreeRecord("base", `${rootDirectory}/readme-link`, "120777"),
+        structuredTreeRecord("link", `${rootDirectory}/src-link`, "040755"),
+        structuredTreeRecord("link", `${rootDirectory}/readme-link`, "100644"),
+      ].join(""),
+    );
+
+    const result = await loadFixtureTree(executor);
+
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([
+      "src",
+      "src-link",
+      "readme-link",
+    ]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual([
+      "directory",
+      "directory",
+      "file",
+    ]);
+    expect(result.entriesByDirectory["src-link"]).toEqual([]);
+    expect(executor.treeArgumentSets[0]?.[4]).toBe("-f");
+    expect(executor.treeArgumentSets[0]?.[5]).toBe("%p");
+  });
+
+  test("fails instead of parsing a truncated tree record", async () => {
+    const rootDirectory = "/workspace/project";
+    const completeRecord = structuredTreeRecord("base", `${rootDirectory}/README.md`, "81a4");
+    const executor = new StructuredTreeFixtureExecutor("gnu", completeRecord.slice(0, -2));
+
+    await expect(loadFixtureTree(executor)).rejects.toMatchObject({
+      code: "operation_failed",
+    });
+  });
+
+  test("reports unsupported tree host capabilities explicitly", async () => {
+    const executor = new StructuredTreeFixtureExecutor("unsupported", "");
+
+    await expect(loadFixtureTree(executor)).rejects.toMatchObject({
+      code: "operation_failed",
+    });
   });
 
   test("loads the full file tree from the selected root", async () => {
