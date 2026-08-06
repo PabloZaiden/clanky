@@ -355,7 +355,7 @@ function WorkspaceFileTreeComponent({
               />
               <div>
                 <p className="font-medium text-gray-700 dark:text-gray-200">Loading file tree...</p>
-                <p className="mt-1">Fetching workspace files</p>
+                <p className="mt-1">Fetching files</p>
               </div>
             </div>
           )}
