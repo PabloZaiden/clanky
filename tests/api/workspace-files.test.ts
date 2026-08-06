@@ -273,6 +273,18 @@ describe("workspace files API integration", () => {
     }
   }
 
+  class TreeOutputRecordingExecutor extends TestCommandExecutor {
+    treeOutput = "";
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const result = await super.exec(command, args, options);
+      if (command === "bash" && args[2] === "file-explorer-tree") {
+        this.treeOutput = result.stdout;
+      }
+      return result;
+    }
+  }
+
   async function loadFixtureTree(
     executor: TestCommandExecutor,
     rootDirectory = "/workspace/project",
@@ -548,6 +560,8 @@ describe("workspace files API integration", () => {
     expect(executor.treeScripts[0]).toContain("\\0%s\\0");
     expect(executor.treeScripts[0]).toContain("{} +");
     expect(executor.treeScripts[0]).not.toContain("stat");
+    expect(executor.treeScripts[0]).toContain("! -path \"$root\" \\(");
+    expect(executor.treeScripts[0]).toEndWith("\\)");
     expect(executor.treeArgumentSets[0]).toHaveLength(4);
   });
 
@@ -620,6 +634,24 @@ describe("workspace files API integration", () => {
     };
     expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "assets.png", "src", "logo.svg", "README.md"]);
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
+  });
+
+  test("does not emit the selected root as a tree entry", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-tree-root-"));
+    const executor = new TreeOutputRecordingExecutor();
+
+    try {
+      await writeFile(join(rootDirectory, "README.md"), "root exclusion\n");
+
+      const result = await loadFixtureTree(executor, rootDirectory);
+
+      expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["README.md"]);
+      expect(executor.treeOutput).not.toContain(
+        `base\0${rootDirectory}\0directory\0\0`,
+      );
+    } finally {
+      await rm(rootDirectory, { recursive: true, force: true });
+    }
   });
 
   test("keeps symlinked directories as directory entries without traversing into them", async () => {

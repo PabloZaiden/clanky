@@ -690,10 +690,11 @@ function buildFullTreeCommand(): string {
   return [
     "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
     `find "$root" ! -path "$root" \\(`,
-    `-type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
-    `\\) -o \\( -type d -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
+    `\\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} + \\)`,
+    `-o \\( -type d -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
     `\\) -o \\( -type l -exec sh -c '${FULL_TREE_EMIT_LINK_SCRIPT}' file-explorer-tree-link {} +`,
     `\\) -o -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-entry "file" {} +`,
+    "\\)",
   ].join(" ");
 }
 
