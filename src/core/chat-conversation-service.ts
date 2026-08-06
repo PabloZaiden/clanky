@@ -6,6 +6,8 @@ import {
   getAcpErrorMessage,
   isAcpError,
   isAcpErrorCode,
+  isAcpSshTransportFailure,
+  isAcpSshTransportFailureMetadata,
 } from "../backends/acp";
 import type {
   Backend,
@@ -884,7 +886,7 @@ export class ChatConversationService implements ChatConversationPort {
               return { stop: true };
             }
             await flushActiveStreamBlock(now);
-            await this.emitChatError(chat, event.message, event.code);
+            await this.emitChatError(chat, event.message, event.code, event.details);
             this.clearActiveStream(chatId, generation);
             return { stop: true };
 
@@ -1386,11 +1388,25 @@ export class ChatConversationService implements ChatConversationPort {
     })();
   }
 
-  private async emitChatError(chat: Chat, error: unknown, code?: string): Promise<Chat> {
+  private async emitChatError(
+    chat: Chat,
+    error: unknown,
+    code?: string,
+    details?: Readonly<Record<string, unknown>>,
+  ): Promise<Chat> {
     const message = typeof error === "string" ? error : getAcpErrorMessage(error);
     const errorCode = code ?? (isAcpError(error) ? error.code : undefined);
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    return this.state.markChatError(chat, message, errorCode);
+    const connectionFailed =
+      isAcpSshTransportFailure(error)
+      || isAcpSshTransportFailureMetadata(code, details);
+    const errorChat = connectionFailed
+      ? await this.state.updateState(chat, {
+          ...chat.state,
+          connectionStatus: "ssh_connection_failed",
+        })
+      : chat;
+    return this.state.markChatError(errorChat, message, errorCode);
   }
 
   private async completeInterruptedChat(chat: Chat, memory?: ChatTranscriptMemory): Promise<Chat> {

@@ -3,6 +3,10 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  getSshReliabilityPolicy,
+  type SshReliabilityPolicy,
+} from "../ssh-reliability-policy";
 import type { SshAuthMode } from "./types";
 import { quoteShell } from "./utils";
 
@@ -84,8 +88,10 @@ export function buildSshCommandArgs(options: {
   remoteCommand?: string;
   identityFile?: string;
   connectionScope?: string;
+  policy?: SshReliabilityPolicy;
 }): string[] {
   const identityFile = options.identityFile?.trim();
+  const policy = options.policy ?? getSshReliabilityPolicy();
   return [
     ...getSshAuthArgs(options.authMode),
     ...buildSshMultiplexingArgs({
@@ -106,7 +112,9 @@ export function buildSshCommandArgs(options: {
         ]
       : []),
     "-o",
-    "ConnectTimeout=10",
+    `ConnectTimeout=${policy.connectTimeoutSeconds}`,
+    "-o",
+    `ConnectionAttempts=${policy.connectionAttempts}`,
     "-o",
     "StrictHostKeyChecking=no",
     "-o",
@@ -114,9 +122,9 @@ export function buildSshCommandArgs(options: {
     "-o",
     "LogLevel=ERROR",
     "-o",
-    "ServerAliveInterval=15",
+    `ServerAliveInterval=${policy.serverAliveIntervalSeconds}`,
     "-o",
-    "ServerAliveCountMax=1",
+    `ServerAliveCountMax=${policy.serverAliveCountMax}`,
     "-p",
     String(options.port),
     options.target,

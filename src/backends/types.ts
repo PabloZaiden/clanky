@@ -277,7 +277,7 @@ export type AgentEvent =
   | { type: "reasoning.delta"; content: string }
   | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
   | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown }
-  | { type: "error"; message: string; code?: string }
+  | { type: "error"; message: string; code?: string; details?: Readonly<Record<string, unknown>> }
   | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
   | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }
   | { type: "session.status"; sessionId: string; status: "idle" | "busy" | "retry"; attempt?: number; message?: string };
@@ -298,7 +298,12 @@ export interface Backend {
   // Core methods (used by TaskEngine)
   // ============================================
 
-  /** Connect to the backend server. Optional signal allows aborting the connection attempt. */
+  /**
+   * Connect to the backend server.
+   *
+   * Implementations must observe the optional signal, reject promptly after
+   * abort, and complete transport cleanup before the rejection settles.
+   */
   connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void>;
 
   /** Disconnect from the backend server */

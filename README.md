@@ -154,6 +154,12 @@ clanky ws --task-id my-task
 | `CLANKY_DATA_DIR` | Data directory for SQLite persistence | `./data` |
 | `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) origin without a path, query, or fragment, advertised to remote execution contexts and mesh peers | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
+| `CLANKY_SSH_CONNECT_TIMEOUT_MS` | Per-attempt OpenSSH connection timeout for SSH-backed ACP and remote command processes | `30000` |
+| `CLANKY_SSH_CONNECTION_ATTEMPTS` | Native OpenSSH connection attempts for each SSH process | `2` |
+| `CLANKY_SSH_CONNECTION_TIMEOUT_MS` | Outer Clanky SSH connection deadline; must include all configured attempts and startup grace | `75000` |
+| `CLANKY_SSH_SERVER_ALIVE_INTERVAL_SECONDS` | OpenSSH keepalive interval for established SSH sessions | `30` |
+| `CLANKY_SSH_SERVER_ALIVE_COUNT_MAX` | Missed OpenSSH keepalives tolerated before closing an established session | `3` |
+| `CLANKY_SSH_MAX_CONCURRENT_HANDSHAKES` | Maximum simultaneous new SSH handshakes per target; active ACP sessions are not limited | `4` |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
 | `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |

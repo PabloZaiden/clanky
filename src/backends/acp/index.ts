@@ -4,11 +4,15 @@
 
 export {
   AcpError,
+  createAcpConnectionAbortedError,
+  createAcpConnectionTimeoutError,
   createAcpProcessError,
   createAcpRpcError,
   createAcpSessionNotFoundError,
   createAcpUnsupportedPromptCapabilityError,
   getAcpErrorMessage,
+  isAcpSshTransportFailure,
+  isAcpSshTransportFailureMetadata,
   isAcpError,
   isAcpErrorCode,
 } from "./errors";
@@ -27,6 +31,7 @@ export type {
   RpcRequester,
   RpcTransport,
 } from "./contracts";
+export type { AcpTransportStage } from "./types";
 export { LocalAcpTransportLifecycle } from "./transport-lifecycle";
 export { MeshAcpTransport, WorkspaceAcpTransportLifecycle } from "./mesh-transport";
 export { getMockAcpCommand } from "./mock-acp-command";

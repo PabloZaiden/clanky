@@ -104,12 +104,17 @@ export class SessionStateStore implements SessionEventSink {
     }
   }
 
-  emitActivePromptError(error: { message: string; code?: string }): void {
+  emitActivePromptError(error: {
+    message: string;
+    code?: string;
+    details?: Readonly<Record<string, unknown>>;
+  }): void {
     for (const sessionId of [...this.sessionPromptSequences.keys()]) {
       this.emitSessionEvent(sessionId, {
         type: "error",
         message: error.message,
         ...(error.code ? { code: error.code } : {}),
+        ...(error.details ? { details: error.details } : {}),
       });
     }
   }

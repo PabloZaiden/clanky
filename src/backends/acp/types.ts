@@ -6,6 +6,8 @@ import type { AgentEvent } from "../types";
 
 export type JsonRpcId = number | string;
 
+export type AcpTransportStage = "spawn" | "initialize" | "ready" | "runtime";
+
 export type JsonRpcMessage = {
   jsonrpc: "2.0";
   id?: JsonRpcId;

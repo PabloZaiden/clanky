@@ -6,7 +6,11 @@
  * allowing parallel operation of tasks across different workspaces.
  */
 
-import { AcpBackend, WorkspaceAcpTransportLifecycle } from "../../backends/acp";
+import {
+  AcpBackend,
+  WorkspaceAcpTransportLifecycle,
+  createAcpConnectionTimeoutError,
+} from "../../backends/acp";
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
 import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
@@ -19,7 +23,6 @@ import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
 import {
-  DEFAULT_CONNECTION_TIMEOUT_MS,
   deriveExecutionSettings,
   buildAgentServerUrl,
   type WorkspaceConnectionState,
@@ -31,6 +34,7 @@ import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identit
 import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
+import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 
 /**
  * Backend manager supporting multiple workspace connections.
@@ -52,8 +56,8 @@ class BackendManager {
   private testBackend: Backend | null = null;
   /** Test settings (when isTestBackend is true) */
   private testSettings: ServerSettings = getDefaultServerSettings();
-  /** Overridable connection timeout (ms) for testing. Defaults to DEFAULT_CONNECTION_TIMEOUT_MS. */
-  private connectionTimeoutMs: number = DEFAULT_CONNECTION_TIMEOUT_MS;
+  /** Overridable connection timeout (ms) for testing. Defaults to the SSH reliability policy. */
+  private connectionTimeoutMs: number = getSshReliabilityPolicy().connectionTimeoutMs;
 
   /**
    * Create a backend instance for the configured agent provider.
@@ -214,19 +218,26 @@ class BackendManager {
     // remote server is unreachable (connectToExisting disables Bun's request timeout).
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutError = createAcpConnectionTimeoutError(this.connectionTimeoutMs, {
+      transport: config.transport,
+      target: config.transport === "ssh"
+        ? {
+            ...(config.hostname ? { hostname: config.hostname } : {}),
+            ...(config.port === undefined ? {} : { port: config.port }),
+            ...(config.username ? { username: config.username } : {}),
+          }
+        : undefined,
+    });
 
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error(`Connection timed out after ${this.connectionTimeoutMs}ms`)),
-          this.connectionTimeoutMs,
-        );
-      });
-
-      await Promise.race([
-        state.backend.connect(config, abortController.signal),
-        timeoutPromise,
-      ]);
+      timeoutId = setTimeout(
+        () => abortController.abort(timeoutError),
+        this.connectionTimeoutMs,
+      );
+      // Production backends are abort-aware and settle only after their
+      // transport cleanup. A Promise.race here would return on timeout while
+      // leaving a connection lifecycle running in the background.
+      await state.backend.connect(config, abortController.signal);
 
       this.emitEvent({
         type: "server.connected",
@@ -937,7 +948,7 @@ class BackendManager {
     this.isTestBackend = false;
     this.testBackend = null;
     this.testSettings = getDefaultServerSettings();
-    this.connectionTimeoutMs = DEFAULT_CONNECTION_TIMEOUT_MS;
+    this.connectionTimeoutMs = getSshReliabilityPolicy().connectionTimeoutMs;
   }
 
   /**

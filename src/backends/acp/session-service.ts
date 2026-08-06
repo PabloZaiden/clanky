@@ -456,6 +456,7 @@ export class SessionService {
           type: "error",
           message,
           ...(error instanceof AcpError ? { code: error.code } : {}),
+          ...(error instanceof AcpError ? { details: error.details } : {}),
         });
         this.state.clearPromptState(sessionId);
       });

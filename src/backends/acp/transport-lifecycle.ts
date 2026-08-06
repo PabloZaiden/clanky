@@ -14,12 +14,24 @@ import {
   buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "../../core/agent-runtime-command";
+import { sshConnectionGate, type SshConnectionGate } from "../../core/ssh-connection-gate";
+import {
+  buildSshConnectionKey,
+  getSshReliabilityPolicy,
+  type SshReliabilityPolicy,
+} from "../../core/ssh-reliability-policy";
 import type { AgentProvider } from "@/shared/settings";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 
 import { sanitizeSpawnArgsForLogging, getProcessExitHint } from "./process-utils";
-import { AcpError, createAcpProcessError, getAcpErrorMessage } from "./errors";
-import { MAX_RECENT_PROCESS_LINES } from "./types";
+import {
+  AcpError,
+  createAcpConnectionAbortedError,
+  createAcpConnectionTimeoutError,
+  createAcpProcessError,
+  getAcpErrorMessage,
+} from "./errors";
+import { MAX_RECENT_PROCESS_LINES, type AcpTransportStage } from "./types";
 import { AcpProcess } from "./acp-process";
 import type { JsonRpcMessage } from "./types";
 import type {
@@ -31,16 +43,16 @@ import type {
   RpcTransport,
 } from "./contracts";
 
-const ACP_SSH_INITIALIZE_ATTEMPTS = 3;
-const ACP_SSH_INITIALIZE_RETRY_DELAY_MS = 250;
-
 export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
+  private readonly reliabilityPolicy: SshReliabilityPolicy;
+  private readonly connectionGate: SshConnectionGate;
   private process: AcpProcess | null = null;
   private connected = false;
   private directory = "";
   private provider: AgentProvider | null = null;
   private connectionInfo: ConnectionInfo | null = null;
   private session: AcpTransportSession | null = null;
+  private stage: AcpTransportStage = "spawn";
 
   /** Recent non-JSON ACP process output lines for diagnostics. */
   private recentProcessLines: string[] = [];
@@ -48,6 +60,14 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   private requester: (RpcRequester & RpcPendingController) | null = null;
   private onMessage: ((message: JsonRpcMessage) => void) | null = null;
   private onTransportClosed: ((event: AcpTransportClosedEvent) => void) | null = null;
+
+  constructor(options: {
+    reliabilityPolicy?: SshReliabilityPolicy;
+    connectionGate?: SshConnectionGate;
+  } = {}) {
+    this.reliabilityPolicy = options.reliabilityPolicy ?? getSshReliabilityPolicy();
+    this.connectionGate = options.connectionGate ?? sshConnectionGate;
+  }
 
   /** Narrow transport exposed to the RPC client for writing wire messages. */
   readonly transport: RpcTransport = {
@@ -113,6 +133,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
 
     this.directory = config.directory;
     this.provider = config.provider ?? "opencode";
+    this.stage = "spawn";
     this.session = {
       id: crypto.randomUUID(),
       kind: "local",
@@ -144,7 +165,12 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       }
 
       this.connected = true;
-      return await this.connectSpawn(config, signal, requester);
+      const connectionAbort = this.createConnectionAbortContext(config, signal);
+      try {
+        return await this.connectSpawn(config, connectionAbort.signal, requester);
+      } finally {
+        connectionAbort.dispose();
+      }
     } catch (error) {
       const process = this.detachForShutdown();
       await this.terminateProcess(process);
@@ -175,85 +201,120 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       provider: config.provider,
     });
 
-    const maxAttempts = config.transport === "ssh" ? ACP_SSH_INITIALIZE_ATTEMPTS : 1;
+    const maxAttempts = 1;
     let initializeResult: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      this.throwIfAborted(signal);
+      this.stage = "spawn";
+      this.throwIfAborted(signal, config);
       this.recentProcessLines = [];
       let processHandle: AcpProcess | null = null;
+      let releaseConnectionGate: () => void = () => {};
       try {
-        const spawned = await AcpProcess.spawn({
-          command,
-          args,
-          cwd: spawnCwd,
-          env: spawnEnv,
-          onLine: (source, line) => {
-            if (processHandle) {
-              this.handleRpcLine(processHandle, line, source);
-            }
-          },
-          onExit: (exitCode) => {
-            if (processHandle) {
-              this.handleProcessExit(processHandle, command, exitCode);
-            }
-          },
-          onStreamError: (source, error) => {
-            log.warn(`[AcpBackend] ACP ${source} stream ended with error`, {
-              error: String(error),
-            });
-          },
-        });
-        processHandle = spawned;
-      } catch (error) {
-        throw new Error(`Failed to spawn ACP process (${command}) in cwd '${spawnCwd}': ${String(error)}`);
-      }
-
-      const process = processHandle;
-      if (!process) {
-        throw new Error("ACP process was not created.");
-      }
-      this.process = process;
-      if (config.startupStdin) {
-        process.write(config.startupStdin);
-      }
-      process.start();
-
-      try {
-        initializeResult = await requester.sendRequest("initialize", {
-          protocolVersion: 1,
-          clientInfo: {
-            name: "clanky",
-            version: "0.0.0",
-          },
-        });
-        this.throwIfAbortedAfterInitialize(signal);
-        break;
-      } catch (error) {
-        await this.terminateProcess(process);
-        if (this.process === process) {
-          this.process = null;
+        if (config.transport === "ssh") {
+          releaseConnectionGate = await this.connectionGate.acquire(
+            buildSshConnectionKey(config),
+            signal,
+          );
         }
-        requester.clearPending();
 
+        try {
+          const spawned = await AcpProcess.spawn({
+            command,
+            args,
+            cwd: spawnCwd,
+            env: spawnEnv,
+            onLine: (source, line) => {
+              if (processHandle) {
+                this.handleRpcLine(processHandle, line, source);
+              }
+            },
+            onExit: (exitCode) => {
+              if (processHandle) {
+                this.handleProcessExit(processHandle, command, exitCode, config, attempt);
+              }
+            },
+            onStreamError: (source, error) => {
+              log.warn(`[AcpBackend] ACP ${source} stream ended with error`, {
+                error: String(error),
+              });
+            },
+          });
+          processHandle = spawned;
+        } catch (error) {
+          throw new AcpError(
+            "acp_process_failed",
+            `Failed to spawn ACP process (${command}) in cwd '${spawnCwd}': ${getAcpErrorMessage(error)}`,
+            {
+              cause: error,
+              details: this.getConnectionDetails(config, attempt),
+            },
+          );
+        }
+
+        const process = processHandle;
+        if (!process) {
+          throw new AcpError(
+            "acp_process_failed",
+            "ACP process was not created.",
+            { details: this.getConnectionDetails(config, attempt) },
+          );
+        }
+        this.process = process;
+        this.stage = "initialize";
+        this.throwIfAborted(signal, config);
+        if (config.startupStdin) {
+          process.write(config.startupStdin);
+        }
+        process.start();
+        if (process.exitCode !== null) {
+          throw createAcpProcessError(
+            `ACP process exited with code ${process.exitCode}`,
+            {
+              command,
+              exitCode: process.exitCode,
+              transport: config.transport,
+              stage: this.stage,
+              attempt,
+              target: this.getTargetDetails(config),
+              initializationCompleted: false,
+            },
+          );
+        }
+
+        initializeResult = await raceWithAbort(
+          requester.sendRequest("initialize", {
+            protocolVersion: 1,
+            clientInfo: {
+              name: "clanky",
+              version: "0.0.0",
+            },
+          }),
+          signal,
+          () => this.getAbortError(signal, config),
+        );
+        this.stage = "ready";
+        this.throwIfAbortedAfterInitialize(signal, config);
+        this.stage = "runtime";
+      } catch (error) {
         const failure = error instanceof AcpError
           ? error
           : new AcpError(
               "acp_process_failed",
               `Failed to initialize ACP process (${command}): ${getAcpErrorMessage(error)}`,
-              { cause: error },
+              {
+                cause: error,
+                details: this.getConnectionDetails(config, attempt),
+              },
             );
-        if (failure.code !== "acp_ssh_authentication_failed" || attempt >= maxAttempts) {
-          throw failure;
+        await this.terminateProcess(processHandle);
+        if (this.process === processHandle) {
+          this.process = null;
         }
-
-        log.warn("[AcpBackend] Retrying ACP SSH initialization after transient auth failure", {
-          attempt,
-          maxAttempts,
-          provider: config.provider,
-          hostname: config.hostname,
-          port: config.port,
-        });
-        await Bun.sleep(ACP_SSH_INITIALIZE_RETRY_DELAY_MS);
+        requester.rejectPending(failure);
+        requester.clearPending();
+        throw failure;
+      } finally {
+        releaseConnectionGate();
       }
     }
     log.debug("[AcpBackend] ACP runtime initialized", { command });
@@ -265,17 +326,20 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     return initializeResult;
   }
 
-  private throwIfAborted(signal: AbortSignal | undefined): void {
+  private throwIfAborted(signal: AbortSignal | undefined, config: BackendConnectionConfig): void {
     if (signal?.aborted) {
-      throw new AcpError("acp_process_failed", "ACP connection aborted before initialization");
+      throw this.getAbortError(signal, config);
     }
   }
 
-  private throwIfAbortedAfterInitialize(signal: AbortSignal | undefined): void {
+  private throwIfAbortedAfterInitialize(
+    signal: AbortSignal | undefined,
+    config: BackendConnectionConfig,
+  ): void {
     if (!signal?.aborted) {
       return;
     }
-    throw new AcpError("acp_process_failed", "ACP connection aborted during initialization");
+    throw this.getAbortError(signal, config);
   }
 
   /** Reset connection metadata and diagnostics; returns the detached process. */
@@ -287,6 +351,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     this.provider = null;
     this.connectionInfo = null;
     this.session = null;
+    this.stage = "spawn";
     this.recentProcessLines = [];
     this.requester = null;
     return process;
@@ -304,7 +369,13 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     }
   }
 
-  private handleProcessExit(process: AcpProcess, command: string, exitCode: number): void {
+  private handleProcessExit(
+    process: AcpProcess,
+    command: string,
+    exitCode: number,
+    config: BackendConnectionConfig,
+    attempt: number,
+  ): void {
     if (this.process !== process || !this.connected) {
       return;
     }
@@ -321,17 +392,36 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     const error = createAcpProcessError(reason, {
       command,
       exitCode,
+      transport: config.transport,
+      stage: this.stage,
+      attempt,
+      target: this.getTargetDetails(config),
+      initializationCompleted: this.stage === "runtime",
     });
-    const session = this.session;
+    log.error("[AcpBackend] ACP process exited", {
+      command,
+      exitCode,
+      transport: config.transport ?? "stdio",
+      stage: this.stage,
+      attempt,
+      target: this.getTargetDetails(config),
+      initializationCompleted: this.stage === "runtime",
+    });
     const requester = this.requester;
-    this.connected = false;
+    const initializationInProgress = this.stage === "spawn" || this.stage === "initialize";
+    requester?.rejectPending(error);
     this.process = null;
+    if (initializationInProgress) {
+      return;
+    }
+
+    const session = this.session;
+    this.connected = false;
     this.directory = "";
     this.provider = null;
     this.connectionInfo = null;
     this.session = null;
     this.requester = null;
-    requester?.rejectPending(error);
     if (session) {
       this.onTransportClosed?.({
         session,
@@ -379,5 +469,129 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     });
 
     process.write(`${JSON.stringify(message)}\n`);
+  }
+
+  private getTargetDetails(config: BackendConnectionConfig): {
+    hostname?: string;
+    port?: number;
+    username?: string;
+  } | undefined {
+    if (config.transport !== "ssh") {
+      return undefined;
+    }
+    return {
+      ...(config.hostname ? { hostname: config.hostname } : {}),
+      ...(config.port === undefined ? {} : { port: config.port }),
+      ...(config.username ? { username: config.username } : {}),
+    };
+  }
+
+  private getConnectionDetails(
+    config: BackendConnectionConfig,
+    attempt: number,
+  ): Readonly<Record<string, unknown>> {
+    return {
+      transport: config.transport ?? "stdio",
+      stage: this.stage,
+      attempt,
+      target: this.getTargetDetails(config),
+      initializationCompleted: this.stage === "runtime",
+    };
+  }
+
+  private getAbortError(
+    signal: AbortSignal | undefined,
+    config: BackendConnectionConfig,
+  ): AcpError {
+    const reason = signal?.reason;
+    if (reason instanceof AcpError) {
+      return reason;
+    }
+    if (reason instanceof Error && reason.name !== "AbortError") {
+      return createAcpConnectionAbortedError({
+        transport: config.transport,
+        stage: this.stage,
+        target: this.getTargetDetails(config),
+        cause: reason,
+      });
+    }
+    return createAcpConnectionAbortedError({
+      transport: config.transport,
+      stage: this.stage,
+      target: this.getTargetDetails(config),
+    });
+  }
+
+  private createConnectionAbortContext(
+    config: BackendConnectionConfig,
+    externalSignal: AbortSignal | undefined,
+  ): {
+    signal: AbortSignal;
+    dispose: () => void;
+  } {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const abortFromExternalSignal = (): void => {
+      if (!controller.signal.aborted) {
+        controller.abort(externalSignal?.reason ?? this.getAbortError(controller.signal, config));
+      }
+    };
+
+    if (externalSignal?.aborted) {
+      abortFromExternalSignal();
+    } else {
+      externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+    }
+
+    if (config.transport === "ssh") {
+      timer = setTimeout(() => {
+        if (!controller.signal.aborted) {
+          controller.abort(createAcpConnectionTimeoutError(
+            this.reliabilityPolicy.connectionTimeoutMs,
+            {
+              transport: config.transport,
+              stage: this.stage,
+              target: this.getTargetDetails(config),
+            },
+          ));
+        }
+      }, this.reliabilityPolicy.connectionTimeoutMs);
+    }
+
+    return {
+      signal: controller.signal,
+      dispose: () => {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+        externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+      },
+    };
+  }
+}
+
+async function raceWithAbort<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  getAbortError: () => AcpError,
+): Promise<T> {
+  if (!signal) {
+    return await operation;
+  }
+  if (signal.aborted) {
+    throw getAbortError();
+  }
+
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(getAbortError());
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+    }
   }
 }
