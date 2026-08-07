@@ -7,11 +7,18 @@ import {
   uploadFileExplorerFileApi,
   writeFileExplorerFileApi,
 } from "./workspaceFileActions";
-import type { FileExplorerRequestScope } from "./file-explorer-request-scope";
-import { isFileExplorerAbortError } from "./file-explorer-request-scope";
+import {
+  isFileExplorerAbortError,
+} from "./file-explorer-request-scope";
 import type {
+  FileExplorerOperation,
   FileExplorerOperationFailure,
 } from "./file-explorer-types";
+import {
+  createFileExplorerMutationCoordinator,
+  type FileExplorerMutationOwner,
+} from "./file-explorer-mutation-coordinator";
+import type { FileExplorerRequestScope } from "./file-explorer-request-scope";
 import type { UseFileExplorerTreeResult } from "./useFileExplorerTree";
 import {
   LARGE_FILE_WARNING_THRESHOLD_BYTES,
@@ -64,36 +71,56 @@ export function useFileExplorerMutations(
     bytesUploaded: number;
     totalBytes: number;
   } | null>(null);
-  const uploadProgressRequestIdRef = useRef<number | null>(null);
-  const mutationRequestIdRef = useRef(0);
+  const mutationCoordinatorRef = useRef<ReturnType<typeof createFileExplorerMutationCoordinator> | null>(null);
+  if (!mutationCoordinatorRef.current) {
+    mutationCoordinatorRef.current = createFileExplorerMutationCoordinator();
+  }
+  const uploadProgressOwnerRef = useRef<FileExplorerMutationOwner | null>(null);
   const stateTargetKeyRef = useRef(scope.targetKey);
   const hasCurrentTargetState = stateTargetKeyRef.current === scope.targetKey;
 
-  const beginMutation = useCallback((): number | null => {
-    if (!scope.isCurrent()) {
-      return null;
+  const beginMutation = useCallback((
+    kind: FileExplorerOperation,
+    externalSignal?: AbortSignal,
+  ): FileExplorerMutationOwner | null => {
+    const result = mutationCoordinatorRef.current!.begin(scope, kind, externalSignal);
+    if (result.reason === "busy") {
+      setOperationFailure({
+        operation: kind,
+        message: "Another file operation is already in progress.",
+        conflict: false,
+      });
     }
-    const requestId = mutationRequestIdRef.current + 1;
-    mutationRequestIdRef.current = requestId;
-    return requestId;
+    return result.owner;
   }, [scope]);
 
-  const isCurrentMutation = useCallback((
-    requestId: number,
-    operation?: { isCurrent: () => boolean },
-  ): boolean => {
-    return scope.isCurrent()
-      && mutationRequestIdRef.current === requestId
-      && (operation?.isCurrent() ?? true);
-  }, [scope]);
+  const isCurrentMutation = useCallback((owner: FileExplorerMutationOwner): boolean =>
+    mutationCoordinatorRef.current!.isCurrent(scope, owner), [scope]);
+
+  const finishMutation = useCallback((owner: FileExplorerMutationOwner): void => {
+    if (!mutationCoordinatorRef.current!.finish(owner)) {
+      return;
+    }
+
+    if (owner.kind === "save" && owner.targetKey === scope.targetKey && scope.isCurrent()) {
+      savingFileRef.current = false;
+      setSavingFile(false);
+    }
+    if (uploadProgressOwnerRef.current === owner) {
+      uploadProgressOwnerRef.current = null;
+      if (owner.targetKey === scope.targetKey && scope.isCurrent()) {
+        setUploadProgress(null);
+      }
+    }
+  }, [savingFileRef, scope]);
 
   const saveCurrentFile = useCallback(async (saveOptions?: { overwrite?: boolean }) => {
     const activeFile = document.currentFile;
     if (!activeFile || activeFile.isImage || !scope.isCurrent()) {
       return false;
     }
-    const requestId = beginMutation();
-    if (requestId === null) {
+    const owner = beginMutation("save");
+    if (owner === null) {
       return false;
     }
 
@@ -102,7 +129,6 @@ export function useFileExplorerMutations(
     conflicts.dismissConflict();
     savingFileRef.current = true;
     setSavingFile(true);
-    const operation = scope.createOperation();
 
     try {
       const response = await writeFileExplorerFileApi(scope.target, {
@@ -113,15 +139,15 @@ export function useFileExplorerMutations(
         startDirectory: scope.target.startDirectory ?? null,
       }, {
         startDirectory: scope.target.startDirectory,
-        signal: operation.signal,
+        signal: owner.operation.signal,
       });
-      if (!isCurrentMutation(requestId, operation)) {
+      if (!isCurrentMutation(owner)) {
         return false;
       }
       document.applySavedFile(response.file, document.editorContent);
       return true;
     } catch (requestError) {
-      if (!isCurrentMutation(requestId, operation) || isFileExplorerAbortError(requestError)) {
+      if (!isCurrentMutation(owner) || isFileExplorerAbortError(requestError)) {
         return false;
       }
       if (requestError instanceof WorkspaceFileConflictError) {
@@ -145,17 +171,15 @@ export function useFileExplorerMutations(
       });
       return false;
     } finally {
-      if (isCurrentMutation(requestId, operation)) {
-        savingFileRef.current = false;
-        setSavingFile(false);
-      }
+      finishMutation(owner);
     }
   }, [
     beginMutation,
     conflicts,
     document,
-    isCurrentMutation,
     clearError,
+    finishMutation,
+    isCurrentMutation,
     onError,
     savingFileRef,
     scope,
@@ -169,14 +193,13 @@ export function useFileExplorerMutations(
     if (!selectedNode || !scope.isCurrent()) {
       return null;
     }
-    const requestId = beginMutation();
-    if (requestId === null) {
+    const owner = beginMutation("rename");
+    if (owner === null) {
       return null;
     }
 
     setOperationFailure(null);
     clearError();
-    const operation = scope.createOperation();
 
     try {
       const response = await renameFileExplorerNodeApi(scope.target, {
@@ -189,14 +212,14 @@ export function useFileExplorerMutations(
         startDirectory: scope.target.startDirectory ?? null,
       }, {
         startDirectory: scope.target.startDirectory,
-        signal: operation.signal,
+        signal: owner.operation.signal,
       });
-      if (!isCurrentMutation(requestId, operation)) {
+      if (!isCurrentMutation(owner)) {
         return null;
       }
       tree.selectNode(response.file);
       await tree.refreshTree(getParentDirectory(response.file.path));
-      if (!isCurrentMutation(requestId, operation)) {
+      if (!isCurrentMutation(owner)) {
         return null;
       }
       if (document.currentFile?.path === response.previousPath) {
@@ -206,7 +229,7 @@ export function useFileExplorerMutations(
       }
       return response.file;
     } catch (requestError) {
-      if (!isCurrentMutation(requestId, operation) || isFileExplorerAbortError(requestError)) {
+      if (!isCurrentMutation(owner) || isFileExplorerAbortError(requestError)) {
         return null;
       }
       const message = onError(requestError);
@@ -216,22 +239,23 @@ export function useFileExplorerMutations(
         conflict: false,
       });
       return null;
+    } finally {
+      finishMutation(owner);
     }
-  }, [beginMutation, clearError, document, isCurrentMutation, onError, scope, tree]);
+  }, [beginMutation, clearError, document, finishMutation, isCurrentMutation, onError, scope, tree]);
 
   const deleteSelectedNode = useCallback(async () => {
     const selectedNode = tree.selectedNode;
     if (!selectedNode || !scope.isCurrent()) {
       return false;
     }
-    const requestId = beginMutation();
-    if (requestId === null) {
+    const owner = beginMutation("delete");
+    if (owner === null) {
       return false;
     }
 
     setOperationFailure(null);
     clearError();
-    const operation = scope.createOperation();
 
     try {
       const response = await deleteFileExplorerNodeApi(scope.target, {
@@ -243,9 +267,9 @@ export function useFileExplorerMutations(
         startDirectory: scope.target.startDirectory ?? null,
       }, {
         startDirectory: scope.target.startDirectory,
-        signal: operation.signal,
+        signal: owner.operation.signal,
       });
-      if (!isCurrentMutation(requestId, operation)) {
+      if (!isCurrentMutation(owner)) {
         return false;
       }
       const parentDirectory = getParentDirectory(response.deletedPath);
@@ -257,9 +281,9 @@ export function useFileExplorerMutations(
         document.clearCurrentFile();
       }
       await tree.refreshTree(parentDirectory);
-      return isCurrentMutation(requestId, operation);
+      return isCurrentMutation(owner);
     } catch (requestError) {
-      if (!isCurrentMutation(requestId, operation) || isFileExplorerAbortError(requestError)) {
+      if (!isCurrentMutation(owner) || isFileExplorerAbortError(requestError)) {
         return false;
       }
       const message = onError(requestError);
@@ -269,8 +293,10 @@ export function useFileExplorerMutations(
         conflict: false,
       });
       return false;
+    } finally {
+      finishMutation(owner);
     }
-  }, [beginMutation, clearError, document, isCurrentMutation, onError, scope, tree]);
+  }, [beginMutation, clearError, document, finishMutation, isCurrentMutation, onError, scope, tree]);
 
   const uploadFileToSelectedDirectory = useCallback(async (
     file: File,
@@ -279,18 +305,17 @@ export function useFileExplorerMutations(
     if (!scope.isCurrent()) {
       return null;
     }
-    const requestId = beginMutation();
-    if (requestId === null) {
+    const owner = beginMutation("upload", uploadOptions?.signal);
+    if (owner === null) {
       return null;
     }
     const targetDirectory = tree.selectedNode?.kind === "directory"
       ? tree.selectedNode.path
       : tree.currentDirectory;
-    const operation = scope.createOperation(uploadOptions?.signal);
 
     setOperationFailure(null);
     clearError();
-    uploadProgressRequestIdRef.current = requestId;
+    uploadProgressOwnerRef.current = owner;
     setUploadProgress({ bytesUploaded: 0, totalBytes: file.size });
     try {
       const response = await uploadFileExplorerFileApi(
@@ -300,22 +325,22 @@ export function useFileExplorerMutations(
         {
           overwrite: uploadOptions?.overwrite ?? false,
           startDirectory: scope.target.startDirectory,
-          signal: operation.signal,
+          signal: owner.operation.signal,
           onProgress: (progress) => {
-            if (isCurrentMutation(requestId, operation)) {
+            if (isCurrentMutation(owner)) {
               setUploadProgress(progress);
             }
           },
         },
       );
-      if (!isCurrentMutation(requestId, operation)) {
+      if (!isCurrentMutation(owner)) {
         return null;
       }
       tree.selectNode(response.file);
       await tree.refreshTree(targetDirectory);
-      return isCurrentMutation(requestId, operation) ? response.file : null;
+      return isCurrentMutation(owner) ? response.file : null;
     } catch (requestError) {
-      if (!isCurrentMutation(requestId, operation) || isFileExplorerAbortError(requestError)) {
+      if (!isCurrentMutation(owner) || isFileExplorerAbortError(requestError)) {
         return null;
       }
       const message = onError(requestError);
@@ -326,12 +351,9 @@ export function useFileExplorerMutations(
       });
       return null;
     } finally {
-      if (uploadProgressRequestIdRef.current === requestId) {
-        uploadProgressRequestIdRef.current = null;
-        setUploadProgress(null);
-      }
+      finishMutation(owner);
     }
-  }, [beginMutation, clearError, isCurrentMutation, onError, scope, tree]);
+  }, [beginMutation, clearError, finishMutation, isCurrentMutation, onError, scope, tree]);
 
   const retrySaveWithOverwrite = useCallback(async () => {
     conflicts.dismissConflict();
@@ -340,12 +362,14 @@ export function useFileExplorerMutations(
 
   useEffect(() => {
     stateTargetKeyRef.current = scope.targetKey;
-    mutationRequestIdRef.current += 1;
     savingFileRef.current = false;
     setSavingFile(false);
     setOperationFailure(null);
-    uploadProgressRequestIdRef.current = null;
+    uploadProgressOwnerRef.current = null;
     setUploadProgress(null);
+    return () => {
+      mutationCoordinatorRef.current!.dispose(scope);
+    };
   }, [savingFileRef, scope]);
 
   return {

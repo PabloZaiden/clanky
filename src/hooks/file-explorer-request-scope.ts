@@ -3,8 +3,10 @@ import type { FileExplorerTarget } from "./workspaceFileActions";
 
 export interface FileExplorerRequestOperation {
   requestId: number;
+  channel: string | null;
   signal: AbortSignal;
   isCurrent: () => boolean;
+  release: () => void;
 }
 
 export interface FileExplorerRequestScope {
@@ -12,7 +14,10 @@ export interface FileExplorerRequestScope {
   targetKey: string;
   signal: AbortSignal;
   isCurrent: () => boolean;
-  createOperation: (signal?: AbortSignal) => FileExplorerRequestOperation;
+  createOperation: (
+    signal?: AbortSignal,
+    channel?: string,
+  ) => FileExplorerRequestOperation;
   dispose: () => void;
 }
 
@@ -27,28 +32,74 @@ export function createFileExplorerRequestScope(
 ): FileExplorerRequestScope {
   const controller = new AbortController();
   let nextRequestId = 0;
+  const channelOwners = new Map<string, {
+    requestId: number;
+    controller: AbortController;
+  }>();
 
   const isCurrent = (): boolean => (
     isTargetCurrent()
     && !controller.signal.aborted
   );
 
+  const dispose = (): void => {
+    controller.abort();
+    for (const owner of channelOwners.values()) {
+      owner.controller.abort();
+    }
+    channelOwners.clear();
+  };
+
   return {
     target,
     targetKey,
     signal: controller.signal,
     isCurrent,
-    dispose: () => {
-      controller.abort();
-    },
-    createOperation: (operationSignal?: AbortSignal): FileExplorerRequestOperation => {
+    dispose,
+    createOperation: (
+      operationSignal?: AbortSignal,
+      channel?: string,
+    ): FileExplorerRequestOperation => {
       const requestId = nextRequestId + 1;
       nextRequestId = requestId;
-      const signal = combineAbortSignals(controller.signal, operationSignal);
+      const channelController = channel ? new AbortController() : null;
+      if (channelController && channel) {
+        channelOwners.get(channel)?.controller.abort();
+        channelOwners.set(channel, {
+          requestId,
+          controller: channelController,
+        });
+      }
+      const operationSignalWithChannel = channelController
+        ? combineFileExplorerAbortSignals(channelController.signal, operationSignal)
+        : operationSignal;
+      const signal = operationSignalWithChannel
+        ? combineFileExplorerAbortSignals(controller.signal, operationSignalWithChannel)
+        : controller.signal;
+      let released = false;
       return {
         requestId,
+        channel: channel ?? null,
         signal,
-        isCurrent: () => isCurrent() && !signal.aborted,
+        isCurrent: () => (
+          !released
+          && isCurrent()
+          && !signal.aborted
+          && (
+            !channel
+            || channelOwners.get(channel)?.requestId === requestId
+          )
+        ),
+        release: () => {
+          if (released) {
+            return;
+          }
+          released = true;
+          if (channel && channelOwners.get(channel)?.requestId === requestId) {
+            channelOwners.delete(channel);
+            channelController?.abort();
+          }
+        },
       };
     },
   };
@@ -61,14 +112,14 @@ export function isFileExplorerAbortError(requestError: unknown): boolean {
   );
 }
 
-function combineAbortSignals(
-  targetSignal: AbortSignal,
-  operationSignal?: AbortSignal,
+export function combineFileExplorerAbortSignals(
+  primarySignal: AbortSignal,
+  secondarySignal?: AbortSignal,
 ): AbortSignal {
-  if (!operationSignal || operationSignal === targetSignal) {
-    return targetSignal;
+  if (!secondarySignal || secondarySignal === primarySignal) {
+    return primarySignal;
   }
-  return AbortSignal.any([targetSignal, operationSignal]);
+  return AbortSignal.any([primarySignal, secondarySignal]);
 }
 
 export function useFileExplorerRequestScope(
