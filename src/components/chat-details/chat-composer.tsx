@@ -14,6 +14,15 @@ import { DictationControls } from "../dictation";
 import { useChatComposer } from "./chat-composer-state";
 import type { ChatComposerProps } from "./types";
 
+function ThinkingSpinner() {
+  return (
+    <span
+      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
+      aria-hidden="true"
+    />
+  );
+}
+
 export function ChatComposer(props: ChatComposerProps) {
   const {
     chat,
@@ -173,7 +182,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 title="Interrupt"
               >
                 {isComposerBusy ? (
-                  <span className="animate-spin text-sm">⏳</span>
+                  <ThinkingSpinner />
                 ) : (
                   <span className="text-lg leading-none">×</span>
                 )}
@@ -202,7 +211,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   onClick={handleSendClick}
                 >
                   {isComposerBusy ? (
-                    <span className="animate-spin text-sm">⏳</span>
+                    <ThinkingSpinner />
                   ) : (
                     <span className="text-lg leading-none" aria-hidden="true">↑</span>
                   )}

@@ -36,7 +36,7 @@ import { runForEachActiveUser } from "./background-users";
 
 const log = createLogger("core:pushed-task-monitor");
 
-const DEFAULT_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_MONITOR_INTERVAL_MS = 2 * 60 * 1000;
 const MINIMUM_MONITOR_INTERVAL_MS = 60 * 1000;
 const MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS = 200;
 
