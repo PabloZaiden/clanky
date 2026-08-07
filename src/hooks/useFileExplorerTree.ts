@@ -247,10 +247,21 @@ export function useFileExplorerTree(
       if (directoryEntriesRef.current[directory] !== undefined) {
         continue;
       }
-      const response = await loadDirectory(directory, operation.signal);
-      applyDirectoryResponse(directory, response, operation, {
-        markAsLazySubtreeRoot: false,
-      });
+      const directoryOperation = scope.createOperation(
+        operation.signal,
+        getDirectoryRefreshChannel(directory),
+      );
+      try {
+        const response = await loadDirectory(directory, directoryOperation.signal);
+        if (!operation.isCurrent() || !directoryOperation.isCurrent()) {
+          return;
+        }
+        applyDirectoryResponse(directory, response, directoryOperation, {
+          markAsLazySubtreeRoot: false,
+        });
+      } finally {
+        directoryOperation.release();
+      }
     }
   }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory, scope]);
 

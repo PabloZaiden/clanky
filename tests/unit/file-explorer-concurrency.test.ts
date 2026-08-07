@@ -37,7 +37,12 @@ describe("file explorer concurrency", () => {
 
     expect(coordinator.finish(firstOwner)).toBe(true);
     expect(coordinator.isCurrent(scope, firstOwner)).toBe(false);
-    expect(coordinator.begin(scope, "delete").reason).toBe("started");
+    const finalResult = coordinator.begin(scope, "delete");
+    expect(finalResult.reason).toBe("started");
+    expect(finalResult.owner).not.toBeNull();
+    if (finalResult.owner) {
+      expect(coordinator.finish(finalResult.owner)).toBe(true);
+    }
   });
 
   test("aborts the previous owner when the target changes", () => {
