@@ -143,6 +143,27 @@ describe("SSH reliability policy", () => {
     expect(sshpassFailure.code).toBe("acp_ssh_authentication_failed");
   });
 
+  test("accepts an explicit structured authentication result without parsing stderr", () => {
+    const structuredAuthenticationFailure = createAcpProcessError(
+      "Permission denied (publickey,password)",
+      {
+        command: "ssh",
+        exitCode: 255,
+        transport: "ssh",
+        authenticationMode: "identity",
+        authenticationFailure: true,
+      },
+    );
+
+    expect(structuredAuthenticationFailure.code).toBe("acp_ssh_authentication_failed");
+    expect(structuredAuthenticationFailure.details).toMatchObject({
+      exitCode: 255,
+      transport: "ssh",
+      authenticationMode: "identity",
+      authenticationFailure: true,
+    });
+  });
+
   test("limits only concurrent connection establishment and releases slots deterministically", async () => {
     const gate = new SshConnectionGate(1);
     const firstRelease = await gate.acquire("same-target");

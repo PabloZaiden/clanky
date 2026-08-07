@@ -86,6 +86,7 @@ export class AcpBackend implements Backend {
       transport: this.lifecycle.transport,
       ensureUsable: () => this.ensureConnected(),
       onNotification: (message) => this.dispatchNotification(message),
+      getProvider: () => this.lifecycle.getProvider(),
     });
     this.lifecycle.setMessageHandler((message) => this.rpc.handleMessage(message));
     this.lifecycle.setTransportClosedHandler(({ error }) => this.handleTransportClosed(error));

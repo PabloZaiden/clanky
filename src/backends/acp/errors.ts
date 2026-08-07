@@ -1,5 +1,12 @@
 import { DomainError, type DomainErrorOptions } from "../../core/domain-error";
-import { SSHPASS_INVALID_PASSWORD_EXIT_CODE, type AcpTransportStage } from "./types";
+import type { AgentProvider } from "@/shared/settings";
+import {
+  SSHPASS_INVALID_PASSWORD_EXIT_CODE,
+  type AcpAuthenticationMode,
+  type AcpTransportStage,
+  type JsonRpcError,
+} from "./types";
+import { classifyAcpRpcError } from "./provider-error-adapter";
 
 export type AcpErrorCode =
   | "acp_request_failed"
@@ -38,36 +45,42 @@ export function getAcpErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-interface RpcErrorLike {
-  code?: number;
-  message?: string;
-}
+export type RpcErrorLike = JsonRpcError;
 
-export function createAcpRpcError(error: RpcErrorLike): AcpError {
+export function createAcpRpcError(
+  error: RpcErrorLike,
+  options: {
+    method?: string;
+    provider?: AgentProvider | null;
+  } = {},
+): AcpError {
   const message = error.message ?? "ACP request failed";
-  const options = error.code === undefined
-    ? {}
-    : { details: { rpcCode: error.code } };
+  const details: Record<string, unknown> = {
+    ...(error.code === undefined ? {} : { rpcCode: error.code }),
+    ...(error.data === undefined ? {} : { rpcData: error.data }),
+    ...(options.provider ? { provider: options.provider } : {}),
+  };
+  const classification = classifyAcpRpcError({
+    provider: options.provider ?? null,
+    method: options.method ?? "",
+    error,
+  });
+  if (classification) {
+    details["providerSignal"] = classification.providerSignal;
+  }
+  const errorOptions = Object.keys(details).length > 0 ? { details } : {};
 
   if (error.code === -32800) {
-    return new AcpError("acp_request_cancelled", message, options);
+    return new AcpError("acp_request_cancelled", message, errorOptions);
   }
   if (error.code === -32601) {
-    return new AcpError("acp_method_not_found", message, options);
+    return new AcpError("acp_method_not_found", message, errorOptions);
+  }
+  if (classification) {
+    return new AcpError(classification.code, message, errorOptions);
   }
 
-  const normalized = message.toLowerCase();
-  if (
-    normalized.includes("session")
-    && (normalized.includes("not found") || normalized.includes("unknown session"))
-  ) {
-    return new AcpError("acp_session_not_found", message, options);
-  }
-  if (normalized.includes("method not found")) {
-    return new AcpError("acp_method_not_found", message, options);
-  }
-
-  return new AcpError("acp_request_failed", message, options);
+  return new AcpError("acp_request_failed", message, errorOptions);
 }
 
 export function createAcpSessionNotFoundError(
@@ -92,7 +105,10 @@ export function createAcpProcessError(
   options: {
     command?: string;
     exitCode?: number;
+    signalCode?: NodeJS.Signals | null;
     transport?: "stdio" | "ssh";
+    authenticationMode?: AcpAuthenticationMode;
+    authenticationFailure?: boolean;
     stage?: AcpTransportStage;
     attempt?: number;
     target?: {
@@ -107,7 +123,12 @@ export function createAcpProcessError(
   const details = {
     ...(options.command ? { command: options.command } : {}),
     ...(options.exitCode === undefined ? {} : { exitCode: options.exitCode }),
+    ...(options.signalCode ? { signalCode: options.signalCode } : {}),
     ...(options.transport ? { transport: options.transport } : {}),
+    ...(options.authenticationMode ? { authenticationMode: options.authenticationMode } : {}),
+    ...(options.authenticationFailure === undefined
+      ? {}
+      : { authenticationFailure: options.authenticationFailure }),
     ...(options.stage ? { stage: options.stage } : {}),
     ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
     ...(options.target ? { target: options.target } : {}),
@@ -116,8 +137,11 @@ export function createAcpProcessError(
       : { initializationCompleted: options.initializationCompleted }),
   };
   const isSshAuthenticationFailure =
-    options.command === "sshpass"
-    && options.exitCode === SSHPASS_INVALID_PASSWORD_EXIT_CODE;
+    options.authenticationFailure === true
+    || (
+      options.command === "sshpass"
+      && options.exitCode === SSHPASS_INVALID_PASSWORD_EXIT_CODE
+    );
   const code = isSshAuthenticationFailure
     ? "acp_ssh_authentication_failed"
     : "acp_process_failed";

@@ -28,10 +28,16 @@ export function sanitizeSpawnArgsForLogging(command: string, args: string[]): st
 }
 
 export function getProcessExitHint(command: string, exitCode: number): string | undefined {
-  if (command === "sshpass" && exitCode === SSHPASS_INVALID_PASSWORD_EXIT_CODE) {
+  // This is diagnostic text only; error classification uses the exit result.
+  if (isSshAuthenticationFailureExit(command, exitCode)) {
     return "sshpass reported authentication failure (invalid username/password or auth method mismatch).";
   }
   return undefined;
+}
+
+/** Classify the stable sshpass authentication exit status without parsing stderr. */
+export function isSshAuthenticationFailureExit(command: string, exitCode: number): boolean {
+  return command === "sshpass" && exitCode === SSHPASS_INVALID_PASSWORD_EXIT_CODE;
 }
 
 export function isTransientSshAuthenticationFailure(error: unknown): boolean {

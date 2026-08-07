@@ -16,8 +16,11 @@ export {
   isAcpError,
   isAcpErrorCode,
 } from "./errors";
-export type { AcpErrorCode } from "./errors";
-export { sanitizeSpawnArgsForLogging } from "./process-utils";
+export type { AcpErrorCode, RpcErrorLike } from "./errors";
+export {
+  isSshAuthenticationFailureExit,
+  sanitizeSpawnArgsForLogging,
+} from "./process-utils";
 export { AcpBackend } from "./acp-backend";
 export type { AcpBackendOptions } from "./acp-backend";
 export type {
@@ -31,7 +34,7 @@ export type {
   RpcRequester,
   RpcTransport,
 } from "./contracts";
-export type { AcpTransportStage } from "./types";
+export type { AcpAuthenticationMode, AcpProcessExit, AcpTransportStage } from "./types";
 export { LocalAcpTransportLifecycle } from "./transport-lifecycle";
 export { MeshAcpTransport, WorkspaceAcpTransportLifecycle } from "./mesh-transport";
 export { getMockAcpCommand } from "./mock-acp-command";

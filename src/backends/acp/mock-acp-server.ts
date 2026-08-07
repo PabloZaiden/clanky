@@ -329,7 +329,13 @@ class MockAcpServer {
     this.pendingOutboundRequests.delete(message.id);
     this.outboundRequestMethods.delete(message.id);
     if (message.error) {
-      pending.reject(new Error(message.error.message));
+      const error = new Error(message.error.message ?? "ACP request failed") as Error & {
+        code?: number;
+        data?: unknown;
+      };
+      error.code = message.error.code;
+      error.data = message.error.data;
+      pending.reject(error);
       return;
     }
     pending.resolve(message.result);

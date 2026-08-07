@@ -8,16 +8,30 @@ export type JsonRpcId = number | string;
 
 export type AcpTransportStage = "spawn" | "initialize" | "ready" | "runtime";
 
+export type AcpAuthenticationMode = "agent" | "identity" | "password";
+
+export type AcpProcessExit = {
+  exitCode: number;
+  signalCode: NodeJS.Signals | null;
+};
+
+export type JsonRpcError = {
+  code?: number;
+  message?: string;
+  data?: unknown;
+};
+
 export type JsonRpcMessage = {
   jsonrpc: "2.0";
   id?: JsonRpcId;
   method?: string;
   params?: Record<string, unknown>;
   result?: unknown;
-  error?: { code?: number; message?: string; data?: unknown };
+  error?: JsonRpcError;
 };
 
 export type PendingRequest = {
+  method: string;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;

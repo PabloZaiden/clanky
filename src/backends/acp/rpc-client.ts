@@ -10,6 +10,7 @@
  */
 
 import { log } from "@pablozaiden/webapp/server";
+import type { AgentProvider } from "@/shared/settings";
 import { isRecord } from "./json-helpers";
 import { AcpError, createAcpRpcError } from "./errors";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "./types";
@@ -22,6 +23,8 @@ export interface RpcClientDeps {
   ensureUsable: () => void;
   /** Sink for inbound server-initiated method messages. */
   onNotification: RpcNotificationSink;
+  /** Read the active provider at the point an RPC response is classified. */
+  getProvider?: () => AgentProvider | null;
 }
 
 export class RpcClient implements RpcRequester {
@@ -60,7 +63,10 @@ export class RpcClient implements RpcRequester {
       this.pendingRequests.delete(message.id);
 
       if (message.error) {
-        pending.reject(createAcpRpcError(message.error));
+        pending.reject(createAcpRpcError(message.error, {
+          method: pending.method,
+          provider: this.deps.getProvider?.(),
+        }));
         return;
       }
 
@@ -111,6 +117,7 @@ export class RpcClient implements RpcRequester {
       }, timeoutMs);
 
       this.pendingRequests.set(id, {
+        method,
         resolve: (value: unknown) => {
           log.trace("[AcpBackend] RPC request resolved", {
             id,
