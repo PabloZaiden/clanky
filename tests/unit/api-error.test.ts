@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { ApiError, isApiErrorCode, parseApiError } from "../../src/lib/api-error";
-import { apiRequest, requestApiResponse } from "../../src/lib/api-client";
-import * as publicPath from "../../src/lib/public-path";
+import { apiClientFetch, apiRequest, requestApiResponse } from "../../src/lib/api-client";
 
-let appFetchSpy: ReturnType<typeof spyOn> | null = null;
+let apiClientFetchSpy: ReturnType<typeof spyOn> | null = null;
 
 afterEach(() => {
-  appFetchSpy?.mockRestore();
-  appFetchSpy = null;
+  apiClientFetchSpy?.mockRestore();
+  apiClientFetchSpy = null;
 });
 
 describe("ApiError", () => {
@@ -50,7 +49,7 @@ describe("apiRequest", () => {
       new Response("image", { headers: { "Content-Type": "image/png" } }),
       new Response(null, { status: 204 }),
     ];
-    appFetchSpy = spyOn(publicPath, "appFetch").mockImplementation(async () => responses.shift()!);
+    apiClientFetchSpy = spyOn(apiClientFetch, "fetch").mockImplementation(async () => responses.shift()!);
 
     await expect(apiRequest<{ value: number }>("/json")).resolves.toEqual({ value: 42 });
     await expect(apiRequest("/text", { responseType: "text" })).resolves.toBe("transcript");
@@ -61,7 +60,7 @@ describe("apiRequest", () => {
   });
 
   test("preserves typed API failure metadata and parsing causes", async () => {
-    appFetchSpy = spyOn(publicPath, "appFetch").mockResolvedValue(
+    apiClientFetchSpy = spyOn(apiClientFetch, "fetch").mockResolvedValue(
       new Response("not JSON", { status: 502 }),
     );
 
@@ -83,7 +82,7 @@ describe("apiRequest", () => {
   });
 
   test("preserves API error codes and response data", async () => {
-    appFetchSpy = spyOn(publicPath, "appFetch").mockResolvedValue(
+    apiClientFetchSpy = spyOn(apiClientFetch, "fetch").mockResolvedValue(
       Response.json(
         {
           error: "file_conflict",
@@ -107,7 +106,7 @@ describe("apiRequest", () => {
 
   test("accepts conditional statuses without consuming the response body", async () => {
     const response = new Response("unchanged", { status: 304 });
-    appFetchSpy = spyOn(publicPath, "appFetch").mockResolvedValue(response);
+    apiClientFetchSpy = spyOn(apiClientFetch, "fetch").mockResolvedValue(response);
 
     await expect(requestApiResponse("/snapshot", { acceptedStatuses: [304] })).resolves.toBe(response);
     expect(await response.text()).toBe("unchanged");
@@ -115,7 +114,7 @@ describe("apiRequest", () => {
 
   test("propagates transport failures unchanged", async () => {
     const transportError = new TypeError("network unavailable");
-    appFetchSpy = spyOn(publicPath, "appFetch").mockRejectedValue(transportError);
+    apiClientFetchSpy = spyOn(apiClientFetch, "fetch").mockRejectedValue(transportError);
 
     await expect(apiRequest("/network")).rejects.toBe(transportError);
   });

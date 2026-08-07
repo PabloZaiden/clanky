@@ -1,6 +1,7 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { isApiErrorCode, parseApiError } from "./api-error";
-import { readApiResponse, requestApiResponse } from "./api-client";
+import { readApiResponse } from "./api-client";
+import { appFetch } from "./public-path";
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
 const log = createLogger("sshBrowserCredentials");
@@ -53,11 +54,7 @@ function resolveSubtle(subtle?: SubtleCrypto): SubtleCrypto {
 }
 
 function resolveFetch(fetchFn?: FetchLike): FetchLike {
-  return fetchFn ?? ((input, init) => requestApiResponse(String(input), {
-    ...init,
-    action: `SSH credential request ${String(input)}`,
-    fallbackMessage: "SSH credential request failed",
-  }));
+  return fetchFn ?? ((input, init) => appFetch(String(input), init));
 }
 
 function getStorageKey(serverId: string): string {

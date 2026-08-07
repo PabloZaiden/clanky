@@ -7,6 +7,11 @@ import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
 
 export type ApiResponseMode = "json" | "text" | "blob" | "empty";
+export type ApiClientFetch = (path: string, init?: RequestInit) => Promise<Response>;
+
+export const apiClientFetch: { fetch: ApiClientFetch } = {
+  fetch: appFetch,
+};
 
 export interface ApiRequestOptions extends RequestInit {
   action?: string;
@@ -60,7 +65,7 @@ export async function requestApiResponse(
 
   let response: Response;
   try {
-    response = await appFetch(path, init);
+    response = await apiClientFetch.fetch(path, init);
   } catch (error) {
     log.error("API request failed before receiving a response", {
       action,
