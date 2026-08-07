@@ -24,7 +24,7 @@ export function useResourceRefresh<T>({
   onError,
 }: UseResourceRefreshOptions<T>): UseResourceRefreshResult {
   const [loading, setLoading] = useState(true);
-  const isMountedRef = useRef(false);
+  const isMountedRef = useRef(true);
   const controllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
   const loadRef = useRef(load);

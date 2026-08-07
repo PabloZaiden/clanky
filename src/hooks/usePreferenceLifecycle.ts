@@ -43,7 +43,7 @@ export function usePreferenceLifecycle<T>({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(false);
+  const isMountedRef = useRef(true);
   const loadControllerRef = useRef<AbortController | null>(null);
   const loadRequestIdRef = useRef(0);
   const saveControllerRef = useRef<AbortController | null>(null);
