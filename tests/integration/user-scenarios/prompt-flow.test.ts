@@ -258,4 +258,72 @@ describe("Task prompt flow", () => {
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });
+
+  test("recreates a session once when it is lost during prompt streaming", async () => {
+    ctx.mockBackend.reset([
+      "Initial work complete. <promise>COMPLETE</promise>",
+      "The recovered follow-up is complete.",
+    ]);
+
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      directory: ctx.workDir,
+      prompt: "Implement the original feature",
+      planMode: false,
+    });
+    expect(status).toBe(201);
+    const task = body as Task;
+
+    const initialTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+    const initialSessionId = initialTask.state.session?.id;
+    expect(initialSessionId).toBeDefined();
+    if (!initialSessionId) {
+      throw new Error("Initial task session was not persisted");
+    }
+    await waitForSentPrompt(ctx, 1);
+
+    ctx.mockBackend.failNextPromptSessionNotFound();
+    const followUp = await sendFollowUpViaAPI(
+      ctx.baseUrl,
+      task.config.id,
+      "Recover the task and continue the implementation.",
+    );
+    expect(followUp.status).toBe(200);
+
+    const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+    const prompts = await waitForSentPrompt(ctx, 3);
+
+    expect(prompts[1]!.sessionId).toBe(initialSessionId);
+    expect(prompts[2]!.sessionId).not.toBe(initialSessionId);
+    expect(promptText(prompts[2]!.prompt)).toContain("This task is continuing in a new AI session");
+    expect(promptText(prompts[2]!.prompt)).toContain("Recover the task and continue the implementation.");
+    expect(stoppedTask.state.status).toBe("stopped");
+    expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
+    expect(stoppedTask.state.messages.filter((message) => message.content.includes("Recover the task")).length).toBe(1);
+
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+  });
+
+  test("bounds repeated session-loss retries and persists the failure", async () => {
+    ctx.mockBackend.reset(["This response should not be reached."]);
+    ctx.mockBackend.failNextPromptSessionNotFound(2);
+
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      directory: ctx.workDir,
+      prompt: "Run a task that loses its session twice",
+      planMode: false,
+      maxConsecutiveErrors: 1,
+    });
+    expect(status).toBe(201);
+    const task = body as Task;
+
+    const failedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "failed");
+    const prompts = await waitForSentPrompt(ctx, 2);
+
+    expect(failedTask.state.status).toBe("failed");
+    expect(failedTask.state.error?.message).toContain("not found");
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]!.sessionId).not.toBe(prompts[0]!.sessionId);
+
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+  });
 });
