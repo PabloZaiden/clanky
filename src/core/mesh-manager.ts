@@ -85,11 +85,10 @@ const log = createLogger("core:mesh-manager");
 export class MeshManager {
   async listOpenConflicts(localUserId: string): Promise<MeshSyncConflictRecord[]> {
     const links = await listMeshLinksForLocalUser(localUserId);
-    const conflicts: MeshSyncConflictRecord[] = [];
-    for (const link of links) {
-      conflicts.push(...await listOpenMeshSyncConflicts(link.linkId));
-    }
-    return conflicts;
+    const conflictsByLink = await Promise.all(
+      links.map((link) => listOpenMeshSyncConflicts(link.linkId)),
+    );
+    return conflictsByLink.flat();
   }
 
   async getStatus(localUserId: string): Promise<MeshStatusRecord> {
