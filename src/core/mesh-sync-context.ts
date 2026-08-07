@@ -1,11 +1,8 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+/**
+ * Compatibility exports for callers that still use the historical Core path.
+ */
 
-const meshReplicationContext = new AsyncLocalStorage<boolean>();
-
-export function isMeshReplicationSuppressed(): boolean {
-  return meshReplicationContext.getStore() === true;
-}
-
-export function runWithMeshReplicationSuppressed<T>(callback: () => T): T {
-  return meshReplicationContext.run(true, callback);
-}
+export {
+  isMeshReplicationSuppressed,
+  runWithMeshReplicationSuppressed,
+} from "../context/mesh-sync-context";

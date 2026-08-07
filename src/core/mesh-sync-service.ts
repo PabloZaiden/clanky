@@ -80,7 +80,7 @@ import {
   type MeshReviewComment,
 } from "../persistence/review-comments";
 import { runWithCurrentUser } from "./user-context";
-import { runWithMeshReplicationSuppressed } from "./mesh-sync-context";
+import { runWithMeshReplicationSuppressed } from "../context/mesh-sync-context";
 
 interface JsonObject {
   [key: string]: unknown;

@@ -1,5 +1,5 @@
 import { SQLiteError } from "bun:sqlite";
-import { DomainError, type DomainErrorOptions } from "../core/domain-error";
+import { DomainError, type DomainErrorOptions } from "../domain/domain-error";
 
 export type PersistenceErrorCode =
   | "database_not_initialized"

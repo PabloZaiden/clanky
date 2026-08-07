@@ -23,7 +23,9 @@ import type {
 } from "@/shared/mesh";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
+  applyMeshLinkTakeover,
   approveMeshPairingRequest,
+  claimMeshLinkForLocalUser,
   completeOutgoingMeshPairingRequest,
   createMeshPairingRequest,
   getMeshPairingApproval,
@@ -73,11 +75,7 @@ import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import {
   decideCompleteMeshPairing,
   decideReceiveMeshPairingApproval,
-} from "./mesh-transitions";
-import {
-  applyMeshTakeover,
-  claimMeshTakeover,
-} from "./mesh-transition-service";
+} from "../domain/mesh-transitions";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
@@ -610,7 +608,7 @@ export class MeshManager {
     if (!link) {
       throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
     }
-    const claim = await claimMeshTakeover({
+    const claim = await claimMeshLinkForLocalUser({
       linkId: link.linkId,
       localUserId,
       nodeId: identity.nodeId,
@@ -688,7 +686,7 @@ export class MeshManager {
     )) {
       throw new DomainError("mesh_peer_signature_invalid", "The takeover signature is invalid.");
     }
-    const claim = await applyMeshTakeover({
+    const claim = await applyMeshLinkTakeover({
       linkId: envelope.linkId,
       nodeId: envelope.senderNodeId,
       generation: envelope.generation,

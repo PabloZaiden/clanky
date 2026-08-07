@@ -13,6 +13,7 @@ import {
   markMeshSyncOutboxRetry,
 } from "../persistence/mesh-sync";
 import {
+  applyMeshLinkTakeover,
   getMeshNode,
   getActiveMeshLinkTakeover,
   listMeshLinkMembers,
@@ -37,7 +38,6 @@ import {
   assertMeshPeerIdentity,
   requireTrustedMeshPeer,
 } from "./mesh-peer-auth";
-import { applyMeshTakeover } from "./mesh-transition-service";
 
 async function assertTrustedPeer(
   linkId: string,
@@ -136,7 +136,7 @@ export async function receiveMeshSyncPush(
     )) {
       throw new DomainError("mesh_peer_signature_invalid", "The mesh sync takeover signature is invalid.");
     }
-    await applyMeshTakeover({
+    await applyMeshLinkTakeover({
       linkId: envelope.takeover.linkId,
       nodeId: envelope.takeover.senderNodeId,
       generation: envelope.takeover.generation,
