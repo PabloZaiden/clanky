@@ -4,7 +4,7 @@
 
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { AgentEvent, PromptInput } from "../../backends/types";
-import { createTimestamp } from "@/shared/events";
+import { createTimestamp, type LogLevel } from "@/shared/events";
 import {
   type IterationContext,
   type SessionInterruptOptions,
@@ -35,7 +35,7 @@ export interface TaskPromptExecutorOptions {
   config: TaskConfig;
   state: TaskState;
   getWorkingDirectory: () => string;
-  emitLog: (level: "trace" | "debug" | "info" | "warn" | "error", message: string, details?: Record<string, unknown>) => string;
+  emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
   updateState: (update: Partial<TaskState>) => void;
   processAgentEvent: (event: AgentEvent, ctx: IterationContext) => Promise<void>;
   triggerPersistence: () => Promise<void>;
@@ -196,6 +196,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
               workingDirectory: this.getWorkingDirectory(),
               workingBranch: this.state.git?.workingBranch,
             });
+            promptResult = { ...promptResult, prompt };
           }
           this.session.consumeSessionRecovery();
           this.resetIterationContextForRetry(ctx);
