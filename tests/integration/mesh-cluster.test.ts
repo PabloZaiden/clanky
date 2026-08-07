@@ -343,6 +343,13 @@ describe("three-process mesh cluster", () => {
       new Set(meshNodes.map((node) => node.baseUrl)),
     );
 
+    const conflicts = await request(nodeA, "/api/mesh/conflicts");
+    expect(conflicts.status).toBe(200);
+    expect(conflicts.body).toMatchObject({
+      success: true,
+      conflicts: [],
+    });
+
     const passiveMutation = await postJson(nodeA, "/api/mesh/pairing-requests", {
       targetEndpoint: nodeC.baseUrl,
     });
