@@ -163,7 +163,11 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
 
             if (event.type === "error" && event.code === "acp_session_not_found") {
               throw createAcpSessionNotFoundError(activeSessionId, {
-                details: { eventMessage: event.message },
+                details: {
+                  ...(event.details ?? {}),
+                  eventMessage: event.message,
+                  sessionId: activeSessionId,
+                },
               });
             }
 

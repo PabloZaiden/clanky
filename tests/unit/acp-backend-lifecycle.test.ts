@@ -38,6 +38,24 @@ function buildPromptRuntimeScript(): string {
   ].join("\n");
 }
 
+function buildStructuredPromptErrorRuntimeScript(): string {
+  return [
+    "const readline = require('node:readline');",
+    "const write = (message) => process.stdout.write(JSON.stringify(message) + '\\n');",
+    "const reader = readline.createInterface({ input: process.stdin });",
+    "reader.on('line', (line) => {",
+    "  const message = JSON.parse(line);",
+    "  if (message.method === 'initialize') write({ jsonrpc: '2.0', id: message.id, result: {} });",
+    "  if (message.method === 'session/new') write({ jsonrpc: '2.0', id: message.id, result: { sessionId: 'session-1', cwd: message.params.cwd } });",
+    "  if (message.method === 'session/prompt') write({",
+    "    jsonrpc: '2.0',",
+    "    id: message.id,",
+    "    error: { code: -32002, message: 'Resource not found', data: { sessionId: 'session-1' } },",
+    "  });",
+    "});",
+  ].join("\n");
+}
+
 type ControlledProcess = {
   subprocess: Bun.Subprocess;
   sendRaw: (value: string) => void;
@@ -208,6 +226,27 @@ describe("AcpBackend lifecycle", () => {
       code: "acp_process_failed",
     });
     await expect(stream.next()).resolves.toBeNull();
+  });
+
+  test("preserves structured RPC session errors in active prompt events", async () => {
+    backend = new AcpBackend();
+    await backend.connect(buildConnectionConfig(buildStructuredPromptErrorRuntimeScript()));
+
+    const session = await backend.createSession({ directory });
+    const stream = await backend.subscribeToEvents(session.id);
+    await backend.sendPromptAsync(session.id, {
+      parts: [{ type: "text", text: "trigger structured session loss" }],
+    });
+
+    await expect(stream.next()).resolves.toMatchObject({
+      type: "error",
+      code: "acp_session_not_found",
+      details: {
+        rpcCode: -32002,
+        rpcData: { sessionId: "session-1" },
+        providerSignal: "acp_resource_not_found",
+      },
+    });
   });
 
   test("cleans connection metadata after initialization process failure", async () => {

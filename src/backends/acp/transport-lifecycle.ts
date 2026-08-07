@@ -23,7 +23,11 @@ import {
 import type { AgentProvider } from "@/shared/settings";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 
-import { sanitizeSpawnArgsForLogging, getProcessExitHint } from "./process-utils";
+import {
+  sanitizeSpawnArgsForLogging,
+  getProcessExitHint,
+  isSshAuthenticationFailureExit,
+} from "./process-utils";
 import {
   AcpError,
   createAcpConnectionAbortedError,
@@ -31,7 +35,12 @@ import {
   createAcpProcessError,
   getAcpErrorMessage,
 } from "./errors";
-import { MAX_RECENT_PROCESS_LINES, type AcpTransportStage } from "./types";
+import {
+  MAX_RECENT_PROCESS_LINES,
+  type AcpAuthenticationMode,
+  type AcpProcessExit,
+  type AcpTransportStage,
+} from "./types";
 import { AcpProcess } from "./acp-process";
 import type { JsonRpcMessage } from "./types";
 import type {
@@ -223,14 +232,15 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
             args,
             cwd: spawnCwd,
             env: spawnEnv,
+            authenticationMode: this.getAuthenticationMode(config),
             onLine: (source, line) => {
               if (processHandle) {
                 this.handleRpcLine(processHandle, line, source);
               }
             },
-            onExit: (exitCode) => {
+            onExit: (exit) => {
               if (processHandle) {
-                this.handleProcessExit(processHandle, command, exitCode, config, attempt);
+                this.handleProcessExit(processHandle, command, exit, config, attempt);
               }
             },
             onStreamError: (source, error) => {
@@ -272,7 +282,10 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
             {
               command,
               exitCode: process.exitCode,
+              signalCode: process.signalCode,
               transport: config.transport,
+              authenticationMode: this.getAuthenticationMode(config),
+              authenticationFailure: this.isAuthenticationFailure(command, process.exitCode, config),
               stage: this.stage,
               attempt,
               target: this.getTargetDetails(config),
@@ -372,16 +385,16 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   private handleProcessExit(
     process: AcpProcess,
     command: string,
-    exitCode: number,
+    exit: AcpProcessExit,
     config: BackendConnectionConfig,
     attempt: number,
   ): void {
     if (this.process !== process || !this.connected) {
       return;
     }
-    const hint = getProcessExitHint(command, exitCode);
+    const hint = getProcessExitHint(command, exit.exitCode);
     const details = this.recentProcessLines.slice(-5).join(" | ");
-    const parts = [`ACP process exited with code ${exitCode}`];
+    const parts = [`ACP process exited with code ${exit.exitCode}`];
     if (details.length > 0) {
       parts.push(details);
     }
@@ -391,8 +404,11 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     const reason = parts.join(": ");
     const error = createAcpProcessError(reason, {
       command,
-      exitCode,
+      exitCode: exit.exitCode,
+      signalCode: exit.signalCode,
       transport: config.transport,
+      authenticationMode: this.getAuthenticationMode(config),
+      authenticationFailure: this.isAuthenticationFailure(command, exit.exitCode, config),
       stage: this.stage,
       attempt,
       target: this.getTargetDetails(config),
@@ -400,12 +416,14 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     });
     log.error("[AcpBackend] ACP process exited", {
       command,
-      exitCode,
+      exitCode: exit.exitCode,
+      signalCode: exit.signalCode,
       transport: config.transport ?? "stdio",
       stage: this.stage,
       attempt,
       target: this.getTargetDetails(config),
       initializationCompleted: this.stage === "runtime",
+      authenticationMode: this.getAuthenticationMode(config),
     });
     const requester = this.requester;
     const initializationInProgress = this.stage === "spawn" || this.stage === "initialize";
@@ -486,12 +504,40 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     };
   }
 
+  private getAuthenticationMode(config: BackendConnectionConfig): AcpAuthenticationMode | undefined {
+    if (config.transport !== "ssh") {
+      return undefined;
+    }
+
+    const identityFile = config.identityFile?.trim();
+    const password = config.password?.trim();
+    if (identityFile) {
+      return "identity";
+    }
+    if (password) {
+      return "password";
+    }
+    return "agent";
+  }
+
+  private isAuthenticationFailure(
+    command: string,
+    exitCode: number,
+    config: BackendConnectionConfig,
+  ): boolean {
+    return config.transport === "ssh"
+      && isSshAuthenticationFailureExit(command, exitCode);
+  }
+
   private getConnectionDetails(
     config: BackendConnectionConfig,
     attempt: number,
   ): Readonly<Record<string, unknown>> {
     return {
       transport: config.transport ?? "stdio",
+      ...(this.getAuthenticationMode(config)
+        ? { authenticationMode: this.getAuthenticationMode(config) }
+        : {}),
       stage: this.stage,
       attempt,
       target: this.getTargetDetails(config),

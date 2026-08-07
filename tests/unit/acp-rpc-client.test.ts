@@ -3,10 +3,12 @@ import { RpcClient } from "../../src/backends/acp/rpc-client";
 import type { JsonRpcMessage } from "../../src/backends/acp/types";
 import type { RpcTransport } from "../../src/backends/acp/contracts";
 import { AcpError } from "../../src/backends/acp/errors";
+import type { AgentProvider } from "../../src/shared/settings";
 
 function createClient(options: {
   writable?: boolean;
   onWrite?: (message: JsonRpcMessage) => void;
+  provider?: AgentProvider;
 } = {}): {
   client: RpcClient;
   written: JsonRpcMessage[];
@@ -25,6 +27,7 @@ function createClient(options: {
     transport,
     ensureUsable: () => {},
     onNotification: (message) => notifications.push(message),
+    getProvider: () => options.provider ?? null,
   });
   return { client, written, notifications };
 }
@@ -54,6 +57,100 @@ describe("RpcClient", () => {
     });
 
     await expect(promise).rejects.toMatchObject({ code: "acp_method_not_found" });
+  });
+
+  test("preserves structured RPC data and maps ACP resource loss for session methods", async () => {
+    const { client, written } = createClient();
+    const promise = client.sendRequest("session/prompt", { sessionId: "lost-session" });
+    const id = written[0]!.id;
+
+    client.handleMessage({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32002,
+        message: "Resource not found",
+        data: { sessionId: "lost-session", providerReason: "expired" },
+      },
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: "acp_session_not_found",
+      details: {
+        rpcCode: -32002,
+        rpcData: { sessionId: "lost-session", providerReason: "expired" },
+        providerSignal: "acp_resource_not_found",
+      },
+    });
+  });
+
+  test("maps OpenCode invalid params only with a structured session identifier", async () => {
+    const { client, written } = createClient({ provider: "opencode" });
+    const promise = client.sendRequest("session/load", { sessionId: "lost-session" });
+    const id = written[0]!.id;
+
+    client.handleMessage({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32602,
+        message: "Invalid params",
+        data: { sessionId: "lost-session" },
+      },
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: "acp_session_not_found",
+      details: {
+        rpcCode: -32602,
+        rpcData: { sessionId: "lost-session" },
+        providerSignal: "opencode_session_id",
+      },
+    });
+  });
+
+  test("does not classify session-like prose without a structured signal", async () => {
+    const { client, written } = createClient();
+    const promise = client.sendRequest("session/prompt", { sessionId: "lost-session" });
+    const id = written[0]!.id;
+
+    client.handleMessage({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32602,
+        message: "Session not found",
+      },
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: "acp_request_failed",
+      details: { rpcCode: -32602 },
+    });
+  });
+
+  test("does not treat resource loss during session creation as a missing session", async () => {
+    const { client, written } = createClient();
+    const promise = client.sendRequest("session/new", { cwd: "/repo" });
+    const id = written[0]!.id;
+
+    client.handleMessage({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32002,
+        message: "Resource not found",
+        data: { uri: "/repo" },
+      },
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: "acp_request_failed",
+      details: {
+        rpcCode: -32002,
+        rpcData: { uri: "/repo" },
+      },
+    });
   });
 
   test("routes inbound string-id method messages to the notification sink", async () => {

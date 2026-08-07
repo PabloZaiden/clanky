@@ -6,6 +6,8 @@
 import type { ServerSettings, SshServerConfig, Workspace } from "@/shared";
 import { buildSshCommandArgs } from "./remote-command-executor";
 
+export type SshAuthenticationMode = "agent" | "identity" | "password";
+
 export interface SshConnectionTarget {
   host: string;
   port: number;
@@ -18,6 +20,8 @@ export interface SshProcessConfig {
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
+  /** Authentication mechanism only; never contains the credential itself. */
+  authenticationMode: SshAuthenticationMode;
 }
 
 export interface BuildSshProcessConfigOptions {
@@ -102,6 +106,7 @@ export function buildSshProcessConfig(options: BuildSshProcessConfigOptions): Ss
       command: "ssh",
       args: sshArgs,
       env: baseEnv,
+      authenticationMode: options.target.identityFile?.trim() ? "identity" : "agent",
     };
   }
 
@@ -110,6 +115,7 @@ export function buildSshProcessConfig(options: BuildSshProcessConfigOptions): Ss
       command: "sshpass",
       args: ["-p", password, "ssh", ...sshArgs],
       env: baseEnv,
+      authenticationMode: "password",
     };
   }
 
@@ -120,5 +126,6 @@ export function buildSshProcessConfig(options: BuildSshProcessConfigOptions): Ss
       ...baseEnv,
       SSHPASS: password,
     },
+    authenticationMode: "password",
   };
 }

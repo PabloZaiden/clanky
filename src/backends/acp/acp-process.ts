@@ -1,4 +1,5 @@
 import { log } from "@pablozaiden/webapp/server";
+import type { AcpAuthenticationMode, AcpProcessExit } from "./types";
 
 export type AcpProcessStream = "stdout" | "stderr";
 
@@ -6,9 +7,10 @@ export interface AcpProcessOptions {
   command: string;
   args: string[];
   cwd: string;
+  authenticationMode?: AcpAuthenticationMode;
   env?: NodeJS.ProcessEnv;
   onLine: (source: AcpProcessStream, line: string) => void;
-  onExit: (exitCode: number) => void;
+  onExit: (exit: AcpProcessExit) => void;
   onStreamError?: (source: AcpProcessStream, error: unknown) => void;
   maxBufferedBytes?: number;
   maxLineBytes?: number;
@@ -61,6 +63,10 @@ export class AcpProcess {
     return this.child.exitCode;
   }
 
+  get signalCode(): NodeJS.Signals | null {
+    return this.child.signalCode;
+  }
+
   isWritable(): boolean {
     return !!this.child.stdin && typeof this.child.stdin !== "number";
   }
@@ -100,7 +106,10 @@ export class AcpProcess {
         return;
       }
       this.closed = true;
-      this.options.onExit(exitCode);
+      this.options.onExit({
+        exitCode,
+        signalCode: this.child.signalCode,
+      });
     });
   }
 
