@@ -1,8 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { createLogger } from "@pablozaiden/webapp/web";
-import { requestApiResponse } from "../../src/lib/api-client";
+import { apiClientLog, requestApiResponse } from "../../src/lib/api-client";
 
-const apiClientLog = createLogger("apiClient");
 const testUrl = "https://example.test/api/resource";
 
 describe("api client request failures", () => {
