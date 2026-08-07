@@ -1,166 +1,43 @@
 /**
- * Hook for managing file explorer state for workspace and server targets.
+ * Public file explorer hook facade.
+ *
+ * Target lifecycle, tree navigation, active documents, and mutations are
+ * implemented by focused hooks and composed here for compatibility.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FileExplorerCredentialErrorCode, FileExplorerTarget } from "./workspaceFileActions";
 import {
-  type FileExplorerCredentialErrorCode,
-  type FileExplorerTarget,
-  WorkspaceFileConflictError,
-  getFileExplorerFileMetadataApi,
-  deleteFileExplorerNodeApi,
-  loadFileExplorerTreeApi,
-  listFileExplorerFilesApi,
-  readFileExplorerFileApi,
-  readFileExplorerImagePreviewApi,
-  renameFileExplorerNodeApi,
-  uploadFileExplorerFileApi,
-  writeFileExplorerFileApi,
-} from "./workspaceFileActions";
-import { isBrowserRenderableImage } from "../utils/workspace-file-images";
+  getFileExplorerCredentialErrorCode,
+} from "./file-explorer-utils";
+import {
+  useFileExplorerRequestScope,
+} from "./file-explorer-request-scope";
+import {
+  useFileExplorerTree,
+} from "./useFileExplorerTree";
+import { useFileExplorerConflicts } from "./useFileExplorerConflicts";
+import {
+  useFileExplorerDocument,
+} from "./useFileExplorerDocument";
+import {
+  useFileExplorerMutations,
+} from "./useFileExplorerMutations";
+import type {
+  UseFileExplorerResult,
+  UseWorkspaceFilesResult,
+} from "./file-explorer-types";
 
-export interface WorkspaceFileConflictState {
-  kind: "save_conflict" | "reload_conflict";
-  message: string;
-  currentFile: WorkspaceFileEntry | null;
-}
+export type {
+  FileExplorerOperation,
+  FileExplorerOperationFailure,
+  UseFileExplorerResult,
+  UseWorkspaceFilesResult,
+  WorkspaceFileConflictState,
+  WorkspaceLargeFileWarningState,
+} from "./file-explorer-types";
 
-export interface WorkspaceLargeFileWarningState {
-  file: WorkspaceFileEntry;
-}
-
-export type FileExplorerOperation = "save" | "rename" | "delete" | "upload";
-
-export interface FileExplorerOperationFailure {
-  operation: FileExplorerOperation;
-  message: string;
-  conflict: boolean;
-}
-
-export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 1 * 1024 * 1024;
-
-export interface UseFileExplorerResult {
-  directoryEntries: Record<string, WorkspaceFileNode[]>;
-  expandedDirectories: string[];
-  currentDirectory: string;
-  selectedNode: WorkspaceFileNode | null;
-  currentFile: WorkspaceFileEntry | null;
-  pendingFilePath: string | null;
-  showHiddenFiles: boolean;
-  editorContent: string;
-  imagePreviewUrl: string | null;
-  savedContent: string;
-  loadingTree: boolean;
-  loadingFile: boolean;
-  savingFile: boolean;
-  error: string | null;
-  errorCode: FileExplorerCredentialErrorCode | null;
-  operationFailure: FileExplorerOperationFailure | null;
-  isDirty: boolean;
-  conflictState: WorkspaceFileConflictState | null;
-  largeFileWarning: WorkspaceLargeFileWarningState | null;
-  autoReloadedAt: string | null;
-  uploadProgress: { bytesUploaded: number; totalBytes: number } | null;
-  refreshTree: (path?: string) => Promise<void>;
-  toggleShowHiddenFiles: () => Promise<void>;
-  toggleDirectory: (path: string) => Promise<void>;
-  openFile: (path: string) => Promise<void>;
-  selectNode: (node: WorkspaceFileNode | null) => void;
-  renameSelectedNode: (newName: string, options?: { overwrite?: boolean }) => Promise<WorkspaceFileEntry | null>;
-  deleteSelectedNode: () => Promise<boolean>;
-  uploadFileToSelectedDirectory: (file: File, options?: { overwrite?: boolean; signal?: AbortSignal }) => Promise<WorkspaceFileEntry | null>;
-  openLargeFileInEditor: (path?: string) => Promise<boolean>;
-  setEditorContent: (value: string) => void;
-  saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;
-  refreshCurrentFile: (options?: { force?: boolean }) => Promise<boolean>;
-  discardLocalChangesAndReload: () => Promise<boolean>;
-  retrySaveWithOverwrite: () => Promise<boolean>;
-  dismissConflict: () => void;
-  checkForExternalChanges: () => Promise<void>;
-}
-
-export type UseWorkspaceFilesResult = UseFileExplorerResult;
-
-function getParentDirectory(path: string): string {
-  const lastSlash = path.lastIndexOf("/");
-  return lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-}
-
-function getAncestorDirectories(path: string): string[] {
-  const directories: string[] = [];
-  let currentDirectory = getParentDirectory(path);
-  while (currentDirectory) {
-    directories.unshift(currentDirectory);
-    currentDirectory = getParentDirectory(currentDirectory);
-  }
-  return directories;
-}
-
-function isPathWithinOrEqual(path: string, ancestorPath: string): boolean {
-  return path === ancestorPath || path.startsWith(`${ancestorPath}/`);
-}
-
-function upsertDirectoryEntry(
-  directoryEntries: Record<string, WorkspaceFileNode[]>,
-  entry: WorkspaceFileNode,
-): Record<string, WorkspaceFileNode[]> {
-  const parentDirectory = getParentDirectory(entry.path);
-  const currentEntries = directoryEntries[parentDirectory] ?? [];
-  const nextEntries = currentEntries.some((currentEntry) => currentEntry.path === entry.path)
-    ? currentEntries.map((currentEntry) => currentEntry.path === entry.path ? entry : currentEntry)
-    : [...currentEntries, entry];
-
-  return {
-    ...directoryEntries,
-    [parentDirectory]: nextEntries.sort((left, right) => {
-      if (left.kind !== right.kind) {
-        return left.kind === "directory" ? -1 : 1;
-      }
-      return left.name.localeCompare(right.name);
-    }),
-  };
-}
-
-function getFileExplorerCredentialErrorCode(requestError: unknown): FileExplorerCredentialErrorCode | null {
-  const errorCode = (requestError as { code?: unknown } | null)?.code;
-  if (errorCode === "missing_ssh_credential") {
-    return "missing_ssh_credential";
-  }
-  if (
-    errorCode === "invalid_ssh_credential"
-    || errorCode === "invalid_credential_token"
-    || errorCode === "invalid_encrypted_credential"
-  ) {
-    return "invalid_ssh_credential";
-  }
-  return null;
-}
-
-function isAbortError(requestError: unknown): boolean {
-  return requestError instanceof DOMException && requestError.name === "AbortError";
-}
-
-function findDirectoryNode(
-  directoryEntries: Record<string, WorkspaceFileNode[]>,
-  path: string,
-): WorkspaceFileNode | null {
-  const parentDirectory = getParentDirectory(path);
-  return directoryEntries[parentDirectory]?.find((entry) => entry.path === path) ?? null;
-}
-
-function isWithinLazySubtree(path: string, lazySubtreeRoots: string[]): boolean {
-  return lazySubtreeRoots.some((rootPath) => path === rootPath || path.startsWith(`${rootPath}/`));
-}
-
-function getExpandedDirectoriesForTreeResponse(
-  expandedDirectories: string[],
-  entriesByDirectory: Record<string, WorkspaceFileNode[]>,
-): string[] {
-  return expandedDirectories.filter((expandedPath) =>
-    Object.prototype.hasOwnProperty.call(entriesByDirectory, expandedPath)
-  );
-}
+export { LARGE_FILE_WARNING_THRESHOLD_BYTES } from "./useFileExplorerDocument";
 
 export function useFileExplorer(
   target: FileExplorerTarget,
@@ -170,729 +47,98 @@ export function useFileExplorer(
     pollIntervalMs?: number;
   },
 ): UseFileExplorerResult {
-  const targetType = target.type;
-  const targetId = target.id;
-  const startDirectory = target.startDirectory;
   const enabled = options?.enabled ?? true;
   const loadFullTree = options?.loadFullTree ?? true;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
-  const [effectiveLoadFullTree, setEffectiveLoadFullTree] = useState(loadFullTree);
-  const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileNode[]>>({});
-  const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
-  const [currentDirectory, setCurrentDirectory] = useState("");
-  const [selectedNode, setSelectedNode] = useState<WorkspaceFileNode | null>(null);
-  const [currentFile, setCurrentFile] = useState<WorkspaceFileEntry | null>(null);
-  const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
-  const [showHiddenFiles, setShowHiddenFiles] = useState(true);
-  const [editorContent, setEditorContent] = useState("");
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [savedContent, setSavedContent] = useState("");
-  const [loadingTree, setLoadingTree] = useState(true);
-  const [savingFile, setSavingFile] = useState(false);
+  const lifecycleKey = JSON.stringify([enabled, loadFullTree]);
+  const scope = useFileExplorerRequestScope(target, lifecycleKey);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
-  const [operationFailure, setOperationFailure] = useState<FileExplorerOperationFailure | null>(null);
-  const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
-  const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
-  const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<{ bytesUploaded: number; totalBytes: number } | null>(null);
-  const [lazySubtreeRoots, setLazySubtreeRoots] = useState<string[]>([]);
-  const pollTimerRef = useRef<number | null>(null);
-  const fileLoadAbortControllerRef = useRef<AbortController | null>(null);
-  const fileLoadRequestIdRef = useRef(0);
-  const directoryEntriesRef = useRef(directoryEntries);
-  const imagePreviewUrlRef = useRef<string | null>(null);
+  const errorTargetKeyRef = useRef(scope.targetKey);
+  const savingFileRef = useRef(false);
+  const hasCurrentErrorState = errorTargetKeyRef.current === scope.targetKey;
+  const conflicts = useFileExplorerConflicts(scope);
 
-  directoryEntriesRef.current = directoryEntries;
-
-  const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
-  const loadingFile = pendingFilePath !== null;
-  const currentFileRef = useRef<WorkspaceFileEntry | null>(currentFile);
-  const isDirtyRef = useRef(isDirty);
-  const largeFileWarningRef = useRef<WorkspaceLargeFileWarningState | null>(largeFileWarning);
-
-  currentFileRef.current = currentFile;
-  isDirtyRef.current = isDirty;
-  largeFileWarningRef.current = largeFileWarning;
+  const clearError = useCallback(() => {
+    if (!scope.isCurrent()) {
+      return;
+    }
+    setError(null);
+    setErrorCode(null);
+  }, [scope]);
 
   const applyErrorState = useCallback((requestError: unknown): string => {
     const message = requestError instanceof Error ? requestError.message : String(requestError);
-    setError(message);
-    setErrorCode(getFileExplorerCredentialErrorCode(requestError));
+    if (scope.isCurrent()) {
+      setError(message);
+      setErrorCode(getFileExplorerCredentialErrorCode(requestError));
+    }
     return message;
-  }, []);
+  }, [scope]);
 
-  const loadDirectory = useCallback(async (path: string) => {
-    return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path, { startDirectory });
-  }, [startDirectory, targetId, targetType]);
-
-  const loadTree = useCallback(async () => {
-    return await loadFileExplorerTreeApi({ type: targetType, id: targetId }, { startDirectory });
-  }, [startDirectory, targetId, targetType]);
-
-  const applyDirectoryResponse = useCallback((
-    path: string,
-    response: { entries: WorkspaceFileNode[] },
-    options?: { markAsLazySubtreeRoot?: boolean },
-  ) => {
-    setDirectoryEntries((currentEntries) => ({
-      ...currentEntries,
-      [path]: response.entries,
-    }));
-    if (options?.markAsLazySubtreeRoot) {
-      setLazySubtreeRoots((currentPaths) => currentPaths.includes(path) ? currentPaths : [...currentPaths, path]);
-    }
-    setExpandedDirectories((currentPaths) => {
-      if (!path || currentPaths.includes(path)) {
-        return currentPaths;
-      }
-      return [...currentPaths, path];
-    });
-  }, []);
-
-  const refreshTree = useCallback(async (path = "") => {
-    try {
-      setLoadingTree(true);
-      setError(null);
-      setErrorCode(null);
-      const directoryNode = path ? findDirectoryNode(directoryEntries, path) : null;
-      const shouldLoadDirectory = path.length > 0 && (
-        !effectiveLoadFullTree
-        || Boolean(directoryNode?.loadOnExpand)
-        || isWithinLazySubtree(path, lazySubtreeRoots)
-      );
-      if (effectiveLoadFullTree && !shouldLoadDirectory) {
-        const response = await loadTree();
-        setDirectoryEntries(response.entriesByDirectory);
-        setLazySubtreeRoots([]);
-        setExpandedDirectories((currentPaths) =>
-          getExpandedDirectoriesForTreeResponse(currentPaths, response.entriesByDirectory)
-        );
-        return;
-      }
-      const response = await loadDirectory(path);
-      applyDirectoryResponse(path, response, {
-        markAsLazySubtreeRoot: effectiveLoadFullTree && path.length > 0,
-      });
-    } catch (requestError) {
-      applyErrorState(requestError);
-    } finally {
-      setLoadingTree(false);
-    }
-  }, [applyDirectoryResponse, applyErrorState, directoryEntries, effectiveLoadFullTree, lazySubtreeRoots, loadDirectory, loadTree]);
-
-  const toggleShowHiddenFiles = useCallback(async () => {
-    setShowHiddenFiles((currentValue) => !currentValue);
-  }, []);
-
-  const selectNode = useCallback((node: WorkspaceFileNode | null) => {
-    setSelectedNode(node);
-  }, []);
-
-  const invalidateFileLoad = useCallback(() => {
-    fileLoadAbortControllerRef.current?.abort();
-    fileLoadAbortControllerRef.current = null;
-    fileLoadRequestIdRef.current += 1;
-  }, []);
-
-  const replaceImagePreviewUrl = useCallback((nextUrl: string | null) => {
-    if (imagePreviewUrlRef.current) {
-      URL.revokeObjectURL(imagePreviewUrlRef.current);
-    }
-    imagePreviewUrlRef.current = nextUrl;
-    setImagePreviewUrl(nextUrl);
-  }, []);
-
-  const ensureFilePathVisible = useCallback(async (path: string) => {
-    const ancestorDirectories = getAncestorDirectories(path);
-    if (ancestorDirectories.length === 0) {
-      return;
-    }
-
-    setExpandedDirectories((currentPaths) => {
-      const nextPaths = [...currentPaths];
-      for (const directory of ancestorDirectories) {
-        if (!nextPaths.includes(directory)) {
-          nextPaths.push(directory);
-        }
-      }
-      return nextPaths;
-    });
-
-    if (effectiveLoadFullTree) {
-      return;
-    }
-
-    for (const directory of ancestorDirectories) {
-      if (directoryEntriesRef.current[directory] !== undefined) {
-        continue;
-      }
-      const response = await loadDirectory(directory);
-      applyDirectoryResponse(directory, response, {
-        markAsLazySubtreeRoot: false,
-      });
-    }
-  }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory]);
-
-  const openFile = useCallback(async (path: string, options?: { allowLargeFile?: boolean }) => {
-    invalidateFileLoad();
-    const requestId = fileLoadRequestIdRef.current;
-    const abortController = new AbortController();
-    fileLoadAbortControllerRef.current = abortController;
-
-    try {
-      setPendingFilePath(path);
-      setError(null);
-      setErrorCode(null);
-      setConflictState(null);
-      setLargeFileWarning(null);
-      await ensureFilePathVisible(path);
-      if (!isBrowserRenderableImage(path)) {
-        replaceImagePreviewUrl(null);
-        const metadataResponse = await getFileExplorerFileMetadataApi({ type: targetType, id: targetId }, path, {
-          startDirectory,
-          signal: abortController.signal,
-        });
-        if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
-          return;
-        }
-        const metadata = metadataResponse.file;
-        if (metadata.size > LARGE_FILE_WARNING_THRESHOLD_BYTES && !options?.allowLargeFile) {
-          setCurrentDirectory(getParentDirectory(metadata.path));
-          setCurrentFile(metadata);
-          setSelectedNode(metadata);
-          setEditorContent("");
-          setSavedContent("");
-          setAutoReloadedAt(null);
-          setLargeFileWarning({ file: metadata });
-          return;
-        }
-
-        const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, {
-          startDirectory,
-          signal: abortController.signal,
-        });
-        if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
-          return;
-        }
-        setCurrentDirectory(getParentDirectory(response.file.path));
-        setCurrentFile(response.file);
-        setSelectedNode(response.file);
-        setEditorContent(response.content);
-        setSavedContent(response.content);
-        setAutoReloadedAt(null);
-        setLargeFileWarning(null);
-        return;
-      }
-
-      const metadataResponse = await getFileExplorerFileMetadataApi({ type: targetType, id: targetId }, path, {
-        startDirectory,
-        signal: abortController.signal,
-      });
-      if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
-        return;
-      }
-      const metadata = metadataResponse.file;
-
-      const imageBlob = await readFileExplorerImagePreviewApi({ type: targetType, id: targetId }, path, {
-        startDirectory,
-        signal: abortController.signal,
-      });
-      if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
-        return;
-      }
-      setCurrentDirectory(getParentDirectory(metadata.path));
-      setCurrentFile(metadata);
-      setSelectedNode(metadata);
-      setAutoReloadedAt(null);
-      setLargeFileWarning(null);
-      replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
-      setEditorContent("");
-      setSavedContent("");
-    } catch (requestError) {
-      if (isAbortError(requestError) || abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
-        return;
-      }
-      replaceImagePreviewUrl(null);
-      setCurrentFile(null);
-      setSelectedNode(null);
-      setEditorContent("");
-      setSavedContent("");
-      setConflictState(null);
-      setLargeFileWarning(null);
-      applyErrorState(requestError);
-    } finally {
-      const isLatestRequest = fileLoadRequestIdRef.current === requestId;
-      const isActiveRequest = !abortController.signal.aborted;
-
-      if (isActiveRequest && isLatestRequest && fileLoadAbortControllerRef.current === abortController) {
-        fileLoadAbortControllerRef.current = null;
-      }
-      if (isActiveRequest && isLatestRequest) {
-        setPendingFilePath(null);
-      }
-    }
-  }, [applyErrorState, ensureFilePathVisible, invalidateFileLoad, replaceImagePreviewUrl, startDirectory, targetId, targetType]);
-
-  const openLargeFileInEditor = useCallback(async (path?: string) => {
-    const warning = largeFileWarningRef.current;
-    const pathToOpen = path ?? warning?.file.path;
-    if (!pathToOpen) {
-      return false;
-    }
-
-    await openFile(pathToOpen, { allowLargeFile: true });
-    return true;
-  }, [openFile]);
-
-  const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
-    if (!currentFile) {
-      return false;
-    }
-
-    if (isDirty && !options?.force) {
-      setConflictState({
-        kind: "reload_conflict",
-        message: "This file has unsaved local changes. Reloading now would discard them.",
-        currentFile,
-      });
-      return false;
-    }
-
-    await openFile(currentFile.path, {
-      allowLargeFile: currentFile.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
-    });
-    return true;
-  }, [currentFile, isDirty, openFile]);
-
-  const saveCurrentFile = useCallback(async (options?: { overwrite?: boolean }) => {
-    setOperationFailure(null);
-    if (!currentFile) {
-      return false;
-    }
-    if (currentFile.isImage) {
-      return false;
-    }
-
-    try {
-      setSavingFile(true);
-      setError(null);
-      setErrorCode(null);
-      setConflictState(null);
-      const response = await writeFileExplorerFileApi({ type: targetType, id: targetId }, {
-        path: currentFile.path,
-        content: editorContent,
-        expectedVersionToken: currentFile.versionToken,
-        overwrite: options?.overwrite ?? false,
-        startDirectory: startDirectory ?? null,
-      }, { startDirectory });
-      setCurrentFile(response.file);
-      setSavedContent(editorContent);
-      setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, response.file));
-      return true;
-    } catch (requestError) {
-      if (requestError instanceof WorkspaceFileConflictError) {
-        setOperationFailure({
-          operation: "save",
-          message: requestError.message,
-          conflict: true,
-        });
-        setConflictState({
-          kind: "save_conflict",
-          message: requestError.message,
-          currentFile: requestError.currentFile,
-        });
-        return false;
-      }
-      const message = applyErrorState(requestError);
-      setOperationFailure({
-        operation: "save",
-        message,
-        conflict: false,
-      });
-      return false;
-    } finally {
-      setSavingFile(false);
-    }
-  }, [applyErrorState, currentFile, editorContent, startDirectory, targetId, targetType]);
-
-  const discardLocalChangesAndReload = useCallback(async () => {
-    setConflictState(null);
-    return await refreshCurrentFile({ force: true });
-  }, [refreshCurrentFile]);
-
-  const retrySaveWithOverwrite = useCallback(async () => {
-    setConflictState(null);
-    return await saveCurrentFile({ overwrite: true });
-  }, [saveCurrentFile]);
-
-  const checkForExternalChanges = useCallback(async () => {
-    const activeFile = currentFileRef.current;
-    if (!activeFile || loadingFile || savingFile || largeFileWarningRef.current) {
-      return;
-    }
-
-    const pollRequestId = fileLoadRequestIdRef.current;
-
-    try {
-      const response = await getFileExplorerFileMetadataApi(
-        { type: targetType, id: targetId },
-        activeFile.path,
-        { startDirectory },
-      );
-      const latestCurrentFile = currentFileRef.current;
-      if (
-        fileLoadRequestIdRef.current !== pollRequestId
-        || latestCurrentFile?.path !== activeFile.path
-        || latestCurrentFile.versionToken !== activeFile.versionToken
-      ) {
-        return;
-      }
-
-      const metadata = response.file;
-      if (metadata.versionToken === latestCurrentFile.versionToken) {
-        return;
-      }
-
-      if (metadata.isImage) {
-        const imageBlob = await readFileExplorerImagePreviewApi(
-          { type: targetType, id: targetId },
-          activeFile.path,
-          { startDirectory },
-        );
-        const latestFileBeforeApply = currentFileRef.current;
-        if (
-          fileLoadRequestIdRef.current !== pollRequestId
-          || latestFileBeforeApply?.path !== activeFile.path
-          || latestFileBeforeApply.versionToken !== activeFile.versionToken
-        ) {
-          return;
-        }
-
-        setCurrentFile(metadata);
-        replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
-        setEditorContent("");
-        setSavedContent("");
-        setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, metadata));
-        setAutoReloadedAt(new Date().toISOString());
-        return;
-      }
-
-      if (isDirtyRef.current) {
-        setConflictState({
-          kind: "reload_conflict",
-          message: "This file changed outside the code explorer while you have unsaved changes.",
-          currentFile: metadata,
-        });
-        return;
-      }
-
-      const readResponse = await readFileExplorerFileApi(
-        { type: targetType, id: targetId },
-        activeFile.path,
-        { startDirectory },
-      );
-      const latestFileBeforeApply = currentFileRef.current;
-      if (
-        fileLoadRequestIdRef.current !== pollRequestId
-        || latestFileBeforeApply?.path !== activeFile.path
-        || latestFileBeforeApply.versionToken !== activeFile.versionToken
-        || isDirtyRef.current
-      ) {
-        return;
-      }
-
-      setCurrentFile(readResponse.file);
-      replaceImagePreviewUrl(null);
-      setEditorContent(readResponse.content);
-      setSavedContent(readResponse.content);
-      setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, readResponse.file));
-      setAutoReloadedAt(new Date().toISOString());
-    } catch (requestError) {
-      if (requestError instanceof WorkspaceFileConflictError) {
-        setConflictState({
-          kind: "reload_conflict",
-          message: requestError.message,
-          currentFile: requestError.currentFile,
-        });
-        return;
-      }
-      applyErrorState(requestError);
-    }
-  }, [applyErrorState, loadingFile, replaceImagePreviewUrl, savingFile, startDirectory, targetId, targetType]);
-
-  const toggleDirectory = useCallback(async (path: string) => {
-    const directoryNode = findDirectoryNode(directoryEntries, path);
-    if (directoryNode) {
-      setSelectedNode(directoryNode);
-    }
-    const isExpanded = expandedDirectories.includes(path);
-    if (isExpanded) {
-      setExpandedDirectories((currentPaths) => currentPaths.filter((currentPath) => currentPath !== path));
-      return;
-    }
-
-    setExpandedDirectories((currentPaths) => [...currentPaths, path]);
-    const shouldLoadDirectory = directoryEntries[path] === undefined && (
-      !effectiveLoadFullTree
-      || Boolean(directoryNode?.loadOnExpand)
-      || isWithinLazySubtree(path, lazySubtreeRoots)
-    );
-    if (shouldLoadDirectory) {
-      await refreshTree(path);
-    }
-  }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, lazySubtreeRoots, refreshTree]);
-
-  const renameSelectedNode = useCallback(async (newName: string, options?: { overwrite?: boolean }) => {
-    setOperationFailure(null);
-    if (!selectedNode) {
-      return null;
-    }
-    try {
-      setError(null);
-      setErrorCode(null);
-      const response = await renameFileExplorerNodeApi({ type: targetType, id: targetId }, {
-        path: selectedNode.path,
-        newName,
-        expectedVersionToken: currentFile?.path === selectedNode.path ? currentFile.versionToken : null,
-        overwrite: options?.overwrite ?? false,
-        startDirectory: startDirectory ?? null,
-      }, { startDirectory });
-      setSelectedNode(response.file);
-      await refreshTree(getParentDirectory(response.file.path));
-      if (currentFile?.path === response.previousPath) {
-        await openFile(response.file.path, {
-          allowLargeFile: response.file.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
-        });
-      }
-      return response.file;
-    } catch (requestError) {
-      const message = applyErrorState(requestError);
-      setOperationFailure({
-        operation: "rename",
-        message,
-        conflict: false,
-      });
-      return null;
-    }
-  }, [applyErrorState, currentFile, openFile, refreshTree, selectedNode, startDirectory, targetId, targetType]);
-
-  const deleteSelectedNode = useCallback(async () => {
-    setOperationFailure(null);
-    if (!selectedNode) {
-      return false;
-    }
-    try {
-      setError(null);
-      setErrorCode(null);
-      const response = await deleteFileExplorerNodeApi({ type: targetType, id: targetId }, {
-        path: selectedNode.path,
-        kind: selectedNode.kind,
-        expectedVersionToken: currentFile?.path === selectedNode.path ? currentFile.versionToken : null,
-        startDirectory: startDirectory ?? null,
-      }, { startDirectory });
-      const parentDirectory = getParentDirectory(response.deletedPath);
-      setSelectedNode(null);
-      if (currentFile && isPathWithinOrEqual(currentFile.path, response.deletedPath)) {
-        invalidateFileLoad();
-        setCurrentFile(null);
-        replaceImagePreviewUrl(null);
-        setEditorContent("");
-        setSavedContent("");
-        setLargeFileWarning(null);
-      }
-      await refreshTree(parentDirectory);
-      return true;
-    } catch (requestError) {
-      const message = applyErrorState(requestError);
-      setOperationFailure({
-        operation: "delete",
-        message,
-        conflict: false,
-      });
-      return false;
-    }
-  }, [
-    applyErrorState,
-    currentFile,
-    invalidateFileLoad,
-    refreshTree,
-    replaceImagePreviewUrl,
-    selectedNode,
-    startDirectory,
-    targetId,
-    targetType,
-  ]);
-
-  const uploadFileToSelectedDirectory = useCallback(async (
-    file: File,
-    options?: { overwrite?: boolean; signal?: AbortSignal },
-  ) => {
-    setOperationFailure(null);
-    const targetDirectory = selectedNode?.kind === "directory" ? selectedNode.path : currentDirectory;
-    try {
-      setError(null);
-      setErrorCode(null);
-      setUploadProgress({ bytesUploaded: 0, totalBytes: file.size });
-      const response = await uploadFileExplorerFileApi({ type: targetType, id: targetId }, targetDirectory, file, {
-        overwrite: options?.overwrite ?? false,
-        startDirectory,
-        signal: options?.signal,
-        onProgress: setUploadProgress,
-      });
-      setSelectedNode(response.file);
-      await refreshTree(targetDirectory);
-      return response.file;
-    } catch (requestError) {
-      const message = applyErrorState(requestError);
-      setOperationFailure({
-        operation: "upload",
-        message,
-        conflict: false,
-      });
-      return null;
-    } finally {
-      setUploadProgress(null);
-    }
-  }, [applyErrorState, currentDirectory, refreshTree, selectedNode, startDirectory, targetId, targetType]);
-
-  const dismissConflict = useCallback(() => {
-    setConflictState(null);
-  }, []);
+  const tree = useFileExplorerTree(scope, {
+    enabled,
+    loadFullTree,
+    onError: applyErrorState,
+    clearError,
+  });
+  const document = useFileExplorerDocument(scope, tree, {
+    pollIntervalMs,
+    savingFileRef,
+    conflicts,
+    onError: applyErrorState,
+    clearError,
+  });
+  const mutations = useFileExplorerMutations(scope, tree, document, savingFileRef, {
+    conflicts,
+    onError: applyErrorState,
+    clearError,
+  });
 
   useEffect(() => {
-    invalidateFileLoad();
-    setLoadingTree(true);
+    errorTargetKeyRef.current = scope.targetKey;
     setError(null);
     setErrorCode(null);
-    setOperationFailure(null);
-    setDirectoryEntries({});
-    setExpandedDirectories([]);
-    setCurrentDirectory("");
-    setSelectedNode(null);
-    setCurrentFile(null);
-    setPendingFilePath(null);
-    setShowHiddenFiles(true);
-    setEditorContent("");
-    replaceImagePreviewUrl(null);
-    setSavedContent("");
-    setConflictState(null);
-    setLargeFileWarning(null);
-    setAutoReloadedAt(null);
-    setUploadProgress(null);
-    setLazySubtreeRoots([]);
-    setEffectiveLoadFullTree(loadFullTree);
-    if (!enabled) {
-      setLoadingTree(false);
-      return;
-    }
-    if (loadFullTree) {
-      void loadTree()
-        .then((response) => {
-          setDirectoryEntries(response.entriesByDirectory);
-          setLazySubtreeRoots([]);
-        })
-        .catch((requestError) => {
-          applyErrorState(requestError);
-        })
-        .finally(() => {
-          setLoadingTree(false);
-        });
-      return;
-    }
-
-    void loadDirectory("")
-      .then((response) => {
-        applyDirectoryResponse("", response);
-        setLazySubtreeRoots([]);
-      })
-      .catch((requestError) => {
-        applyErrorState(requestError);
-      })
-      .finally(() => {
-        setLoadingTree(false);
-      });
-  }, [
-    applyDirectoryResponse,
-    applyErrorState,
-    enabled,
-    invalidateFileLoad,
-    loadDirectory,
-    loadFullTree,
-    loadTree,
-    replaceImagePreviewUrl,
-    startDirectory,
-    targetId,
-    targetType,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      invalidateFileLoad();
-      replaceImagePreviewUrl(null);
-    };
-  }, [invalidateFileLoad, replaceImagePreviewUrl]);
-
-  useEffect(() => {
-    if (pollTimerRef.current !== null) {
-      window.clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-
-    if (!currentFile) {
-      return;
-    }
-
-    pollTimerRef.current = window.setInterval(() => {
-      void checkForExternalChanges();
-    }, pollIntervalMs);
-
-    return () => {
-      if (pollTimerRef.current !== null) {
-        window.clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [checkForExternalChanges, currentFile, pollIntervalMs]);
+  }, [scope]);
 
   return {
-    directoryEntries,
-    expandedDirectories,
-    currentDirectory,
-    selectedNode,
-    currentFile,
-    pendingFilePath,
-    showHiddenFiles,
-    editorContent,
-    imagePreviewUrl,
-    savedContent,
-    loadingTree,
-    loadingFile,
-    savingFile,
-    error,
-    errorCode,
-    operationFailure,
-    isDirty,
-    conflictState,
-    largeFileWarning,
-    autoReloadedAt,
-    uploadProgress,
-    refreshTree,
-    toggleShowHiddenFiles,
-    toggleDirectory,
-    openFile,
-    selectNode,
-    renameSelectedNode,
-    deleteSelectedNode,
-    uploadFileToSelectedDirectory,
-    openLargeFileInEditor,
-    setEditorContent,
-    saveCurrentFile,
-    refreshCurrentFile,
-    discardLocalChangesAndReload,
-    retrySaveWithOverwrite,
-    dismissConflict,
-    checkForExternalChanges,
+    directoryEntries: tree.directoryEntries,
+    expandedDirectories: tree.expandedDirectories,
+    currentDirectory: tree.currentDirectory,
+    selectedNode: tree.selectedNode,
+    currentFile: document.currentFile,
+    pendingFilePath: document.pendingFilePath,
+    showHiddenFiles: tree.showHiddenFiles,
+    editorContent: document.editorContent,
+    imagePreviewUrl: document.imagePreviewUrl,
+    savedContent: document.savedContent,
+    loadingTree: tree.loadingTree,
+    loadingFile: document.loadingFile,
+    savingFile: mutations.savingFile,
+    error: hasCurrentErrorState ? error : null,
+    errorCode: hasCurrentErrorState ? errorCode : null,
+    operationFailure: mutations.operationFailure,
+    isDirty: document.isDirty,
+    conflictState: conflicts.conflictState,
+    largeFileWarning: document.largeFileWarning,
+    autoReloadedAt: document.autoReloadedAt,
+    uploadProgress: mutations.uploadProgress,
+    refreshTree: tree.refreshTree,
+    toggleShowHiddenFiles: tree.toggleShowHiddenFiles,
+    toggleDirectory: tree.toggleDirectory,
+    openFile: document.openFile,
+    selectNode: tree.selectNode,
+    renameSelectedNode: mutations.renameSelectedNode,
+    deleteSelectedNode: mutations.deleteSelectedNode,
+    uploadFileToSelectedDirectory: mutations.uploadFileToSelectedDirectory,
+    openLargeFileInEditor: document.openLargeFileInEditor,
+    setEditorContent: document.setEditorContent,
+    saveCurrentFile: mutations.saveCurrentFile,
+    refreshCurrentFile: document.refreshCurrentFile,
+    discardLocalChangesAndReload: document.discardLocalChangesAndReload,
+    retrySaveWithOverwrite: mutations.retrySaveWithOverwrite,
+    dismissConflict: conflicts.dismissConflict,
+    checkForExternalChanges: document.checkForExternalChanges,
   };
 }
 
