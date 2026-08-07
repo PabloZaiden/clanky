@@ -64,7 +64,14 @@ export function useAgentCodeTest({
       return;
     }
     testLogIdsRef.current.add(entry.id);
-    setTestLogs((previous) => [...previous, entry].slice(-MAX_TEST_LOGS));
+    setTestLogs((previous) => {
+      const next = [...previous, entry];
+      const evictedEntries = next.slice(0, Math.max(0, next.length - MAX_TEST_LOGS));
+      for (const evictedEntry of evictedEntries) {
+        testLogIdsRef.current.delete(evictedEntry.id);
+      }
+      return next.slice(-MAX_TEST_LOGS);
+    });
   }, []);
 
   useRealtimeStream<AgentEvent>({
@@ -81,6 +88,7 @@ export function useAgentCodeTest({
   const resetOutput = useCallback((): void => {
     setTestResult(null);
     setTestLogs([]);
+    testLogIdsRef.current.clear();
   }, []);
 
   const testCode = useCallback(async (): Promise<void> => {
