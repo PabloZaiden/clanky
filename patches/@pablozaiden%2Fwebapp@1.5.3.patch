@@ -1,0 +1,98 @@
+diff --git a/src/web/WebAppRoot.tsx b/src/web/WebAppRoot.tsx
+index 2ed14083ef7432a82b960e5f7b37e853b7f6aae8..7b1165555707e854d28baa62587fad530b8f7b0f 100644
+--- a/src/web/WebAppRoot.tsx
++++ b/src/web/WebAppRoot.tsx
+@@ -197,6 +197,7 @@ function WebAppRootContent({
+           type: "item" as const,
+           title: pin.title,
+           subtitle: pin.subtitle,
++          secondarySubtitle: pin.secondarySubtitle,
+           badge: pin.badge,
+           badgeVariant: pin.badgeVariant,
+           badgeAppearance: pin.badgeAppearance,
+@@ -207,6 +208,7 @@ function WebAppRootContent({
+         ...(actionNode ? {
+           title: pin.title,
+           subtitle: pin.subtitle,
++          secondarySubtitle: pin.secondarySubtitle,
+           badge: pin.badge,
+           badgeVariant: pin.badgeVariant,
+           badgeAppearance: pin.badgeAppearance,
+diff --git a/src/web/sidebar/types.ts b/src/web/sidebar/types.ts
+index c46c75a42ecfd6cb04f085186cc37bb7ec588bb8..c868a890a070e8e16c3b2688446416dae644afd9 100644
+--- a/src/web/sidebar/types.ts
++++ b/src/web/sidebar/types.ts
+@@ -56,6 +56,7 @@ export interface SidebarNode {
+   id: string;
+   title: string;
+   subtitle?: string;
++  secondarySubtitle?: string;
+   badge?: string;
+   badgeVariant?: BadgeVariant;
+   badgeAppearance?: SidebarBadgeAppearance;
+diff --git a/src/web/sidebar-state.ts b/src/web/sidebar-state.ts
+index 863b65292cf2556f40afecb5b043a05e21408d55..e41a50a7caea8652369cabbac9fadf24fcd8a9a0 100644
+--- a/src/web/sidebar-state.ts
++++ b/src/web/sidebar-state.ts
+@@ -5,6 +5,7 @@ export type StoredSidebarPin = {
+   id: string;
+   title: string;
+   subtitle?: string;
++  secondarySubtitle?: string;
+   badge?: string;
+   badgeVariant?: SidebarNode["badgeVariant"];
+   badgeAppearance?: SidebarNode["badgeAppearance"];
+@@ -44,6 +45,7 @@ export function toStoredPin(node: SidebarNode): StoredSidebarPin | undefined {
+     id: node.pinId ?? node.id,
+     title: node.title,
+     subtitle: node.subtitle,
++    secondarySubtitle: node.secondarySubtitle,
+     badge: node.badge,
+     badgeVariant: node.badgeVariant,
+     badgeAppearance: node.badgeAppearance,
+diff --git a/src/web/sidebar-tree.tsx b/src/web/sidebar-tree.tsx
+index 062c1cd08b1c8571f40a630824fb862b8a97b1fd..0dea8d67637570aadd22348db0b094d58c722ce6 100644
+--- a/src/web/sidebar-tree.tsx
++++ b/src/web/sidebar-tree.tsx
+@@ -88,6 +88,7 @@ export function SidebarTree({ nodes, route, navigate, collapsed, toggleCollapsed
+               <span>
+                 <strong>{node.title}</strong>
+                 {node.subtitle ? <small>{node.subtitle}</small> : null}
++                {node.secondarySubtitle ? <small className="wapp-sidebar-item-secondary-subtitle">{node.secondarySubtitle}</small> : null}
+               </span>
+               {node.badge ? (
+                 <Badge
+diff --git a/src/web/styles.css b/src/web/styles.css
+index 88ebd27da568886eafbaa49bef4b35535cc34b08..41bc301fad773bb949d3c7c5287105e47e3c6d7e 100644
+--- a/src/web/styles.css
++++ b/src/web/styles.css
+@@ -539,7 +539,7 @@ textarea::placeholder {
+ .wapp-sidebar-item-subtitle-above-title {
+   display: grid;
+   grid-template-columns: minmax(0, 1fr) fit-content(45%);
+-  grid-template-rows: auto auto;
++  grid-template-rows: auto auto auto;
+   align-items: center;
+   column-gap: 0.375rem;
+   row-gap: 0;
+@@ -592,6 +592,20 @@ textarea::placeholder {
+   line-height: 1rem;
+ }
+ 
++.wapp-sidebar-item > span:first-child > small.wapp-sidebar-item-secondary-subtitle {
++  margin-top: 0;
++  font-size: 0.5625rem;
++  font-weight: 500;
++  line-height: 0.75rem;
++  text-align: right;
++}
++
++.wapp-sidebar-item-subtitle-above-title > span:first-child > small.wapp-sidebar-item-secondary-subtitle {
++  grid-column: 1 / -1;
++  grid-row: 3;
++  justify-self: end;
++}
++
+ :root.dark .wapp-sidebar-item.active small {
+   color: #a3a3a3;
+ }
