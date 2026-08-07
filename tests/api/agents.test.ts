@@ -43,6 +43,12 @@ describe("Agents API Integration", () => {
 }`;
   const generatedSourcePaths: string[] = [];
   let writeGenerationSource = true;
+  let generationSourceWriter: ((
+    outputPath: string,
+    promptText: string,
+    generationTurn: number,
+  ) => Promise<void>) | undefined;
+  let generationTurn = 0;
 
   async function getOrCreateWorkspace(directory: string): Promise<string> {
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -170,20 +176,29 @@ describe("Agents API Integration", () => {
           .filter((part): part is { type: "text"; text: string } => part.type === "text")
           .map((part) => part.text)
           .join("\n");
-        const marker = "Write only raw TypeScript source to this exact absolute file path:\n---\n";
-        const markerStart = promptText.indexOf(marker);
+        const markers = [
+          "Write only raw TypeScript source to this exact absolute file path:\n---\n",
+          "Current source file to repair:\n---\n",
+        ];
+        const marker = markers.find((candidate) => promptText.includes(candidate));
+        const markerStart = marker ? promptText.indexOf(marker) : -1;
         if (markerStart < 0) {
           return;
         }
-        const pathStart = markerStart + marker.length;
+        const pathStart = markerStart + marker!.length;
         const pathEnd = promptText.indexOf("\n---", pathStart);
         if (pathEnd < 0) {
           return;
         }
         const outputPath = promptText.slice(pathStart, pathEnd).trim();
         generatedSourcePaths.push(outputPath);
+        generationTurn += 1;
         if (writeGenerationSource) {
-          await Bun.write(outputPath, generatedCode);
+          if (generationSourceWriter) {
+            await generationSourceWriter(outputPath, promptText, generationTurn);
+          } else {
+            await Bun.write(outputPath, generatedCode);
+          }
         }
       },
     });
@@ -326,6 +341,105 @@ describe("Agents API Integration", () => {
       transcript: { messages: Array<{ content: string }> };
     };
     expect(snapshot.transcript.messages.some((message) => message.content.includes("Use the current editor instructions"))).toBe(true);
+  });
+
+  test("repairs invalid generated code once through the same generation conversation", async () => {
+    const invalidCode = `export default function run(ctx) {
+  enum Result {
+    Ok,
+  }
+  void Result.Ok;
+}`;
+    const repairedCode = `export default async function run(ctx) {
+  ctx.stdout.write("repaired source\\n");
+}`;
+    const turns: number[] = [];
+    generationTurn = 0;
+    generationSourceWriter = async (outputPath, _promptText, generationNumber) => {
+      turns.push(generationNumber);
+      await Bun.write(outputPath, generationNumber === 1 ? invalidCode : repairedCode);
+    };
+
+    try {
+      const agent = await createAgent("Repair generation agent");
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Repair generation agent",
+          prompt: "Generate a valid deterministic agent",
+          previousCode: "",
+          workspaceId,
+          model: testModel,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const generated = await response.json() as {
+        code: string;
+        diagnostics: Array<{ message: string }>;
+        chat: { config: { id: string } };
+      };
+      expect(generated.code).toContain("repaired source");
+      expect(generated.diagnostics).toHaveLength(0);
+      expect(turns).toEqual([1, 2]);
+
+      const snapshotResponse = await fetch(`${baseUrl}/api/chats/${generated.chat.config.id}/snapshot`);
+      expect(snapshotResponse.status).toBe(200);
+      const snapshot = await snapshotResponse.json() as {
+        transcript: { messages: Array<{ role: string }> };
+      };
+      expect(snapshot.transcript.messages.filter((message) => message.role === "user")).toHaveLength(2);
+    } finally {
+      generationSourceWriter = undefined;
+    }
+  });
+
+  test("returns unresolved diagnostics after one failed repair turn", async () => {
+    const invalidSources = [
+      `export default function run(ctx) {
+  enum Result {
+    Ok,
+  }
+  void Result.Ok;
+}`,
+      `export default function run(ctx) {
+  class Example {
+    constructor(private readonly value: string) {}
+  }
+  void Example;
+}`,
+    ];
+    const turns: number[] = [];
+    generationTurn = 0;
+    generationSourceWriter = async (outputPath, _promptText, generationNumber) => {
+      turns.push(generationNumber);
+      await Bun.write(outputPath, invalidSources[Math.min(generationNumber - 1, invalidSources.length - 1)]!);
+    };
+
+    try {
+      const agent = await createAgent("Unresolved repair generation agent");
+      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Unresolved repair generation agent",
+          prompt: "Generate a deterministic agent",
+          previousCode: "",
+          workspaceId,
+          model: testModel,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const generated = await response.json() as {
+        diagnostics: Array<{ message: string }>;
+      };
+      expect(generated.diagnostics.length).toBeGreaterThan(0);
+      expect(turns).toEqual([1, 2]);
+    } finally {
+      generationSourceWriter = undefined;
+    }
   });
 
   test("prepares the hidden generation chat before the initial generation request", async () => {

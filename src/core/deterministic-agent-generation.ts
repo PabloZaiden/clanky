@@ -17,6 +17,7 @@ const log = createLogger("deterministic-agent-generation");
 const GENERATION_SOURCE_POLL_INTERVAL_MS = 100;
 const GENERATION_SOURCE_TIMEOUT_MS = 15 * 60 * 1000;
 const GENERATION_COMPLETE_MARKER = "complete";
+const GENERATION_REPAIR_TURN_LIMIT = 1;
 
 export interface GenerateDeterministicAgentCodeOptions {
   chatId: string;
@@ -45,6 +46,38 @@ function createGenerationCompletionFilePath(filePath: string): string {
   return `${filePath}.complete`;
 }
 
+function buildContractInstructions(): string[] {
+  return [
+    "The complete deterministic-agent context type shape is:",
+    ...DETERMINISTIC_AGENT_CODE_CONTRACT.contextTypes.flatMap((contextType) => [
+      "---",
+      contextType,
+      "---",
+    ]),
+    "Runtime semantics:",
+    ...DETERMINISTIC_AGENT_CODE_CONTRACT.runtimeSemantics.map((semantic) => `- ${semantic}`),
+    "Node.js and safety restrictions:",
+    ...DETERMINISTIC_AGENT_CODE_CONTRACT.nodeRestrictions.map((restriction) => `- ${restriction}`),
+    "Contract summary:",
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.exportRule}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.asyncRule}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.exec}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.prompt}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.output}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.signal}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.restrictions}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.visibility}`,
+    "Examples:",
+    ...DETERMINISTIC_AGENT_CODE_CONTRACT.examples.flatMap((example) => [
+      `Example: ${example.title}`,
+      example.description,
+      "---",
+      example.code,
+      "---",
+    ]),
+  ];
+}
+
 function buildGenerationPrompt(
   options: GenerateDeterministicAgentCodeOptions,
   outputFilePath: string,
@@ -69,18 +102,14 @@ function buildGenerationPrompt(
       + "write the complete updated source to the same file, verify it, and then update the marker file.",
     "Do not include Markdown fences, explanations, or any other text in the source file.",
     "After writing and verifying the file, reply with a short confirmation only; do not paste the source in your response.",
-    DETERMINISTIC_AGENT_CODE_CONTRACT.exportRule,
-    DETERMINISTIC_AGENT_CODE_CONTRACT.asyncRule,
-    "The context API is:",
-    `  ${DETERMINISTIC_AGENT_CODE_CONTRACT.exec}`,
-    `  ${DETERMINISTIC_AGENT_CODE_CONTRACT.prompt}`,
-    `  ${DETERMINISTIC_AGENT_CODE_CONTRACT.output}`,
-    `  ${DETERMINISTIC_AGENT_CODE_CONTRACT.signal}`,
-    "Commands run in the selected workspace and may use the injected Clanky CLI/API environment.",
-    DETERMINISTIC_AGENT_CODE_CONTRACT.restrictions,
-    DETERMINISTIC_AGENT_CODE_CONTRACT.visibility,
+    ...buildContractInstructions(),
     "",
-    "Agent prompt:",
+    "Generation inputs:",
+    "Agent name:",
+    "---",
+    options.name,
+    "---",
+    "Requested behavior:",
     "---",
     options.prompt,
     "---",
@@ -92,16 +121,85 @@ function buildGenerationPrompt(
 }
 
 function buildGenerationFollowUpMessage(
-  message: string,
+  options: GenerateDeterministicAgentCodeOptions,
   outputFilePath: string,
   completionFilePath: string,
 ): string {
+  const previousCode = options.previousCode.trim() || "(no previous code)";
+  const message = options.message?.trim() || "(apply the attached follow-up instructions)";
   return [
-    message.trim(),
+    "Continue the deterministic-agent generation conversation using the same runtime contract.",
+    ...buildContractInstructions(),
     "",
-    "Apply this request to the deterministic agent source. Write and verify the complete updated source "
+    "Generation inputs:",
+    "Agent name:",
+    "---",
+    options.name,
+    "---",
+    "Existing requested behavior:",
+    "---",
+    options.prompt,
+    "---",
+    "Previous generated code:",
+    "---",
+    previousCode,
+    "---",
+    "Follow-up request:",
+    "---",
+    message,
+    "---",
+    "Apply the follow-up request to the deterministic agent source. Write and verify the complete updated source "
       + `to ${outputFilePath}, then write "${GENERATION_COMPLETE_MARKER}" to ${completionFilePath}.`,
     "Reply with a short confirmation only; do not paste the source.",
+  ].join("\n");
+}
+
+function formatGenerationDiagnostics(
+  diagnostics: GeneratedDeterministicAgentCode["diagnostics"],
+): string {
+  return diagnostics.map((diagnostic, index) => {
+    const location = diagnostic.line
+      ? `line ${diagnostic.line}${diagnostic.column ? `, column ${diagnostic.column}` : ""}`
+      : "source";
+    return `${index + 1}. ${location}: ${diagnostic.message}`;
+  }).join("\n");
+}
+
+function buildGenerationRepairMessage(
+  options: GenerateDeterministicAgentCodeOptions,
+  outputFilePath: string,
+  completionFilePath: string,
+  diagnostics: GeneratedDeterministicAgentCode["diagnostics"],
+): string {
+  return [
+    "The generated deterministic-agent source failed validation.",
+    "Repair the source now. Do not explain the fix and do not paste source in your response.",
+    ...buildContractInstructions(),
+    "",
+    "Generation inputs:",
+    "Agent name:",
+    "---",
+    options.name,
+    "---",
+    "Requested behavior:",
+    "---",
+    options.prompt,
+    "---",
+    "Current source file to repair:",
+    "---",
+    outputFilePath,
+    "---",
+    "Validation diagnostics:",
+    "---",
+    formatGenerationDiagnostics(diagnostics),
+    "---",
+    "Read the current source file, fix every listed diagnostic, and rewrite the complete source to that same path.",
+    "Verify the complete source before writing the exact text "
+      + `"${GENERATION_COMPLETE_MARKER}" to this marker file:`,
+    "---",
+    completionFilePath,
+    "---",
+    "This is the only automatic repair turn. Reply with a short confirmation only.",
   ].join("\n");
 }
 
@@ -118,6 +216,29 @@ async function waitForGenerationPoll(signal?: AbortSignal): Promise<void> {
     if (timer) {
       clearTimeout(timer);
     }
+  }
+}
+
+async function removeGenerationFileOrThrow(
+  executor: CommandExecutor,
+  directory: string,
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const result = await awaitWithAbort(
+    executor.exec("rm", ["-f", "--", filePath], {
+      cwd: directory,
+      timeout: 10_000,
+      logFailures: false,
+      signal,
+    }),
+    signal,
+  );
+  if (!result.success) {
+    throw new DomainError(
+      "agent_code_generation_failed",
+      `Could not invalidate the generation completion marker: ${result.stderr || result.exitCode}`,
+    );
   }
 }
 
@@ -369,7 +490,7 @@ export async function generateDeterministicAgentCode(
     }
 
     const message = isFollowUp
-      ? buildGenerationFollowUpMessage(options.message ?? "", outputFilePath, completionFilePath)
+      ? buildGenerationFollowUpMessage(options, outputFilePath, completionFilePath)
       : buildGenerationPrompt(options, outputFilePath, completionFilePath);
     await coordinator.runPhase(
       () => chatManager.sendMessage(options.chatId, {
@@ -378,7 +499,7 @@ export async function generateDeterministicAgentCode(
       }),
       "send",
     );
-    return await waitForGeneratedAgentSource(
+    let generated = await waitForGeneratedAgentSource(
       executor,
       options.chatId,
       outputFilePath,
@@ -389,6 +510,41 @@ export async function generateDeterministicAgentCode(
         signal: options.signal,
       },
     );
+    for (let repairTurn = 0; generated.diagnostics.length > 0 && repairTurn < GENERATION_REPAIR_TURN_LIMIT; repairTurn += 1) {
+      await awaitWithAbort(
+        chatManager.waitForChatIdle(options.chatId),
+        options.signal,
+      );
+      await removeGenerationFileOrThrow(
+        executor,
+        options.directory,
+        completionFilePath,
+        options.signal,
+      );
+      await coordinator.runPhase(
+        () => chatManager.sendMessage(options.chatId, {
+          message: buildGenerationRepairMessage(
+            options,
+            outputFilePath,
+            completionFilePath,
+            generated.diagnostics,
+          ),
+        }),
+        "repair",
+      );
+      generated = await waitForGeneratedAgentSource(
+        executor,
+        options.chatId,
+        outputFilePath,
+        completionFilePath,
+        {
+          requireNewTurn: true,
+          initialSource: generated.code,
+          signal: options.signal,
+        },
+      );
+    }
+    return generated;
   } finally {
     await coordinator.dispose();
     if (options.signal?.aborted) {

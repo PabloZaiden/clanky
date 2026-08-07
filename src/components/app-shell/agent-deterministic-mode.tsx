@@ -3,7 +3,7 @@ import type {
   DeterministicAgentTestResult,
   DeterministicCodeDiagnostic,
 } from "@/shared";
-import { DETERMINISTIC_AGENT_CODE_CONTRACT, DETERMINISTIC_AGENT_CODE_EXAMPLE } from "@/shared/deterministic-agent";
+import { DETERMINISTIC_AGENT_CODE_CONTRACT } from "@/shared/deterministic-agent";
 import type { TaskLogEntry } from "@/shared/task";
 import { Button, StatusBadge } from "../common";
 import { ChatDetails } from "../ChatDetails";
@@ -42,17 +42,35 @@ export function AgentDeterministicMode({
       <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
         <p className="font-medium">Code contract</p>
         <p className="mt-1">{DETERMINISTIC_AGENT_CODE_CONTRACT.exportRule} {DETERMINISTIC_AGENT_CODE_CONTRACT.asyncRule}</p>
-        <ul className="mt-2 list-disc space-y-1 pl-4">
-          <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.exec}</code></li>
-          <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.prompt}</code></li>
-          <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.output}</code></li>
-          <li><code>{DETERMINISTIC_AGENT_CODE_CONTRACT.signal}</code></li>
-        </ul>
-        <div className="mt-3">
-          <p className="font-medium">Minimal valid example</p>
-          <pre className="mt-2 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-[11px] leading-5 text-gray-900 dark:bg-neutral-900 dark:text-gray-100">
-            <code>{DETERMINISTIC_AGENT_CODE_EXAMPLE}</code>
-          </pre>
+        <div className="mt-3 space-y-3">
+          <div>
+            <p className="font-medium">Context API</p>
+            <div className="mt-2 space-y-2">
+              {DETERMINISTIC_AGENT_CODE_CONTRACT.contextTypes.map((contextType) => (
+                <ContractCodeBlock key={contextType} code={contextType} />
+              ))}
+            </div>
+          </div>
+          <ContractList
+            title="Runtime semantics"
+            items={DETERMINISTIC_AGENT_CODE_CONTRACT.runtimeSemantics}
+          />
+          <ContractList
+            title="Node.js and safety restrictions"
+            items={DETERMINISTIC_AGENT_CODE_CONTRACT.nodeRestrictions}
+          />
+          <div>
+            <p className="font-medium">Examples</p>
+            <div className="mt-2 space-y-3">
+              {DETERMINISTIC_AGENT_CODE_CONTRACT.examples.map((example) => (
+                <div key={example.title}>
+                  <p className="font-medium">{example.title}</p>
+                  <p className="mt-1">{example.description}</p>
+                  <ContractCodeBlock code={example.code} />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
       <div>
@@ -149,6 +167,33 @@ export function AgentDeterministicMode({
         />
       )}
     </section>
+  );
+}
+
+function ContractList({
+  title,
+  items,
+}: {
+  title: string;
+  items: readonly string[];
+}) {
+  return (
+    <div>
+      <p className="font-medium">{title}</p>
+      <ul className="mt-1 list-disc space-y-1 pl-4">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ContractCodeBlock({ code }: { code: string }) {
+  return (
+    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-white px-3 py-2 font-mono text-[11px] leading-5 text-gray-900 dark:bg-neutral-900 dark:text-gray-100">
+      <code>{code}</code>
+    </pre>
   );
 }
 
