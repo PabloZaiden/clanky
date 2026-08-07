@@ -112,11 +112,7 @@ export function AppShell() {
     handleWebRouteChange,
     navigateWithinShell,
   } = useShellNavigation({
-    route,
     setRoute,
-    chats,
-    sidebarWorkspaceGroups,
-    serverNodes,
   });
 
   const {
