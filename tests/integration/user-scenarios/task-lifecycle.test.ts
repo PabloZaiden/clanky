@@ -10,6 +10,7 @@ import {
   setupTestServer,
   stopTaskViaAPI,
   teardownTestServer,
+  waitForTaskCondition,
   waitForTaskStatus,
   type TestServerContext,
 } from "./helpers";
@@ -69,6 +70,39 @@ describe("Task Lifecycle User Scenarios", () => {
 
     const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
     expect(stoppedTask.state.status).toBe("stopped");
+
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+  });
+
+  test("closes an active prompt stream and disconnects when stopped", async () => {
+    ctx.mockBackend.reset(["Still working..."]);
+    ctx.mockBackend.holdNextPrompt();
+
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      directory: ctx.workDir,
+      prompt: "Keep this task running until it is stopped",
+      planMode: false,
+    });
+
+    expect(status).toBe(201);
+    const task = body as Task;
+    await waitForTaskCondition(
+      ctx.baseUrl,
+      task.config.id,
+      () => ctx.mockBackend.getSentPrompts().length >= 1,
+      "the first prompt is sent",
+    );
+
+    const stopResponse = await stopTaskViaAPI(ctx.baseUrl, task.config.id);
+    expect(stopResponse.status).toBe(200);
+    expect(stopResponse.body.success).toBe(true);
+
+    const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
+    ctx.mockBackend.releaseHeldPrompt();
+
+    expect(stoppedTask.state.status).toBe("stopped");
+    expect(ctx.mockBackend.getSentPrompts()).toHaveLength(1);
+    expect(ctx.mockBackend.isConnected()).toBe(false);
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });

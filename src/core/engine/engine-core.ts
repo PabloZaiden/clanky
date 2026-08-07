@@ -28,7 +28,6 @@ import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/ev
 import { createTimestamp } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
-  PromptInput,
   AgentEvent,
 } from "../../backends/types";
 import { backendManager } from "../backend-manager";
@@ -46,24 +45,15 @@ import {
   type IterationResult,
   type IterationContext,
   type TaskExecutionPolicy,
-  MAX_PERSISTED_LOGS,
-  MAX_PERSISTED_MESSAGES,
-  MAX_PERSISTED_TOOL_CALLS,
+  type TaskPromptBuildResult,
 } from "./engine-types";
-import {
-  AgentStreamCheckpointPolicy,
-  AgentStreamController,
-  type AgentStreamHandle,
-  getAgentStreamTextByteLength,
-} from "../agent-stream-controller";
-import { MemoryFirstPersistenceQueue } from "../memory-first-persistence-queue";
-import { TranscriptStreamProjection } from "../transcript-stream-projection";
+import { TaskPersistenceCoordinator } from "./engine-persistence";
+import { TaskPromptExecutorImpl } from "./engine-prompt-executor";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
 import { upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector } from "./engine-helpers";
 import { logToConsole } from "./engine-events";
 import {
-  addSessionRecoveryBootstrap,
   buildTaskPrompt,
   evaluateTaskOutcome,
   type PromptBuildContext,
@@ -76,19 +66,13 @@ import {
   type GitCommitContext,
 } from "./engine-git";
 import {
-  setupTaskSession,
-  reconnectTaskSession,
-  recreateSessionAfterLoss,
-  handleModelChange,
   resetIterationContextForRetry,
-  type SessionOperationContext,
 } from "./engine-session";
+import { TaskSessionLifecycleImpl } from "./engine-session-lifecycle";
 import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
 import {
   AcpError,
-  createAcpSessionNotFoundError,
   getAcpErrorMessage,
-  isAcpErrorCode,
 } from "../../backends/acp";
 
 export class TaskEngine {
@@ -98,16 +82,12 @@ export class TaskEngine {
   private emitter: SimpleEventEmitter<TaskEvent>;
   private stopDetector: StopPatternDetector;
   private aborted = false;
-  private sessionId: string | null = null;
-  private onPersistState?: TaskEngineOptions["onPersistState"];
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
   /** Guard to prevent concurrent runTask() executions */
   private isTaskRunning = false;
   /** Try to recover the persisted ACP session before creating a new one. */
   private reuseExistingSession: boolean;
-  /** Whether the next prompt needs a one-time session recovery bootstrap. */
-  private sessionRecoveryPending = false;
   private lastPromptMode: TaskPromptIntent = "engine_context";
   private readonly executionPolicy: TaskExecutionPolicy;
   /** Skip git branch setup (for review cycles) */
@@ -120,11 +100,9 @@ export class TaskEngine {
   private injectionPending = false;
   private initialPromptAttachments: MessageImageAttachment[];
   private pendingPromptAttachments: MessageImageAttachment[] = [];
-  private currentStreamHandle: AgentStreamHandle | null = null;
-  private activeSessionInterrupt: Promise<void> | null = null;
-  private readonly transcript: TranscriptStreamProjection;
-  private readonly streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
-  private readonly persistenceQueue = new MemoryFirstPersistenceQueue();
+  private readonly persistence: TaskPersistenceCoordinator;
+  private readonly sessionLifecycle: TaskSessionLifecycleImpl;
+  private readonly promptExecutor: TaskPromptExecutorImpl;
 
   constructor(options: TaskEngineOptions) {
     this.task = options.task;
@@ -135,12 +113,33 @@ export class TaskEngine {
     this.task.state.messages ??= [];
     this.task.state.logs ??= [];
     this.task.state.toolCalls ??= [];
-    this.transcript = new TranscriptStreamProjection(this.task.state, {
-      maxMessages: MAX_PERSISTED_MESSAGES,
-      maxLogs: MAX_PERSISTED_LOGS,
-      maxToolCalls: MAX_PERSISTED_TOOL_CALLS,
+    this.persistence = new TaskPersistenceCoordinator({
+      state: this.task.state,
+      onPersistState: options.onPersistState,
     });
-    this.onPersistState = options.onPersistState;
+    this.sessionLifecycle = new TaskSessionLifecycleImpl({
+      backend: this.backend,
+      config: this.task.config,
+      state: this.task.state,
+      getWorkingDirectory: () => this.workingDirectory,
+      emitLog: this.emitLog.bind(this),
+      updateState: this.updateState.bind(this),
+    });
+    this.promptExecutor = new TaskPromptExecutorImpl({
+      backend: this.backend,
+      session: this.sessionLifecycle,
+      config: this.task.config,
+      state: this.task.state,
+      getWorkingDirectory: () => this.workingDirectory,
+      emitLog: this.emitLog.bind(this),
+      updateState: this.updateState.bind(this),
+      processAgentEvent: this.processAgentEvent.bind(this),
+      triggerPersistence: this.triggerPersistence.bind(this),
+      recordTextDelta: this.persistence.recordTextDelta.bind(this.persistence),
+      isAborted: () => this.aborted,
+      isInjectionPending: () => this.injectionPending,
+      resetIterationContextForRetry,
+    });
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
     this.skipGitSetup = options.skipGitSetup ?? false;
@@ -150,7 +149,7 @@ export class TaskEngine {
   }
 
   async flushPersistence(): Promise<void> {
-    await this.triggerPersistence();
+    await this.persistence.flush();
   }
 
   /**
@@ -301,15 +300,13 @@ export class TaskEngine {
     this.injectionPending = true;
     this.aborted = true;
 
-    // Abort the current session to interrupt AI processing
-    if (this.sessionId) {
-      try {
-        this.emitLog("info", "Injecting pending message - aborting current AI processing");
-        await this.backend.abortSession(this.sessionId);
-      } catch {
-        // Ignore abort errors - the session may already be complete
-      }
-    }
+    // Abort the current prompt through the single stream/session teardown path.
+    await this.promptExecutor.interrupt({
+      abortMessage: "Injecting pending message - aborting current AI processing",
+      abortWarnMessage: "Failed to abort the backend session during pending message injection",
+      forceDisconnect: false,
+      closeStream: false,
+    });
   }
 
   private continueWithAbortFallbackInjection(errorMessage?: string): boolean {
@@ -325,65 +322,6 @@ export class TaskEngine {
   private resetRestartFlags(): void {
     this.aborted = false;
     this.injectionPending = false;
-  }
-
-  private async interruptActiveSession(options: {
-    abortMessage: string;
-    abortWarnMessage: string;
-    forceDisconnect: boolean;
-    markAborted?: boolean;
-    disconnectMessage?: string;
-    disconnectWarnMessage?: string;
-  }): Promise<void> {
-    if (!this.sessionId) {
-      return;
-    }
-
-    const activeSessionId = this.sessionId;
-    const interruptPromise = (async () => {
-      if (options.markAborted) {
-        this.aborted = true;
-      }
-
-      this.currentStreamHandle?.close();
-
-      try {
-        this.emitLog("info", options.abortMessage);
-        await this.backend.abortSession(activeSessionId);
-      } catch (error) {
-        this.emitLog("warn", options.abortWarnMessage, {
-          error: String(error),
-        });
-      }
-
-      if (!options.forceDisconnect) {
-        return;
-      }
-
-      if (!this.backend.isConnected()) {
-        this.sessionId = null;
-        return;
-      }
-
-      try {
-        this.emitLog("info", options.disconnectMessage ?? "Disconnecting the backend to finish interrupting the active session");
-        await this.backend.disconnect();
-      } catch (error) {
-        this.emitLog("warn", options.disconnectWarnMessage ?? "Failed to disconnect the backend after interrupting the active session", {
-          error: String(error),
-        });
-      } finally {
-        this.sessionId = null;
-      }
-    })();
-
-    this.activeSessionInterrupt = interruptPromise.finally(() => {
-      if (this.activeSessionInterrupt === interruptPromise) {
-        this.activeSessionInterrupt = null;
-      }
-    });
-
-    await this.activeSessionInterrupt;
   }
 
   /**
@@ -508,11 +446,10 @@ export class TaskEngine {
     this.emitLog("info", `Stopping task: ${reason}`);
     this.aborted = true;
 
-    await this.interruptActiveSession({
+    await this.promptExecutor.interrupt({
       abortMessage: "Aborting backend session...",
       abortWarnMessage: "Failed to abort the backend session during stop",
       forceDisconnect: true,
-      markAborted: true,
       disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
       disconnectWarnMessage: "Failed to disconnect the backend while stopping the task",
     });
@@ -540,7 +477,7 @@ export class TaskEngine {
       log.warn(`Final task stop checkpoint failed; retrying: ${String(error)}`);
       await this.triggerPersistence();
     }
-    this.onPersistState = undefined;
+    this.persistence.disable();
   }
 
   /**
@@ -551,16 +488,11 @@ export class TaskEngine {
   async abortSessionOnly(reason = "Connection reset requested"): Promise<void> {
     this.emitLog("info", `Aborting session only (preserving status): ${reason}`);
     this.aborted = true;
-    this.currentStreamHandle?.close();
-
-    if (this.sessionId) {
-      try {
-        this.emitLog("info", "Aborting backend session...");
-        await this.backend.abortSession(this.sessionId);
-      } catch {
-        // Ignore abort errors
-      }
-    }
+    await this.promptExecutor.interrupt({
+      abortMessage: "Aborting backend session...",
+      abortWarnMessage: "Failed to abort the backend session during session-only abort",
+      forceDisconnect: false,
+    });
 
     this.emit({
       type: "task.session_aborted",
@@ -578,7 +510,7 @@ export class TaskEngine {
       log.warn(`Final session-abort checkpoint failed; retrying: ${String(error)}`);
       await this.triggerPersistence();
     }
-    this.onPersistState = undefined;
+    this.persistence.disable();
   }
 
   /**
@@ -639,14 +571,11 @@ export class TaskEngine {
       // flags, and continues to the next iteration which picks up pendingPrompt.
       this.injectionPending = true;
 
-      if (this.sessionId) {
-        try {
-          this.emitLog("info", "Injecting plan feedback - aborting current AI processing");
-          await this.backend.abortSession(this.sessionId);
-        } catch {
-          // Ignore abort errors - the session may already be complete
-        }
-      }
+      await this.promptExecutor.interrupt({
+        abortMessage: "Injecting plan feedback - aborting current AI processing",
+        abortWarnMessage: "Failed to abort the backend session during plan feedback injection",
+        forceDisconnect: false,
+      });
     } else {
       // Task is idle (plan was ready, or between iterations) — start a new plan iteration.
       // Fire-and-forget: the plan iteration runs asynchronously and will emit events/update state.
@@ -790,7 +719,7 @@ export class TaskEngine {
    * Uses workspace-specific server settings.
    */
   private async setupSession(): Promise<void> {
-    await setupTaskSession(this.makeSessionContext());
+    await this.sessionLifecycle.setup();
   }
 
   /**
@@ -799,32 +728,7 @@ export class TaskEngine {
    * while a task is still in planning mode.
    */
   async reconnectSession(): Promise<void> {
-    const result = await reconnectTaskSession(this.makeSessionContext());
-    this.sessionRecoveryPending = result.createdNew;
-  }
-
-  /**
-   * Recreate the current ACP session after remote session loss.
-   */
-  private async recreateSessionAfterSessionLoss(reason: string): Promise<void> {
-    await recreateSessionAfterLoss(this.makeSessionContext(), reason);
-    this.sessionRecoveryPending = true;
-  }
-
-  /**
-   * Handle pending model changes via ACP session config options.
-   * Uses session/set_config_option to change the model without process restart.
-   * Works for all ACP agents (copilot, opencode, and future ones).
-   */
-  private async handlePendingModelChange(): Promise<void> {
-    await handleModelChange(this.makeSessionContext());
-  }
-
-  /**
-   * Reset transient per-iteration state before retrying a prompt with a new session.
-   */
-  private resetIterationContextForRetry(ctx: IterationContext): void {
-    resetIterationContextForRetry(ctx);
+    await this.sessionLifecycle.reconnect();
   }
 
   /**
@@ -852,12 +756,16 @@ export class TaskEngine {
   /**
    * Build the prompt for an iteration.
    */
-  private buildPrompt(_iteration: number): PromptInput {
+  private buildPrompt(_iteration: number): TaskPromptBuildResult {
     const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
-    this.lastPromptMode = isInPlanMode
+    const promptMode = isInPlanMode
       ? "engine_context"
       : this.task.state.pendingPromptMode ?? "engine_context";
-    return buildTaskPrompt(this.makePromptContext(), _iteration);
+    this.lastPromptMode = promptMode;
+    return {
+      prompt: buildTaskPrompt(this.makePromptContext(), _iteration),
+      promptMode,
+    };
   }
 
   /**
@@ -884,8 +792,7 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_LOGS.
    */
   private persistLog(entry: TaskLogEntry, _isUpdate: boolean): void {
-    this.transcript.upsertLog(entry);
-    this.updateState({ logs: this.transcript.logs });
+    this.persistence.persistLog(entry);
   }
 
   /**
@@ -893,8 +800,7 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_MESSAGES.
    */
   private persistMessage(message: MessageData): void {
-    this.transcript.upsertMessage(message);
-    this.updateState({ messages: this.transcript.messages });
+    this.persistence.persistMessage(message);
   }
 
   /**
@@ -903,8 +809,7 @@ export class TaskEngine {
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_TOOL_CALLS.
    */
   private persistToolCall(toolCall: ToolCallData): void {
-    this.transcript.upsertToolCall(toolCall);
-    this.updateState({ toolCalls: this.transcript.toolCalls });
+    this.persistence.persistToolCall(toolCall);
   }
 
   /**
@@ -967,7 +872,7 @@ export class TaskEngine {
     id: string,
   ): void {
     const timestamp = createTimestamp();
-    const existing = id ? this.transcript.getLog(id) : undefined;
+    const existing = id ? this.persistence.getLog(id) : undefined;
     const logTimestamp = existing?.timestamp ?? timestamp;
     const entry: TaskLogEntry = {
       id,
@@ -1023,25 +928,7 @@ export class TaskEngine {
       // Override workingDirectory with the actual working directory for commits
       workingDirectory: this.workingDirectory,
       backend: this.backend,
-      sessionId: this.sessionId,
-    };
-  }
-
-  private makeSessionContext(): SessionOperationContext {
-    // Use a safe fallback for workingDirectory (same logic as makeGitContext)
-    const workingDirectory =
-      !this.config.useWorktree
-        ? this.config.directory
-        : (this.task.state.git?.worktreePath ?? this.config.directory);
-    return {
-      backend: this.backend,
-      config: this.task.config,
-      state: this.task.state,
-      workingDirectory,
-      emitLog: this.emitLog.bind(this),
-      updateState: this.updateState.bind(this),
-      getSessionId: () => this.sessionId,
-      setSessionId: (id: string | null) => { this.sessionId = id; },
+      sessionId: this.sessionLifecycle.sessionId,
     };
   }
 
@@ -1056,11 +943,7 @@ export class TaskEngine {
       updateState: this.updateState.bind(this),
       consumeInitialPromptAttachments: this.consumeInitialPromptAttachments.bind(this),
       consumePendingPromptAttachments: this.consumePendingPromptAttachments.bind(this),
-      consumeSessionRecovery: () => {
-        const pending = this.sessionRecoveryPending;
-        this.sessionRecoveryPending = false;
-        return pending;
-      },
+      consumeSessionRecovery: () => this.sessionLifecycle.consumeSessionRecovery(),
     };
   }
 
@@ -1070,7 +953,7 @@ export class TaskEngine {
       config: this.task.config,
       state: this.task.state,
       backend: this.backend,
-      sessionId: this.sessionId,
+      sessionId: this.sessionLifecycle.sessionId,
       emitLog: this.emitLog.bind(this),
       emitLogDelta: this.emitLogDelta.bind(this),
       emit: this.emit.bind(this),
@@ -1101,7 +984,7 @@ export class TaskEngine {
           return;
         }
 
-        const currentTool = this.transcript.getToolCall(toolCall.id);
+        const currentTool = this.persistence.getToolCall(toolCall.id);
         if (!currentTool) {
           return;
         }
@@ -1652,159 +1535,10 @@ export class TaskEngine {
    * through all agent events until the message completes or an error occurs.
    */
   private async executeIterationPrompt(ctx: IterationContext): Promise<void> {
-    await this.activeSessionInterrupt;
-
-    if (!this.sessionId || !this.backend.isConnected()) {
-      this.emitLog("info", "AI session is unavailable - reconnecting before continuing", {
-        hasSessionId: this.sessionId !== null,
-        connected: this.backend.isConnected(),
-      });
-      await this.reconnectSession();
-    }
-
-    // Handle pending model change via ACP config options (works for all agents)
-    await this.handlePendingModelChange();
-
-    // Build the prompt
-    log.debug("[TaskEngine] runIteration: Building prompt");
-    this.emitLog("debug", "Building prompt for AI agent");
-    let prompt = this.buildPrompt(ctx.iteration);
-
-    // Log the prompt for debugging
-    log.debug("[TaskEngine] runIteration: Prompt details", {
-      partsCount: prompt.parts.length,
-      model: prompt.model ? `${prompt.model.providerID}/${prompt.model.modelID}` : "default",
-      textLength: prompt.parts[0]?.type === "text" ? prompt.parts[0].text.length : 0,
-      textPreview: prompt.parts[0]?.type === "text" ? prompt.parts[0].text.slice(0, 200) : "",
+    const result = await this.promptExecutor.execute(ctx, {
+      buildPrompt: () => this.buildPrompt(ctx.iteration),
     });
-
-    // Log the exact prompt text to the log viewer at debug level
-    const fullPromptText = prompt.parts
-      .map((part) => {
-        if (part.type === "image") {
-          return `[image:${part.mimeType}]`;
-        }
-        if (part.type === "resource") {
-          return `[resource:${part.resource.mimeType ?? "application/octet-stream"}]`;
-        }
-        return part.text;
-      })
-      .join("\n---\n");
-    this.emitLog("debug", `[Prompt] ${fullPromptText}`);
-    await this.triggerPersistence();
-
-    let hasRetriedMissingSession = false;
-    let completed = false;
-
-    while (!completed) {
-      if (!this.sessionId) {
-        throw new Error("No session ID");
-      }
-      const activeSessionId = this.sessionId;
-
-      const activityTimeoutSeconds =
-        this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
-      const streamController = new AgentStreamController(this.backend);
-      let streamHandle: AgentStreamHandle | null = null;
-      try {
-        // The shared controller subscribes before sending the prompt and owns
-        // stream cleanup for both chat and task turns.
-        log.debug("[TaskEngine] runIteration: Starting shared agent stream");
-        this.emitLog("debug", "Subscribing to AI response stream");
-        this.emitLog("info", "Sending prompt to AI agent...");
-        streamHandle = streamController.start({
-          sessionId: activeSessionId,
-          prompt,
-          activityTimeoutMs: activityTimeoutSeconds === null
-            ? null
-            : activityTimeoutSeconds * 1000,
-        });
-        this.currentStreamHandle = streamHandle;
-        const started = await streamHandle.startPrompt();
-        if (!started) {
-          completed = true;
-          continue;
-        }
-        log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
-        log.debug("[TaskEngine] runIteration: About to start event iteration task");
-        let abortLogged = false;
-        await streamHandle.consume({
-          shouldStop: () => {
-            if (!this.aborted) {
-              return false;
-            }
-            if (!abortLogged) {
-              abortLogged = true;
-              if (this.injectionPending) {
-                this.emitLog("info", "Iteration interrupted for pending message injection");
-              } else {
-                this.emitLog("info", "Iteration aborted by user");
-              }
-            }
-            return true;
-          },
-          onEvent: async (event) => {
-            log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
-
-            // Update last activity timestamp
-            this.updateState({ lastActivityAt: createTimestamp() });
-
-            // Delegate event processing to the handler
-            await this.processAgentEvent(event, ctx);
-
-            const isTextDelta = event.type === "message.delta" || event.type === "reasoning.delta";
-            const shouldCheckpointText = isTextDelta
-              ? this.streamCheckpointPolicy.recordText(getAgentStreamTextByteLength(event.content))
-              : false;
-            if (!isTextDelta || shouldCheckpointText) {
-              await this.triggerPersistence();
-            }
-
-            if (event.type === "error" && event.code === "acp_session_not_found") {
-              throw createAcpSessionNotFoundError(activeSessionId, {
-                details: { eventMessage: event.message },
-              });
-            }
-
-            // The shared controller stops after message.complete/error.
-            if (event.type === "message.complete" || event.type === "error") {
-              this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
-            }
-          },
-        });
-
-        completed = true;
-      } catch (error) {
-        if (!hasRetriedMissingSession && isAcpErrorCode(error, "acp_session_not_found")) {
-          hasRetriedMissingSession = true;
-          const message = getAcpErrorMessage(error);
-          this.emitLog("warn", "Session not found during prompt execution - recreating session and retrying once", {
-            sessionId: activeSessionId,
-            error: message,
-          });
-          await this.recreateSessionAfterSessionLoss(message);
-          if (this.lastPromptMode === "direct_user") {
-            prompt = addSessionRecoveryBootstrap(prompt, {
-              originalGoal: this.config.prompt,
-              workingDirectory: this.workingDirectory,
-              workingBranch: this.state.git?.workingBranch,
-            });
-          }
-          this.sessionRecoveryPending = false;
-          this.resetIterationContextForRetry(ctx);
-          continue;
-        }
-
-        throw error;
-      } finally {
-        streamHandle?.close();
-        if (this.currentStreamHandle === streamHandle) {
-          this.currentStreamHandle = null;
-        }
-      }
-    }
-
-    this.emitLog("debug", "Exited event stream task", { outcome: ctx.outcome, error: ctx.error });
+    this.lastPromptMode = result.promptMode;
   }
 
   /**
@@ -1961,13 +1695,9 @@ export class TaskEngine {
     }
     const transcriptKeys = new Set(["messages", "logs", "toolCalls"]);
     if (Object.keys(update).some((key) => key !== "lastActivityAt" && !transcriptKeys.has(key))) {
-      this.markOperationalPersistenceDirty();
+      this.persistence.markOperationalPersistenceDirty();
     }
     Object.assign(this.task.state, update);
-  }
-
-  private markOperationalPersistenceDirty(): void {
-    this.persistenceQueue.markOperationalPersistenceDirty();
   }
 
   /**
@@ -1975,36 +1705,7 @@ export class TaskEngine {
    * This is called at key points to ensure data survives server restart.
    */
   private triggerPersistence(): Promise<void> {
-    return this.persistenceQueue.request(() => this.persistCurrentState());
-  }
-
-  private async persistCurrentState(): Promise<void> {
-    if (!this.onPersistState) {
-      return;
-    }
-
-    const checkpointedTextBytes = this.streamCheckpointPolicy.getPendingTextBytes();
-    const operationalPersistenceVersion = this.persistenceQueue.operationalVersion;
-    const snapshot = this.transcript.changes.snapshot(this.task.state);
-    if (
-      !this.persistenceQueue.isOperationalPersistenceDirty
-      && snapshot.changes.upserts.length === 0
-      && snapshot.changes.deletes.length === 0
-    ) {
-      return;
-    }
-
-    try {
-      await this.onPersistState(this.task.state, {
-        transcriptChanges: snapshot.changes,
-      });
-      this.transcript.changes.acknowledge(snapshot);
-      this.persistenceQueue.acknowledgeOperationalPersistence(operationalPersistenceVersion);
-      this.streamCheckpointPolicy.markCheckpoint(checkpointedTextBytes);
-    } catch (error) {
-      log.error(`Failed to persist task state: ${String(error)}`);
-      throw error;
-    }
+    return this.persistence.trigger();
   }
 
   /**

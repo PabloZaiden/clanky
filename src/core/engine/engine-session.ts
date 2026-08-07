@@ -8,7 +8,11 @@ import type { AgentSession } from "../../backends/types";
 import { AcpBackend, getAcpErrorMessage, isAcpErrorCode } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";
 import { log } from "@pablozaiden/webapp/server";
-import type { TaskBackend, IterationContext } from "./engine-types";
+import type {
+  TaskBackend,
+  IterationContext,
+  SessionReconnectResult,
+} from "./engine-types";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
@@ -22,12 +26,6 @@ export interface SessionOperationContext {
   updateState: (update: Partial<TaskState>) => void;
   getSessionId: () => string | null;
   setSessionId: (id: string | null) => void;
-}
-
-export interface SessionReconnectResult {
-  sessionId: string;
-  reusedExisting: boolean;
-  createdNew: boolean;
 }
 
 export async function setupTaskSession(ctx: SessionOperationContext): Promise<string> {

@@ -79,6 +79,7 @@ export class ConfigurableMockBackend implements TaskBackend {
   private responses: string[];
   private readonly sessions = new Map<string, AgentSession>();
   private readonly sentPrompts: Array<{ sessionId: string; prompt: PromptInput }> = [];
+  private sessionNotFoundResponses = 0;
   
   // Promise-based synchronization for prompt/subscription coordination
   private promptResolver: (() => void) | null = null;
@@ -99,6 +100,7 @@ export class ConfigurableMockBackend implements TaskBackend {
     this.promptResolver = null;
     this.promptPromise = null;
     this.sentPrompts.length = 0;
+    this.sessionNotFoundResponses = 0;
     this.holdNextPromptResponse = false;
     this.heldPromptResolver = null;
     this.heldPromptReleaseRequested = false;
@@ -225,6 +227,17 @@ export class ConfigurableMockBackend implements TaskBackend {
         });
       }
 
+      if (this.sessionNotFoundResponses > 0) {
+        this.sessionNotFoundResponses -= 1;
+        push({
+          type: "error",
+          code: "acp_session_not_found",
+          message: "The mock session is no longer available",
+        });
+        end();
+        return;
+      }
+
       // Get the next response
       const response = this.responses[this.responseIndex % this.responses.length] ?? "<promise>COMPLETE</promise>";
       this.responseIndex++;
@@ -266,6 +279,10 @@ export class ConfigurableMockBackend implements TaskBackend {
 
   holdNextPrompt(): void {
     this.holdNextPromptResponse = true;
+  }
+
+  failNextPromptSessionNotFound(count = 1): void {
+    this.sessionNotFoundResponses += count;
   }
 
   releaseHeldPrompt(): void {

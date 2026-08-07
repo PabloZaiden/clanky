@@ -15,6 +15,7 @@ import type {
 } from "@/shared";
 import type { TaskEvent } from "@/shared/events";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { PromptInput } from "../../backends/types";
 import type { GitService } from "../git";
 import type { SimpleEventEmitter } from "../event-emitter";
 
@@ -43,6 +44,62 @@ export const MAX_PERSISTED_TOOL_CALLS = 5000;
  * even when the engine's default policy is task_loop.
  */
 export type TaskExecutionPolicy = "task_loop" | "single_turn";
+
+export interface SessionReconnectResult {
+  sessionId: string;
+  reusedExisting: boolean;
+  createdNew: boolean;
+}
+
+export interface SessionInterruptOptions {
+  abortMessage: string;
+  abortWarnMessage: string;
+  forceDisconnect: boolean;
+  /**
+   * Close the local stream before aborting the backend session. Injection keeps
+   * the stream open so the backend's abort semantics preserve the pending
+   * values until the next turn is actually ready.
+   */
+  closeStream?: boolean;
+  disconnectMessage?: string;
+  disconnectWarnMessage?: string;
+}
+
+/**
+ * Typed boundary for backend connection and ACP session ownership.
+ */
+export interface TaskSessionLifecycle {
+  readonly sessionId: string | null;
+  isConnected(): boolean;
+  waitForInterrupt(): Promise<void>;
+  setup(): Promise<string>;
+  reconnect(): Promise<SessionReconnectResult>;
+  ensureSession(): Promise<void>;
+  recreateAfterLoss(reason: string): Promise<string>;
+  handlePendingModelChange(): Promise<void>;
+  consumeSessionRecovery(): boolean;
+  interruptSession(options: SessionInterruptOptions): Promise<void>;
+}
+
+export interface TaskPromptBuildResult {
+  prompt: PromptInput;
+  promptMode: TaskPromptIntent;
+}
+
+export interface TaskPromptExecutionOptions {
+  buildPrompt: () => TaskPromptBuildResult;
+}
+
+/**
+ * Typed boundary for one prompt turn and its stream/recovery resources.
+ */
+export interface TaskPromptExecutor {
+  execute(
+    ctx: IterationContext,
+    options: TaskPromptExecutionOptions,
+  ): Promise<TaskPromptBuildResult>;
+  interrupt(options: SessionInterruptOptions): Promise<void>;
+}
 
 /**
  * Backend interface for TaskEngine.
