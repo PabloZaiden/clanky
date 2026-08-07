@@ -86,12 +86,15 @@ export function useShellResources(route: WebAppRoute) {
   const privateItemsPreference = usePrivateItemsPreference();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
-  const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
   const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
     tasks,
     workspaces,
     !workspacesLoading,
     { includeArchivedWorkspaces: true },
+  );
+  const workspaceGroups = useMemo(
+    () => allWorkspaceGroups.filter(({ workspace }) => workspace.archived !== true),
+    [allWorkspaceGroups],
   );
 
   const sidebarWorkspaceGroups = useMemo(
