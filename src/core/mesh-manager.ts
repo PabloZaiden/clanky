@@ -18,6 +18,7 @@ import type {
 import type {
   MeshLinkStatusRecord,
   MeshPairingMemberRecord,
+  MeshSyncConflictRecord,
   MeshStatusRecord,
 } from "@/shared/mesh";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -37,12 +38,13 @@ import {
   saveMeshPairingApproval,
   mergeMeshLinkMember,
   setMeshPairingApprovalStatus,
-  applyMeshLinkTakeover,
-  claimMeshLinkForLocalUser,
   revokeMeshLinkMember,
   setMeshLinkTakeoverSignature,
 } from "../persistence/mesh";
-import { recordMeshMembershipCheckpoint } from "../persistence/mesh-sync";
+import {
+  listOpenMeshSyncConflicts,
+  recordMeshMembershipCheckpoint,
+} from "../persistence/mesh-sync";
 import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
@@ -68,11 +70,28 @@ import { bootstrapMeshPeerForUser } from "./mesh-sync-bootstrap";
 import { listTasksForUser } from "../persistence/tasks";
 import { backendManager } from "./backend/backend-manager";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
+import {
+  decideCompleteMeshPairing,
+  decideReceiveMeshPairingApproval,
+} from "./mesh-transitions";
+import {
+  applyMeshTakeover,
+  claimMeshTakeover,
+} from "./mesh-transition-service";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
 
 export class MeshManager {
+  async listOpenConflicts(localUserId: string): Promise<MeshSyncConflictRecord[]> {
+    const links = await listMeshLinksForLocalUser(localUserId);
+    const conflicts: MeshSyncConflictRecord[] = [];
+    for (const link of links) {
+      conflicts.push(...await listOpenMeshSyncConflicts(link.linkId));
+    }
+    return conflicts;
+  }
+
   async getStatus(localUserId: string): Promise<MeshStatusRecord> {
     const node = await ensureLocalMeshNodeIdentity();
     const links = await listMeshLinksForLocalUser(localUserId);
@@ -343,31 +362,20 @@ export class MeshManager {
     }
 
     const request = await getMeshPairingRequest(envelope.requestId);
-    if (!request || request.direction !== "outgoing") {
-      throw new DomainError("mesh_pairing_request_not_found", "The outgoing mesh pairing request was not found.");
-    }
     const existingApproval = await getMeshPairingApproval(envelope.requestId);
-    if (request.status === "approved" && existingApproval) {
-      if (
-        existingApproval.approvedByNodeId !== envelope.approvedByNodeId
-        || existingApproval.signature !== envelope.signature
-      ) {
-        throw new DomainError("mesh_pairing_approval_conflict", "The pairing approval does not match the completed request.");
-      }
+    const approvalDecision = decideReceiveMeshPairingApproval({
+      request,
+      existingApproval,
+      approvedByNodeId: envelope.approvedByNodeId,
+      signature: envelope.signature,
+      nowMs: Date.now(),
+    });
+    if (approvalDecision.kind === "idempotent") {
       return {
-        requestId: existingApproval.requestId,
-        status: existingApproval.status,
-        fingerprint: existingApproval.fingerprint,
+        requestId: approvalDecision.approval.requestId,
+        status: approvalDecision.approval.status,
+        fingerprint: approvalDecision.approval.fingerprint,
       };
-    }
-    if (request.status !== "pending") {
-      throw new DomainError("mesh_pairing_request_not_pending", "The outgoing mesh pairing request is no longer pending.");
-    }
-    if (Date.parse(request.expiresAt) <= Date.now()) {
-      throw new DomainError("mesh_pairing_request_expired", "The outgoing mesh pairing request has expired.");
-    }
-    if (request.requestedNodeId === envelope.approvedByNodeId) {
-      throw new DomainError("mesh_pairing_request_invalid_peer", "The pairing approval identifies the local node as the peer.");
     }
     const approvedNode = await getMeshNode(envelope.approvedByNodeId);
     if (approvedNode?.status === "revoked") {
@@ -412,22 +420,17 @@ export class MeshManager {
     input: CompleteMeshPairingRequest,
   ): Promise<MeshStatusRecord> {
     const request = await getMeshPairingRequest(requestId);
-    if (!request || request.direction !== "outgoing" || request.requestedLocalUserId !== localUserId) {
-      throw new DomainError("mesh_pairing_request_not_owned", "The outgoing mesh pairing request is not owned by this user.");
-    }
-    const approval = await getMeshPairingApproval(requestId);
-    if (!approval) {
-      throw new DomainError("mesh_pairing_approval_not_found", "The peer has not approved this pairing request yet.");
-    }
-    if (approval.status === "accepted" && request.status === "approved" && request.linkId) {
+    const storedApproval = await getMeshPairingApproval(requestId);
+    const pairingDecision = decideCompleteMeshPairing({
+      request,
+      approval: storedApproval,
+      localUserId,
+      confirmedFingerprint: input.fingerprint,
+    });
+    if (pairingDecision.kind === "idempotent") {
       return await this.getStatus(localUserId);
     }
-    if (approval.status !== "pending") {
-      throw new DomainError("mesh_pairing_approval_not_pending", "The peer pairing approval is no longer pending.");
-    }
-    if (approval.fingerprint !== input.fingerprint) {
-      throw new DomainError("mesh_pairing_fingerprint_mismatch", "The confirmed fingerprint does not match the peer approval.");
-    }
+    const approval = pairingDecision.approval;
     const identity = await ensureLocalMeshNodeIdentity();
     requireMeshInstanceName(identity);
     const localEndpoint = resolveAdvertisedMeshEndpoint();
@@ -608,7 +611,7 @@ export class MeshManager {
     if (!link) {
       throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
     }
-    const claim = await claimMeshLinkForLocalUser({
+    const claim = await claimMeshTakeover({
       linkId: link.linkId,
       localUserId,
       nodeId: identity.nodeId,
@@ -686,7 +689,7 @@ export class MeshManager {
     )) {
       throw new DomainError("mesh_peer_signature_invalid", "The takeover signature is invalid.");
     }
-    const claim = await applyMeshLinkTakeover({
+    const claim = await applyMeshTakeover({
       linkId: envelope.linkId,
       nodeId: envelope.senderNodeId,
       generation: envelope.generation,

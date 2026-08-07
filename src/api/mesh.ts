@@ -17,8 +17,6 @@ import { meshManager } from "../core/mesh-manager";
 import { isDomainError } from "../core/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { listMeshLinksForLocalUser } from "../persistence/mesh";
-import { listOpenMeshSyncConflicts } from "../persistence/mesh-sync";
 import { resolveMeshSyncConflict } from "../core/mesh-sync-service";
 import { assertLocalMeshActive } from "../core/mesh-activity";
 
@@ -362,12 +360,7 @@ export const meshRoutes = defineRoutes({
     tags: ["mesh", "sync"],
     async GET(_req, ctx): Promise<Response> {
       try {
-        const userId = ctx.requireUser().id;
-        const links = await listMeshLinksForLocalUser(userId);
-        const conflicts = [];
-        for (const link of links) {
-          conflicts.push(...await listOpenMeshSyncConflicts(link.linkId));
-        }
+        const conflicts = await meshManager.listOpenConflicts(ctx.requireUser().id);
         return successResponse({ conflicts });
       } catch (error) {
         return meshErrorResponse(error);

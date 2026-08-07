@@ -23,6 +23,13 @@ import type {
   MeshTransport,
 } from "@/shared/mesh";
 import { DomainError } from "../core/domain-error";
+import {
+  decideApproveMeshPairing,
+  decideCompleteOutgoingMeshPairing,
+  decideLocalMeshTakeover,
+  decideRejectMeshPairing,
+  decideRemoteMeshTakeover,
+} from "../core/mesh-transitions";
 import { getDatabase } from "./database";
 import {
   normalizeMeshInstanceName,
@@ -30,6 +37,22 @@ import {
 } from "./mesh-node-identity";
 
 const log = createLogger("persistence:mesh");
+
+function markExpiredPairingRequestAndRethrow(
+  db: ReturnType<typeof getDatabase>,
+  requestId: string,
+  now: string,
+  error: unknown,
+): never {
+  if (error instanceof DomainError && error.code === "mesh_pairing_request_expired") {
+    db.run(`
+      UPDATE mesh_pairing_requests
+      SET status = 'expired', updated_at = ?
+      WHERE id = ?
+    `, [now, requestId]);
+  }
+  throw error;
+}
 
 interface MeshNodeRow {
   node_id: string;
@@ -472,43 +495,24 @@ export async function claimMeshLinkForLocalUser(input: {
   const now = new Date().toISOString();
   let claim: MeshTakeoverRecord | undefined;
   const transaction = db.transaction(() => {
-    const link = db.query(`
+    const linkRow = db.query(`
       SELECT link_id, local_user_id, active_node_id, takeover_generation,
         active_claimed_at, active_claim_origin, status, created_at, updated_at
       FROM mesh_links
       WHERE link_id = ? AND local_user_id = ?
     `).get(input.linkId, input.localUserId) as MeshLinkRow | null;
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-    }
-    if (link.status === "conflict") {
-      throw new DomainError("mesh_takeover_conflict", "The mesh link has an unresolved takeover conflict.");
-    }
-    if (
-      input.expectedGeneration !== undefined
-      && input.expectedGeneration !== link.takeover_generation
-    ) {
-      throw new DomainError(
-        "mesh_takeover_generation_conflict",
-        "The mesh link changed before takeover was confirmed.",
-        {
-          details: {
-            expectedGeneration: input.expectedGeneration,
-            currentGeneration: link.takeover_generation,
-            activeNodeId: link.active_node_id,
-          },
-        },
-      );
-    }
     const member = db.query(`
       SELECT status
       FROM mesh_link_members
       WHERE link_id = ? AND node_id = ?
     `).get(input.linkId, input.nodeId) as { status: MeshMemberStatus } | null;
-    if (!member || member.status !== "active") {
-      throw new DomainError("mesh_node_not_member", "The local node is not an active member of this mesh link.");
-    }
-    const generation = Math.max(1, link.takeover_generation + 1);
+    const decision = decideLocalMeshTakeover({
+      link: linkRow ? linkFromRow(linkRow) : null,
+      member,
+      nodeId: input.nodeId,
+      expectedGeneration: input.expectedGeneration,
+    });
+    const generation = decision.generation;
     db.run(`
       UPDATE mesh_links
       SET active_node_id = ?,
@@ -571,29 +575,28 @@ export async function applyMeshLinkTakeover(input: {
   let claim: MeshTakeoverRecord | undefined;
   let conflictError: DomainError | undefined;
   const transaction = db.transaction(() => {
-    const link = db.query(`
+    const linkRow = db.query(`
       SELECT link_id, local_user_id, active_node_id, takeover_generation,
         active_claimed_at, active_claim_origin, status, created_at, updated_at
       FROM mesh_links
       WHERE link_id = ?
     `).get(input.linkId) as MeshLinkRow | null;
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-    }
     const member = db.query(`
       SELECT status
       FROM mesh_link_members
       WHERE link_id = ? AND node_id = ?
     `).get(input.linkId, input.nodeId) as { status: MeshMemberStatus } | null;
-    if (!member || member.status !== "active") {
-      throw new DomainError("mesh_node_not_member", "The takeover node is not an active member of this mesh link.");
-    }
+    const decision = decideRemoteMeshTakeover({
+      link: linkRow ? linkFromRow(linkRow) : null,
+      member,
+      nodeId: input.nodeId,
+      generation: input.generation,
+      claimedAt: input.claimedAt,
+      claimOrigin: input.claimOrigin,
+      signature: input.signature,
+    });
     const claimId = crypto.randomUUID();
-    if (
-      input.generation === link.takeover_generation
-      && link.active_node_id
-      && link.active_node_id !== input.nodeId
-    ) {
+    if (decision.kind === "conflict") {
       db.run(`
         INSERT INTO mesh_link_claims (
           claim_id, link_id, node_id, generation, claimed_at,
@@ -610,28 +613,11 @@ export async function applyMeshLinkTakeover(input: {
         SET status = 'conflict', updated_at = ?
         WHERE link_id = ?
       `, [input.claimedAt, input.linkId]);
-      conflictError = new DomainError(
-        "mesh_takeover_conflict",
-        "The mesh link received two takeover claims for the same generation.",
-        {
-          details: {
-            generation: input.generation,
-            activeNodeId: link.active_node_id,
-            competingNodeId: input.nodeId,
-          },
-        },
-      );
+      conflictError = decision.error;
       return;
     }
-    if (input.generation < link.takeover_generation) {
-      claim = {
-        linkId: input.linkId,
-        nodeId: link.active_node_id ?? input.nodeId,
-        generation: link.takeover_generation,
-        claimedAt: link.active_claimed_at ?? input.claimedAt,
-        claimOrigin: link.active_claim_origin ?? input.claimOrigin,
-        signature: null,
-      };
+    if (decision.kind === "stale") {
+      claim = decision.claim;
       return;
     }
     db.run(`
@@ -1190,7 +1176,7 @@ export async function approveMeshPairingRequest(input: {
   const now = new Date().toISOString();
   let resolvedLinkId: string | undefined;
   const transaction = db.transaction(() => {
-    const request = db.query(`
+    const requestRow = db.query(`
       SELECT id, link_id, target_link_id, target_local_user_id, requested_node_id,
         direction,
         requested_local_user_id, requested_username, endpoint, transport,
@@ -1199,70 +1185,48 @@ export async function approveMeshPairingRequest(input: {
       FROM mesh_pairing_requests
       WHERE id = ?
     `).get(input.requestId) as MeshPairingRequestRow | null;
-    if (!request) {
-      throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
-    }
-    if (request.status === "approved" && request.link_id) {
-      const existing = db.query(`
-        SELECT link_id, local_user_id, active_node_id, takeover_generation,
-          active_claimed_at, active_claim_origin, status, created_at, updated_at
-        FROM mesh_links
-        WHERE link_id = ? AND local_user_id = ?
-      `).get(request.link_id, input.approvingUserId) as MeshLinkRow | null;
-      if (!existing) {
-        throw new DomainError("mesh_pairing_request_not_owned", "The approved mesh request is not owned by this user.");
-      }
-      resolvedLinkId = existing.link_id;
-      return;
-    }
-    if (request.status !== "pending") {
-      throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-    }
-    if (request.direction !== "incoming") {
-      throw new DomainError("mesh_pairing_request_not_incoming", "Only incoming mesh pairing requests can be approved here.");
-    }
-    if (Date.parse(request.expires_at) <= Date.now()) {
-      db.run(`
-        UPDATE mesh_pairing_requests
-        SET status = 'expired', updated_at = ?
-        WHERE id = ?
-      `, [now, input.requestId]);
-      throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-    }
-    if (request.target_local_user_id && request.target_local_user_id !== input.approvingUserId) {
-      throw new DomainError("mesh_pairing_request_not_targeted", "The mesh pairing request targets another local user.");
-    }
+    const request = requestRow ? pairingRequestFromRow(requestRow) : null;
 
-    const existingUserLink = db.query(`
+    const existingUserLinkRow = db.query(`
       SELECT link_id, local_user_id, active_node_id, takeover_generation,
         active_claimed_at, active_claim_origin, status, created_at, updated_at
       FROM mesh_links
       WHERE local_user_id = ?
     `).get(input.approvingUserId) as MeshLinkRow | null;
-    const linkId = input.linkId
-      ?? request.link_id
-      ?? request.target_link_id
-      ?? existingUserLink?.link_id
+    const existingUserLink = existingUserLinkRow ? linkFromRow(existingUserLinkRow) : null;
+    const candidateLinkId = request?.status === "approved" && request.linkId
+      ? request.linkId
+      : input.linkId
+        ?? request?.linkId
+      ?? existingUserLink?.linkId
       ?? crypto.randomUUID();
-    const linkWithId = db.query(`
+    const selectedLinkRow = db.query(`
       SELECT link_id, local_user_id, active_node_id, takeover_generation,
         active_claimed_at, active_claim_origin, status, created_at, updated_at
       FROM mesh_links
       WHERE link_id = ?
-    `).get(linkId) as MeshLinkRow | null;
-    if (linkWithId && linkWithId.local_user_id !== input.approvingUserId) {
-      throw new DomainError("mesh_pairing_request_not_owned", "The selected mesh link is not owned by this user.");
+    `).get(candidateLinkId) as MeshLinkRow | null;
+    const selectedLink = selectedLinkRow ? linkFromRow(selectedLinkRow) : null;
+    let decision: ReturnType<typeof decideApproveMeshPairing>;
+    try {
+      decision = decideApproveMeshPairing({
+        request,
+        approvingUserId: input.approvingUserId,
+        requestedLinkId: input.linkId,
+        existingUserLink,
+        selectedLink,
+        generatedLinkId: candidateLinkId,
+        nowMs: Date.now(),
+      });
+    } catch (error) {
+      markExpiredPairingRequestAndRethrow(db, input.requestId, now, error);
     }
-    if (existingUserLink && existingUserLink.link_id !== linkId) {
-      throw new DomainError("mesh_pairing_link_conflict", "This user already belongs to another mesh link.");
+    if (decision.kind === "idempotent") {
+      resolvedLinkId = decision.linkId;
+      return;
     }
-    const existingLink = db.query(`
-      SELECT link_id, local_user_id, active_node_id, takeover_generation,
-        active_claimed_at, active_claim_origin, status, created_at, updated_at
-      FROM mesh_links
-      WHERE link_id = ? AND local_user_id = ?
-    `).get(linkId, input.approvingUserId) as MeshLinkRow | null;
-    if (!existingLink) {
+    const linkId = decision.linkId;
+    if (decision.createLink) {
       db.run(`
         INSERT INTO mesh_links (
           link_id, local_user_id, active_node_id, takeover_generation,
@@ -1300,10 +1264,10 @@ export async function approveMeshPairingRequest(input: {
         updated_at = excluded.updated_at
     `, [
       linkId,
-      request.requested_node_id,
-      request.requested_local_user_id,
-      request.endpoint,
-      request.transport,
+      requestRow!.requested_node_id,
+      requestRow!.requested_local_user_id,
+      requestRow!.endpoint,
+      requestRow!.transport,
       now,
       now,
       now,
@@ -1312,7 +1276,7 @@ export async function approveMeshPairingRequest(input: {
       UPDATE mesh_nodes
       SET status = 'active', endpoint = ?, transport = ?, updated_at = ?
       WHERE node_id = ?
-    `, [request.endpoint, request.transport, now, request.requested_node_id]);
+    `, [requestRow!.endpoint, requestRow!.transport, now, requestRow!.requested_node_id]);
     db.run(`
       UPDATE mesh_pairing_requests
       SET link_id = ?, target_link_id = NULL, target_local_user_id = ?, status = 'approved',
@@ -1358,7 +1322,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   const now = new Date().toISOString();
   let resolvedLinkId: string | undefined;
   const transaction = db.transaction(() => {
-    const request = db.query(`
+    const requestRow = db.query(`
       SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
         requested_local_user_id, requested_username, endpoint, transport,
         public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
@@ -1366,44 +1330,30 @@ export async function completeOutgoingMeshPairingRequest(input: {
       FROM mesh_pairing_requests
       WHERE id = ?
     `).get(input.requestId) as MeshPairingRequestRow | null;
-    if (!request) {
-      throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
+    const request = requestRow ? pairingRequestFromRow(requestRow) : null;
+    const existingLinkRow = db.query(`
+      SELECT link_id, local_user_id, active_node_id, takeover_generation,
+        active_claimed_at, active_claim_origin, status, created_at, updated_at
+      FROM mesh_links
+      WHERE link_id = ?
+    `).get(input.linkId) as MeshLinkRow | null;
+    let decision: ReturnType<typeof decideCompleteOutgoingMeshPairing>;
+    try {
+      decision = decideCompleteOutgoingMeshPairing({
+        request,
+        localUserId: input.localUserId,
+        localNodeId: input.localNodeId,
+        remoteNodeId: input.remoteNodeId,
+        link: existingLinkRow ? linkFromRow(existingLinkRow) : null,
+        nowMs: Date.now(),
+        linkId: input.linkId,
+      });
+    } catch (error) {
+      markExpiredPairingRequestAndRethrow(db, input.requestId, now, error);
     }
-    if (request.status === "approved" && request.link_id) {
-      const existing = db.query(`
-        SELECT link_id, local_user_id, active_node_id, takeover_generation,
-          active_claimed_at, active_claim_origin, status, created_at, updated_at
-        FROM mesh_links
-        WHERE link_id = ? AND local_user_id = ?
-      `).get(request.link_id, input.localUserId) as MeshLinkRow | null;
-      if (!existing) {
-        throw new DomainError("mesh_pairing_request_not_owned", "The approved mesh request is not owned by this user.");
-      }
-      resolvedLinkId = existing.link_id;
+    if (decision.kind === "idempotent") {
+      resolvedLinkId = decision.linkId;
       return;
-    }
-    if (request.status !== "pending") {
-      throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-    }
-    if (request.direction !== "outgoing") {
-      throw new DomainError("mesh_pairing_request_not_outgoing", "Only outgoing mesh pairing requests can be completed here.");
-    }
-    if (
-      request.requested_node_id !== input.localNodeId
-      || request.requested_local_user_id !== input.localUserId
-    ) {
-      throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request belongs to another local identity.");
-    }
-    if (Date.parse(request.expires_at) <= Date.now()) {
-      db.run(`
-        UPDATE mesh_pairing_requests
-        SET status = 'expired', updated_at = ?
-        WHERE id = ?
-      `, [now, input.requestId]);
-      throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-    }
-    if (request.requested_node_id === input.remoteNodeId) {
-      throw new DomainError("mesh_pairing_request_invalid_peer", "The pairing approval identifies the requesting node as the peer.");
     }
 
     db.run(`
@@ -1437,13 +1387,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
       now,
     ]);
 
-    const existingLink = db.query(`
-      SELECT link_id, local_user_id, active_node_id, takeover_generation,
-        active_claimed_at, active_claim_origin, status, created_at, updated_at
-      FROM mesh_links
-      WHERE link_id = ? AND local_user_id = ?
-    `).get(input.linkId, input.localUserId) as MeshLinkRow | null;
-    if (!existingLink) {
+    if (decision.createLink) {
       db.run(`
         INSERT INTO mesh_links (
           link_id, local_user_id, active_node_id, takeover_generation,
@@ -1522,28 +1466,39 @@ export async function rejectMeshPairingRequest(
   rejectingUserId: string,
   reason: string | null,
 ): Promise<MeshPairingRequestRecord> {
-  const request = await getMeshPairingRequest(requestId);
-  if (!request) {
-    throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
-  }
-  const link = request.linkId
-    ? await getMeshLinkForUser(request.linkId, rejectingUserId)
-    : null;
-  const ownsOutgoingRequest = request.direction === "outgoing"
-    && request.requestedLocalUserId === rejectingUserId;
-  if (request.targetLocalUserId !== rejectingUserId && !link && !ownsOutgoingRequest) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request is not owned by this user.");
-  }
-  if (request.status !== "pending") {
-    throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-  }
+  const db = getDatabase();
   const now = new Date().toISOString();
-  getDatabase().run(`
-    UPDATE mesh_pairing_requests
-    SET status = 'rejected', rejection_reason = ?, approved_by_user_id = ?,
-      updated_at = ?
-    WHERE id = ? AND status = 'pending'
-  `, [reason, rejectingUserId, now, requestId]);
+  const transaction = db.transaction(() => {
+    const requestRow = db.query(`
+      SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
+        requested_local_user_id, requested_username, endpoint, transport,
+        public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
+        approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
+      FROM mesh_pairing_requests
+      WHERE id = ?
+    `).get(requestId) as MeshPairingRequestRow | null;
+    const request = requestRow ? pairingRequestFromRow(requestRow) : null;
+    const ownedLinkRow = request?.linkId
+      ? db.query(`
+        SELECT link_id, local_user_id, active_node_id, takeover_generation,
+          active_claimed_at, active_claim_origin, status, created_at, updated_at
+        FROM mesh_links
+        WHERE link_id = ? AND local_user_id = ?
+      `).get(request.linkId, rejectingUserId) as MeshLinkRow | null
+      : null;
+    decideRejectMeshPairing({
+      request,
+      rejectingUserId,
+      ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
+    });
+    db.run(`
+      UPDATE mesh_pairing_requests
+      SET status = 'rejected', rejection_reason = ?, approved_by_user_id = ?,
+        updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `, [reason, rejectingUserId, now, requestId]);
+  });
+  transaction();
   const updated = await getMeshPairingRequest(requestId);
   if (!updated) {
     throw new Error(`Mesh pairing request disappeared after rejection: ${requestId}`);

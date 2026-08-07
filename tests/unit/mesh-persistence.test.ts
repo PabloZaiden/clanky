@@ -42,7 +42,10 @@ import {
   decryptMeshPayload,
   encryptMeshPayload,
 } from "../../src/core/mesh-payload-crypto";
-import { listOpenMeshSyncConflicts } from "../../src/persistence/mesh-sync";
+import {
+  listOpenMeshSyncConflicts,
+  recordMeshSyncConflict,
+} from "../../src/persistence/mesh-sync";
 import {
   createWorkspace,
   getWorkspace,
@@ -479,6 +482,16 @@ describe("mesh persistence", () => {
     );
     expect(members.every((member) => member.status === "active")).toBe(true);
 
+    const retriedApproval = await approveMeshPairingRequest({
+      requestId: request.id,
+      approvingUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+      linkId: "different-link-override",
+    });
+    expect(retriedApproval.linkId).toBe(link.linkId);
+
     const firstClaim = await claimMeshLinkForLocalUser({
       linkId: link.linkId,
       localUserId: "local-user",
@@ -499,6 +512,113 @@ describe("mesh persistence", () => {
     expect(secondClaim.nodeId).toBe(remoteNode.nodeId);
     expect((await getMeshLinkForUser(link.linkId, "local-user"))?.takeoverGeneration).toBe(2);
     expect((await getActiveMeshLinkTakeover(link.linkId))?.signature).toBe("signed-remote-claim");
+  });
+
+  test("persists a competing takeover conflict before returning the domain error", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const localNode = await ensureLocalMeshNodeIdentity();
+    const remoteKeyPair = generateKeyPairSync("ed25519");
+    const remotePublicKey = remoteKeyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
+    const remoteNodeId = crypto.randomUUID();
+    await saveMeshNode({
+      nodeId: remoteNodeId,
+      instanceName: "Remote",
+      publicKey: remotePublicKey,
+      fingerprint: getMeshNodeFingerprint(remotePublicKey),
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      status: "active",
+    });
+    const link = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+    });
+    await mergeMeshLinkMember({
+      linkId: link.linkId,
+      nodeId: remoteNodeId,
+      localUserId: "remote-user",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      status: "active",
+      membershipGeneration: 1,
+      publicKey: remotePublicKey,
+      fingerprint: getMeshNodeFingerprint(remotePublicKey),
+    });
+
+    await expect(applyMeshLinkTakeover({
+      linkId: link.linkId,
+      nodeId: remoteNodeId,
+      generation: link.takeoverGeneration,
+      claimedAt: new Date().toISOString(),
+      claimOrigin: "remote",
+      signature: "remote-signature",
+    })).rejects.toMatchObject({ code: "mesh_takeover_conflict" });
+
+    expect((await getMeshLinkById(link.linkId))?.status).toBe("conflict");
+    expect(getDatabase().query(`
+      SELECT status
+      FROM mesh_link_claims
+      WHERE link_id = ? AND node_id = ? AND generation = ?
+    `).get(link.linkId, remoteNodeId, link.takeoverGeneration)).toEqual({ status: "conflict" });
+  });
+
+  test("lists only open conflicts on links owned by the Core caller", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    await seedUser("other-user");
+    const localNode = await ensureLocalMeshNodeIdentity();
+    const otherNodeId = crypto.randomUUID();
+    const otherPublicKey = generateKeyPairSync("ed25519").publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    await saveMeshNode({
+      nodeId: otherNodeId,
+      instanceName: "Other",
+      publicKey: otherPublicKey,
+      fingerprint: getMeshNodeFingerprint(otherPublicKey),
+      endpoint: "https://other.example.test",
+      transport: "https",
+      status: "active",
+    });
+    const localLink = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+    });
+    const otherLink = await createMeshLink({
+      localUserId: "other-user",
+      localNodeId: otherNodeId,
+      localNodeEndpoint: "https://other.example.test",
+      localNodeTransport: "https",
+    });
+    const localConflict = await recordMeshSyncConflict({
+      linkId: localLink.linkId,
+      aggregateType: "workspace",
+      aggregateId: "local-workspace",
+      originNodeId: otherNodeId,
+      remoteRevision: 1,
+      basePayload: { version: 1 },
+      localPayload: { version: 2 },
+      remotePayload: { version: 3 },
+    });
+    await recordMeshSyncConflict({
+      linkId: otherLink.linkId,
+      aggregateType: "workspace",
+      aggregateId: "other-workspace",
+      originNodeId: localNode.nodeId,
+      remoteRevision: 1,
+      basePayload: { version: 1 },
+      localPayload: { version: 2 },
+      remotePayload: { version: 3 },
+    });
+
+    const conflicts = await meshManager.listOpenConflicts("local-user");
+    expect(conflicts.map((conflict) => conflict.conflictId)).toEqual([localConflict.conflictId]);
+    expect(conflicts[0]?.linkId).toBe(localLink.linkId);
   });
 
   test("preserves an existing link when a new node is approved on a target without local membership", async () => {
