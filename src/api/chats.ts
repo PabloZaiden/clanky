@@ -602,6 +602,7 @@ export const chatsRoutes = defineRoutes({
 
       return new Response(html, {
         headers: {
+          "Cache-Control": "no-store",
           "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
           "Content-Type": "text/html; charset=utf-8",
           "X-Content-Type-Options": "nosniff",

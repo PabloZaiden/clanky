@@ -844,6 +844,7 @@ describe("Chats API Integration", () => {
     const standaloneResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.html`);
     expect(standaloneResponse.status).toBe(200);
     expect(standaloneResponse.headers.get("Content-Type")).toContain("text/html");
+    expect(standaloneResponse.headers.get("Cache-Control")).toBe("no-store");
     expect(standaloneResponse.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
     const standaloneHtml = await standaloneResponse.text();
     expect(standaloneHtml).toContain("<!doctype html>");
