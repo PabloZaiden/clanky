@@ -1,10 +1,17 @@
 import type { ModelInfo } from "@/contracts";
 import { ModelSelector } from "../ModelSelector";
 import { SAME_AS_TASK_CHEAP_MODEL_VALUE } from "./use-model-selection";
+import { UploadedPlanField } from "./uploaded-plan-field";
+import type { UploadedPlanFile } from "./types";
 
 interface AdvancedOptionsProps {
   showAdvanced: boolean;
   onToggle: () => void;
+  uploadedPlan: UploadedPlanFile | null;
+  uploadedPlanError: string | null;
+  onUploadedPlanChange: (plan: UploadedPlanFile | null) => void;
+  onUploadedPlanErrorChange: (error: string | null) => void;
+  uploadedPlanDisabled: boolean;
   maxIterations: string;
   onMaxIterationsChange: (value: string) => void;
   maxConsecutiveErrors: string;
@@ -25,6 +32,11 @@ interface AdvancedOptionsProps {
 export function AdvancedOptions({
   showAdvanced,
   onToggle,
+  uploadedPlan,
+  uploadedPlanError,
+  onUploadedPlanChange,
+  onUploadedPlanErrorChange,
+  uploadedPlanDisabled,
   maxIterations,
   onMaxIterationsChange,
   maxConsecutiveErrors,
@@ -51,6 +63,14 @@ export function AdvancedOptions({
 
       {showAdvanced && (
         <div className="space-y-4 p-4 bg-gray-50 dark:bg-neutral-800 rounded-md">
+          <UploadedPlanField
+            uploadedPlan={uploadedPlan}
+            error={uploadedPlanError}
+            onUploadedPlanChange={onUploadedPlanChange}
+            onErrorChange={onUploadedPlanErrorChange}
+            disabled={uploadedPlanDisabled}
+          />
+
           <div>
             <label
               htmlFor="cheapModel"

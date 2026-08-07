@@ -19,7 +19,6 @@ import { PromptField } from "./prompt-field";
 import { TaskSettings } from "./task-settings";
 import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
-import { UploadedPlanField } from "./uploaded-plan-field";
 import { parsePositiveIssueNumber } from "./issue-number";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { useGitHubIssues } from "./use-github-issues";
@@ -349,14 +348,6 @@ export function CreateTaskForm({
         </p>
       </div>
 
-      <UploadedPlanField
-        uploadedPlan={uploadedPlan}
-        error={uploadedPlanError}
-        onUploadedPlanChange={setUploadedPlan}
-        onErrorChange={setUploadedPlanError}
-        disabled={isEditingDraft || isEditing}
-      />
-
       <TaskSettings
         planMode={planMode}
         onPlanModeChange={setPlanMode}
@@ -372,6 +363,11 @@ export function CreateTaskForm({
       <AdvancedOptions
         showAdvanced={showAdvanced}
         onToggle={() => setShowAdvanced(!showAdvanced)}
+        uploadedPlan={uploadedPlan}
+        uploadedPlanError={uploadedPlanError}
+        onUploadedPlanChange={setUploadedPlan}
+        onUploadedPlanErrorChange={setUploadedPlanError}
+        uploadedPlanDisabled={isEditingDraft || isEditing}
         maxIterations={maxIterations}
         onMaxIterationsChange={setMaxIterations}
         maxConsecutiveErrors={maxConsecutiveErrors}
