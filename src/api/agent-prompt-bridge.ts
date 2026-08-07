@@ -15,10 +15,13 @@ import { defineRoutes, createLogger } from "@pablozaiden/webapp/server";
 import { z } from "zod";
 import type { Chat } from "@/shared/chat";
 import { chatManager } from "../core/chat-manager";
+import {
+  createInterruptibleOperationCoordinator,
+  INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS,
+} from "../core/interruptible-operation";
 import { errorResponse, internalErrorResponse } from "./helpers";
 
 const log = createLogger("api:agent-prompt-bridge");
-const PROMPT_INTERRUPT_SETTLE_TIMEOUT_MS = 5_000;
 
 const AgentPromptRequestSchema = z.object({
   chatId: z.string().min(1),
@@ -40,46 +43,6 @@ function getPromptAssistantMessage(
     throw new Error("Chat completed without an assistant response");
   }
   return message.content;
-}
-
-async function waitForPromiseSettlement(
-  operation: Promise<unknown>,
-  timeoutMs: number,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      operation.then(() => undefined, () => undefined),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-async function awaitRequestOrAbort<T>(
-  operation: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  if (signal.aborted) {
-    throw new Error("Prompt cancelled");
-  }
-  let abortHandler: (() => void) | undefined;
-  const aborted = new Promise<never>((_, reject) => {
-    abortHandler = () => reject(new Error("Prompt cancelled"));
-    signal.addEventListener("abort", abortHandler, { once: true });
-  });
-  try {
-    return await Promise.race([operation, aborted]);
-  } finally {
-    if (abortHandler) {
-      signal.removeEventListener("abort", abortHandler);
-    }
-  }
 }
 
 export const agentPromptBridgeRoutes = defineRoutes({
@@ -114,100 +77,48 @@ export const agentPromptBridgeRoutes = defineRoutes({
       }
 
       const previousMessageIds = new Set(chat.state.messages.map((candidate) => candidate.id));
-      let sendPromise: Promise<Chat> | undefined;
-      let waitPromise: Promise<Chat> | undefined;
-      let sendSettled = true;
-      let waitSettled = true;
-      let interruptPromise: Promise<void> | undefined;
-      let lateInterruptScheduled = false;
-      let clientAborted = false;
-      const interruptChatSafely = async (): Promise<void> => {
-        try {
+      const coordinator = createInterruptibleOperationCoordinator({
+        signal: req.signal,
+        interrupt: async () => {
           await chatManager.interruptChat(chatId, "Workspace prompt was cancelled");
-        } catch (error) {
+        },
+        settlementTimeoutMs: INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS,
+        createAbortError: () => new Error("Prompt cancelled"),
+        onInterruptError: (error, phase) => {
           log.error("Failed to interrupt workspace prompt", {
             chatId,
+            phase,
             error: String(error),
           });
-        }
-      };
-      const requestInterrupt = (): Promise<void> => {
-        if (interruptPromise) {
-          return interruptPromise;
-        }
-        interruptPromise = (async () => {
-          await interruptChatSafely();
-          if (sendPromise && !sendSettled) {
-            if (!lateInterruptScheduled) {
-              lateInterruptScheduled = true;
-              void sendPromise.then(
-                () => {
-                  void interruptChatSafely();
-                },
-                () => {
-                  void interruptChatSafely();
-                },
-              );
-            }
-            await waitForPromiseSettlement(sendPromise, PROMPT_INTERRUPT_SETTLE_TIMEOUT_MS);
-            if (sendSettled) {
-              await interruptChatSafely();
-            } else {
-              log.warn("Workspace prompt send did not settle after cancellation", { chatId });
-            }
-          }
-          if (waitPromise && !waitSettled) {
-            await waitForPromiseSettlement(waitPromise, PROMPT_INTERRUPT_SETTLE_TIMEOUT_MS);
-          }
-        })().finally(() => {
-          interruptPromise = undefined;
-        });
-        return interruptPromise;
-      };
-      const abortHandler = (): void => {
-        clientAborted = true;
-        void requestInterrupt();
-      };
-      req.signal.addEventListener("abort", abortHandler, { once: true });
+        },
+        onSettlementTimeout: (phaseName) => {
+          const message = phaseName === "send"
+            ? "Workspace prompt send did not settle after cancellation"
+            : "Workspace prompt wait did not settle after cancellation";
+          log.warn(message, { chatId });
+        },
+      });
 
       try {
         if (req.signal.aborted) {
-          await requestInterrupt();
           return new Response(null, { status: 499 });
         }
 
-        sendSettled = false;
-        sendPromise = chatManager.sendMessage(chatId, { message });
-        void sendPromise.then(
-          () => {
-            sendSettled = true;
-          },
-          () => {
-            sendSettled = true;
-          },
+        const sent = await coordinator.runPhase(
+          () => chatManager.sendMessage(chatId, { message }),
+          "send",
         );
-        if (req.signal.aborted) {
-          await requestInterrupt();
-          return new Response(null, { status: 499 });
-        }
-        const sent = await awaitRequestOrAbort(sendPromise, req.signal);
         const sentUserMessage = [...sent.state.messages].reverse().find((candidate) =>
           candidate.role === "user"
             && !previousMessageIds.has(candidate.id)
             && candidate.content === message,
         );
 
-        waitSettled = false;
-        waitPromise = chatManager.waitForChatIdle(chatId);
-        void waitPromise.then(
-          () => {
-            waitSettled = true;
-          },
-          () => {
-            waitSettled = true;
-          },
+        const completed = await coordinator.runPhase(
+          () => chatManager.waitForChatIdle(chatId),
+          "wait",
+          { allowLateInterrupt: false },
         );
-        const completed = await awaitRequestOrAbort(waitPromise, req.signal);
 
         if (completed.state.status === "failed" || completed.state.error) {
           const errMsg = completed.state.error?.message ?? "Workspace prompt failed";
@@ -225,8 +136,7 @@ export const agentPromptBridgeRoutes = defineRoutes({
         );
         return Response.json({ response });
       } catch (error) {
-        if (clientAborted || req.signal.aborted) {
-          await requestInterrupt();
+        if (req.signal.aborted) {
           return new Response(null, { status: 499 });
         }
         log.error("Workspace prompt bridge error", { chatId, error: String(error) });
@@ -235,10 +145,7 @@ export const agentPromptBridgeRoutes = defineRoutes({
           { error: "prompt_failed", message: "Workspace prompt bridge failed" },
         );
       } finally {
-        req.signal.removeEventListener("abort", abortHandler);
-        if (clientAborted || req.signal.aborted) {
-          await requestInterrupt();
-        }
+        await coordinator.dispose();
       }
     },
   },

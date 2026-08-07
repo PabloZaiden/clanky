@@ -1,4 +1,3 @@
-import type { Chat } from "@/shared/chat";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { ModelConfig } from "@/shared/model";
 import { DETERMINISTIC_AGENT_CODE_CONTRACT } from "@/shared/deterministic-agent";
@@ -9,12 +8,15 @@ import { backendManager } from "./backend";
 import { chatManager } from "./chat-manager";
 import type { CommandExecutor } from "./command-executor";
 import { validateDeterministicAgentCode } from "./deterministic-agent-code";
+import {
+  createInterruptibleOperationCoordinator,
+  INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS,
+} from "./interruptible-operation";
 
 const log = createLogger("deterministic-agent-generation");
 const GENERATION_SOURCE_POLL_INTERVAL_MS = 100;
 const GENERATION_SOURCE_TIMEOUT_MS = 15 * 60 * 1000;
 const GENERATION_COMPLETE_MARKER = "complete";
-const GENERATION_INTERRUPT_SETTLE_TIMEOUT_MS = 5_000;
 
 export interface GenerateDeterministicAgentCodeOptions {
   chatId: string;
@@ -276,25 +278,6 @@ async function awaitWithAbort<T>(
   }
 }
 
-async function waitForPromiseSettlement(
-  operation: Promise<unknown>,
-  timeoutMs: number,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      operation.then(() => undefined, () => undefined),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
 export async function generateDeterministicAgentCode(
   options: GenerateDeterministicAgentCodeOptions,
 ): Promise<GeneratedDeterministicAgentCode> {
@@ -310,59 +293,32 @@ export async function generateDeterministicAgentCode(
   const completionFilePath = createGenerationCompletionFilePath(outputFilePath);
   const isFollowUp = options.message !== undefined || (options.attachments?.length ?? 0) > 0;
   const initialSource = isFollowUp ? options.previousCode.trim() || undefined : undefined;
-  let sendPromise: Promise<Chat> | undefined;
-  let sendSettled = true;
-  let interruptPromise: Promise<void> | undefined;
-  let lateInterruptScheduled = false;
-
-  const interruptChatSafely = async (): Promise<void> => {
-    try {
-      await chatManager.interruptChat(options.chatId, "Deterministic agent code generation was cancelled");
-    } catch (error) {
+  const coordinator = createInterruptibleOperationCoordinator({
+    signal: options.signal,
+    interrupt: async () => {
+      await chatManager.interruptChat(
+        options.chatId,
+        "Deterministic agent code generation was cancelled",
+      );
+    },
+    settlementTimeoutMs: INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS,
+    createAbortError,
+    onInterruptError: (error, phase) => {
       log.warn("Failed to interrupt deterministic agent code generation chat", {
         chatId: options.chatId,
+        phase,
         error: String(error),
       });
-    }
-  };
-  const requestInterrupt = (): Promise<void> => {
-    if (interruptPromise) {
-      return interruptPromise;
-    }
-    interruptPromise = (async () => {
-      await interruptChatSafely();
-      if (sendPromise && !sendSettled) {
-        if (!lateInterruptScheduled) {
-          lateInterruptScheduled = true;
-          void sendPromise.then(
-            () => {
-              void interruptChatSafely();
-            },
-            () => {
-              void interruptChatSafely();
-            },
-          );
-        }
-        await waitForPromiseSettlement(sendPromise, GENERATION_INTERRUPT_SETTLE_TIMEOUT_MS);
-        if (sendSettled) {
-          await interruptChatSafely();
-        } else {
-          log.warn("Deterministic agent code generation chat did not settle after cancellation", {
-            chatId: options.chatId,
-          });
-        }
-      }
-    })().finally(() => {
-      interruptPromise = undefined;
-    });
-    return interruptPromise;
-  };
-  const abortHandler = (): void => {
-    void requestInterrupt();
-  };
+    },
+    onSettlementTimeout: (phaseName) => {
+      log.warn("Deterministic agent code generation chat did not settle after cancellation", {
+        chatId: options.chatId,
+        phase: phaseName,
+      });
+    },
+  });
 
   try {
-    options.signal?.addEventListener("abort", abortHandler, { once: true });
     if (options.signal?.aborted) {
       throw createAbortError();
     }
@@ -415,24 +371,13 @@ export async function generateDeterministicAgentCode(
     const message = isFollowUp
       ? buildGenerationFollowUpMessage(options.message ?? "", outputFilePath, completionFilePath)
       : buildGenerationPrompt(options, outputFilePath, completionFilePath);
-    sendSettled = false;
-    sendPromise = chatManager.sendMessage(options.chatId, {
-      message,
-      attachments: options.attachments,
-    });
-    void sendPromise.then(
-      () => {
-        sendSettled = true;
-      },
-      () => {
-        sendSettled = true;
-      },
+    await coordinator.runPhase(
+      () => chatManager.sendMessage(options.chatId, {
+        message,
+        attachments: options.attachments,
+      }),
+      "send",
     );
-    if (options.signal?.aborted) {
-      await requestInterrupt();
-      throw createAbortError();
-    }
-    await awaitWithAbort(sendPromise, options.signal);
     return await waitForGeneratedAgentSource(
       executor,
       options.chatId,
@@ -445,10 +390,7 @@ export async function generateDeterministicAgentCode(
       },
     );
   } finally {
-    options.signal?.removeEventListener("abort", abortHandler);
-    if (options.signal?.aborted || (sendPromise && !sendSettled)) {
-      await requestInterrupt();
-    }
+    await coordinator.dispose();
     if (options.signal?.aborted) {
       await restoreGenerationDraftAfterAbort(
         executor,
