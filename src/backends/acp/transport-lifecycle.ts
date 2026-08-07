@@ -508,11 +508,14 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     if (config.transport !== "ssh") {
       return undefined;
     }
-    if (config.password) {
-      return "password";
-    }
-    if (config.identityFile) {
+
+    const identityFile = config.identityFile?.trim();
+    const password = config.password?.trim();
+    if (identityFile) {
       return "identity";
+    }
+    if (password) {
+      return "password";
     }
     return "agent";
   }

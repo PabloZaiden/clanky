@@ -8,6 +8,7 @@
 import { log } from "@pablozaiden/webapp/server";
 import type { AgentProvider } from "@/shared/settings";
 import type { AcpErrorCode, RpcErrorLike } from "./errors";
+import { isRecord } from "./json-helpers";
 
 const ACP_RESOURCE_NOT_FOUND_ERROR_CODE = -32002;
 const OPENCODE_INVALID_PARAMS_ERROR_CODE = -32602;
@@ -171,8 +172,4 @@ function isSessionMethod(method: string): boolean {
 
 function normalizeCategory(value: string): string {
   return value.trim().toLowerCase().replaceAll("-", "_");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

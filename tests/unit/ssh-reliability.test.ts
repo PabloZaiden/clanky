@@ -271,4 +271,68 @@ describe("SSH reliability policy", () => {
       await backend.disconnect();
     }
   });
+
+  test("normalizes SSH authentication mode with identity precedence", async () => {
+    const lifecycle = new LocalAcpTransportLifecycle({
+      reliabilityPolicy: policy,
+      connectionGate: new SshConnectionGate(1),
+    });
+    const backend = new AcpBackend({ transportLifecycle: lifecycle });
+
+    try {
+      await expect(
+        backend.connect({
+          mode: "spawn",
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "example.test",
+          port: 5002,
+          directory: "/workspace",
+          password: "  password  ",
+          identityFile: "  /keys/id_ed25519  ",
+          command: process.execPath,
+          args: ["-e", "process.exit(255);"],
+        }),
+      ).rejects.toMatchObject({
+        code: "acp_process_failed",
+        details: {
+          authenticationMode: "identity",
+        },
+      });
+    } finally {
+      await backend.disconnect();
+    }
+  });
+
+  test("treats whitespace-only SSH credentials as agent authentication", async () => {
+    const lifecycle = new LocalAcpTransportLifecycle({
+      reliabilityPolicy: policy,
+      connectionGate: new SshConnectionGate(1),
+    });
+    const backend = new AcpBackend({ transportLifecycle: lifecycle });
+
+    try {
+      await expect(
+        backend.connect({
+          mode: "spawn",
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "example.test",
+          port: 5002,
+          directory: "/workspace",
+          password: "   ",
+          identityFile: "   ",
+          command: process.execPath,
+          args: ["-e", "process.exit(255);"],
+        }),
+      ).rejects.toMatchObject({
+        code: "acp_process_failed",
+        details: {
+          authenticationMode: "agent",
+        },
+      });
+    } finally {
+      await backend.disconnect();
+    }
+  });
 });
