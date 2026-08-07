@@ -17,7 +17,6 @@ export interface UseWorkspaceModelsResult {
   lastCheapModel: CheapModelSelection | null;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
-  setModelsWorkspaceId: (id: string | null) => void;
   fetchModels: (workspaceId: string | null) => Promise<void>;
   resetModels: () => void;
 }
@@ -92,9 +91,10 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   const fetchModels = useCallback(async (workspaceId: string | null) => {
     const requestId = ++modelsRequestIdRef.current;
     modelsAbortControllerRef.current?.abort();
+    setModelsWorkspaceId(workspaceId);
+    setModels([]);
 
     if (!workspaceId) {
-      setModels([]);
       setModelsLoading(false);
       return;
     }
@@ -135,8 +135,12 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   }, []);
 
   const resetModels = useCallback(() => {
+    modelsRequestIdRef.current += 1;
+    modelsAbortControllerRef.current?.abort();
+    modelsAbortControllerRef.current = null;
     setModels([]);
     setModelsWorkspaceId(null);
+    setModelsLoading(false);
   }, []);
 
   return {
@@ -147,7 +151,6 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     lastCheapModel,
     setLastCheapModel,
     modelsWorkspaceId,
-    setModelsWorkspaceId,
     fetchModels,
     resetModels,
   };

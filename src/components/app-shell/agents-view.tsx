@@ -71,10 +71,12 @@ function AgentForm({
   workspaceError,
   models,
   modelsLoading,
+  modelsWorkspaceId,
   lastModel,
   schedulerTimezone,
   branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   onWorkspaceChange,
@@ -94,10 +96,12 @@ function AgentForm({
   workspaceError: string | null;
   models: ModelInfo[];
   modelsLoading: boolean;
+  modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
   schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
@@ -120,9 +124,12 @@ function AgentForm({
     workspaces,
     models,
     modelsLoading,
+    modelsWorkspaceId,
     lastModel,
     schedulerTimezone,
+    branches,
     branchesLoading,
+    branchesWorkspaceId,
     currentBranch,
     defaultBranch,
     onWorkspaceChange,
@@ -137,6 +144,7 @@ function AgentForm({
     prompt: form.draft.prompt,
     selectedWorkspace: form.selectedWorkspace,
     modelKey: form.draft.modelKey,
+    workspaceSelectionsReady: form.workspaceSelectionsReady,
     onPrepareGenerateAgentCode,
     onGenerateAgentCode,
     onCodeChanged: resetTestOutput,
@@ -149,6 +157,7 @@ function AgentForm({
     modelKey: form.draft.modelKey,
     baseBranch: form.draft.baseBranch,
     useWorktree: form.draft.useWorktree,
+    workspaceSelectionsReady: form.workspaceSelectionsReady,
     onTestStarted: generation.invalidatePendingDraft,
     onTestAgentCode,
   });
@@ -162,14 +171,12 @@ function AgentForm({
     && !form.isSubmitting
     && !generation.isGeneratingCode
     && !testing.isTestingCode
-    && Boolean(form.selectedWorkspace)
-    && Boolean(form.draft.modelKey);
+    && form.workspaceSelectionsReady;
   const canTestCode = !form.isSubmitting
     && !generation.isGeneratingCode
     && !testing.isTestingCode
     && Boolean(generation.code.trim())
-    && Boolean(form.selectedWorkspace)
-    && Boolean(form.draft.modelKey);
+    && form.workspaceSelectionsReady;
   const handleSubmit = useCallback((): void => {
     void form.submit(generation.code);
   }, [form.submit, generation.code]);
@@ -357,10 +364,12 @@ function AgentDetail({
   workspaceError,
   models,
   modelsLoading,
+  modelsWorkspaceId,
   lastModel,
   schedulerTimezone,
   branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   editing,
@@ -382,10 +391,12 @@ function AgentDetail({
   workspaceError: string | null;
   models: ModelInfo[];
   modelsLoading: boolean;
+  modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
   schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   editing: boolean;
@@ -417,10 +428,12 @@ function AgentDetail({
         workspaceError={workspaceError}
         models={models}
         modelsLoading={modelsLoading}
+        modelsWorkspaceId={modelsWorkspaceId}
         lastModel={lastModel}
         schedulerTimezone={schedulerTimezone}
         branches={branches}
         branchesLoading={branchesLoading}
+        branchesWorkspaceId={branchesWorkspaceId}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
         onWorkspaceChange={onWorkspaceChange}
@@ -702,10 +715,12 @@ export function AgentComposer({
   workspaceError,
   models,
   modelsLoading,
+  modelsWorkspaceId,
   lastModel,
   schedulerTimezone,
   branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   onWorkspaceChange,
@@ -721,10 +736,12 @@ export function AgentComposer({
   workspaceError: string | null;
   models: ModelInfo[];
   modelsLoading: boolean;
+  modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
   schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
@@ -743,10 +760,12 @@ export function AgentComposer({
       workspaceError={workspaceError}
       models={models}
       modelsLoading={modelsLoading}
+      modelsWorkspaceId={modelsWorkspaceId}
       lastModel={lastModel}
       schedulerTimezone={schedulerTimezone}
       branches={branches}
       branchesLoading={branchesLoading}
+      branchesWorkspaceId={branchesWorkspaceId}
       currentBranch={currentBranch}
       defaultBranch={defaultBranch}
       onWorkspaceChange={onWorkspaceChange}
@@ -766,6 +785,7 @@ export function AgentsView({
   workspaces,
   models,
   modelsLoading,
+  modelsWorkspaceId,
   lastModel,
   schedulerTimezone,
   selectedWorkspaceId: _selectedWorkspaceId,
@@ -781,6 +801,7 @@ export function AgentsView({
   navigateWithinShell,
   branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   loading,
@@ -793,6 +814,7 @@ export function AgentsView({
   workspaces: Workspace[];
   models: ModelInfo[];
   modelsLoading: boolean;
+  modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
   schedulerTimezone: string;
   selectedWorkspaceId: string | null;
@@ -808,6 +830,7 @@ export function AgentsView({
   navigateWithinShell: (route: WebAppRoute) => void;
   branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   loading: boolean;
@@ -843,10 +866,12 @@ export function AgentsView({
         workspaceError={null}
         models={models}
         modelsLoading={modelsLoading}
+        modelsWorkspaceId={modelsWorkspaceId}
         lastModel={lastModel}
         schedulerTimezone={schedulerTimezone}
         branches={branches}
         branchesLoading={branchesLoading}
+        branchesWorkspaceId={branchesWorkspaceId}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
         editing={editingAgentId === agent.config.id}

@@ -19,6 +19,7 @@ export interface UseAgentCodeTestOptions {
   code: string;
   selectedWorkspace: Workspace | null;
   modelKey: string;
+  workspaceSelectionsReady: boolean;
   baseBranch: string;
   useWorktree: boolean;
   onTestStarted: () => void;
@@ -40,6 +41,7 @@ export function useAgentCodeTest({
   code,
   selectedWorkspace,
   modelKey,
+  workspaceSelectionsReady,
   baseBranch,
   useWorktree,
   onTestStarted,
@@ -93,7 +95,7 @@ export function useAgentCodeTest({
 
   const testCode = useCallback(async (): Promise<void> => {
     const parsedTestModel = parseModelKey(modelKey);
-    if (!selectedWorkspace || !parsedTestModel) {
+    if (!workspaceSelectionsReady || !selectedWorkspace || !parsedTestModel) {
       toastError("Select a workspace and model before testing code");
       return;
     }
@@ -162,6 +164,7 @@ export function useAgentCodeTest({
     toastError,
     toastSuccess,
     useWorktree,
+    workspaceSelectionsReady,
   ]);
 
   const cancelTest = useCallback((): void => {

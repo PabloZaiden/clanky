@@ -211,6 +211,7 @@ function renderMainContent(props: ShellMainContentProps) {
         workspaces={workspaces}
         models={dashboardData.models}
         modelsLoading={dashboardData.modelsLoading}
+        modelsWorkspaceId={dashboardData.modelsWorkspaceId}
         lastModel={dashboardData.lastModel}
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
         schedulerTimezone={schedulerTimezone}
@@ -229,6 +230,7 @@ function renderMainContent(props: ShellMainContentProps) {
         navigateWithinShell={navigateWithinShell}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
+        branchesWorkspaceId={dashboardData.branchesWorkspaceId}
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
         loading={agents.loading}

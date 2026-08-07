@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { ModelInfo } from "@/contracts";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { Agent, ModelConfig, Workspace } from "@/shared";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import { useToast } from "@pablozaiden/webapp/web";
-import { makeModelKey, parseModelKey } from "../ModelSelector";
+import { makeModelKey, modelVariantExists, parseModelKey } from "../ModelSelector";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 
 export type AgentFormMode = "create" | "edit";
@@ -54,12 +54,58 @@ function formatDateTimeLocalInTimezone(date: Date, timezone: string): string {
   return `${parts["year"]}-${parts["month"]}-${parts["day"]}T${parts["hour"]}:${parts["minute"]}`;
 }
 
+function isModelKeyValid(models: ModelInfo[], modelKey: string): boolean {
+  const parsedModel = parseModelKey(modelKey);
+  if (!parsedModel) {
+    return false;
+  }
+  const model = models.find((entry) =>
+    entry.providerID === parsedModel.providerID
+    && entry.modelID === parsedModel.modelID,
+  );
+  return Boolean(
+    model?.connected
+      && modelVariantExists(
+        models,
+        parsedModel.providerID,
+        parsedModel.modelID,
+        parsedModel.variant,
+      ),
+  );
+}
+
 function getDefaultModelKey(models: ModelInfo[], lastModel: ModelConfig | null): string {
   if (lastModel) {
-    return makeModelKey(lastModel.providerID, lastModel.modelID, lastModel.variant);
+    const lastModelKey = makeModelKey(lastModel.providerID, lastModel.modelID, lastModel.variant);
+    if (isModelKeyValid(models, lastModelKey)) {
+      return lastModelKey;
+    }
   }
   const connected = models.find((model) => model.connected);
   return connected ? makeModelKey(connected.providerID, connected.modelID, connected.variants?.[0] ?? "") : "";
+}
+
+function getBranchOptions(
+  branches: { name: string }[],
+  currentBranch: string,
+  defaultBranch: string,
+): Set<string> {
+  return new Set([
+    ...branches.map((branch) => branch.name),
+    currentBranch,
+    defaultBranch,
+  ].filter(Boolean));
+}
+
+function isBranchSelectionValid(
+  baseBranch: string,
+  branches: { name: string }[],
+  currentBranch: string,
+  defaultBranch: string,
+): boolean {
+  const normalizedBranch = baseBranch.trim();
+  return normalizedBranch === ""
+    || getBranchOptions(branches, currentBranch, defaultBranch).has(normalizedBranch);
 }
 
 function createInitialDraft({
@@ -91,7 +137,14 @@ function agentFormReducer(state: AgentFormDraft, action: AgentFormAction): Agent
     case "set-prompt":
       return { ...state, prompt: action.value };
     case "set-workspace-id":
-      return { ...state, workspaceId: action.value };
+      return state.workspaceId === action.value
+        ? state
+        : {
+            ...state,
+            workspaceId: action.value,
+            modelKey: "",
+            baseBranch: "",
+          };
     case "set-model-key":
       return { ...state, modelKey: action.value };
     case "set-base-branch":
@@ -116,9 +169,12 @@ export interface UseAgentFormStateOptions {
   workspaces: Workspace[];
   models: ModelInfo[];
   modelsLoading: boolean;
+  modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
   schedulerTimezone: string;
+  branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
@@ -132,6 +188,7 @@ export interface UseAgentFormStateResult {
   selectedWorkspace: Workspace | null;
   isSubmitting: boolean;
   canSubmit: boolean;
+  workspaceSelectionsReady: boolean;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setWorkspaceId: (value: string) => void;
@@ -151,9 +208,12 @@ export function useAgentFormState({
   workspaces,
   models,
   modelsLoading,
+  modelsWorkspaceId,
   lastModel,
   schedulerTimezone,
+  branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   onWorkspaceChange,
@@ -169,7 +229,6 @@ export function useAgentFormState({
     createInitialDraft,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const workspaceForBranchRef = useRef<string | null>(agent?.config.workspaceId ?? initialWorkspace?.id ?? null);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === draft.workspaceId) ?? null,
@@ -184,30 +243,47 @@ export function useAgentFormState({
 
   useEffect(() => {
     if (!selectedWorkspace) {
-      dispatch({ type: "set-base-branch", value: "" });
-      workspaceForBranchRef.current = null;
+      onWorkspaceChange(null, "");
       return;
-    }
-    if (workspaceForBranchRef.current !== selectedWorkspace.id) {
-      workspaceForBranchRef.current = selectedWorkspace.id;
-      dispatch({ type: "set-base-branch", value: "" });
     }
     onWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
   }, [onWorkspaceChange, selectedWorkspace?.directory, selectedWorkspace?.id]);
 
-  useEffect(() => {
-    if (!selectedWorkspace || draft.baseBranch) {
-      return;
-    }
-    dispatch({ type: "set-base-branch", value: defaultBranch || currentBranch });
-  }, [currentBranch, defaultBranch, draft.baseBranch, selectedWorkspace?.id]);
+  const modelsReady = Boolean(
+    selectedWorkspace
+      && modelsWorkspaceId === selectedWorkspace.id
+      && !modelsLoading,
+  );
+  const branchesReady = Boolean(
+    selectedWorkspace
+      && branchesWorkspaceId === selectedWorkspace.id
+      && !branchesLoading,
+  );
+  const modelSelectionValid = modelsReady && isModelKeyValid(models, draft.modelKey);
+  const branchSelectionValid = branchesReady
+    && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch);
+  const workspaceSelectionsReady = modelSelectionValid && branchSelectionValid;
 
   useEffect(() => {
-    if (draft.modelKey || models.length === 0) {
+    if (!branchesReady) {
+      return;
+    }
+    const normalizedBranch = draft.baseBranch.trim();
+    if (normalizedBranch && isBranchSelectionValid(normalizedBranch, branches, currentBranch, defaultBranch)) {
+      return;
+    }
+    const nextBranch = defaultBranch || currentBranch;
+    if (normalizedBranch !== nextBranch) {
+      dispatch({ type: "set-base-branch", value: nextBranch });
+    }
+  }, [branches, branchesReady, currentBranch, defaultBranch, draft.baseBranch]);
+
+  useEffect(() => {
+    if (!modelsReady || isModelKeyValid(models, draft.modelKey)) {
       return;
     }
     dispatch({ type: "set-model-key", value: getDefaultModelKey(models, lastModel) });
-  }, [draft.modelKey, lastModel, models]);
+  }, [draft.modelKey, lastModel, models, modelsReady]);
 
   useEffect(() => {
     if (mode !== "create" || draft.startAtTouched) {
@@ -248,17 +324,34 @@ export function useAgentFormState({
   }, []);
 
   const canSubmit = !isSubmitting
-    && !branchesLoading
-    && !modelsLoading
-    && Boolean(selectedWorkspace)
-    && Boolean(draft.modelKey)
+    && workspaceSelectionsReady
     && Boolean(draft.name.trim())
     && Boolean(draft.prompt.trim())
+    && Boolean(draft.startAtLocal.trim())
+    && Number.isInteger(draft.intervalValue)
     && draft.intervalValue >= 1;
 
   const submit = useCallback(async (code: string): Promise<void> => {
     if (!selectedWorkspace) {
       toastError("Select a workspace first");
+      return;
+    }
+    if (!modelsReady || !modelSelectionValid) {
+      toastError("Select a valid model for the selected workspace");
+      return;
+    }
+    if (!branchesReady || !branchSelectionValid) {
+      toastError("Select a valid base branch for the selected workspace");
+      return;
+    }
+    if (
+      !draft.name.trim()
+      || !draft.prompt.trim()
+      || !draft.startAtLocal.trim()
+      || !Number.isInteger(draft.intervalValue)
+      || draft.intervalValue < 1
+    ) {
+      toastError("Complete the agent name, prompt, and schedule");
       return;
     }
     const parsedModel = parseModelKey(draft.modelKey);
@@ -310,7 +403,11 @@ export function useAgentFormState({
     }
   }, [
     agent,
+    branchSelectionValid,
+    branchesReady,
     draft,
+    modelSelectionValid,
+    modelsReady,
     mode,
     onCreateAgent,
     onSaved,
@@ -325,6 +422,7 @@ export function useAgentFormState({
     selectedWorkspace,
     isSubmitting,
     canSubmit,
+    workspaceSelectionsReady,
     setName,
     setPrompt,
     setWorkspaceId,

@@ -138,10 +138,12 @@ export function ComposeView(props: ComposeViewProps) {
         workspaceError={workspaceError}
         models={dashboardData.models}
         modelsLoading={dashboardData.modelsLoading}
+        modelsWorkspaceId={dashboardData.modelsWorkspaceId}
         lastModel={dashboardData.lastModel}
         schedulerTimezone={schedulerTimezone}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
+        branchesWorkspaceId={dashboardData.branchesWorkspaceId}
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
