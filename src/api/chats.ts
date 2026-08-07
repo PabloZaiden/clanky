@@ -22,7 +22,7 @@ import {
   isAcpErrorCode,
 } from "../backends/acp";
 import { preferencesManager } from "../core/preferences-manager";
-import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
+import { buildChatTranscriptHtml, buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
 import {
   getTranscriptSnapshotEtag,
 } from "../core/transcript-service";
@@ -582,6 +582,32 @@ export const chatsRoutes = defineRoutes({
       }
 
       return new Response(transcript.markdown, { headers });
+    },
+  },
+
+  "/api/chats/:id/transcript.html": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Open a chat transcript as a standalone HTML document.",
+    async GET(_req: Request, ctx): Promise<Response> {
+      const chat = await chatManager.getChat(ctx.params["id"]!);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const html = buildChatTranscriptHtml(chat);
+      if (!html) {
+        return errorResponse("empty_transcript", "Chat transcript is empty. Send at least one message before exporting.", 400);
+      }
+
+      return new Response(html, {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+          "Content-Type": "text/html; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
     },
   },
 

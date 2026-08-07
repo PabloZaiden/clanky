@@ -178,7 +178,7 @@ function renderShellRouteContent(
   if (route.view === "chat-transcript") {
     const transcriptChatId = getRouteString(route, "chatId");
     return (
-      <Page layout="full">
+      <Page layout="full" className="standalone-transcript-page">
         {transcriptChatId
           ? <StandaloneChatTranscriptViewer chatId={transcriptChatId} />
           : (

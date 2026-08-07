@@ -801,7 +801,7 @@ describe("Chats API Integration", () => {
       {
         id: "msg-assistant",
         role: "assistant",
-        content: "I inspected it and found the issue.",
+        content: "I inspected it and found the issue. <script>alert(1)</script>",
         timestamp: "2026-06-04T12:02:00.000Z",
       },
     ];
@@ -840,6 +840,19 @@ describe("Chats API Integration", () => {
     expect(markdown).not.toContain(testWorkDir);
     expect(markdown).not.toContain("must-not-export");
     expect(markdown).not.toContain("private tool output must not export");
+
+    const standaloneResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.html`);
+    expect(standaloneResponse.status).toBe(200);
+    expect(standaloneResponse.headers.get("Content-Type")).toContain("text/html");
+    expect(standaloneResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(standaloneResponse.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
+    const standaloneHtml = await standaloneResponse.text();
+    expect(standaloneHtml).toContain("<!doctype html>");
+    expect(standaloneHtml).toContain("<pre>");
+    expect(standaloneHtml).toContain("Please inspect the README");
+    expect(standaloneHtml).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(standaloneHtml).not.toContain("<script>alert(1)</script>");
+    expect(standaloneHtml).not.toContain("private tool output must not export");
 
     const downloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md?download=1`);
     expect(downloadResponse.status).toBe(200);
