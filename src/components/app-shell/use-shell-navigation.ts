@@ -4,30 +4,16 @@ import {
   type WebAppRootController,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { Chat } from "@/shared";
-import type {
-  SidebarServerNode,
-  SidebarWorkspaceGroupNode,
-} from "./shell-types";
-import { getSidebarTabForRoute } from "./shell-sidebar-composition";
 import { getShellShortcutForKeyboardEvent, isEditableShortcutTarget } from "./shell-shortcuts";
 
 export const HOME_ROUTE: WebAppRoute = { view: "home" };
 
 interface UseShellNavigationOptions {
-  route: WebAppRoute;
   setRoute: Dispatch<SetStateAction<WebAppRoute>>;
-  chats: Chat[];
-  sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
-  serverNodes: SidebarServerNode[];
 }
 
 export function useShellNavigation({
-  route,
   setRoute,
-  chats,
-  sidebarWorkspaceGroups,
-  serverNodes,
 }: UseShellNavigationOptions) {
   const webAppRootRef = useRef<WebAppRootController>(null);
   const handleWebRouteChange = useCallback((nextRoute: WebAppRoute) => setRoute(nextRoute), [setRoute]);
@@ -58,17 +44,6 @@ export function useShellNavigation({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusSidebarSearch, navigateWithinShell]);
-
-  useEffect(() => {
-    const targetTab = getSidebarTabForRoute(route, {
-      chats,
-      sidebarWorkspaceGroups,
-      serverNodes,
-    });
-    if (targetTab) {
-      webAppRootRef.current?.sidebar.selectTab(targetTab);
-    }
-  }, [chats, route, serverNodes, sidebarWorkspaceGroups]);
 
   return {
     webAppRootRef,
