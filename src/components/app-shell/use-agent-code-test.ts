@@ -96,7 +96,7 @@ export function useAgentCodeTest({
   const testCode = useCallback(async (): Promise<void> => {
     const parsedTestModel = parseModelKey(modelKey);
     if (!workspaceSelectionsReady || !selectedWorkspace || !parsedTestModel) {
-      toastError("Select a workspace and model before testing code");
+      toastError("Select a workspace, then wait for its models and branches to finish loading and choose valid options before testing code");
       return;
     }
     if (!code.trim()) {

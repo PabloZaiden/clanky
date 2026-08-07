@@ -177,7 +177,7 @@ export function useAgentCodeGeneration({
       return;
     }
     if (!workspaceSelectionsReady || !selectedWorkspace || !parsedGenerationModel) {
-      toastError("Select a workspace and model before generating code");
+      toastError("Select a workspace, then wait for its models and branches to finish loading and choose valid options before generating code");
       return;
     }
     const operation = acquireGenerationOperation("initial");
