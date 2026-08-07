@@ -297,7 +297,8 @@ export function evaluateTaskOutcome(ctx: IterationContext, buildCtx: PromptBuild
     return;
   }
 
-  const trailingMarker = detectTrailingPromiseMarker(ctx.responseContent);
+  const responseContent = ctx.transcript.state.responseContent;
+  const trailingMarker = detectTrailingPromiseMarker(responseContent);
   if (trailingMarker?.kind === "blocked") {
     buildCtx.emitLog("warn", "BLOCKED marker detected - stopping without completion");
     ctx.outcome = "blocked";
@@ -307,14 +308,14 @@ export function evaluateTaskOutcome(ctx: IterationContext, buildCtx: PromptBuild
   const isInPlanMode = buildCtx.state.status === "planning" && buildCtx.state.planMode?.active;
   const planReadyPattern = /<promise>PLAN_READY<\/promise>/i;
 
-  if (isInPlanMode && (trailingMarker?.kind === "plan_ready" || planReadyPattern.test(ctx.responseContent))) {
+  if (isInPlanMode && (trailingMarker?.kind === "plan_ready" || planReadyPattern.test(responseContent))) {
     buildCtx.emitLog("info", "PLAN_READY marker detected - plan is ready for review");
     ctx.outcome = "plan_ready";
     if (buildCtx.state.planMode) {
       buildCtx.state.planMode.isPlanReady = true;
       log.debug(`[TaskEngine] runIteration: Set isPlanReady = true, planMode:`, JSON.stringify(buildCtx.state.planMode));
     }
-  } else if (buildCtx.stopDetector.matches(ctx.responseContent)) {
+  } else if (buildCtx.stopDetector.matches(responseContent)) {
     buildCtx.emitLog("info", "Stop pattern matched - task is complete");
     ctx.outcome = "complete";
   } else {

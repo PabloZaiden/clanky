@@ -45,15 +45,13 @@ export async function processTaskAgentEvent(
   toolCtx: ToolProcessingContext,
   transcriptResult: AgentEventTranscriptResult = ctx.transcript.handle(event),
 ): Promise<void> {
-  syncIterationContext(ctx);
-
   switch (event.type) {
     case "message.start":
       toolCtx.emitLog("agent", "AI started generating response", { logKind: "system" });
       break;
 
     case "message.delta":
-      emitTextDelta(transcriptResult.responseDelta, ctx, toolCtx);
+      emitTextDelta(transcriptResult.responseDelta, toolCtx);
       if (transcriptResult.responseDelta) {
         toolCtx.emit({
           type: "task.progress",
@@ -66,7 +64,7 @@ export async function processTaskAgentEvent(
       break;
 
     case "reasoning.delta":
-      emitTextDelta(transcriptResult.reasoningDelta, ctx, toolCtx);
+      emitTextDelta(transcriptResult.reasoningDelta, toolCtx);
       break;
 
     case "message.complete":
@@ -111,13 +109,10 @@ export async function processTaskAgentEvent(
     case "user.message":
       break;
   }
-
-  syncIterationContext(ctx);
 }
 
 function emitTextDelta(
   delta: AgentEventTranscriptTextDelta | undefined,
-  _ctx: IterationContext,
   toolCtx: ToolProcessingContext,
 ): void {
   if (!delta) {
@@ -251,26 +246,5 @@ export async function handleQuestionAsked(
     toolCtx.emitLog("info", "Question answered successfully");
   } catch (questionErr) {
     toolCtx.emitLog("warn", `Failed to answer question: ${String(questionErr)}`);
-  }
-}
-
-function syncIterationContext(ctx: IterationContext): void {
-  const state = ctx.transcript.state;
-  ctx.responseContent = state.responseContent;
-  ctx.reasoningContent = state.reasoningContent;
-  ctx.messageCount = state.messageCount;
-  ctx.toolCallCount = state.toolCallCount;
-  ctx.currentMessageId = state.currentMessageId;
-  ctx.currentResponseLogId = state.currentResponseLogId;
-  ctx.currentResponseLogContent = state.currentResponseLogContent;
-  ctx.currentReasoningLogId = state.currentReasoningLogId;
-  ctx.currentReasoningLogContent = state.currentReasoningLogContent;
-  ctx.toolCalls.clear();
-  for (const tool of state.toolCalls.values()) {
-    ctx.toolCalls.set(tool.id, {
-      id: tool.id,
-      name: tool.name,
-      input: tool.input,
-    });
   }
 }

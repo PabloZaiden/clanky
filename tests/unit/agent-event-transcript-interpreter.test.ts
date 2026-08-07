@@ -191,4 +191,37 @@ describe("AgentEventTranscriptInterpreter", () => {
     expect(lateCompletion.tool?.tool.id).not.toBe("tool-cancelled");
     expect(interpreter.state.toolCalls.get("tool-cancelled")?.status).toBe("failed");
   });
+
+  test("resets all transcript-derived state through the interpreter owner", () => {
+    const interpreter = createInterpreter();
+
+    interpreter.handle({ type: "message.start", messageId: "message-reset" });
+    interpreter.handle({ type: "message.delta", content: "response" });
+    interpreter.handle({ type: "reasoning.delta", content: "reasoning" });
+    interpreter.handle({
+      type: "tool.start",
+      toolCallId: "tool-reset",
+      toolName: "read",
+      input: { path: "README.md" },
+    });
+
+    expect(interpreter.state.responseContent).toBe("response");
+    expect(interpreter.state.reasoningContent).toBe("reasoning");
+    expect(interpreter.state.messageCount).toBe(1);
+    expect(interpreter.state.toolCallCount).toBe(1);
+    expect(interpreter.state.toolCalls.size).toBe(1);
+    expect(interpreter.state.runningToolIdsByName.get("read")).toEqual(["tool-reset"]);
+
+    interpreter.reset();
+
+    expect(interpreter.state.responseContent).toBe("");
+    expect(interpreter.state.reasoningContent).toBe("");
+    expect(interpreter.state.messageCount).toBe(0);
+    expect(interpreter.state.toolCallCount).toBe(0);
+    expect(interpreter.state.currentMessageId).toBeNull();
+    expect(interpreter.state.responseSegmentCount).toBe(0);
+    expect(interpreter.state.totalResponseLength).toBe(0);
+    expect(interpreter.state.toolCalls.size).toBe(0);
+    expect(interpreter.state.runningToolIdsByName.size).toBe(0);
+  });
 });

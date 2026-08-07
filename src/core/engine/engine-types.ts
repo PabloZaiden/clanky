@@ -183,21 +183,9 @@ export interface IterationResult {
 export interface IterationContext {
   iteration: number;
   transcript: AgentEventTranscriptInterpreter;
-  responseContent: string;
-  reasoningContent: string;
-  messageCount: number;
-  toolCallCount: number;
   outcome: IterationResult["outcome"];
   error: string | undefined;
   errorCode: string | undefined;
-  currentMessageId: string | null;
-  toolCalls: Map<string, { id: string; name: string; input: unknown }>;
-  /** ID of the current streaming response log entry (for delta combining) */
-  currentResponseLogId: string | null;
-  currentResponseLogContent: string;
-  /** ID of the current streaming reasoning log entry (for delta combining) */
-  currentReasoningLogId: string | null;
-  currentReasoningLogContent: string;
 }
 
 // Re-export task types used by engine consumers so they don't have to reach into types/task

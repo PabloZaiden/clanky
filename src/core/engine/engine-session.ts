@@ -351,17 +351,7 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
 
 export function resetIterationContextForRetry(ctx: IterationContext): void {
   ctx.transcript.reset();
-  ctx.responseContent = "";
-  ctx.reasoningContent = "";
-  ctx.messageCount = 0;
-  ctx.toolCallCount = 0;
   ctx.outcome = "continue";
   ctx.error = undefined;
   ctx.errorCode = undefined;
-  ctx.currentMessageId = null;
-  ctx.toolCalls.clear();
-  ctx.currentResponseLogId = null;
-  ctx.currentResponseLogContent = "";
-  ctx.currentReasoningLogId = null;
-  ctx.currentReasoningLogContent = "";
 }

@@ -1500,19 +1500,9 @@ export class TaskEngine {
               ?? `tool-${iteration}-${event.toolName}-${state.toolCallCount}`,
         },
       }),
-      responseContent: "",
-      reasoningContent: "",
-      messageCount: 0,
-      toolCallCount: 0,
       outcome: "continue",
       error: undefined,
       errorCode: undefined,
-      currentMessageId: null,
-      toolCalls: new Map(),
-      currentResponseLogId: null,
-      currentResponseLogContent: "",
-      currentReasoningLogId: null,
-      currentReasoningLogContent: "",
     };
 
     try {
@@ -1534,7 +1524,8 @@ export class TaskEngine {
       // Commit changes after iteration
       if (ctx.outcome !== "error") {
         this.emitLog("info", "Checking for changes to commit...");
-        await this.commitIteration(iteration, ctx.responseContent);
+        const responseContent = ctx.transcript.state.responseContent;
+        await this.commitIteration(iteration, responseContent);
       }
     } catch (err) {
       ctx.outcome = "error";
@@ -1616,14 +1607,19 @@ export class TaskEngine {
    */
   private async buildIterationResult(ctx: IterationContext, startedAt: string): Promise<IterationResult> {
     const completedAt = createTimestamp();
+    const {
+      responseContent,
+      messageCount,
+      toolCallCount,
+    } = ctx.transcript.state;
 
     // Record iteration summary
     const summary: IterationSummary = {
       iteration: ctx.iteration,
       startedAt,
       completedAt,
-      messageCount: ctx.messageCount,
-      toolCallCount: ctx.toolCallCount,
+      messageCount,
+      toolCallCount,
       outcome: ctx.outcome,
     };
 
@@ -1634,8 +1630,8 @@ export class TaskEngine {
 
     this.emitLog("info", `Iteration ${ctx.iteration} completed`, {
       outcome: ctx.outcome,
-      messageCount: ctx.messageCount,
-      toolCallCount: ctx.toolCallCount,
+      messageCount,
+      toolCallCount,
     });
 
     this.emit({
@@ -1657,11 +1653,11 @@ export class TaskEngine {
       continue: ctx.outcome === "continue",
       promptMode: this.lastPromptMode,
       outcome: ctx.outcome,
-      responseContent: ctx.responseContent,
+      responseContent,
       error: ctx.error,
       errorCode: ctx.errorCode,
-      messageCount: ctx.messageCount,
-      toolCallCount: ctx.toolCallCount,
+      messageCount,
+      toolCallCount,
     };
   }
 
