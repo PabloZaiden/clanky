@@ -450,28 +450,32 @@ export class AgentEventTranscriptInterpreter {
 
   private flushActiveBlock(timestamp: string): AgentEventTranscriptBlock[] {
     if (this.state.activeBlockKind === "response") {
+      const content = this.state.activeResponseContent;
+      const logContent = this.state.currentResponseLogContent;
       const block = {
         kind: "response" as const,
-        content: this.state.activeResponseContent,
+        content,
         timestamp: this.state.currentResponseTimestamp ?? timestamp,
         messageId: this.state.currentResponseMessageId ?? undefined,
         logId: this.state.currentResponseLogId!,
-        logContent: this.state.currentResponseLogContent,
+        logContent,
       };
       this.resetActiveBlock();
-      return [block];
+      return content.length > 0 || logContent.length > 0 ? [block] : [];
     }
 
     if (this.state.activeBlockKind === "reasoning") {
+      const content = this.state.activeReasoningContent;
+      const logContent = this.state.currentReasoningLogContent;
       const block = {
         kind: "reasoning" as const,
-        content: this.state.activeReasoningContent,
+        content,
         timestamp,
         logId: this.state.currentReasoningLogId!,
-        logContent: this.state.currentReasoningLogContent,
+        logContent,
       };
       this.resetActiveBlock();
-      return [block];
+      return content.length > 0 || logContent.length > 0 ? [block] : [];
     }
 
     return [];

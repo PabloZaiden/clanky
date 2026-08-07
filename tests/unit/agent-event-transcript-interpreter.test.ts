@@ -91,6 +91,28 @@ describe("AgentEventTranscriptInterpreter", () => {
     ]);
   });
 
+  test("resets empty response and reasoning blocks without emitting them", () => {
+    const interpreter = createInterpreter();
+
+    interpreter.handle({ type: "message.start", messageId: "message-empty" });
+    const emptyResponse = interpreter.handle({
+      type: "message.delta",
+      content: "",
+    });
+    const emptyReasoning = interpreter.handle({
+      type: "reasoning.delta",
+      content: "",
+    });
+    const flushed = interpreter.flushActiveBlocks();
+
+    expect(emptyResponse.flushedBlocks).toEqual([]);
+    expect(emptyReasoning.flushedBlocks).toEqual([]);
+    expect(flushed).toEqual([]);
+    expect(interpreter.state.activeBlockKind).toBeNull();
+    expect(interpreter.state.currentResponseLogId).toBeNull();
+    expect(interpreter.state.currentReasoningLogId).toBeNull();
+  });
+
   test("matches tool completion by ID or latest running name and preserves start input", () => {
     const interpreter = createInterpreter();
 
