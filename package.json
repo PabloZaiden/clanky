@@ -40,8 +40,5 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "typescript": "7.0.2"
-  },
-  "patchedDependencies": {
-    "@pablozaiden/webapp@1.5.3": "patches/@pablozaiden%2Fwebapp@1.5.3.patch"
   }
 }

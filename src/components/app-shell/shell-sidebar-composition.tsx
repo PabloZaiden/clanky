@@ -606,16 +606,6 @@ function getPrivateHidden(
   );
 }
 
-function getActiveWorkType(item: ReturnType<typeof buildActiveWorkSidebarItems>[number]): string {
-  if (item.kind === "task") {
-    return "Task";
-  }
-  if (item.kind === "chat" || item.kind === "ssh-server-chat") {
-    return "Chat";
-  }
-  return "SSH session";
-}
-
 function buildSidebarNodes(
   {
     sidebarWorkspaceGroups,
@@ -634,7 +624,6 @@ function buildSidebarNodes(
         id: item.key,
         title: item.taskNode.title,
         subtitle: item.workspaceName,
-        secondarySubtitle: getActiveWorkType(item),
         badge: item.taskNode.badge,
         badgeVariant: item.taskNode.badgeVariant,
         badgeAppearance: "text",
@@ -654,7 +643,6 @@ function buildSidebarNodes(
         id: item.key,
         title: item.chatNode.title,
         subtitle: item.kind === "chat" ? item.workspaceName : item.serverName,
-        secondarySubtitle: getActiveWorkType(item),
         badge: item.chatNode.badge,
         badgeVariant: item.chatNode.badgeVariant,
         badgeAppearance: "text",
@@ -689,7 +677,6 @@ function buildSidebarNodes(
       id: item.key,
       title: item.sessionNode.title,
       subtitle: item.kind === "ssh-session" ? item.workspaceName : item.serverName,
-      secondarySubtitle: getActiveWorkType(item),
       badge: item.sessionNode.badge,
       badgeVariant: item.sessionNode.badgeVariant,
       badgeAppearance: "text",
