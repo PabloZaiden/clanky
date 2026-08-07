@@ -612,8 +612,8 @@ function getPrivateHidden(
 }
 
 function renderActiveWorkSidebarItem(itemType: ActiveWorkSidebarItemType) {
-  return ({ node, itemProps }: SidebarItemRenderContext) => (
-    <ActiveWorkSidebarItem node={node} itemType={itemType} itemProps={itemProps} />
+  return ({ node }: SidebarItemRenderContext) => (
+    <ActiveWorkSidebarItem node={node} itemType={itemType} />
   );
 }
 
