@@ -1,5 +1,6 @@
 import type {
   ActionMenuItem,
+  SidebarItemRenderContext,
   SidebarNode,
   SidebarTab,
   WebAppRootProps,
@@ -25,6 +26,10 @@ import {
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
 import { getRouteString } from "./route-fields";
+import {
+  ActiveWorkSidebarItem,
+  type ActiveWorkSidebarItemType,
+} from "./active-work-sidebar-item";
 
 export type SshSessionActionTarget =
   | { kind: "workspace"; id: string; name: string }
@@ -606,6 +611,12 @@ function getPrivateHidden(
   );
 }
 
+function renderActiveWorkSidebarItem(itemType: ActiveWorkSidebarItemType) {
+  return ({ node }: SidebarItemRenderContext) => (
+    <ActiveWorkSidebarItem node={node} itemType={itemType} />
+  );
+}
+
 function buildSidebarNodes(
   {
     sidebarWorkspaceGroups,
@@ -628,6 +639,7 @@ function buildSidebarNodes(
         badgeVariant: item.taskNode.badgeVariant,
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem("Task"),
         route: { view: "task", taskId: item.taskNode.task.config.id },
         actions: privateActions(actions, privateHidden, item.taskNode.task.config.isPrivate === true),
         pinnable: true,
@@ -647,6 +659,7 @@ function buildSidebarNodes(
         badgeVariant: item.chatNode.badgeVariant,
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem("Chat"),
         route: { view: "chat", chatId: item.chatNode.chat.config.id },
         actions: privateActions(actions, privateHidden, item.chatNode.chat.config.isPrivate === true),
         pinnable: true,
@@ -681,6 +694,7 @@ function buildSidebarNodes(
       badgeVariant: item.sessionNode.badgeVariant,
       badgeAppearance: "text",
       itemLayout: "subtitle-above-title",
+      render: renderActiveWorkSidebarItem("SSH session"),
       route: { view: "ssh", sshSessionId: sessionId },
       actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
       pinnable: true,
