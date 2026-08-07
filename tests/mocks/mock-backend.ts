@@ -90,6 +90,7 @@ export class MockAcpBackend implements Backend {
   private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
   private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
   private readonly connectionConfigs: BackendConnectionConfig[] = [];
+  private abortSessionCalls = 0;
   private responseGate: (() => Promise<void>) | undefined;
   private nextCreateSessionError: string | null = null;
   private nextGetSessionError: string | null = null;
@@ -175,7 +176,11 @@ export class MockAcpBackend implements Backend {
   }
 
   async abortSession(_sessionId: string): Promise<void> {
-    // Mock - no-op
+    this.abortSessionCalls++;
+  }
+
+  getAbortSessionCalls(): number {
+    return this.abortSessionCalls;
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {

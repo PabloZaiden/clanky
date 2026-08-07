@@ -136,6 +136,27 @@ describe("interruptible operation coordinator", () => {
     expect(testCoordinator.interruptErrors).toHaveLength(0);
   });
 
+  test("bounds a passive phase settlement without scheduling a late interrupt", async () => {
+    const controller = new AbortController();
+    const testCoordinator = createTestCoordinator(controller);
+    const deferred = createDeferred<string>();
+
+    const phase = testCoordinator.coordinator.runPhase(
+      () => deferred.promise,
+      "wait",
+      { allowLateInterrupt: false },
+    );
+    await flushMicrotasks();
+    controller.abort();
+    deferred.resolve("settled");
+
+    await expect(phase).rejects.toThrow("operation cancelled");
+    await testCoordinator.coordinator.dispose();
+
+    expect(testCoordinator.interruptCalls).toBe(1);
+    expect(testCoordinator.timeoutPhases).toHaveLength(0);
+  });
+
   test("does not replace an operation failure or interrupt after normal failure", async () => {
     const controller = new AbortController();
     const testCoordinator = createTestCoordinator(controller);

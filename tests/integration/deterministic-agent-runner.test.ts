@@ -643,6 +643,7 @@ describe("deterministic agent runner — prompt bridge route", () => {
 
   test("interrupts the chat when the prompt client disconnects", async () => {
     const chatId = await createPromptBridgeChat();
+    const abortSessionCallsBefore = mockBackend.getAbortSessionCalls();
     let releaseResponse!: () => void;
     const responseGate = new Promise<void>((resolve) => {
       releaseResponse = resolve;
@@ -684,6 +685,7 @@ describe("deterministic agent runner — prompt bridge route", () => {
         },
       );
       expect(settled.state.status).toBe("idle");
+      expect(mockBackend.getAbortSessionCalls() - abortSessionCallsBefore).toBe(1);
     } finally {
       controller.abort();
       releaseResponse();

@@ -117,6 +117,7 @@ export const agentPromptBridgeRoutes = defineRoutes({
         const completed = await coordinator.runPhase(
           () => chatManager.waitForChatIdle(chatId),
           "wait",
+          { allowLateInterrupt: false },
         );
 
         if (completed.state.status === "failed" || completed.state.error) {

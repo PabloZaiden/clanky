@@ -7,9 +7,14 @@ export const INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS = 5_000;
 
 export type InterruptPhase = "initial" | "late";
 
+export interface InterruptiblePhaseOptions {
+  allowLateInterrupt?: boolean;
+}
+
 export type InterruptiblePhaseRunner = <T>(
   operation: () => Promise<T>,
   phaseName?: string,
+  options?: InterruptiblePhaseOptions,
 ) => Promise<T>;
 
 export interface InterruptibleOperationCoordinatorOptions {
@@ -29,6 +34,7 @@ export interface InterruptibleOperationCoordinator {
 interface ActivePhase {
   promise: Promise<unknown>;
   phaseName?: string;
+  allowLateInterrupt: boolean;
   started: boolean;
   settled: boolean;
   lateInterruptPromise?: Promise<void>;
@@ -95,6 +101,7 @@ class InterruptibleOperationCoordinatorImpl implements InterruptibleOperationCoo
     return async <T>(
       operation: () => Promise<T>,
       phaseName?: string,
+      phaseOptions?: InterruptiblePhaseOptions,
     ): Promise<T> => {
       if (this.disposed) {
         throw new Error("Interruptible operation coordinator has been disposed");
@@ -122,6 +129,7 @@ class InterruptibleOperationCoordinatorImpl implements InterruptibleOperationCoo
       activePhase = {
         promise: operationPromise,
         phaseName,
+        allowLateInterrupt: phaseOptions?.allowLateInterrupt ?? true,
         started: false,
         settled: false,
       };
@@ -207,7 +215,9 @@ class InterruptibleOperationCoordinatorImpl implements InterruptibleOperationCoo
         return;
       }
 
-      const lateInterruptPromise = this.scheduleLateInterrupt(activePhase);
+      const lateInterruptPromise = activePhase.allowLateInterrupt
+        ? this.scheduleLateInterrupt(activePhase)
+        : undefined;
       const settled = await waitForSettlement(
         activePhase.promise,
         this.options.settlementTimeoutMs,
