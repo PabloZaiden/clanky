@@ -236,9 +236,8 @@ export function useChatComposer({
   const composerInstanceId = useId();
   const hasQueueableInput = message.trim().length > 0 || attachments.length > 0;
   const hasPendingInput = hasQueueableInput || (!isEmbedded && selectedModel.length > 0);
-  const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = "wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0";
-  const interruptButtonClassName = `${actionButtonBaseClassName} clanky-composer-button-danger`;
+  const interruptButtonClassName = sendButtonClassName;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
   const composerBusy = isSubmitting || isExternallyBusy;
