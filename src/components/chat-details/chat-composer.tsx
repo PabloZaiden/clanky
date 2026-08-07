@@ -37,7 +37,7 @@ export function ChatComposer(props: ChatComposerProps) {
     setAttachments,
     attachmentError,
     setAttachmentError,
-    isSubmitting,
+    isComposerBusy,
     showDictationPopover,
     attachmentControlRef,
     composerFormRef,
@@ -103,7 +103,7 @@ export function ChatComposer(props: ChatComposerProps) {
               <ImageAttachmentPreviewList
                 attachments={attachments}
                 onRemoveAttachment={handleRemoveAttachment}
-                disabled={isSubmitting}
+                disabled={isComposerBusy}
               />
             </div>
           )}
@@ -159,7 +159,7 @@ export function ChatComposer(props: ChatComposerProps) {
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               onPaste={handlePaste}
-              disabled={isSubmitting || needsSshCredentials}
+              disabled={isComposerBusy || needsSshCredentials}
               rows={composerRows}
               className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
             />
@@ -167,12 +167,12 @@ export function ChatComposer(props: ChatComposerProps) {
               <button
                 type="button"
                 onClick={() => void handleInterrupt()}
-                disabled={isSubmitting}
+                disabled={isComposerBusy}
                 className={interruptButtonClassName}
                 aria-label="Interrupt"
                 title="Interrupt"
               >
-                {isSubmitting ? (
+                {isComposerBusy ? (
                   <span className="animate-spin text-sm">⏳</span>
                 ) : (
                   <span className="text-lg leading-none">×</span>
@@ -185,13 +185,13 @@ export function ChatComposer(props: ChatComposerProps) {
                     <DictationControls
                       onTranscript={handleDictationTranscript}
                       onError={handleDictationError}
-                      disabled={isSubmitting || needsSshCredentials}
+                      disabled={isComposerBusy || needsSshCredentials}
                     />
                   </div>
                 )}
                 <FocusPreservingButton
                   type="button"
-                  disabled={isSubmitting || needsSshCredentials || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
+                  disabled={isComposerBusy || needsSshCredentials || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
                   className={sendButtonClassName}
                   aria-label={isActive ? "Queue message" : "Send"}
                   title={`${isActive ? "Queue message" : "Send"} (hold for dictation)`}
@@ -201,7 +201,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   onPointerLeave={handleSendPointerEnd}
                   onClick={handleSendClick}
                 >
-                  {isSubmitting ? (
+                  {isComposerBusy ? (
                     <span className="animate-spin text-sm">⏳</span>
                   ) : (
                     <span className="text-lg leading-none" aria-hidden="true">↑</span>

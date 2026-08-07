@@ -4,6 +4,7 @@ import type { GenerateAgentCodeRequest } from "@/contracts/schemas";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
+import { isAbortError } from "../../lib/request-lifecycle";
 import { parseModelKey } from "../ModelSelector";
 import type { AgentFormMode } from "./use-agent-form-state";
 import type { UseAgentsResult } from "../../hooks/useAgents";
@@ -15,6 +16,18 @@ function waitForNextPaint(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve());
   });
+}
+
+type AgentGenerationOperationKind = "initial" | "follow-up";
+
+interface ActiveAgentGenerationOperation {
+  id: number;
+  kind: AgentGenerationOperationKind;
+  controller: AbortController;
+}
+
+function createGenerationAbortError(): DOMException {
+  return new DOMException("Code generation was cancelled", "AbortError");
 }
 
 export interface UseAgentCodeGenerationOptions {
@@ -66,12 +79,13 @@ export function useAgentCodeGeneration({
     agent?.config.generationChatId ?? null,
   );
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
-  const generateAbortControllerRef = useRef<AbortController | null>(null);
+  const activeGenerationOperationRef = useRef<ActiveAgentGenerationOperation | null>(null);
+  const nextGenerationOperationIdRef = useRef(0);
   const codeRevisionRef = useRef(0);
   const localCodeEditRef = useRef(false);
 
   useEffect(() => () => {
-    generateAbortControllerRef.current?.abort();
+    activeGenerationOperationRef.current?.controller.abort();
   }, []);
 
   useEffect(() => {
@@ -129,6 +143,31 @@ export function useAgentCodeGeneration({
     onCodeChanged();
   }, [onCodeChanged]);
 
+  const acquireGenerationOperation = useCallback((
+    kind: AgentGenerationOperationKind,
+  ): ActiveAgentGenerationOperation | null => {
+    if (activeGenerationOperationRef.current) {
+      return null;
+    }
+    const operation: ActiveAgentGenerationOperation = {
+      id: nextGenerationOperationIdRef.current + 1,
+      kind,
+      controller: new AbortController(),
+    };
+    nextGenerationOperationIdRef.current = operation.id;
+    activeGenerationOperationRef.current = operation;
+    setIsGeneratingCode(true);
+    return operation;
+  }, []);
+
+  const releaseGenerationOperation = useCallback((operation: ActiveAgentGenerationOperation): void => {
+    if (activeGenerationOperationRef.current?.id !== operation.id) {
+      return;
+    }
+    activeGenerationOperationRef.current = null;
+    setIsGeneratingCode(false);
+  }, []);
+
   const generateCode = useCallback(async (): Promise<void> => {
     const parsedGenerationModel = parseModelKey(modelKey);
     if (mode !== "edit" || !agent) {
@@ -139,9 +178,12 @@ export function useAgentCodeGeneration({
       toastError("Select a workspace and model before generating code");
       return;
     }
-    const controller = new AbortController();
-    generateAbortControllerRef.current = controller;
-    setIsGeneratingCode(true);
+    const operation = acquireGenerationOperation("initial");
+    if (!operation) {
+      toastError("Code generation is already in progress");
+      return;
+    }
+    const { controller } = operation;
     codeRevisionRef.current += 1;
     const requestCodeRevision = codeRevisionRef.current;
     try {
@@ -159,7 +201,13 @@ export function useAgentCodeGeneration({
       }, {
         signal: controller.signal,
       });
-      if (!prepared || controller.signal.aborted || codeRevisionRef.current !== requestCodeRevision) {
+      if (controller.signal.aborted) {
+        throw createGenerationAbortError();
+      }
+      if (!prepared) {
+        throw new Error("The generation conversation could not be prepared");
+      }
+      if (codeRevisionRef.current !== requestCodeRevision) {
         return;
       }
       setGenerationChatId(prepared.chatId);
@@ -174,7 +222,13 @@ export function useAgentCodeGeneration({
       }, agent.config.id, {
         signal: controller.signal,
       });
-      if (!generated || controller.signal.aborted || codeRevisionRef.current !== requestCodeRevision) {
+      if (controller.signal.aborted) {
+        throw createGenerationAbortError();
+      }
+      if (!generated) {
+        throw new Error("The generation request ended without a code result");
+      }
+      if (codeRevisionRef.current !== requestCodeRevision) {
         return;
       }
       applyGeneratedCode(generated);
@@ -186,13 +240,15 @@ export function useAgentCodeGeneration({
           ? "Code draft generated with validation warnings. Fix them before saving."
           : "Code draft generated. Save the agent to enable it.",
       );
-    } finally {
-      if (generateAbortControllerRef.current === controller) {
-        generateAbortControllerRef.current = null;
+    } catch (generationError) {
+      if (!isAbortError(generationError)) {
+        toastError(String(generationError));
       }
-      setIsGeneratingCode(false);
+    } finally {
+      releaseGenerationOperation(operation);
     }
   }, [
+    acquireGenerationOperation,
     agent,
     applyGeneratedCode,
     code,
@@ -201,6 +257,7 @@ export function useAgentCodeGeneration({
     onGenerateAgentCode,
     onPrepareGenerateAgentCode,
     prompt,
+    releaseGenerationOperation,
     selectedWorkspace,
     modelKey,
     toastError,
@@ -217,9 +274,11 @@ export function useAgentCodeGeneration({
     if (!parsedGenerationModel) {
       throw new Error("Select a model before continuing the generation conversation");
     }
-    const controller = new AbortController();
-    generateAbortControllerRef.current = controller;
-    setIsGeneratingCode(true);
+    const operation = acquireGenerationOperation("follow-up");
+    if (!operation) {
+      throw new Error("Code generation is already in progress");
+    }
+    const { controller } = operation;
     const requestCodeRevision = codeRevisionRef.current;
     try {
       const generated = await onGenerateAgentCode({
@@ -234,7 +293,10 @@ export function useAgentCodeGeneration({
       }, agent.config.id, {
         signal: controller.signal,
       });
-      if (!generated || controller.signal.aborted || !generated.chat) {
+      if (controller.signal.aborted) {
+        throw createGenerationAbortError();
+      }
+      if (!generated || !generated.chat) {
         throw new Error("The generation conversation ended without a chat result");
       }
       if (codeRevisionRef.current === requestCodeRevision) {
@@ -242,12 +304,10 @@ export function useAgentCodeGeneration({
       }
       return generated.chat;
     } finally {
-      if (generateAbortControllerRef.current === controller) {
-        generateAbortControllerRef.current = null;
-      }
-      setIsGeneratingCode(false);
+      releaseGenerationOperation(operation);
     }
   }, [
+    acquireGenerationOperation,
     agent,
     applyGeneratedCode,
     code,
@@ -256,15 +316,16 @@ export function useAgentCodeGeneration({
     name,
     onGenerateAgentCode,
     prompt,
+    releaseGenerationOperation,
     selectedWorkspace,
   ]);
 
   const cancelGeneration = useCallback((): void => {
-    const controller = generateAbortControllerRef.current;
-    if (!controller || controller.signal.aborted) {
+    const operation = activeGenerationOperationRef.current;
+    if (!operation || operation.controller.signal.aborted) {
       return;
     }
-    controller.abort();
+    operation.controller.abort();
   }, []);
 
   return {

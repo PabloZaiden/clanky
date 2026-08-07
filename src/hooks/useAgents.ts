@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/api-error";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { isAbortError } from "../lib/request-lifecycle";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type {
   Agent,
@@ -131,6 +132,9 @@ export function useAgents(): UseAgentsResult {
     path: string,
     options: RequestInit,
     fallback: string,
+    requestOptions: {
+      rethrowErrors?: boolean;
+    } = {},
   ): Promise<T | null> => {
     try {
       return await apiRequest<T>(path, {
@@ -140,10 +144,13 @@ export function useAgents(): UseAgentsResult {
         fallbackMessage: fallback,
       });
     } catch (requestError) {
-      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+      if (isAbortError(requestError)) {
         return null;
       }
       setError(String(requestError));
+      if (requestOptions.rethrowErrors) {
+        throw requestError;
+      }
       return null;
     }
   }, []);
@@ -185,6 +192,7 @@ export function useAgents(): UseAgentsResult {
         body: JSON.stringify(request),
       },
       "Failed to prepare the generation conversation",
+      { rethrowErrors: true },
     );
   }, [requestAgent]);
 
@@ -229,11 +237,11 @@ export function useAgents(): UseAgentsResult {
       }
       return generated;
     } catch (requestError) {
-      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+      if (isAbortError(requestError)) {
         return null;
       }
       setError(String(requestError));
-      return null;
+      throw requestError;
     }
   }, []);
 
