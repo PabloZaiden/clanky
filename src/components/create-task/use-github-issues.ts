@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { GitHubIssueSummary, GitHubIssuesResponse } from "@/contracts";
-import { appFetch } from "../../lib/public-path";
-import { parseApiError } from "../../lib/api-error";
+import { apiRequest } from "../../lib/api-client";
 
 const log = createLogger("useGitHubIssues");
 
@@ -81,22 +80,16 @@ export function useGitHubIssues({
     setError(null);
 
     try {
-      const response = await appFetch(
+      const body = await apiRequest<unknown>(
         `/api/git/github-issues?workspaceId=${encodeURIComponent(workspaceId)}`,
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          action: "Fetch GitHub issues",
+          fallbackMessage: "Failed to fetch GitHub issues",
+        },
       );
       if (!isActiveRequest()) {
         return;
-      }
-      if (!response.ok) {
-        throw await parseApiError(response, "Failed to fetch GitHub issues");
-      }
-
-      let body: unknown;
-      try {
-        body = await response.json();
-      } catch (parseError) {
-        throw new Error("Clanky API returned an invalid GitHub issues response", { cause: parseError });
       }
       if (!isGitHubIssuesResponse(body)) {
         throw new Error("Clanky API returned an invalid GitHub issues response");

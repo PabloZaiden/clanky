@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 // ─── Shared model utilities ───────────────────────────────────────────────────
 
@@ -299,10 +299,17 @@ export function ModelSelector({
           workspaceId: variantWorkspaceId,
           modelID: parsedValue.modelID,
         });
-        const response = await appFetch(`/api/models/variants?${params.toString()}`, {
+        const data = await apiRequest<{ variants?: string[] }>(`/api/models/variants?${params.toString()}`, {
           signal: controller.signal,
+          action: "Discover model variants",
+          fallbackMessage: "Failed to discover model variants",
+        }).catch((error) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            log.warn("Failed to lazily discover model variants", { error: String(error) });
+          }
+          return null;
         });
-        if (!response.ok) {
+        if (!data) {
           if (!controller.signal.aborted) {
             setVariantOverrides((current) => ({
               ...current,
@@ -311,7 +318,6 @@ export function ModelSelector({
           }
           return;
         }
-        const data = await response.json() as { variants?: string[] };
         if (controller.signal.aborted) {
           return;
         }

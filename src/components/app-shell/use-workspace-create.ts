@@ -5,7 +5,7 @@ import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { SshServer } from "@/shared/ssh-server";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import {
   getAutomaticWorkspaceBasePath,
   getDefaultAutomaticWorkspaceServer,
@@ -163,12 +163,13 @@ export function useWorkspaceCreate({
 
     setWorkspaceTesting(true);
     try {
-      const response = await appFetch("/api/server-settings/test", {
+      return await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings, directory: trimmedDirectory }),
+        action: "Test server connection",
+        fallbackMessage: "Failed to test server connection",
       });
-      return await response.json() as { success: boolean; error?: string };
     } catch (error) {
       return { success: false, error: String(error) };
     } finally {

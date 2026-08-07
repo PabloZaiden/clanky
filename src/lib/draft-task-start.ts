@@ -7,7 +7,8 @@ import {
   saveStoredTaskModelPreference,
 } from "./model-selection-preferences";
 import { toDraftTaskUpdateRequest } from "./task-request";
-import { appFetch } from "./public-path";
+import { parseApiError } from "./api-error";
+import { readApiResponse, requestApiResponse, apiRequest } from "./api-client";
 
 const log = createLogger("DraftTaskStart");
 
@@ -39,22 +40,24 @@ export async function persistTaskPreferences({
   workspaces,
   request,
 }: PersistTaskPreferencesOptions): Promise<void> {
-  const operations: Promise<Response>[] = [];
+  const operations: Promise<unknown>[] = [];
 
   if (request.model) {
-    operations.push(appFetch("/api/preferences/last-model", {
+    operations.push(apiRequest<unknown>("/api/preferences/last-model", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request.model),
+      action: "Save last model preference",
     }));
   }
 
   if (request.cheapModel) {
     operations.push(
-      appFetch("/api/preferences/last-cheap-model", {
+      apiRequest<unknown>("/api/preferences/last-cheap-model", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request.cheapModel),
+        action: "Save last cheap model preference",
       }),
     );
   }
@@ -62,10 +65,11 @@ export async function persistTaskPreferences({
   const workspace = workspaces.find((item) => item.id === request.workspaceId);
   if (workspace) {
     operations.push(
-      appFetch("/api/preferences/last-directory", {
+      apiRequest<unknown>("/api/preferences/last-directory", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ directory: workspace.directory }),
+        action: "Save last directory preference",
       }),
     );
   }
@@ -90,17 +94,13 @@ export async function persistDraftChanges({
   onUpdateError,
 }: PersistDraftChangesOptions): Promise<boolean> {
   try {
-    const response = await appFetch(`/api/tasks/${taskId}`, {
+    await apiRequest<unknown>(`/api/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toDraftTaskUpdateRequest(request)),
+      action: "Update draft task",
+      fallbackMessage: "Failed to update draft",
     });
-
-    if (!response.ok) {
-      const error = await response.json() as { message?: string };
-      onUpdateError(error.message || "Failed to update draft");
-      return false;
-    }
 
     if (request.model) {
       setLastModel(request.model);
@@ -128,34 +128,40 @@ export async function startDraftTask({
   onRefresh,
 }: StartDraftTaskOptions): Promise<DraftStartResult> {
   try {
-    const response = await appFetch(`/api/tasks/${taskId}/draft/start`, {
+    const response = await requestApiResponse(`/api/tasks/${taskId}/draft/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         planMode: request.planMode ?? false,
         attachments: request.attachments,
       }),
+      action: "Start draft task",
+      fallbackMessage: "Failed to start task",
+      acceptedStatuses: [409],
     });
 
-    if (!response.ok) {
-      const error = await response.json() as Partial<UncommittedChangesError> & { message?: string };
-
-      if (response.status === 409 && error.error === "uncommitted_changes") {
+    if (response.status === 409) {
+      const error = await parseApiError(response, "Failed to start task");
+      if (error.code === "uncommitted_changes") {
+        const changedFiles = error.data?.["changedFiles"];
         return {
           status: "uncommitted_changes",
           error: {
             error: "uncommitted_changes",
-            message: error.message || "Directory has uncommitted changes.",
-            changedFiles: error.changedFiles ?? [],
+            message: error.message,
+            changedFiles: Array.isArray(changedFiles)
+              ? changedFiles.filter((file): file is string => typeof file === "string")
+              : [],
           },
         };
       }
       return {
         status: "failed",
-        message: error.message || "Failed to start task",
+        message: error.message,
       };
     }
 
+    await readApiResponse(response);
     await onRefresh();
     return { status: "started" };
   } catch (error) {

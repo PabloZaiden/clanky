@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { Chat, ChatEvent } from "@/shared";
 import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
@@ -61,15 +61,6 @@ function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: strin
   return changed ? nextChats : chats;
 }
 
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export interface UseChatsResult {
   chats: Chat[];
   loading: boolean;
@@ -105,14 +96,14 @@ export function useChats(): UseChatsResult {
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch("/api/chats", { signal: controller.signal });
+      const data = await apiRequest<Chat[]>("/api/chats", {
+        signal: controller.signal,
+        action: "Fetch chats",
+        fallbackMessage: "Failed to fetch chats",
+      });
       if (controller.signal.aborted) {
         return;
       }
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to fetch chats"));
-      }
-      const data = (await response.json()) as Chat[];
       setChats(sortChats(data.filter(isStandaloneChat)));
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
@@ -128,15 +119,16 @@ export function useChats(): UseChatsResult {
 
   const refreshChat = useCallback(async (id: string) => {
     try {
-      const response = await appFetch("/api/chats");
-      if (!response.ok) {
-        if (response.status === 404) {
-          setChats((prev) => prev.filter((chat) => chat.config.id !== id));
-          return;
-        }
-        throw new Error(await parseError(response, "Failed to fetch chat"));
+      const response = await requestApiResponse("/api/chats", {
+        action: "Refresh chat",
+        fallbackMessage: "Failed to fetch chat",
+        acceptedStatuses: [404],
+      });
+      if (response.status === 404) {
+        setChats((prev) => prev.filter((chat) => chat.config.id !== id));
+        return;
       }
-      const chats = (await response.json() as Chat[]).filter(isStandaloneChat);
+      const chats = (await readApiResponse<Chat[]>(response)).filter(isStandaloneChat);
       const chat = chats.find((item) => item.config.id === id);
       if (!chat) {
         setChats((prev) => prev.filter((item) => item.config.id !== id));
@@ -157,15 +149,13 @@ export function useChats(): UseChatsResult {
 
   const createChat = useCallback(async (request: CreateChatRequest): Promise<Chat | null> => {
     try {
-      const response = await appFetch("/api/chats", {
+      const chat = await apiRequest<Chat>("/api/chats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Create chat",
+        fallbackMessage: "Failed to create chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to create chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (createError) {
@@ -180,15 +170,13 @@ export function useChats(): UseChatsResult {
 
   const importExistingChat = useCallback(async (request: ImportExistingChatRequest): Promise<Chat | null> => {
     try {
-      const response = await appFetch("/api/chats/import", {
+      const chat = await apiRequest<Chat>("/api/chats/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Import chat",
+        fallbackMessage: "Failed to import chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to import chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (importError) {
@@ -207,15 +195,13 @@ export function useChats(): UseChatsResult {
     request: CreateSshServerChatRequest,
   ): Promise<Chat | null> => {
     try {
-      const response = await appFetch(`/api/ssh-servers/${serverId}/chats`, {
+      const chat = await apiRequest<Chat>(`/api/ssh-servers/${serverId}/chats`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Create SSH-server chat",
+        fallbackMessage: "Failed to create SSH-server chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to create SSH-server chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (createError) {
@@ -230,15 +216,13 @@ export function useChats(): UseChatsResult {
 
   const updateChat = useCallback(async (id: string, request: UpdateChatRequest): Promise<Chat | null> => {
     try {
-      const response = await appFetch(`/api/chats/${id}`, {
+      const chat = await apiRequest<Chat>(`/api/chats/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Update chat",
+        fallbackMessage: "Failed to update chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to update chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (updateError) {
@@ -250,11 +234,11 @@ export function useChats(): UseChatsResult {
 
   const markChatDone = useCallback(async (id: string): Promise<Chat | null> => {
     try {
-      const response = await appFetch(`/api/chats/${id}/done`, { method: "POST" });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to mark chat as done"));
-      }
-      const chat = (await response.json()) as Chat;
+      const chat = await apiRequest<Chat>(`/api/chats/${id}/done`, {
+        method: "POST",
+        action: "Mark chat as done",
+        fallbackMessage: "Failed to mark chat as done",
+      });
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (doneError) {
@@ -266,10 +250,11 @@ export function useChats(): UseChatsResult {
 
   const deleteChat = useCallback(async (id: string): Promise<boolean> => {
     try {
-      const response = await appFetch(`/api/chats/${id}`, { method: "DELETE" });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete chat"));
-      }
+      await apiRequest<unknown>(`/api/chats/${id}`, {
+        method: "DELETE",
+        action: "Delete chat",
+        fallbackMessage: "Failed to delete chat",
+      });
       setChats((prev) => prev.filter((chat) => chat.config.id !== id));
       return true;
     } catch (deleteError) {
@@ -281,14 +266,13 @@ export function useChats(): UseChatsResult {
 
   const sendMessage = useCallback(async (id: string, request: SendChatMessageRequest): Promise<boolean> => {
     try {
-      const response = await appFetch(`/api/chats/${id}/messages`, {
+      await apiRequest<unknown>(`/api/chats/${id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Send chat message",
+        fallbackMessage: "Failed to send chat message",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to send chat message"));
-      }
       return true;
     } catch (sendError) {
       log.error("Failed to send chat message", { chatId: id, error: String(sendError) });
@@ -299,17 +283,15 @@ export function useChats(): UseChatsResult {
 
   const interruptChat = useCallback(async (id: string, request?: InterruptChatRequest): Promise<Chat | null> => {
     try {
-      const response = await appFetch(`/api/chats/${id}/interrupt`, {
+      const chat = await apiRequest<Chat>(`/api/chats/${id}/interrupt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reason: request?.reason ?? DEFAULT_CHAT_INTERRUPT_REASON,
         }),
+        action: "Interrupt chat",
+        fallbackMessage: "Failed to interrupt chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to interrupt chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (interruptError) {
@@ -321,13 +303,11 @@ export function useChats(): UseChatsResult {
 
   const reconnectChat = useCallback(async (id: string): Promise<Chat | null> => {
     try {
-      const response = await appFetch(`/api/chats/${id}/reconnect`, {
+      const chat = await apiRequest<Chat>(`/api/chats/${id}/reconnect`, {
         method: "POST",
+        action: "Reconnect chat",
+        fallbackMessage: "Failed to reconnect chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to reconnect chat"));
-      }
-      const chat = (await response.json()) as Chat;
       setChats((prev) => upsertChat(prev, chat));
       return chat;
     } catch (reconnectError) {

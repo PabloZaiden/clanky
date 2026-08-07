@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/shared";
 import { log } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 
 export interface UseTasksStateResult {
   tasks: Task[];
@@ -79,12 +79,12 @@ export function useTasksState(): UseTasksStateResult {
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch("/api/tasks", { signal: controller.signal });
+      const data = await apiRequest<Task[]>("/api/tasks", {
+        signal: controller.signal,
+        action: "Fetch tasks",
+        fallbackMessage: "Failed to fetch tasks",
+      });
       if (controller.signal.aborted) return;
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.statusText}`);
-      }
-      const data = (await response.json()) as Task[];
       setTasks(reconcileTasks(data));
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
@@ -98,17 +98,17 @@ export function useTasksState(): UseTasksStateResult {
 
   const refreshTask = useCallback(async (id: string) => {
     try {
-      const response = await appFetch("/api/tasks");
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Task was deleted
-          optimisticTaskStatusesRef.current.delete(id);
-          setTasks((prev) => prev.filter((task) => task.config.id !== id));
-          return;
-        }
-        throw new Error(`Failed to fetch task: ${response.statusText}`);
+      const response = await requestApiResponse("/api/tasks", {
+        action: "Refresh task",
+        fallbackMessage: "Failed to fetch task",
+        acceptedStatuses: [404],
+      });
+      if (response.status === 404) {
+        optimisticTaskStatusesRef.current.delete(id);
+        setTasks((prev) => prev.filter((task) => task.config.id !== id));
+        return;
       }
-      const tasks = await response.json() as Task[];
+      const tasks = await readApiResponse<Task[]>(response);
       const task = tasks.find((item) => item.config.id === id);
       if (!task) {
         optimisticTaskStatusesRef.current.delete(id);

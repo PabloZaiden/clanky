@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceConnection(
   workspaceId: string | null,
@@ -20,14 +20,16 @@ export function useWorkspaceConnection(
         setTesting(true);
         setError(null);
 
-        const response = await appFetch(`/api/workspaces/${workspaceId}/server-settings/test`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: testSettings ? JSON.stringify(testSettings) : "{}",
-        });
-
-        const data = (await response.json()) as { success: boolean; error?: string };
-        return data;
+        return await apiRequest<{ success: boolean; error?: string }>(
+          `/api/workspaces/${workspaceId}/server-settings/test`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: testSettings ? JSON.stringify(testSettings) : "{}",
+            action: "Test workspace server connection",
+            fallbackMessage: "Failed to test workspace server connection",
+          },
+        );
       } catch (err) {
         log.error("Failed to test workspace server connection", {
           workspaceId,

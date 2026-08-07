@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import type { GitRemoteStatusResponse } from "@/contracts";
 
 const log = createLogger("useTaskRemoteStatus");
@@ -33,19 +33,17 @@ export function useTaskRemoteStatus({
 
     async function fetchRemoteStatus() {
       try {
-        const response = await appFetch(
+        const data = await apiRequest<GitRemoteStatusResponse>(
           `/api/git/remote-status?workspaceId=${encodeURIComponent(targetWorkspaceId)}`,
-          { signal: controller.signal },
+          {
+            signal: controller.signal,
+            action: "Fetch task remote status",
+            fallbackMessage: "Failed to fetch task remote status",
+          },
         );
         if (controller.signal.aborted) {
           return;
         }
-        if (!response.ok) {
-          setHasOriginRemote(null);
-          return;
-        }
-
-        const data = await response.json() as GitRemoteStatusResponse;
         if (!controller.signal.aborted) {
           setHasOriginRemote(data.hasRemote);
         }

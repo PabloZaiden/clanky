@@ -1,5 +1,6 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { isApiErrorCode, parseApiError } from "./api-error";
+import { readApiResponse } from "./api-client";
 import { appFetch } from "./public-path";
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
@@ -193,7 +194,7 @@ export async function fetchSshServerPublicKey(
   if (!response.ok) {
     throw new Error(`Failed to fetch SSH server public key for ${serverId}`);
   }
-  return await response.json() as SshServerPublicKey;
+  return await readApiResponse<SshServerPublicKey>(response);
 }
 
 export async function encryptSshServerPassword(
@@ -272,7 +273,7 @@ export async function exchangeSshServerCredential(
   if (!response.ok) {
     throw await parseApiError(response, "Failed to exchange SSH credential");
   }
-  return await response.json() as SshCredentialExchangeResponse;
+  return await readApiResponse<SshCredentialExchangeResponse>(response);
 }
 
 export async function getStoredSshCredentialToken(

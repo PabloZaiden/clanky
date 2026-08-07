@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { DashboardViewMode } from "@/shared/preferences";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 /**
  * Re-export DashboardViewMode so existing consumers of this module don't break.
@@ -50,11 +50,10 @@ export function useViewModePreference(): UseViewModePreferenceResult {
     try {
       setLoading(true);
       setError(null);
-      const response = await appFetch("/api/preferences/dashboard-view-mode");
-      if (!response.ok) {
-        throw new Error(`Failed to fetch preference: ${response.statusText}`);
-      }
-      const data = (await response.json()) as { mode: DashboardViewMode };
+      const data = await apiRequest<{ mode: DashboardViewMode }>("/api/preferences/dashboard-view-mode", {
+        action: "Load dashboard view mode preference",
+        fallbackMessage: "Failed to fetch preference",
+      });
       setViewModeState(data.mode);
     } catch (err) {
       log.error("Failed to fetch dashboard view mode preference", { error: String(err) });
@@ -69,17 +68,13 @@ export function useViewModePreference(): UseViewModePreferenceResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/preferences/dashboard-view-mode", {
+      await apiRequest("/api/preferences/dashboard-view-mode", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: newMode }),
+        action: "Save dashboard view mode preference",
+        fallbackMessage: "Failed to save preference",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to save preference");
-      }
-
       setViewModeState(newMode);
     } catch (err) {
       log.error("Failed to save dashboard view mode preference", { viewMode: newMode, error: String(err) });

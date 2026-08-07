@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceMutations(
   workspaceId: string | null,
@@ -22,16 +22,13 @@ export function useWorkspaceMutations(
       setSaving(true);
       setError(null);
 
-      const response = await appFetch(`/api/workspaces/${workspaceId}/server-settings`, {
+      await apiRequest(`/api/workspaces/${workspaceId}/server-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSettings),
+        action: "Save workspace server settings",
+        fallbackMessage: "Failed to save settings",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to save settings");
-      }
 
       // Refresh workspace to get updated data from API (avoid stale data)
       await fetchWorkspace();
@@ -62,16 +59,13 @@ export function useWorkspaceMutations(
       setSaving(true);
       setError(null);
 
-      const response = await appFetch(`/api/workspaces/${workspaceId}`, {
+      await apiRequest(`/api/workspaces/${workspaceId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
+        action: "Update workspace name",
+        fallbackMessage: "Failed to update name",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update name");
-      }
 
       // Refresh workspace to get updated data from API (avoid stale data)
       await fetchWorkspace();
@@ -104,16 +98,13 @@ export function useWorkspaceMutations(
       setSaving(true);
       setError(null);
 
-      const response = await appFetch(`/api/workspaces/${workspaceId}`, {
+      await apiRequest(`/api/workspaces/${workspaceId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, serverSettings: settings, archived, allowClankyContext }),
+        action: "Update workspace",
+        fallbackMessage: "Failed to update workspace",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update workspace");
-      }
 
       // Refresh workspace to get updated data from API (avoid stale data)
       await fetchWorkspace();

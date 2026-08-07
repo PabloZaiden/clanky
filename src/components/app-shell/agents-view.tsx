@@ -22,7 +22,7 @@ import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { CreateAgentRequest, GenerateAgentCodeRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
 import type { TaskLogEntry } from "@/shared/task";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
 import { isToolCallSummary, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
@@ -87,15 +87,6 @@ function getDefaultModelKey(models: ModelInfo[], lastModel: ModelConfig | null):
   }
   const connected = models.find((model) => model.connected);
   return connected ? makeModelKey(connected.providerID, connected.modelID, connected.variants?.[0] ?? "") : "";
-}
-
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
@@ -209,13 +200,11 @@ function AgentForm({
     const requestCodeRevision = codeRevisionRef.current;
     void (async () => {
       try {
-        const response = await appFetch(`/api/agents/${agent.config.id}/code/draft`, {
+        const draft = await apiRequest<{ code?: string }>(`/api/agents/${agent.config.id}/code/draft`, {
           signal: controller.signal,
+          action: "Load agent generation draft",
+          fallbackMessage: "Failed to load the generation draft",
         });
-        if (!response.ok) {
-          throw new Error(await parseError(response, "Failed to load the generation draft"));
-        }
-        const draft = await response.json() as { code?: string };
         if (
           !controller.signal.aborted
           && codeRevisionRef.current === requestCodeRevision
@@ -1198,14 +1187,16 @@ function AgentRunDetail({
       if (snapshotEtagRef.current) {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
-      const response = await appFetch(`/api/agent-runs/${runId}/snapshot`, { headers });
+      const response = await requestApiResponse(`/api/agent-runs/${runId}/snapshot`, {
+        headers,
+        action: "Fetch agent run snapshot",
+        fallbackMessage: "Failed to fetch agent run",
+        acceptedStatuses: [304],
+      });
       if (response.status === 304) {
         return;
       }
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to fetch agent run"));
-      }
-      const snapshot = await response.json() as { run: AgentRun; transcript: ChatTranscript };
+      const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
       snapshotEtagRef.current = response.headers.get("ETag");
       setRun(snapshot.run);
       setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
@@ -1231,14 +1222,18 @@ function AgentRunDetail({
   }, [initialRun, refreshRun, runId]);
 
   const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
-    const response = await appFetch(`/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null;
-      }
-      throw new Error(await parseError(response, "Failed to load tool-call details"));
+    const response = await requestApiResponse(
+      `/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`,
+      {
+        action: "Fetch agent tool-call details",
+        fallbackMessage: "Failed to load tool-call details",
+        acceptedStatuses: [404],
+      },
+    );
+    if (response.status === 404) {
+      return null;
     }
-    return await response.json() as ToolCallData;
+    return await readApiResponse<ToolCallData>(response);
   }, [runId]);
 
   useRealtimeRefresh({

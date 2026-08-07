@@ -8,7 +8,7 @@ import { ProvisioningJobView } from "../ProvisioningJobView";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import type { AgentProvider, ServerSettings, SshServer } from "@/shared";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import {
   getAutomaticWorkspaceBasePath,
   getDefaultAutomaticWorkspaceServer,
@@ -226,12 +226,13 @@ export function CreateWorkspaceModal({
 
     setTesting(true);
     try {
-      const res = await appFetch("/api/server-settings/test", {
+      const result = await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings, directory: trimmedDirectory }),
+        action: "Test server connection",
+        fallbackMessage: "Failed to test server connection",
       });
-      const result = await res.json();
       return result;
     } catch (error) {
       return { success: false, error: String(error) };

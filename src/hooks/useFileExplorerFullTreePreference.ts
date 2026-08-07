@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseFileExplorerFullTreePreferenceResult {
   enabled: boolean;
@@ -31,11 +31,10 @@ export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePref
     try {
       setLoading(true);
       setError(null);
-      const response = await appFetch("/api/preferences/file-explorer-full-tree");
-      if (!response.ok) {
-        throw new Error(`Failed to fetch preference: ${response.statusText}`);
-      }
-      const data = await response.json() as { enabled: boolean };
+      const data = await apiRequest<{ enabled: boolean }>("/api/preferences/file-explorer-full-tree", {
+        action: "Load file explorer full-tree preference",
+        fallbackMessage: "Failed to fetch preference",
+      });
       setEnabledState(data.enabled);
     } catch (fetchError) {
       log.error("Failed to fetch file explorer full-tree preference", { error: String(fetchError) });
@@ -49,15 +48,13 @@ export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePref
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/preferences/file-explorer-full-tree", {
+      await apiRequest("/api/preferences/file-explorer-full-tree", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextEnabled }),
+        action: "Save file explorer full-tree preference",
+        fallbackMessage: "Failed to save preference",
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to save preference");
-      }
       setEnabledState(nextEnabled);
     } catch (saveError) {
       log.error("Failed to save file explorer full-tree preference", {

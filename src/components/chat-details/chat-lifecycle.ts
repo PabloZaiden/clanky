@@ -20,7 +20,7 @@ import {
   upsertToolCallExtra,
 } from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
@@ -34,15 +34,6 @@ import type {
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
-
-export async function parseChatError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -395,11 +386,14 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       if (snapshotEtagRef.current) {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
-      const response = await appFetch(
+      const response = await requestApiResponse(
         `/api/chats/${chatId}/snapshot`,
         {
           signal: controller.signal,
           headers,
+          action: "Fetch chat snapshot",
+          fallbackMessage: "Failed to fetch chat",
+          acceptedStatuses: [304, 404],
         },
       );
       if (
@@ -412,16 +406,13 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       if (response.status === 304) {
         return;
       }
-      if (!response.ok) {
-        if (response.status === 404) {
-          setChatState(null);
-          setTranscriptState(createEmptyTranscript());
-          setError("Chat not found");
-          return;
-        }
-        throw new Error(await parseChatError(response, "Failed to fetch chat"));
+      if (response.status === 404) {
+        setChatState(null);
+        setTranscriptState(createEmptyTranscript());
+        setError("Chat not found");
+        return;
       }
-      const data = await response.json() as ChatSnapshot;
+      const data = await readApiResponse<ChatSnapshot>(response);
       const hydrated = hydrateChatSnapshot(data);
       snapshotEtagRef.current = response.headers.get("ETag");
       setChatState(hydrated.chat);
@@ -490,14 +481,14 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     detailControllersRef.current.set(toolCallId, controller);
 
     try {
-      const response = await appFetch(
+      const tool = await apiRequest<ToolCallData>(
         `/api/chats/${chatId}/tool-calls/${encodeURIComponent(toolCallId)}`,
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          action: "Fetch chat tool-call details",
+          fallbackMessage: "Failed to load chat tool call details",
+        },
       );
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to load tool call details"));
-      }
-      const tool = await response.json() as ToolCallData;
       toolDetailsCacheRef.current.set(toolCallId, tool);
       setTranscriptState({
         ...transcriptRef.current,
@@ -556,15 +547,13 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       const credentialToken = chatRef.current?.config.source?.kind === "ssh_server"
         ? await getStoredSshCredentialToken(chatRef.current.config.source.sshServerId)
         : null;
-      const response = await appFetch(`/api/chats/${chatId}/reconnect`, {
+      const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentialToken ? { credentialToken } : {}),
+        action: "Reconnect chat",
+        fallbackMessage: "Failed to reconnect chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to reconnect chat"));
-      }
-      const nextChat = await response.json() as Chat;
       applyChatSnapshot(nextChat);
     } catch (reconnectError) {
       toast.error(String(reconnectError));

@@ -8,7 +8,7 @@ import type { PublicWorkspace, Workspace } from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 
 export interface UseWorkspacesResult {
   /** List of workspaces */
@@ -49,11 +49,10 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setLoading(true);
       setError(null);
-      const response = await appFetch("/api/workspaces");
-      if (!response.ok) {
-        throw new Error(`Failed to fetch workspaces: ${response.statusText}`);
-      }
-      const data = (await response.json()) as PublicWorkspace[];
+      const data = await apiRequest<PublicWorkspace[]>("/api/workspaces", {
+        action: "Load workspaces",
+        fallbackMessage: "Failed to fetch workspaces",
+      });
       setWorkspaces(data);
     } catch (err) {
       log.error("Failed to fetch workspaces", { error: String(err) });
@@ -68,25 +67,21 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/workspaces", {
+      const response = await requestApiResponse("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Create workspace",
+        fallbackMessage: "Failed to create workspace",
+        acceptedStatuses: [409],
       });
-
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string; existingWorkspace?: Workspace };
-        // If workspace already exists, return it
-        if (response.status === 409 && errorData.existingWorkspace) {
-          return errorData.existingWorkspace;
-        }
-        throw new Error(errorData.message || "Failed to create workspace");
+      const data = await readApiResponse<Workspace & { existingWorkspace?: Workspace }>(response);
+      if (response.status === 409 && data.existingWorkspace) {
+        return data.existingWorkspace;
       }
-
-      const workspace = (await response.json()) as Workspace;
       // Refresh the list to include the new workspace
       await fetchWorkspaces();
-      return workspace;
+      return data;
     } catch (err) {
       log.error("Failed to create workspace", {
         workspaceName: request.name,
@@ -106,18 +101,13 @@ export function useWorkspaces(): UseWorkspacesResult {
       setSaving(true);
       setError(null);
       const body = typeof request === "string" ? { name: request } : request;
-      const response = await appFetch(`/api/workspaces/${id}`, {
+      const workspace = await apiRequest<Workspace>(`/api/workspaces/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        action: "Update workspace",
+        fallbackMessage: "Failed to update workspace",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message || "Failed to update workspace");
-      }
-
-      const workspace = (await response.json()) as Workspace;
       // Refresh the list to include the updated workspace
       await fetchWorkspaces();
       return workspace;
@@ -138,19 +128,13 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch(`/api/workspaces/${id}`, {
+      await apiRequest(`/api/workspaces/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),
+        action: "Delete workspace",
+        fallbackMessage: "Failed to delete workspace",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        const message = errorData.message || "Failed to delete workspace";
-        log.error("Failed to delete workspace", { workspaceId: id, error: message });
-        return { success: false, error: message };
-      }
-
       // Refresh the list to exclude the deleted workspace
       await fetchWorkspaces();
       return { success: true };
@@ -169,22 +153,15 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch(`/api/workspaces/${id}/pull-latest-changes`, {
-        method: "POST",
-      });
-
-      const body = await response.json() as {
+      const body = await apiRequest<{
         defaultBranch?: string;
         currentBranch?: string;
         message?: string;
-      };
-
-      if (!response.ok) {
-        const message = body.message || "Failed to pull latest changes";
-        log.warn("Failed to pull latest changes", { workspaceId: id, error: message });
-        return { success: false, error: message };
-      }
-
+      }>(`/api/workspaces/${id}/pull-latest-changes`, {
+        method: "POST",
+        action: "Pull latest workspace changes",
+        fallbackMessage: "Failed to pull latest changes",
+      });
       return {
         success: true,
         defaultBranch: body.defaultBranch,

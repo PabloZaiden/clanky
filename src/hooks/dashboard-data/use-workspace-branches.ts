@@ -5,7 +5,7 @@
 import { useState, useCallback, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { BranchInfo } from "@/contracts";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 
 export interface UseWorkspaceBranchesResult {
   branches: BranchInfo[];
@@ -38,23 +38,21 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
 
     setBranchesLoading(true);
     try {
-      const response = await appFetch(
-        `/api/git/branches?workspaceId=${encodeURIComponent(workspaceId)}`
+      const data = await apiRequest<{ branches?: BranchInfo[]; currentBranch?: string }>(
+        `/api/git/branches?workspaceId=${encodeURIComponent(workspaceId)}`,
+        {
+          action: "Load workspace branches",
+          fallbackMessage: "Failed to fetch workspace branches",
+        },
       );
       if (requestId !== branchesRequestIdRef.current) {
         return;
       }
-      if (response.ok) {
-        const data = await response.json();
-        if (requestId !== branchesRequestIdRef.current) {
-          return;
-        }
-        setBranches(data.branches ?? []);
-        setCurrentBranch(data.currentBranch ?? "");
-      } else {
-        setBranches([]);
-        setCurrentBranch("");
+      if (requestId !== branchesRequestIdRef.current) {
+        return;
       }
+      setBranches(data.branches ?? []);
+      setCurrentBranch(data.currentBranch ?? "");
     } catch (error) {
       log.error("Failed to fetch workspace branches", {
         workspaceId,
@@ -79,21 +77,20 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     }
 
     try {
-      const response = await appFetch(
-        `/api/git/default-branch?workspaceId=${encodeURIComponent(workspaceId)}`
+      const data = await apiRequest<{ defaultBranch?: string }>(
+        `/api/git/default-branch?workspaceId=${encodeURIComponent(workspaceId)}`,
+        {
+          action: "Load workspace default branch",
+          fallbackMessage: "Failed to fetch workspace default branch",
+        },
       );
       if (requestId !== defaultBranchRequestIdRef.current) {
         return;
       }
-      if (response.ok) {
-        const data = await response.json();
-        if (requestId !== defaultBranchRequestIdRef.current) {
-          return;
-        }
-        setDefaultBranch(data.defaultBranch ?? "");
-      } else {
-        setDefaultBranch("");
+      if (requestId !== defaultBranchRequestIdRef.current) {
+        return;
       }
+      setDefaultBranch(data.defaultBranch ?? "");
     } catch (error) {
       log.warn("Failed to fetch workspace default branch", {
         workspaceId,

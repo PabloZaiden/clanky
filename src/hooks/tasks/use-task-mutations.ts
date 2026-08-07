@@ -6,7 +6,8 @@ import { useCallback } from "react";
 import type { Task } from "@/shared";
 import type { CreateTaskRequest, UpdateTaskRequest, UncommittedChangesError } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { parseApiError } from "../../lib/api-error";
+import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { deleteTaskApi } from "../taskActions";
 
 export interface CreateTaskResult {
@@ -31,29 +32,34 @@ export function useTaskMutations({ setError, setTasks }: UseTaskMutationsOptions
   const log = createLogger("useTaskMutations");
   const createTask = useCallback(async (request: CreateTaskRequest): Promise<CreateTaskResult> => {
     try {
-      const response = await appFetch("/api/tasks", {
+      const response = await requestApiResponse("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Create task",
+        fallbackMessage: "Failed to create task",
+        acceptedStatuses: [409],
       });
 
-      // Handle uncommitted changes error (409)
       if (response.status === 409) {
-        const errorData = (await response.json()) as { error?: string };
-        if (errorData.error === "uncommitted_changes") {
+        const error = await parseApiError(response, "Failed to create task");
+        if (error.code === "uncommitted_changes") {
+          const changedFiles = error.data?.["changedFiles"];
           return {
             task: null,
-            startError: errorData as UncommittedChangesError,
+            startError: {
+              error: "uncommitted_changes",
+              message: error.message,
+              changedFiles: Array.isArray(changedFiles)
+                ? changedFiles.filter((file): file is string => typeof file === "string")
+                : [],
+            } satisfies UncommittedChangesError,
           };
         }
+        throw error;
       }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create task");
-      }
-
-      const task = (await response.json()) as Task;
+      const task = await readApiResponse<Task>(response);
       // Don't add to state here - let the WebSocket event handle it
       // to avoid duplicate entries during the brief moment before refresh completes
       return { task };
@@ -70,16 +76,13 @@ export function useTaskMutations({ setError, setTasks }: UseTaskMutationsOptions
 
   const updateTask = useCallback(async (id: string, request: UpdateTaskRequest): Promise<Task | null> => {
     try {
-      const response = await appFetch(`/api/tasks/${id}`, {
+      const task = await apiRequest<Task>(`/api/tasks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Update task",
+        fallbackMessage: "Failed to update task",
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update task");
-      }
-      const task = (await response.json()) as Task;
       // Update state immediately for config changes (no WebSocket event for PATCH)
       setTasks((prev) => prev.map((l) => (l.config.id === id ? task : l)));
       return task;

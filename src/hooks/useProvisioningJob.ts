@@ -3,7 +3,7 @@ import {
   getStoredSshCredentialToken,
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
-import { appFetch } from "../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { AgentProvider, ProvisioningEvent, PublicProvisioningJobSnapshot, ProvisioningLogEntry } from "@/shared";
 import { useRealtimeStream, type RealtimeStreamStatus } from "./useRealtimeStream";
 import { useRealtimeRefresh } from "@pablozaiden/webapp/web";
@@ -102,17 +102,16 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`);
+      const response = await requestApiResponse(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`, {
+        action: "Load provisioning job",
+        fallbackMessage: "Failed to load provisioning job",
+        acceptedStatuses: [404],
+      });
       if (response.status === 404) {
         clearActiveJob();
         return null;
       }
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message ?? "Failed to load provisioning job");
-      }
-
-      const nextSnapshot = await response.json() as PublicProvisioningJobSnapshot;
+      const nextSnapshot = await readApiResponse<PublicProvisioningJobSnapshot>(response);
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);
       return nextSnapshot;
@@ -200,7 +199,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         request.password,
       );
 
-      const response = await appFetch("/api/provisioning-jobs", {
+      const nextSnapshot = await apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -218,13 +217,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,
           workspaceId: request.workspaceId?.trim() ? request.workspaceId.trim() : null,
         }),
+        action: "Start provisioning job",
+        fallbackMessage: "Failed to start provisioning job",
       });
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message ?? "Failed to start provisioning job");
-      }
-
-      const nextSnapshot = await response.json() as PublicProvisioningJobSnapshot;
       setJobId(nextSnapshot.job.config.id);
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);
@@ -244,13 +239,11 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
     try {
       setError(null);
-      const response = await appFetch(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`, {
+      await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`, {
         method: "DELETE",
+        action: "Cancel provisioning job",
+        fallbackMessage: "Failed to cancel provisioning job",
       });
-      if (!response.ok) {
-        const errorData = await response.json() as { message?: string };
-        throw new Error(errorData.message ?? "Failed to cancel provisioning job");
-      }
       await refreshJob();
       return true;
     } catch (nextError) {

@@ -1,8 +1,8 @@
 import type { DevboxTemplateSummary, SshServer, SshConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
 import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { ApiError, isApiErrorCode, parseApiError } from "../lib/api-error";
-import { appFetch } from "../lib/public-path";
+import { ApiError, isApiErrorCode } from "../lib/api-error";
+import { apiRequest } from "../lib/api-client";
 import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
@@ -17,32 +17,11 @@ async function apiCall<T = unknown>(
   options: RequestInit,
   actionName: string,
 ): Promise<T> {
-  let loggedFailure = false;
-
-  try {
-    const response = await appFetch(url, options);
-    if (!response.ok) {
-      const apiError = await parseApiError(response, `Failed to ${actionName.toLowerCase()}`);
-      log.error("SSH server API request failed", {
-        actionName,
-        url,
-        error: apiError.message,
-        errorCode: apiError.code,
-      });
-      loggedFailure = true;
-      throw apiError;
-    }
-    return await response.json() as T;
-  } catch (error) {
-    if (!loggedFailure) {
-      log.error("SSH server API request failed", {
-        actionName,
-        url,
-        error: String(error),
-      });
-    }
-    throw error;
-  }
+  return await apiRequest<T>(url, {
+    ...options,
+    action: actionName,
+    fallbackMessage: `Failed to ${actionName.toLowerCase()}`,
+  });
 }
 
 async function resolveCredentialToken(serverId: string, password?: string): Promise<string> {

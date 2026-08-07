@@ -1,15 +1,6 @@
 import { useEffect, useState } from "react";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import { ChatDetails } from "../ChatDetails";
-
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export function ChatTab({ taskId }: { taskId: string }) {
   const [chatId, setChatId] = useState<string | null>(null);
@@ -23,17 +14,15 @@ export function ChatTab({ taskId }: { taskId: string }) {
       try {
         setLoading(true);
         setError(null);
-        const response = await appFetch(`/api/tasks/${taskId}/chat?summary=1`, {
+        const data = await apiRequest<{ chatId?: string }>(`/api/tasks/${taskId}/chat?summary=1`, {
           method: "POST",
           signal: controller.signal,
+          action: "Load task chat",
+          fallbackMessage: "Failed to load task chat",
         });
         if (controller.signal.aborted) {
           return;
         }
-        if (!response.ok) {
-          throw new Error(await parseError(response, "Failed to load task chat"));
-        }
-        const data = await response.json() as { chatId?: string };
         if (!data.chatId) {
           throw new Error("Task chat response did not include a chat ID");
         }

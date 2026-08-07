@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 import { DEFAULT_QUICK_CHAT_SETTINGS, type QuickChatSettings } from "@/shared/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 
 const log = createLogger("useQuickChatSettings");
-
-async function parsePreferenceError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export interface UseQuickChatSettingsResult {
   settings: QuickChatSettings;
@@ -42,14 +33,15 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
     try {
       setLoading(true);
       setError(null);
-      const response = await appFetch("/api/preferences/quick-chat", { signal: controller.signal });
+      const data = await apiRequest<unknown>("/api/preferences/quick-chat", {
+        signal: controller.signal,
+        action: "Load quick chat settings",
+        fallbackMessage: "Failed to load quick chat settings",
+      });
       if (controller.signal.aborted || !isActiveRequest()) {
         return;
       }
-      if (!response.ok) {
-        throw new Error(await parsePreferenceError(response, "Failed to load quick chat settings"));
-      }
-      const nextSettings = normalizeQuickChatSettings(await response.json());
+      const nextSettings = normalizeQuickChatSettings(data);
       if (controller.signal.aborted || !isActiveRequest()) {
         return;
       }
@@ -76,15 +68,13 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/preferences/quick-chat", {
+      const body = await apiRequest<{ settings?: unknown }>("/api/preferences/quick-chat", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(normalizedSettings),
+        action: "Save quick chat settings",
+        fallbackMessage: "Failed to save quick chat settings",
       });
-      if (!response.ok) {
-        throw new Error(await parsePreferenceError(response, "Failed to save quick chat settings"));
-      }
-      const body = await response.json() as { settings?: unknown };
       const savedSettings = normalizeQuickChatSettings(body.settings ?? normalizedSettings);
       setSettings(savedSettings);
       return savedSettings;
