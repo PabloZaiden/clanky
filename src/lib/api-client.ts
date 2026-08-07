@@ -5,6 +5,7 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
+import { isAbortError } from "./request-lifecycle";
 
 export type ApiResponseMode = "json" | "text" | "blob" | "empty";
 
@@ -18,7 +19,7 @@ export type TypedApiRequestOptions = ApiRequestOptions & {
   responseType?: ApiResponseMode;
 };
 
-const log = createLogger("apiClient");
+export const apiClientLog = createLogger("apiClient");
 
 function getActionName(path: string, action?: string): string {
   const trimmedAction = action?.trim();
@@ -56,13 +57,16 @@ export async function requestApiResponse(
   const action = getActionName(path, actionOption);
   const method = getMethod(init);
 
-  log.debug("API request started", { action, method, url: path });
+  apiClientLog.debug("API request started", { action, method, url: path });
 
   let response: Response;
   try {
     response = await appFetch(path, init);
   } catch (error) {
-    log.error("API request failed before receiving a response", {
+    if (init.signal?.aborted === true && isAbortError(error)) {
+      throw error;
+    }
+    apiClientLog.error("API request failed before receiving a response", {
       action,
       method,
       url: path,
@@ -81,14 +85,14 @@ export async function requestApiResponse(
       errorCode: apiError.code,
     };
     if (apiError.status >= 500) {
-      log.error("API request failed", metadata);
+      apiClientLog.error("API request failed", metadata);
     } else {
-      log.warn("API request rejected", metadata);
+      apiClientLog.warn("API request rejected", metadata);
     }
     throw apiError;
   }
 
-  log.debug("API request succeeded", {
+  apiClientLog.debug("API request succeeded", {
     action,
     method,
     url: path,
