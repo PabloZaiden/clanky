@@ -8,6 +8,7 @@ import type { CreateSshSessionRequest, UpdateSshSessionRequest } from "@/contrac
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { apiRequest } from "../lib/api-client";
+import { useResourceRefresh, type ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseSshSessionsResult {
   sessions: SshSession[];
@@ -23,37 +24,33 @@ export interface UseSshSessionsResult {
 export function useSshSessions(): UseSshSessionsResult {
   const log = createLogger("useSshSessions");
   const [sessions, setSessions] = useState<SshSession[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    try {
-      if (showLoading) {
-        setLoading(true);
-      }
-      setError(null);
-      const data = await apiRequest<SshSession[]>("/api/ssh-sessions", {
-        action: "Fetch SSH sessions",
-        fallbackMessage: "Failed to fetch SSH sessions",
-      });
-      setSessions(data);
-    } catch (err) {
-      log.error("Failed to fetch SSH sessions", { error: String(err) });
-      setError(String(err));
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
-    }
+  const loadSessions = useCallback(async (signal: AbortSignal): Promise<SshSession[]> => {
+    return await apiRequest<SshSession[]>("/api/ssh-sessions", {
+      signal,
+      action: "Fetch SSH sessions",
+      fallbackMessage: "Failed to fetch SSH sessions",
+    });
   }, []);
 
-  useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions"],
-    filters: { resource: "ssh-sessions" },
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
+  const handleRefreshError = useCallback((refreshError: unknown) => {
+    log.error("Failed to fetch SSH sessions", { error: String(refreshError) });
+    setError(String(refreshError));
+  }, []);
+
+  const refreshResource = useResourceRefresh({
+    load: loadSessions,
+    onLoaded: setSessions,
+    onRefreshStart: () => setError(null),
+    onError: handleRefreshError,
   });
+
+  const refresh = useCallback(async (options: ResourceRefreshOptions = {}) => {
+    await refreshResource.refresh(options);
+  }, [refreshResource.refresh]);
+
+  const refreshInBackground = useCallback(() => refresh({ showLoading: false }), [refresh]);
 
   const createSession = useCallback(async (request: CreateSshSessionRequest): Promise<SshSession> => {
     try {
@@ -112,13 +109,20 @@ export function useSshSessions(): UseSshSessionsResult {
     }
   }, []);
 
+  useRealtimeRefreshWithRecovery({
+    resources: ["ssh-sessions"],
+    filters: { resource: "ssh-sessions" },
+    refresh: refreshInBackground,
+    onReconnect: refreshInBackground,
+  });
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   return {
     sessions,
-    loading,
+    loading: refreshResource.loading,
     error,
     refresh,
     createSession,

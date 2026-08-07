@@ -9,6 +9,7 @@ import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { useResourceRefresh } from "./useResourceRefresh";
 
 export interface UseWorkspacesResult {
   /** List of workspaces */
@@ -40,27 +41,32 @@ export interface UseWorkspacesResult {
 export function useWorkspaces(): UseWorkspacesResult {
   const log = createLogger("useWorkspaces");
   const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Fetch all workspaces
-  const fetchWorkspaces = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiRequest<PublicWorkspace[]>("/api/workspaces", {
-        action: "Load workspaces",
-        fallbackMessage: "Failed to fetch workspaces",
-      });
-      setWorkspaces(data);
-    } catch (err) {
-      log.error("Failed to fetch workspaces", { error: String(err) });
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+  const loadWorkspaces = useCallback(async (signal: AbortSignal): Promise<PublicWorkspace[]> => {
+    return await apiRequest<PublicWorkspace[]>("/api/workspaces", {
+      signal,
+      action: "Load workspaces",
+      fallbackMessage: "Failed to fetch workspaces",
+    });
   }, []);
+
+  const handleRefreshError = useCallback((refreshError: unknown) => {
+    log.error("Failed to fetch workspaces", { error: String(refreshError) });
+    setError(String(refreshError));
+  }, []);
+
+  const refreshResource = useResourceRefresh({
+    load: loadWorkspaces,
+    onLoaded: setWorkspaces,
+    onRefreshStart: () => setError(null),
+    onError: handleRefreshError,
+  });
+
+  const refresh = useCallback(async () => {
+    await refreshResource.refresh();
+  }, [refreshResource.refresh]);
 
   // Create a new workspace
   const createWorkspace = useCallback(async (request: CreateWorkspaceRequest): Promise<Workspace | null> => {
@@ -80,7 +86,7 @@ export function useWorkspaces(): UseWorkspacesResult {
         return data.existingWorkspace;
       }
       // Refresh the list to include the new workspace
-      await fetchWorkspaces();
+      await refresh();
       return data;
     } catch (err) {
       log.error("Failed to create workspace", {
@@ -93,7 +99,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [fetchWorkspaces]);
+  }, [refresh]);
 
   // Update a workspace
   const updateWorkspace = useCallback(async (id: string, request: string | UpdateWorkspaceRequest): Promise<Workspace | null> => {
@@ -109,7 +115,7 @@ export function useWorkspaces(): UseWorkspacesResult {
         fallbackMessage: "Failed to update workspace",
       });
       // Refresh the list to include the updated workspace
-      await fetchWorkspaces();
+      await refresh();
       return workspace;
     } catch (err) {
       log.error("Failed to update workspace", { workspaceId: id, error: String(err) });
@@ -118,7 +124,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [fetchWorkspaces]);
+  }, [refresh]);
 
   // Delete a workspace
   const deleteWorkspace = useCallback(async (
@@ -136,7 +142,7 @@ export function useWorkspaces(): UseWorkspacesResult {
         fallbackMessage: "Failed to delete workspace",
       });
       // Refresh the list to exclude the deleted workspace
-      await fetchWorkspaces();
+      await refresh();
       return { success: true };
     } catch (err) {
       log.error("Failed to delete workspace", { workspaceId: id, error: String(err) });
@@ -145,7 +151,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [fetchWorkspaces]);
+  }, [refresh]);
 
   const pullLatestChanges = useCallback(async (
     id: string,
@@ -176,17 +182,16 @@ export function useWorkspaces(): UseWorkspacesResult {
     }
   }, []);
 
-  // Initial fetch
   useEffect(() => {
-    fetchWorkspaces();
-  }, [fetchWorkspaces]);
+    void refresh();
+  }, [refresh]);
 
   return {
     workspaces,
-    loading,
+    loading: refreshResource.loading,
     error,
     saving,
-    refresh: fetchWorkspaces,
+    refresh,
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,
