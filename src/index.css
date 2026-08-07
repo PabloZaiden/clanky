@@ -125,26 +125,13 @@
 }
 
 .clanky-active-work-sidebar-item-type {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--wapp-muted);
-  font-size: 0.75rem;
-  line-height: 1rem;
-  margin-top: 0.125rem;
 }
 
 .wapp-sidebar-item-subtitle-above-title > span:first-child > .clanky-active-work-sidebar-item-type {
   grid-column: 1 / -1;
   grid-row: 3;
   margin-top: 0;
-}
-
-:root.dark .wapp-sidebar-item.active .clanky-active-work-sidebar-item-type {
-  color: #a3a3a3;
 }
 
 /* Stack the purge danger zone before its fixed-width action can overflow on mobile. */
