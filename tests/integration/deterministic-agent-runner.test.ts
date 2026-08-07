@@ -29,6 +29,7 @@ import { sqliteWebAppStore } from "@pablozaiden/webapp/server";
 import { serveNativeApiRoutes } from "../native-api-server";
 import type { Server } from "bun";
 import type { Workspace } from "@/shared/workspace";
+import type { Chat } from "@/shared/chat";
 import {
   assertNodeVersionOnHost,
   launchDeterministicAgentOnHost,
@@ -537,6 +538,8 @@ describe("deterministic agent runner — prompt bridge route", () => {
   let tempWorkDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let mockBackend: MockAcpBackend;
+  let credentialStore: ReturnType<typeof sqliteWebAppStore>;
 
   beforeEach(async () => {
     tempDataDir = await mkdtemp(join(process.cwd(), ".test-prompt-bridge-"));
@@ -546,7 +549,21 @@ describe("deterministic agent runner — prompt bridge route", () => {
     await initializeDatabase();
     seedTestOwnerUser();
 
-    const mockBackend = new MockAcpBackend({ models: [defaultTestModel] });
+    credentialStore = sqliteWebAppStore({ dataDir: tempDataDir, fileName: "prompt-bridge-keys.db" });
+    credentialStore.initialize();
+    const now = new Date().toISOString();
+    credentialStore.createUser({
+      id: testOwnerUser.id,
+      username: testOwnerUser.username,
+      role: testOwnerUser.role,
+      passkeyConfigured: false,
+      authVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    managedCredentialService.configure(credentialStore, { publicBaseUrl: "https://clanky.test" });
+
+    mockBackend = new MockAcpBackend({ models: [defaultTestModel] });
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
@@ -557,11 +574,39 @@ describe("deterministic agent runner — prompt bridge route", () => {
   afterEach(async () => {
     server.stop();
     backendManager.resetForTesting();
+    managedCredentialService.resetForTests();
     closeDatabase();
     delete process.env["CLANKY_DATA_DIR"];
     await rm(tempDataDir, { recursive: true, force: true });
     await rm(tempWorkDir, { recursive: true, force: true });
   });
+
+  async function createPromptBridgeChat(): Promise<string> {
+    const workspace: Workspace = {
+      id: crypto.randomUUID(),
+      name: "Prompt bridge workspace",
+      directory: tempWorkDir,
+      allowClankyContext: true,
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await runWithCurrentUser(testOwnerUser, () => createWorkspace(workspace));
+
+    const response = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Prompt bridge chat",
+        workspaceId: workspace.id,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+    expect(response.status).toBe(201);
+    const chat = await response.json() as { config: { id: string } };
+    return chat.config.id;
+  }
 
   test("prompt bridge returns 404 for unknown chat (via test server that injects user)", async () => {
     // serveNativeApiRoutes injects testOwnerUser, so auth is bypassed.
@@ -581,5 +626,68 @@ describe("deterministic agent runner — prompt bridge route", () => {
       body: JSON.stringify({ message: "hello" }),
     });
     expect(resp.status).toBe(400);
+  });
+
+  test("forwards a prompt and returns the new assistant response", async () => {
+    const chatId = await createPromptBridgeChat();
+
+    const resp = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, message: "hello from the bridge" }),
+    });
+
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toEqual({ response: "<promise>COMPLETE</promise>" });
+  });
+
+  test("interrupts the chat when the prompt client disconnects", async () => {
+    const chatId = await createPromptBridgeChat();
+    let releaseResponse!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    mockBackend.setResponseGate(() => responseGate);
+    const controller = new AbortController();
+
+    try {
+      const request = fetch(`${baseUrl}/api/internal/agent-prompt`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, message: "cancel this bridge prompt" }),
+      });
+
+      await pollUntil(
+        () => mockBackend.getSentPrompts().length,
+        (count) => count >= 1,
+        {
+          description: "prompt bridge request to reach the backend",
+          timeoutMs: 5000,
+          formatLastObserved: (count) => `promptCount=${count}`,
+        },
+      );
+      controller.abort();
+      await request.catch(() => undefined);
+      releaseResponse();
+
+      const settled = await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/chats/${chatId}`);
+          return await response.json() as Chat;
+        },
+        (chat) => chat.state.status === "idle",
+        {
+          description: "cancelled prompt bridge chat to become idle",
+          timeoutMs: 5000,
+          formatLastObserved: (chat) => `status=${chat.state.status}`,
+        },
+      );
+      expect(settled.state.status).toBe("idle");
+    } finally {
+      controller.abort();
+      releaseResponse();
+      mockBackend.setResponseGate();
+    }
   });
 });
