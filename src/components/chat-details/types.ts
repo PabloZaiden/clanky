@@ -76,6 +76,7 @@ export interface ChatComposerProps {
   chatId: string;
   isEmbedded: boolean;
   isActive: boolean;
+  isExternallyBusy?: boolean;
   needsSshCredentials: boolean;
   onChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;

@@ -32,12 +32,14 @@ import type { Chat, ComposerAttachment } from "@/shared";
 import { getChatErrorMessage } from "./chat-lifecycle";
 import type { ChatComposerProps } from "./types";
 import { useToast } from "@pablozaiden/webapp/web";
+import { isAbortError } from "../../lib/request-lifecycle";
 
 export function useChatComposer({
   chat,
   chatId,
   isEmbedded,
   isActive,
+  isExternallyBusy = false,
   needsSshCredentials,
   onChatSnapshot,
   markChatStarting,
@@ -105,7 +107,7 @@ export function useChatComposer({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (isSubmitting) {
+    if (isSubmitting || isExternallyBusy) {
       return;
     }
 
@@ -184,14 +186,16 @@ export function useChatComposer({
       setAttachments([]);
       setAttachmentError(null);
     } catch (submitError) {
-      toast.error(String(submitError));
+      if (!isAbortError(submitError)) {
+        toast.error(String(submitError));
+      }
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleInterrupt(): Promise<void> {
-    if (!isActive || isSubmitting) {
+    if (!isActive || isSubmitting || isExternallyBusy) {
       return;
     }
 
@@ -237,7 +241,8 @@ export function useChatComposer({
   const interruptButtonClassName = `${actionButtonBaseClassName} clanky-composer-button-danger`;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
-  const secondaryActionsDisabled = isSubmitting || needsSshCredentials;
+  const composerBusy = isSubmitting || isExternallyBusy;
+  const secondaryActionsDisabled = composerBusy || needsSshCredentials;
   const attachmentLimitReached = attachments.length >= MESSAGE_ATTACHMENT_LIMIT;
 
   function handleDictationTranscript(transcript: string): void {
@@ -263,7 +268,7 @@ export function useChatComposer({
   }
 
   function handleSendPointerDown(event: PointerEvent<HTMLButtonElement>): void {
-    if (event.button !== 0 || isSubmitting || needsSshCredentials) {
+    if (event.button !== 0 || composerBusy || needsSshCredentials) {
       return;
     }
     longPressActivatedRef.current = false;
@@ -280,6 +285,9 @@ export function useChatComposer({
 
   function handleSendClick(event: MouseEvent<HTMLButtonElement>): void {
     event.preventDefault();
+    if (composerBusy || needsSshCredentials) {
+      return;
+    }
     if (longPressActivatedRef.current) {
       event.stopPropagation();
       longPressActivatedRef.current = false;
@@ -316,6 +324,7 @@ export function useChatComposer({
     attachmentError,
     setAttachmentError,
     isSubmitting,
+    isComposerBusy: composerBusy,
     showDictationPopover,
     setShowDictationPopover,
     attachmentControlRef,

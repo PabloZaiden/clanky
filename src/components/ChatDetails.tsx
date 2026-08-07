@@ -18,6 +18,7 @@ export function ChatDetails({
   showBackButton = true,
   embeddedTaskId,
   embedded = false,
+  isExternallyBusy = false,
   onSendMessage,
 }: {
   chatId: string;
@@ -25,6 +26,7 @@ export function ChatDetails({
   showBackButton?: boolean;
   embeddedTaskId?: string;
   embedded?: boolean;
+  isExternallyBusy?: boolean;
   onSendMessage?: ChatComposerProps["onSendMessage"];
 }) {
   const toast = useToast();
@@ -148,6 +150,7 @@ export function ChatDetails({
         isEmbedded={isEmbedded}
         isActive={isActive}
         needsSshCredentials={needsSshCredentials}
+        isExternallyBusy={isExternallyBusy}
         onChatSnapshot={applyChatSnapshot}
         markChatStarting={markChatStarting}
         refreshChat={refreshChat}

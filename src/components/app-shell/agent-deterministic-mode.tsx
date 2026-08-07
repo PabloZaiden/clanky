@@ -132,6 +132,7 @@ export function AgentDeterministicMode({
             chatId={generation.generationChatId}
             embedded
             showBackButton={false}
+            isExternallyBusy={generation.isGeneratingCode}
             onSendMessage={generation.sendGenerationMessage}
           />
         </div>
