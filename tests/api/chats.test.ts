@@ -20,6 +20,7 @@ import { getPlanFilePath } from "../../src/lib/planning-files";
 import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import type { ChatEvent } from "@/shared/events";
+import type { AgentEvent as BackendAgentEvent } from "../../src/backends/types";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, NeverCompletingMockBackend, defaultTestModel } from "../mocks/mock-backend";
@@ -1083,6 +1084,70 @@ describe("Chats API Integration", () => {
       unsubscribe();
       setSystemTime();
     }
+  });
+
+  test("normalizes tool matching and completion input during chat streaming", async () => {
+    mockBackend = new MockAcpBackend({
+      responses: ["Scripted Chat Name"],
+      streamEventSequences: [[
+        { type: "message.start", messageId: "scripted-turn" },
+        { type: "tool.start", toolCallId: "tool-first", toolName: "read_file", input: { path: "first.txt" } },
+        { type: "tool.start", toolCallId: "tool-second", toolName: "read_file", input: { path: "second.txt" } },
+        { type: "tool.complete", toolName: "read_file", output: "second contents" },
+        { type: "tool.complete", toolCallId: "tool-first", toolName: "read_file", output: "first contents" },
+        { type: "message.delta", content: "Done" },
+        { type: "message.complete", content: "Done" },
+      ] as BackendAgentEvent[]],
+      models: [defaultTestModel],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: defaultBranch,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Use both tools" }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settled = await waitForChatIdle(created.config.id);
+    expect(settled.state.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Done",
+    });
+    expect(settled.state.toolCalls.map((tool) => tool.id)).toEqual(["tool-second", "tool-first"]);
+    expect(settled.state.toolCalls.find((tool) => tool.id === "tool-first")).toMatchObject({
+      input: { path: "first.txt" },
+      status: "completed",
+    });
+    expect(settled.state.toolCalls.find((tool) => tool.id === "tool-second")).toMatchObject({
+      input: { path: "second.txt" },
+      status: "completed",
+    });
+
+    const firstDetailsResponse = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/tool-calls/tool-first`,
+    );
+    const secondDetailsResponse = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/tool-calls/tool-second`,
+    );
+    expect(firstDetailsResponse.status).toBe(200);
+    expect(secondDetailsResponse.status).toBe(200);
+    await expect(firstDetailsResponse.json()).resolves.toMatchObject({ output: "first contents" });
+    await expect(secondDetailsResponse.json()).resolves.toMatchObject({ output: "second contents" });
   });
 
   test("queues concurrent sends while first-message rename is generating", async () => {

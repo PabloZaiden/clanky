@@ -71,6 +71,10 @@ import {
 import { TaskSessionLifecycleImpl } from "./engine-session-lifecycle";
 import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
 import {
+  AgentEventTranscriptInterpreter,
+  type AgentEventTranscriptResult,
+} from "../agent-event-transcript-interpreter";
+import {
   AcpError,
   getAcpErrorMessage,
 } from "../../backends/acp";
@@ -135,7 +139,6 @@ export class TaskEngine {
       updateState: this.updateState.bind(this),
       processAgentEvent: this.processAgentEvent.bind(this),
       triggerPersistence: this.triggerPersistence.bind(this),
-      recordTextDelta: this.persistence.recordTextDelta.bind(this.persistence),
       isAborted: () => this.aborted,
       isInjectionPending: () => this.injectionPending,
       resetIterationContextForRetry,
@@ -736,13 +739,17 @@ export class TaskEngine {
    * Handles all event types: message streaming, tool calls, errors,
    * permissions, questions, TODOs, and session status updates.
    */
-  private async processAgentEvent(event: AgentEvent, ctx: IterationContext): Promise<void> {
-    // Route question events through this.handleQuestionAsked for testability
+  private async processAgentEvent(
+    event: AgentEvent,
+    ctx: IterationContext,
+  ): Promise<AgentEventTranscriptResult> {
+    const transcriptResult = ctx.transcript.handle(event);
     if (event.type === "question.asked") {
       await this.handleQuestionAsked(event);
-      return;
+      return transcriptResult;
     }
-    await processTaskAgentEvent(event, ctx, this.makeToolContext());
+    await processTaskAgentEvent(event, ctx, this.makeToolContext(), transcriptResult);
+    return transcriptResult;
   }
 
   /**
@@ -957,10 +964,8 @@ export class TaskEngine {
       emitLog: this.emitLog.bind(this),
       emitLogDelta: this.emitLogDelta.bind(this),
       emit: this.emit.bind(this),
-      updateState: this.updateState.bind(this),
       persistMessage: this.persistMessage.bind(this),
       persistToolCall: this.persistToolCall.bind(this),
-      triggerPersistence: this.triggerPersistence.bind(this),
       scheduleToolImagePreview: this.scheduleToolImagePreview.bind(this),
     };
   }
@@ -1483,6 +1488,18 @@ export class TaskEngine {
 
     const ctx: IterationContext = {
       iteration,
+      transcript: new AgentEventTranscriptInterpreter({
+        checkpointPolicy: this.persistence.checkpointPolicy,
+        idFactories: {
+          createResponseMessageId: (state) =>
+            state.currentMessageId ?? `msg-${this.config.id}-${iteration}`,
+          createResponseLogId: (_kind) =>
+            `log-${this.config.id}-${crypto.randomUUID()}`,
+          createToolCallId: (event, state) =>
+            event.toolCallId
+              ?? `tool-${iteration}-${event.toolName}-${state.toolCallCount}`,
+        },
+      }),
       responseContent: "",
       reasoningContent: "",
       messageCount: 0,

@@ -10,6 +10,7 @@ import {
   isAcpSshTransportFailureMetadata,
 } from "../backends/acp";
 import type {
+  AgentEvent,
   Backend,
   PromptInput,
   SessionReplayEvent,
@@ -38,11 +39,15 @@ import { createTimestamp } from "@/shared/events";
 import {
   AgentStreamCheckpointPolicy,
   AgentStreamController,
+  type AgentStreamEventResult,
   type AgentStreamHandle,
-  getAgentStreamTextByteLength,
 } from "./agent-stream-controller";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { TranscriptMemoryIndex } from "./transcript-memory-index";
+import {
+  AgentEventTranscriptInterpreter,
+  type AgentEventTranscriptBlock,
+} from "./agent-event-transcript-interpreter";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
@@ -72,66 +77,24 @@ interface ChatTranscriptMemory {
   messages: TranscriptMemoryIndex<PersistedMessage>;
   logs: TranscriptMemoryIndex<TaskLogEntry>;
   toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
-  runningToolIdsByName: Map<string, string[]>;
 }
 
 function createChatTranscriptMemory(state: ChatState): ChatTranscriptMemory {
   const messages = state.messages ?? [];
   const logs = state.logs ?? [];
   const toolCalls = state.toolCalls ?? [];
-  const runningToolIdsByName = new Map<string, string[]>();
-  for (const toolCall of toolCalls) {
-    if (toolCall.status !== "running") {
-      continue;
-    }
-    const runningToolIds = runningToolIdsByName.get(toolCall.name) ?? [];
-    runningToolIds.push(toolCall.id);
-    runningToolIdsByName.set(toolCall.name, runningToolIds);
-  }
   return {
     messages: new TranscriptMemoryIndex(messages),
     logs: new TranscriptMemoryIndex(logs),
     toolCalls: new TranscriptMemoryIndex(toolCalls),
-    runningToolIdsByName,
   };
 }
 
-function updateRunningToolIndex(
-  memory: ChatTranscriptMemory,
-  previous: PersistedToolCall | undefined,
-  next: PersistedToolCall,
-): void {
-  if (previous?.status === "running" && next.status !== "running") {
-    const runningToolIds = memory.runningToolIdsByName.get(previous.name);
-    const index = runningToolIds?.lastIndexOf(previous.id) ?? -1;
-    if (index >= 0) {
-      runningToolIds!.splice(index, 1);
-    }
-  }
-  if (next.status === "running" && previous?.status !== "running") {
-    const runningToolIds = memory.runningToolIdsByName.get(next.name) ?? [];
-    runningToolIds.push(next.id);
-    memory.runningToolIdsByName.set(next.name, runningToolIds);
-  }
-}
-
-function getLatestRunningTool(
-  memory: ChatTranscriptMemory,
-  name: string,
-): PersistedToolCall | undefined {
-  const runningToolIds = memory.runningToolIdsByName.get(name);
-  if (!runningToolIds) {
-    return undefined;
-  }
-  while (runningToolIds.length > 0) {
-    const toolId = runningToolIds[runningToolIds.length - 1]!;
-    const tool = memory.toolCalls.get(toolId);
-    if (tool?.status === "running") {
-      return tool;
-    }
-    runningToolIds.pop();
-  }
-  return undefined;
+interface ChatStreamConsumptionState {
+  chat: Chat;
+  transcriptMemory: ChatTranscriptMemory;
+  interpreter: AgentEventTranscriptInterpreter;
+  lastStatusReloadAt: number;
 }
 
 export type ChatPermissionHandler = (
@@ -528,6 +491,26 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
+  private createChatStreamState(initialChat: Chat): ChatStreamConsumptionState {
+    const transcriptMemory = createChatTranscriptMemory(initialChat.state);
+    return {
+      chat: initialChat,
+      transcriptMemory,
+      interpreter: new AgentEventTranscriptInterpreter({
+        initialToolCalls: transcriptMemory.toolCalls.values,
+        checkpointPolicy: new AgentStreamCheckpointPolicy(),
+        idFactories: {
+          createResponseMessageId: (state) =>
+            this.createResponseSegmentMessageId(state.currentMessageId, state.responseSegmentCount),
+          createResponseLogId: () => `chat-log-${crypto.randomUUID()}`,
+          createToolCallId: (event) =>
+            event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`,
+        },
+      }),
+      lastStatusReloadAt: 0,
+    };
+  }
+
   private async consumeEventStream(
     chatId: string,
     backend: Backend,
@@ -535,398 +518,31 @@ export class ChatConversationService implements ChatConversationPort {
     generation: number,
     initialChat: Chat,
   ): Promise<void> {
-    let chat: Chat = initialChat;
-    const transcriptMemory = createChatTranscriptMemory(initialChat.state);
-
-    let currentTurnMessageId: string | null = null;
-    let currentResponseMessageId: string | null = null;
-    let currentResponseContent = "";
-    let currentResponseLogId: string | null = null;
-    let currentResponseLogContent = "";
-    let currentResponseTimestamp: string | null = null;
-    let totalResponseLength = 0;
-    let responseSegmentCount = 0;
-    let currentReasoningLogId: string | null = null;
-    let currentReasoningLogContent = "";
-    let currentStreamBlockKind: "response" | "reasoning" | null = null;
-    let lastStatusReloadAt = 0;
-    const streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
-    const toolInputs = new Map<string, unknown>();
-    const reloadInterruptStateIfNeeded = async (force = false): Promise<boolean> => {
-      const nowMs = Date.now();
-      if (!force && nowMs - lastStatusReloadAt < CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS) {
-        return true;
-      }
-      const latestChat = await this.state.getChatSummary(chatId);
-      lastStatusReloadAt = nowMs;
-      if (!latestChat) {
-        return false;
-      }
-      chat = {
-        ...latestChat,
-        state: {
-          ...latestChat.state,
-          messages: chat.state.messages,
-          logs: chat.state.logs,
-          toolCalls: chat.state.toolCalls,
-          activeMessageId: chat.state.activeMessageId,
-          lastActivityAt: chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
-        },
-      };
-      if (latestChat.state.status === "interrupting" || latestChat.state.interruptRequested) {
-        chat = {
-          ...chat,
-          state: {
-            ...chat.state,
-            status: latestChat.state.status,
-            interruptRequested: latestChat.state.interruptRequested,
-          },
-        };
-      }
-      return true;
-    };
-    const flushActiveStreamBlock = async (activityTimestamp = createTimestamp()): Promise<void> => {
-      if (
-        currentStreamBlockKind === "response"
-        && currentResponseMessageId
-        && currentResponseTimestamp
-      ) {
-        ({
-          chat,
-          messageId: currentResponseMessageId,
-          responseLogId: currentResponseLogId,
-        } = await this.updateStreamingAssistantProgress(chat, {
-          messageId: currentResponseMessageId,
-          content: currentResponseContent,
-          responseLogId: currentResponseLogId,
-          responseLogContent: currentResponseLogContent,
-          timestamp: currentResponseTimestamp,
-          activityTimestamp,
-          delta: "",
-          persist: true,
-          emitDelta: false,
-          emitFullMessage: true,
-          updateResponseLog: false,
-        }, transcriptMemory));
-        streamCheckpointPolicy.markCheckpoint();
-      } else if (currentStreamBlockKind === "reasoning" && currentReasoningLogId) {
-        chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
-          logKind: "reasoning",
-          responseContent: currentReasoningLogContent,
-        }, currentReasoningLogId, activityTimestamp, {
-          persist: true,
-          emitFull: true,
-          memory: transcriptMemory,
-        });
-        streamCheckpointPolicy.markCheckpoint();
-      }
-    };
-    const resetActiveStreamBlock = (): void => {
-      currentResponseMessageId = null;
-      currentResponseContent = "";
-      currentResponseLogId = null;
-      currentResponseLogContent = "";
-      currentResponseTimestamp = null;
-      currentReasoningLogId = null;
-      currentReasoningLogContent = "";
-      currentStreamBlockKind = null;
-    };
-    const resetCurrentTurnStreamState = (): void => {
-      currentTurnMessageId = null;
-      totalResponseLength = 0;
-      responseSegmentCount = 0;
-      resetActiveStreamBlock();
-    };
+    const streamState = this.createChatStreamState(initialChat);
 
     try {
       const streamResult = await handle.consume({
         shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
-        onEvent: async (event) => {
-        if (!await reloadInterruptStateIfNeeded(event.type !== "message.delta" && event.type !== "reasoning.delta")) {
-          return { stop: true };
-        }
-
-        const now = createTimestamp();
-        const isInterrupted = chat.state.status === "interrupting" || chat.state.interruptRequested;
-
-        switch (event.type) {
-          case "user.message":
-            break;
-
-          case "message.start":
-            resetCurrentTurnStreamState();
-            currentTurnMessageId = event.messageId;
-            if (isInterrupted) {
-              break;
-            }
-            chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" }, undefined, undefined, {
-              memory: transcriptMemory,
-            });
-            chat = await this.updateState(chat, {
-              ...chat.state,
-              activeMessageId: undefined,
-              lastActivityAt: now,
-            });
-            break;
-
-          case "message.delta":
-            if (isInterrupted) {
-              break;
-            }
-            if (currentStreamBlockKind !== "response") {
-              responseSegmentCount += 1;
-              currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
-              currentResponseContent = "";
-              currentResponseLogId = `chat-log-${crypto.randomUUID()}`;
-              currentResponseLogContent = "";
-              currentResponseTimestamp = now;
-              currentStreamBlockKind = "response";
-            }
-            currentResponseContent += event.content;
-            currentResponseLogContent += event.content;
-            totalResponseLength += event.content.length;
-            const persistResponseProgress = streamCheckpointPolicy.recordText(
-              getAgentStreamTextByteLength(event.content),
-            );
-            ({
-              chat,
-              messageId: currentResponseMessageId,
-              responseLogId: currentResponseLogId,
-            } = await this.updateStreamingAssistantProgress(chat, {
-              messageId: currentResponseMessageId,
-              content: currentResponseContent,
-              responseLogId: currentResponseLogId,
-              responseLogContent: currentResponseLogContent,
-              timestamp: currentResponseTimestamp ?? now,
-              activityTimestamp: now,
-              delta: event.content,
-              persist: persistResponseProgress,
-              emitDelta: true,
-              emitFullMessage: false,
-              updateResponseLog: false,
-            }, transcriptMemory));
-            if (persistResponseProgress) {
-              streamCheckpointPolicy.markCheckpoint();
-            }
-            break;
-
-          case "reasoning.delta":
-            if (isInterrupted) {
-              break;
-            }
-            const isFirstReasoningDelta = currentStreamBlockKind !== "reasoning";
-            if (currentStreamBlockKind !== "reasoning") {
-              currentReasoningLogId = `chat-log-${crypto.randomUUID()}`;
-              currentReasoningLogContent = "";
-              currentStreamBlockKind = "reasoning";
-            }
-            currentReasoningLogContent += event.content;
-            const persistReasoningProgress = streamCheckpointPolicy.recordText(
-              getAgentStreamTextByteLength(event.content),
-            );
-            chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
-              logKind: "reasoning",
-              responseContent: currentReasoningLogContent,
-            }, currentReasoningLogId ?? undefined, now, {
-              delta: event.content,
-              persist: persistReasoningProgress,
-              emitFull: isFirstReasoningDelta,
-              memory: transcriptMemory,
-            });
-            if (persistReasoningProgress) {
-              streamCheckpointPolicy.markCheckpoint();
-            }
-            break;
-
-          case "tool.start": {
-            if (isInterrupted) {
-              break;
-            }
-            await flushActiveStreamBlock(now);
-            resetActiveStreamBlock();
-            const toolId = event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`;
-            const toolKey = event.toolCallId ?? event.toolName;
-            toolInputs.set(toolKey, event.input);
-            chat = await this.appendToolCall(chat, {
-              id: toolId,
-              name: event.toolName,
-              input: event.input,
-              status: "running",
-              timestamp: now,
-            }, transcriptMemory);
-            break;
-          }
-
-          case "tool.complete": {
-            if (isInterrupted) {
-              break;
-            }
-            await flushActiveStreamBlock(now);
-            resetActiveStreamBlock();
-            const toolName = event.toolName;
-            const toolCallId = event.toolCallId;
-            const toolKey = toolCallId ?? toolName;
-            const existing = toolCallId
-              ? transcriptMemory.toolCalls.get(toolCallId)
-              : getLatestRunningTool(transcriptMemory, toolName);
-            const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolKey);
-            const completedToolId = toolCallId ?? existing?.id ?? `chat-tool-${crypto.randomUUID()}`;
-            toolInputs.set(toolKey, completedInput);
-            chat = await this.upsertToolCall(chat, {
-              id: completedToolId,
-              name: toolName,
-              input: completedInput,
-              output: event.output,
-              status: "completed",
-              timestamp: now,
-            }, transcriptMemory);
-            this.scheduleToolImagePreview(chat, {
-              id: completedToolId,
-              name: toolName,
-              input: completedInput,
-              output: event.output,
-              status: "completed",
-              timestamp: now,
-            });
-            break;
-          }
-
-          case "session.status":
-            if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
-              chat = await this.completeInterruptedChat(chat, transcriptMemory);
-              this.clearActiveStream(chatId, generation);
-              return { stop: true };
-            } else if (event.status === "idle") {
-              chat = await this.updateState(chat, {
-                ...chat.state,
-                status: "idle",
-                interruptRequested: false,
-                lastActivityAt: now,
-              });
-            }
-            break;
-
-          case "message.complete": {
-            if (isInterrupted) {
-              chat = await this.completeInterruptedChat(chat, transcriptMemory);
-              this.clearActiveStream(chatId, generation);
-              return { stop: true };
-            }
-            await flushActiveStreamBlock(now);
-            const completedResponseLength = event.content.length > 0
-              ? event.content.length
-              : totalResponseLength;
-            chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
-              logKind: "system",
-              responseLength: completedResponseLength,
-            }, undefined, undefined, { memory: transcriptMemory });
-            if (responseSegmentCount === 0 && event.content.length > 0) {
-              responseSegmentCount += 1;
-              currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
-              currentResponseContent = event.content;
-              currentResponseLogId = `chat-log-${crypto.randomUUID()}`;
-              currentResponseLogContent = event.content;
-              currentResponseTimestamp = now;
-              totalResponseLength = event.content.length;
-              currentStreamBlockKind = "response";
-              ({
-                chat,
-                messageId: currentResponseMessageId,
-                responseLogId: currentResponseLogId,
-              } = await this.updateStreamingAssistantProgress(chat, {
-                messageId: currentResponseMessageId,
-                content: currentResponseContent,
-                responseLogId: currentResponseLogId,
-                responseLogContent: currentResponseLogContent,
-                timestamp: currentResponseTimestamp,
-                activityTimestamp: now,
-                delta: event.content,
-                persist: true,
-                emitDelta: false,
-                emitFullMessage: true,
-                updateResponseLog: false,
-              }, transcriptMemory));
-              streamCheckpointPolicy.markCheckpoint();
-            }
-            if (chat.state.interruptRequested || chat.state.status === "interrupting") {
-              chat = await this.completeInterruptedChat(chat, transcriptMemory);
-            } else {
-              const completionTimestamp = createTimestamp();
-              chat = await this.updateState(chat, {
-                ...chat.state,
-                status: "idle",
-                activeMessageId: undefined,
-                interruptRequested: false,
-                lastActivityAt: completionTimestamp,
-              });
-            }
-            this.clearActiveStream(chatId, generation);
-            return { stop: true };
-          }
-
-          case "error":
-            if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
-              await flushActiveStreamBlock(now);
-              const latestChat = await this.state.getChat(chatId);
-              if (latestChat) {
-                chat = {
-                  ...latestChat,
-                  state: {
-                    ...latestChat.state,
-                    messages: chat.state.messages,
-                    logs: chat.state.logs,
-                    toolCalls: chat.state.toolCalls,
-                  },
-                };
-              }
-              if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
-                await this.completeInterruptedChat(chat, transcriptMemory);
-              }
-              this.clearActiveStream(chatId, generation);
-              return { stop: true };
-            }
-            await flushActiveStreamBlock(now);
-            await this.emitChatError(chat, event.message, event.code, event.details);
-            this.clearActiveStream(chatId, generation);
-            return { stop: true };
-
-          case "permission.asked":
-            if (isInterrupted) {
-              break;
-            }
-            if (!this.permissionHandler) {
-              await this.emitChatError(chat, "Chat permission handler is not configured");
-              return { stop: true };
-            }
-            chat = await this.permissionHandler(chat, backend, {
-              requestId: event.requestId,
-              sessionId: event.sessionId,
-              permission: event.permission,
-              patterns: event.patterns,
-              status: "pending",
-              createdAt: now,
-            });
-            break;
-
-          case "question.asked":
-            await this.emitChatError(
-              chat,
-              `Interactive question requires a UI response: ${event.questions.map((question) => question.question).join(" | ")}`,
-            );
-            return { stop: true };
-        }
-
-        },
+        onEvent: (event) =>
+          this.handleChatStreamEvent(chatId, backend, generation, streamState, event),
       });
       if (
         streamResult.lastEvent?.type !== "message.complete"
         && streamResult.lastEvent?.type !== "error"
       ) {
-        await flushActiveStreamBlock();
+        const blocks = streamState.interpreter.flushActiveBlocks();
+        await this.flushChatStreamBlocks(streamState, blocks);
+        if (blocks.length > 0) {
+          streamState.interpreter.acknowledgeCheckpoint();
+        }
       }
     } catch (error) {
       try {
-        await flushActiveStreamBlock();
+        const blocks = streamState.interpreter.flushActiveBlocks();
+        await this.flushChatStreamBlocks(streamState, blocks);
+        if (blocks.length > 0) {
+          streamState.interpreter.acknowledgeCheckpoint();
+        }
       } catch (flushError) {
         log.error("Failed to checkpoint chat transcript after stream failure", {
           chatId,
@@ -944,14 +560,18 @@ export class ChatConversationService implements ChatConversationPort {
             ...latestChat,
             state: {
               ...latestChat.state,
-              messages: chat.state.messages,
-              logs: chat.state.logs,
-              toolCalls: chat.state.toolCalls,
+              messages: streamState.chat.state.messages,
+              logs: streamState.chat.state.logs,
+              toolCalls: streamState.chat.state.toolCalls,
             },
           }
-          : chat;
+          : streamState.chat;
         if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
-          await this.completeInterruptedChat(interruptedChat, transcriptMemory);
+          await this.completeInterruptedChat(
+            interruptedChat,
+            streamState.transcriptMemory,
+            streamState.interpreter,
+          );
         }
         return;
       }
@@ -962,6 +582,365 @@ export class ChatConversationService implements ChatConversationPort {
     } finally {
       this.clearActiveStream(chatId, generation);
       this.scheduleQueuedMessageDrain(chatId);
+    }
+  }
+
+  private async reloadChatStreamState(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+    force = false,
+  ): Promise<boolean> {
+    const nowMs = Date.now();
+    if (
+      !force
+      && nowMs - streamState.lastStatusReloadAt < CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS
+    ) {
+      return true;
+    }
+    const latestChat = await this.state.getChatSummary(chatId);
+    streamState.lastStatusReloadAt = nowMs;
+    if (!latestChat) {
+      return false;
+    }
+    streamState.chat = {
+      ...latestChat,
+      state: {
+        ...latestChat.state,
+        messages: streamState.chat.state.messages,
+        logs: streamState.chat.state.logs,
+        toolCalls: streamState.chat.state.toolCalls,
+        activeMessageId: streamState.chat.state.activeMessageId,
+        lastActivityAt: streamState.chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
+      },
+    };
+    if (latestChat.state.status === "interrupting" || latestChat.state.interruptRequested) {
+      streamState.chat = {
+        ...streamState.chat,
+        state: {
+          ...streamState.chat.state,
+          status: latestChat.state.status,
+          interruptRequested: latestChat.state.interruptRequested,
+        },
+      };
+    }
+    return true;
+  }
+
+  private async handleChatStreamEvent(
+    chatId: string,
+    backend: Backend,
+    generation: number,
+    streamState: ChatStreamConsumptionState,
+    event: AgentEvent,
+  ): Promise<AgentStreamEventResult | void> {
+    if (!await this.reloadChatStreamState(
+      chatId,
+      streamState,
+      event.type !== "message.delta" && event.type !== "reasoning.delta",
+    )) {
+      return { stop: true };
+    }
+
+    const now = createTimestamp();
+    const isInterrupted =
+      streamState.chat.state.status === "interrupting"
+      || streamState.chat.state.interruptRequested;
+
+    if (event.type === "message.start") {
+      const transcriptResult = streamState.interpreter.handle(event);
+      if (isInterrupted) {
+        return;
+      }
+      streamState.chat = await this.emitChatLog(
+        streamState.chat,
+        "agent",
+        "AI started generating response",
+        { logKind: "system" },
+        undefined,
+        undefined,
+        { memory: streamState.transcriptMemory },
+      );
+      streamState.chat = await this.updateState(streamState.chat, {
+        ...streamState.chat.state,
+        activeMessageId: undefined,
+        lastActivityAt: now,
+      });
+      if (transcriptResult.checkpointRequested) {
+        streamState.interpreter.acknowledgeCheckpoint();
+      }
+      return;
+    }
+
+    if (
+      isInterrupted
+      && (
+        event.type === "message.delta"
+        || event.type === "reasoning.delta"
+        || event.type === "tool.start"
+        || event.type === "tool.complete"
+        || event.type === "message.complete"
+        || event.type === "permission.asked"
+      )
+    ) {
+      return;
+    }
+
+    const transcriptResult = streamState.interpreter.handle(event);
+    switch (event.type) {
+      case "user.message":
+        break;
+
+      case "message.delta": {
+        if (transcriptResult.flushedBlocks.length > 0) {
+          await this.flushChatStreamBlocks(
+            streamState,
+            transcriptResult.flushedBlocks,
+            now,
+          );
+        }
+        const delta = transcriptResult.responseDelta;
+        if (delta) {
+          streamState.chat = (
+            await this.updateStreamingAssistantProgress(streamState.chat, {
+              messageId: delta.messageId ?? null,
+              content: delta.content,
+              responseLogId: delta.logId,
+              responseLogContent: delta.logContent,
+              timestamp: delta.timestamp,
+              activityTimestamp: now,
+              delta: delta.delta,
+              persist: transcriptResult.checkpointRequested,
+              emitDelta: true,
+              emitFullMessage: false,
+              updateResponseLog: false,
+            }, streamState.transcriptMemory)
+          ).chat;
+        }
+        break;
+      }
+
+      case "reasoning.delta": {
+        if (transcriptResult.flushedBlocks.length > 0) {
+          await this.flushChatStreamBlocks(
+            streamState,
+            transcriptResult.flushedBlocks,
+            now,
+          );
+        }
+        const delta = transcriptResult.reasoningDelta;
+        if (delta) {
+          streamState.chat = await this.emitChatLog(streamState.chat, "agent", "AI reasoning...", {
+            logKind: "reasoning",
+            responseContent: delta.logContent,
+          }, delta.logId, now, {
+            delta: delta.delta,
+            persist: transcriptResult.checkpointRequested,
+            emitFull: delta.isFirstInBlock,
+            memory: streamState.transcriptMemory,
+          });
+        }
+        break;
+      }
+
+      case "tool.start":
+      case "tool.complete":
+        await this.flushChatStreamBlocks(
+          streamState,
+          transcriptResult.flushedBlocks,
+          now,
+        );
+        if (transcriptResult.tool) {
+          if (transcriptResult.tool.phase === "start") {
+            streamState.chat = await this.appendToolCall(
+              streamState.chat,
+              transcriptResult.tool.tool,
+              streamState.transcriptMemory,
+            );
+          } else {
+            streamState.chat = await this.upsertToolCall(
+              streamState.chat,
+              transcriptResult.tool.tool,
+              streamState.transcriptMemory,
+            );
+            this.scheduleToolImagePreview(streamState.chat, transcriptResult.tool.tool);
+          }
+        }
+        break;
+
+      case "session.status":
+        if (
+          event.status === "idle"
+          && (streamState.chat.state.status === "interrupting" || streamState.chat.state.interruptRequested)
+        ) {
+          streamState.chat = await this.completeInterruptedChat(
+            streamState.chat,
+            streamState.transcriptMemory,
+            streamState.interpreter,
+          );
+          streamState.interpreter.acknowledgeCheckpoint();
+          this.clearActiveStream(chatId, generation);
+          return { stop: true };
+        }
+        if (event.status === "idle") {
+          streamState.chat = await this.updateState(streamState.chat, {
+            ...streamState.chat.state,
+            status: "idle",
+            interruptRequested: false,
+            lastActivityAt: now,
+          });
+        }
+        break;
+
+      case "message.complete":
+        if (transcriptResult.flushedBlocks.length > 0) {
+          await this.flushChatStreamBlocks(
+            streamState,
+            transcriptResult.flushedBlocks,
+            now,
+          );
+        }
+        streamState.chat = await this.emitChatLog(
+          streamState.chat,
+          "agent",
+          "AI finished generating response",
+          {
+            logKind: "system",
+            responseLength: transcriptResult.completedMessage?.responseLength
+              ?? streamState.interpreter.state.totalResponseLength,
+          },
+          undefined,
+          undefined,
+          { memory: streamState.transcriptMemory },
+        );
+        if (streamState.chat.state.interruptRequested || streamState.chat.state.status === "interrupting") {
+          streamState.chat = await this.completeInterruptedChat(
+            streamState.chat,
+            streamState.transcriptMemory,
+            streamState.interpreter,
+          );
+        } else {
+          streamState.chat = await this.updateState(streamState.chat, {
+            ...streamState.chat.state,
+            status: "idle",
+            activeMessageId: undefined,
+            interruptRequested: false,
+            lastActivityAt: createTimestamp(),
+          });
+        }
+        streamState.interpreter.acknowledgeCheckpoint();
+        this.clearActiveStream(chatId, generation);
+        return { stop: true };
+
+      case "error":
+        if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
+          await this.flushChatStreamBlocks(
+            streamState,
+            transcriptResult.flushedBlocks,
+            now,
+          );
+          const latestChat = await this.state.getChat(chatId);
+          if (latestChat) {
+            streamState.chat = {
+              ...latestChat,
+              state: {
+                ...latestChat.state,
+                messages: streamState.chat.state.messages,
+                logs: streamState.chat.state.logs,
+                toolCalls: streamState.chat.state.toolCalls,
+              },
+            };
+          }
+          if (streamState.chat.state.status === "interrupting" || streamState.chat.state.interruptRequested) {
+            streamState.chat = await this.completeInterruptedChat(
+              streamState.chat,
+              streamState.transcriptMemory,
+              streamState.interpreter,
+            );
+          }
+          streamState.interpreter.acknowledgeCheckpoint();
+          this.clearActiveStream(chatId, generation);
+          return { stop: true };
+        }
+        await this.flushChatStreamBlocks(
+          streamState,
+          transcriptResult.flushedBlocks,
+          now,
+        );
+        streamState.chat = await this.emitChatError(
+          streamState.chat,
+          event.message,
+          event.code,
+          event.details,
+        );
+        streamState.interpreter.acknowledgeCheckpoint();
+        this.clearActiveStream(chatId, generation);
+        return { stop: true };
+
+      case "permission.asked":
+        if (!this.permissionHandler) {
+          streamState.chat = await this.emitChatError(
+            streamState.chat,
+            "Chat permission handler is not configured",
+          );
+          streamState.interpreter.acknowledgeCheckpoint();
+          return { stop: true };
+        }
+        streamState.chat = await this.permissionHandler(streamState.chat, backend, {
+          requestId: event.requestId,
+          sessionId: event.sessionId,
+          permission: event.permission,
+          patterns: event.patterns,
+          status: "pending",
+          createdAt: now,
+        });
+        break;
+
+      case "question.asked":
+        streamState.chat = await this.emitChatError(
+          streamState.chat,
+          `Interactive question requires a UI response: ${event.questions.map((question) => question.question).join(" | ")}`,
+        );
+        streamState.interpreter.acknowledgeCheckpoint();
+        return { stop: true };
+    }
+
+    if (transcriptResult.checkpointRequested) {
+      streamState.interpreter.acknowledgeCheckpoint();
+    }
+  }
+
+  private async flushChatStreamBlocks(
+    streamState: ChatStreamConsumptionState,
+    blocks: AgentEventTranscriptBlock[],
+    activityTimestamp = createTimestamp(),
+  ): Promise<void> {
+    for (const block of blocks) {
+      if (block.kind === "response" && block.messageId) {
+        streamState.chat = (
+          await this.updateStreamingAssistantProgress(streamState.chat, {
+            messageId: block.messageId,
+            content: block.content,
+            responseLogId: block.logId,
+            responseLogContent: block.logContent,
+            timestamp: block.timestamp,
+            activityTimestamp,
+            delta: "",
+            persist: true,
+            emitDelta: false,
+            emitFullMessage: true,
+            updateResponseLog: false,
+          }, streamState.transcriptMemory)
+        ).chat;
+      } else if (block.kind === "reasoning") {
+        streamState.chat = await this.emitChatLog(streamState.chat, "agent", "AI reasoning...", {
+          logKind: "reasoning",
+          responseContent: block.logContent,
+        }, block.logId, activityTimestamp, {
+          persist: true,
+          emitFull: true,
+          memory: streamState.transcriptMemory,
+        });
+      }
     }
   }
 
@@ -1243,7 +1222,6 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const toolCalls = memory
       ? (
-        updateRunningToolIndex(memory, memory.toolCalls.get(tool.id), tool),
         memory.toolCalls.upsert(tool),
         memory.toolCalls.values
       )
@@ -1283,7 +1261,7 @@ export class ChatConversationService implements ChatConversationPort {
       ? mergeToolCallRecord(existing, tool)
       : tool;
     const toolCalls = memory
-      ? (updateRunningToolIndex(memory, existing, persistedTool), memory.toolCalls.upsert(persistedTool), memory.toolCalls.values)
+      ? (memory.toolCalls.upsert(persistedTool), memory.toolCalls.values)
       : existing
         ? chat.state.toolCalls.map((candidate) => candidate.id === persistedTool.id ? persistedTool : candidate)
         : [...chat.state.toolCalls, tool];
@@ -1409,9 +1387,14 @@ export class ChatConversationService implements ChatConversationPort {
     return this.state.markChatError(errorChat, message, errorCode);
   }
 
-  private async completeInterruptedChat(chat: Chat, memory?: ChatTranscriptMemory): Promise<Chat> {
+  private async completeInterruptedChat(
+    chat: Chat,
+    memory?: ChatTranscriptMemory,
+    interpreter?: AgentEventTranscriptInterpreter,
+  ): Promise<Chat> {
     const now = createTimestamp();
     const cancelledToolCalls: PersistedToolCall[] = [];
+    interpreter?.cancelRunningTools(now);
     const toolCalls = memory
       ? this.cancelInFlightToolCallsWithMemory(memory, now, cancelledToolCalls)
       : this.cancelInFlightToolCalls(chat.state.toolCalls, now);
@@ -1491,7 +1474,6 @@ export class ChatConversationService implements ChatConversationPort {
         output: toolCall.output ?? "Cancelled by user.",
         timestamp,
       };
-      updateRunningToolIndex(memory, toolCall, updatedTool);
       memory.toolCalls.upsert(updatedTool);
       cancelledToolCalls.push(updatedTool);
     }

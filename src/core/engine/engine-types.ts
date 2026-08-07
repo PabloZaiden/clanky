@@ -18,6 +18,7 @@ import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { PromptInput } from "../../backends/types";
 import type { GitService } from "../git";
 import type { SimpleEventEmitter } from "../event-emitter";
+import type { AgentEventTranscriptInterpreter } from "../agent-event-transcript-interpreter";
 
 /**
  * Maximum number of log entries to persist in task state.
@@ -181,6 +182,7 @@ export interface IterationResult {
  */
 export interface IterationContext {
   iteration: number;
+  transcript: AgentEventTranscriptInterpreter;
   responseContent: string;
   reasoningContent: string;
   messageCount: number;

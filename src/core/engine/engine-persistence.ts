@@ -9,7 +9,6 @@ import type {
 } from "./engine-types";
 import {
   AgentStreamCheckpointPolicy,
-  getAgentStreamTextByteLength,
 } from "../agent-stream-controller";
 import { MemoryFirstPersistenceQueue } from "../memory-first-persistence-queue";
 import { TranscriptStreamProjection } from "../transcript-stream-projection";
@@ -52,6 +51,10 @@ export class TaskPersistenceCoordinator {
     await this.trigger();
   }
 
+  get checkpointPolicy(): AgentStreamCheckpointPolicy {
+    return this.streamCheckpointPolicy;
+  }
+
   disable(): void {
     this.onPersistState = undefined;
   }
@@ -85,10 +88,6 @@ export class TaskPersistenceCoordinator {
 
   getToolCall(id: string): ToolCallData | undefined {
     return this.transcript.getToolCall(id);
-  }
-
-  recordTextDelta(content: string): boolean {
-    return this.streamCheckpointPolicy.recordText(getAgentStreamTextByteLength(content));
   }
 
   private async persistCurrentState(): Promise<void> {

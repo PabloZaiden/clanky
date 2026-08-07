@@ -42,6 +42,8 @@ export interface MockBackendOptions {
   responses?: string[];
   /** Streaming response chunks to emit for async prompts, cycled independently from `responses`. */
   streamingResponseChunks?: string[][];
+  /** Normalized event sequences to emit for async prompts, cycled independently from `responses`. */
+  streamEventSequences?: AgentEvent[][];
   /** Optional hook invoked after a prompt is sent, before its response is emitted. */
   onPrompt?: (prompt: PromptInput, directory: string) => void | Promise<void>;
   /** Models to return from getModels() */
@@ -75,8 +77,10 @@ export class MockAcpBackend implements Backend {
   private pendingPrompt = false;
   private readonly responses: string[];
   private readonly streamingResponseChunks: string[][];
+  private readonly streamEventSequences: AgentEvent[][];
   private readonly onPrompt?: MockBackendOptions["onPrompt"];
   private streamingResponseIndex = 0;
+  private streamEventIndex = 0;
   private readonly models: MockModelInfo[];
   private readonly filterModelsByConnectionProvider: boolean;
   private readonly sessions = new Map<string, AgentSession>();
@@ -93,6 +97,7 @@ export class MockAcpBackend implements Backend {
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
+    this.streamEventSequences = options.streamEventSequences ?? [];
     this.onPrompt = options.onPrompt;
     this.models = options.models ?? [];
     this.filterModelsByConnectionProvider = options.filterModelsByConnectionProvider ?? false;
@@ -185,6 +190,15 @@ export class MockAcpBackend implements Backend {
       }
       this.pendingPrompt = false;
       await this.responseGate?.();
+
+      if (this.streamEventSequences.length > 0) {
+        const events = this.streamEventSequences[this.streamEventIndex++ % this.streamEventSequences.length] ?? [];
+        for (const event of events) {
+          push(event);
+        }
+        end();
+        return;
+      }
 
       const chunks = this.streamingResponseChunks.length > 0
         ? this.streamingResponseChunks[this.streamingResponseIndex++ % this.streamingResponseChunks.length]
