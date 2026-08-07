@@ -20,38 +20,6 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
   const transcriptUrl = useMemo(() => `/api/chats/${encodeURIComponent(chatId)}/transcript.md`, [chatId]);
 
   useEffect(() => {
-    const root = document.getElementById("root");
-    const targets = [
-      document.documentElement,
-      document.body,
-      root,
-    ].filter((target): target is HTMLElement => target !== null);
-    const previousStyles = targets.map((target) => ({
-      target,
-      height: target.style.height,
-      overflow: target.style.overflow,
-      overscrollBehavior: target.style.overscrollBehavior,
-      background: target.style.background,
-    }));
-
-    for (const target of targets) {
-      target.style.height = "auto";
-      target.style.overflow = "visible";
-      target.style.overscrollBehavior = "auto";
-      target.style.background = "#fff";
-    }
-
-    return () => {
-      for (const previous of previousStyles) {
-        previous.target.style.height = previous.height;
-        previous.target.style.overflow = previous.overflow;
-        previous.target.style.overscrollBehavior = previous.overscrollBehavior;
-        previous.target.style.background = previous.background;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     const controller = new AbortController();
 
     async function loadTranscript(): Promise<void> {
@@ -87,22 +55,44 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
 
   return (
     <main
-      className="standalone-transcript-viewer"
-      style={{ padding: "2rem", color: "#111", background: "#fff", fontFamily: "system-ui, sans-serif" }}
+      className="standalone-transcript-viewer flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-white px-4 py-6 font-sans text-gray-900 dark:bg-neutral-950 dark:text-gray-100 sm:px-8 sm:py-8"
     >
       <style>
         {`
-          @media print {
-            .standalone-transcript-viewer {
-              padding: 0 !important;
-            }
+          .standalone-transcript-page,
+          .standalone-transcript-viewer {
+            min-width: 0;
           }
-          .transcript-content {
+
+          .standalone-transcript-viewer .transcript-content {
+            width: 100%;
+            max-width: 64rem;
+            margin: 0 auto;
             overflow-wrap: anywhere;
           }
-          .transcript-content pre {
+
+          .standalone-transcript-viewer .transcript-content pre {
+            margin: 0;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
+          }
+
+          @media print {
+            .standalone-transcript-page,
+            .standalone-transcript-viewer {
+              min-height: auto !important;
+              overflow: visible !important;
+            }
+
+            .standalone-transcript-viewer {
+              padding: 0 !important;
+              background: #fff !important;
+              color: #111 !important;
+            }
+
+            .standalone-transcript-viewer .transcript-content {
+              max-width: none;
+            }
           }
         `}
       </style>
@@ -116,7 +106,7 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
           </p>
         )}
         {loadState.status === "loaded" && (
-          <pre>{loadState.markdown}</pre>
+          <pre className="font-mono text-sm leading-6 text-inherit">{loadState.markdown}</pre>
         )}
       </article>
     </main>

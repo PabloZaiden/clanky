@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ConfirmModal, Modal, routeToHash, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
@@ -45,7 +45,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function getChatTranscriptViewerUrl(chat: Chat): string {
-  return appAbsoluteUrl(routeToHash({ view: "chat-transcript", chatId: chat.config.id }));
+  return appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.html`);
 }
 
 function getChatTranscriptDownloadUrl(chat: Chat): string {
@@ -335,7 +335,7 @@ export function useChatActions({
         }
       >
         <></>
-        <p>Open the raw markdown transcript in a new window or download it as a file.</p>
+        <p>Open the transcript in a standalone window or download it as a Markdown file.</p>
       </Modal>
       <SpawnCurrentPlanModal
         isOpen={spawnCurrentPlanTarget !== null}

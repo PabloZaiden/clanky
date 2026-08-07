@@ -21,6 +21,25 @@ export interface ChatTranscriptMarkdown {
   filename: string;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "\"":
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return character;
+    }
+  });
+}
+
 function sanitizeMarkdownHeading(value: string, fallback: string): string {
   return value.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/\s+/g, " ").trim() || fallback;
 }
@@ -143,4 +162,74 @@ export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown 
     markdown: lines.join("\n"),
     filename: getChatTranscriptFilename(chat),
   };
+}
+
+export function buildChatTranscriptHtml(chat: Chat): string | null {
+  const transcript = buildChatTranscriptMarkdown(chat);
+  if (!transcript) {
+    return null;
+  }
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>${escapeHtml(sanitizeMarkdownHeading(chat.config.name, "Chat transcript"))}</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        box-sizing: border-box;
+        padding: 2rem;
+        background: #fff;
+        color: #111;
+        font-family: system-ui, sans-serif;
+      }
+
+      main {
+        width: 100%;
+        max-width: 64rem;
+        margin: 0 auto;
+      }
+
+      pre {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      @media print {
+        @page {
+          margin: 16mm;
+        }
+
+        body {
+          padding: 0;
+        }
+
+        main {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <pre>${escapeHtml(transcript.markdown)}</pre>
+    </main>
+  </body>
+</html>`;
 }
