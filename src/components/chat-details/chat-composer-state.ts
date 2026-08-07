@@ -26,10 +26,10 @@ import {
   MESSAGE_ATTACHMENT_LIMIT,
   toMessageAttachments,
 } from "../../lib/image-attachments";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import type { Chat, ComposerAttachment } from "@/shared";
-import { getChatErrorMessage, parseChatError } from "./chat-lifecycle";
+import { getChatErrorMessage } from "./chat-lifecycle";
 import type { ChatComposerProps } from "./types";
 import { useToast } from "@pablozaiden/webapp/web";
 
@@ -132,7 +132,7 @@ export function useChatComposer({
           throw new Error("Failed to parse selected model");
         }
 
-        const updateResponse = await appFetch(`/api/chats/${chatId}`, {
+        const updatedChat = await apiRequest<Chat>(`/api/chats/${chatId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -142,11 +142,9 @@ export function useChatComposer({
               variant: parsedModel.variant,
             },
           }),
+          action: "Update chat model",
+          fallbackMessage: "Failed to update chat model",
         });
-        if (!updateResponse.ok) {
-          throw new Error(await parseChatError(updateResponse, "Failed to update chat model"));
-        }
-        const updatedChat = (await updateResponse.json()) as Chat;
         onChatSnapshot(updatedChat);
         setSelectedModel("");
       }
@@ -163,18 +161,16 @@ export function useChatComposer({
         });
         onChatSnapshot(nextChat);
       } else {
-        const response = await appFetch(`/api/chats/${chatId}/messages`, {
+        const data = await apiRequest<{ chat?: Chat }>(`/api/chats/${chatId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: trimmedMessage.length > 0 ? trimmedMessage : null,
             attachments: messageAttachments,
           }),
+          action: "Send chat message",
+          fallbackMessage: "Failed to send chat message",
         });
-        if (!response.ok) {
-          throw new Error(await parseChatError(response, "Failed to send chat message"));
-        }
-        const data = (await response.json()) as { chat?: Chat };
         if (data.chat) {
           onChatSnapshot(data.chat);
         } else if (isActive) {
@@ -201,15 +197,13 @@ export function useChatComposer({
 
     setIsSubmitting(true);
     try {
-      const response = await appFetch(`/api/chats/${chatId}/interrupt`, {
+      const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/interrupt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: DEFAULT_CHAT_INTERRUPT_REASON }),
+        action: "Interrupt chat",
+        fallbackMessage: "Failed to interrupt chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to interrupt chat"));
-      }
-      const nextChat = (await response.json()) as Chat;
       onChatSnapshot(nextChat);
     } catch (interruptError) {
       toast.error(getChatErrorMessage(interruptError));

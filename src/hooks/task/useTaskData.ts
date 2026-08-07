@@ -12,7 +12,7 @@ import {
 } from "@/shared";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
@@ -88,9 +88,12 @@ export function useTaskData(
       if (snapshotEtagRef.current) {
         headers.set("If-None-Match", snapshotEtagRef.current);
       }
-      const response = await appFetch(`/api/tasks/${requestTaskId}/snapshot`, {
+      const response = await requestApiResponse(`/api/tasks/${requestTaskId}/snapshot`, {
         signal: controller.signal,
         headers,
+        action: "Fetch task snapshot",
+        fallbackMessage: "Failed to fetch task",
+        acceptedStatuses: [304, 404],
       });
 
       // Check if request was aborted during fetch
@@ -106,19 +109,16 @@ export function useTaskData(
         return;
       }
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          log.debug("Task not found", { taskId: requestTaskId });
-          setTask(null);
-          setError("Task not found");
-          return;
-        }
-        throw new Error(`Failed to fetch task: ${response.statusText}`);
+      if (response.status === 404) {
+        log.debug("Task not found", { taskId: requestTaskId });
+        setTask(null);
+        setError("Task not found");
+        return;
       }
-      const data = (await response.json()) as {
+      const data = await readApiResponse<{
         task: Task;
         transcript: ChatTranscript;
-      };
+      }>(response);
       if (
         controller.signal.aborted ||
         !isActiveTask(requestTaskId) ||
@@ -192,14 +192,18 @@ export function useTaskData(
   }, [isActiveTask, taskId]);
 
   const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
-    const response = await appFetch(`/api/tasks/${taskId}/tool-calls/${encodeURIComponent(toolCallId)}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null;
-      }
-      throw new Error(`Failed to fetch task tool call: ${response.statusText}`);
+    const response = await requestApiResponse(
+      `/api/tasks/${taskId}/tool-calls/${encodeURIComponent(toolCallId)}`,
+      {
+        action: "Fetch task tool-call details",
+        fallbackMessage: "Failed to fetch task tool call",
+        acceptedStatuses: [404],
+      },
+    );
+    if (response.status === 404) {
+      return null;
     }
-    return await response.json() as ToolCallData;
+    return await readApiResponse<ToolCallData>(response);
   }, [taskId]);
 
   return {

@@ -4,7 +4,7 @@ import type {
   MeshStatusRecord,
   MeshSyncConflictRecord,
 } from "@/shared/mesh";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 interface MeshPreflight {
   linkId: string | null;
@@ -18,22 +18,6 @@ interface MeshResponse {
   status?: MeshStatusRecord;
   conflict?: MeshSyncConflictRecord;
   conflicts?: MeshSyncConflictRecord[];
-}
-
-async function readResponse(response: Response, fallback: string): Promise<MeshResponse> {
-  let body: MeshResponse = {};
-  try {
-    body = await response.json() as MeshResponse & { message?: string; error?: string };
-  } catch {
-    if (!response.ok) {
-      throw new Error(fallback);
-    }
-  }
-  if (!response.ok) {
-    const errorBody = body as MeshResponse & { message?: string; error?: string };
-    throw new Error(errorBody.message ?? errorBody.error ?? fallback);
-  }
-  return body;
 }
 
 export interface UseMeshResult {
@@ -76,11 +60,14 @@ export function useMesh(): UseMeshResult {
     setLoading(true);
     setError(null);
     try {
-      const response = await appFetch("/api/mesh/status", { signal: controller.signal });
+      const body = await apiRequest<MeshResponse>("/api/mesh/status", {
+        signal: controller.signal,
+        action: "Load mesh status",
+        fallbackMessage: "Failed to load mesh status",
+      });
       if (controller.signal.aborted) {
         return null;
       }
-      const body = await readResponse(response, "Failed to load mesh status");
       const nextStatus = (body.status ?? body) as unknown as MeshStatusRecord;
       setStatus(nextStatus);
       return nextStatus;
@@ -105,12 +92,13 @@ export function useMesh(): UseMeshResult {
     setSaving(true);
     setError(null);
     try {
-      const response = await appFetch(path, {
+      return await apiRequest<MeshResponse>(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        action: fallback,
+        fallbackMessage: fallback,
       });
-      return await readResponse(response, fallback);
     } catch (mutationError) {
       setError(String(mutationError));
       return null;
@@ -121,8 +109,10 @@ export function useMesh(): UseMeshResult {
 
   const loadPreflight = useCallback(async (): Promise<MeshPreflight | null> => {
     try {
-      const response = await appFetch("/api/mesh/takeover/preflight");
-      const body = await readResponse(response, "Failed to load takeover preflight");
+      const body = await apiRequest<MeshResponse>("/api/mesh/takeover/preflight", {
+        action: "Load mesh takeover preflight",
+        fallbackMessage: "Failed to load takeover preflight",
+      });
       const result = body as unknown as MeshPreflight;
       setPreflight(result);
       return result;
@@ -134,8 +124,10 @@ export function useMesh(): UseMeshResult {
 
   const loadConflicts = useCallback(async (): Promise<MeshSyncConflictRecord[]> => {
     try {
-      const response = await appFetch("/api/mesh/conflicts");
-      const body = await readResponse(response, "Failed to load mesh conflicts");
+      const body = await apiRequest<MeshResponse>("/api/mesh/conflicts", {
+        action: "Load mesh conflicts",
+        fallbackMessage: "Failed to load mesh conflicts",
+      });
       const result = body.conflicts ?? [];
       setConflicts(result);
       return result;

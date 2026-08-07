@@ -5,7 +5,8 @@
 import { useState, useCallback, useEffect } from "react";
 import type { AppConfig, HealthResponse } from "@/contracts";
 import { createLogger, useToast } from "@pablozaiden/webapp/web";
-import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
+import { setConfiguredPublicBasePath } from "../../lib/public-path";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
 const log = createLogger("useAppConfig");
@@ -28,36 +29,56 @@ export function useAppConfig(): UseAppConfigResult {
   const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
 
   useEffect(() => {
-    appFetch("/api/config")
-      .then((res) => res.json())
-      .then((config: AppConfig) => {
+    let active = true;
+    void (async () => {
+      try {
+        const config = await apiRequest<AppConfig>("/api/config", {
+          action: "Load app configuration",
+          fallbackMessage: "Failed to load app configuration",
+        });
+        if (!active) {
+          return;
+        }
         setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
         setRemoteOnly(config.remoteOnly);
-      })
-      .catch(() => {
-        // Ignore errors, default to false
-      });
+      } catch {
+        // Configuration is optional during initial startup; keep the defaults.
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    appFetch("/api/health")
-      .then((res) => res.json())
-      .then((data: HealthResponse) => {
-        setVersion(data.version);
-      })
-      .catch(() => {
-        // Ignore errors
-      });
+    let active = true;
+    void (async () => {
+      try {
+        const data = await apiRequest<HealthResponse>("/api/health", {
+          action: "Load server health",
+          fallbackMessage: "Failed to load server health",
+        });
+        if (active) {
+          setVersion(data.version);
+        }
+      } catch {
+        // Health is informational; leave the version unset when unavailable.
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const resetAllSettings = useCallback(async () => {
     setAppSettingsResetting(true);
     try {
-      const response = await appFetch("/api/settings/reset-all", { method: "POST" });
-      if (!response.ok) {
-        toast.error("Failed to reset settings");
-      }
-      return response.ok;
+      await apiRequest("/api/settings/reset-all", {
+        method: "POST",
+        action: "Reset all settings",
+        fallbackMessage: "Failed to reset settings",
+      });
+      return true;
     } catch (error) {
       log.error("Failed to reset settings:", error);
       toast.error("Failed to reset settings");
@@ -65,7 +86,7 @@ export function useAppConfig(): UseAppConfigResult {
     } finally {
       setAppSettingsResetting(false);
     }
-  }, []);
+  }, [toast]);
 
   const purgeTerminalTasks = useCallback(async (): Promise<PurgeTerminalTasksResult | null> => {
     setAppSettingsPurgingTerminalTasks(true);

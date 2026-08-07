@@ -5,7 +5,8 @@ import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
 import type { AgentProvider } from "@/shared/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
+import { isApiErrorCode } from "../../lib/api-error";
 import { getStoredSshCredentialToken, invalidateStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import {
   getStoredChatModelPreference,
@@ -185,14 +186,14 @@ export function ComposeChatView({
     void (async () => {
       setImportSessionsLoading(true);
       try {
-        const response = await appFetch(`/api/chats/importable-sessions?workspaceId=${encodeURIComponent(selectedWorkspace.id)}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          const data = await response.json() as { message?: string; error?: string };
-          throw new Error(data.message ?? data.error ?? "Failed to list existing sessions");
-        }
-        const sessions = await response.json() as ImportableChatSession[];
+        const sessions = await apiRequest<ImportableChatSession[]>(
+          `/api/chats/importable-sessions?workspaceId=${encodeURIComponent(selectedWorkspace.id)}`,
+          {
+            signal: controller.signal,
+            action: "List importable chat sessions",
+            fallbackMessage: "Failed to list existing sessions",
+          },
+        );
         if (controller.signal.aborted) {
           return;
         }
@@ -288,7 +289,9 @@ export function ComposeChatView({
     void (async () => {
       setRemoteModelsLoading(true);
       try {
-        const response = await appFetch(`/api/ssh-servers/${composeServer.config.id}/chat-models`, {
+        const nextModels = await apiRequest<ModelInfo[]>(
+          `/api/ssh-servers/${composeServer.config.id}/chat-models`,
+          {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -297,22 +300,10 @@ export function ComposeChatView({
             directory: remoteDirectory.trim(),
           }),
           signal: controller.signal,
-        });
-        if (!response.ok) {
-          const data = await response.json() as { code?: string; message?: string; error?: string };
-          const errorCode = data.code ?? data.error;
-          if (
-            response.status === 400
-            && errorCode === "invalid_credential_token"
-            && composeServer
-          ) {
-            invalidateStoredSshCredentialToken(composeServer.config.id);
-            setRemoteCredentialToken(null);
-            setPasswordModalOpen(true);
-          }
-          throw new Error(data.message ?? data.error ?? "Failed to discover remote models");
-        }
-        const nextModels = await response.json() as ModelInfo[];
+            action: "Discover remote chat models",
+            fallbackMessage: "Failed to discover remote models",
+          },
+        );
         if (controller.signal.aborted) {
           return;
         }
@@ -324,6 +315,11 @@ export function ComposeChatView({
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
+        }
+        if (isApiErrorCode(error, "invalid_credential_token") && composeServer) {
+          invalidateStoredSshCredentialToken(composeServer.config.id);
+          setRemoteCredentialToken(null);
+          setPasswordModalOpen(true);
         }
         setRemoteModels([]);
         setSelectedModel("");

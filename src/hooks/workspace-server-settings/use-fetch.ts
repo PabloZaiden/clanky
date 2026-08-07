@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import type { ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import { log } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceFetch(workspaceId: string | null) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -17,11 +17,10 @@ export function useWorkspaceFetch(workspaceId: string | null) {
     }
 
     try {
-      const response = await appFetch(`/api/workspaces/${workspaceId}?sensitive=true`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch workspace: ${response.statusText}`);
-      }
-      const data = (await response.json()) as Workspace;
+      const data = await apiRequest<Workspace>(`/api/workspaces/${workspaceId}?sensitive=true`, {
+        action: "Load workspace",
+        fallbackMessage: "Failed to fetch workspace",
+      });
       setWorkspace(data);
     } catch (err) {
       setError(String(err));
@@ -35,11 +34,10 @@ export function useWorkspaceFetch(workspaceId: string | null) {
     }
 
     try {
-      const response = await appFetch(`/api/workspaces/${workspaceId}/server-settings/status`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch status: ${response.statusText}`);
-      }
-      const data = (await response.json()) as ConnectionStatus;
+      const data = await apiRequest<ConnectionStatus>(`/api/workspaces/${workspaceId}/server-settings/status`, {
+        action: "Load workspace connection status",
+        fallbackMessage: "Failed to fetch status",
+      });
       setStatus(data);
     } catch (err) {
       // Don't set error for status fetch failures - non-critical

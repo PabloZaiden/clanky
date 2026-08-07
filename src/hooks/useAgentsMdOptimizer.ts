@@ -7,9 +7,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OptimizationAnalysis, OptimizationPreview } from "../core/agents-md-optimizer";
 import { analyzeAgentsMd } from "../core/agents-md-optimizer";
-import { isApiErrorCode, parseApiError } from "../lib/api-error";
+import { isApiErrorCode } from "../lib/api-error";
+import { apiRequest } from "../lib/api-client";
 import { log } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
 
 /** Result of reading the current AGENTS.md state */
 export interface AgentsMdStatus {
@@ -102,11 +102,10 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         setLoading(true);
         setError(null);
       }
-      const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md`);
-      if (!response.ok) {
-        throw await parseApiError(response, "Failed to fetch AGENTS.md status");
-      }
-      const data = (await response.json()) as AgentsMdStatus;
+      const data = await apiRequest<AgentsMdStatus>(`/api/workspaces/${workspaceId}/agents-md`, {
+        action: "Fetch AGENTS.md status",
+        fallbackMessage: "Failed to fetch AGENTS.md status",
+      });
       if (isMountedRef.current) {
         setStatus(data);
       }
@@ -132,13 +131,11 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         setLoading(true);
         setError(null);
       }
-      const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md/preview`, {
+      const data = await apiRequest<OptimizationPreview>(`/api/workspaces/${workspaceId}/agents-md/preview`, {
         method: "POST",
+        action: "Preview AGENTS.md optimization",
+        fallbackMessage: "Failed to preview optimization",
       });
-      if (!response.ok) {
-        throw await parseApiError(response, "Failed to preview optimization");
-      }
-      const data = (await response.json()) as OptimizationPreview;
       if (isMountedRef.current) {
         setPreview(data);
         // Also update the status from the preview analysis
@@ -170,13 +167,11 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         setLoading(true);
         setError(null);
       }
-      const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md/optimize`, {
+      const data = await apiRequest<OptimizeResult>(`/api/workspaces/${workspaceId}/agents-md/optimize`, {
         method: "POST",
+        action: "Optimize AGENTS.md",
+        fallbackMessage: "Failed to optimize AGENTS.md",
       });
-      if (!response.ok) {
-        throw await parseApiError(response, "Failed to optimize AGENTS.md");
-      }
-      const data = (await response.json()) as OptimizeResult;
       // Update local status after successful optimization
       if (data.success && isMountedRef.current) {
         // Derive analysis from the returned content, or use analysis from server if provided

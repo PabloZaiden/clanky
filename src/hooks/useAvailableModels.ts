@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@/contracts";
 import { log } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseAvailableModelsOptions {
   workspaceId: string | undefined;
@@ -35,22 +35,21 @@ export function useAvailableModels({
     async function fetchModels() {
       setModelsLoading(true);
       try {
-        const response = await appFetch(
+        const data = await apiRequest<ModelInfo[]>(
           `/api/models?workspaceId=${encodeURIComponent(resolvedWorkspaceId)}`,
-          { signal: controller.signal },
+          {
+            signal: controller.signal,
+            action: "Load available models",
+            fallbackMessage: "Failed to fetch models",
+          },
         );
         if (controller.signal.aborted) {
           return;
         }
-        if (response.ok) {
-          const data = await response.json() as ModelInfo[];
-          if (controller.signal.aborted) {
-            return;
-          }
-          setModels(data);
+        if (controller.signal.aborted) {
           return;
         }
-        setModels([]);
+        setModels(data);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;

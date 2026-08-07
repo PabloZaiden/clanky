@@ -3,7 +3,8 @@ import { ConfirmModal, Modal, routeToHash, type ActionMenuItem } from "@pablozai
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
-import { appAbsoluteUrl, appFetch } from "../../lib/public-path";
+import { appAbsoluteUrl } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import type { Chat, Task } from "@/shared";
 import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 
@@ -37,15 +38,6 @@ interface ChatActionsController {
   items: ActionMenuItem[];
   modals: ReactNode;
   isDeletePending: boolean;
-}
-
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function getErrorMessage(error: unknown): string {
@@ -148,15 +140,13 @@ export function useChatActions({
       return;
     }
 
-    const response = await appFetch(`/api/chats/${encodeURIComponent(renameTarget.config.id)}`, {
+    const updatedChat = await apiRequest<Chat>(`/api/chats/${encodeURIComponent(renameTarget.config.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName }),
+      action: "Rename chat",
+      fallbackMessage: "Failed to rename chat",
     });
-    if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to rename chat"));
-    }
-    const updatedChat = (await response.json()) as Chat;
     await onChatRenamed?.(updatedChat);
   }
 
@@ -167,13 +157,11 @@ export function useChatActions({
 
     setIsSpawnPending(true);
     try {
-      const response = await appFetch(`/api/chats/${encodeURIComponent(target.config.id)}/spawn-task`, {
+      const task = await apiRequest<Task>(`/api/chats/${encodeURIComponent(target.config.id)}/spawn-task`, {
         method: "POST",
+        action: "Spawn task from chat",
+        fallbackMessage: "Failed to spawn task",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn task"));
-      }
-      const task = (await response.json()) as Task;
       onTaskSpawned?.(task);
     } catch (error) {
       onActionError(getErrorMessage(error));
@@ -208,15 +196,13 @@ export function useChatActions({
     const trimmedPlanPath = requestedPlanPath.trim();
     setIsSpawnCurrentPlanPending(true);
     try {
-      const response = await appFetch(`/api/chats/${encodeURIComponent(spawnCurrentPlanTarget.config.id)}/spawn-task-from-current-plan`, {
+      const task = await apiRequest<Task>(`/api/chats/${encodeURIComponent(spawnCurrentPlanTarget.config.id)}/spawn-task-from-current-plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(trimmedPlanPath ? { planFilePath: trimmedPlanPath } : {}),
+        action: "Spawn task from current plan",
+        fallbackMessage: "Failed to spawn task from current plan",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn task from current plan"));
-      }
-      const task = (await response.json()) as Task;
       setSpawnCurrentPlanTarget(null);
       setSpawnCurrentPlanPath("");
       onTaskSpawned?.(task);
@@ -235,12 +221,11 @@ export function useChatActions({
     const target = deleteTarget;
     setIsDeletePending(true);
     try {
-      const response = await appFetch(`/api/chats/${encodeURIComponent(target.config.id)}`, {
+      await apiRequest<unknown>(`/api/chats/${encodeURIComponent(target.config.id)}`, {
         method: "DELETE",
+        action: "Delete chat",
+        fallbackMessage: "Failed to delete chat",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete chat"));
-      }
       setDeleteTarget(null);
       await onChatDeleted?.(target);
     } catch (error) {

@@ -1,4 +1,5 @@
 export interface ApiErrorResponse {
+  [key: string]: unknown;
   code?: unknown;
   message?: unknown;
   error?: unknown;
@@ -7,12 +8,19 @@ export interface ApiErrorResponse {
 export class ApiError extends Error {
   readonly code?: string;
   readonly status: number;
+  readonly data?: ApiErrorResponse;
 
-  constructor(message: string, options: { code?: string; status: number; cause?: unknown }) {
+  constructor(message: string, options: {
+    code?: string;
+    status: number;
+    cause?: unknown;
+    data?: ApiErrorResponse;
+  }) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "ApiError";
     this.code = options.code;
     this.status = options.status;
+    this.data = options.data;
   }
 }
 
@@ -25,10 +33,14 @@ export function isApiErrorCode<TCode extends string>(
 
 export async function parseApiError(response: Response, fallbackMessage: string): Promise<ApiError> {
   let data: ApiErrorResponse = {};
+  let parseCause: unknown;
   try {
-    data = await response.json() as ApiErrorResponse;
-  } catch {
-    // Use the fixed fallback when the server does not return a JSON error body.
+    const parsed: unknown = await response.json();
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      data = parsed as ApiErrorResponse;
+    }
+  } catch (error) {
+    parseCause = error;
   }
 
   const code = typeof data.code === "string"
@@ -45,6 +57,8 @@ export async function parseApiError(response: Response, fallbackMessage: string)
   return new ApiError(message, {
     code,
     status: response.status,
+    cause: parseCause,
+    data: Object.keys(data).length > 0 ? data : undefined,
   });
 }
 

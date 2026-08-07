@@ -8,7 +8,7 @@ import type { Task } from "@/shared";
 import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { ReviewComment } from "@/shared/task";
 import { log } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import type { TabId } from "./types";
 
 interface UseTaskContentOptions {
@@ -80,12 +80,15 @@ export function useTaskContent({
   const fetchReviewComments = useCallback(async () => {
     setLoadingComments(true);
     try {
-      const response = await appFetch(`/api/tasks/${taskId}/comments`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.comments) {
-          setReviewComments(data.comments);
-        }
+      const data = await apiRequest<{ success?: boolean; comments?: ReviewComment[] }>(
+        `/api/tasks/${taskId}/comments`,
+        {
+          action: "Fetch task review comments",
+          fallbackMessage: "Failed to fetch review comments",
+        },
+      );
+      if (data.success && data.comments) {
+        setReviewComments(data.comments);
       }
     } catch (error) {
       log.error("Failed to fetch review comments:", String(error));

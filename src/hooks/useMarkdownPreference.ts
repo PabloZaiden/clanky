@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseMarkdownPreferenceResult {
   /** Whether markdown rendering is enabled */
@@ -44,11 +44,10 @@ export function useMarkdownPreference(): UseMarkdownPreferenceResult {
     try {
       setLoading(true);
       setError(null);
-      const response = await appFetch("/api/preferences/markdown-rendering");
-      if (!response.ok) {
-        throw new Error(`Failed to fetch preference: ${response.statusText}`);
-      }
-      const data = (await response.json()) as { enabled: boolean };
+      const data = await apiRequest<{ enabled: boolean }>("/api/preferences/markdown-rendering", {
+        action: "Load markdown preference",
+        fallbackMessage: "Failed to fetch preference",
+      });
       setEnabledState(data.enabled);
     } catch (err) {
       log.error("Failed to fetch markdown preference", { error: String(err) });
@@ -63,17 +62,13 @@ export function useMarkdownPreference(): UseMarkdownPreferenceResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/preferences/markdown-rendering", {
+      await apiRequest("/api/preferences/markdown-rendering", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: newEnabled }),
+        action: "Save markdown preference",
+        fallbackMessage: "Failed to save preference",
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to save preference");
-      }
-
       setEnabledState(newEnabled);
     } catch (err) {
       log.error("Failed to save markdown preference", { enabled: newEnabled, error: String(err) });

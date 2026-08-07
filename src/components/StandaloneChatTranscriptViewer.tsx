@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 interface StandaloneChatTranscriptViewerProps {
   chatId: string;
@@ -57,16 +57,13 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
     async function loadTranscript(): Promise<void> {
       setLoadState({ status: "loading" });
       try {
-        const response = await appFetch(transcriptUrl, { signal: controller.signal });
-        if (!response.ok) {
-          const contentType = response.headers.get("Content-Type") ?? "";
-          if (contentType.includes("application/json")) {
-            const data = await response.json() as { message?: string; error?: string };
-            throw new Error(data.message ?? data.error ?? "Failed to load transcript");
-          }
-          throw new Error(await response.text() || "Failed to load transcript");
-        }
-        setLoadState({ status: "loaded", markdown: await response.text() });
+        const markdown = await apiRequest(transcriptUrl, {
+          signal: controller.signal,
+          responseType: "text",
+          action: "Load chat transcript",
+          fallbackMessage: "Failed to load transcript",
+        });
+        setLoadState({ status: "loaded", markdown });
       } catch (error) {
         if (controller.signal.aborted) {
           return;

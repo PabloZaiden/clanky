@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import { ModelConfigSchema } from "@/contracts/schemas/model";
 
 export interface UseWorkspaceModelsResult {
@@ -61,26 +61,26 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   useEffect(() => {
     async function fetchLastModel() {
       try {
-        const response = await appFetch("/api/preferences/last-model");
-        if (response.ok) {
-          const raw = await response.json() as unknown;
-          const data = normalizeLastModelPreference(raw);
-          if (raw !== null && data === null) {
-            log.warn("Failed to normalize last model preference response");
-          }
-          setLastModel(data);
+        const raw = await apiRequest<unknown>("/api/preferences/last-model", {
+          action: "Load last model preference",
+          fallbackMessage: "Failed to load last model preference",
+        });
+        const data = normalizeLastModelPreference(raw);
+        if (raw !== null && data === null) {
+          log.warn("Failed to normalize last model preference response");
         }
+        setLastModel(data);
       } catch (error) {
         log.warn("Failed to fetch last model preference", { error: String(error) });
       }
     }
     async function fetchLastCheapModel() {
       try {
-        const response = await appFetch("/api/preferences/last-cheap-model");
-        if (response.ok) {
-          const data = await response.json() as CheapModelSelection | null;
-          setLastCheapModel(data);
-        }
+        const data = await apiRequest<CheapModelSelection | null>("/api/preferences/last-cheap-model", {
+          action: "Load last cheap model preference",
+          fallbackMessage: "Failed to load last cheap model preference",
+        });
+        setLastCheapModel(data);
       } catch (error) {
         log.warn("Failed to fetch last cheap model preference", { error: String(error) });
       }
@@ -104,22 +104,21 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
 
     setModelsLoading(true);
     try {
-      const response = await appFetch(
+      const data = await apiRequest<ModelInfo[]>(
         `/api/models?workspaceId=${encodeURIComponent(workspaceId)}`,
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          action: "Load workspace models",
+          fallbackMessage: "Failed to fetch workspace models",
+        },
       );
       if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
         return;
       }
-      if (response.ok) {
-        const data = await response.json() as ModelInfo[];
-        if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
-          return;
-        }
-        setModels(data);
-      } else {
-        setModels([]);
+      if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
+        return;
       }
+      setModels(data);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;

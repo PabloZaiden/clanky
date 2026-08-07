@@ -7,7 +7,7 @@ import type { SshServerSession, SshSession } from "@/shared";
 import type { UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
-import { appFetch } from "../lib/public-path";
+import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { deleteStandaloneSshSessionApi } from "./sshServerActions";
 
 export type SshSessionKind = "workspace" | "standalone";
@@ -36,12 +36,10 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
     const endpoint = kind === "standalone"
       ? `/api/ssh-server-sessions/${sessionId}`
       : `/api/ssh-sessions/${sessionId}`;
-    const response = await appFetch(endpoint);
-    if (!response.ok) {
-      const data = await response.json() as { message?: string };
-      throw new Error(data.message || "Failed to fetch SSH session");
-    }
-    return await response.json() as AnySshSession;
+    return await apiRequest<AnySshSession>(endpoint, {
+      action: "Fetch SSH session",
+      fallbackMessage: "Failed to fetch SSH session",
+    });
   }, [sessionId]);
 
   const fetchSession = useCallback(async (): Promise<{ session: AnySshSession; kind: SshSessionKind }> => {
@@ -52,25 +50,24 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
       };
     }
 
-    const workspaceResponse = await appFetch(`/api/ssh-sessions/${sessionId}`);
-    if (workspaceResponse.ok) {
+    const workspaceResponse = await requestApiResponse(`/api/ssh-sessions/${sessionId}`, {
+      action: "Fetch workspace SSH session",
+      fallbackMessage: "Failed to fetch SSH session",
+      acceptedStatuses: [404],
+    });
+    if (workspaceResponse.status !== 404) {
       return {
-        session: await workspaceResponse.json() as SshSession,
+        session: await readApiResponse<SshSession>(workspaceResponse),
         kind: "workspace",
       };
     }
-    if (workspaceResponse.status !== 404) {
-      const data = await workspaceResponse.json() as { message?: string };
-      throw new Error(data.message || "Failed to fetch SSH session");
-    }
 
-    const standaloneResponse = await appFetch(`/api/ssh-server-sessions/${sessionId}`);
-    if (!standaloneResponse.ok) {
-      const data = await standaloneResponse.json() as { message?: string };
-      throw new Error(data.message || "Failed to fetch SSH session");
-    }
+    const standaloneResponse = await requestApiResponse(`/api/ssh-server-sessions/${sessionId}`, {
+      action: "Fetch standalone SSH session",
+      fallbackMessage: "Failed to fetch SSH session",
+    });
     return {
-      session: await standaloneResponse.json() as SshServerSession,
+      session: await readApiResponse<SshServerSession>(standaloneResponse),
       kind: "standalone",
     };
   }, [fetchSessionByKind, sessionId]);
@@ -119,16 +116,13 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
       const endpoint = sessionKind === "standalone"
         ? `/api/ssh-server-sessions/${sessionId}`
         : `/api/ssh-sessions/${sessionId}`;
-      const response = await appFetch(endpoint, {
+      const updated = await apiRequest<AnySshSession>(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Update SSH session",
+        fallbackMessage: "Failed to update SSH session",
       });
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to update SSH session");
-      }
-      const updated = await response.json() as AnySshSession;
       setSession(updated);
       return updated;
     } catch (err) {
@@ -155,13 +149,11 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
         setSession(null);
         return true;
       }
-      const response = await appFetch(`/api/ssh-sessions/${sessionId}`, {
+      await apiRequest<unknown>(`/api/ssh-sessions/${sessionId}`, {
         method: "DELETE",
+        action: "Delete SSH session",
+        fallbackMessage: "Failed to delete SSH session",
       });
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to delete SSH session");
-      }
       setSession(null);
       return true;
     } catch (err) {

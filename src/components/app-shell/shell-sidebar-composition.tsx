@@ -8,7 +8,7 @@ import type {
 import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 import {
   isEffectivelyPrivate,
@@ -254,15 +254,13 @@ async function openWorkspaceGitHubUrl(
 
   let fetchedUrl: string | null;
   try {
-    const response = await appFetch(
+    const data = await apiRequest<{ githubUrl?: unknown }>(
       `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
+      {
+        action: "Load GitHub repository URL",
+        fallbackMessage: "GitHub repository URL is not available for this workspace",
+      },
     );
-    if (!response.ok) {
-      onError("GitHub repository URL is not available for this workspace");
-      return;
-    }
-
-    const data = await response.json() as { githubUrl?: unknown };
     fetchedUrl = typeof data.githubUrl === "string"
       ? normalizeGitHubRepositoryUrl(data.githubUrl)
       : null;

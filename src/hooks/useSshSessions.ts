@@ -7,7 +7,7 @@ import type { SshSession } from "@/shared";
 import type { CreateSshSessionRequest, UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
-import { appFetch } from "../lib/public-path";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseSshSessionsResult {
   sessions: SshSession[];
@@ -33,12 +33,10 @@ export function useSshSessions(): UseSshSessionsResult {
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch("/api/ssh-sessions");
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to fetch SSH sessions");
-      }
-      const data = await response.json() as SshSession[];
+      const data = await apiRequest<SshSession[]>("/api/ssh-sessions", {
+        action: "Fetch SSH sessions",
+        fallbackMessage: "Failed to fetch SSH sessions",
+      });
       setSessions(data);
     } catch (err) {
       log.error("Failed to fetch SSH sessions", { error: String(err) });
@@ -60,16 +58,13 @@ export function useSshSessions(): UseSshSessionsResult {
   const createSession = useCallback(async (request: CreateSshSessionRequest): Promise<SshSession> => {
     try {
       setError(null);
-      const response = await appFetch("/api/ssh-sessions", {
+      const session = await apiRequest<SshSession>("/api/ssh-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Create SSH session",
+        fallbackMessage: "Failed to create SSH session",
       });
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to create SSH session");
-      }
-      const session = await response.json() as SshSession;
       setSessions((prev) => [session, ...prev.filter((item) => item.config.id !== session.config.id)]);
       return session;
     } catch (err) {
@@ -83,16 +78,13 @@ export function useSshSessions(): UseSshSessionsResult {
   const updateSession = useCallback(async (id: string, request: UpdateSshSessionRequest): Promise<SshSession> => {
     try {
       setError(null);
-      const response = await appFetch(`/api/ssh-sessions/${id}`, {
+      const session = await apiRequest<SshSession>(`/api/ssh-sessions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Update SSH session",
+        fallbackMessage: "Failed to update SSH session",
       });
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to update SSH session");
-      }
-      const session = await response.json() as SshSession;
       setSessions((prev) => prev.map((item) => item.config.id === id ? session : item));
       return session;
     } catch (err) {
@@ -106,13 +98,11 @@ export function useSshSessions(): UseSshSessionsResult {
   const deleteSession = useCallback(async (id: string): Promise<boolean> => {
     try {
       setError(null);
-      const response = await appFetch(`/api/ssh-sessions/${id}`, {
+      await apiRequest<unknown>(`/api/ssh-sessions/${id}`, {
         method: "DELETE",
+        action: "Delete SSH session",
+        fallbackMessage: "Failed to delete SSH session",
       });
-      if (!response.ok) {
-        const data = await response.json() as { message?: string };
-        throw new Error(data.message || "Failed to delete SSH session");
-      }
       setSessions((prev) => prev.filter((item) => item.config.id !== id));
       return true;
     } catch (err) {

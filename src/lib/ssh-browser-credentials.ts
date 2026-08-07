@@ -1,6 +1,6 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { isApiErrorCode, parseApiError } from "./api-error";
-import { appFetch } from "./public-path";
+import { readApiResponse, requestApiResponse } from "./api-client";
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 
 const log = createLogger("sshBrowserCredentials");
@@ -53,7 +53,11 @@ function resolveSubtle(subtle?: SubtleCrypto): SubtleCrypto {
 }
 
 function resolveFetch(fetchFn?: FetchLike): FetchLike {
-  return fetchFn ?? ((input, init) => appFetch(String(input), init));
+  return fetchFn ?? ((input, init) => requestApiResponse(String(input), {
+    ...init,
+    action: `SSH credential request ${String(input)}`,
+    fallbackMessage: "SSH credential request failed",
+  }));
 }
 
 function getStorageKey(serverId: string): string {
@@ -193,7 +197,7 @@ export async function fetchSshServerPublicKey(
   if (!response.ok) {
     throw new Error(`Failed to fetch SSH server public key for ${serverId}`);
   }
-  return await response.json() as SshServerPublicKey;
+  return await readApiResponse<SshServerPublicKey>(response);
 }
 
 export async function encryptSshServerPassword(
@@ -272,7 +276,7 @@ export async function exchangeSshServerCredential(
   if (!response.ok) {
     throw await parseApiError(response, "Failed to exchange SSH credential");
   }
-  return await response.json() as SshCredentialExchangeResponse;
+  return await readApiResponse<SshCredentialExchangeResponse>(response);
 }
 
 export async function getStoredSshCredentialToken(

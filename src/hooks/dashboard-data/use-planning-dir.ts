@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 
 export interface UsePlanningDirResult {
   planningWarning: string | null;
@@ -25,21 +25,20 @@ export function usePlanningDir(): UsePlanningDirResult {
     }
 
     try {
-      const response = await appFetch(
-        `/api/check-planning-dir?workspaceId=${encodeURIComponent(workspaceId)}`
+      const data = await apiRequest<{ warning?: string }>(
+        `/api/check-planning-dir?workspaceId=${encodeURIComponent(workspaceId)}`,
+        {
+          action: "Check planning directory",
+          fallbackMessage: "Failed to check planning directory status",
+        },
       );
       if (requestId !== planningRequestIdRef.current) {
         return;
       }
-      if (response.ok) {
-        const data = await response.json();
-        if (requestId !== planningRequestIdRef.current) {
-          return;
-        }
-        setPlanningWarning(data.warning ?? null);
-      } else {
-        setPlanningWarning(null);
+      if (requestId !== planningRequestIdRef.current) {
+        return;
       }
+      setPlanningWarning(data.warning ?? null);
     } catch (error) {
       log.warn("Failed to check planning directory status", {
         workspaceId,

@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import type { Chat } from "@/shared";
 import { useToast } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
-import { getChatErrorMessage, parseChatError } from "./chat-lifecycle";
+import { getChatErrorMessage } from "./chat-lifecycle";
 import type {
   ChatPermissionPanelProps,
   ChatQueuedMessagesPanelProps,
@@ -27,15 +27,13 @@ export function ChatPermissionPanel({
     pendingIdsRef.current.add(requestId);
     setPendingIds((current) => [...current, requestId]);
     try {
-      const response = await appFetch(`/api/chats/${chatId}/permissions/${encodeURIComponent(requestId)}`, {
+      const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/permissions/${encodeURIComponent(requestId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision }),
+        action: "Reply to chat permission request",
+        fallbackMessage: "Failed to reply to permission request",
       });
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to reply to permission request"));
-      }
-      const nextChat = (await response.json()) as Chat;
       onChatSnapshot(nextChat);
     } catch (permissionError) {
       toast.error(getChatErrorMessage(permissionError));
@@ -119,13 +117,11 @@ export function ChatQueuedMessagesPanel({
 
     setRemovingIds((current) => [...current, queuedMessageId]);
     try {
-      const response = await appFetch(`/api/chats/${chatId}/queued-messages/${encodeURIComponent(queuedMessageId)}`, {
+      const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/queued-messages/${encodeURIComponent(queuedMessageId)}`, {
         method: "DELETE",
+        action: "Remove queued chat message",
+        fallbackMessage: "Failed to remove queued message",
       });
-      if (!response.ok) {
-        throw new Error(await parseChatError(response, "Failed to remove queued message"));
-      }
-      const nextChat = (await response.json()) as Chat;
       onChatSnapshot(nextChat);
     } catch (removeError) {
       toast.error(getChatErrorMessage(removeError));

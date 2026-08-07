@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appFetch } from "../lib/public-path";
+import { ApiError } from "../lib/api-error";
+import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type {
   Agent,
@@ -29,15 +30,6 @@ function sortRuns(runs: AgentRun[]): AgentRun[] {
 
 function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   return sortRuns([...runs.filter((item) => item.id !== run.id), run]);
-}
-
-async function parseError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 export interface UseAgentsResult {
@@ -97,14 +89,14 @@ export function useAgents(): UseAgentsResult {
         setLoading(true);
       }
       setError(null);
-      const response = await appFetch("/api/agents", { signal: controller.signal });
+      const data = await apiRequest<Agent[]>("/api/agents", {
+        signal: controller.signal,
+        action: "Fetch agents",
+        fallbackMessage: "Failed to fetch agents",
+      });
       if (controller.signal.aborted) {
         return;
       }
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to fetch agents"));
-      }
-      const data = await response.json() as Agent[];
       setAgents(sortAgents(data));
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
@@ -120,11 +112,10 @@ export function useAgents(): UseAgentsResult {
 
   const refreshRuns = useCallback(async (agentId: string) => {
     try {
-      const response = await appFetch(`/api/agents/${agentId}/runs`);
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to fetch agent runs"));
-      }
-      const runs = await response.json() as AgentRun[];
+      const runs = await apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
+        action: "Fetch agent runs",
+        fallbackMessage: "Failed to fetch agent runs",
+      });
       setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
     } catch (refreshError) {
       log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
@@ -142,14 +133,12 @@ export function useAgents(): UseAgentsResult {
     fallback: string,
   ): Promise<T | null> => {
     try {
-      const response = await appFetch(path, {
+      return await apiRequest<T>(path, {
         ...options,
         headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+        action: fallback,
+        fallbackMessage: fallback,
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, fallback));
-      }
-      return await response.json() as T;
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         return null;
@@ -208,29 +197,35 @@ export function useAgents(): UseAgentsResult {
     } = {},
   ): Promise<(GeneratedAgentCode & { chat?: Chat }) | null> => {
     try {
-      const response = await appFetch(
+      const response = await requestApiResponse(
         id ? `/api/agents/${id}/code/generate` : "/api/agents/code/generate",
         {
           method: "POST",
           signal: options.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(request),
+          action: "Generate agent code",
+          fallbackMessage: "Failed to generate agent code",
         },
       );
       const chatId = response.headers.get("X-Clanky-Generation-Chat-Id");
       if (chatId) {
         options.onChatId?.(chatId);
       }
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to generate agent code"));
-      }
-      const generated = await response.json() as GeneratedAgentCode & {
+      const generated = await readApiResponse<GeneratedAgentCode & {
         chat?: Chat;
         error?: string;
         message?: string;
-      };
+      }>(response);
       if (generated.error) {
-        throw new Error(generated.message ?? generated.error);
+        throw new ApiError(generated.message ?? generated.error, {
+          code: generated.error,
+          status: response.status,
+          data: {
+            error: generated.error,
+            message: generated.message,
+          },
+        });
       }
       return generated;
     } catch (requestError) {
@@ -250,15 +245,14 @@ export function useAgents(): UseAgentsResult {
     } = {},
   ): Promise<DeterministicAgentTestResult | null> => {
     try {
-      const response = await appFetch("/api/agents/code/test/stream", {
+      const response = await requestApiResponse("/api/agents/code/test/stream", {
         method: "POST",
         signal: options.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        action: "Test agent code",
+        fallbackMessage: "Failed to test agent code",
       });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to test agent code"));
-      }
       if (!response.body) {
         throw new Error("Deterministic agent test did not return a stream");
       }

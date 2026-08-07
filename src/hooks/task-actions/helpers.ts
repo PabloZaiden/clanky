@@ -3,16 +3,11 @@
  * Not re-exported from the barrel.
  */
 
-import { createLogger } from "@pablozaiden/webapp/web";
-import { ApiError, parseApiError } from "../../lib/api-error";
-import { appFetch } from "../../lib/public-path";
-
-export const log = createLogger("taskActions");
+import { ApiError } from "../../lib/api-error";
+import { apiRequest } from "../../lib/api-client";
 
 /**
- * Generic API call helper that eliminates boilerplate across task action functions.
- *
- * Handles: fetch, error checking, JSON parsing, logging, and error throwing.
+ * Task-specific action wrappers around the shared typed API client.
  *
  * @param url - API endpoint URL
  * @param options - Fetch options (method, body, etc.)
@@ -26,32 +21,31 @@ export async function apiCall<T = unknown>(
   actionName: string,
   extractError?: (data: Record<string, unknown>) => string | undefined,
 ): Promise<T> {
-  log.debug(`API: ${actionName}`, { url });
-  const response = await appFetch(url, options);
-
-  if (!response.ok) {
-    const apiError = await parseApiError(response, `Failed to ${actionName.toLowerCase()}`);
-    const errorMessage = extractError
-      ? extractError({
-          code: apiError.code,
-          error: apiError.code,
-          message: apiError.message,
-        }) ?? apiError.message
-      : apiError.message;
-    log.error(`API: ${actionName} failed`, { url, error: errorMessage });
-    if (errorMessage !== apiError.message) {
-      throw new ApiError(errorMessage, {
-        code: apiError.code,
-        status: apiError.status,
-        cause: apiError,
-      });
+  try {
+    return await apiRequest<T>(url, {
+      ...options,
+      action: actionName,
+      fallbackMessage: `Failed to ${actionName.toLowerCase()}`,
+    });
+  } catch (error) {
+    if (extractError && error instanceof ApiError) {
+      const errorMessage = extractError({
+        ...error.data,
+        code: error.code,
+        error: error.code,
+        message: error.message,
+      }) ?? error.message;
+      if (errorMessage !== error.message) {
+        throw new ApiError(errorMessage, {
+          code: error.code,
+          status: error.status,
+          cause: error,
+          data: error.data,
+        });
+      }
     }
-    throw apiError;
+    throw error;
   }
-
-  const data = await response.json() as T;
-  log.debug(`API: ${actionName} success`, { url });
-  return data;
 }
 
 /**

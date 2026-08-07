@@ -14,7 +14,7 @@ import {
   manualCompleteTaskApi,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { apiRequest } from "../../lib/api-client";
 import type { Task } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { UseTaskActionsParams } from "./useTaskActions";
@@ -57,16 +57,13 @@ export function useTaskLifecycleActions(
         hasNameUpdate: request.name !== undefined,
       });
       try {
-        const response = await appFetch(`/api/tasks/${actionTaskId}`, {
+        const data = await apiRequest<Task>(`/api/tasks/${actionTaskId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(request),
+          action: "Update task",
+          fallbackMessage: "Failed to update task",
         });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || "Failed to update task");
-        }
-        const data = (await response.json()) as Task;
         if (!isActiveTask(actionTaskId)) {
           return false;
         }

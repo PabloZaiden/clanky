@@ -8,7 +8,8 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Task } from "@/shared";
 import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
-import { appFetch } from "../../lib/public-path";
+import { ApiError, parseApiError } from "../../lib/api-error";
+import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 
 const log = createLogger("useTask");
 
@@ -26,10 +27,6 @@ export interface UseTaskFileQueriesParams {
   setError: Dispatch<SetStateAction<string | null>>;
 }
 
-interface ApiErrorBody {
-  error?: string;
-}
-
 function createEmptyFileContent(): FileContentResponse {
   return {
     content: "",
@@ -37,25 +34,17 @@ function createEmptyFileContent(): FileContentResponse {
   };
 }
 
-async function getApiErrorBody(response: Response): Promise<ApiErrorBody | null> {
-  try {
-    return (await response.json()) as ApiErrorBody;
-  } catch {
-    return null;
-  }
-}
-
 function shouldSuppressTransientPlanningFileFetchError(
   taskStatus: Task["state"]["status"] | undefined,
   isPlanReady: boolean | undefined,
-  response: Response,
-  errorBody: ApiErrorBody | null,
+  error: unknown,
 ): boolean {
   return (
     taskStatus === "planning"
     && isPlanReady !== true
-    && response.status === 400
-    && errorBody?.error === "no_worktree"
+    && error instanceof ApiError
+    && error.status === 400
+    && error.code === "no_worktree"
   );
 }
 
@@ -79,15 +68,16 @@ export function useTaskFileQueries(params: UseTaskFileQueriesParams): UseTaskFil
     }
     log.debug("Getting diff", { taskId: actionTaskId });
     try {
-      const response = await appFetch(`/api/tasks/${actionTaskId}/diff`);
-      if (!response.ok) {
-        // 400 "no_git_branch" is expected when task is in planning mode or hasn't started yet
-        if (response.status === 400) {
-          return []; // Return empty diff instead of showing error
-        }
-        throw new Error(`Failed to get diff: ${response.statusText}`);
+      const response = await requestApiResponse(`/api/tasks/${actionTaskId}/diff`, {
+        action: "Get task diff",
+        fallbackMessage: "Failed to get diff",
+        acceptedStatuses: [400],
+      });
+      // 400 "no_git_branch" is expected when task is in planning mode or has not started yet.
+      if (response.status === 400) {
+        return [];
       }
-      const diff = (await response.json()) as FileDiff[];
+      const diff = await readApiResponse<FileDiff[]>(response);
       if (!isActiveTask(actionTaskId)) {
         return [];
       }
@@ -113,23 +103,27 @@ export function useTaskFileQueries(params: UseTaskFileQueriesParams): UseTaskFil
     }
     log.debug("Getting plan", { taskId: actionTaskId });
     try {
-      const response = await appFetch(`/api/tasks/${actionTaskId}/plan`);
-      if (!response.ok) {
-        const errorBody = await getApiErrorBody(response);
-        if (shouldSuppressTransientPlanningFileFetchError(taskStatus, isPlanReady, response, errorBody)) {
+      const response = await requestApiResponse(`/api/tasks/${actionTaskId}/plan`, {
+        action: "Get task plan",
+        fallbackMessage: "Failed to get plan",
+        acceptedStatuses: [400],
+      });
+      if (response.status === 400) {
+        const error = await parseApiError(response, "Failed to get plan");
+        if (shouldSuppressTransientPlanningFileFetchError(taskStatus, isPlanReady, error)) {
           if (!isActiveTask(actionTaskId)) {
             return fallback;
           }
           log.debug("Suppressing transient plan fetch error during planning startup", {
             taskId: actionTaskId,
-            status: response.status,
-            error: errorBody?.error,
+            status: error.status,
+            error: error.code,
           });
           return fallback;
         }
-        throw new Error(`Failed to get plan: ${response.statusText}`);
+        throw error;
       }
-      const result = (await response.json()) as FileContentResponse;
+      const result = await readApiResponse<FileContentResponse>(response);
       if (!isActiveTask(actionTaskId)) {
         return fallback;
       }
@@ -159,23 +153,27 @@ export function useTaskFileQueries(params: UseTaskFileQueriesParams): UseTaskFil
     }
     log.debug("Getting status file", { taskId: actionTaskId });
     try {
-      const response = await appFetch(`/api/tasks/${actionTaskId}/status-file`);
-      if (!response.ok) {
-        const errorBody = await getApiErrorBody(response);
-        if (shouldSuppressTransientPlanningFileFetchError(taskStatus, isPlanReady, response, errorBody)) {
+      const response = await requestApiResponse(`/api/tasks/${actionTaskId}/status-file`, {
+        action: "Get task status file",
+        fallbackMessage: "Failed to get status file",
+        acceptedStatuses: [400],
+      });
+      if (response.status === 400) {
+        const error = await parseApiError(response, "Failed to get status file");
+        if (shouldSuppressTransientPlanningFileFetchError(taskStatus, isPlanReady, error)) {
           if (!isActiveTask(actionTaskId)) {
             return fallback;
           }
           log.debug("Suppressing transient status file fetch error during planning startup", {
             taskId: actionTaskId,
-            status: response.status,
-            error: errorBody?.error,
+            status: error.status,
+            error: error.code,
           });
           return fallback;
         }
-        throw new Error(`Failed to get status file: ${response.statusText}`);
+        throw error;
       }
-      const result = (await response.json()) as FileContentResponse;
+      const result = await readApiResponse<FileContentResponse>(response);
       if (!isActiveTask(actionTaskId)) {
         return fallback;
       }
@@ -214,11 +212,13 @@ export function useTaskFileQueries(params: UseTaskFileQueriesParams): UseTaskFil
       }
       log.debug("Getting pull request destination", { taskId: actionTaskId });
       try {
-        const response = await appFetch(`/api/tasks/${actionTaskId}/pull-request`);
-        if (!response.ok) {
-          throw new Error(`Failed to get pull request destination: ${response.statusText}`);
-        }
-        const result = (await response.json()) as PullRequestDestinationResponse;
+        const result = await apiRequest<PullRequestDestinationResponse>(
+          `/api/tasks/${actionTaskId}/pull-request`,
+          {
+            action: "Get pull request destination",
+            fallbackMessage: "Failed to get pull request destination",
+          },
+        );
         if (!isActiveTask(actionTaskId)) {
           return fallback;
         }
