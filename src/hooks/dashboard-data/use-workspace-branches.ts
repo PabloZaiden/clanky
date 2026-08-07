@@ -48,9 +48,6 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
       if (requestId !== branchesRequestIdRef.current) {
         return;
       }
-      if (requestId !== branchesRequestIdRef.current) {
-        return;
-      }
       setBranches(data.branches ?? []);
       setCurrentBranch(data.currentBranch ?? "");
     } catch (error) {
@@ -84,9 +81,6 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
           fallbackMessage: "Failed to fetch workspace default branch",
         },
       );
-      if (requestId !== defaultBranchRequestIdRef.current) {
-        return;
-      }
       if (requestId !== defaultBranchRequestIdRef.current) {
         return;
       }

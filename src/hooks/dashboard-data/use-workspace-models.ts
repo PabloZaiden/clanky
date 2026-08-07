@@ -115,9 +115,6 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
         return;
       }
-      if (controller.signal.aborted || requestId !== modelsRequestIdRef.current) {
-        return;
-      }
       setModels(data);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {

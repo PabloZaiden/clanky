@@ -35,9 +35,6 @@ export function usePlanningDir(): UsePlanningDirResult {
       if (requestId !== planningRequestIdRef.current) {
         return;
       }
-      if (requestId !== planningRequestIdRef.current) {
-        return;
-      }
       setPlanningWarning(data.warning ?? null);
     } catch (error) {
       log.warn("Failed to check planning directory status", {
