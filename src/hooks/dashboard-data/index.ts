@@ -38,6 +38,7 @@ export interface UseDashboardDataResult {
   // Branches
   branches: import("@/contracts").BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
 
@@ -64,7 +65,6 @@ export function useDashboardData(): UseDashboardDataResult {
     log.debug("handleWorkspaceChange called", {
       workspaceId,
     });
-    workspaceModels.setModelsWorkspaceId(workspaceId);
     log.debug("Fetching workspace data", { workspaceId });
     workspaceModels.fetchModels(workspaceId);
     workspaceBranches.fetchBranches(workspaceId);
@@ -75,7 +75,6 @@ export function useDashboardData(): UseDashboardDataResult {
     workspaceBranches.fetchBranches,
     workspaceBranches.fetchDefaultBranch,
     workspaceModels.fetchModels,
-    workspaceModels.setModelsWorkspaceId,
   ]);
 
   const resetCreateModalState = useCallback(() => {
@@ -97,6 +96,7 @@ export function useDashboardData(): UseDashboardDataResult {
     planningWarning: planningDir.planningWarning,
     branches: workspaceBranches.branches,
     branchesLoading: workspaceBranches.branchesLoading,
+    branchesWorkspaceId: workspaceBranches.branchesWorkspaceId,
     currentBranch: workspaceBranches.currentBranch,
     defaultBranch: workspaceBranches.defaultBranch,
     appSettingsResetting: appConfig.appSettingsResetting,

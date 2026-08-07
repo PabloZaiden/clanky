@@ -10,6 +10,7 @@ import { apiRequest } from "../../lib/api-client";
 export interface UseWorkspaceBranchesResult {
   branches: BranchInfo[];
   branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
   fetchBranches: (workspaceId: string | null) => Promise<void>;
@@ -20,23 +21,30 @@ export interface UseWorkspaceBranchesResult {
 export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
   const log = createLogger("useWorkspaceBranches");
   const [branches, setBranches] = useState<BranchInfo[]>([]);
-  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchListLoading, setBranchListLoading] = useState(false);
+  const [defaultBranchLoading, setDefaultBranchLoading] = useState(false);
+  const [branchesWorkspaceId, setBranchesWorkspaceId] = useState<string | null>(null);
   const [currentBranch, setCurrentBranch] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("");
 
   const branchesRequestIdRef = useRef(0);
   const defaultBranchRequestIdRef = useRef(0);
 
+  const resetBranchData = useCallback((workspaceId: string | null): void => {
+    setBranchesWorkspaceId(workspaceId);
+    setBranches([]);
+    setCurrentBranch("");
+    setDefaultBranch("");
+  }, []);
+
   const fetchBranches = useCallback(async (workspaceId: string | null) => {
     const requestId = ++branchesRequestIdRef.current;
+    resetBranchData(workspaceId);
+    setBranchListLoading(Boolean(workspaceId));
     if (!workspaceId) {
-      setBranches([]);
-      setCurrentBranch("");
-      setBranchesLoading(false);
       return;
     }
 
-    setBranchesLoading(true);
     try {
       const data = await apiRequest<{ branches?: BranchInfo[]; currentBranch?: string }>(
         `/api/git/branches?workspaceId=${encodeURIComponent(workspaceId)}`,
@@ -61,15 +69,16 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
       }
     } finally {
       if (requestId === branchesRequestIdRef.current) {
-        setBranchesLoading(false);
+        setBranchListLoading(false);
       }
     }
-  }, []);
+  }, [resetBranchData]);
 
   const fetchDefaultBranch = useCallback(async (workspaceId: string | null) => {
     const requestId = ++defaultBranchRequestIdRef.current;
+    resetBranchData(workspaceId);
+    setDefaultBranchLoading(Boolean(workspaceId));
     if (!workspaceId) {
-      setDefaultBranch("");
       return;
     }
 
@@ -93,18 +102,25 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
       if (requestId === defaultBranchRequestIdRef.current) {
         setDefaultBranch("");
       }
+    } finally {
+      if (requestId === defaultBranchRequestIdRef.current) {
+        setDefaultBranchLoading(false);
+      }
     }
-  }, []);
+  }, [resetBranchData]);
 
   const resetBranches = useCallback(() => {
-    setBranches([]);
-    setCurrentBranch("");
-    setDefaultBranch("");
-  }, []);
+    branchesRequestIdRef.current += 1;
+    defaultBranchRequestIdRef.current += 1;
+    resetBranchData(null);
+    setBranchListLoading(false);
+    setDefaultBranchLoading(false);
+  }, [resetBranchData]);
 
   return {
     branches,
-    branchesLoading,
+    branchesLoading: branchListLoading || defaultBranchLoading,
+    branchesWorkspaceId,
     currentBranch,
     defaultBranch,
     fetchBranches,

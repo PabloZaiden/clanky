@@ -37,6 +37,7 @@ export interface UseAgentCodeGenerationOptions {
   prompt: string;
   selectedWorkspace: Workspace | null;
   modelKey: string;
+  workspaceSelectionsReady: boolean;
   onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onCodeChanged: () => void;
@@ -66,6 +67,7 @@ export function useAgentCodeGeneration({
   prompt,
   selectedWorkspace,
   modelKey,
+  workspaceSelectionsReady,
   onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onCodeChanged,
@@ -174,8 +176,8 @@ export function useAgentCodeGeneration({
       toastError("Save the agent before generating code");
       return;
     }
-    if (!selectedWorkspace || !parsedGenerationModel) {
-      toastError("Select a workspace and model before generating code");
+    if (!workspaceSelectionsReady || !selectedWorkspace || !parsedGenerationModel) {
+      toastError("Select a workspace, then wait for its models and branches to finish loading and choose valid options before generating code");
       return;
     }
     const operation = acquireGenerationOperation("initial");
@@ -260,6 +262,7 @@ export function useAgentCodeGeneration({
     releaseGenerationOperation,
     selectedWorkspace,
     modelKey,
+    workspaceSelectionsReady,
     toastError,
     toastSuccess,
   ]);
@@ -267,7 +270,7 @@ export function useAgentCodeGeneration({
   const sendGenerationMessage = useCallback(async (
     options: AgentGenerationMessageOptions,
   ): Promise<Chat> => {
-    if (!agent || !generationChatId || !selectedWorkspace) {
+    if (!workspaceSelectionsReady || !agent || !generationChatId || !selectedWorkspace) {
       throw new Error("Save the agent and start a generation conversation first");
     }
     const parsedGenerationModel = parseModelKey(modelKey);
@@ -318,6 +321,7 @@ export function useAgentCodeGeneration({
     prompt,
     releaseGenerationOperation,
     selectedWorkspace,
+    workspaceSelectionsReady,
   ]);
 
   const cancelGeneration = useCallback((): void => {
