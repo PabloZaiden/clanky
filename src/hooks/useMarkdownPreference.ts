@@ -3,9 +3,13 @@
  * Provides access to the global markdown rendering setting.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
+import {
+  usePreferenceLifecycle,
+  type PreferenceErrorContext,
+} from "./usePreferenceLifecycle";
 
 export interface UseMarkdownPreferenceResult {
   /** Whether markdown rendering is enabled */
@@ -28,71 +32,65 @@ export interface UseMarkdownPreferenceResult {
  */
 export function useMarkdownPreference(): UseMarkdownPreferenceResult {
   const log = createLogger("useMarkdownPreference");
-  const [enabled, setEnabledState] = useState(true); // Default to true
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const loadPreference = useCallback(async (signal: AbortSignal): Promise<boolean> => {
+    const data = await apiRequest<{ enabled: boolean }>("/api/preferences/markdown-rendering", {
+      signal,
+      action: "Load markdown preference",
+      fallbackMessage: "Failed to fetch preference",
+    });
+    return data.enabled;
+  }, []);
 
-  // Ref to track the latest enabled value to avoid stale closure in toggle
-  const enabledRef = useRef(enabled);
+  const savePreference = useCallback(async (
+    nextEnabled: boolean,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await apiRequest("/api/preferences/markdown-rendering", {
+      signal,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: nextEnabled }),
+      action: "Save markdown preference",
+      fallbackMessage: "Failed to save preference",
+    });
+  }, []);
+
+  const handlePreferenceError = useCallback((context: PreferenceErrorContext<boolean>) => {
+    if (context.operation === "load") {
+      log.error("Failed to fetch markdown preference", { error: String(context.error) });
+      return;
+    }
+    log.error("Failed to save markdown preference", {
+      enabled: context.value,
+      error: String(context.error),
+    });
+  }, []);
+
+  const preference = usePreferenceLifecycle({
+    initialValue: true,
+    load: loadPreference,
+    save: savePreference,
+    onError: handlePreferenceError,
+  });
+
+  const enabledRef = useRef(preference.value);
   useEffect(() => {
-    enabledRef.current = enabled;
-  }, [enabled]);
+    enabledRef.current = preference.value;
+  }, [preference.value]);
 
-  // Fetch the current preference
-  const fetchPreference = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiRequest<{ enabled: boolean }>("/api/preferences/markdown-rendering", {
-        action: "Load markdown preference",
-        fallbackMessage: "Failed to fetch preference",
-      });
-      setEnabledState(data.enabled);
-    } catch (err) {
-      log.error("Failed to fetch markdown preference", { error: String(err) });
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const setEnabled = useCallback(async (nextEnabled: boolean) => {
+    await preference.saveValue(nextEnabled);
+  }, [preference.saveValue]);
 
-  // Set the preference
-  const setEnabled = useCallback(async (newEnabled: boolean) => {
-    try {
-      setSaving(true);
-      setError(null);
-      await apiRequest("/api/preferences/markdown-rendering", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: newEnabled }),
-        action: "Save markdown preference",
-        fallbackMessage: "Failed to save preference",
-      });
-      setEnabledState(newEnabled);
-    } catch (err) {
-      log.error("Failed to save markdown preference", { enabled: newEnabled, error: String(err) });
-      setError(String(err));
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  // Toggle the preference using ref to avoid stale closure issues
   const toggle = useCallback(async () => {
     await setEnabled(!enabledRef.current);
   }, [setEnabled]);
 
-  // Initial fetch
-  useEffect(() => {
-    fetchPreference();
-  }, [fetchPreference]);
-
   return {
-    enabled,
-    loading,
-    error,
-    saving,
+    enabled: preference.value,
+    loading: preference.loading,
+    error: preference.error,
+    saving: preference.saving,
     toggle,
     setEnabled,
   };
