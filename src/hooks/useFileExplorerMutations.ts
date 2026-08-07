@@ -64,6 +64,7 @@ export function useFileExplorerMutations(
     bytesUploaded: number;
     totalBytes: number;
   } | null>(null);
+  const uploadProgressRequestIdRef = useRef<number | null>(null);
   const mutationRequestIdRef = useRef(0);
   const stateTargetKeyRef = useRef(scope.targetKey);
   const hasCurrentTargetState = stateTargetKeyRef.current === scope.targetKey;
@@ -289,6 +290,7 @@ export function useFileExplorerMutations(
 
     setOperationFailure(null);
     clearError();
+    uploadProgressRequestIdRef.current = requestId;
     setUploadProgress({ bytesUploaded: 0, totalBytes: file.size });
     try {
       const response = await uploadFileExplorerFileApi(
@@ -324,7 +326,8 @@ export function useFileExplorerMutations(
       });
       return null;
     } finally {
-      if (isCurrentMutation(requestId, operation)) {
+      if (uploadProgressRequestIdRef.current === requestId) {
+        uploadProgressRequestIdRef.current = null;
         setUploadProgress(null);
       }
     }
@@ -341,6 +344,7 @@ export function useFileExplorerMutations(
     savingFileRef.current = false;
     setSavingFile(false);
     setOperationFailure(null);
+    uploadProgressRequestIdRef.current = null;
     setUploadProgress(null);
   }, [savingFileRef, scope]);
 

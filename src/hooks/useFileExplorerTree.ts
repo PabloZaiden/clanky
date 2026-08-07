@@ -234,12 +234,16 @@ export function useFileExplorerTree(
       setSelectedNode(directoryNode);
     }
     const isExpanded = expandedDirectories.includes(path);
+    setExpandedDirectories((currentPaths) => {
+      const currentIsExpanded = currentPaths.includes(path);
+      return currentIsExpanded
+        ? currentPaths.filter((currentPath) => currentPath !== path)
+        : [...currentPaths, path];
+    });
     if (isExpanded) {
-      setExpandedDirectories((currentPaths) => currentPaths.filter((currentPath) => currentPath !== path));
       return;
     }
 
-    setExpandedDirectories((currentPaths) => [...currentPaths, path]);
     const shouldLoadDirectory = directoryEntriesRef.current[path] === undefined && (
       !effectiveLoadFullTree
       || Boolean(directoryNode?.loadOnExpand)
