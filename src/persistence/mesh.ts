@@ -22,14 +22,14 @@ import type {
   MeshTakeoverRecord,
   MeshTransport,
 } from "@/shared/mesh";
-import { DomainError } from "../core/domain-error";
+import { DomainError } from "../domain/domain-error";
 import {
   decideApproveMeshPairing,
   decideCompleteOutgoingMeshPairing,
   decideLocalMeshTakeover,
   decideRejectMeshPairing,
   decideRemoteMeshTakeover,
-} from "../core/mesh-transitions";
+} from "../domain/mesh-transitions";
 import { getDatabase } from "./database";
 import {
   normalizeMeshInstanceName,

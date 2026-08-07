@@ -22,7 +22,7 @@ import {
 } from "./mesh";
 import { getDatabase } from "./database";
 import { ensureLocalMeshNodeIdentity } from "./mesh-node-identity";
-import { isMeshReplicationSuppressed } from "../core/mesh-sync-context";
+import { isMeshReplicationSuppressed } from "../context/mesh-sync-context";
 
 const log = createLogger("persistence:mesh-sync");
 

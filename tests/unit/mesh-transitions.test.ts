@@ -12,8 +12,8 @@ import {
   decideReceiveMeshPairingApproval,
   decideRejectMeshPairing,
   decideRemoteMeshTakeover,
-} from "../../src/core/mesh-transitions";
-import { DomainError } from "../../src/core/domain-error";
+} from "../../src/domain/mesh-transitions";
+import { DomainError } from "../../src/domain/domain-error";
 
 const now = Date.parse("2026-08-07T00:00:00.000Z");
 

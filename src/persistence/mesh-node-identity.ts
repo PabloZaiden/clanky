@@ -17,7 +17,7 @@ import {
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "../core/domain-error";
+import { DomainError } from "../domain/domain-error";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   type MeshNodeIdentity,

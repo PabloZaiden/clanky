@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { meshErrorResponse } from "../../src/api/mesh";
-import { DomainError } from "../../src/core/domain-error";
+import { DomainError } from "../../src/domain/domain-error";
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
   return await response.json() as Record<string, unknown>;
