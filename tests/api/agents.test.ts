@@ -486,6 +486,7 @@ describe("Agents API Integration", () => {
 
   test("continues generation follow-ups in the same hidden conversation", async () => {
     const agent = await createAgent("Follow-up generation agent");
+    const sourcePathCountBefore = generatedSourcePaths.length;
     const firstResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -520,6 +521,9 @@ describe("Agents API Integration", () => {
     };
     expect(followUp.chat.config.id).toBe(first.chat.config.id);
     expect(followUp.code).toContain("generated from temporary file");
+    expect(generatedSourcePaths).toHaveLength(sourcePathCountBefore + 2);
+    expect(generatedSourcePaths.at(-1)).toBe(generatedSourcePaths.at(-2));
+    expect(await Bun.file(generatedSourcePaths.at(-1)!).exists()).toBe(true);
 
     const snapshotResponse = await fetch(`${baseUrl}/api/chats/${first.chat.config.id}/snapshot`);
     expect(snapshotResponse.status).toBe(200);

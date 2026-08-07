@@ -17,6 +17,7 @@ const log = createLogger("deterministic-agent-generation");
 const GENERATION_SOURCE_POLL_INTERVAL_MS = 100;
 const GENERATION_SOURCE_TIMEOUT_MS = 15 * 60 * 1000;
 const GENERATION_COMPLETE_MARKER = "complete";
+const GENERATION_SOURCE_PATH_MARKER = "Write only raw TypeScript source to this exact absolute file path:";
 const GENERATION_REPAIR_TURN_LIMIT = 1;
 
 export interface GenerateDeterministicAgentCodeOptions {
@@ -87,7 +88,7 @@ function buildGenerationPrompt(
   return [
     "Generate the complete TypeScript source for a Clanky deterministic agent.",
     "Use your workspace file tools to write the source instead of returning it in your response.",
-    "Write only raw TypeScript source to this exact absolute file path:",
+    GENERATION_SOURCE_PATH_MARKER,
     "---",
     outputFilePath,
     "---",
@@ -148,8 +149,16 @@ function buildGenerationFollowUpMessage(
     "---",
     message,
     "---",
-    "Apply the follow-up request to the deterministic agent source. Write and verify the complete updated source "
-      + `to ${outputFilePath}, then write "${GENERATION_COMPLETE_MARKER}" to ${completionFilePath}.`,
+    "Apply the follow-up request to the deterministic agent source.",
+    GENERATION_SOURCE_PATH_MARKER,
+    "---",
+    outputFilePath,
+    "---",
+    "Write and verify the complete updated source before writing the exact text "
+      + `"${GENERATION_COMPLETE_MARKER}" to this separate marker file:`,
+    "---",
+    completionFilePath,
+    "---",
     "Reply with a short confirmation only; do not paste the source.",
   ].join("\n");
 }
