@@ -4,6 +4,7 @@
 
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { AgentEvent, PromptInput } from "../../backends/types";
+import type { AgentEventTranscriptResult } from "../agent-event-transcript-interpreter";
 import { createTimestamp, type LogLevel } from "@/shared/events";
 import {
   type IterationContext,
@@ -37,9 +38,11 @@ export interface TaskPromptExecutorOptions {
   getWorkingDirectory: () => string;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
   updateState: (update: Partial<TaskState>) => void;
-  processAgentEvent: (event: AgentEvent, ctx: IterationContext) => Promise<void>;
+  processAgentEvent: (
+    event: AgentEvent,
+    ctx: IterationContext,
+  ) => Promise<AgentEventTranscriptResult>;
   triggerPersistence: () => Promise<void>;
-  recordTextDelta: (content: string) => boolean;
   isAborted: () => boolean;
   isInjectionPending: () => boolean;
   resetIterationContextForRetry: (ctx: IterationContext) => void;
@@ -55,7 +58,6 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
   private readonly updateState: TaskPromptExecutorOptions["updateState"];
   private readonly processAgentEvent: TaskPromptExecutorOptions["processAgentEvent"];
   private readonly triggerPersistence: TaskPromptExecutorOptions["triggerPersistence"];
-  private readonly recordTextDelta: TaskPromptExecutorOptions["recordTextDelta"];
   private readonly isAborted: TaskPromptExecutorOptions["isAborted"];
   private readonly isInjectionPending: TaskPromptExecutorOptions["isInjectionPending"];
   private readonly resetIterationContextForRetry: TaskPromptExecutorOptions["resetIterationContextForRetry"];
@@ -71,7 +73,6 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
     this.updateState = options.updateState;
     this.processAgentEvent = options.processAgentEvent;
     this.triggerPersistence = options.triggerPersistence;
-    this.recordTextDelta = options.recordTextDelta;
     this.isAborted = options.isAborted;
     this.isInjectionPending = options.isInjectionPending;
     this.resetIterationContextForRetry = options.resetIterationContextForRetry;
@@ -154,14 +155,10 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
           onEvent: async (event) => {
             log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
             this.updateState({ lastActivityAt: createTimestamp() });
-            await this.processAgentEvent(event, ctx);
-
-            const isTextDelta = event.type === "message.delta" || event.type === "reasoning.delta";
-            const shouldCheckpointText = isTextDelta
-              ? this.recordTextDelta(event.content)
-              : false;
-            if (!isTextDelta || shouldCheckpointText) {
+            const transcriptResult = await this.processAgentEvent(event, ctx);
+            if (transcriptResult.checkpointRequested) {
               await this.triggerPersistence();
+              ctx.transcript.acknowledgeCheckpoint();
             }
 
             if (event.type === "error" && event.code === "acp_session_not_found") {

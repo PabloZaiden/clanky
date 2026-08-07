@@ -1,11 +1,15 @@
 /**
- * Agent event processing helpers for TaskEngine.
+ * Task-specific materialization of shared agent transcript projections.
  */
 
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { LogLevel, TaskEvent, MessageData, ToolCallData } from "@/shared/events";
-import { createTimestamp } from "@/shared/events";
 import type { AgentEvent } from "../../backends/types";
+import type {
+  AgentEventTranscriptBlock,
+  AgentEventTranscriptResult,
+  AgentEventTranscriptTextDelta,
+} from "../agent-event-transcript-interpreter";
 import type { TaskBackend, IterationContext } from "./engine-types";
 
 export interface ToolProcessingContext {
@@ -14,58 +18,74 @@ export interface ToolProcessingContext {
   state: TaskState;
   backend: TaskBackend;
   sessionId: string | null;
-  emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>, id?: string, consoleLevel?: "trace" | "debug" | "info" | "warn" | "error") => string;
-  emitLogDelta: (level: LogLevel, message: string, delta: string, fullContent: string, logKind: "response" | "reasoning", id: string) => void;
+  emitLog: (
+    level: LogLevel,
+    message: string,
+    details?: Record<string, unknown>,
+    id?: string,
+    consoleLevel?: "trace" | "debug" | "info" | "warn" | "error",
+  ) => string;
+  emitLogDelta: (
+    level: LogLevel,
+    message: string,
+    delta: string,
+    fullContent: string,
+    logKind: "response" | "reasoning",
+    id: string,
+  ) => void;
   emit: (event: TaskEvent) => void;
-  updateState: (update: Partial<TaskState>) => void;
   persistMessage: (message: MessageData) => void;
   persistToolCall: (toolCall: ToolCallData) => void;
-  triggerPersistence: () => Promise<void>;
   scheduleToolImagePreview: (toolCall: ToolCallData, iteration: number) => void;
 }
 
-export async function processTaskAgentEvent(event: AgentEvent, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
+export async function processTaskAgentEvent(
+  event: AgentEvent,
+  ctx: IterationContext,
+  toolCtx: ToolProcessingContext,
+  transcriptResult: AgentEventTranscriptResult = ctx.transcript.handle(event),
+): Promise<void> {
+  syncIterationContext(ctx);
+
   switch (event.type) {
     case "message.start":
-      ctx.currentMessageId = event.messageId;
-      ctx.messageCount++;
-      ctx.currentResponseLogId = null;
-      ctx.currentResponseLogContent = "";
-      ctx.currentReasoningLogId = null;
-      ctx.currentReasoningLogContent = "";
       toolCtx.emitLog("agent", "AI started generating response", { logKind: "system" });
       break;
 
     case "message.delta":
-      ctx.responseContent += event.content;
-      handleStreamingDelta(event.content, ctx, "response", toolCtx);
-      toolCtx.emit({
-        type: "task.progress",
-        taskId: toolCtx.taskId,
-        iteration: ctx.iteration,
-        content: event.content,
-        timestamp: createTimestamp(),
-      });
+      emitTextDelta(transcriptResult.responseDelta, ctx, toolCtx);
+      if (transcriptResult.responseDelta) {
+        toolCtx.emit({
+          type: "task.progress",
+          taskId: toolCtx.taskId,
+          iteration: ctx.iteration,
+          content: transcriptResult.responseDelta.delta,
+          timestamp: transcriptResult.timestamp,
+        });
+      }
       break;
 
     case "reasoning.delta":
-      ctx.reasoningContent += event.content;
-      handleStreamingDelta(event.content, ctx, "reasoning", toolCtx);
+      emitTextDelta(transcriptResult.reasoningDelta, ctx, toolCtx);
       break;
 
     case "message.complete":
-      handleMessageComplete(event, ctx, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      handleMessageComplete(transcriptResult, ctx, toolCtx);
       break;
 
     case "tool.start":
-      handleToolStart(event, ctx, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      handleToolProjection(transcriptResult, ctx, toolCtx);
       break;
 
     case "tool.complete":
-      await handleToolComplete(event, ctx, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      handleToolProjection(transcriptResult, ctx, toolCtx);
       break;
 
     case "error":
+      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
       ctx.outcome = "error";
       ctx.error = event.message;
       ctx.errorCode = event.code;
@@ -87,133 +107,122 @@ export async function processTaskAgentEvent(event: AgentEvent, ctx: IterationCon
         message: event.message,
       });
       break;
+
+    case "user.message":
+      break;
   }
+
+  syncIterationContext(ctx);
 }
 
-function handleStreamingDelta(
-  content: string,
-  ctx: IterationContext,
-  kind: "response" | "reasoning",
+function emitTextDelta(
+  delta: AgentEventTranscriptTextDelta | undefined,
+  _ctx: IterationContext,
   toolCtx: ToolProcessingContext,
 ): void {
-  if (!content) return;
+  if (!delta) {
+    return;
+  }
 
-  if (kind === "response") {
-    ctx.currentResponseLogContent += content;
-    const logMsg = "AI generating response...";
-    if (ctx.currentResponseLogId) {
-      toolCtx.emitLogDelta("agent", logMsg, content, ctx.currentResponseLogContent, "response", ctx.currentResponseLogId);
-    } else {
-      ctx.currentResponseLogId = toolCtx.emitLog("agent", logMsg, { logKind: "response", responseContent: ctx.currentResponseLogContent }, undefined, "trace");
+  const logMessage = delta.kind === "response"
+    ? "AI generating response..."
+    : "AI reasoning...";
+  if (delta.isFirstInBlock) {
+    toolCtx.emitLog(
+      "agent",
+      logMessage,
+      {
+        logKind: delta.kind,
+        responseContent: delta.logContent,
+      },
+      delta.logId,
+      "trace",
+    );
+    return;
+  }
+
+  toolCtx.emitLogDelta(
+    "agent",
+    logMessage,
+    delta.delta,
+    delta.logContent,
+    delta.kind,
+    delta.logId,
+  );
+}
+
+function emitFlushedBlocks(
+  blocks: AgentEventTranscriptBlock[],
+  toolCtx: ToolProcessingContext,
+): void {
+  for (const block of blocks) {
+    if (block.logContent.length === 0) {
+      continue;
     }
-  } else {
-    ctx.currentReasoningLogContent += content;
-    const logMsg = "AI reasoning...";
-    if (ctx.currentReasoningLogId) {
-      toolCtx.emitLogDelta("agent", logMsg, content, ctx.currentReasoningLogContent, "reasoning", ctx.currentReasoningLogId);
-    } else {
-      ctx.currentReasoningLogId = toolCtx.emitLog("agent", logMsg, { logKind: "reasoning", responseContent: ctx.currentReasoningLogContent }, undefined, "trace");
-    }
+    toolCtx.emitLog(
+      "agent",
+      block.kind === "response" ? "AI generating response..." : "AI reasoning...",
+      {
+        logKind: block.kind,
+        responseContent: block.logContent,
+      },
+      block.logId,
+      "trace",
+    );
   }
 }
 
 function handleMessageComplete(
-  event: AgentEvent & { type: "message.complete" },
+  transcriptResult: AgentEventTranscriptResult,
   ctx: IterationContext,
   toolCtx: ToolProcessingContext,
 ): void {
-  const finalResponseContent = event.content.length > 0 ? event.content : ctx.responseContent;
-  ctx.responseContent = finalResponseContent;
-  if (ctx.currentResponseLogId && ctx.currentResponseLogContent !== finalResponseContent) {
-    toolCtx.emitLog(
-      "agent",
-      "AI generating response...",
-      { logKind: "response", responseContent: finalResponseContent },
-      ctx.currentResponseLogId,
-      "trace",
-    );
+  const completed = transcriptResult.completedMessage;
+  if (!completed) {
+    return;
   }
-  ctx.currentResponseLogId = null;
-  ctx.currentResponseLogContent = "";
-  ctx.currentReasoningLogId = null;
-  ctx.currentReasoningLogContent = "";
+
   toolCtx.emitLog("agent", "AI finished generating response", {
     logKind: "system",
-    responseLength: finalResponseContent.length,
+    responseLength: completed.responseLength,
   });
-  const messageData: MessageData = {
-    id: ctx.currentMessageId || `msg-${Date.now()}`,
-    role: "assistant",
-    content: finalResponseContent,
-    timestamp: createTimestamp(),
-  };
-  toolCtx.persistMessage(messageData);
+  toolCtx.persistMessage(completed.message);
   toolCtx.emit({
     type: "task.message",
     taskId: toolCtx.taskId,
     iteration: ctx.iteration,
-    message: messageData,
-    timestamp: createTimestamp(),
+    message: completed.message,
+    timestamp: transcriptResult.timestamp,
   });
 }
 
-function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: IterationContext, toolCtx: ToolProcessingContext): void {
-  ctx.responseContent = "";
-  ctx.currentResponseLogId = null;
-  ctx.currentResponseLogContent = "";
-  ctx.currentReasoningLogId = null;
-  ctx.currentReasoningLogContent = "";
-  const toolId = event.toolCallId ?? `tool-${ctx.iteration}-${event.toolName}-${ctx.toolCallCount}`;
-  const toolKey = event.toolCallId ?? event.toolName;
-  ctx.toolCalls.set(toolKey, { id: toolId, name: event.toolName, input: event.input });
-  ctx.toolCallCount++;
-  const timestamp = createTimestamp();
-  const toolCallData: ToolCallData = {
-    id: toolId,
-    name: event.toolName,
-    input: event.input,
-    status: "running",
-    timestamp,
-  };
-  toolCtx.persistToolCall(toolCallData);
-  toolCtx.emit({
-    type: "task.tool_call",
-    taskId: toolCtx.taskId,
-    iteration: ctx.iteration,
-    tool: toolCallData,
-    timestamp,
-  });
-}
-
-async function handleToolComplete(event: AgentEvent & { type: "tool.complete" }, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
-  const toolKey = event.toolCallId ?? event.toolName;
-  const toolInfo = ctx.toolCalls.get(toolKey);
-  const completedInput = event.input ?? toolInfo?.input;
-  if (toolInfo) {
-    ctx.toolCalls.set(toolKey, { ...toolInfo, input: completedInput });
+function handleToolProjection(
+  transcriptResult: AgentEventTranscriptResult,
+  ctx: IterationContext,
+  toolCtx: ToolProcessingContext,
+): void {
+  const projection = transcriptResult.tool;
+  if (!projection) {
+    return;
   }
-  const timestamp = createTimestamp();
-  const toolCompleteData: ToolCallData = {
-    id: event.toolCallId ?? toolInfo?.id ?? `tool-${ctx.iteration}-${event.toolName}`,
-    name: event.toolName,
-    input: completedInput,
-    output: event.output,
-    status: "completed",
-    timestamp,
-  };
-  toolCtx.persistToolCall(toolCompleteData);
+
+  toolCtx.persistToolCall(projection.tool);
   toolCtx.emit({
     type: "task.tool_call",
     taskId: toolCtx.taskId,
     iteration: ctx.iteration,
-    tool: toolCompleteData,
-    timestamp,
+    tool: projection.tool,
+    timestamp: transcriptResult.timestamp,
   });
-  toolCtx.scheduleToolImagePreview(toolCompleteData, ctx.iteration);
-  await toolCtx.triggerPersistence();
+  if (projection.phase === "complete") {
+    toolCtx.scheduleToolImagePreview(projection.tool, ctx.iteration);
+  }
 }
 
-async function handlePermissionAsked(event: AgentEvent & { type: "permission.asked" }, toolCtx: ToolProcessingContext): Promise<void> {
+async function handlePermissionAsked(
+  event: AgentEvent & { type: "permission.asked" },
+  toolCtx: ToolProcessingContext,
+): Promise<void> {
   toolCtx.emitLog("info", `Auto-approving permission request: ${event.permission}`, {
     requestId: event.requestId,
     patterns: event.patterns,
@@ -226,7 +235,10 @@ async function handlePermissionAsked(event: AgentEvent & { type: "permission.ask
   }
 }
 
-export async function handleQuestionAsked(event: AgentEvent & { type: "question.asked" }, toolCtx: ToolProcessingContext): Promise<void> {
+export async function handleQuestionAsked(
+  event: AgentEvent & { type: "question.asked" },
+  toolCtx: ToolProcessingContext,
+): Promise<void> {
   toolCtx.emitLog("info", "Auto-responding to question from AI", {
     requestId: event.requestId,
     questionCount: event.questions.length,
@@ -239,5 +251,26 @@ export async function handleQuestionAsked(event: AgentEvent & { type: "question.
     toolCtx.emitLog("info", "Question answered successfully");
   } catch (questionErr) {
     toolCtx.emitLog("warn", `Failed to answer question: ${String(questionErr)}`);
+  }
+}
+
+function syncIterationContext(ctx: IterationContext): void {
+  const state = ctx.transcript.state;
+  ctx.responseContent = state.responseContent;
+  ctx.reasoningContent = state.reasoningContent;
+  ctx.messageCount = state.messageCount;
+  ctx.toolCallCount = state.toolCallCount;
+  ctx.currentMessageId = state.currentMessageId;
+  ctx.currentResponseLogId = state.currentResponseLogId;
+  ctx.currentResponseLogContent = state.currentResponseLogContent;
+  ctx.currentReasoningLogId = state.currentReasoningLogId;
+  ctx.currentReasoningLogContent = state.currentReasoningLogContent;
+  ctx.toolCalls.clear();
+  for (const tool of state.toolCalls.values()) {
+    ctx.toolCalls.set(tool.id, {
+      id: tool.id,
+      name: tool.name,
+      input: tool.input,
+    });
   }
 }
