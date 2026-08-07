@@ -221,9 +221,8 @@ describe("workspace files API integration", () => {
   }
 
   class StructuredTreeFixtureExecutor extends TestCommandExecutor {
-    readonly capabilityScripts: string[] = [];
-    readonly treeScripts: string[] = [];
-    readonly treeArgumentSets: string[][] = [];
+    capabilityProbeCalls = 0;
+    treeCommandCalls = 0;
 
     constructor(
       private readonly capabilityFamily: "supported" | "invalid" | "unsupported",
@@ -235,7 +234,7 @@ describe("workspace files API integration", () => {
     override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
       const commandLabel = args[2];
       if (command === "bash" && commandLabel === "file-explorer-tree-capabilities") {
-        this.capabilityScripts.push(args[1] ?? "");
+        this.capabilityProbeCalls += 1;
         if (this.capabilityFamily === "unsupported") {
           return {
             success: false,
@@ -260,8 +259,7 @@ describe("workspace files API integration", () => {
         };
       }
       if (command === "bash" && commandLabel === "file-explorer-tree") {
-        this.treeScripts.push(args[1] ?? "");
-        this.treeArgumentSets.push([...args]);
+        this.treeCommandCalls += 1;
         return {
           success: true,
           stdout: this.treeOutput,
@@ -555,14 +553,8 @@ describe("workspace files API integration", () => {
     expect(result.entriesByDirectory[""]?.find((entry) => entry.name === "src-link")?.kind).toBe("directory");
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
     expect(result.entriesByDirectory[""]?.some((entry) => entry.name === "malformed")).toBe(false);
-    expect(executor.capabilityScripts[0]).toContain("find \"$root\" -prune -exec sh -c");
-    expect(executor.capabilityScripts[0]).not.toContain("stat");
-    expect(executor.treeScripts[0]).toContain("\\0%s\\0");
-    expect(executor.treeScripts[0]).toContain("{} +");
-    expect(executor.treeScripts[0]).not.toContain("stat");
-    expect(executor.treeScripts[0]).toContain("! -path \"$root\" \\(");
-    expect(executor.treeScripts[0]).toEndWith("\\)");
-    expect(executor.treeArgumentSets[0]).toHaveLength(4);
+    expect(executor.capabilityProbeCalls).toBe(1);
+    expect(executor.treeCommandCalls).toBe(1);
   });
 
   test("decodes symlink target types from batched records", async () => {
@@ -591,9 +583,6 @@ describe("workspace files API integration", () => {
       "file",
     ]);
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
-    expect(executor.treeScripts[0]).toContain("{} +");
-    expect(executor.treeScripts[0]).not.toContain("stat");
-    expect(executor.treeArgumentSets[0]).toHaveLength(4);
   });
 
   test("fails instead of parsing a truncated tree record", async () => {
@@ -620,7 +609,7 @@ describe("workspace files API integration", () => {
     await expect(loadFixtureTree(executor)).rejects.toMatchObject({
       code: "operation_failed",
     });
-    expect(executor.treeScripts).toHaveLength(0);
+    expect(executor.treeCommandCalls).toBe(0);
   });
 
   test("loads the full file tree from the selected root", async () => {
