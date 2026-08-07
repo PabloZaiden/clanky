@@ -15,6 +15,16 @@ import {
   isWithinLazySubtree,
   upsertDirectoryEntry,
 } from "./file-explorer-utils";
+import {
+  createFileExplorerTreeLoadCoordinator,
+  type FileExplorerTreeLoadCoordinator,
+} from "./file-explorer-tree-load-coordinator";
+
+const FULL_TREE_REFRESH_CHANNEL = "tree:full";
+
+function getDirectoryRefreshChannel(path: string): string {
+  return `tree:directory:${path}`;
+}
 
 export interface UseFileExplorerTreeOptions {
   enabled: boolean;
@@ -70,6 +80,10 @@ export function useFileExplorerTree(
   const directoryEntriesRef = useRef(directoryEntries);
   const stateTargetKeyRef = useRef(scope.targetKey);
   const [lazySubtreeRoots, setLazySubtreeRoots] = useState<string[]>([]);
+  const treeLoadCoordinatorRef = useRef<FileExplorerTreeLoadCoordinator | null>(null);
+  if (!treeLoadCoordinatorRef.current) {
+    treeLoadCoordinatorRef.current = createFileExplorerTreeLoadCoordinator();
+  }
 
   const hasCurrentTargetState = stateTargetKeyRef.current === scope.targetKey;
   directoryEntriesRef.current = hasCurrentTargetState ? directoryEntries : {};
@@ -117,21 +131,37 @@ export function useFileExplorerTree(
     });
   }, [scope]);
 
+  const beginTreeLoad = useCallback((channel: string): FileExplorerRequestOperation => {
+    const operation = treeLoadCoordinatorRef.current!.begin(scope, channel);
+    if (scope.isCurrent()) {
+      setLoadingTree(true);
+    }
+    return operation;
+  }, [scope]);
+
+  const finishTreeLoad = useCallback((operation: FileExplorerRequestOperation): void => {
+    if (treeLoadCoordinatorRef.current!.finish(scope, operation)) {
+      setLoadingTree(false);
+    }
+  }, [scope]);
+
   const refreshTree = useCallback(async (path = "") => {
-    const operation = scope.createOperation();
-    if (!operation.isCurrent()) {
+    if (!scope.isCurrent()) {
       return;
     }
+    const directoryNode = path ? findDirectoryNode(directoryEntriesRef.current, path) : null;
+    const shouldLoadDirectory = path.length > 0 && (
+      !effectiveLoadFullTree
+      || Boolean(directoryNode?.loadOnExpand)
+      || isWithinLazySubtree(path, lazySubtreeRoots)
+    );
+    const channel = effectiveLoadFullTree && !shouldLoadDirectory
+      ? FULL_TREE_REFRESH_CHANNEL
+      : getDirectoryRefreshChannel(path);
+    const operation = beginTreeLoad(channel);
     clearError();
-    setLoadingTree(true);
 
     try {
-      const directoryNode = path ? findDirectoryNode(directoryEntriesRef.current, path) : null;
-      const shouldLoadDirectory = path.length > 0 && (
-        !effectiveLoadFullTree
-        || Boolean(directoryNode?.loadOnExpand)
-        || isWithinLazySubtree(path, lazySubtreeRoots)
-      );
       if (effectiveLoadFullTree && !shouldLoadDirectory) {
         const response = await loadTree(operation.signal);
         if (!operation.isCurrent()) {
@@ -154,13 +184,13 @@ export function useFileExplorerTree(
         onError(requestError);
       }
     } finally {
-      if (operation.isCurrent()) {
-        setLoadingTree(false);
-      }
+      finishTreeLoad(operation);
     }
   }, [
     applyDirectoryResponse,
+    beginTreeLoad,
     effectiveLoadFullTree,
+    finishTreeLoad,
     lazySubtreeRoots,
     loadDirectory,
     loadTree,
@@ -217,16 +247,26 @@ export function useFileExplorerTree(
       if (directoryEntriesRef.current[directory] !== undefined) {
         continue;
       }
-      const response = await loadDirectory(directory, operation.signal);
-      applyDirectoryResponse(directory, response, operation, {
-        markAsLazySubtreeRoot: false,
-      });
+      const directoryOperation = scope.createOperation(
+        operation.signal,
+        getDirectoryRefreshChannel(directory),
+      );
+      try {
+        const response = await loadDirectory(directory, directoryOperation.signal);
+        if (!operation.isCurrent() || !directoryOperation.isCurrent()) {
+          return;
+        }
+        applyDirectoryResponse(directory, response, directoryOperation, {
+          markAsLazySubtreeRoot: false,
+        });
+      } finally {
+        directoryOperation.release();
+      }
     }
   }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory, scope]);
 
   const toggleDirectory = useCallback(async (path: string) => {
-    const operation = scope.createOperation();
-    if (!operation.isCurrent()) {
+    if (!scope.isCurrent()) {
       return;
     }
     const directoryNode = findDirectoryNode(directoryEntriesRef.current, path);
@@ -302,7 +342,9 @@ export function useFileExplorerTree(
       return;
     }
 
-    const operation = scope.createOperation();
+    const operation = beginTreeLoad(
+      loadFullTree ? FULL_TREE_REFRESH_CHANNEL : getDirectoryRefreshChannel(""),
+    );
     const loadInitialTree = async (): Promise<void> => {
       try {
         if (loadFullTree) {
@@ -324,14 +366,25 @@ export function useFileExplorerTree(
           onError(requestError);
         }
       } finally {
-        if (operation.isCurrent()) {
-          setLoadingTree(false);
-        }
+        finishTreeLoad(operation);
       }
     };
 
     void loadInitialTree();
-  }, [applyDirectoryResponse, clearError, enabled, loadDirectory, loadFullTree, onError, scope]);
+    return () => {
+      treeLoadCoordinatorRef.current!.dispose();
+    };
+  }, [
+    applyDirectoryResponse,
+    beginTreeLoad,
+    clearError,
+    enabled,
+    finishTreeLoad,
+    loadDirectory,
+    loadFullTree,
+    onError,
+    scope,
+  ]);
 
   return {
     directoryEntries: hasCurrentTargetState ? directoryEntries : {},
