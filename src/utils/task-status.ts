@@ -147,8 +147,9 @@ export function canAccept(status: TaskStatus): boolean {
 }
 
 /**
- * Check if a task is in a final state (accepted locally, merged, pushed, or deleted).
- * Only purge is allowed in final states.
+ * Check if a task is in a user-facing final state (accepted locally, merged,
+ * pushed, or deleted). These states are eligible for archive/purge handling,
+ * but some still support review, restart, push, or merge actions.
  */
 export function isFinalState(status: TaskStatus): boolean {
   const result = status === "accepted_local" || status === "merged" || status === "pushed" || status === "deleted";

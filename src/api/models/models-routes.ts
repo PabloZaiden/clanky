@@ -1,7 +1,8 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
- * Models listing API route.
+ * Models listing API routes.
  *
+ * - GET /api/models/variants - Get available variants for one model
  * - GET /api/models - Get available AI models for a workspace
  *
  * @module api/models/models-routes

@@ -7,7 +7,11 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * (local or SSH execution providers).
  * 
  * Endpoints:
- * - GET /api/git/branches - Get all local branches for a workspace
+ * - GET /api/git/branches - List local branches for a workspace
+ * - GET /api/git/default-branch - Detect the repository default branch
+ * - GET /api/git/remote-status - Check whether a remote exists
+ * - GET /api/git/github-repository-url - Resolve the GitHub repository URL
+ * - GET /api/git/github-issues - List open GitHub issues
  * 
  * @module api/git
  */
@@ -126,8 +130,12 @@ async function validateGitRequest(req: Request): Promise<
 /**
  * Git API routes.
  * 
- * Provides endpoints for git repository information:
+ * Provides endpoints for git repository and GitHub information:
  * - GET /api/git/branches - List all local branches
+ * - GET /api/git/default-branch - Detect the default branch
+ * - GET /api/git/remote-status - Check for a configured remote
+ * - GET /api/git/github-repository-url - Resolve the repository URL
+ * - GET /api/git/github-issues - List open issues
  */
 export const gitRoutes = defineRoutes({
   /**

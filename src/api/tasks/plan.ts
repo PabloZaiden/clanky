@@ -87,7 +87,7 @@ export const tasksPlanRoutes = defineRoutes({
      * POST /api/tasks/:id/plan/accept - Accept the plan and either start execution or open SSH.
      *
      * Accepts the current plan and transitions the task from planning status
-     * to running or completed, depending on the chosen acceptance mode.
+     * to starting or completed, depending on the chosen acceptance mode.
      * Only works for tasks in planning status.
      *
      * @returns Success response
