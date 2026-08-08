@@ -19,7 +19,7 @@ export type TypedApiRequestOptions = ApiRequestOptions & {
   responseType?: ApiResponseMode;
 };
 
-export const apiClientLog = createLogger("apiClient");
+const apiClientLog = createLogger("apiClient");
 
 function getActionName(path: string, action?: string): string {
   const trimmedAction = action?.trim();
