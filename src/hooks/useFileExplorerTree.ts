@@ -18,12 +18,27 @@ import {
 import {
   createFileExplorerTreeLoadCoordinator,
   type FileExplorerTreeLoadCoordinator,
+  type FileExplorerTreeLoadRequest,
 } from "./file-explorer-tree-load-coordinator";
 
 const FULL_TREE_REFRESH_CHANNEL = "tree:full";
 
 function getDirectoryRefreshChannel(path: string): string {
   return `tree:directory:${path}`;
+}
+
+function getFullTreeLoadRequest(): FileExplorerTreeLoadRequest {
+  return {
+    channel: FULL_TREE_REFRESH_CHANNEL,
+    kind: "full",
+  };
+}
+
+function getDirectoryLoadRequest(path: string): FileExplorerTreeLoadRequest {
+  return {
+    channel: getDirectoryRefreshChannel(path),
+    kind: "directory",
+  };
 }
 
 export interface UseFileExplorerTreeOptions {
@@ -131,8 +146,11 @@ export function useFileExplorerTree(
     });
   }, [scope]);
 
-  const beginTreeLoad = useCallback((channel: string): FileExplorerRequestOperation => {
-    const operation = treeLoadCoordinatorRef.current!.begin(scope, channel);
+  const beginTreeLoad = useCallback((
+    request: FileExplorerTreeLoadRequest,
+    signal?: AbortSignal,
+  ): FileExplorerRequestOperation => {
+    const operation = treeLoadCoordinatorRef.current!.begin(scope, request, signal);
     if (scope.isCurrent()) {
       setLoadingTree(true);
     }
@@ -155,10 +173,10 @@ export function useFileExplorerTree(
       || Boolean(directoryNode?.loadOnExpand)
       || isWithinLazySubtree(path, lazySubtreeRoots)
     );
-    const channel = effectiveLoadFullTree && !shouldLoadDirectory
-      ? FULL_TREE_REFRESH_CHANNEL
-      : getDirectoryRefreshChannel(path);
-    const operation = beginTreeLoad(channel);
+    const request = effectiveLoadFullTree && !shouldLoadDirectory
+      ? getFullTreeLoadRequest()
+      : getDirectoryLoadRequest(path);
+    const operation = beginTreeLoad(request);
     clearError();
 
     try {
@@ -247,9 +265,9 @@ export function useFileExplorerTree(
       if (directoryEntriesRef.current[directory] !== undefined) {
         continue;
       }
-      const directoryOperation = scope.createOperation(
+      const directoryOperation = beginTreeLoad(
+        getDirectoryLoadRequest(directory),
         operation.signal,
-        getDirectoryRefreshChannel(directory),
       );
       try {
         const response = await loadDirectory(directory, directoryOperation.signal);
@@ -260,10 +278,17 @@ export function useFileExplorerTree(
           markAsLazySubtreeRoot: false,
         });
       } finally {
-        directoryOperation.release();
+        finishTreeLoad(directoryOperation);
       }
     }
-  }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory, scope]);
+  }, [
+    applyDirectoryResponse,
+    beginTreeLoad,
+    effectiveLoadFullTree,
+    finishTreeLoad,
+    loadDirectory,
+    scope,
+  ]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     if (!scope.isCurrent()) {
@@ -343,7 +368,7 @@ export function useFileExplorerTree(
     }
 
     const operation = beginTreeLoad(
-      loadFullTree ? FULL_TREE_REFRESH_CHANNEL : getDirectoryRefreshChannel(""),
+      loadFullTree ? getFullTreeLoadRequest() : getDirectoryLoadRequest(""),
     );
     const loadInitialTree = async (): Promise<void> => {
       try {
