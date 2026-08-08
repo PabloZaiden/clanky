@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import {
@@ -33,6 +34,12 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     navigateWithinShell(
       composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : { view: "home" },
     );
+
+  useEffect(() => {
+    return () => {
+      dashboardData.resetCreateModalState();
+    };
+  }, [dashboardData.resetCreateModalState]);
 
   return (
     <>

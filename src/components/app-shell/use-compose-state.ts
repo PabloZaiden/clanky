@@ -38,16 +38,6 @@ export function useComposeState({
 
   useEffect(() => {
     if (route.view !== "compose") {
-      dashboardData.resetCreateModalState();
-      return;
-    }
-    if (getRouteString(route, "kind") !== "task") {
-      dashboardData.resetCreateModalState();
-    }
-  }, [dashboardData.resetCreateModalState, route]);
-
-  useEffect(() => {
-    if (route.view !== "compose") {
       setComposeActionState(null);
       return;
     }
