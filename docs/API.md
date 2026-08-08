@@ -811,7 +811,7 @@ Works for active tasks (running, waiting, planning, starting) and can also jumps
 | `model` | object \| null | Yes | Model change: `{ providerID, modelID, variant }`; use `null` when changing only the message |
 | `attachments` | array | Yes | Message attachments; use an empty array when there are none |
 
-At least one of `message` or `model` must be provided.
+At least one of `message` or `model` must be non-null.
 
 **Response**
 
@@ -2127,9 +2127,9 @@ Get connection status for a workspace.
 provider. The current ACP status response advertises
 `createSession`, `sendPromptAsync`, `abortSession`, `subscribeToEvents`, and
 `models` for every supported provider.
-For `stdio` workspaces, `executionAvailability` reports `local`,
-`remote-connected`, `remote-unavailable`, or `unsupported`; it is omitted for
-SSH transport.
+`executionAvailability` reports `local` for SSH workspaces and reports
+`local`, `remote-connected`, `remote-unavailable`, or `unsupported` for
+`stdio` workspaces.
 
 **Errors**
 
@@ -2888,11 +2888,11 @@ being sent with their domain event name.
 
 **Keep-Alive**
 
-Send the literal text frame `ping` to receive a pong response:
+Send a JSON ping message to receive a pong response:
 
 ```
 // Client sends:
-ping
+{"type":"ping"}
 
 // Server responds:
 {"type":"pong"}
