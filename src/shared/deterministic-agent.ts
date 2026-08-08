@@ -50,7 +50,7 @@ export const DETERMINISTIC_AGENT_CODE_CONTRACT = {
   ],
   runtimeSemantics: [
     "workspace.exec() invokes one command with a separate argument array and does not parse shell syntax. Use an explicit shell command such as `sh -c` when shell features are intentional.",
-    "workspace.exec() uses the selected workspace directory as its default working directory. options.cwd overrides it, and options.timeout is in milliseconds.",
+    "workspace.exec() uses the current run directory as its default working directory: the prepared worktree directory when worktrees are enabled, or the workspace's configured directory otherwise. options.cwd overrides that default, and options.timeout is in milliseconds.",
     "A non-zero command exit, timeout, or command-level cancellation resolves to a result with success false and preserves stdout, stderr, and exitCode; it is not thrown as a command exception.",
     "Command output is returned to the program only. It is not user-visible unless the program deliberately forwards selected, sanitized text through stdout.write() or stderr.write().",
     "workspace.prompt() sends a message to the current Clanky conversation and resolves with the assistant response. Bridge failures reject the call, so handle failure without leaking credentials or hidden data.",
