@@ -101,7 +101,7 @@ const TRANSITION_TABLE: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
   // → deleted: delete during conflict resolution
   resolving_conflicts: new Set(["starting", "stopped", "failed", "pushed", "completed", "max_iterations", "deleted"]),
 
-  // accepted_local: commits kept locally without push (final state, can receive comments)
+  // accepted_local: commits kept locally without push (user-facing final state, can receive comments)
   // → pushed: user later decides to push the local commits
   // → resolving_conflicts: push encountered conflicts
   // → deleted: delete
@@ -109,11 +109,11 @@ const TRANSITION_TABLE: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
   // → accepted_local: close local review task by disabling addressability
   accepted_local: new Set(["pushed", "deleted", "idle", "resolving_conflicts", "accepted_local"]),
 
-  // merged: pushed branch merged externally (final state)
+  // merged: pushed branch merged externally (user-facing final state)
   // → deleted: delete
   merged: new Set(["deleted"]),
 
-  // pushed: branch pushed to remote (final state, can receive reviews)
+  // pushed: branch pushed to remote (user-facing final state, can receive reviews)
   // → merged: branch merged externally
   // → deleted: delete
   // → idle: review comments restarting the task

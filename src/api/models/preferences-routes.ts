@@ -3,10 +3,12 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  * User preferences API routes.
  *
  * - GET/PUT /api/preferences/last-model
+ * - GET/PUT /api/preferences/last-cheap-model
  * - GET/PUT /api/preferences/last-directory
  * - GET/PUT /api/preferences/markdown-rendering
  * - GET/PUT /api/preferences/file-explorer-full-tree
  * - GET/PUT /api/preferences/dashboard-view-mode
+ * - GET/PUT /api/preferences/quick-chat
  * - GET/PUT /api/preferences/scheduler-timezone
  *
  * @module api/models/preferences-routes
@@ -53,7 +55,7 @@ export const preferencesRoutes = defineRoutes({
      * Request Body:
      * - providerID (required): Provider ID (e.g., "anthropic")
      * - modelID (required): Model ID (e.g., "claude-sonnet-4-20250514")
-     * - variant (optional): Model variant (e.g., "thinking")
+     * - variant (required): Model variant (e.g., "thinking"); use an empty string for the default
      *
      * @returns Success response
      */

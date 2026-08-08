@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Clanky is a coding agent manager for running, reviewing, and iterating on tasks with coding agents such as Codex, Copilot, OpenCode, Claude Code, and Grok Build.
+Clanky is a coding agent manager for running, reviewing, and iterating on tasks with coding agents such as Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
 
 The repository is organized as a single Bun app:
 
@@ -31,7 +31,7 @@ The recommended workflow is to treat Clanky as a controller for SSH-backed devel
 
 ## Why Clanky
 
-- **Safer automation.** Each task works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
+- **Safer automation.** Tasks can use an isolated branch/worktree, commit iteration-by-iteration, and be merged or discarded deliberately.
 - **Operational visibility.** The dashboard gives you logs, diffs, plan review, task controls, and follow-up flows in one place.
 - **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports.
 
@@ -80,7 +80,7 @@ clanky update --version v0.8.1
 ### Requirements
 
 - Git
-- An ACP-capable CLI in your `PATH` (`copilot`, `opencode`, `grok`, `claude-agent-acp` and/or `codex-acp`; If not found, Clanky will try to run them through `npx`/`bunx` when needed, but having them installed globally is more convenient)
+- An ACP-capable runtime for the provider you select (`copilot`, `opencode`, `grok`, `claude-agent-acp`, `pi-acp`, and/or `codex-acp`). If a runtime is not found, Clanky tries `npx`/`bunx` package fallbacks when available; the Codex provider also requires an installed and authenticated `codex` CLI.
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
 - [Bun](https://bun.sh) only if you want to run Clanky from source
 
@@ -93,7 +93,7 @@ clanky serve
 # Source development (combined API + web, same-origin)
 bun dev
 
-# Server process only
+# Source development (alias for bun dev; combined API + web)
 bun run dev:server
 ```
 
@@ -139,7 +139,7 @@ clanky ws --task-id my-task
 
 - **Dashboard + API:** manage tasks from the browser or automate them through the REST API.
 - **Plan mode:** review and refine a generated plan before code changes begin.
-- **Review cycles:** continue from completed, pushed, or merged work with follow-up prompts and review comments.
+- **Review cycles:** continue completed, pushed, or locally accepted work with follow-up prompts; pushed and locally accepted work can also receive review comments.
 - **Live observability:** stream logs, inspect diffs, and track task state.
 - **Workspace flexibility:** configure provider and transport per workspace, including remote SSH-backed execution.
 
@@ -160,6 +160,7 @@ clanky ws --task-id my-task
 | `CLANKY_SSH_SERVER_ALIVE_INTERVAL_SECONDS` | OpenSSH keepalive interval for established SSH sessions | `30` |
 | `CLANKY_SSH_SERVER_ALIVE_COUNT_MAX` | Missed OpenSSH keepalives tolerated before closing an established session | `3` |
 | `CLANKY_SSH_MAX_CONCURRENT_HANDSHAKES` | Maximum simultaneous new SSH handshakes per target; active ACP sessions are not limited | `4` |
+| `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
 | `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
@@ -169,7 +170,7 @@ clanky ws --task-id my-task
 
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
-- `clanky auth` stores bearer credentials in per-user CLI state under the home directory, `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
+- `clanky auth` stores bearer credentials in per-user CLI state under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, `clanky api` and `clanky status` use this pair; `clanky status` reports that authentication came from environment variables without printing the key. A positional status base URL can be used with `CLANKY_API_KEY` when the server URL should be overridden.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.

@@ -94,12 +94,25 @@ clanky api tasks --method POST --payload '{
   "name": "implement-dark-mode-toggle",
   "workspaceId": "ws-abc123",
   "prompt": "Implement a dark mode toggle in the settings page. Use existing app patterns and verify the behavior.",
+  "attachments": [],
   "model": {
     "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514"
+    "modelID": "claude-sonnet-4-20250514",
+    "variant": ""
   },
+  "cheapModel": { "mode": "same-as-task" },
   "useWorktree": true,
-  "planMode": true
+  "planMode": true,
+  "maxIterations": 10,
+  "maxConsecutiveErrors": 10,
+  "activityTimeoutSeconds": null,
+  "stopPattern": "<promise>COMPLETE</promise>$",
+  "git": { "branchPrefix": "", "commitScope": "" },
+  "baseBranch": "main",
+  "clearPlanningFolder": false,
+  "autoAcceptPlan": false,
+  "fullyAutonomous": false,
+  "draft": false
 }'
 ```
 

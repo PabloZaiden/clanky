@@ -64,7 +64,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
      * POST /api/tasks/:id/push - Push a completed task's branch to remote.
      *
      * Pushes the task's working branch to the remote repository for PR workflow.
-     * Only works for tasks in completed or max_iterations status.
+     * Works for tasks in completed, max_iterations, or accepted_local status.
      * After push, the task status changes to `pushed` and can receive review comments.
      *
      * @returns PushResponse with success and remoteBranch name
@@ -154,7 +154,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
      * This is useful when a task's branch was merged externally (e.g., via GitHub PR)
      * and the user wants to sync the task's status with that merged result.
      *
-     * Only works for tasks in final states (pushed, merged, completed, max_iterations).
+     * Only works for tasks in pushed or merged status.
      *
      * @returns Success response
      */

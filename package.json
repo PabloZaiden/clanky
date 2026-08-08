@@ -1,6 +1,6 @@
 {
   "name": "@pablozaiden/clanky",
-  "description": "Clanky is a web and rest service used to control and manage Clanky Tasks in opencode",
+  "description": "Clanky is a web and REST service used to control and manage coding-agent tasks",
   "version": "0.0.0-development",
   "private": true,
   "type": "module",

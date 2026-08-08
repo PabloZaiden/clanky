@@ -15,7 +15,7 @@ import { z } from "zod";
  * The schema is the runtime validator for the shared ModelConfig domain type.
  * - providerID: Required non-empty string (e.g., "anthropic", "openai", "bedrock")
  * - modelID: Required non-empty string (e.g., "claude-sonnet-4-20250514", "gpt-4o")
- * - variant: Optional string (e.g., "thinking", ""). Empty string or undefined for default.
+ * - variant: Required string (e.g., "thinking", ""). Use an empty string for the default.
  */
 export const ModelConfigSchema = z.object({
   providerID: z.string().min(1, "providerID is required and must be a non-empty string"),

@@ -5,8 +5,7 @@
  * - CRUD: Create, read, update, and delete tasks
  * - Control: Accept, push, discard, and purge completed tasks
  * - Plan Mode: Create, review, and accept plans before execution
- * - SSH: Task-linked SSH session management
- * - SSH: Task-linked persistent SSH sessions
+ * - SSH: Task-linked persistent SSH session management
  * - Review: Address reviewer comments on pushed/merged tasks
  * - Data: Access task diffs, plans, status files, and PR navigation metadata
  *

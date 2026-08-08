@@ -29,11 +29,11 @@ const ACTIVE_TASK_STATUSES: TaskStatus[] = [
 ];
 
 /**
- * Get an active (non-draft, non-terminal) task for a specific directory and workspace.
+ * Get an active (non-draft, non-final) task for a specific directory and workspace.
  *
  * Active tasks are those in states: idle, planning, starting, running, waiting.
- * Draft and terminal states (completed, stopped, failed, max_iterations, merged, pushed, deleted)
- * are not considered active.
+ * Draft and final states (completed, stopped, failed, max_iterations,
+ * accepted_local, merged, pushed, deleted) are not considered active.
  *
  * @param directory - The absolute path to the working directory
  * @param workspaceId - The workspace ID to scope the lookup to

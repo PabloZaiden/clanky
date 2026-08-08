@@ -1,6 +1,6 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
- * Tasks review routes - handle review comments after push/merge.
+ * Tasks review routes - handle review comments after push or local acceptance.
  *
  * These endpoints allow addressing reviewer feedback on completed tasks:
  * - POST /api/tasks/:id/address-comments - Start addressing reviewer comments
@@ -29,7 +29,8 @@ export const tasksReviewRoutes = defineRoutes({
      *
      * Creates a new review cycle and restarts the task to address the provided
      * reviewer comments. The task will work on addressing the feedback.
-     * Only works for tasks in pushed or merged status that aren't already running.
+     * Only works for addressable tasks in pushed or accepted_local status that
+     * aren't already running.
      *
      * Request Body:
      * - comments (required): Reviewer's comments to address

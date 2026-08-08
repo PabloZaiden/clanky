@@ -55,7 +55,7 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
      * POST /api/tasks/:id/purge - Permanently delete a task from storage.
      *
      * Removes the task from the database entirely. Drafts are removed immediately.
-     * Other tasks only work in final states (merged, pushed, deleted).
+     * Other tasks only work in final states (accepted_local, merged, pushed, deleted).
      *
      * @returns Success response
      */

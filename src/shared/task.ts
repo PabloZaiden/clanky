@@ -275,7 +275,7 @@ export interface ConsecutiveErrorTracker {
  * Possible statuses for a Clanky Task.
  * 
  * Lifecycle: draft -> idle -> starting -> running <-> waiting -> completed/stopped/failed
- * Final states: accepted_local, merged, pushed, deleted (can be purged)
+ * User-facing final states: accepted_local, merged, pushed, deleted (can be purged)
  */
 /**
  * Intent of a pending prompt created by the server.
@@ -309,9 +309,9 @@ export type TaskStatus =
   | "max_iterations"      // Hit the maximum iteration limit
   | "resolving_conflicts" // Resolving merge conflicts with base branch before push
   | "accepted_local"      // Commits accepted locally without pushing
-  | "merged"              // Pushed branch was merged externally (final state)
-  | "pushed"              // Branch pushed to remote (final state, can receive reviews)
-  | "deleted";            // Marked for deletion (final state, awaiting purge)
+  | "merged"              // Pushed branch was merged externally (user-facing final state)
+  | "pushed"              // Branch pushed to remote (user-facing final state, can receive reviews)
+  | "deleted";            // Marked for deletion (user-facing final state, awaiting purge)
 
 export const POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "starting",

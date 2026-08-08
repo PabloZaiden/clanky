@@ -25,6 +25,7 @@ export const tasksDraftRoutes = defineRoutes({
      *
      * Request Body:
      * - planMode (required): If true, start in plan mode; if false, start immediately
+     * - attachments (required): Message attachments; use an empty array when there are none
      *
      * Errors:
      * - 400: Task is not in draft status or invalid body

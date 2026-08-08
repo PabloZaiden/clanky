@@ -89,9 +89,10 @@ export const tasksPendingRoutes = defineRoutes({
      * jumpstart tasks in supported stopped states (completed, stopped, failed, max_iterations).
      *
      * Request Body:
-     * - message (optional): Message for the next iteration
-     * - model (optional): { providerID, modelID } for model change
-     * At least one of message or model must be provided.
+     * - message (required, nullable): Message for the next iteration, or null
+     * - model (required, nullable): { providerID, modelID, variant } for a model change, or null
+     * - attachments (required): Image attachments for the next message; use [] when none
+     * At least one of message or model must be non-null.
      *
      * @returns Success response
      */

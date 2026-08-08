@@ -152,7 +152,7 @@ export interface ModelInfo {
   modelID: string;
   /** Model display name (e.g., "Claude Sonnet 4", "GPT-4o") */
   modelName: string;
-  /** Whether the provider is connected (has valid API key configured) */
+  /** Whether the provider/backend is currently connected and available */
   connected: boolean;
   /**
    * Available variants for this model.
@@ -166,8 +166,9 @@ export interface ModelInfo {
 /**
  * Request body for POST /api/tasks endpoint.
  * 
- * Creates a new Clanky Task. Tasks are started immediately after creation
- * unless `draft: true` is specified, which saves the task for later editing.
+ * Creates a new Clanky Task. Non-draft tasks schedule execution immediately
+ * and may return with `starting` status while the engine initializes. A task
+ * with `draft: true` is saved for later editing.
  * 
  * If `planMode: true`, the task starts in plan review mode before execution.
  * 
@@ -207,7 +208,8 @@ export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSche
 /**
  * Request body for PATCH /api/tasks/:id endpoint.
  * All fields are optional - only provided fields are updated. Name updates
- * are accepted only while the task is still a draft.
+ * are accepted only while the task is still a draft; plan-mode settings have
+ * additional restrictions while planning or after plan approval.
  * 
  * Type is derived from UpdateTaskRequestSchema - the Zod schema is the
  * single source of truth for both validation and TypeScript types.

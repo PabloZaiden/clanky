@@ -5,16 +5,22 @@
  * native route table.
  * 
  * Route Modules:
- * - tasks: Task CRUD, control, data, and review operations
+ * - tasks: Task CRUD, lifecycle, transcript, control, data, and review operations
  * - models: AI model listing and user preferences
  * - settings: Server configuration and connection management
- * - git: Git repository information
- * - workspaces: Workspace CRUD operations
+ * - git: Git repository and GitHub information
+ * - workspaces: Workspace CRUD, server settings, previews, and file operations
  * - agents-md: AGENTS.md optimization for Clanky
- * - ssh-servers: Standalone SSH server registry, credentials, and ad-hoc sessions
+ * - ssh-servers: Standalone SSH server registry, credentials, sessions, VNC, and files
  * - ssh-sessions: Workspace-backed persistent SSH sessions
  * - provisioning: Remote workspace provisioning jobs
- * - websocket: Real-time event streaming (handled separately)
+ * - chats: Standalone and task-linked chat sessions
+ * - agents: Scheduled-agent management and runs
+ * - vnc-sessions: VNC session management
+ * - previews: Workspace preview management
+ * - mesh: Linked-instance pairing, synchronization, and takeover
+ * - agent-prompt-bridge: Internal deterministic-agent prompt bridge
+ * - raw websocket upgrades: Realtime, terminal, preview, and VNC transports are defined separately
  * 
  * @module api
  */
@@ -43,7 +49,8 @@ import { domainErrorResponse } from "./helpers";
 /**
  * All API routes combined.
  * 
- * The WebSocket endpoint is handled separately in src/index.ts.
+ * Raw WebSocket upgrades are handled separately in src/server.ts; the framework
+ * realtime endpoint is also registered by the webapp server.
  */
 const nativeApiRoutes = {
   ...tasksRoutes,
