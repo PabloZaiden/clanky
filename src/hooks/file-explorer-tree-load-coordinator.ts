@@ -3,10 +3,18 @@ import type {
   FileExplorerRequestScope,
 } from "./file-explorer-request-scope";
 
+export type FileExplorerTreeLoadKind = "full" | "directory";
+
+export interface FileExplorerTreeLoadRequest {
+  channel: string;
+  kind: FileExplorerTreeLoadKind;
+}
+
 export interface FileExplorerTreeLoadCoordinator {
   begin: (
     scope: FileExplorerRequestScope,
-    channel: string,
+    request: FileExplorerTreeLoadRequest,
+    signal?: AbortSignal,
   ) => FileExplorerRequestOperation;
   finish: (
     scope: FileExplorerRequestScope,
@@ -17,15 +25,33 @@ export interface FileExplorerTreeLoadCoordinator {
 }
 
 export function createFileExplorerTreeLoadCoordinator(): FileExplorerTreeLoadCoordinator {
-  const activeLoads = new Map<string, FileExplorerRequestOperation>();
+  const activeLoads = new Map<string, {
+    operation: FileExplorerRequestOperation;
+    kind: FileExplorerTreeLoadKind;
+  }>();
 
   return {
     begin: (
       scope: FileExplorerRequestScope,
-      channel: string,
+      request: FileExplorerTreeLoadRequest,
+      signal?: AbortSignal,
     ): FileExplorerRequestOperation => {
-      const operation = scope.createOperation(undefined, channel);
-      activeLoads.set(channel, operation);
+      for (const [channel, activeLoad] of activeLoads) {
+        const overlaps = request.kind === "full"
+          || activeLoad.kind === "full"
+          || channel === request.channel;
+        if (!overlaps) {
+          continue;
+        }
+        activeLoads.delete(channel);
+        activeLoad.operation.release();
+      }
+
+      const operation = scope.createOperation(signal, request.channel);
+      activeLoads.set(request.channel, {
+        operation,
+        kind: request.kind,
+      });
       return operation;
     },
     finish: (
@@ -33,8 +59,9 @@ export function createFileExplorerTreeLoadCoordinator(): FileExplorerTreeLoadCoo
       operation: FileExplorerRequestOperation,
     ): boolean => {
       const channel = operation.channel;
-      const ownsChannel = channel !== null && activeLoads.get(channel) === operation;
-      if (ownsChannel) {
+      const activeLoad = channel === null ? undefined : activeLoads.get(channel);
+      const ownsChannel = activeLoad?.operation === operation;
+      if (ownsChannel && channel !== null) {
         activeLoads.delete(channel);
       }
       const shouldClearLoading = ownsChannel
@@ -44,8 +71,8 @@ export function createFileExplorerTreeLoadCoordinator(): FileExplorerTreeLoadCoo
       return shouldClearLoading;
     },
     dispose: (): void => {
-      for (const operation of activeLoads.values()) {
-        operation.release();
+      for (const activeLoad of activeLoads.values()) {
+        activeLoad.operation.release();
       }
       activeLoads.clear();
     },
