@@ -271,6 +271,7 @@ export interface RejectMeshPairingTransitionInput {
   request: MeshPairingRequestRecord | null;
   rejectingUserId: string;
   ownedLink: MeshLinkRecord | null;
+  nowMs: number;
 }
 
 export interface RejectMeshPairingDecision {
@@ -281,17 +282,19 @@ export function decideRejectMeshPairing(
   input: RejectMeshPairingTransitionInput,
 ): RejectMeshPairingDecision {
   const request = requirePairingRequest(input.request);
-  const ownsOutgoingRequest = request.direction === "outgoing"
-    && request.requestedLocalUserId === input.rejectingUserId;
-  if (
-    request.targetLocalUserId !== input.rejectingUserId
-    && !input.ownedLink
-    && !ownsOutgoingRequest
-  ) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request is not owned by this user.");
-  }
   if (request.status !== "pending") {
     throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
+  }
+  if (Date.parse(request.expiresAt) <= input.nowMs) {
+    throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
+  }
+  const ownsIncomingRequest = request.direction === "incoming"
+    && (!request.targetLocalUserId || request.targetLocalUserId === input.rejectingUserId)
+    && (!request.linkId || input.ownedLink !== null);
+  const ownsOutgoingRequest = request.direction === "outgoing"
+    && request.requestedLocalUserId === input.rejectingUserId;
+  if (!ownsIncomingRequest && !ownsOutgoingRequest) {
+    throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request is not owned by this user.");
   }
   return { kind: "apply" };
 }

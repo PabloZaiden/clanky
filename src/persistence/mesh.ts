@@ -1259,6 +1259,12 @@ export async function setMeshPairingApprovalStatus(
 export async function listPendingMeshPairingRequests(
   localUserId: string,
 ): Promise<MeshPairingRequestRecord[]> {
+  const now = new Date().toISOString();
+  getDatabase().run(`
+    UPDATE mesh_pairing_requests
+    SET status = 'expired', updated_at = ?
+    WHERE status = 'pending' AND expires_at <= ?
+  `, [now, now]);
   const rows = getDatabase().query(`
     SELECT request.id, request.link_id, request.target_link_id, request.target_local_user_id,
       request.direction,
@@ -1270,14 +1276,15 @@ export async function listPendingMeshPairingRequests(
       request.approved_by_user_id, request.rejection_reason,
       request.created_at, request.updated_at
     FROM mesh_pairing_requests AS request
-    LEFT JOIN mesh_links AS link ON link.link_id = request.link_id
+    LEFT JOIN mesh_links AS link
+      ON link.link_id = COALESCE(request.link_id, request.target_link_id)
     WHERE request.status = 'pending'
       AND (
         (
           request.direction = 'incoming'
+          AND (request.target_local_user_id = ? OR request.target_local_user_id IS NULL)
           AND (
-            request.target_local_user_id = ?
-            OR request.target_local_user_id IS NULL
+            COALESCE(request.link_id, request.target_link_id) IS NULL
             OR link.local_user_id = ?
           )
         )
@@ -1776,11 +1783,16 @@ export async function rejectMeshPairingRequest(
         WHERE link_id = ? AND local_user_id = ?
       `).get(request.linkId, rejectingUserId) as MeshLinkRow | null
       : null;
-    decideRejectMeshPairing({
-      request,
-      rejectingUserId,
-      ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
-    });
+    try {
+      decideRejectMeshPairing({
+        request,
+        rejectingUserId,
+        ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
+        nowMs: Date.now(),
+      });
+    } catch (error) {
+      markExpiredPairingRequestAndRethrow(db, requestId, now, error);
+    }
     db.run(`
       UPDATE mesh_pairing_requests
       SET status = 'rejected', rejection_reason = ?, approved_by_user_id = ?,

@@ -22,6 +22,7 @@ import {
   listPendingMeshPairingRequests,
   mergeMeshLinkMember,
   removeRevokedMeshLinkMember,
+  rejectMeshPairingRequest,
   revokeMeshLinkMember,
   saveMeshNode,
 } from "../../src/persistence/mesh";
@@ -393,6 +394,83 @@ describe("mesh persistence", () => {
     expect(await listMeshLinksForLocalUser("local-user")).toHaveLength(0);
     expect((await getMeshPairingRequest(request.id))?.status).toBe("pending");
     expect((await getMeshNode(remoteNodeId))?.status).toBe("pending");
+  });
+
+  test("expires pending pairing requests before listing them", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const request = await createMeshPairingRequest({
+      requestedNodeId: crypto.randomUUID(),
+      requestedLocalUserId: "remote-user",
+      requestedUsername: "remote",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      publicKey: "remote-key",
+      fingerprint: "sha256:remote-fingerprint",
+      nonce: crypto.randomUUID(),
+      signature: "signature",
+      targetLocalUserId: "local-user",
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    expect(await listPendingMeshPairingRequests("local-user")).toEqual([]);
+    expect((await getMeshPairingRequest(request.id))?.status).toBe("expired");
+  });
+
+  test("allows the visible owner to reject an incoming request targeted at a mesh link", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const localNode = await ensureLocalMeshNodeIdentity();
+    const link = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+    });
+    const request = await createMeshPairingRequest({
+      linkId: link.linkId,
+      requestedNodeId: crypto.randomUUID(),
+      requestedLocalUserId: "remote-user",
+      requestedUsername: "remote",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      publicKey: "remote-key",
+      fingerprint: "sha256:remote-fingerprint",
+      nonce: crypto.randomUUID(),
+      signature: "signature",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect((await listPendingMeshPairingRequests("local-user")).map((item) => item.id)).toEqual([
+      request.id,
+    ]);
+    await expect(rejectMeshPairingRequest(request.id, "local-user", null)).resolves.toMatchObject({
+      status: "rejected",
+    });
+  });
+
+  test("allows an unassigned incoming request to be rejected by the visible local user", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const request = await createMeshPairingRequest({
+      requestedNodeId: crypto.randomUUID(),
+      requestedLocalUserId: "remote-user",
+      requestedUsername: "remote",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      publicKey: "remote-key",
+      fingerprint: "sha256:remote-fingerprint",
+      nonce: crypto.randomUUID(),
+      signature: "signature",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect((await listPendingMeshPairingRequests("local-user")).map((item) => item.id)).toEqual([
+      request.id,
+    ]);
+    await expect(rejectMeshPairingRequest(request.id, "local-user", null)).resolves.toMatchObject({
+      status: "rejected",
+    });
   });
 
   test("encrypts mesh payloads for the recipient node", async () => {
