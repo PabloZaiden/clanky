@@ -133,6 +133,10 @@ export function meshErrorResponse(error: unknown): Response {
           status: 409,
           message: "Replace the active node before revoking it",
         },
+        mesh_active_node_remove_requires_takeover: {
+          status: 409,
+          message: "Replace the active node before deleting its revocation",
+        },
         mesh_member_not_revoked: {
           status: 409,
           message: "Only a revoked mesh member can have its revocation deleted",

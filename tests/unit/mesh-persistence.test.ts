@@ -319,6 +319,39 @@ describe("mesh persistence", () => {
     await expect(getMeshNode(remoteNodeId)).resolves.toBeNull();
   });
 
+  test("does not delete a revoked active mesh authority", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const localNode = await ensureLocalMeshNodeIdentity();
+    const link = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+    });
+    getDatabase().run(`
+      UPDATE mesh_link_members
+      SET status = 'revoked'
+      WHERE link_id = ? AND node_id = ?
+    `, [link.linkId, localNode.nodeId]);
+    getDatabase().run(`
+      UPDATE mesh_nodes
+      SET status = 'revoked'
+      WHERE node_id = ?
+    `, [localNode.nodeId]);
+
+    await expect(removeRevokedMeshLinkMember({
+      linkId: link.linkId,
+      localUserId: "local-user",
+      nodeId: localNode.nodeId,
+    })).rejects.toMatchObject({
+      code: "mesh_active_node_remove_requires_takeover",
+    });
+    expect((await listMeshLinkMembers(link.linkId)).map((member) => member.nodeId)).toEqual([
+      localNode.nodeId,
+    ]);
+  });
+
   test("rolls back a local approval when the peer cannot receive it", async () => {
     await setupDatabase();
     await seedUser("local-user");

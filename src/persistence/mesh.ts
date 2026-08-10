@@ -907,6 +907,12 @@ export async function removeRevokedMeshLinkMember(input: {
         "Only a revoked mesh member can have its revocation deleted.",
       );
     }
+    if (link.active_node_id === input.nodeId) {
+      throw new DomainError(
+        "mesh_active_node_remove_requires_takeover",
+        "The active mesh node must be replaced before its revocation can be deleted.",
+      );
+    }
 
     db.run(
       "DELETE FROM mesh_link_members WHERE link_id = ? AND node_id = ?",
