@@ -35,7 +35,9 @@ import {
   listMeshLinkMembers,
   listMeshLinksForLocalUser,
   listPendingMeshPairingRequests,
+  removeRevokedMeshLinkMember,
   rejectMeshPairingRequest,
+  rollbackMeshPairingApproval,
   saveMeshNode,
   saveMeshPairingApproval,
   mergeMeshLinkMember,
@@ -281,11 +283,20 @@ export class MeshManager {
       expiresAt,
     });
 
-    await postMeshControlMessage(
-      resolveMeshRoute(input.targetEndpoint, "api/mesh/internal/pairing-requests"),
-      { ...unsigned, signature },
-      requestId,
-    );
+    try {
+      await postMeshControlMessage(
+        resolveMeshRoute(input.targetEndpoint, "api/mesh/internal/pairing-requests"),
+        { ...unsigned, signature },
+        requestId,
+      );
+    } catch (error) {
+      log.error("Mesh pairing request delivery failed", {
+        requestId,
+        targetEndpoint: input.targetEndpoint,
+        error: String(error),
+      });
+      throw error;
+    }
     return await this.getStatus(localUserId);
   }
 
@@ -328,6 +339,24 @@ export class MeshManager {
     });
     await backendManager.invalidateMeshExecutionConnections();
     await recordMeshMembershipCheckpoint(localUserId, { includeRevokedPeers: true });
+    return await this.getStatus(localUserId);
+  }
+
+  async removeRevokedMember(
+    localUserId: string,
+    nodeId: string,
+  ): Promise<MeshStatusRecord> {
+    const link = await listMeshLinksForLocalUser(localUserId).then((links) => links[0] ?? null);
+    if (!link) {
+      throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
+    }
+    await removeRevokedMeshLinkMember({
+      linkId: link.linkId,
+      localUserId,
+      nodeId,
+    });
+    await backendManager.invalidateMeshExecutionConnections();
+    await recordMeshMembershipCheckpoint(localUserId);
     return await this.getStatus(localUserId);
   }
 
@@ -517,7 +546,7 @@ export class MeshManager {
       transport: localTransport,
       status: "active",
     });
-    const link = await approveMeshPairingRequest({
+    const approval = await approveMeshPairingRequest({
       requestId,
       approvingUserId: localUserId,
       localNodeId: identity.nodeId,
@@ -525,52 +554,83 @@ export class MeshManager {
       localNodeTransport: localTransport,
       linkId: input.linkId,
     });
-    await recordMeshMembershipCheckpoint(localUserId);
-    const members: MeshPairingMemberRecord[] = [];
-    for (const member of await listMeshLinkMembers(link.linkId)) {
-      const node = await getMeshNode(member.nodeId);
-      if (!node) {
-        throw new DomainError("mesh_peer_not_found", "A mesh link member has no node identity.");
+    try {
+      const members: MeshPairingMemberRecord[] = [];
+      for (const member of await listMeshLinkMembers(approval.link.linkId)) {
+        const node = await getMeshNode(member.nodeId);
+        if (!node) {
+          throw new DomainError("mesh_peer_not_found", "A mesh link member has no node identity.");
+        }
+        members.push({
+          nodeId: member.nodeId,
+          instanceName: node.instanceName,
+          localUserId: member.localUserId,
+          endpoint: member.endpoint,
+          transport: member.transport,
+          status: member.status,
+          membershipGeneration: member.membershipGeneration,
+          publicKey: node.publicKey,
+          fingerprint: node.fingerprint,
+          encryptionPublicKey: node.encryptionPublicKey,
+        });
       }
-      members.push({
-        nodeId: member.nodeId,
-        instanceName: node.instanceName,
-        localUserId: member.localUserId,
-        endpoint: member.endpoint,
-        transport: member.transport,
-        status: member.status,
-        membershipGeneration: member.membershipGeneration,
-        publicKey: node.publicKey,
-        fingerprint: node.fingerprint,
-        encryptionPublicKey: node.encryptionPublicKey,
+      const unsigned = {
+        protocolVersion: 1 as const,
+        requestId,
+        linkId: approval.link.linkId,
+        approvedByNodeId: identity.nodeId,
+        approvedByInstanceName: instanceName,
+        approvedByLocalUserId: localUserId,
+        activeNodeId: approval.link.activeNodeId,
+        takeoverGeneration: approval.link.takeoverGeneration,
+        endpoint: localEndpoint,
+        transport: localTransport,
+        publicKey: identity.publicKey,
+        fingerprint: identity.fingerprint,
+        encryptionPublicKey: identity.encryptionPublicKey,
+        members,
+      };
+      const signature = await signMeshPayload(buildMeshPairingApprovalSigningPayload(unsigned));
+      await postMeshControlMessage(
+        resolveMeshRoute(request.endpoint, "api/mesh/internal/pairing-approvals"),
+        { ...unsigned, signature },
+        requestId,
+      );
+    } catch (error) {
+      if (approval.rollback) {
+        try {
+          await rollbackMeshPairingApproval(approval.rollback);
+        } catch (rollbackError) {
+          log.error("Mesh pairing approval rollback failed", {
+            requestId,
+            linkId: approval.link.linkId,
+            peerNodeId: request.requestedNodeId,
+            error: String(error),
+            rollbackError: String(rollbackError),
+          });
+          throw new DomainError(
+            "mesh_pairing_rollback_failed",
+            "Mesh pairing approval failed and the local mesh state could not be rolled back.",
+            {
+              cause: rollbackError,
+              details: { requestId, linkId: approval.link.linkId },
+            },
+          );
+        }
+      }
+      log.error("Mesh pairing approval delivery failed; local membership was rolled back", {
+        requestId,
+        linkId: approval.link.linkId,
+        peerNodeId: request.requestedNodeId,
+        error: String(error),
       });
+      throw error;
     }
-    const unsigned = {
-      protocolVersion: 1 as const,
-      requestId,
-      linkId: link.linkId,
-      approvedByNodeId: identity.nodeId,
-      approvedByInstanceName: instanceName,
-      approvedByLocalUserId: localUserId,
-      activeNodeId: link.activeNodeId,
-      takeoverGeneration: link.takeoverGeneration,
-      endpoint: localEndpoint,
-      transport: localTransport,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      encryptionPublicKey: identity.encryptionPublicKey,
-      members,
-    };
-    const signature = await signMeshPayload(buildMeshPairingApprovalSigningPayload(unsigned));
-    await postMeshControlMessage(
-      resolveMeshRoute(request.endpoint, "api/mesh/internal/pairing-approvals"),
-      { ...unsigned, signature },
-      requestId,
-    );
+    await recordMeshMembershipCheckpoint(localUserId);
     queueMicrotask(() => {
       void bootstrapMeshPeerForUser(localUserId).catch((error) => {
         log.error("Mesh peer bootstrap failed", {
-          linkId: link.linkId,
+          linkId: approval.link.linkId,
           peerNodeId: request.requestedNodeId,
           error: String(error),
         });

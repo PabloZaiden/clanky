@@ -179,6 +179,30 @@ export interface CreateMeshPairingRequestInput {
   expiresAt: string;
 }
 
+export interface MeshPairingApprovalRollback {
+  requestId: string;
+  linkId: string;
+  nodeId: string;
+  approvingUserId: string;
+  createdLink: boolean;
+  previousRequest: {
+    linkId: string | null;
+    targetLinkId: string | null;
+    targetLocalUserId: string | null;
+    status: MeshPairingStatus;
+    approvedAt: string | null;
+    approvedByUserId: string | null;
+    rejectionReason: string | null;
+  };
+  previousMember: MeshLinkMemberRecord | null;
+  previousNode: MeshNodeRecord | null;
+}
+
+export interface ApproveMeshPairingRequestResult {
+  link: MeshLinkRecord;
+  rollback: MeshPairingApprovalRollback | null;
+}
+
 export interface SaveMeshPairingApprovalInput {
   requestId: string;
   linkId: string;
@@ -850,6 +874,109 @@ export async function revokeMeshLinkMember(input: {
   return revoked;
 }
 
+export async function removeRevokedMeshLinkMember(input: {
+  linkId: string;
+  localUserId: string;
+  nodeId: string;
+}): Promise<MeshLinkMemberRecord> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  let removed: MeshLinkMemberRecord | undefined;
+  const transaction = db.transaction(() => {
+    const link = db.query(`
+      SELECT link_id, local_user_id, active_node_id, takeover_generation,
+        active_claimed_at, active_claim_origin, status, created_at, updated_at
+      FROM mesh_links
+      WHERE link_id = ? AND local_user_id = ?
+    `).get(input.linkId, input.localUserId) as MeshLinkRow | null;
+    if (!link) {
+      throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
+    }
+    const member = db.query(`
+      SELECT link_id, node_id, local_user_id, endpoint, transport, status,
+        membership_generation, last_seen_at, created_at, updated_at
+      FROM mesh_link_members
+      WHERE link_id = ? AND node_id = ?
+    `).get(input.linkId, input.nodeId) as MeshLinkMemberRow | null;
+    if (!member) {
+      throw new DomainError("mesh_node_not_member", "The node is not a member of this mesh link.");
+    }
+    if (member.status !== "revoked") {
+      throw new DomainError(
+        "mesh_member_not_revoked",
+        "Only a revoked mesh member can have its revocation deleted.",
+      );
+    }
+    if (link.active_node_id === input.nodeId) {
+      throw new DomainError(
+        "mesh_active_node_remove_requires_takeover",
+        "The active mesh node must be replaced before its revocation can be deleted.",
+      );
+    }
+
+    db.run(
+      "DELETE FROM mesh_link_members WHERE link_id = ? AND node_id = ?",
+      [input.linkId, input.nodeId],
+    );
+    db.run(
+      "DELETE FROM mesh_sync_outbox WHERE peer_node_id = ? AND link_id = ?",
+      [input.nodeId, input.linkId],
+    );
+    db.run(
+      "DELETE FROM mesh_link_claims WHERE link_id = ? AND node_id = ?",
+      [input.linkId, input.nodeId],
+    );
+    db.run(
+      "DELETE FROM mesh_sync_conflicts WHERE link_id = ? AND origin_node_id = ?",
+      [input.linkId, input.nodeId],
+    );
+
+    const remainingMembers = db.query(`
+      SELECT status
+      FROM mesh_link_members
+      WHERE node_id = ?
+    `).all(input.nodeId) as Array<{ status: MeshMemberStatus }>;
+    const isActiveAuthority = db.query(`
+      SELECT 1
+      FROM mesh_links
+      WHERE active_node_id = ?
+      LIMIT 1
+    `).get(input.nodeId) !== null;
+    if (remainingMembers.length === 0 && !isActiveAuthority) {
+      db.run("DELETE FROM mesh_nodes WHERE node_id = ?", [input.nodeId]);
+    } else {
+      const nextStatus: MeshMemberStatus = isActiveAuthority
+        || remainingMembers.some((candidate) => candidate.status === "active")
+        ? "active"
+        : remainingMembers.some((candidate) => candidate.status === "pending")
+          ? "pending"
+          : remainingMembers.some((candidate) => candidate.status === "rejoining")
+            ? "rejoining"
+            : remainingMembers.some((candidate) => candidate.status === "offline")
+              ? "offline"
+              : "revoked";
+      db.run(`
+        UPDATE mesh_nodes
+        SET status = ?, updated_at = ?
+        WHERE node_id = ?
+      `, [nextStatus, now, input.nodeId]);
+    }
+    removed = {
+      ...memberFromRow(member),
+      updatedAt: now,
+    };
+  });
+  transaction();
+  if (!removed) {
+    throw new Error(`Revoked mesh member was not removed: ${input.nodeId}`);
+  }
+  log.info("Deleted mesh member revocation", {
+    linkId: input.linkId,
+    nodeId: input.nodeId,
+  });
+  return removed;
+}
+
 export async function markLocalMeshMemberRevoked(input: {
   linkId: string;
   nodeId: string;
@@ -1171,13 +1298,15 @@ export async function approveMeshPairingRequest(input: {
   localNodeEndpoint: string | null;
   localNodeTransport: MeshTransport;
   linkId?: string;
-}): Promise<MeshLinkRecord> {
+}): Promise<ApproveMeshPairingRequestResult> {
   const db = getDatabase();
   const now = new Date().toISOString();
   let resolvedLinkId: string | undefined;
+  let rollback: MeshPairingApprovalRollback | null = null;
   const transaction = db.transaction(() => {
     const requestRow = db.query(`
       SELECT id, link_id, target_link_id, target_local_user_id, requested_node_id,
+        requested_instance_name,
         direction,
         requested_local_user_id, requested_username, endpoint, transport,
         public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
@@ -1226,6 +1355,36 @@ export async function approveMeshPairingRequest(input: {
       return;
     }
     const linkId = decision.linkId;
+    const previousMemberRow = db.query(`
+      SELECT link_id, node_id, local_user_id, endpoint, transport, status,
+        membership_generation, last_seen_at, created_at, updated_at
+      FROM mesh_link_members
+      WHERE link_id = ? AND node_id = ?
+    `).get(linkId, requestRow!.requested_node_id) as MeshLinkMemberRow | null;
+    const previousNodeRow = db.query(`
+      SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key,
+        endpoint, transport, status, last_seen_at, created_at, updated_at
+      FROM mesh_nodes
+      WHERE node_id = ?
+    `).get(requestRow!.requested_node_id) as MeshNodeRow | null;
+    rollback = {
+      requestId: input.requestId,
+      linkId,
+      nodeId: requestRow!.requested_node_id,
+      approvingUserId: input.approvingUserId,
+      createdLink: decision.createLink,
+      previousRequest: {
+        linkId: requestRow!.link_id,
+        targetLinkId: requestRow!.target_link_id,
+        targetLocalUserId: requestRow!.target_local_user_id,
+        status: requestRow!.status,
+        approvedAt: requestRow!.approved_at,
+        approvedByUserId: requestRow!.approved_by_user_id,
+        rejectionReason: requestRow!.rejection_reason,
+      },
+      previousMember: previousMemberRow ? memberFromRow(previousMemberRow) : null,
+      previousNode: previousNodeRow ? nodeFromRow(previousNodeRow) : null,
+    };
     if (decision.createLink) {
       db.run(`
         INSERT INTO mesh_links (
@@ -1297,7 +1456,138 @@ export async function approveMeshPairingRequest(input: {
     requestId: input.requestId,
     linkId: resolvedLinkId,
   });
-  return link;
+  return { link, rollback };
+}
+
+export async function rollbackMeshPairingApproval(
+  rollback: MeshPairingApprovalRollback,
+): Promise<void> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const transaction = db.transaction(() => {
+    const request = db.query(`
+      SELECT id, link_id, status
+      FROM mesh_pairing_requests
+      WHERE id = ?
+    `).get(rollback.requestId) as {
+      id: string;
+      link_id: string | null;
+      status: MeshPairingStatus;
+    } | null;
+    if (!request) {
+      throw new DomainError("mesh_pairing_request_not_found", "The mesh pairing request was not found.");
+    }
+    if (request.status !== "approved" || request.link_id !== rollback.linkId) {
+      throw new DomainError(
+        "mesh_pairing_rollback_conflict",
+        "The mesh pairing approval changed before it could be rolled back.",
+        {
+          details: {
+            requestId: rollback.requestId,
+            linkId: rollback.linkId,
+            currentStatus: request.status,
+            currentLinkId: request.link_id,
+          },
+        },
+      );
+    }
+
+    if (rollback.createdLink) {
+      db.run(`
+        DELETE FROM mesh_links
+        WHERE link_id = ? AND local_user_id = ?
+      `, [rollback.linkId, rollback.approvingUserId]);
+    } else if (rollback.previousMember) {
+      const member = rollback.previousMember;
+      db.run(`
+        INSERT INTO mesh_link_members (
+          link_id, node_id, local_user_id, endpoint, transport, status,
+          membership_generation, last_seen_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(link_id, node_id) DO UPDATE SET
+          local_user_id = excluded.local_user_id,
+          endpoint = excluded.endpoint,
+          transport = excluded.transport,
+          status = excluded.status,
+          membership_generation = excluded.membership_generation,
+          last_seen_at = excluded.last_seen_at,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at
+      `, [
+        member.linkId,
+        member.nodeId,
+        member.localUserId,
+        member.endpoint,
+        member.transport,
+        member.status,
+        member.membershipGeneration,
+        member.lastSeenAt,
+        member.createdAt,
+        member.updatedAt,
+      ]);
+    } else {
+      db.run(`
+        DELETE FROM mesh_link_members
+        WHERE link_id = ? AND node_id = ?
+      `, [rollback.linkId, rollback.nodeId]);
+    }
+
+    if (rollback.previousNode) {
+      const node = rollback.previousNode;
+      db.run(`
+        INSERT INTO mesh_nodes (
+          node_id, instance_name, public_key, fingerprint, encryption_public_key,
+          endpoint, transport, status, last_seen_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+          instance_name = excluded.instance_name,
+          public_key = excluded.public_key,
+          fingerprint = excluded.fingerprint,
+          encryption_public_key = excluded.encryption_public_key,
+          endpoint = excluded.endpoint,
+          transport = excluded.transport,
+          status = excluded.status,
+          last_seen_at = excluded.last_seen_at,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at
+      `, [
+        node.nodeId,
+        node.instanceName,
+        node.publicKey,
+        node.fingerprint,
+        node.encryptionPublicKey ?? null,
+        node.endpoint,
+        node.transport,
+        node.status,
+        node.lastSeenAt,
+        node.createdAt,
+        node.updatedAt,
+      ]);
+    }
+
+    const previousRequest = rollback.previousRequest;
+    db.run(`
+      UPDATE mesh_pairing_requests
+      SET link_id = ?, target_link_id = ?, target_local_user_id = ?, status = ?,
+        approved_at = ?, approved_by_user_id = ?, rejection_reason = ?, updated_at = ?
+      WHERE id = ?
+    `, [
+      previousRequest.linkId,
+      previousRequest.targetLinkId,
+      previousRequest.targetLocalUserId,
+      previousRequest.status,
+      previousRequest.approvedAt,
+      previousRequest.approvedByUserId,
+      previousRequest.rejectionReason,
+      now,
+      rollback.requestId,
+    ]);
+  });
+  transaction();
+  log.warn("Rolled back mesh pairing approval after delivery failure", {
+    requestId: rollback.requestId,
+    linkId: rollback.linkId,
+  });
 }
 
 export async function completeOutgoingMeshPairingRequest(input: {
