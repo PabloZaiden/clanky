@@ -417,6 +417,29 @@ describe("mesh persistence", () => {
     expect((await getMeshPairingRequest(request.id))?.status).toBe("expired");
   });
 
+  test("persists expired status when rejecting an expired request", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const request = await createMeshPairingRequest({
+      requestedNodeId: crypto.randomUUID(),
+      requestedLocalUserId: "remote-user",
+      requestedUsername: "remote",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      publicKey: "remote-key",
+      fingerprint: "sha256:remote-fingerprint",
+      nonce: crypto.randomUUID(),
+      signature: "signature",
+      targetLocalUserId: "local-user",
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    await expect(rejectMeshPairingRequest(request.id, "local-user", null)).rejects.toMatchObject({
+      code: "mesh_pairing_request_expired",
+    });
+    expect((await getMeshPairingRequest(request.id))?.status).toBe("expired");
+  });
+
   test("allows the visible owner to reject an incoming request targeted at a mesh link", async () => {
     await setupDatabase();
     await seedUser("local-user");

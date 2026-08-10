@@ -38,20 +38,44 @@ import {
 
 const log = createLogger("persistence:mesh");
 
-function markExpiredPairingRequestAndRethrow(
+function isExpiredPairingRequestError(error: unknown): error is DomainError {
+  return error instanceof DomainError && error.code === "mesh_pairing_request_expired";
+}
+
+function markExpiredPairingRequest(
   db: ReturnType<typeof getDatabase>,
   requestId: string,
   now: string,
-  error: unknown,
-): never {
-  if (error instanceof DomainError && error.code === "mesh_pairing_request_expired") {
-    db.run(`
-      UPDATE mesh_pairing_requests
-      SET status = 'expired', updated_at = ?
-      WHERE id = ?
-    `, [now, requestId]);
+): void {
+  db.run(`
+    UPDATE mesh_pairing_requests
+    SET status = 'expired', updated_at = ?
+    WHERE id = ?
+  `, [now, requestId]);
+}
+
+function runMeshPairingTransaction(
+  db: ReturnType<typeof getDatabase>,
+  requestId: string,
+  now: string,
+  operation: () => void,
+): void {
+  let expiredError: DomainError | null = null;
+  const transaction = db.transaction(() => {
+    try {
+      operation();
+    } catch (error) {
+      if (!isExpiredPairingRequestError(error)) {
+        throw error;
+      }
+      markExpiredPairingRequest(db, requestId, now);
+      expiredError = error;
+    }
+  });
+  transaction();
+  if (expiredError) {
+    throw expiredError;
   }
-  throw error;
 }
 
 interface MeshNodeRow {
@@ -1310,7 +1334,7 @@ export async function approveMeshPairingRequest(input: {
   const now = new Date().toISOString();
   let resolvedLinkId: string | undefined;
   let rollback: MeshPairingApprovalRollback | null = null;
-  const transaction = db.transaction(() => {
+  runMeshPairingTransaction(db, input.requestId, now, () => {
     const requestRow = db.query(`
       SELECT id, link_id, target_link_id, target_local_user_id, requested_node_id,
         requested_instance_name,
@@ -1343,20 +1367,15 @@ export async function approveMeshPairingRequest(input: {
       WHERE link_id = ?
     `).get(candidateLinkId) as MeshLinkRow | null;
     const selectedLink = selectedLinkRow ? linkFromRow(selectedLinkRow) : null;
-    let decision: ReturnType<typeof decideApproveMeshPairing>;
-    try {
-      decision = decideApproveMeshPairing({
-        request,
-        approvingUserId: input.approvingUserId,
-        requestedLinkId: input.linkId,
-        existingUserLink,
-        selectedLink,
-        generatedLinkId: candidateLinkId,
-        nowMs: Date.now(),
-      });
-    } catch (error) {
-      markExpiredPairingRequestAndRethrow(db, input.requestId, now, error);
-    }
+    const decision = decideApproveMeshPairing({
+      request,
+      approvingUserId: input.approvingUserId,
+      requestedLinkId: input.linkId,
+      existingUserLink,
+      selectedLink,
+      generatedLinkId: candidateLinkId,
+      nowMs: Date.now(),
+    });
     if (decision.kind === "idempotent") {
       resolvedLinkId = decision.linkId;
       return;
@@ -1451,7 +1470,6 @@ export async function approveMeshPairingRequest(input: {
     `, [linkId, input.approvingUserId, now, input.approvingUserId, now, input.requestId]);
     resolvedLinkId = linkId;
   });
-  transaction();
   if (!resolvedLinkId) {
     throw new Error(`Mesh pairing request did not resolve to a link: ${input.requestId}`);
   }
@@ -1618,7 +1636,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   const db = getDatabase();
   const now = new Date().toISOString();
   let resolvedLinkId: string | undefined;
-  const transaction = db.transaction(() => {
+  runMeshPairingTransaction(db, input.requestId, now, () => {
     const requestRow = db.query(`
       SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
         requested_local_user_id, requested_username, endpoint, transport,
@@ -1634,20 +1652,15 @@ export async function completeOutgoingMeshPairingRequest(input: {
       FROM mesh_links
       WHERE link_id = ?
     `).get(input.linkId) as MeshLinkRow | null;
-    let decision: ReturnType<typeof decideCompleteOutgoingMeshPairing>;
-    try {
-      decision = decideCompleteOutgoingMeshPairing({
-        request,
-        localUserId: input.localUserId,
-        localNodeId: input.localNodeId,
-        remoteNodeId: input.remoteNodeId,
-        link: existingLinkRow ? linkFromRow(existingLinkRow) : null,
-        nowMs: Date.now(),
-        linkId: input.linkId,
-      });
-    } catch (error) {
-      markExpiredPairingRequestAndRethrow(db, input.requestId, now, error);
-    }
+    const decision = decideCompleteOutgoingMeshPairing({
+      request,
+      localUserId: input.localUserId,
+      localNodeId: input.localNodeId,
+      remoteNodeId: input.remoteNodeId,
+      link: existingLinkRow ? linkFromRow(existingLinkRow) : null,
+      nowMs: Date.now(),
+      linkId: input.linkId,
+    });
     if (decision.kind === "idempotent") {
       resolvedLinkId = decision.linkId;
       return;
@@ -1743,7 +1756,6 @@ export async function completeOutgoingMeshPairingRequest(input: {
     `, [input.linkId, now, now, input.requestId]);
     resolvedLinkId = input.linkId;
   });
-  transaction();
   if (!resolvedLinkId) {
     throw new Error(`Outgoing mesh pairing request did not resolve to a link: ${input.requestId}`);
   }
@@ -1765,7 +1777,7 @@ export async function rejectMeshPairingRequest(
 ): Promise<MeshPairingRequestRecord> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  const transaction = db.transaction(() => {
+  runMeshPairingTransaction(db, requestId, now, () => {
     const requestRow = db.query(`
       SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
         requested_local_user_id, requested_username, endpoint, transport,
@@ -1783,16 +1795,12 @@ export async function rejectMeshPairingRequest(
         WHERE link_id = ? AND local_user_id = ?
       `).get(request.linkId, rejectingUserId) as MeshLinkRow | null
       : null;
-    try {
-      decideRejectMeshPairing({
-        request,
-        rejectingUserId,
-        ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
-        nowMs: Date.now(),
-      });
-    } catch (error) {
-      markExpiredPairingRequestAndRethrow(db, requestId, now, error);
-    }
+    decideRejectMeshPairing({
+      request,
+      rejectingUserId,
+      ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
+      nowMs: Date.now(),
+    });
     db.run(`
       UPDATE mesh_pairing_requests
       SET status = 'rejected', rejection_reason = ?, approved_by_user_id = ?,
@@ -1800,7 +1808,6 @@ export async function rejectMeshPairingRequest(
       WHERE id = ? AND status = 'pending'
     `, [reason, rejectingUserId, now, requestId]);
   });
-  transaction();
   const updated = await getMeshPairingRequest(requestId);
   if (!updated) {
     throw new Error(`Mesh pairing request disappeared after rejection: ${requestId}`);

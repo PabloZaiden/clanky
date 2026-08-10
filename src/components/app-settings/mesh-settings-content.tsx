@@ -244,7 +244,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
 
   return (
     <div className="space-y-4">
-      {mesh.error && !mesh.mutationError ? <SettingsError>{mesh.error}</SettingsError> : null}
+      {mesh.error && mesh.error !== mesh.mutationError ? <SettingsError>{mesh.error}</SettingsError> : null}
       {link ? (
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Mesh members</h4>
