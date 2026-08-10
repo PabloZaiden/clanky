@@ -179,6 +179,7 @@ function MeshMemberRow({
 
 export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const toast = useToast();
+  const showToastError = toast.error;
   const [endpoint, setEndpoint] = useState("");
   const [targetLocalUserId, setTargetLocalUserId] = useState("");
   const [instanceName, setInstanceName] = useState("");
@@ -193,6 +194,12 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
     void mesh.loadPreflight();
     void mesh.loadConflicts();
   }, [mesh.loadConflicts, mesh.loadPreflight]);
+
+  useEffect(() => {
+    if (mesh.mutationError) {
+      showToastError(mesh.mutationError);
+    }
+  }, [mesh.mutationError, showToastError]);
 
   const link = mesh.status?.links[0] ?? null;
   const localIsActive = link?.activeNodeId === mesh.status?.node.nodeId;
@@ -237,7 +244,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
 
   return (
     <div className="space-y-4">
-      {mesh.error ? <SettingsError>{mesh.error}</SettingsError> : null}
+      {mesh.error && !mesh.mutationError ? <SettingsError>{mesh.error}</SettingsError> : null}
       {link ? (
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Mesh members</h4>

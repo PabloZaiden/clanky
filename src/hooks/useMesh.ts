@@ -27,6 +27,7 @@ export interface UseMeshResult {
   loading: boolean;
   saving: boolean;
   error: string | null;
+  mutationError: string | null;
   refresh: () => Promise<MeshStatusRecord | null>;
   loadPreflight: () => Promise<MeshPreflight | null>;
   loadConflicts: () => Promise<MeshSyncConflictRecord[]>;
@@ -52,6 +53,7 @@ export function useMesh(): UseMeshResult {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async (): Promise<MeshStatusRecord | null> => {
@@ -93,6 +95,7 @@ export function useMesh(): UseMeshResult {
   ): Promise<MeshResponse | null> => {
     setSaving(true);
     setError(null);
+    setMutationError(null);
     try {
       return await apiRequest<MeshResponse>(path, {
         method,
@@ -102,7 +105,9 @@ export function useMesh(): UseMeshResult {
         fallbackMessage: fallback,
       });
     } catch (mutationError) {
-      setError(String(mutationError));
+      const message = mutationError instanceof Error ? mutationError.message : String(mutationError);
+      setError(message);
+      setMutationError(message);
       return null;
     } finally {
       setSaving(false);
@@ -147,6 +152,7 @@ export function useMesh(): UseMeshResult {
   ): Promise<MeshStatusRecord | null> => {
     const response = await runMutation(path, body, fallback, method);
     if (!response) {
+      await refresh();
       return null;
     }
     if (response.status) {
@@ -272,6 +278,7 @@ export function useMesh(): UseMeshResult {
     loading,
     saving,
     error,
+    mutationError,
     refresh,
     loadPreflight,
     loadConflicts,
