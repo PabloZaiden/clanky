@@ -11,14 +11,17 @@ import {
   createMeshLink,
   createMeshPairingRequest,
   getActiveMeshLinkTakeover,
+  getMeshNode,
   getMeshLinkForUser,
   getMeshLinkById,
   getMeshPairingRequest,
   getMeshLinkMembershipSnapshot,
   listMeshLinkMembers,
+  listMeshLinksForLocalUser,
   listMeshNodes,
   listPendingMeshPairingRequests,
   mergeMeshLinkMember,
+  removeRevokedMeshLinkMember,
   revokeMeshLinkMember,
   saveMeshNode,
 } from "../../src/persistence/mesh";
@@ -263,6 +266,102 @@ describe("mesh persistence", () => {
     }
   });
 
+  test("deletes a revoked member identity so the node can be invited again", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    const localNode = await ensureLocalMeshNodeIdentity();
+    const remoteKeyPair = generateKeyPairSync("ed25519");
+    const remotePublicKey = remoteKeyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
+    const remoteNodeId = crypto.randomUUID();
+    const remoteFingerprint = getMeshNodeFingerprint(remotePublicKey);
+    await saveMeshNode({
+      nodeId: remoteNodeId,
+      instanceName: "Remote instance",
+      publicKey: remotePublicKey,
+      fingerprint: remoteFingerprint,
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      status: "active",
+    });
+    const link = await createMeshLink({
+      localUserId: "local-user",
+      localNodeId: localNode.nodeId,
+      localNodeEndpoint: "https://local.example.test",
+      localNodeTransport: "https",
+    });
+    await mergeMeshLinkMember({
+      linkId: link.linkId,
+      nodeId: remoteNodeId,
+      instanceName: "Remote instance",
+      localUserId: "remote-user",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      status: "active",
+      membershipGeneration: 1,
+      publicKey: remotePublicKey,
+      fingerprint: remoteFingerprint,
+    });
+    await revokeMeshLinkMember({
+      linkId: link.linkId,
+      localUserId: "local-user",
+      nodeId: remoteNodeId,
+    });
+
+    await removeRevokedMeshLinkMember({
+      linkId: link.linkId,
+      localUserId: "local-user",
+      nodeId: remoteNodeId,
+    });
+
+    expect((await listMeshLinkMembers(link.linkId)).map((member) => member.nodeId)).toEqual([
+      localNode.nodeId,
+    ]);
+    await expect(getMeshNode(remoteNodeId)).resolves.toBeNull();
+  });
+
+  test("rolls back a local approval when the peer cannot receive it", async () => {
+    await setupDatabase();
+    await seedUser("local-user");
+    await ensureLocalMeshNodeIdentity();
+    await setLocalMeshInstanceName("Local instance");
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "https://local.example.test";
+    const remoteKeyPair = generateKeyPairSync("ed25519");
+    const remotePublicKey = remoteKeyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
+    const remoteNodeId = crypto.randomUUID();
+    const request = await createMeshPairingRequest({
+      requestedNodeId: remoteNodeId,
+      requestedInstanceName: "Remote instance",
+      requestedLocalUserId: "remote-user",
+      requestedUsername: "remote",
+      endpoint: "https://remote.example.test",
+      transport: "https",
+      publicKey: remotePublicKey,
+      fingerprint: getMeshNodeFingerprint(remotePublicKey),
+      nonce: crypto.randomUUID(),
+      signature: "signature",
+      targetLocalUserId: "local-user",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(async () => {
+      throw new Error("peer unavailable");
+    }, { preconnect: originalFetch.preconnect });
+
+    try {
+      await expect(meshManager.approvePairingRequest(
+        "local-user",
+        request.id,
+        {},
+      )).rejects.toMatchObject({ code: "mesh_control_request_unreachable" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(await listMeshLinksForLocalUser("local-user")).toHaveLength(0);
+    expect((await getMeshPairingRequest(request.id))?.status).toBe("pending");
+    expect((await getMeshNode(remoteNodeId))?.status).toBe("pending");
+  });
+
   test("encrypts mesh payloads for the recipient node", async () => {
     const nodeA = await createNodeDatabase("user-a");
     const nodeB = await createNodeDatabase("user-b");
@@ -466,13 +565,14 @@ describe("mesh persistence", () => {
 
     expect((await listPendingMeshPairingRequests("local-user")).map((item) => item.id)).toEqual([request.id]);
 
-    const link = await approveMeshPairingRequest({
+    const approval = await approveMeshPairingRequest({
       requestId: request.id,
       approvingUserId: "local-user",
       localNodeId: localNode.nodeId,
       localNodeEndpoint: "https://local.example.test",
       localNodeTransport: "https",
     });
+    const link = approval.link;
     const members = await listMeshLinkMembers(link.linkId);
 
     expect(link.localUserId).toBe("local-user");
@@ -490,7 +590,7 @@ describe("mesh persistence", () => {
       localNodeTransport: "https",
       linkId: "different-link-override",
     });
-    expect(retriedApproval.linkId).toBe(link.linkId);
+    expect(retriedApproval.link.linkId).toBe(link.linkId);
 
     const firstClaim = await claimMeshLinkForLocalUser({
       linkId: link.linkId,
@@ -644,13 +744,13 @@ describe("mesh persistence", () => {
     });
 
     expect(request.linkId).toBe(targetLinkId);
-    const approvedLink = await approveMeshPairingRequest({
+    const approvedLink = (await approveMeshPairingRequest({
       requestId: request.id,
       approvingUserId: "new-node-user",
       localNodeId: localNode.nodeId,
       localNodeEndpoint: "https://new-node.example.test",
       localNodeTransport: "https",
-    });
+    })).link;
 
     expect(approvedLink.linkId).toBe(targetLinkId);
     expect((await getMeshPairingRequest(request.id))?.linkId).toBe(targetLinkId);
@@ -718,13 +818,13 @@ describe("mesh persistence", () => {
       targetLocalUserId: "local-user",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
-    const link = await approveMeshPairingRequest({
+    const link = (await approveMeshPairingRequest({
       requestId: request.id,
       approvingUserId: "local-user",
       localNodeId: localNode.nodeId,
       localNodeEndpoint: "https://local.example.test",
       localNodeTransport: "https",
-    });
+    })).link;
     const takeoverUnsigned = {
       protocolVersion: 1 as const,
       linkId: link.linkId,
@@ -786,13 +886,13 @@ describe("mesh persistence", () => {
       targetLocalUserId: "local-user",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
-    const link = await approveMeshPairingRequest({
+    const link = (await approveMeshPairingRequest({
       requestId: request.id,
       approvingUserId: "local-user",
       localNodeId: localNode.nodeId,
       localNodeEndpoint: "https://local.example.test",
       localNodeTransport: "https",
-    });
+    })).link;
     const thirdKeyPair = generateKeyPairSync("ed25519");
     const thirdPublicKey = thirdKeyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
     const thirdNodeId = crypto.randomUUID();

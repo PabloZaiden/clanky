@@ -133,6 +133,14 @@ export function meshErrorResponse(error: unknown): Response {
           status: 409,
           message: "Replace the active node before revoking it",
         },
+        mesh_member_not_revoked: {
+          status: 409,
+          message: "Only a revoked mesh member can have its revocation deleted",
+        },
+        mesh_pairing_rollback_failed: {
+          status: 500,
+          message: "Mesh pairing failed and local mesh state could not be rolled back",
+        },
         mesh_rejoin_requires_revoked: {
           status: 409,
           message: "Only a revoked mesh node can rejoin",
@@ -162,6 +170,25 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const status = await meshManager.revokeMember(ctx.requireUser().id, parsed.data.nodeId);
+        return successResponse({ status });
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+
+  "/api/mesh/members/:nodeId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Delete a revoked mesh member record so the node can be invited again.",
+    tags: ["mesh", "membership"],
+    async DELETE(_req, ctx): Promise<Response> {
+      const nodeId = ctx.params["nodeId"];
+      if (!nodeId) {
+        return meshErrorResponse(new Error("Mesh node ID is required."));
+      }
+      try {
+        const status = await meshManager.removeRevokedMember(ctx.requireUser().id, nodeId);
         return successResponse({ status });
       } catch (error) {
         return meshErrorResponse(error);

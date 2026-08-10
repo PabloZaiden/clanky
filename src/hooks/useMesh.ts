@@ -37,6 +37,7 @@ export interface UseMeshResult {
   rejectPairing: (requestId: string, reason?: string) => Promise<MeshStatusRecord | null>;
   takeover: (expectedGeneration?: number) => Promise<MeshStatusRecord | null>;
   revokeMember: (nodeId: string) => Promise<MeshStatusRecord | null>;
+  removeRevokedMember: (nodeId: string) => Promise<MeshStatusRecord | null>;
   rejoin: (targetEndpoint: string, targetLocalUserId?: string) => Promise<MeshStatusRecord | null>;
   resolveConflict: (
     conflictId: string,
@@ -88,12 +89,13 @@ export function useMesh(): UseMeshResult {
     path: string,
     body: Record<string, unknown>,
     fallback: string,
+    method: "POST" | "DELETE" = "POST",
   ): Promise<MeshResponse | null> => {
     setSaving(true);
     setError(null);
     try {
       return await apiRequest<MeshResponse>(path, {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         action: fallback,
@@ -141,8 +143,9 @@ export function useMesh(): UseMeshResult {
     path: string,
     body: Record<string, unknown>,
     fallback: string,
+    method: "POST" | "DELETE" = "POST",
   ): Promise<MeshStatusRecord | null> => {
-    const response = await runMutation(path, body, fallback);
+    const response = await runMutation(path, body, fallback, method);
     if (!response) {
       return null;
     }
@@ -219,6 +222,16 @@ export function useMesh(): UseMeshResult {
     [mutationStatus],
   );
 
+  const removeRevokedMember = useCallback(
+    (nodeId: string) => mutationStatus(
+      `/api/mesh/members/${encodeURIComponent(nodeId)}`,
+      {},
+      "Failed to delete mesh member revocation",
+      "DELETE",
+    ),
+    [mutationStatus],
+  );
+
   const rejoin = useCallback(
     (targetEndpoint: string, targetLocalUserId?: string) => mutationStatus(
       "/api/mesh/rejoin",
@@ -269,6 +282,7 @@ export function useMesh(): UseMeshResult {
     rejectPairing,
     takeover,
     revokeMember,
+    removeRevokedMember,
     rejoin,
     resolveConflict,
   };

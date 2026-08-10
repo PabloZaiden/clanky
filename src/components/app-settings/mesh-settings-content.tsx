@@ -125,12 +125,14 @@ function MeshMemberRow({
   activeNodeId,
   saving,
   onRevoke,
+  onRemoveRevocation,
 }: {
   member: MeshLinkMemberRecord;
   localNodeId: string;
   activeNodeId: string | null;
   saving: boolean;
   onRevoke: () => void;
+  onRemoveRevocation: () => void;
 }) {
   const isLocalInstance = member.nodeId === localNodeId;
   const isAuthority = member.nodeId === activeNodeId;
@@ -166,6 +168,11 @@ function MeshMemberRow({
           Revoke
         </Button>
       ) : null}
+      {member.nodeId !== localNodeId && member.status === "revoked" ? (
+        <Button type="button" size="sm" variant="danger" onClick={onRemoveRevocation} disabled={saving}>
+          Delete revocation
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -178,6 +185,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [rejoinEndpoint, setRejoinEndpoint] = useState("");
   const [rejoinTargetUserId, setRejoinTargetUserId] = useState("");
   const [revokeNodeId, setRevokeNodeId] = useState<string | null>(null);
+  const [removeRevocationNodeId, setRemoveRevocationNodeId] = useState<string | null>(null);
   const [showTakeoverConfirm, setShowTakeoverConfirm] = useState(false);
   const [showRejoinConfirm, setShowRejoinConfirm] = useState(false);
 
@@ -241,6 +249,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
               activeNodeId={link.activeNodeId}
               saving={mesh.saving}
               onRevoke={() => setRevokeNodeId(member.nodeId)}
+              onRemoveRevocation={() => setRemoveRevocationNodeId(member.nodeId)}
             />
           ))}
         </div>
@@ -473,6 +482,23 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         title="Revoke mesh member"
         message="This member will stop receiving new synchronized data. Rejoining requires a new pairing."
         confirmLabel="Revoke member"
+        loading={mesh.saving}
+        variant="danger"
+      />
+      <ConfirmModal
+        isOpen={removeRevocationNodeId !== null}
+        onClose={() => setRemoveRevocationNodeId(null)}
+        onConfirm={async () => {
+          if (!removeRevocationNodeId) return;
+          const result = await mesh.removeRevokedMember(removeRevocationNodeId);
+          if (result) {
+            toast.success("Mesh member revocation deleted.");
+            setRemoveRevocationNodeId(null);
+          }
+        }}
+        title="Delete mesh member revocation"
+        message="This removes the local revoked-member record so the instance can be invited to the mesh again."
+        confirmLabel="Delete revocation"
         loading={mesh.saving}
         variant="danger"
       />
