@@ -1,17 +1,20 @@
 import { hostname, networkInterfaces } from "node:os";
 import { spawn } from "node:child_process";
 import {
-  getAuthContextHeaders,
-  getCliRequestAuthContext,
-  type CliRequestAuthContext,
-  type StatusCommandOptions,
-} from "./auth";
+  getAuthorizedHeaders,
+  normalizeBaseUrl,
+  refreshDeviceCredentials,
+  resolveEnvironmentApiKeyAuth,
+  type CliEnvironment,
+  type DeviceCredentialsStore,
+  type StoredDeviceCredentials,
+} from "@pablozaiden/webapp/cli";
 import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
 
-export interface PreviewCommandOptions extends StatusCommandOptions {
+export interface PreviewCommandOptions {
   workspace: string;
   port: number;
   remoteHost: string;
@@ -19,6 +22,7 @@ export interface PreviewCommandOptions extends StatusCommandOptions {
   localPort?: number;
   path: string;
   open: boolean;
+  baseUrl?: string;
 }
 
 interface PendingPreviewRequest {
@@ -42,7 +46,12 @@ interface PreviewListenerData {
 
 export interface CliPreviewDependencies {
   fetchFn: typeof fetch;
-  now: () => Date;
+  now?: () => Date;
+  envPrefix?: string;
+  environment?: CliEnvironment;
+  credentials?: DeviceCredentialsStore & {
+    read(): Promise<StoredDeviceCredentials | undefined>;
+  };
   out?: (message: string) => void;
   err?: (message: string) => void;
   getHostname?: () => string;
@@ -52,9 +61,106 @@ export interface CliPreviewDependencies {
   registerSignalHandler?: (signal: NodeJS.Signals, handler: () => void) => () => void;
 }
 
+const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
+
 function normalizePreviewPath(value: string): string {
   const trimmed = value.trim() || "/";
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function parseOptionValue(
+  args: readonly string[],
+  index: number,
+  name: string,
+  inlineValue?: string,
+): { value: string; nextIndex: number } {
+  const value = inlineValue ?? args[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${name} requires a value`);
+  }
+  return {
+    value,
+    nextIndex: inlineValue === undefined ? index + 1 : index,
+  };
+}
+
+function parsePortOption(name: string, value: string): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer between 1 and 65535`);
+  }
+  return port;
+}
+
+export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommandOptions {
+  const options: Record<string, string> = {};
+  let open = false;
+  const positionals: string[] = [];
+  const allowedOptions = new Set([
+    "--workspace",
+    "--port",
+    "--remote-host",
+    "--host",
+    "--local-port",
+    "--path",
+    "--base-url",
+  ]);
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) continue;
+    if (arg === "--open") {
+      if (open) {
+        throw new Error("--open may only be specified once");
+      }
+      open = true;
+      continue;
+    }
+    if (!arg.startsWith("--")) {
+      positionals.push(arg);
+      continue;
+    }
+
+    const [rawName, inlineValue] = arg.split("=", 2);
+    const name = rawName ?? arg;
+    if (!allowedOptions.has(name)) {
+      throw new Error(`Unknown preview option: ${name}`);
+    }
+    if (options[name] !== undefined) {
+      throw new Error(`${name} may only be specified once`);
+    }
+    const parsed = parseOptionValue(args, index, name, inlineValue);
+    options[name] = parsed.value;
+    index = parsed.nextIndex;
+  }
+
+  if (positionals.length > 0) {
+    throw new Error(`Unexpected argument: ${positionals[0]}`);
+  }
+
+  const workspace = options["--workspace"]?.trim();
+  if (!workspace) {
+    throw new Error("Missing required option: --workspace");
+  }
+  const rawPort = options["--port"]?.trim();
+  if (!rawPort) {
+    throw new Error("Missing required option: --port");
+  }
+
+  const rawBaseUrl = options["--base-url"];
+  const baseUrl = rawBaseUrl === undefined ? undefined : normalizeBaseUrl(rawBaseUrl);
+  return {
+    baseUrl,
+    workspace,
+    port: parsePortOption("--port", rawPort),
+    remoteHost: options["--remote-host"]?.trim() || "localhost",
+    host: options["--host"]?.trim() || "localhost",
+    localPort: options["--local-port"]
+      ? parsePortOption("--local-port", options["--local-port"])
+      : undefined,
+    path: normalizePreviewPath(options["--path"] ?? "/"),
+    open,
+  };
 }
 
 function encodeBase64(value: Uint8Array): string {
@@ -176,14 +282,81 @@ function createPreviewBridgeFailureResponse(error: unknown): Response {
   return new Response(`Preview bridge request failed: ${String(error)}`, { status: 502 });
 }
 
+interface PreviewAuthContext {
+  baseUrl: string;
+  headers: Headers;
+}
+
 async function getAuthContext(
   command: PreviewCommandOptions,
   dependencies: CliPreviewDependencies,
-): Promise<CliRequestAuthContext | null> {
-  return await getCliRequestAuthContext({
-    baseUrl: command.baseUrl,
-    profile: command.profile,
-  }, dependencies);
+): Promise<PreviewAuthContext | null> {
+  const stored = await dependencies.credentials?.read();
+  if (stored) {
+    const refreshed = await refreshDeviceCredentials({
+      credentials: stored,
+      store: dependencies.credentials,
+      fetchFn: dependencies.fetchFn,
+      now: dependencies.now,
+    });
+    if (refreshed) {
+      return {
+        baseUrl: refreshed.baseUrl,
+        headers: getAuthorizedHeaders(refreshed),
+      };
+    }
+  }
+
+  const environmentAuth = dependencies.envPrefix
+    ? resolveEnvironmentApiKeyAuth({
+      envPrefix: dependencies.envPrefix,
+      explicitBaseUrl: command.baseUrl,
+      environment: dependencies.environment,
+    })
+    : undefined;
+  if (environmentAuth) {
+    const headers = new Headers();
+    headers.set("authorization", `Bearer ${environmentAuth.apiKey}`);
+    return {
+      baseUrl: environmentAuth.baseUrl,
+      headers,
+    };
+  }
+
+  const anonymousHeaders = new Headers();
+  const environmentBaseUrl = dependencies.envPrefix
+    ? dependencies.environment?.[`${dependencies.envPrefix}_BASE_URL`]
+    : undefined;
+  const rawBaseUrl = command.baseUrl ?? environmentBaseUrl ?? DEFAULT_LOCAL_BASE_URL;
+  let baseUrl: string;
+  try {
+    baseUrl = normalizeBaseUrl(rawBaseUrl);
+  } catch {
+    return null;
+  }
+  const response = await dependencies.fetchFn(`${baseUrl}/api/auth/status`, {
+    headers: anonymousHeaders,
+  });
+  if (!response.ok) {
+    return null;
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  if (
+    !body
+    || typeof body !== "object"
+    || (body as Record<string, unknown>)["authKind"] !== "anonymous"
+  ) {
+    return null;
+  }
+  return {
+    baseUrl,
+    headers: anonymousHeaders,
+  };
 }
 
 export async function runPreviewCommand(
@@ -204,7 +377,7 @@ export async function runPreviewCommand(
   }
 
   const bridgeUrl = buildPreviewBridgeUrl(authContext.baseUrl);
-  const headers = getAuthContextHeaders(authContext);
+  const headers = new Headers(authContext.headers);
   headers.set("origin", new URL(authContext.baseUrl).origin);
 
   const createSocket = dependencies.createSocket ?? createDefaultSocket;

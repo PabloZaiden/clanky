@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createRouteCatalog } from "@pablozaiden/webapp/server";
+import { createRouteCatalog, findRouteCatalogEntry } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "../../src/api";
-import { findApiEndpoint, getCliRouteCatalog } from "../../src/cli/api-catalog";
 import { routes } from "../../src/server";
 
 describe("API route policy metadata", () => {
@@ -33,8 +32,8 @@ describe("API route policy metadata", () => {
   });
 
   test("exposes the declared policy through CLI catalog lookup", () => {
-    const entry = findApiEndpoint("tasks")!;
-    const catalog = getCliRouteCatalog();
+    const catalog = createRouteCatalog(routes);
+    const entry = findRouteCatalogEntry(catalog, "tasks")!.entry;
 
     expect(catalog).toContainEqual(entry);
     expect(entry.path).toBe("/api/tasks");

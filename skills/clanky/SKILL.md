@@ -44,7 +44,7 @@ Clanky evolves over time, so prefer discovery over memorized command details. Tr
 5. Stream live events when you need progress updates:
 
    ```bash
-   clanky ws --task-id my-task-id
+   clanky ws
    ```
 
 ## Important CLI conventions
@@ -56,7 +56,7 @@ Clanky evolves over time, so prefer discovery over memorized command details. Tr
 - Use `--method <METHOD>` for non-default methods.
 - Use `--payload '<json>'` for request bodies.
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
-- Use the optional base URL argument only where the CLI supports it, such as `clanky status <base-url>` or `clanky ws <base-url> ...`.
+- Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
 
 ## Querying Clanky state
 
@@ -120,7 +120,7 @@ After creation, inspect the returned JSON for the task ID and status. Then monit
 
 ```bash
 clanky api tasks/<task-id> --method GET
-clanky ws --task-id <task-id>
+clanky ws
 ```
 
 If the schema or endpoint list differs from this example, follow the local `clanky api` and `clanky schema` output instead of forcing the example.
@@ -150,12 +150,10 @@ clanky api <entity> --method POST --payload '<json matching the schema>'
 clanky api <entity>/<id> --method GET
 ```
 
-For live updates, use `clanky ws` with the most specific filter the CLI supports:
+For live updates, use the generic JSON-lines realtime bridge:
 
 ```bash
-clanky ws --chat-id <chat-id>
-clanky ws --ssh-session-id <ssh-session-id>
-clanky ws --provisioning-job-id <job-id>
+clanky ws
 ```
 
 ## Error handling and durable behavior
