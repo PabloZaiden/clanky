@@ -14,7 +14,7 @@ The port can be configured via the `CLANKY_PORT` environment variable, and the b
 
 Authentication, users, passkeys, API keys, device auth, health, theme, log level, and server operations are provided by `@pablozaiden/webapp`. This document covers Clanky-owned domain endpoints only.
 
-`clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with stored framework tokens, `clanky ws` opens authenticated websocket sessions against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
+`clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with selected framework credentials, `clanky ws` opens an authenticated JSON-lines websocket session against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
 
 ## Route security and discovery metadata
 
@@ -51,7 +51,7 @@ clanky update --check
 clanky update
 
 # Authenticate against a server
-clanky auth http://localhost:3000
+clanky auth --base-url http://localhost:3000
 
 # List discoverable endpoints
 clanky api
@@ -63,10 +63,10 @@ clanky api tasks/my-task --method GET
 clanky schema tasks
 
 # Stream websocket events over stdio
-clanky ws --task-id my-task
+clanky ws
 ```
 
-`clanky help` includes the same version banner shown by `clanky version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky update` currently supports only the published Linux and macOS release binary, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. `clanky api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`clanky help` includes the same version banner shown by `clanky version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky update` currently supports only the published Linux and macOS release binary, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. `clanky api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky ws` uses the selected framework profile or environment credentials, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 
@@ -2835,14 +2835,14 @@ wss://example.com/api/ws                # Secure WebSocket
 **CLI bridge example**
 
 ```bash
-# Connect using stored CLI credentials and stream one task only
-clanky ws --task-id abc-123
+# Connect using the selected profile and stream JSON frames
+clanky ws
 
-# Override the base URL explicitly
-clanky ws https://example.com/clanky --provisioning-job-id job-42
+# Select another configured destination
+clanky --profile production ws
 ```
 
-`clanky ws` uses the same stored bearer token and cookie state as `clanky status` and `clanky api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
+`clanky ws` uses the selected framework profile or environment credentials. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination. It intentionally does not accept Clanky-specific filters or a positional base URL.
 
 **Event Types**
 

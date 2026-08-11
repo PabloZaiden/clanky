@@ -117,7 +117,7 @@ clanky update
 clanky update --version v0.8.1
 
 # Start device authorization against a specific Clanky server
-clanky auth http://localhost:3000
+clanky auth --base-url http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
 clanky status
@@ -132,7 +132,7 @@ clanky api tasks/my-task --method GET
 clanky schema auth/device
 
 # Stream authenticated websocket events over stdio
-clanky ws --task-id my-task
+clanky ws
 ```
 
 ## Key features
@@ -169,9 +169,14 @@ clanky ws --task-id my-task
 ### Auth notes
 
 - Passkey authentication protects the browser session and device-approval flow.
+- Device bearer credentials are issued through the framework device authorization
+  flow and are stored in the selected CLI profile.
+- `clanky ws` is a generic JSON-lines realtime bridge. Its destination comes
+  from the selected profile or environment and it does not expose
+  Clanky-specific event filters or a positional base URL.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
-- `clanky auth` stores bearer credentials in per-user CLI state under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
-- Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, `clanky api` and `clanky status` use this pair; `clanky status` reports that authentication came from environment variables without printing the key. A positional status base URL can be used with `CLANKY_API_KEY` when the server URL should be overridden.
+- `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
+- Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.

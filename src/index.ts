@@ -3,14 +3,11 @@
  */
 
 import "reflect-metadata";
-import { runMain } from "./cli/runtime";
+import { createClankyCli } from "./cli";
 
 try {
-  const exitCode = await runMain(Bun.argv.slice(2));
-  if (exitCode !== undefined) {
-    process.exit(exitCode);
-  }
+  process.exitCode = await createClankyCli().run();
 } catch (error) {
   console.error(`Fatal error: ${String(error)}`);
-  process.exit(1);
+  process.exitCode = 1;
 }

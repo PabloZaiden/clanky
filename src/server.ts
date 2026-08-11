@@ -108,6 +108,59 @@ function unregisterClankyRealtimeBridge(): void {
   realtimeBridgeUnsubscribers = undefined;
 }
 
+async function reconcileStartupState(): Promise<void> {
+  await backendManager.initialize();
+
+  let staleTasksReset = 0;
+  let staleManagedContextsRevoked = 0;
+  await runForEachActiveUser(async () => {
+    staleTasksReset += await resetStaleTasks();
+    staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
+  });
+  if (staleTasksReset > 0) {
+    log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
+  }
+  if (staleManagedContextsRevoked > 0) {
+    log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
+  }
+}
+
+async function completeStartup(server: Server<WebAppWebSocketData>): Promise<void> {
+  const appServer = app;
+  if (!appServer) {
+    throw new Error("Clanky web app server is unavailable during startup");
+  }
+  const serverUrl = new URL(server.url);
+  const localManagedCredentialBaseUrl = getLocalManagedCredentialBaseUrl(
+    serverUrl.hostname,
+    Number(serverUrl.port),
+  );
+  if (!appServer.config.publicBaseUrl && localManagedCredentialBaseUrl) {
+    managedCredentialService.configure(appServer.store, {
+      localBaseUrl: localManagedCredentialBaseUrl,
+    });
+  }
+  pushedTaskMonitor.start();
+  agentScheduler.start();
+  meshSyncWorker.start();
+
+  for (const message of getServerStartupMessages({
+    host: appServer.config.host,
+    port: appServer.config.port,
+    hostSource: process.env["CLANKY_HOST"]?.trim() ? "CLANKY_HOST" : "default",
+    sameOriginProtection: { disabled: appServer.config.sameOriginDisabled },
+  })) {
+    log.info(message);
+  }
+  log.info(`Clanky server running at ${server.url}`);
+}
+
+function stopBackgroundWorkers(): void {
+  pushedTaskMonitor.stop();
+  agentScheduler.stop();
+  meshSyncWorker.stop();
+}
+
 export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
@@ -212,6 +265,11 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     websockets: {
       clanky: websocketHandlers as never,
     },
+    lifecycle: {
+      beforeStart: reconcileStartupState,
+      afterStart: completeStartup,
+      beforeStop: stopBackgroundWorkers,
+    },
     configResponse: (req) => {
       const publicBasePath = app ? getRequestOriginInfo(req, app.config).pathPrefix : "/";
       return {
@@ -229,53 +287,12 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
 }
 
 export function resetWebAppServerForTests(): void {
-  meshSyncWorker.stop();
+  stopBackgroundWorkers();
   unregisterClankyRealtimeBridge();
   managedCredentialService.resetForTests();
   app = undefined;
 }
 
 export async function startServer(): Promise<Server<WebAppWebSocketData>> {
-  const appServer = await getWebAppServer();
-
-  await backendManager.initialize();
-
-  let staleTasksReset = 0;
-  let staleManagedContextsRevoked = 0;
-  await runForEachActiveUser(async () => {
-    staleTasksReset += await resetStaleTasks();
-    staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
-  });
-  if (staleTasksReset > 0) {
-    log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
-  }
-  if (staleManagedContextsRevoked > 0) {
-    log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
-  }
-
-  const server = await appServer.start();
-  const serverUrl = new URL(server.url);
-  const localManagedCredentialBaseUrl = getLocalManagedCredentialBaseUrl(
-    serverUrl.hostname,
-    Number(serverUrl.port),
-  );
-  if (!appServer.config.publicBaseUrl && localManagedCredentialBaseUrl) {
-    managedCredentialService.configure(appServer.store, {
-      localBaseUrl: localManagedCredentialBaseUrl,
-    });
-  }
-  pushedTaskMonitor.start();
-  agentScheduler.start();
-  meshSyncWorker.start();
-
-  for (const message of getServerStartupMessages({
-    host: appServer.config.host,
-    port: appServer.config.port,
-    hostSource: process.env["CLANKY_HOST"]?.trim() ? "CLANKY_HOST" : "default",
-    sameOriginProtection: { disabled: appServer.config.sameOriginDisabled },
-  })) {
-    log.info(message);
-  }
-  log.info(`Clanky server running at ${server.url}`);
-  return server;
+  return await (await getWebAppServer()).start();
 }
