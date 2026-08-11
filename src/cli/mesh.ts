@@ -10,7 +10,7 @@ export interface ClankyCliContext {
   routeCatalog: readonly RouteCatalogEntry[];
 }
 
-type MeshOperation =
+export type MeshOperation =
   | "status"
   | "preflight"
   | "takeover"
@@ -23,7 +23,7 @@ type MeshOperation =
   | "revoke"
   | "rejoin";
 
-interface MeshCommand {
+export interface MeshCommand {
   operation: MeshOperation;
   endpoint?: string;
   requestId?: string;
@@ -79,7 +79,7 @@ function requireSinglePositional(positionals: readonly string[], message: string
   return positionals[0];
 }
 
-function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
+export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
   const [operation, ...operationArgs] = args;
   if (!operation) {
     throw usageError(
@@ -216,7 +216,7 @@ function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
   throw usageError("Mesh pair command must be start, approve, complete, or reject");
 }
 
-function buildMeshRequest(command: MeshCommand): {
+export function buildMeshRequest(command: MeshCommand): {
   endpoint: string;
   method: string;
   payload?: string;
