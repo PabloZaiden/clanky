@@ -8,7 +8,7 @@ import type { Backend } from "../../backends/types";
 import type { TaskEvent } from "@/shared/events";
 import type { ConnectionStatus, ServerSettings } from "@/shared/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
-import { DEFAULT_SSH_CONNECTION_TIMEOUT_MS } from "../ssh-reliability-policy";
+import { SSH_CONNECTION_TIMEOUT_MS } from "../ssh-reliability-policy";
 
 export { type ConnectionStatus };
 
@@ -22,7 +22,7 @@ export const REMOTE_AGENT_TRANSPORTS = new Set(["ssh"]);
  * workspace connections). This bounds network operations to prevent indefinite hangs
  * when the remote server is unreachable.
  */
-export const DEFAULT_CONNECTION_TIMEOUT_MS = DEFAULT_SSH_CONNECTION_TIMEOUT_MS;
+export const DEFAULT_CONNECTION_TIMEOUT_MS = SSH_CONNECTION_TIMEOUT_MS;
 
 /**
  * Connection state for a workspace.

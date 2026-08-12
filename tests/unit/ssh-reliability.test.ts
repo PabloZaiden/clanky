@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import {
   createAcpProcessError,
@@ -13,29 +13,19 @@ import { SshConnectionGate } from "../../src/core/ssh-connection-gate";
 import {
   buildSshConnectionKey,
   getSshReliabilityPolicy,
+  SSH_CONNECT_TIMEOUT_MS,
+  SSH_CONNECT_TIMEOUT_SECONDS,
+  SSH_CONNECTION_ATTEMPTS,
+  SSH_CONNECTION_TIMEOUT_MS,
+  SSH_MAX_CONCURRENT_HANDSHAKES,
+  SSH_SERVER_ALIVE_COUNT_MAX,
+  SSH_SERVER_ALIVE_INTERVAL_SECONDS,
   type SshReliabilityPolicy,
 } from "../../src/core/ssh-reliability-policy";
 
-const policy: SshReliabilityPolicy = {
-  connectTimeoutMs: 30_000,
-  connectTimeoutSeconds: 30,
-  connectionAttempts: 2,
-  serverAliveIntervalSeconds: 30,
-  serverAliveCountMax: 3,
-  connectionTimeoutMs: 75_000,
-  maxConcurrentHandshakes: 4,
-};
+const policy: SshReliabilityPolicy = getSshReliabilityPolicy();
 
 describe("SSH reliability policy", () => {
-  afterEach(() => {
-    delete process.env["CLANKY_SSH_CONNECT_TIMEOUT_MS"];
-    delete process.env["CLANKY_SSH_CONNECTION_ATTEMPTS"];
-    delete process.env["CLANKY_SSH_CONNECTION_TIMEOUT_MS"];
-    delete process.env["CLANKY_SSH_SERVER_ALIVE_INTERVAL_SECONDS"];
-    delete process.env["CLANKY_SSH_SERVER_ALIVE_COUNT_MAX"];
-    delete process.env["CLANKY_SSH_MAX_CONCURRENT_HANDSHAKES"];
-  });
-
   test("uses native OpenSSH retry and keepalive options without changing the remote shell", () => {
     const args = buildSshCommandArgs({
       authMode: "batch",
@@ -52,32 +42,16 @@ describe("SSH reliability policy", () => {
     expect(args.join(" ")).toContain("-ilc");
   });
 
-  test("derives an outer deadline that contains configured connection attempts", () => {
-    process.env["CLANKY_SSH_CONNECT_TIMEOUT_MS"] = "12000";
-    process.env["CLANKY_SSH_CONNECTION_ATTEMPTS"] = "3";
-    process.env["CLANKY_SSH_CONNECTION_TIMEOUT_MS"] = "60000";
-    process.env["CLANKY_SSH_SERVER_ALIVE_INTERVAL_SECONDS"] = "45";
-    process.env["CLANKY_SSH_SERVER_ALIVE_COUNT_MAX"] = "4";
-    process.env["CLANKY_SSH_MAX_CONCURRENT_HANDSHAKES"] = "2";
-
-    const configured = getSshReliabilityPolicy();
-
-    expect(configured.connectTimeoutSeconds).toBe(12);
-    expect(configured.connectionAttempts).toBe(3);
-    expect(configured.connectionTimeoutMs).toBe(60_000);
-    expect(configured.serverAliveIntervalSeconds).toBe(45);
-    expect(configured.serverAliveCountMax).toBe(4);
-    expect(configured.maxConcurrentHandshakes).toBe(2);
-  });
-
-  test("rounds each OpenSSH attempt up when deriving the outer deadline", () => {
-    process.env["CLANKY_SSH_CONNECT_TIMEOUT_MS"] = "1001";
-    process.env["CLANKY_SSH_CONNECTION_ATTEMPTS"] = "2";
-    process.env["CLANKY_SSH_CONNECTION_TIMEOUT_MS"] = "18999";
-
-    expect(() => getSshReliabilityPolicy()).toThrow(
-      "CLANKY_SSH_CONNECTION_TIMEOUT_MS must be an integer between 19000 and 1800000",
-    );
+  test("uses the code-defined SSH reliability constants", () => {
+    expect(getSshReliabilityPolicy()).toEqual({
+      connectTimeoutMs: SSH_CONNECT_TIMEOUT_MS,
+      connectTimeoutSeconds: SSH_CONNECT_TIMEOUT_SECONDS,
+      connectionAttempts: SSH_CONNECTION_ATTEMPTS,
+      serverAliveIntervalSeconds: SSH_SERVER_ALIVE_INTERVAL_SECONDS,
+      serverAliveCountMax: SSH_SERVER_ALIVE_COUNT_MAX,
+      connectionTimeoutMs: SSH_CONNECTION_TIMEOUT_MS,
+      maxConcurrentHandshakes: SSH_MAX_CONCURRENT_HANDSHAKES,
+    });
   });
 
   test("normalizes SSH connection keys and separates authentication modes", () => {
