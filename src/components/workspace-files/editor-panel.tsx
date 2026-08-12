@@ -6,6 +6,7 @@ const EDITOR_LANGUAGE_OPTIONS = [
   { id: "plaintext", label: "Plain Text" },
   { id: "typescript", label: "TypeScript" },
   { id: "javascript", label: "JavaScript" },
+  { id: "python", label: "Python" },
   { id: "json", label: "JSON" },
   { id: "markdown", label: "Markdown" },
   { id: "css", label: "CSS" },
@@ -21,14 +22,25 @@ function detectLanguage(path: string | undefined): EditorLanguageId {
   if (!path) {
     return "plaintext";
   }
-  if (path.endsWith(".ts") || path.endsWith(".tsx")) return "typescript";
-  if (path.endsWith(".js") || path.endsWith(".jsx")) return "javascript";
-  if (path.endsWith(".json")) return "json";
-  if (path.endsWith(".md")) return "markdown";
-  if (path.endsWith(".css")) return "css";
-  if (path.endsWith(".html")) return "html";
-  if (path.endsWith(".sh")) return "shell";
-  if (path.endsWith(".yml") || path.endsWith(".yaml")) return "yaml";
+  const normalizedPath = path.toLowerCase();
+  if (normalizedPath.endsWith(".ts") || normalizedPath.endsWith(".tsx")) return "typescript";
+  if (normalizedPath.endsWith(".js") || normalizedPath.endsWith(".jsx")) return "javascript";
+  if (
+    normalizedPath.endsWith(".py")
+    || normalizedPath.endsWith(".py2")
+    || normalizedPath.endsWith(".py3")
+    || normalizedPath.endsWith(".pyw")
+    || normalizedPath.endsWith(".pyi")
+    || normalizedPath.endsWith(".pyx")
+    || normalizedPath.endsWith(".pxd")
+    || normalizedPath.endsWith(".pxi")
+  ) return "python";
+  if (normalizedPath.endsWith(".json")) return "json";
+  if (normalizedPath.endsWith(".md")) return "markdown";
+  if (normalizedPath.endsWith(".css")) return "css";
+  if (normalizedPath.endsWith(".html")) return "html";
+  if (normalizedPath.endsWith(".sh")) return "shell";
+  if (normalizedPath.endsWith(".yml") || normalizedPath.endsWith(".yaml")) return "yaml";
   return "plaintext";
 }
 
