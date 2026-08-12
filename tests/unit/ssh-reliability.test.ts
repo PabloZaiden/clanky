@@ -14,6 +14,7 @@ import {
   buildSshConnectionKey,
   getSshReliabilityPolicy,
   SSH_CONNECT_TIMEOUT_MS,
+  SSH_CONNECT_TIMEOUT_SECONDS,
   SSH_CONNECTION_ATTEMPTS,
   SSH_CONNECTION_TIMEOUT_MS,
   SSH_MAX_CONCURRENT_HANDSHAKES,
@@ -44,7 +45,7 @@ describe("SSH reliability policy", () => {
   test("uses the code-defined SSH reliability constants", () => {
     expect(getSshReliabilityPolicy()).toEqual({
       connectTimeoutMs: SSH_CONNECT_TIMEOUT_MS,
-      connectTimeoutSeconds: 30,
+      connectTimeoutSeconds: SSH_CONNECT_TIMEOUT_SECONDS,
       connectionAttempts: SSH_CONNECTION_ATTEMPTS,
       serverAliveIntervalSeconds: SSH_SERVER_ALIVE_INTERVAL_SECONDS,
       serverAliveCountMax: SSH_SERVER_ALIVE_COUNT_MAX,

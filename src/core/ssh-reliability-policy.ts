@@ -3,10 +3,13 @@
  */
 
 export const SSH_CONNECT_TIMEOUT_MS = 30_000;
+export const SSH_CONNECT_TIMEOUT_SECONDS = Math.ceil(SSH_CONNECT_TIMEOUT_MS / 1_000);
 export const SSH_CONNECTION_ATTEMPTS = 2;
 export const SSH_SERVER_ALIVE_INTERVAL_SECONDS = 30;
 export const SSH_SERVER_ALIVE_COUNT_MAX = 3;
-export const SSH_CONNECTION_TIMEOUT_MS = 75_000;
+export const SSH_CONNECTION_STARTUP_GRACE_MS = 15_000;
+export const SSH_CONNECTION_TIMEOUT_MS =
+  SSH_CONNECT_TIMEOUT_SECONDS * 1_000 * SSH_CONNECTION_ATTEMPTS + SSH_CONNECTION_STARTUP_GRACE_MS;
 export const SSH_MAX_CONCURRENT_HANDSHAKES = 4;
 
 export interface SshReliabilityPolicy {
@@ -22,7 +25,7 @@ export interface SshReliabilityPolicy {
 export function getSshReliabilityPolicy(): SshReliabilityPolicy {
   return {
     connectTimeoutMs: SSH_CONNECT_TIMEOUT_MS,
-    connectTimeoutSeconds: Math.ceil(SSH_CONNECT_TIMEOUT_MS / 1_000),
+    connectTimeoutSeconds: SSH_CONNECT_TIMEOUT_SECONDS,
     connectionAttempts: SSH_CONNECTION_ATTEMPTS,
     serverAliveIntervalSeconds: SSH_SERVER_ALIVE_INTERVAL_SECONDS,
     serverAliveCountMax: SSH_SERVER_ALIVE_COUNT_MAX,
