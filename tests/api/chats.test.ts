@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initializeDatabase } from "../../src/persistence/database";
-import { loadChat, saveChat, updateChatState } from "../../src/persistence/chats";
+import { loadChat, saveChat, updateChatConfig, updateChatState } from "../../src/persistence/chats";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
@@ -326,6 +326,38 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("reports guarded chat config updates that do not match the current name", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Guarded Config Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: defaultBranch,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const persisted = await loadChat(created.config.id);
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+
+    const saved = await updateChatConfig(
+      persisted.config.id,
+      {
+        ...persisted.config,
+        name: "Late Generated Name",
+      },
+      { expectedName: "Stale Generated Name" },
+    );
+
+    expect(saved).toBe(false);
+    expect((await loadChat(persisted.config.id))?.config.name).toBe("Guarded Config Chat");
   });
 
   test("marks a chat as done, keeps it in history, and reactivates it on a new message", async () => {
