@@ -1169,6 +1169,18 @@ describe("Chats API Integration", () => {
 
   test("queues concurrent sends while first-message rename is generating", async () => {
     installMockBackend(["Generated Busy Name", "Assistant response", "Queued response"]);
+    let releaseAgentResponse!: () => void;
+    let signalAgentResponseStarted!: () => void;
+    const agentResponseStarted = new Promise<void>((resolve) => {
+      signalAgentResponseStarted = resolve;
+    });
+    const agentResponseGate = new Promise<void>((resolve) => {
+      releaseAgentResponse = resolve;
+    });
+    mockBackend.setResponseGate(async () => {
+      signalAgentResponseStarted();
+      await agentResponseGate;
+    });
     let releaseNameGeneration!: () => void;
     const nameGenerationStarted = new Promise<void>((resolve) => {
       const originalSendPrompt = mockBackend.sendPrompt.bind(mockBackend);
@@ -1207,6 +1219,7 @@ describe("Chats API Integration", () => {
       body: JSON.stringify({ message: "Name this chat while busy" }),
     });
     await nameGenerationStarted;
+    await agentResponseStarted;
 
     const removableQueuedResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
       method: "POST",
@@ -1263,6 +1276,7 @@ describe("Chats API Integration", () => {
     ]);
 
     releaseNameGeneration();
+    releaseAgentResponse();
     const firstSendResponse = await firstSendPromise;
     expect(firstSendResponse.status).toBe(200);
 
