@@ -13,6 +13,7 @@ import { Button, FocusPreservingButton } from "../common";
 import { DictationControls } from "../dictation";
 import { useChatComposer } from "./chat-composer-state";
 import type { ChatComposerProps } from "./types";
+import { CHAT_STARTUP_STAGE_LABELS } from "@/shared/chat";
 
 function ThinkingSpinner() {
   return (
@@ -105,6 +106,16 @@ export function ChatComposer(props: ChatComposerProps) {
               <Button type="button" size="sm" variant="secondary" onClick={() => void handleReconnect()}>
                 Reconnect
               </Button>
+            </div>
+          )}
+          {chat.state.startupStage && (
+            <div
+              className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+              aria-live="polite"
+              data-testid="chat-startup-stage"
+            >
+              <ThinkingSpinner />
+              <span>{CHAT_STARTUP_STAGE_LABELS[chat.state.startupStage]}...</span>
             </div>
           )}
           {attachments.length > 0 && (

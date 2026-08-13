@@ -27,6 +27,7 @@ import type {
   ChatConfig,
   ChatState,
   ChatStatus,
+  ChatStartupStage,
   TranscriptChangeSet,
   Workspace,
 } from "@/shared";
@@ -133,8 +134,12 @@ export class ChatStateService implements ChatStatePort {
     await saveChat(chat);
   }
 
-  async updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null> {
-    const saved = await updateChatConfig(chatId, config);
+  async updateConfig(
+    chatId: string,
+    config: ChatConfig,
+    options?: { expectedName?: string },
+  ): Promise<Chat | null> {
+    const saved = await updateChatConfig(chatId, config, options);
     if (!saved) {
       return null;
     }
@@ -189,6 +194,20 @@ export class ChatStateService implements ChatStatePort {
     return updated;
   }
 
+  async updateStartupStage(chat: Chat, startupStage: ChatStartupStage | undefined): Promise<Chat> {
+    if (chat.state.startupStage === startupStage) {
+      return chat;
+    }
+
+    const updated = await this.updateState(chat, {
+      ...chat.state,
+      startupStage,
+      lastActivityAt: createTimestamp(),
+    });
+    this.emitChatUpdated(updated);
+    return updated;
+  }
+
   async markChatError(chat: Chat, message: string, code?: string): Promise<Chat> {
     const now = createTimestamp();
     const updated = await this.updateState(chat, {
@@ -200,6 +219,7 @@ export class ChatStateService implements ChatStatePort {
         ...(code ? { code } : {}),
       },
       completedAt: now,
+      startupStage: undefined,
       pendingPermissionRequests: (chat.state.pendingPermissionRequests ?? []).map((request) =>
         request.status === "pending"
           ? {

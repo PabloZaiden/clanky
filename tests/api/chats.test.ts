@@ -181,6 +181,18 @@ describe("Chats API Integration", () => {
     );
   }
 
+  async function waitForChatName(chatId: string, expectedName: string, timeoutMs = 5000): Promise<Chat> {
+    return pollUntil(
+      () => loadChat(chatId),
+      (chat): chat is Chat => chat?.config.name === expectedName,
+      {
+        description: `chat ${chatId} to receive generated name`,
+        timeoutMs,
+        formatLastObserved: (chat) => chat === null ? "not found" : `name=${chat.config.name}`,
+      },
+    );
+  }
+
   function createTestTask(taskId: string, workingDirectory: string): Task {
     const now = new Date().toISOString();
     return {
@@ -970,14 +982,19 @@ describe("Chats API Integration", () => {
       });
       expect(sendResponse.status).toBe(200);
 
-      const settled = await waitForChatIdle(created.config.id) as Awaited<ReturnType<typeof loadChat>>;
+      await waitForChatIdle(created.config.id);
+      const settled = await waitForChatName(created.config.id, "Investigate Login Bug");
       expect(settled?.config.name).toBe("Investigate Login Bug");
       expect(settled?.state.messages.map((message) => message.content)).toEqual([
         "Please investigate why login fails after OAuth callback",
         "Assistant response",
       ]);
 
-      const updateEvent = events.find((event) => event.type === "chat.updated" && event.chatId === created.config.id);
+      const updateEvent = events.find((event) =>
+        event.type === "chat.updated"
+        && event.chatId === created.config.id
+        && event.chat.config.name === "Investigate Login Bug"
+      );
       expect(updateEvent).toBeDefined();
       if (updateEvent?.type === "chat.updated") {
         expect(updateEvent.chat.config.name).toBe("Investigate Login Bug");
@@ -1271,7 +1288,8 @@ describe("Chats API Integration", () => {
           }) ?? "unserializable chat",
       },
     );
-    expect(settled.config.name).toBe("Generated Busy Name");
+    const namedChat = await waitForChatName(created.config.id, "Generated Busy Name");
+    expect(namedChat.config.name).toBe("Generated Busy Name");
     expect(settled.state.messages.filter((message) => message.role === "user").map((message) => message.content)).toEqual([
       "Name this chat while busy",
       "Send this queued message\nAlso send this queued message",
@@ -1570,11 +1588,19 @@ describe("Chats API Integration", () => {
     expect(created.config.baseBranch).toBeUndefined();
 
     const expectedWorktreePath = getManagedWorktreePath(testWorkDir, created.config.id);
-    expect(created.state.worktree?.originalBranch).toBe(defaultBranch);
-    expect(created.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
-    expect(created.state.worktree?.worktreePath).toBe(expectedWorktreePath);
-
-    const persisted = await loadChat(created.config.id);
+    const persisted = await pollUntil(
+      () => loadChat(created.config.id),
+      (chat): chat is Chat => chat?.state.worktree?.worktreePath === expectedWorktreePath,
+      {
+        description: `chat ${created.config.id} to finish deferred worktree preparation`,
+        timeoutMs: 5000,
+        formatLastObserved: (chat) => chat === null
+          ? "not found"
+          : `worktree=${chat.state.worktree?.worktreePath ?? "pending"}`,
+      },
+    );
+    expect(persisted.state.worktree?.originalBranch).toBe(defaultBranch);
+    expect(persisted.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
     expect(persisted?.state.worktree?.worktreePath).toBe(expectedWorktreePath);
   });
 

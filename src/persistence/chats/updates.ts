@@ -103,7 +103,11 @@ export async function updateChatState(chatId: string, state: ChatState, options:
   return saved;
 }
 
-export async function updateChatConfig(chatId: string, config: ChatConfig): Promise<boolean> {
+export async function updateChatConfig(
+  chatId: string,
+  config: ChatConfig,
+  options: { expectedName?: string } = {},
+): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
@@ -122,8 +126,12 @@ export async function updateChatConfig(chatId: string, config: ChatConfig): Prom
     const setClause = columns.map((column) => `${column} = ?`).join(", ");
     const values = columns.map((column) => newRow[column as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
     values.push(chatId, userId);
+    const nameCondition = options.expectedName === undefined ? "" : " AND name = ?";
+    if (options.expectedName !== undefined) {
+      values.push(options.expectedName);
+    }
 
-    db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?`).run(...values);
+    db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${nameCondition}`).run(...values);
     log.debug("Chat config updated", { chatId, name: config.name });
     return true;
   })();

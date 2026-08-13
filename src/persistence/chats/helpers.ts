@@ -49,6 +49,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "active_message_id",
   "interrupt_requested",
   "connection_status",
+  "startup_stage",
 ]);
 
 export function validateChatColumnNames(columns: string[]): void {
@@ -155,6 +156,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     active_message_id: state.activeMessageId ?? null,
     interrupt_requested: state.interruptRequested ? 1 : 0,
     connection_status: state.connectionStatus ?? "disconnected",
+    startup_stage: state.startupStage ?? null,
   };
 }
 
@@ -211,6 +213,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     activeMessageId: (row["active_message_id"] as string | null) ?? undefined,
     interruptRequested: row["interrupt_requested"] === 1 ? true : undefined,
     connectionStatus: ((row["connection_status"] as ChatState["connectionStatus"] | null) ?? "disconnected"),
+    startupStage: (row["startup_stage"] as ChatState["startupStage"] | null) ?? undefined,
   };
 
   if (row["session_id"] !== null && row["session_id"] !== undefined) {

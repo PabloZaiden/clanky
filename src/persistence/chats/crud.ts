@@ -53,6 +53,7 @@ export const CHAT_METADATA_COLUMNS = [
   "active_message_id",
   "interrupt_requested",
   "connection_status",
+  "startup_stage",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id AND entry.kind = 'message') THEN 1 ELSE 0 END AS has_messages",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id) THEN 1 ELSE 0 END AS has_transcript",
 ].join(", ");
