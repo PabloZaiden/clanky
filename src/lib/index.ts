@@ -43,3 +43,13 @@ export {
   type VncCredentials,
   type VncCredentialStorageLike,
 } from "./vnc-browser-credentials";
+export {
+  clearStoredChatComposerDraft,
+  createChatComposerDraftPersistence,
+  getStoredChatComposerDraft,
+  saveStoredChatComposerDraft,
+  type ChatComposerDraftDependencies,
+  type ChatComposerDraftPersistence,
+  type ChatComposerDraftPersistenceDependencies,
+  type ChatComposerDraftStorageLike,
+} from "./chat-composer-drafts";
