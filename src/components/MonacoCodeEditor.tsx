@@ -1,5 +1,9 @@
 import MonacoEditor from "@monaco-editor/react";
 import { useTheme } from "@pablozaiden/webapp/web";
+import {
+  CLANKY_PYTHON_LANGUAGE_ID,
+  configureClankyPython,
+} from "./python-monaco-language";
 
 export function MonacoCodeEditor({
   value,
@@ -21,7 +25,8 @@ export function MonacoCodeEditor({
     <MonacoEditor
       height={height}
       theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
-      language={language}
+      language={language === "python" ? CLANKY_PYTHON_LANGUAGE_ID : language}
+      beforeMount={configureClankyPython}
       value={value}
       onChange={(nextValue: string | undefined) => onChange(nextValue ?? "")}
       options={{
