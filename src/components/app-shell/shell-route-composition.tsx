@@ -107,7 +107,7 @@ export function getShellRouteSelection(
         ? (tasks.find((task) => task.config.id === codeExplorerTaskId) ?? null)
         : null;
   const selectedChat =
-    route.view === "chat"
+    route.view === "chat" || route.view === "chat-transcript"
       ? (chatId ? (chats.find((chat) => chat.config.id === chatId) ?? null) : null)
       : codeExplorerChatId
         ? (chats.find((chat) => chat.config.id === codeExplorerChatId) ?? null)
