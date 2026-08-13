@@ -18,7 +18,12 @@ import {
   type PrivateEntity,
   type PrivateSidebarNode,
 } from "../../lib/private-items";
-import { formatStatusLabel } from "../common";
+import {
+  ActivityIcon,
+  FolderTreeIcon,
+  formatStatusLabel,
+  ServerIcon,
+} from "../common";
 import { isTaskActive, isTaskGenerating } from "../../utils";
 import {
   buildActiveWorkSidebarItems,
@@ -91,9 +96,9 @@ export interface ShellSidebarComposition {
 export type SidebarTabId = "active" | "workspaces" | "servers";
 
 export const SIDEBAR_TABS: SidebarTab[] = [
-  { id: "active", title: "Active", label: "Active" },
-  { id: "workspaces", title: "Workspaces", label: "Workspaces" },
-  { id: "servers", title: "Servers", label: "Servers" },
+  { id: "active", title: "Active", label: "Active", icon: <ActivityIcon size="h-5 w-5" /> },
+  { id: "workspaces", title: "Workspaces", label: "Workspaces", icon: <FolderTreeIcon size="h-5 w-5" /> },
+  { id: "servers", title: "Servers", label: "Servers", icon: <ServerIcon size="h-5 w-5" /> },
 ];
 
 function sidebarActionItems(

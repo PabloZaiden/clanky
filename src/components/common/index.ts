@@ -26,15 +26,18 @@ export {
   getProvisioningStatusLabel,
 } from "./status-variants";
 export {
+  ActivityIcon,
   ChatIcon,
   ClipboardPasteIcon,
   CodeIcon,
   CopyPathIcon,
   EditIcon,
+  FolderTreeIcon,
   GearIcon,
   GridIcon,
   ListIcon,
   RefreshIcon,
+  ServerIcon,
   SidebarIcon,
   WrapTextIcon,
   type IconProps,
