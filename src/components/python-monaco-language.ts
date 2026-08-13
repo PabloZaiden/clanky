@@ -23,6 +23,7 @@ function createTripleQuotedFStringRules(
   if (quote === '"') {
     return [
       [/"""/, "string.escape", "@pop"],
+      [/\{\{|\}\}/, "string"],
       [/[^\\\"\{\}]+/, "string"],
       [/\{[^\}':!=]+/, "identifier", "@fStringDetail"],
       [/\\./, "string"],
@@ -33,6 +34,7 @@ function createTripleQuotedFStringRules(
 
   return [
     [/'''/, "string.escape", "@pop"],
+    [/\{\{|\}\}/, "string"],
     [/[^\\'\{\}]+/, "string"],
     [/\{[^\}':!=]+/, "identifier", "@fStringDetail"],
     [/\\./, "string"],
@@ -54,8 +56,10 @@ function createPatchedPythonLanguage(
     tokenizer: {
       ...baseLanguage.tokenizer,
       strings: [
-        [/f"""/, "string.escape", "@fTripleDblStringBody"],
-        [/f'''/, "string.escape", "@fTripleStringBody"],
+        [/[fF][rR]?"""/, "string.escape", "@fTripleDblStringBody"],
+        [/[rR][fF]"""/, "string.escape", "@fTripleDblStringBody"],
+        [/[fF][rR]?'''/, "string.escape", "@fTripleStringBody"],
+        [/[rR][fF]'''/, "string.escape", "@fTripleStringBody"],
         ...baseStringRules,
       ],
       fTripleDblStringBody: createTripleQuotedFStringRules('"'),
@@ -81,19 +85,28 @@ async function registerClankyPythonLanguage(monaco: Monaco): Promise<void> {
 }
 
 let configuredMonaco: Monaco | null = null;
+let configurationPromise: Promise<void> | null = null;
 
 export const configureClankyPython: BeforeMount = (monaco) => {
-  if (configuredMonaco === monaco) {
+  if (configuredMonaco !== monaco) {
+    monaco.languages.register({
+      id: CLANKY_PYTHON_LANGUAGE_ID,
+      aliases: ["Python"],
+    });
+    configuredMonaco = monaco;
+    configurationPromise = null;
+  }
+
+  if (configurationPromise) {
     return;
   }
 
-  configuredMonaco = monaco;
-  monaco.languages.register({
-    id: CLANKY_PYTHON_LANGUAGE_ID,
-    aliases: ["Python"],
-  });
-
-  void registerClankyPythonLanguage(monaco).catch((error: unknown) => {
-    console.error("Failed to configure multiline Python strings in Monaco:", String(error));
+  const promise = registerClankyPythonLanguage(monaco);
+  configurationPromise = promise;
+  void promise.catch((error: unknown) => {
+    if (configuredMonaco === monaco && configurationPromise === promise) {
+      configurationPromise = null;
+    }
+    console.error("Failed to configure multiline Python strings in Monaco:", error);
   });
 };
