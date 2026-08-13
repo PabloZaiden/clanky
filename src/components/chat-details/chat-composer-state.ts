@@ -61,7 +61,6 @@ export function useChatComposer({
   const [message, setMessageState] = useState(
     () => getStoredChatComposerDraft(chatId) ?? "",
   );
-  const messageRef = useRef(message);
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -86,14 +85,12 @@ export function useChatComposer({
   });
 
   const setMessage = useCallback((nextMessage: string): void => {
-    messageRef.current = nextMessage;
     setMessageState(nextMessage);
     draftPersistence.schedule(nextMessage);
   }, [draftPersistence]);
 
   useLayoutEffect(() => {
     const restoredMessage = getStoredChatComposerDraft(chatId) ?? "";
-    messageRef.current = restoredMessage;
     setMessageState(restoredMessage);
   }, [chatId]);
 
@@ -230,7 +227,6 @@ export function useChatComposer({
         }
       }
       draftPersistence.clear();
-      messageRef.current = "";
       setMessageState("");
       setSelectedTemplate("");
       setAttachments([]);
