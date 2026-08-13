@@ -75,27 +75,33 @@ interface UseShellHeaderOptions {
 }
 
 export function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; defaultTitle: string }) {
+  const statusBadge = model.badgeIsStatus === false ? undefined : model.badge;
+  const metadataBadge = model.badgeIsStatus === false ? model.badge : undefined;
+
   return (
     <span className="flex min-w-0 max-w-full flex-1 flex-col items-start overflow-hidden whitespace-normal">
-      {model.scopeSubtitle ? (
-        <span className="block max-w-full min-w-0 truncate text-[11px] font-normal leading-4 text-gray-500 dark:text-gray-400">
-          {model.scopeSubtitle}
+      {model.scopeSubtitle || statusBadge ? (
+        <span className="flex max-w-full min-w-0 items-center gap-1.5">
+          {model.scopeSubtitle ? (
+            <span className="min-w-0 truncate text-[11px] font-normal leading-4 text-gray-500 dark:text-gray-400">
+              {model.scopeSubtitle}
+            </span>
+          ) : null}
+          {statusBadge ? (
+            <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
+              {statusBadge}
+            </StatusBadge>
+          ) : null}
         </span>
       ) : null}
       <span className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
         <span className="min-w-0 flex-shrink truncate whitespace-nowrap text-lg font-bold text-gray-900 dark:text-gray-100">
           {model.title ?? defaultTitle}
         </span>
-        {model.badge ? (
-          model.badgeIsStatus === false ? (
-            <Badge variant={model.badgeVariant} size="sm" className="shrink-0">
-              {model.badge}
-            </Badge>
-          ) : (
-            <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
-              {model.badge}
-            </StatusBadge>
-          )
+        {metadataBadge ? (
+          <Badge variant={model.badgeVariant} size="sm" className="shrink-0">
+            {metadataBadge}
+          </Badge>
         ) : null}
         {model.detailSubtitle ? (
           <span className={`min-w-0 flex-shrink truncate whitespace-nowrap text-xs font-normal text-gray-500 dark:text-gray-400 ${model.detailSubtitleMobileHidden ? "hidden sm:inline" : ""}`}>
