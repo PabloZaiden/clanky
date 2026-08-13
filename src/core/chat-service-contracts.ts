@@ -18,6 +18,7 @@ import type {
   ChatSnapshot,
   ChatState,
   ChatStatus,
+  ChatStartupStage,
   ChatWorktreeState,
   SessionInfo,
   Task,
@@ -112,7 +113,7 @@ export interface ChatStatePort {
     maxGeneratedSuffix: number;
   }>;
   saveNewChat(chat: Chat): Promise<void>;
-  updateConfig(chatId: string, config: ChatConfig): Promise<Chat | null>;
+  updateConfig(chatId: string, config: ChatConfig, options?: { expectedName?: string }): Promise<Chat | null>;
   updateState(
     chat: Chat,
     state: ChatState,
@@ -121,6 +122,7 @@ export interface ChatStatePort {
       expectedStatus?: ChatStatus;
     },
   ): Promise<Chat>;
+  updateStartupStage(chat: Chat, startupStage: ChatStartupStage | undefined): Promise<Chat>;
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;
@@ -145,13 +147,27 @@ export interface ChatSessionPort {
   getChatBackend(chatId: string, workspaceId: string): Backend;
   getWorkspaceBackend(workspaceId: string, directory: string): Promise<Backend>;
   listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
-  ensureBackendConnected(chat: Chat, options?: ReconnectChatOptions): Promise<Backend>;
+  ensureBackendConnected(
+    chat: Chat,
+    options?: ReconnectChatOptions,
+    workingDirectory?: ChatDirectoryResolution,
+  ): Promise<Backend>;
   ensureSession(
     chat: Chat,
     backend: Backend,
-    options?: { recreateIfMissing?: boolean },
+    options?: {
+      recreateIfMissing?: boolean;
+      workingDirectory?: ChatDirectoryResolution;
+    },
   ): Promise<Chat>;
-  createSession(chat: Chat, backend: Backend, options: { prepareWorkspace: boolean }): Promise<Chat>;
+  createSession(
+    chat: Chat,
+    backend: Backend,
+    options: {
+      prepareWorkspace: boolean;
+      workingDirectory?: ChatDirectoryResolution;
+    },
+  ): Promise<Chat>;
   configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void>;
   reconnectSession(chat: Chat, options?: ReconnectChatOptions): Promise<Chat>;
   disconnectChat(chatId: string): Promise<void>;

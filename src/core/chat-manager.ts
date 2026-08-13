@@ -56,6 +56,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   const conversationService = new ChatConversationService({
     state,
     session,
+    worktree,
     emitter,
     scheduleQueuedMessageDrain: (chatId: string) => {
       if (!interaction) {

@@ -9,6 +9,7 @@ import type {
   ChatPermissionRequest,
 } from "@/shared";
 import {
+  ChatBusyError,
   ChatPermissionReplyError,
   ChatPermissionRequestNotFoundError,
   isChatBusyStatus,
@@ -54,7 +55,19 @@ export class ChatInteractionService implements ChatInteractionPort {
       return this.enqueueMessage(activeChat, input);
     }
 
-    return this.conversation.dispatchMessage(activeChat, input);
+    try {
+      return await this.conversation.dispatchMessage(activeChat, input);
+    } catch (error) {
+      if (!(error instanceof ChatBusyError)) {
+        throw error;
+      }
+
+      const latest = await this.state.getChat(chatId);
+      if (latest && this.shouldQueueMessage(latest)) {
+        return this.enqueueMessage(latest, input);
+      }
+      throw error;
+    }
   }
 
   async removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {

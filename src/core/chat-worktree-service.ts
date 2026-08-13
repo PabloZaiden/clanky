@@ -39,7 +39,8 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   hasEstablishedWorkspaceContext(chat: Chat): boolean {
-    return Boolean(chat.state.session?.id || chat.state.startedAt);
+    return Boolean(chat.config.useWorktree && chat.state.worktree?.worktreePath)
+      || Boolean(chat.state.session?.id || chat.state.startedAt);
   }
 
   async resolveWorkingDirectory(
@@ -176,11 +177,17 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   prepareWorktreeInBackground(chat: Chat): void {
-    void this.prepareAndPersistWorktree(chat).catch((error) => {
-      log.warn("Deferred chat worktree preparation failed", {
-        chatId: chat.config.id,
-        error: String(error),
-      });
+    // Worktree preparation is intentionally detached from chat creation, but
+    // owns its error state so a rejected promise cannot become silent.
+    void this.prepareAndPersistWorktree(chat).catch(async (error) => {
+      try {
+        await this.persistPreparationFailure(chat, error);
+      } catch (failureError) {
+        log.error("Failed to persist deferred chat worktree preparation failure", {
+          chatId: chat.config.id,
+          error: String(failureError),
+        });
+      }
     });
   }
 
@@ -225,19 +232,44 @@ export class ChatWorktreeService implements ChatWorktreePort {
     const nextWorktreeState = await this.prepareWorktreeState(chat, {
       syncBaseBranch: !chat.config.skipBaseBranchSync,
     });
-    if (
-      chat.state.worktree?.originalBranch === nextWorktreeState.originalBranch
-      && chat.state.worktree?.workingBranch === nextWorktreeState.workingBranch
-      && chat.state.worktree?.worktreePath === nextWorktreeState.worktreePath
-    ) {
-      return chat;
+    const latest = await this.state.getChat(chat.config.id) ?? chat;
+    const worktreeChanged =
+      latest.state.worktree?.originalBranch !== nextWorktreeState.originalBranch
+      || latest.state.worktree?.workingBranch !== nextWorktreeState.workingBranch
+      || latest.state.worktree?.worktreePath !== nextWorktreeState.worktreePath;
+    const shouldClearCreationStage =
+      latest.state.status === "idle"
+      && latest.state.messages.length === 0
+      && latest.state.startupStage === "preparing_workspace";
+    if (!worktreeChanged && !shouldClearCreationStage) {
+      return latest;
     }
 
-    return this.state.updateState(chat, {
-      ...chat.state,
+    const updated = await this.state.updateState(latest, {
+      ...latest.state,
       worktree: nextWorktreeState,
-      lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
+      ...(shouldClearCreationStage ? { startupStage: undefined } : {}),
+      lastActivityAt: latest.state.lastActivityAt ?? createTimestamp(),
     });
+    this.state.emitChatUpdated(updated);
+    return updated;
+  }
+
+  private async persistPreparationFailure(chat: Chat, error: unknown): Promise<void> {
+    const latest = await this.state.getChat(chat.config.id);
+    if (!latest) {
+      log.warn("Deferred chat worktree preparation failed after chat deletion", {
+        chatId: chat.config.id,
+        error: String(error),
+      });
+      return;
+    }
+
+    log.error("Deferred chat worktree preparation failed", {
+      chatId: chat.config.id,
+      error: String(error),
+    });
+    await this.state.markChatError(latest, `Failed to prepare chat workspace: ${String(error)}`);
   }
 
   private async ensureStandaloneChatBranch(chat: Chat): Promise<void> {

@@ -214,7 +214,7 @@ export const chatsRoutes = defineRoutes({
           baseBranch: body.baseBranch,
           directory: workspace.directory,
           syncBaseBranch: !body.quick,
-          prepareWorktreeOnCreate: !body.quick,
+          prepareWorktreeOnCreate: false,
         });
         return Response.json(await toLightweightChat(chat), { status: 201 });
       } catch (error) {
@@ -499,7 +499,7 @@ export const chatsRoutes = defineRoutes({
     description: "Send a message to a chat session.",
     requestSchema: SendChatMessageRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
-      const existing = await chatManager.getChat(ctx.params["id"]!);
+      const existing = await chatManager.getChatSummary(ctx.params["id"]!);
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }

@@ -34,6 +34,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   ChatSessionPort,
   ChatStatePort,
+  ChatDirectoryResolution,
   ChatWorktreePort,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
@@ -102,8 +103,13 @@ export class ChatSessionService implements ChatSessionPort {
     return backend.listSessions(workspace.directory);
   }
 
-  async ensureBackendConnected(chat: Chat, options: ReconnectChatOptions = {}): Promise<Backend> {
+  async ensureBackendConnected(
+    chat: Chat,
+    options: ReconnectChatOptions = {},
+    workingDirectory?: ChatDirectoryResolution,
+  ): Promise<Backend> {
     if (isSshServerChat(chat)) {
+      await this.state.updateStartupStage(chat, "connecting_provider");
       return this.ensureSshServerBackendConnected(chat, options);
     }
 
@@ -112,18 +118,24 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
 
-    const working = await this.worktree.resolveWorkingDirectory(chat, {
+    const working = workingDirectory ?? await this.worktree.resolveWorkingDirectory(chat, {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),
     });
+    const stagedWorking = workingDirectory
+      ? working
+      : {
+          ...working,
+          chat: await this.state.updateStartupStage(working.chat, "connecting_provider"),
+        };
     await this.backendManager.getBackendAsync(chat.config.workspaceId);
-    const backend = this.getChatBackend(working.chat.config.id, working.chat.config.workspaceId);
-    if (!backend.isConnected() || backend.getDirectory() !== working.directory) {
+    const backend = this.getChatBackend(stagedWorking.chat.config.id, stagedWorking.chat.config.workspaceId);
+    if (!backend.isConnected() || backend.getDirectory() !== stagedWorking.directory) {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
       const identity = await managedContextIdentityResolver.forChat(
-        working.chat.config.id,
-        working.chat.config.workspaceId,
+        stagedWorking.chat.config.id,
+        stagedWorking.chat.config.workspaceId,
       );
       const credential = await managedCredentialService.ensureCredentialForRuntime(
         identity,
@@ -132,7 +144,7 @@ export class ChatSessionService implements ChatSessionPort {
       try {
         await backend.connect(buildConnectionConfig(
           workspace.serverSettings,
-          working.directory,
+          stagedWorking.directory,
           buildManagedContextEnvironment(credential),
         ));
       } catch (error) {
@@ -145,7 +157,10 @@ export class ChatSessionService implements ChatSessionPort {
   async ensureSession(
     chat: Chat,
     backend: Backend,
-    options?: { recreateIfMissing?: boolean },
+    options?: {
+      recreateIfMissing?: boolean;
+      workingDirectory?: ChatDirectoryResolution;
+    },
   ): Promise<Chat> {
     if (chat.state.session?.id) {
       try {
@@ -170,29 +185,35 @@ export class ChatSessionService implements ChatSessionPort {
 
     return this.createSession(chat, backend, {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),
+      workingDirectory: options?.workingDirectory,
     });
   }
 
   async createSession(
     chat: Chat,
     backend: Backend,
-    options: { prepareWorkspace: boolean },
+    options: {
+      prepareWorkspace: boolean;
+      workingDirectory?: ChatDirectoryResolution;
+    },
   ): Promise<Chat> {
-    const working = await this.worktree.resolveWorkingDirectory(chat, options);
+    const working = options.workingDirectory ?? await this.worktree.resolveWorkingDirectory(chat, options);
+    const stagedWorking = {
+      ...working,
+      chat: await this.state.updateStartupStage(working.chat, "creating_session"),
+    };
     const session = await backend.createSession({
-      title: `Clanky Chat: ${working.chat.config.name}`,
-      directory: working.directory,
-      model: working.chat.config.model.modelID,
+      title: `Clanky Chat: ${stagedWorking.chat.config.name}`,
+      directory: stagedWorking.directory,
+      model: stagedWorking.chat.config.model.modelID,
     });
 
-    await this.configureSessionModel(backend, session.id, working.chat.config.model.modelID);
-
-    return this.state.updateState(working.chat, {
-      ...working.chat.state,
+    return this.state.updateState(stagedWorking.chat, {
+      ...stagedWorking.chat.state,
       session: {
         id: session.id,
       },
-      startedAt: working.chat.state.startedAt ?? createTimestamp(),
+      startedAt: stagedWorking.chat.state.startedAt ?? createTimestamp(),
       lastActivityAt: createTimestamp(),
       error: undefined,
     });
@@ -482,6 +503,7 @@ export class ChatSessionService implements ChatSessionPort {
       status,
       error: undefined,
       connectionStatus: isSshServerChat(chat) ? "connected" : chat.state.connectionStatus,
+      startupStage: undefined,
       lastActivityAt: createTimestamp(),
     };
     return this.state.updateState(chat, state);

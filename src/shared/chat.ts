@@ -106,6 +106,19 @@ export type ChatStatus =
   | "failed"
   | "done";
 
+export type ChatStartupStage =
+  | "preparing_workspace"
+  | "connecting_provider"
+  | "creating_session"
+  | "sending_prompt";
+
+export const CHAT_STARTUP_STAGE_LABELS: Record<ChatStartupStage, string> = {
+  preparing_workspace: "Preparing workspace",
+  connecting_provider: "Connecting provider",
+  creating_session: "Creating session",
+  sending_prompt: "Sending prompt",
+};
+
 export interface ChatState {
   id: string;
   status: ChatStatus;
@@ -125,6 +138,7 @@ export interface ChatState {
   activeMessageId?: string;
   interruptRequested?: boolean;
   connectionStatus?: ChatConnectionStatus;
+  startupStage?: ChatStartupStage;
 }
 
 export interface Chat {

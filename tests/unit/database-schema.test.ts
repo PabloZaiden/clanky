@@ -603,12 +603,12 @@ describe("database schema", () => {
       }
 
       expect(migration.transactional).toBe(false);
-      expect(runMigrations(db)).toBe(16);
+      expect(runMigrations(db)).toBe(17);
       expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
       expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
       expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
       expect(runMigrations(db)).toBe(0);
-      expect(getSchemaVersion(db)).toBe(33);
+      expect(getSchemaVersion(db)).toBe(34);
     } finally {
       db.close();
       await rm(dataDir, { recursive: true, force: true });

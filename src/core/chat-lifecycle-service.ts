@@ -22,6 +22,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
+import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import type {
   ChatConfigUpdates,
   ChatConversationPort,
@@ -73,7 +74,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async createChat(options: CreateChatOptions): Promise<Chat> {
-    const workspace = await this.state.getWorkspace(options.workspaceId);
+    const timer = createChatLatencyTimer();
+    const workspace = await timer.measure("workspace_lookup", () => this.state.getWorkspace(options.workspaceId));
     if (!workspace) {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
@@ -92,7 +94,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     const generatedNamePrefix = (workspace.name.trim() || "Chat").slice(0, 100).trim() || "Chat";
     const chatNameStats = explicitName
       ? null
-      : await this.state.getWorkspaceChatNameStats(options.workspaceId, generatedNamePrefix);
+      : await timer.measure("name_stats", () =>
+          this.state.getWorkspaceChatNameStats(options.workspaceId, generatedNamePrefix)
+        );
     const nextGeneratedSuffix = chatNameStats
       ? Math.max(chatNameStats.standaloneChatCount + 1, chatNameStats.maxGeneratedSuffix + 1)
       : 1;
@@ -126,25 +130,42 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     };
 
     const shouldPrepareWorktreeOnCreate =
-      !isTaskChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? true);
-    const preparedChat = shouldPrepareWorktreeOnCreate
-      ? {
+      !isTaskChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? false);
+    const initialChat = shouldPrepareWorktreeOnCreate || isTaskChat(chat) || !chat.config.useWorktree
+      ? chat
+      : {
           ...chat,
           state: {
             ...chat.state,
-            worktree: await this.worktree.prepareWorktreeState(chat, {
+            startupStage: "preparing_workspace" as const,
+          },
+        };
+    const preparedChat = shouldPrepareWorktreeOnCreate
+      ? {
+          ...initialChat,
+          state: {
+            ...initialChat.state,
+            worktree: await timer.measure("worktree_preparation", () => this.worktree.prepareWorktreeState(initialChat, {
               syncBaseBranch: options.syncBaseBranch ?? true,
-            }),
-            lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
+            })),
+            startupStage: undefined,
+            lastActivityAt: initialChat.state.lastActivityAt ?? createTimestamp(),
           },
         }
-      : chat;
+      : initialChat;
 
-    await this.state.saveNewChat(preparedChat);
+    await timer.measure("chat_persistence", () => this.state.saveNewChat(preparedChat));
     this.state.emitChatCreated(preparedChat, now);
     if (!shouldPrepareWorktreeOnCreate && !isTaskChat(preparedChat) && preparedChat.config.useWorktree) {
       this.worktree.prepareWorktreeInBackground(preparedChat);
     }
+    const timing = timer.complete();
+    log.info("Chat creation timing", {
+      chatId: id,
+      totalMs: timing.totalMs,
+      stages: timing.stages,
+      deferredWorktree: !shouldPrepareWorktreeOnCreate && preparedChat.config.useWorktree,
+    });
     return preparedChat;
   }
 
