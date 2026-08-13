@@ -78,7 +78,7 @@ export function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; 
   return (
     <span className="flex min-w-0 max-w-full flex-1 flex-col items-start overflow-hidden whitespace-normal">
       {model.scopeSubtitle ? (
-        <span className="block max-w-full min-w-0 truncate text-xs font-normal leading-4 text-gray-500 dark:text-gray-400">
+        <span className="block max-w-full min-w-0 truncate text-[11px] font-normal leading-4 text-gray-500 dark:text-gray-400">
           {model.scopeSubtitle}
         </span>
       ) : null}
