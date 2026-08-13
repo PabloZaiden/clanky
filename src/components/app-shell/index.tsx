@@ -373,6 +373,7 @@ export function AppShell() {
     chatsLoading,
     agents,
     servers,
+    sessions,
     sessionsByServerId,
     workspaces,
     editingAgentId: dialogs.editingAgentId,
