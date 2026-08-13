@@ -484,7 +484,6 @@ export function useShellHeader({
           return {
             title: composeWorkspace ? `Start a new task in ${composeWorkspace.name}` : "Start a new task",
             scopeSubtitle,
-            detailSubtitle: composeWorkspace?.directory,
           };
         }
         if (composeKind === "chat" || composeKind === "ssh-server-chat") {
@@ -495,14 +494,13 @@ export function useShellHeader({
             scopeSubtitle,
             detailSubtitle: composeServer
               ? `${composeServer.config.username}@${composeServer.config.address}`
-              : composeWorkspace?.directory,
+              : undefined,
           };
         }
         if (composeKind === "agent") {
           return {
             title: composeWorkspace ? `Start a new agent in ${composeWorkspace.name}` : "Start a new agent",
             scopeSubtitle,
-            detailSubtitle: composeWorkspace?.directory,
           };
         }
         if (composeKind === "workspace") {
