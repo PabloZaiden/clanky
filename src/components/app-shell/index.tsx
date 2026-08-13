@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
+import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
   useToast,
   WebAppRoot,
@@ -385,6 +386,7 @@ export function AppShell() {
       <WebAppRoot
         ref={webAppRootRef}
         appName="Clanky"
+        appIcon={logoSvgPath}
         homeRoute={HOME_ROUTE}
         sidebar={sidebarComposition.sidebar}
         routes={routes}
