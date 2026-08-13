@@ -1,6 +1,9 @@
 import {
+  useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent,
@@ -27,6 +30,10 @@ import {
   toMessageAttachments,
 } from "../../lib/image-attachments";
 import { apiRequest } from "../../lib/api-client";
+import {
+  createChatComposerDraftPersistence,
+  getStoredChatComposerDraft,
+} from "../../lib/chat-composer-drafts";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import type { Chat, ComposerAttachment } from "@/shared";
 import { getChatErrorMessage } from "./chat-lifecycle";
@@ -47,7 +54,13 @@ export function useChatComposer({
   onSendMessage,
 }: ChatComposerProps) {
   const toast = useToast();
-  const [message, setMessage] = useState("");
+  const draftPersistence = useMemo(
+    () => createChatComposerDraftPersistence(chatId),
+    [chatId],
+  );
+  const [message, setMessageState] = useState(
+    () => getStoredChatComposerDraft(chatId) ?? "",
+  );
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -70,6 +83,38 @@ export function useChatComposer({
       ? undefined
       : chat.config.workspaceId,
   });
+
+  const setMessage = useCallback((nextMessage: string): void => {
+    setMessageState(nextMessage);
+    draftPersistence.schedule(nextMessage);
+  }, [draftPersistence]);
+
+  useLayoutEffect(() => {
+    const restoredMessage = getStoredChatComposerDraft(chatId) ?? "";
+    setMessageState(restoredMessage);
+  }, [chatId]);
+
+  useEffect(() => {
+    function flushOnPageHide(): void {
+      draftPersistence.flush();
+    }
+
+    function flushWhenHidden(): void {
+      if (document.visibilityState === "hidden") {
+        draftPersistence.flush();
+      }
+    }
+
+    window.addEventListener("pagehide", flushOnPageHide);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+
+    return () => {
+      window.removeEventListener("pagehide", flushOnPageHide);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      draftPersistence.flush();
+      draftPersistence.cancel();
+    };
+  }, [draftPersistence]);
 
   useEffect(() => {
     setSelectedModel("");
@@ -181,7 +226,8 @@ export function useChatComposer({
           markChatStarting();
         }
       }
-      setMessage("");
+      draftPersistence.clear();
+      setMessageState("");
       setSelectedTemplate("");
       setAttachments([]);
       setAttachmentError(null);
