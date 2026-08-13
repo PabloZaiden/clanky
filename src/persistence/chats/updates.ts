@@ -131,7 +131,14 @@ export async function updateChatConfig(
       values.push(options.expectedName);
     }
 
-    db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${nameCondition}`).run(...values);
+    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${nameCondition}`).run(...values);
+    if (result.changes === 0) {
+      log.debug("Chat config update did not modify a row", {
+        chatId,
+        expectedNameGuarded: options.expectedName !== undefined,
+      });
+      return false;
+    }
     log.debug("Chat config updated", { chatId, name: config.name });
     return true;
   })();
