@@ -134,6 +134,15 @@
   margin-top: 0;
 }
 
+/* Preserve descenders in active-work text badges such as "Planning". */
+:root .wapp-sidebar-item-subtitle-above-title > .wapp-badge.wapp-sidebar-badge-text {
+  line-height: 0.75rem;
+}
+
+:root.dark .wapp-sidebar-item-subtitle-above-title > .wapp-badge.wapp-sidebar-badge-text {
+  line-height: 0.75rem;
+}
+
 /* Stack the purge danger zone before its fixed-width action can overflow on mobile. */
 :root[data-wapp-mobile] .wapp-danger-zone:has(.clanky-purge-terminal-tasks-action) {
   display: block;
