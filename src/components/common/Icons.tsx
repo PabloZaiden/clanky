@@ -86,11 +86,6 @@ export function FolderTreeIcon({ className = "", size = "h-4 w-4" }: IconProps) 
         strokeLinejoin="round"
         d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
       />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M8 10v7m0-4h4m-4-3h4"
-      />
     </svg>
   );
 }
