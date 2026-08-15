@@ -32,6 +32,7 @@ import {
 import {
   listSshSessions,
 } from "../persistence/ssh-sessions";
+import { getMeshLinkForLocalUser } from "../persistence/mesh";
 import {
   isMeshAggregateEligible,
   recordMeshCheckpoint,
@@ -84,6 +85,10 @@ async function recordReviewComments(userId: string): Promise<void> {
 
 async function createCurrentUserSnapshots(user: CurrentUser): Promise<void> {
   const userId = user.id;
+  if (!await getMeshLinkForLocalUser(userId)) {
+    return;
+  }
+
   const workspaces = await listWorkspaces();
   for (const workspace of workspaces) {
     await recordIfEligible(userId, "workspace", workspace.id, await getWorkspaceMeshPayload(workspace));

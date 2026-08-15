@@ -22,6 +22,7 @@ import { getServerStartupMessages } from "./core/server-config";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
 import { meshSyncWorker } from "./core/mesh-sync-worker";
+import { bootstrapMeshPeer } from "./core/mesh-sync-bootstrap";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import {
@@ -113,15 +114,35 @@ async function reconcileStartupState(): Promise<void> {
 
   let staleTasksReset = 0;
   let staleManagedContextsRevoked = 0;
+  let meshResnapshots = 0;
+  let meshResnapshotFailures = 0;
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
+  });
+  await runForEachActiveUser(async (user) => {
+    try {
+      await bootstrapMeshPeer(user);
+      meshResnapshots += 1;
+    } catch (error) {
+      meshResnapshotFailures += 1;
+      log.error("Mesh startup resnapshot failed", {
+        userId: user.id,
+        error: String(error),
+      });
+    }
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
   }
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
+  }
+  if (meshResnapshots > 0) {
+    log.info(`Queued mesh resnapshots for ${meshResnapshots} active users during startup`);
+  }
+  if (meshResnapshotFailures > 0) {
+    log.error(`Failed to queue mesh resnapshots for ${meshResnapshotFailures} active users during startup`);
   }
 }
 
