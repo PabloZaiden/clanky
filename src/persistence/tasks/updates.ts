@@ -22,7 +22,7 @@ const log = createLogger("persistence:tasks");
 async function scheduleTaskMeshCheckpoint(taskId: string, userId: string): Promise<void> {
   const task = await loadTaskForUser(taskId, userId);
   if (!task) {
-    log.error("Task disappeared before mesh checkpoint scheduling", { taskId, userId });
+    log.warn("Task disappeared before mesh checkpoint scheduling", { taskId, userId });
     return;
   }
   scheduleMeshCheckpoint({

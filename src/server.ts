@@ -114,8 +114,8 @@ async function reconcileStartupState(): Promise<void> {
 
   let staleTasksReset = 0;
   let staleManagedContextsRevoked = 0;
-  let meshResnapshots = 0;
-  let meshResnapshotFailures = 0;
+  let meshBootstrapSuccesses = 0;
+  let meshBootstrapFailures = 0;
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
@@ -123,10 +123,10 @@ async function reconcileStartupState(): Promise<void> {
   await runForEachActiveUser(async (user) => {
     try {
       await bootstrapMeshPeer(user);
-      meshResnapshots += 1;
+      meshBootstrapSuccesses += 1;
     } catch (error) {
-      meshResnapshotFailures += 1;
-      log.error("Mesh startup resnapshot failed", {
+      meshBootstrapFailures += 1;
+      log.error("Mesh startup bootstrap failed", {
         userId: user.id,
         error: String(error),
       });
@@ -138,11 +138,11 @@ async function reconcileStartupState(): Promise<void> {
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
   }
-  if (meshResnapshots > 0) {
-    log.info(`Queued mesh resnapshots for ${meshResnapshots} active users during startup`);
+  if (meshBootstrapSuccesses > 0) {
+    log.info(`Completed mesh startup bootstrap for ${meshBootstrapSuccesses} active users`);
   }
-  if (meshResnapshotFailures > 0) {
-    log.error(`Failed to queue mesh resnapshots for ${meshResnapshotFailures} active users during startup`);
+  if (meshBootstrapFailures > 0) {
+    log.error(`Mesh startup bootstrap failed for ${meshBootstrapFailures} active users`);
   }
 }
 
