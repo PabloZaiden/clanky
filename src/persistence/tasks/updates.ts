@@ -14,9 +14,24 @@ import {
   hydrateTranscriptStateForUser,
   syncTranscriptEntriesInTransaction,
 } from "../transcripts/store";
-import { TASK_LIST_COLUMNS } from "./crud";
+import { loadTaskForUser, TASK_LIST_COLUMNS } from "./crud";
+import { scheduleMeshCheckpoint } from "../mesh-sync";
 
 const log = createLogger("persistence:tasks");
+
+async function scheduleTaskMeshCheckpoint(taskId: string, userId: string): Promise<void> {
+  const task = await loadTaskForUser(taskId, userId);
+  if (!task) {
+    log.warn("Task disappeared before mesh checkpoint scheduling", { taskId, userId });
+    return;
+  }
+  scheduleMeshCheckpoint({
+    userId,
+    aggregateType: "task",
+    aggregateId: taskId,
+    payload: task,
+  });
+}
 
 /**
  * Update only the state portion of a task.
@@ -120,7 +135,11 @@ export async function updateTaskStateForUser(
     return true;
   });
 
-  return updateInTransaction();
+  const saved = updateInTransaction();
+  if (saved) {
+    await scheduleTaskMeshCheckpoint(taskId, userId);
+  }
+  return saved;
 }
 
 /**
@@ -166,5 +185,9 @@ export async function updateTaskConfig(taskId: string, config: TaskConfig): Prom
     return true;
   });
 
-  return updateInTransaction();
+  const saved = updateInTransaction();
+  if (saved) {
+    await scheduleTaskMeshCheckpoint(taskId, userId);
+  }
+  return saved;
 }
