@@ -27,7 +27,11 @@ import {
 import { isFileExplorerConflictError } from "../core/file-explorer-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse } from "./helpers";
-import { createFileDownloadResponse, createInlineImageResponse } from "./file-download-response";
+import {
+  createFileDownloadHeadResponse,
+  createFileDownloadResponse,
+  createInlineImageResponse,
+} from "./file-download-response";
 import { parseAndValidate, validateRequest, type ValidationResult } from "./validation";
 
 interface SearchSchema<T> {
@@ -260,6 +264,12 @@ export function createFileExplorerRoutes(
             getStartDirectory(validation.data.startDirectory),
             { allowCredentialTokenQuery: true },
           );
+          if (req.method === "HEAD") {
+            const response = await fileExplorerService.getDownloadMetadata(target, validation.data.path);
+            return createFileDownloadHeadResponse(response.contentType, response.file, {
+              contentLength: response.file.size,
+            });
+          }
           const response = await fileExplorerService.readDownloadFile(target, validation.data.path, {
             signal: req.signal,
           });

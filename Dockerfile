@@ -1,5 +1,5 @@
 # Build stage
-FROM oven/bun:1 AS builder
+FROM oven/bun:1.4.0 AS builder
 
 WORKDIR /clanky
 ARG TARGETARCH

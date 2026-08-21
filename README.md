@@ -82,7 +82,7 @@ clanky update --version v0.8.1
 - Git
 - An ACP-capable runtime for the provider you select (`copilot`, `opencode`, `grok`, `claude-agent-acp`, `pi-acp`, and/or `codex-acp`). If a runtime is not found, Clanky tries `npx`/`bunx` package fallbacks when available; the Codex provider also requires an installed and authenticated `codex` CLI.
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
-- [Bun](https://bun.sh) only if you want to run Clanky from source
+- [Bun](https://bun.sh) 1.4.0 only if you want to run Clanky from source
 
 ### Run Clanky
 

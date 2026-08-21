@@ -13,6 +13,7 @@ jobs:
     with:
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
+      bun_version: 1.4.0
       binaries: |
         [
           {
