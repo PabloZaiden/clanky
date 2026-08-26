@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PreviewSession } from "@/shared";
 import { apiRequest } from "../lib/api-client";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 export interface UseWorkspacePreviewsResult {
@@ -21,44 +22,46 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(false);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    try {
-      if (showLoading && isMountedRef.current) {
-        setLoading(true);
-        setError(null);
+  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      try {
+        if (showLoading && isMountedRef.current) {
+          setLoading(true);
+          setError(null);
+        }
+        const nextPreviews = await apiRequest<PreviewSession[]>(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/previews`,
+          {
+            signal: controller.signal,
+            action: "List previews",
+            fallbackMessage: "Failed to list previews",
+          },
+        );
+        if (controller.signal.aborted || !isMountedRef.current) {
+          return;
+        }
+        setPreviews(nextPreviews);
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (isMountedRef.current) {
+          setError(String(err));
+        }
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if (showLoading && !controller.signal.aborted && isMountedRef.current) {
+          setLoading(false);
+        }
       }
-      const nextPreviews = await apiRequest<PreviewSession[]>(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/previews`,
-        {
-        signal: controller.signal,
-          action: "List previews",
-          fallbackMessage: "Failed to list previews",
-        },
-      );
-      if (controller.signal.aborted || !isMountedRef.current) {
-        return;
-      }
-      setPreviews(nextPreviews);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        return;
-      }
-      if (isMountedRef.current) {
-        setError(String(err));
-      }
-    } finally {
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-      if (showLoading && !controller.signal.aborted && isMountedRef.current) {
-        setLoading(false);
-      }
-    }
+    });
   }, [workspaceId]);
 
   const closePreview = useCallback(async (previewId: string): Promise<boolean> => {
@@ -100,6 +103,8 @@ export function useWorkspacePreviews(workspaceId: string): UseWorkspacePreviewsR
     return () => {
       isMountedRef.current = false;
       abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
 

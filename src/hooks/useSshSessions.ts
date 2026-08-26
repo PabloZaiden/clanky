@@ -14,14 +14,18 @@ export interface UseSshSessionsResult {
   sessions: SshSession[];
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   updateSession: (id: string, request: UpdateSshSessionRequest) => Promise<SshSession>;
   deleteSession: (id: string) => Promise<boolean>;
   getSession: (id: string) => SshSession | undefined;
 }
 
-export function useSshSessions(): UseSshSessionsResult {
+export interface UseSshSessionsOptions {
+  realtime?: boolean;
+}
+
+export function useSshSessions({ realtime = true }: UseSshSessionsOptions = {}): UseSshSessionsResult {
   const log = createLogger("useSshSessions");
   const [sessions, setSessions] = useState<SshSession[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +116,7 @@ export function useSshSessions(): UseSshSessionsResult {
   useRealtimeRefreshWithRecovery({
     resources: ["ssh-sessions"],
     filters: { resource: "ssh-sessions" },
+    enabled: realtime,
     refresh: refreshInBackground,
     onReconnect: refreshInBackground,
   });

@@ -13,7 +13,8 @@ import { isAgentCodeEnabled } from "@/shared/agent";
 import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { readApiResponse, requestApiResponse } from "../../lib/api-client";
-import { useMarkdownPreference, useRealtimeStream } from "../../hooks";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { useMarkdownPreference, useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { isToolCallSummary, upsertToolCallExtra } from "@/shared/tool-call";
 import { ConversationViewer } from "../LogViewer";
 import {
@@ -23,7 +24,6 @@ import {
   LoadingState,
   Panel,
   useToast,
-  useRealtimeRefresh,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
@@ -536,47 +536,51 @@ function AgentRunDetail({
   const transcriptRef = useRef<ChatTranscript | null>(null);
   const snapshotEtagRef = useRef<string | null>(null);
   const previousRunIdRef = useRef(runId);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
   useEffect(() => {
     transcriptRef.current = transcript;
   }, [transcript]);
 
-  const refreshRun = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    try {
-      if (showLoading) {
-        setLoading(true);
+  const refreshRun = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const headers = new Headers();
+        if (snapshotEtagRef.current) {
+          headers.set("If-None-Match", snapshotEtagRef.current);
+        }
+        const response = await requestApiResponse(`/api/agent-runs/${runId}/snapshot`, {
+          headers,
+          action: "Fetch agent run snapshot",
+          fallbackMessage: "Failed to fetch agent run",
+          acceptedStatuses: [304],
+        });
+        if (response.status === 304) {
+          return;
+        }
+        const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
+        snapshotEtagRef.current = response.headers.get("ETag");
+        setRun(snapshot.run);
+        setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
+      } catch (refreshError) {
+        setError(String(refreshError));
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const headers = new Headers();
-      if (snapshotEtagRef.current) {
-        headers.set("If-None-Match", snapshotEtagRef.current);
-      }
-      const response = await requestApiResponse(`/api/agent-runs/${runId}/snapshot`, {
-        headers,
-        action: "Fetch agent run snapshot",
-        fallbackMessage: "Failed to fetch agent run",
-        acceptedStatuses: [304],
-      });
-      if (response.status === 304) {
-        return;
-      }
-      const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
-      snapshotEtagRef.current = response.headers.get("ETag");
-      setRun(snapshot.run);
-      setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
-    } catch (refreshError) {
-      setError(String(refreshError));
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
-    }
+    });
   }, [runId]);
 
   useEffect(() => {
     const runChanged = previousRunIdRef.current !== runId;
     if (runChanged) {
+      refreshCoordinatorRef.current.reset();
       snapshotEtagRef.current = null;
       previousRunIdRef.current = runId;
       transcriptRef.current = null;
@@ -601,11 +605,10 @@ function AgentRunDetail({
     return await readApiResponse<ToolCallData>(response);
   }, [runId]);
 
-  useRealtimeRefresh({
+  useRealtimeRefreshWithRecovery({
     resources: ["agent-runs"],
     ids: [runId],
     filters: { resource: "agent-runs", id: runId, scope: agent?.config.id },
-    enabled: agent !== null,
     refresh: (event) => {
       if (event.action === "deleted") {
         setRun(null);
@@ -613,6 +616,7 @@ function AgentRunDetail({
       }
       return refreshRun({ showLoading: false });
     },
+    onReconnect: () => refreshRun({ showLoading: false }),
   });
 
   useEffect(() => {
@@ -666,7 +670,6 @@ function AgentRunDetail({
         setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
       }
     },
-    onReconnect: () => refreshRun({ showLoading: false }),
   });
 
   if (loading && !run) {

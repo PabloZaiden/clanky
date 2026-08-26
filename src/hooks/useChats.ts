@@ -8,6 +8,7 @@ import {
   getStreamingActivityStatus,
   mergeChatSummarySnapshot,
 } from "../utils/chat-snapshot";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
 const log = createLogger("useChats");
@@ -84,37 +85,42 @@ export function useChats(): UseChatsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    try {
-      if (showLoading) {
-        setLoading(true);
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const data = await apiRequest<Chat[]>("/api/chats", {
+          signal: controller.signal,
+          action: "Fetch chats",
+          fallbackMessage: "Failed to fetch chats",
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        setChats(sortChats(data.filter(isStandaloneChat)));
+      } catch (refreshError) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(String(refreshError));
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if (!controller.signal.aborted && showLoading) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const data = await apiRequest<Chat[]>("/api/chats", {
-        signal: controller.signal,
-        action: "Fetch chats",
-        fallbackMessage: "Failed to fetch chats",
-      });
-      if (controller.signal.aborted) {
-        return;
-      }
-      setChats(sortChats(data.filter(isStandaloneChat)));
-    } catch (refreshError) {
-      if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
-        return;
-      }
-      setError(String(refreshError));
-    } finally {
-      if (!controller.signal.aborted && showLoading) {
-        setLoading(false);
-      }
-    }
+    });
   }, []);
 
   const refreshChat = useCallback(async (id: string) => {
@@ -347,7 +353,6 @@ export function useChats(): UseChatsResult {
           break;
       }
     },
-    onReconnect: () => refresh({ showLoading: false }),
   });
 
   useEffect(() => {
@@ -355,6 +360,7 @@ export function useChats(): UseChatsResult {
     return () => {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
+      refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
 
