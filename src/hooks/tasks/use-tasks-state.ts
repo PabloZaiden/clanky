@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Task } from "@/shared";
 import { log } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 
 export interface UseTasksStateResult {
   tasks: Task[];
@@ -27,6 +28,7 @@ export function useTasksState(): UseTasksStateResult {
 
   // AbortController for cancelling in-flight fetch requests on unmount
   const abortControllerRef = useRef<AbortController | null>(null);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   const optimisticTaskStatusesRef = useRef<Map<string, "starting" | "planning">>(new Map());
 
   const reconcileTasks = useCallback((
@@ -67,33 +69,36 @@ export function useTasksState(): UseTasksStateResult {
     return reconciledTasks;
   }, []);
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    // Cancel any in-flight request
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    try {
-      if (showLoading) {
-        setLoading(true);
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const data = await apiRequest<Task[]>("/api/tasks", {
+          signal: controller.signal,
+          action: "Fetch tasks",
+          fallbackMessage: "Failed to fetch tasks",
+        });
+        if (controller.signal.aborted) return;
+        setTasks(reconcileTasks(data));
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(String(err));
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if (!controller.signal.aborted && showLoading) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const data = await apiRequest<Task[]>("/api/tasks", {
-        signal: controller.signal,
-        action: "Fetch tasks",
-        fallbackMessage: "Failed to fetch tasks",
-      });
-      if (controller.signal.aborted) return;
-      setTasks(reconcileTasks(data));
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(String(err));
-    } finally {
-      if (!controller.signal.aborted && showLoading) {
-        setLoading(false);
-      }
-    }
+    });
   }, [reconcileTasks]);
 
   const refreshTask = useCallback(async (id: string) => {
@@ -164,6 +169,7 @@ export function useTasksState(): UseTasksStateResult {
     return () => {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
+      refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
 

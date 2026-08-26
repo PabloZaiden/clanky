@@ -5,7 +5,6 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
-import { isAbortError } from "./request-lifecycle";
 
 export type ApiResponseMode = "json" | "text" | "blob" | "empty";
 
@@ -63,7 +62,7 @@ export async function requestApiResponse(
   try {
     response = await appFetch(path, init);
   } catch (error) {
-    if (init.signal?.aborted === true && isAbortError(error)) {
+    if (init.signal?.aborted === true) {
       throw error;
     }
     apiClientLog.error("API request failed before receiving a response", {

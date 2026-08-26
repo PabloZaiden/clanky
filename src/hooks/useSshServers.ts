@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SshConnectionMode, SshServer, SshServerSession } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
@@ -17,13 +17,15 @@ import {
   clearStoredSshServerCredential,
   getStoredSshServerCredential,
 } from "../lib/ssh-browser-credentials";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
+import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseSshServersResult {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
@@ -36,32 +38,39 @@ export interface UseSshServersResult {
   hasStoredCredential: (serverId: string) => boolean;
 }
 
-export function useSshServers(): UseSshServersResult {
+export interface UseSshServersOptions {
+  realtime?: boolean;
+}
+
+export function useSshServers({ realtime = true }: UseSshServersOptions = {}): UseSshServersResult {
   const [servers, setServers] = useState<SshServer[]>([]);
   const [sessionsByServerId, setSessionsByServerId] = useState<Record<string, SshServerSession[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    try {
-      if (showLoading) {
-        setLoading(true);
+  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const nextServers = await listSshServersApi();
+        const sessionEntries = await Promise.all(nextServers.map(async (server) => {
+          return [server.config.id, await listSshServerSessionsApi(server.config.id)] as const;
+        }));
+        setServers(nextServers);
+        setSessionsByServerId(Object.fromEntries(sessionEntries));
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const nextServers = await listSshServersApi();
-      const sessionEntries = await Promise.all(nextServers.map(async (server) => {
-        return [server.config.id, await listSshServerSessionsApi(server.config.id)] as const;
-      }));
-      setServers(nextServers);
-      setSessionsByServerId(Object.fromEntries(sessionEntries));
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      if (showLoading) {
-        setLoading(false);
-      }
-    }
+    });
   }, []);
 
   const createServer = useCallback(async (request: CreateSshServerRequest, password?: string): Promise<SshServer | null> => {
@@ -193,12 +202,16 @@ export function useSshServers(): UseSshServersResult {
   useRealtimeRefreshWithRecovery({
     resources: ["ssh-sessions"],
     filters: { resource: "ssh-sessions" },
+    enabled: realtime,
     refresh: () => refresh({ showLoading: false }),
     onReconnect: () => refresh({ showLoading: false }),
   });
 
   useEffect(() => {
     void refresh();
+    return () => {
+      refreshCoordinatorRef.current.reset();
+    };
   }, [refresh]);
 
   return {

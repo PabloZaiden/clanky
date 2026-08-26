@@ -37,11 +37,18 @@ function useReconnectRecovery(
 ): void {
   const hasOpenedRef = useRef(false);
   const disconnectedRef = useRef(false);
+  const wasEnabledRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) {
       hasOpenedRef.current = false;
       disconnectedRef.current = false;
+      wasEnabledRef.current = false;
+      return;
+    }
+
+    if (!wasEnabledRef.current) {
+      wasEnabledRef.current = true;
       return;
     }
 
@@ -54,7 +61,7 @@ function useReconnectRecovery(
       return;
     }
 
-    if (status === "closed" && hasOpenedRef.current) {
+    if (status === "closed" && (hasOpenedRef.current || wasEnabledRef.current)) {
       disconnectedRef.current = true;
     }
   }, [enabled, onReconnect, status]);

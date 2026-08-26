@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { useRealtimeRefreshWithRecovery } from "../../hooks/useRealtimeStream";
 import {
   useAgents,
   useChats,
@@ -53,7 +54,7 @@ export function useShellResources(route: WebAppRoute) {
     createSession,
     updateSession: updateWorkspaceSshSession,
     deleteSession: deleteWorkspaceSshSession,
-  } = useSshSessions();
+  } = useSshSessions({ realtime: false });
   const {
     servers,
     sessionsByServerId,
@@ -66,7 +67,21 @@ export function useShellResources(route: WebAppRoute) {
     createSession: createStandaloneSession,
     updateSession: updateStandaloneSession,
     deleteSession: deleteStandaloneSession,
-  } = useSshServers();
+  } = useSshServers({ realtime: false });
+
+  const refreshSshSessionsAndServers = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      refreshSshSessions({ showLoading: false }),
+      refreshSshServers({ showLoading: false }),
+    ]);
+  }, [refreshSshServers, refreshSshSessions]);
+
+  useRealtimeRefreshWithRecovery({
+    resources: ["ssh-sessions"],
+    filters: { resource: "ssh-sessions" },
+    refresh: refreshSshSessionsAndServers,
+    onReconnect: refreshSshSessionsAndServers,
+  });
   const {
     workspaces,
     loading: workspacesLoading,
