@@ -536,7 +536,9 @@ function AgentRunDetail({
   const transcriptRef = useRef<ChatTranscript | null>(null);
   const snapshotEtagRef = useRef<string | null>(null);
   const previousRunIdRef = useRef(runId);
+  const runIdRef = useRef(runId);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  runIdRef.current = runId;
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -544,6 +546,7 @@ function AgentRunDetail({
 
   const refreshRun = useCallback((options: { showLoading?: boolean } = {}) => {
     return refreshCoordinatorRef.current.run(async () => {
+      const requestRunId = runId;
       const showLoading = options.showLoading ?? true;
       try {
         if (showLoading) {
@@ -560,17 +563,26 @@ function AgentRunDetail({
           fallbackMessage: "Failed to fetch agent run",
           acceptedStatuses: [304],
         });
+        if (runIdRef.current !== requestRunId) {
+          return;
+        }
         if (response.status === 304) {
           return;
         }
         const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
+        if (runIdRef.current !== requestRunId) {
+          return;
+        }
         snapshotEtagRef.current = response.headers.get("ETag");
         setRun(snapshot.run);
         setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
       } catch (refreshError) {
+        if (runIdRef.current !== requestRunId) {
+          return;
+        }
         setError(String(refreshError));
       } finally {
-        if (showLoading) {
+        if (showLoading && runIdRef.current === requestRunId) {
           setLoading(false);
         }
       }
