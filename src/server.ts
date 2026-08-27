@@ -40,12 +40,14 @@ import {
   type ClankyDomainEvent,
   type ClankyRealtimeEvent,
 } from "./realtime";
+import { installRealtimeHeartbeat } from "./realtime-heartbeat";
 import { CLANKY_VERSION } from "./version";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
+let realtimeHeartbeatCleanup: (() => void) | undefined;
 
 function normalizeLocalManagedCredentialHost(host: string): string | undefined {
   const normalizedHost = host.trim().toLowerCase();
@@ -259,7 +261,12 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
 });
 
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
-  if (app) return app;
+  if (app) {
+    if (!realtimeHeartbeatCleanup) {
+      realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
+    }
+    return app;
+  }
   await initializeDatabase();
   await ensureLocalMeshNodeIdentity();
   const dataDir = getDataDir();
@@ -289,7 +296,11 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     lifecycle: {
       beforeStart: reconcileStartupState,
       afterStart: completeStartup,
-      beforeStop: stopBackgroundWorkers,
+      beforeStop: () => {
+        realtimeHeartbeatCleanup?.();
+        realtimeHeartbeatCleanup = undefined;
+        stopBackgroundWorkers();
+      },
     },
     configResponse: (req) => {
       const publicBasePath = app ? getRequestOriginInfo(req, app.config).pathPrefix : "/";
@@ -304,11 +315,14 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
   });
   registerClankyRealtimeBridge(app);
+  realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
   return app;
 }
 
 export function resetWebAppServerForTests(): void {
   stopBackgroundWorkers();
+  realtimeHeartbeatCleanup?.();
+  realtimeHeartbeatCleanup = undefined;
   unregisterClankyRealtimeBridge();
   managedCredentialService.resetForTests();
   app = undefined;

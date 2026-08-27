@@ -13,6 +13,7 @@ import {
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { readApiResponse, requestApiResponse } from "../../lib/api-client";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { reconcileToolCallRecords } from "@/shared/tool-call";
 import { normalizeHydratedTaskLogs } from "./response-log-normalization";
 
@@ -58,138 +59,146 @@ export function useTaskData(
   const snapshotEtagRef = useRef<string | null>(null);
   const initialLoadDoneRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
   useEffect(() => {
     snapshotEtagRef.current = null;
+    refreshCoordinatorRef.current.reset();
   }, [taskId]);
 
-  const refresh = useCallback(async (options?: { hydrateFromSnapshot?: boolean }) => {
-    const requestTaskId = taskId;
-    const requestId = refreshRequestIdRef.current + 1;
-    refreshRequestIdRef.current = requestId;
-    log.debug("Refreshing task data", { taskId: requestTaskId });
+  const refresh = useCallback((options?: { hydrateFromSnapshot?: boolean }) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const requestTaskId = taskId;
+      const requestId = refreshRequestIdRef.current + 1;
+      refreshRequestIdRef.current = requestId;
+      log.debug("Refreshing task data", { taskId: requestTaskId });
 
-    // Cancel any in-flight request
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    // Only show loading spinner on initial load to prevent flicker on event-driven refreshes
-    const isInitialLoad = !initialLoadDoneRef.current;
+      // Only show loading spinner on initial load to prevent flicker on event-driven refreshes
+      const isInitialLoad = !initialLoadDoneRef.current;
 
-    try {
-      if (isInitialLoad) {
-        setLoading(true);
-      }
-      if (isActiveTask(requestTaskId)) {
-        setError(null);
-      }
-      const headers = new Headers();
-      if (snapshotEtagRef.current) {
-        headers.set("If-None-Match", snapshotEtagRef.current);
-      }
-      const response = await requestApiResponse(`/api/tasks/${requestTaskId}/snapshot`, {
-        signal: controller.signal,
-        headers,
-        action: "Fetch task snapshot",
-        fallbackMessage: "Failed to fetch task",
-        acceptedStatuses: [304, 404],
-      });
+      try {
+        if (isInitialLoad) {
+          setLoading(true);
+        }
+        if (isActiveTask(requestTaskId)) {
+          setError(null);
+        }
+        const headers = new Headers();
+        if (snapshotEtagRef.current) {
+          headers.set("If-None-Match", snapshotEtagRef.current);
+        }
+        const response = await requestApiResponse(`/api/tasks/${requestTaskId}/snapshot`, {
+          signal: controller.signal,
+          headers,
+          action: "Fetch task snapshot",
+          fallbackMessage: "Failed to fetch task",
+          acceptedStatuses: [304, 404],
+        });
 
-      // Check if request was aborted during fetch
-      if (
-        controller.signal.aborted ||
-        !isActiveTask(requestTaskId) ||
-        refreshRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
+        // Check if request was aborted during fetch
+        if (
+          controller.signal.aborted ||
+          !isActiveTask(requestTaskId) ||
+          refreshRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
 
-      if (response.status === 304) {
-        return;
-      }
+        if (response.status === 304) {
+          return;
+        }
 
-      if (response.status === 404) {
-        log.debug("Task not found", { taskId: requestTaskId });
-        setTask(null);
-        setError("Task not found");
-        return;
-      }
-      const data = await readApiResponse<{
-        task: Task;
-        transcript: ChatTranscript;
-      }>(response);
-      if (
-        controller.signal.aborted ||
-        !isActiveTask(requestTaskId) ||
-        refreshRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-      snapshotEtagRef.current = response.headers.get("ETag");
-      setTask((current) => current ? {
-        ...data.task,
-        state: {
-          ...data.task.state,
-          toolCalls: reconcileToolCallRecords(
-            (current.state.toolCalls as ToolCallData[] | undefined) ?? [],
-            (data.task.state.toolCalls as ToolCallData[] | undefined) ?? [],
-          ),
-        },
-      } : data.task);
-      log.debug("Task data refreshed", { taskId: requestTaskId, status: data.task.state.status });
+        if (response.status === 404) {
+          log.debug("Task not found", { taskId: requestTaskId });
+          setTask(null);
+          setError("Task not found");
+          return;
+        }
+        const data = await readApiResponse<{
+          task: Task;
+          transcript: ChatTranscript;
+        }>(response);
+        if (
+          controller.signal.aborted ||
+          !isActiveTask(requestTaskId) ||
+          refreshRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+        snapshotEtagRef.current = response.headers.get("ETag");
+        setTask((current) => current ? {
+          ...data.task,
+          state: {
+            ...data.task.state,
+            toolCalls: reconcileToolCallRecords(
+              (current.state.toolCalls as ToolCallData[] | undefined) ?? [],
+              (data.task.state.toolCalls as ToolCallData[] | undefined) ?? [],
+            ),
+          },
+        } : data.task);
+        log.debug("Task data refreshed", { taskId: requestTaskId, status: data.task.state.status });
 
-      // Hydrate persisted data on the first successful load and on explicit reconnect recovery.
-      // Using a ref avoids adding state array lengths to the dependency array,
-      // which would cause a refresh cascade: event adds item → length changes →
-      // refresh recreated → useEffect fires → full API refetch.
-      if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
-        initialLoadDoneRef.current = true;
+        // Hydrate persisted data on the first successful load and on explicit reconnect recovery.
+        // Using a ref avoids adding state array lengths to the dependency array,
+        // which would cause a refresh cascade: event adds item → length changes →
+        // refresh recreated → useEffect fires → full API refetch.
+        if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
+          initialLoadDoneRef.current = true;
 
-        const latestLogs = data.transcript.logs?.map((logEntry) => ({
-          id: logEntry.id,
-          level: logEntry.level,
-          message: logEntry.message,
-          details: logEntry.details,
-          timestamp: logEntry.timestamp,
-        })) ?? [];
-        setLogs((current) => normalizeHydratedTaskLogs(
-          mergeTranscriptSnapshotRecords(current, latestLogs),
-        ));
+          const latestLogs = data.transcript.logs?.map((logEntry) => ({
+            id: logEntry.id,
+            level: logEntry.level,
+            message: logEntry.message,
+            details: logEntry.details,
+            timestamp: logEntry.timestamp,
+          })) ?? [];
+          setLogs((current) => normalizeHydratedTaskLogs(
+            mergeTranscriptSnapshotRecords(current, latestLogs),
+          ));
 
-        const latestMessages = data.transcript.messages?.map((msg) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          attachments: msg.attachments,
-          timestamp: msg.timestamp,
-        })) ?? [];
-        setMessages((current) => mergeTranscriptSnapshotRecords(current, latestMessages));
+          const latestMessages = data.transcript.messages?.map((msg) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            attachments: msg.attachments,
+            timestamp: msg.timestamp,
+          })) ?? [];
+          setMessages((current) => mergeTranscriptSnapshotRecords(current, latestMessages));
 
-        const latestToolCalls = data.transcript.toolCalls ?? [];
-        setToolCalls((current) => mergeTranscriptSnapshotToolCalls(current, latestToolCalls));
+          const latestToolCalls = data.transcript.toolCalls ?? [];
+          setToolCalls((current) => mergeTranscriptSnapshotToolCalls(current, latestToolCalls));
 
-        if (options?.hydrateFromSnapshot) {
-          setProgressContent("");
+          if (options?.hydrateFromSnapshot) {
+            setProgressContent("");
+          }
+        }
+      } catch (err) {
+        // Ignore abort errors — they are expected during cleanup
+        if (controller.signal.aborted) return;
+        if (!isActiveTask(requestTaskId) || refreshRequestIdRef.current !== requestId) {
+          return;
+        }
+        log.error("Failed to refresh task", { taskId: requestTaskId, error: String(err) });
+        setError(String(err));
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if (isInitialLoad && isActiveTask(requestTaskId) && refreshRequestIdRef.current === requestId) {
+          setLoading(false);
         }
       }
-    } catch (err) {
-      // Ignore abort errors — they are expected during cleanup
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (!isActiveTask(requestTaskId) || refreshRequestIdRef.current !== requestId) {
-        return;
-      }
-      log.error("Failed to refresh task", { taskId: requestTaskId, error: String(err) });
-      setError(String(err));
-    } finally {
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-      if (isInitialLoad && isActiveTask(requestTaskId) && refreshRequestIdRef.current === requestId) {
-        setLoading(false);
-      }
-    }
+    });
   }, [isActiveTask, taskId]);
+
+  useEffect(() => {
+    return () => {
+      refreshCoordinatorRef.current.reset();
+    };
+  }, []);
 
   const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
     const response = await requestApiResponse(

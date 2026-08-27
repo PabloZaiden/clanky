@@ -13,6 +13,7 @@ import type {
   TaskLogEntry,
 } from "@/shared";
 import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 const log = createLogger("useAgents");
@@ -79,49 +80,69 @@ export function useAgents(): UseAgentsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  const refreshRunsPromisesRef = useRef(new Map<string, Promise<void>>());
 
-  const refresh = useCallback(async (options: { showLoading?: boolean } = {}) => {
-    const showLoading = options.showLoading ?? true;
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    try {
-      if (showLoading) {
-        setLoading(true);
+  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const data = await apiRequest<Agent[]>("/api/agents", {
+          signal: controller.signal,
+          action: "Fetch agents",
+          fallbackMessage: "Failed to fetch agents",
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        setAgents(sortAgents(data));
+      } catch (refreshError) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(String(refreshError));
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if (!controller.signal.aborted && showLoading) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const data = await apiRequest<Agent[]>("/api/agents", {
-        signal: controller.signal,
-        action: "Fetch agents",
-        fallbackMessage: "Failed to fetch agents",
-      });
-      if (controller.signal.aborted) {
-        return;
-      }
-      setAgents(sortAgents(data));
-    } catch (refreshError) {
-      if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
-        return;
-      }
-      setError(String(refreshError));
-    } finally {
-      if (!controller.signal.aborted && showLoading) {
-        setLoading(false);
-      }
-    }
+    });
   }, []);
 
-  const refreshRuns = useCallback(async (agentId: string) => {
-    try {
-      const runs = await apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
-        action: "Fetch agent runs",
-        fallbackMessage: "Failed to fetch agent runs",
-      });
-      setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
-    } catch (refreshError) {
-      log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
-      setError(String(refreshError));
+  const refreshRuns = useCallback((agentId: string) => {
+    const existing = refreshRunsPromisesRef.current.get(agentId);
+    if (existing) {
+      return existing;
     }
+
+    const promise = (async () => {
+      try {
+        const runs = await apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
+          action: "Fetch agent runs",
+          fallbackMessage: "Failed to fetch agent runs",
+        });
+        setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
+      } catch (refreshError) {
+        log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
+        setError(String(refreshError));
+      }
+    })();
+    const trackedPromise = promise.finally(() => {
+      if (refreshRunsPromisesRef.current.get(agentId) === trackedPromise) {
+        refreshRunsPromisesRef.current.delete(agentId);
+      }
+    });
+    refreshRunsPromisesRef.current.set(agentId, trackedPromise);
+    return trackedPromise;
   }, []);
 
   const refreshAllRuns = useCallback(async () => {
@@ -144,7 +165,7 @@ export function useAgents(): UseAgentsResult {
         fallbackMessage: fallback,
       });
     } catch (requestError) {
-      if (isAbortError(requestError)) {
+      if (options.signal?.aborted || isAbortError(requestError)) {
         return null;
       }
       setError(String(requestError));
@@ -417,7 +438,12 @@ export function useAgents(): UseAgentsResult {
 
   useEffect(() => {
     void refresh();
-    return () => abortControllerRef.current?.abort();
+    return () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      refreshCoordinatorRef.current.reset();
+      refreshRunsPromisesRef.current.clear();
+    };
   }, [refresh]);
 
   return {

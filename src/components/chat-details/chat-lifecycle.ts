@@ -21,6 +21,7 @@ import {
 } from "@/shared/tool-call";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
@@ -346,8 +347,8 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const mountedRef = useRef(false);
   const refreshControllerRef = useRef<AbortController | null>(null);
   const detailControllersRef = useRef(new Map<string, AbortController>());
-  const refreshShowLoadingRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   const reconnectAttemptedRef = useRef(false);
   const snapshotEtagRef = useRef<string | null>(null);
   const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
@@ -362,100 +363,95 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     setTranscript(nextTranscript);
   }, []);
 
-  const refreshChat = useCallback(async (options: ChatRefreshOptions = {}): Promise<void> => {
-    const showLoading = options.showLoading ?? true;
-    const previousController = refreshControllerRef.current;
-    if (previousController && refreshShowLoadingRef.current && mountedRef.current) {
-      setLoading(false);
-    }
-    previousController?.abort();
-    const controller = new AbortController();
-    const requestId = refreshRequestIdRef.current + 1;
-    refreshRequestIdRef.current = requestId;
-    refreshControllerRef.current = controller;
-    refreshShowLoadingRef.current = showLoading;
+  const refreshChat = useCallback((options: ChatRefreshOptions = {}): Promise<void> => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const showLoading = options.showLoading ?? true;
+      const controller = new AbortController();
+      const requestId = refreshRequestIdRef.current + 1;
+      refreshRequestIdRef.current = requestId;
+      refreshControllerRef.current = controller;
 
-    try {
-      if (showLoading && mountedRef.current) {
-        setLoading(true);
+      try {
+        if (showLoading && mountedRef.current) {
+          setLoading(true);
+        }
+        if (mountedRef.current) {
+          setError(null);
+        }
+        const headers = new Headers();
+        if (snapshotEtagRef.current) {
+          headers.set("If-None-Match", snapshotEtagRef.current);
+        }
+        const response = await requestApiResponse(
+          `/api/chats/${chatId}/snapshot`,
+          {
+            signal: controller.signal,
+            headers,
+            action: "Fetch chat snapshot",
+            fallbackMessage: "Failed to fetch chat",
+            acceptedStatuses: [304, 404],
+          },
+        );
+        if (
+          controller.signal.aborted
+          || !mountedRef.current
+          || requestId !== refreshRequestIdRef.current
+        ) {
+          return;
+        }
+        if (response.status === 304) {
+          return;
+        }
+        if (response.status === 404) {
+          setChatState(null);
+          setTranscriptState(createEmptyTranscript());
+          setError("Chat not found");
+          return;
+        }
+        const data = await readApiResponse<ChatSnapshot>(response);
+        const hydrated = hydrateChatSnapshot(data);
+        snapshotEtagRef.current = response.headers.get("ETag");
+        setChatState(hydrated.chat);
+        const currentTranscript = transcriptRef.current;
+        setTranscriptState({
+          messages: mergeTranscriptSnapshotRecords(
+            currentTranscript.messages as MessageData[],
+            hydrated.transcript.messages as MessageData[],
+          ),
+          logs: mergeTranscriptSnapshotRecords(
+            currentTranscript.logs as TaskLogEntry[],
+            hydrated.transcript.logs as TaskLogEntry[],
+          ),
+          toolCalls: mergeTranscriptSnapshotToolCalls(
+            currentTranscript.toolCalls,
+            hydrated.transcript.toolCalls,
+          ),
+          revision: hydrated.transcript.revision,
+          totalEntries: hydrated.transcript.totalEntries,
+        });
+      } catch (refreshError) {
+        if (
+          controller.signal.aborted
+          || isAbortError(refreshError)
+          || !mountedRef.current
+          || requestId !== refreshRequestIdRef.current
+        ) {
+          return;
+        }
+        setError(String(refreshError));
+      } finally {
+        if (
+          mountedRef.current
+          && requestId === refreshRequestIdRef.current
+          && showLoading
+        ) {
+          setLoading(false);
+        }
+        if (refreshControllerRef.current === controller) {
+          refreshControllerRef.current = null;
+        }
       }
-      if (mountedRef.current) {
-        setError(null);
-      }
-      const headers = new Headers();
-      if (snapshotEtagRef.current) {
-        headers.set("If-None-Match", snapshotEtagRef.current);
-      }
-      const response = await requestApiResponse(
-        `/api/chats/${chatId}/snapshot`,
-        {
-          signal: controller.signal,
-          headers,
-          action: "Fetch chat snapshot",
-          fallbackMessage: "Failed to fetch chat",
-          acceptedStatuses: [304, 404],
-        },
-      );
-      if (
-        controller.signal.aborted
-        || !mountedRef.current
-        || requestId !== refreshRequestIdRef.current
-      ) {
-        return;
-      }
-      if (response.status === 304) {
-        return;
-      }
-      if (response.status === 404) {
-        setChatState(null);
-        setTranscriptState(createEmptyTranscript());
-        setError("Chat not found");
-        return;
-      }
-      const data = await readApiResponse<ChatSnapshot>(response);
-      const hydrated = hydrateChatSnapshot(data);
-      snapshotEtagRef.current = response.headers.get("ETag");
-      setChatState(hydrated.chat);
-      const currentTranscript = transcriptRef.current;
-      setTranscriptState({
-        messages: mergeTranscriptSnapshotRecords(
-          currentTranscript.messages as MessageData[],
-          hydrated.transcript.messages as MessageData[],
-        ),
-        logs: mergeTranscriptSnapshotRecords(
-          currentTranscript.logs as TaskLogEntry[],
-          hydrated.transcript.logs as TaskLogEntry[],
-        ),
-        toolCalls: mergeTranscriptSnapshotToolCalls(
-          currentTranscript.toolCalls,
-          hydrated.transcript.toolCalls,
-        ),
-        revision: hydrated.transcript.revision,
-        totalEntries: hydrated.transcript.totalEntries,
-      });
-    } catch (refreshError) {
-      if (
-        isAbortError(refreshError)
-        || controller.signal.aborted
-        || !mountedRef.current
-        || requestId !== refreshRequestIdRef.current
-      ) {
-        return;
-      }
-      setError(String(refreshError));
-    } finally {
-      if (
-        mountedRef.current
-        && requestId === refreshRequestIdRef.current
-        && showLoading
-      ) {
-        setLoading(false);
-      }
-      if (refreshControllerRef.current === controller) {
-        refreshControllerRef.current = null;
-        refreshShowLoadingRef.current = false;
-      }
-    }
+    });
   }, [chatId, setChatState, setTranscriptState]);
 
   const loadToolCallDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
@@ -585,7 +581,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     filters: { chatId },
     predicate: (event) => event.type.startsWith("chat."),
     onEvent: handleEvent,
-    onReconnect: () => refreshChat({ showLoading: false }),
   });
 
   useRealtimeRefreshWithRecovery({
@@ -619,12 +614,12 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     return () => {
       mountedRef.current = false;
       refreshControllerRef.current?.abort();
+      refreshCoordinatorRef.current.reset();
       for (const controller of detailControllersRef.current.values()) {
         controller.abort();
       }
       detailControllersRef.current.clear();
       refreshControllerRef.current = null;
-      refreshShowLoadingRef.current = false;
       chatRef.current = null;
       transcriptRef.current = createEmptyTranscript();
     };

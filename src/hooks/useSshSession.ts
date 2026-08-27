@@ -8,6 +8,7 @@ import type { UpdateSshSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { deleteStandaloneSshSessionApi } from "./sshServerActions";
 
 export type SshSessionKind = "workspace" | "standalone";
@@ -31,6 +32,9 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
   const [error, setError] = useState<string | null>(null);
   const initialLoadDoneRef = useRef(false);
   const sessionKindRef = useRef<SshSessionKind | null>(null);
+  const sessionIdRef = useRef(sessionId);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  sessionIdRef.current = sessionId;
 
   const fetchSessionByKind = useCallback(async (kind: SshSessionKind): Promise<AnySshSession> => {
     const endpoint = kind === "standalone"
@@ -72,23 +76,34 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
     };
   }, [fetchSessionByKind, sessionId]);
 
-  const refreshInternal = useCallback(async (showLoading: boolean) => {
-    try {
-      if (showLoading) {
-        setLoading(true);
+  const refreshInternal = useCallback((showLoading: boolean) => {
+    return refreshCoordinatorRef.current.run(async () => {
+      const requestSessionId = sessionId;
+      try {
+        if (showLoading) {
+          setLoading(true);
+        }
+        setError(null);
+        const next = await fetchSession();
+        if (sessionIdRef.current !== requestSessionId) {
+          return;
+        }
+        setSession(next.session);
+        sessionKindRef.current = next.kind;
+        setSessionKind(next.kind);
+        initialLoadDoneRef.current = true;
+      } catch (err) {
+        if (sessionIdRef.current !== requestSessionId) {
+          return;
+        }
+        log.error("Failed to refresh SSH session", { sessionId: requestSessionId, error: String(err) });
+        setError(String(err));
+      } finally {
+        if (sessionIdRef.current === requestSessionId) {
+          setLoading(false);
+        }
       }
-      setError(null);
-      const next = await fetchSession();
-      setSession(next.session);
-      sessionKindRef.current = next.kind;
-      setSessionKind(next.kind);
-      initialLoadDoneRef.current = true;
-    } catch (err) {
-      log.error("Failed to refresh SSH session", { sessionId, error: String(err) });
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [fetchSession]);
 
   const refresh = useCallback(async () => {
@@ -166,10 +181,14 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
   useEffect(() => {
     initialLoadDoneRef.current = false;
     sessionKindRef.current = null;
+    refreshCoordinatorRef.current.reset();
     setSession(null);
     setSessionKind(null);
     setLoading(true);
     setError(null);
+    return () => {
+      refreshCoordinatorRef.current.reset();
+    };
   }, [sessionId]);
 
   useEffect(() => {
