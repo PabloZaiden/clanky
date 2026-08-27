@@ -388,6 +388,7 @@ describe("workspace files API integration", () => {
     expect(headResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
     expect(headResponse.headers.get("Content-Length")).toBe(String(metadata.file.size));
     expect(headResponse.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
+    expect(await headResponse.text()).toBe("");
 
     const response = await fetch(downloadUrl);
 
@@ -472,6 +473,7 @@ describe("workspace files API integration", () => {
     expect(headResponse.ok).toBe(true);
     expect(headResponse.headers.get("Content-Length")).toBe(String(downloadExecutor.payloadByteLength));
     expect(downloadExecutor.hashRequested).toBe(false);
+    expect(downloadExecutor.streamRequested).toBe(false);
 
     const response = await fetch(downloadUrl);
 
