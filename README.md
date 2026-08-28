@@ -262,12 +262,13 @@ bun dev
 ### Test execution
 
 Local `bun run test` and `bun run test:backend` use Bun's native file workers.
-Set `CLANKY_TEST_MAX_WORKERS` to control the worker capacity; each file runs
-isolated with the shared backend-user preload and a conservative
-`--max-concurrency 1`. The pull-request workflow still uses the same full-suite
-command, while `CI=true` (or `CLANKY_TEST_RETRY_FAILED_BUCKETS=1`) selects the
-custom coordinator so failed buckets can be retried in a fresh serial process.
-Set `CLANKY_TEST_RUNNER=custom` to select that coordinator explicitly.
+Set `CLANKY_TEST_MAX_WORKERS` to control the worker capacity; the runner
+explicitly enables Bun's per-file `--isolate` mode with the shared
+backend-user preload and a conservative `--max-concurrency 1`. The
+pull-request workflow still uses the same full-suite command, while `CI=true`
+(or `CLANKY_TEST_RETRY_FAILED_BUCKETS=1`) selects the custom coordinator so
+failed buckets can be retried in a fresh serial process. Set
+`CLANKY_TEST_RUNNER=custom` to select that coordinator explicitly.
 
 Use `bun run test:changed` for local changed-test feedback. Native Bun shard and
 generated timing options can be passed to the runner when a caller supplies a

@@ -130,14 +130,16 @@ async function listTestFiles(pattern: string): Promise<string[]> {
 }
 
 export async function listTestFilesForMode(mode: "all" | "backend"): Promise<string[]> {
-  const files: string[] = [];
+  const files = new Set<string>();
   for (const suite of suiteDefinitions) {
     if (!suite.modes.includes(mode)) {
       continue;
     }
-    files.push(...await listTestFiles(suite.pattern));
+    for (const file of await listTestFiles(suite.pattern)) {
+      files.add(file);
+    }
   }
-  return files;
+  return [...files].sort();
 }
 
 export function resolveMaxWorkers(sourceEnv: Record<string, string | undefined>): number {
@@ -259,6 +261,7 @@ export function buildNativeTestArgs(
     "30000",
     "--preload",
     "./tests/backend-user-context.ts",
+    "--isolate",
     "--max-concurrency",
     "1",
     "--no-orphans",

@@ -58,6 +58,7 @@ describe("test runner partitioning", () => {
       "30000",
       "--preload",
       "./tests/backend-user-context.ts",
+      "--isolate",
       "--max-concurrency",
       "1",
       "--no-orphans",
@@ -68,6 +69,9 @@ describe("test runner partitioning", () => {
     expect(buildNativeTestArgs([], Number.NaN)).toContain("--parallel=1");
     expect(() => buildNativeTestArgs([], 4, ["--parallel=2"])).toThrow(
       "cannot override runner option: --parallel",
+    );
+    expect(() => buildNativeTestArgs([], 4, ["--no-isolate"])).toThrow(
+      "cannot override runner option: --no-isolate",
     );
   });
 
@@ -95,6 +99,7 @@ describe("test runner partitioning", () => {
 
     expect(allFiles.length).toBeGreaterThan(0);
     expect(new Set(allFiles).size).toBe(allFiles.length);
+    expect(allFiles).toEqual([...allFiles].sort());
     expect(backendFiles).toEqual(allFiles);
   });
 });
