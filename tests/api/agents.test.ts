@@ -271,7 +271,6 @@ describe("Agents API Integration", () => {
         prompt: "This should be rejected",
         model: testModel,
         useWorktree: true,
-        baseBranch: "main",
         schedule: {
           startAtLocal: "2030-01-01T09:00",
           timezone: "UTC",
