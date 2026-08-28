@@ -287,6 +287,7 @@ export function AppShell() {
     workspacesLoading,
   ]);
 
+  const sidebarSnapshotReady = !shellLoading && shellErrors.length === 0;
   const sidebarComposition = useMemo(() => buildShellSidebarComposition({
     sidebarWorkspaceGroups,
     serverNodes,
@@ -319,6 +320,7 @@ export function AppShell() {
       agents,
       showPrivateItems: privateItemsPreference.showPrivateItems,
     } satisfies ShellSidebarActionHandlers,
+    sidebarSnapshotReady,
     quickChatUnavailableReason,
     quickChatCreating: dialogs.quickChatCreating,
     onQuickChat: () => void dialogs.handleQuickChat(),
@@ -338,6 +340,7 @@ export function AppShell() {
     selectedChat,
     selectedChatActions,
     serverNodes,
+    sidebarSnapshotReady,
     dialogs.setDeleteAgentTarget,
     dialogs.setEditingAgentId,
     dialogs.setPurgeAgentTarget,
