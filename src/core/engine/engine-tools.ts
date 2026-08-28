@@ -47,6 +47,7 @@ export async function processTaskAgentEvent(
 ): Promise<void> {
   switch (event.type) {
     case "message.start":
+      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
       toolCtx.emitLog("agent", "AI started generating response", { logKind: "system" });
       break;
 

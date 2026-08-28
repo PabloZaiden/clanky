@@ -91,6 +91,26 @@ describe("AgentEventTranscriptInterpreter", () => {
     ]);
   });
 
+  test("flushes reasoning that arrives before the lazy message start", () => {
+    const interpreter = createInterpreter();
+
+    interpreter.handle({ type: "reasoning.delta", content: "checking before response" });
+    const started = interpreter.handle({ type: "message.start", messageId: "message-lazy-start" });
+
+    expect(started.flushedBlocks).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        content: "checking before response",
+      }),
+    ]);
+
+    const response = interpreter.handle({ type: "message.delta", content: "done" });
+    expect(response.responseDelta).toMatchObject({
+      messageId: "message-lazy-start",
+      content: "done",
+    });
+  });
+
   test("resets empty response and reasoning blocks without emitting them", () => {
     const interpreter = createInterpreter();
 

@@ -227,10 +227,16 @@ export class AgentEventTranscriptInterpreter {
     event: Extract<AgentEvent, { type: "message.start" }>,
     timestamp: string,
   ): AgentEventTranscriptResult {
+    const flushedBlocks = this.state.activeBlockKind === "reasoning"
+      ? this.flushActiveBlock(timestamp)
+      : [];
     this.resetActiveTurn();
     this.state.currentMessageId = event.messageId;
     this.state.messageCount += 1;
-    return this.createResult(event, timestamp, true);
+    return {
+      ...this.createResult(event, timestamp, true),
+      flushedBlocks,
+    };
   }
 
   private handleTextDelta(

@@ -1135,6 +1135,66 @@ describe("Chats API Integration", () => {
     }
   });
 
+  test("persists reasoning emitted before the lazy assistant message start", async () => {
+    mockBackend = new MockAcpBackend({
+      responses: ["Generated Streaming Name"],
+      streamEventSequences: [[
+        { type: "reasoning.delta", content: "Before the tool call." },
+        { type: "tool.start", toolCallId: "reasoning-tool", toolName: "read_file", input: { path: "README.md" } },
+        { type: "tool.complete", toolCallId: "reasoning-tool", toolName: "read_file", output: "README contents" },
+        { type: "reasoning.delta", content: "After the tool call, before the answer." },
+        { type: "message.start", messageId: "lazy-message-start" },
+        { type: "message.delta", content: "Done." },
+        { type: "message.complete", content: "Done." },
+      ] as BackendAgentEvent[]],
+      models: [defaultTestModel],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Inspect the repository before answering" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      const settled = await waitForChatIdle(created.config.id) as Chat;
+      expect(settled.state.messages.at(-1)?.content).toBe("Done.");
+
+      const snapshotResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`);
+      expect(snapshotResponse.status).toBe(200);
+      const snapshot = await snapshotResponse.json() as {
+        transcript: {
+          logs: Array<{ details?: { logKind?: string; responseContent?: string } }>;
+        };
+      };
+      const reasoning = snapshot.transcript.logs
+        .filter((log) => log.details?.logKind === "reasoning")
+        .map((log) => log.details?.responseContent);
+      expect(reasoning).toEqual([
+        "Before the tool call.",
+        "After the tool call, before the answer.",
+      ]);
+    } finally {
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
   test("normalizes tool matching and completion input during chat streaming", async () => {
     mockBackend = new MockAcpBackend({
       responses: ["Scripted Chat Name"],
