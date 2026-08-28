@@ -39,8 +39,7 @@ describe("SSH reliability policy", () => {
     expect(args).toContain("ConnectionAttempts=2");
     expect(args).toContain("ServerAliveInterval=30");
     expect(args).toContain("ServerAliveCountMax=3");
-    expect(args.join(" ")).toContain("-lc");
-    expect(args.join(" ")).not.toContain("-ilc");
+    expect(args.join(" ")).toContain("-ilc");
   });
 
   test("uses the code-defined SSH reliability constants", () => {

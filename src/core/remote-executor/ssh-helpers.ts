@@ -18,9 +18,9 @@ export function buildSshRemoteShellCommand(remoteCommand: string): string {
     'shell_path="${SHELL:-}"',
     'if [ -z "$shell_path" ]; then shell_path="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)"; fi',
     'if [ -z "$shell_path" ] || [ ! -x "$shell_path" ]; then shell_path="$(command -v sh 2>/dev/null || printf %s /bin/sh)"; fi',
-    // ACP and command-executor streams do not provide a TTY; keep the login
-    // environment without enabling shell job control in headless sessions.
-    `exec "$shell_path" -lc ${quoteShell(remoteCommand)}`,
+    // Keep interactive login mode: provider runtimes depend on the login shell
+    // startup files to load their environment and executable paths.
+    `exec "$shell_path" -ilc ${quoteShell(remoteCommand)}`,
     `exec sh -lc ${quoteShell(remoteCommand)}`,
   ].join("; ");
 
