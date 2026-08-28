@@ -16,6 +16,7 @@ function buildWorkspace(id: string, name: string): Workspace {
     id,
     name,
     directory: `/tmp/${id}`,
+    workspaceType: "git",
     serverSettings: {
       agent: {
         provider: "opencode",

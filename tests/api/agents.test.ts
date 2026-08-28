@@ -248,6 +248,74 @@ describe("Agents API Integration", () => {
     expect(chats).toHaveLength(0);
   });
 
+  test("runs agents directly in directory workspaces and rejects Git options", async () => {
+    const workspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Directory Agent Workspace",
+        directory: testWorkDir,
+        workspaceType: "directory",
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      }),
+    });
+    expect(workspaceResponse.status).toBe(201);
+    const directoryWorkspace = await workspaceResponse.json() as { id: string };
+
+    const invalidResponse = await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid directory agent",
+        workspaceId: directoryWorkspace.id,
+        prompt: "This should be rejected",
+        model: testModel,
+        useWorktree: true,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "UTC",
+          interval: { value: 1, unit: "hours" },
+        },
+      }),
+    });
+    expect(invalidResponse.status).toBe(409);
+    expect(await invalidResponse.json()).toMatchObject({
+      error: "workspace_git_required",
+    });
+
+    const createResponse = await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Direct directory agent",
+        workspaceId: directoryWorkspace.id,
+        prompt: "Run directly in the workspace",
+        model: testModel,
+        useWorktree: false,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "UTC",
+          interval: { value: 1, unit: "hours" },
+        },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const agent = await createResponse.json() as { config: { id: string; useWorktree: boolean; baseBranch?: string } };
+    expect(agent.config.useWorktree).toBe(false);
+    expect(agent.config.baseBranch).toBeUndefined();
+
+    const runResponse = await fetch(`${baseUrl}/api/agents/${agent.config.id}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(runResponse.status).toBe(202);
+    const startedRun = await runResponse.json() as AgentRun;
+    const completedRun = await waitForRunTerminal(startedRun.id);
+    expect(completedRun.status).toBe("completed");
+    expect(completedRun.configSnapshot.useWorktree).toBe(false);
+  });
+
   test("runs saved deterministic code and persists program stdout and stderr", async () => {
     const agent = await createAgent(
       "Deterministic output agent",

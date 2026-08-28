@@ -118,15 +118,21 @@ export function AgentFormFields({
         />
       </div>
 
-      <BranchSelector
-        selectedBranch={draft.baseBranch}
-        onBranchChange={setBaseBranch}
-        branches={branches}
-        branchesLoading={branchesLoading}
-        defaultBranch={defaultBranch}
-        currentBranch={currentBranch}
-        helpText={null}
-      />
+      {selectedWorkspace?.workspaceType === "git" ? (
+        <BranchSelector
+          selectedBranch={draft.baseBranch}
+          onBranchChange={setBaseBranch}
+          branches={branches}
+          branchesLoading={branchesLoading}
+          defaultBranch={defaultBranch}
+          currentBranch={currentBranch}
+          helpText={null}
+        />
+      ) : (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Directory workspace: this agent runs directly in the workspace directory without branches or worktrees.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <div>
@@ -173,15 +179,17 @@ export function AgentFormFields({
         </div>
       </div>
 
-      <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-        <input
-          type="checkbox"
-          checked={draft.useWorktree}
-          onChange={(event) => setUseWorktree(event.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-        />
-        Use worktree
-      </label>
+      {selectedWorkspace?.workspaceType === "git" && (
+        <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={draft.useWorktree}
+            onChange={(event) => setUseWorktree(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+          />
+          Use worktree
+        </label>
+      )}
 
       <div>
         <label htmlFor="agent-prompt" className="block text-sm font-medium text-gray-700 dark:text-gray-300">

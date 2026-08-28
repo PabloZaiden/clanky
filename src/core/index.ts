@@ -34,5 +34,6 @@ export * from "./provisioning-manager";
 export * from "./preferences-manager";
 export * from "./model-discovery";
 export * from "./workspace-manager";
+export * from "./workspace-capabilities";
 export * from "./managed-context-identity";
 export * from "./managed-credential-service";

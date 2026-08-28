@@ -144,6 +144,11 @@ const TASK_ERROR_MAPPINGS: Readonly<
     message: "Invalid task input",
     status: 400,
   },
+  workspace_git_required: {
+    error: "workspace_git_required",
+    message: "Tasks require a Git-backed workspace",
+    status: 409,
+  },
   task_not_addressable: {
     error: "invalid_state",
     message: "Task cannot receive follow-up feedback",

@@ -327,6 +327,7 @@ describe("Provisioning API integration", () => {
         id: "workspace-sensitive",
         name: "Sensitive Workspace",
         directory: "/workspaces/existing",
+        workspaceType: "git",
         serverSettings: {
           agent: {
             provider: "copilot" as const,

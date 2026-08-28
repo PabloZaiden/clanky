@@ -135,6 +135,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
     id: testWorkspaceId,
     name: "Test Workspace",
     directory: workDir,
+    workspaceType: "git",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     serverSettings: getDefaultServerSettings(),

@@ -20,6 +20,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "./model-discovery";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";
+import { assertGitBackedWorkspace } from "./workspace-capabilities";
 
 const log = createLogger("core:task-creation-service");
 
@@ -151,6 +152,7 @@ class TaskCreationService {
     const effectivePlanMode = hasUploadedPlan ? true : input.planMode;
     const effectiveAutoAcceptPlan = hasUploadedPlan ? true : input.autoAcceptPlan;
     const workspace = await workspaceManager.requireWorkspace(input.workspaceId);
+    assertGitBackedWorkspace(workspace, "Tasks require a Git-backed workspace.");
     await workspaceManager.touchWorkspace(workspace.id);
 
     let git: GitService | null = null;
@@ -238,6 +240,7 @@ class TaskCreationService {
 
   async generateTitle(input: GenerateTaskTitleRequest): Promise<string> {
     const workspace = await workspaceManager.requireWorkspace(input.workspaceId);
+    assertGitBackedWorkspace(workspace, "Task title generation requires a Git-backed workspace.");
     await workspaceManager.touchWorkspace(workspace.id);
     return await taskManager.generateTaskTitle({
       workspaceId: workspace.id,

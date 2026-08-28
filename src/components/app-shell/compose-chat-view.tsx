@@ -165,15 +165,20 @@ export function ComposeChatView({
     loadedWorkspaceRef.current = workspaceKey;
     setSelectedModel("");
     setBaseBranch("");
-    handleWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
+    handleWorkspaceChange(
+      selectedWorkspace.id,
+      selectedWorkspace.directory,
+      selectedWorkspace.workspaceType,
+    );
   }, [handleWorkspaceChange, isServerChat, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
 
   useEffect(() => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || selectedWorkspace.workspaceType !== "git") {
+      setBaseBranch("");
       return;
     }
     setBaseBranch((current) => current || defaultBranch || currentBranch);
-  }, [currentBranch, defaultBranch, selectedWorkspace?.id]);
+  }, [currentBranch, defaultBranch, selectedWorkspace?.id, selectedWorkspace?.workspaceType]);
 
   useEffect(() => {
     if (isServerChat || !importExistingSession || !selectedWorkspace) {
@@ -451,9 +456,11 @@ export function ComposeChatView({
           modelID: parsedModel.modelID,
           variant: parsedModel.variant ?? "",
         },
-        useWorktree,
+        useWorktree: selectedWorkspace.workspaceType === "git" ? useWorktree : false,
         autoApprovePermissions,
-        baseBranch: baseBranch.trim() || currentBranch.trim(),
+        ...(selectedWorkspace.workspaceType === "git"
+          ? { baseBranch: baseBranch.trim() || currentBranch.trim() }
+          : {}),
         quick: false,
       });
       if (!chat) {
@@ -492,7 +499,11 @@ export function ComposeChatView({
       : ""
   );
   const canSubmit = !isSubmitting
-    && (isServerChat || !branchesLoading)
+    && (
+      isServerChat
+      || selectedWorkspace?.workspaceType !== "git"
+      || !branchesLoading
+    )
     && !modelOptionsLoading
     && !importSessionsLoading
     && (isServerChat || Boolean(selectedWorkspace))
@@ -637,7 +648,7 @@ export function ComposeChatView({
           />
         </div>
 
-        {!isServerChat && (
+        {!isServerChat && selectedWorkspace?.workspaceType === "git" && (
           <BranchSelector
           selectedBranch={baseBranch}
           onBranchChange={setBaseBranch}
@@ -649,7 +660,7 @@ export function ComposeChatView({
           />
         )}
 
-        {!isServerChat && (
+        {!isServerChat && selectedWorkspace?.workspaceType === "git" && (
           <div>
           <label className="flex items-start gap-3">
             <input
@@ -669,6 +680,12 @@ export function ComposeChatView({
             </div>
           </label>
         </div>
+        )}
+
+        {!isServerChat && selectedWorkspace?.workspaceType === "directory" && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Directory workspace: this chat runs directly in the workspace directory without branches or worktrees.
+        </p>
         )}
 
         <div>

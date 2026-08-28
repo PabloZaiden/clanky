@@ -54,6 +54,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setWorkspaceName,
     workspaceDirectory,
     setWorkspaceDirectory,
+    workspaceType,
+    setWorkspaceType,
     workspaceServerSettings,
     workspaceExecutionNodeId,
     setWorkspaceExecutionNodeId,
@@ -276,6 +278,20 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 required
                 hint="Absolute path on the selected workspace host."
               />
+              <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={workspaceType === "git"}
+                  onChange={(event) => setWorkspaceType(event.target.checked ? "git" : "directory")}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex-1">
+                  <span className="block font-medium">Git-backed workspace</span>
+                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                    Required for tasks, branches, worktrees, GitHub, and Git maintenance. Uncheck to run chats and agents directly in this directory.
+                  </span>
+                </span>
+              </label>
               <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
                 initialExecutionNodeId={workspaceExecutionNodeId}

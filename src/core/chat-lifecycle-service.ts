@@ -23,6 +23,7 @@ import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
+import { assertGitBackedWorkspace, isGitBackedWorkspace } from "./workspace-capabilities";
 import type {
   ChatConfigUpdates,
   ChatConversationPort,
@@ -87,6 +88,19 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (scope === "workspace" && options.taskId) {
       throw new Error("Standalone chats cannot specify a taskId");
     }
+    if (
+      !isGitBackedWorkspace(workspace)
+      && (
+        scope === "task"
+        || options.useWorktree === true
+        || options.baseBranch !== undefined
+      )
+    ) {
+      assertGitBackedWorkspace(
+        workspace,
+        "Directory workspaces do not support branches or worktrees.",
+      );
+    }
 
     const id = crypto.randomUUID();
     const now = createTimestamp();
@@ -118,10 +132,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           modelID: options.modelID,
           variant: options.modelVariant ?? "",
         },
-        useWorktree: scope === "task" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
+        useWorktree: scope === "task"
+          ? false
+          : isGitBackedWorkspace(workspace)
+            ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
+            : false,
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         skipBaseBranchSync: options.syncBaseBranch === false,
-        baseBranch: options.baseBranch,
+        baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,
         createdAt: now,
         updatedAt: now,
         mode: DEFAULT_CHAT_CONFIG.mode,
@@ -413,6 +431,19 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     const chat = await this.state.getChat(chatId);
     if (!chat) {
       return null;
+    }
+    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
+    }
+    if (
+      !isGitBackedWorkspace(workspace)
+      && (updates.useWorktree === true || updates.baseBranch !== undefined)
+    ) {
+      assertGitBackedWorkspace(
+        workspace,
+        "Directory workspaces do not support branches or worktrees.",
+      );
     }
 
     const config: ChatConfig = {

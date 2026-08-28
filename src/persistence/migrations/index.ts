@@ -1288,6 +1288,19 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 36,
+    name: "add_workspace_type",
+    up: (db) => {
+      if (!tableExists(db, "workspaces")) {
+        return;
+      }
+      const columns = getTableColumns(db, "workspaces");
+      if (!columns.includes("workspace_type")) {
+        db.run("ALTER TABLE workspaces ADD COLUMN workspace_type TEXT NOT NULL DEFAULT 'git'");
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

@@ -25,8 +25,10 @@ export interface Workspace {
   id: string;
   /** Human-readable workspace name */
   name: string;
-  /** Absolute path to the directory (must be a git repository) */
+  /** Absolute path to the workspace directory */
   directory: string;
+  /** Whether the workspace exposes Git-backed task and branch capabilities */
+  workspaceType: WorkspaceType;
   /** Mesh node that owns execution of this workspace when using stdio transport */
   executionNodeId?: string | null;
   /** Server connection settings for this workspace */
@@ -54,6 +56,10 @@ export interface Workspace {
   /** Agent provider used during provisioning */
   provider?: AgentProvider;
 }
+
+export type WorkspaceType = "git" | "directory";
+
+export const DEFAULT_WORKSPACE_TYPE: WorkspaceType = "git";
 
 export interface WorkspaceExecutionTarget {
   nodeId: string;

@@ -78,6 +78,7 @@ export {
 export {
   AgentProviderSchema,
   AgentTransportSchema,
+  WorkspaceTypeSchema,
   AgentSettingsSchema,
   ServerSettingsSchema,
   CreateWorkspaceRequestSchema,

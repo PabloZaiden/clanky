@@ -10,6 +10,7 @@ import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 
 interface ChatActionItemOptions {
   chat: Chat;
+  canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
   spawnPending: boolean;
   spawnCurrentPlanPending: boolean;
@@ -25,6 +26,7 @@ interface ChatActionItemOptions {
 
 interface UseChatActionsOptions {
   chat: Chat | null;
+  canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
   onOpenCodeExplorer?: (chat: Chat) => void;
   onTaskSpawned?: (task: Task) => void;
@@ -54,6 +56,7 @@ function getChatTranscriptDownloadUrl(chat: Chat): string {
 
 function buildChatActionItems({
   chat,
+  canSpawnTasks,
   hasCodeExplorerAction,
   spawnPending,
   spawnCurrentPlanPending,
@@ -70,7 +73,7 @@ function buildChatActionItems({
   const hasMessages = chat.state.hasMessages ?? chat.state.messages.length > 0;
   const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
 
-  return [
+  const taskActions: ActionMenuItem[] = canSpawnTasks ? [
     {
       id: "spawn-task",
       label: spawnPending ? "Spawning task..." : "Spawn Task",
@@ -83,6 +86,10 @@ function buildChatActionItems({
       onAction: onSpawnTaskFromCurrentPlan,
       disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
     },
+  ] : [];
+
+  return [
+    ...taskActions,
     {
       id: "code-explorer",
       label: "Code explorer",
@@ -117,6 +124,7 @@ function buildChatActionItems({
 
 export function useChatActions({
   chat,
+  canSpawnTasks,
   hasCodeExplorerAction,
   onOpenCodeExplorer,
   onTaskSpawned,
@@ -151,7 +159,7 @@ export function useChatActions({
   }
 
   async function spawnTask(target: Chat): Promise<void> {
-    if (isSpawnPending || isSpawnCurrentPlanPending) {
+    if (!canSpawnTasks || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
 
@@ -171,7 +179,7 @@ export function useChatActions({
   }
 
   function openSpawnCurrentPlanModal(target: Chat): void {
-    if (isSpawnPending || isSpawnCurrentPlanPending) {
+    if (!canSpawnTasks || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
 
@@ -189,7 +197,7 @@ export function useChatActions({
   }
 
   async function spawnTaskFromCurrentPlan(requestedPlanPath: string): Promise<void> {
-    if (!spawnCurrentPlanTarget || isSpawnPending || isSpawnCurrentPlanPending) {
+    if (!canSpawnTasks || !spawnCurrentPlanTarget || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
 
@@ -260,6 +268,7 @@ export function useChatActions({
 
     return buildChatActionItems({
       chat,
+      canSpawnTasks,
       hasCodeExplorerAction,
       spawnPending: isSpawnPending,
       spawnCurrentPlanPending: isSpawnCurrentPlanPending,
@@ -273,6 +282,7 @@ export function useChatActions({
       onDelete: () => setDeleteTarget(chat),
     });
   }, [
+    canSpawnTasks,
     chat,
     hasCodeExplorerAction,
     isMarkDonePending,
@@ -337,16 +347,18 @@ export function useChatActions({
         <></>
         <p>Open the transcript in a standalone window or download it as a Markdown file.</p>
       </Modal>
-      <SpawnCurrentPlanModal
-        isOpen={spawnCurrentPlanTarget !== null}
-        submitting={isSpawnCurrentPlanPending}
-        initialPlanFilePath={spawnCurrentPlanPath}
-        onClose={closeSpawnCurrentPlanModal}
-        onSubmit={async (planFilePath) => {
-          setSpawnCurrentPlanPath(planFilePath);
-          await spawnTaskFromCurrentPlan(planFilePath);
-        }}
-      />
+      {canSpawnTasks ? (
+        <SpawnCurrentPlanModal
+          isOpen={spawnCurrentPlanTarget !== null}
+          submitting={isSpawnCurrentPlanPending}
+          initialPlanFilePath={spawnCurrentPlanPath}
+          onClose={closeSpawnCurrentPlanModal}
+          onSubmit={async (planFilePath) => {
+            setSpawnCurrentPlanPath(planFilePath);
+            await spawnTaskFromCurrentPlan(planFilePath);
+          }}
+        />
+      ) : null}
     </>
   );
 

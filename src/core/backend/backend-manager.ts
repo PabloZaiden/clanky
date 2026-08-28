@@ -500,8 +500,8 @@ class BackendManager {
   }
 
   /**
-   * Validate that a directory exists and is a git repository on the remote server.
-   * This is used during workspace creation to validate the directory before saving.
+   * Validate that a directory exists and report whether it is a git repository.
+   * Workspace creation decides whether the reported Git capability is required.
    *
    * @param settings - Server settings to use for connection
    * @param directory - The directory to validate

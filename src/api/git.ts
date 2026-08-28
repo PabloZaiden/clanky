@@ -29,7 +29,7 @@ import type {
 } from "@/contracts";
 import type { CommandExecutor } from "../core/command-executor";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { errorResponse, internalErrorResponse, requireWorkspace } from "./helpers";
+import { errorResponse, internalErrorResponse, requireGitBackedWorkspace, requireWorkspace } from "./helpers";
 
 const log = createLogger("api:git");
 
@@ -58,7 +58,11 @@ async function resolveGitHubRepositoryUrl(
   if (workspaceResult instanceof Response) {
     return workspaceResult;
   }
-  const workspace = workspaceResult;
+  const gitWorkspace = requireGitBackedWorkspace(workspaceResult);
+  if (gitWorkspace instanceof Response) {
+    return gitWorkspace;
+  }
+  const workspace = gitWorkspace;
   const directory = workspace.directory;
 
   const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
@@ -111,10 +115,14 @@ async function validateGitRequest(req: Request): Promise<
   if (workspace instanceof Response) {
     return workspace;
   }
+  const gitWorkspace = requireGitBackedWorkspace(workspace);
+  if (gitWorkspace instanceof Response) {
+    return gitWorkspace;
+  }
 
-  const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+  const executor = await backendManager.getCommandExecutorAsync(gitWorkspace.id, gitWorkspace.directory);
   const git = GitService.withExecutor(executor);
-  const directory = workspace.directory;
+  const directory = gitWorkspace.directory;
   const isGitRepo = await git.isGitRepo(directory);
   if (!isGitRepo) {
     log.debug("Workspace directory is not a git repository", {

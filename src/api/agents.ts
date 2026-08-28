@@ -20,6 +20,7 @@ import { parseAndValidate, validateRequest } from "./validation";
 import { generateDeterministicAgentCode } from "../core/deterministic-agent-generation";
 import { testDeterministicAgentCode } from "../core/deterministic-agent-test";
 import { isDomainError } from "../core/domain-error";
+import { isGitBackedWorkspace } from "../core/workspace-capabilities";
 import {
   getAgentRunTranscriptSnapshot,
   getAgentRunTranscriptToolCall,
@@ -417,6 +418,16 @@ async function prepareDeterministicAgentTest(
   if (workspace instanceof Response) {
     return workspace;
   }
+  if (
+    !isGitBackedWorkspace(workspace)
+    && (body.useWorktree || body.baseBranch !== undefined)
+  ) {
+    return errorResponse(
+      "workspace_git_required",
+      "Directory workspaces do not support branches or worktrees.",
+      409,
+    );
+  }
   const modelValidation = await validateAgentModel(body.workspaceId, body.model);
   if (modelValidation) {
     return modelValidation;
@@ -670,6 +681,20 @@ export const agentsRoutes = defineRoutes({
       }
 
       const body = validation.data;
+      const workspace = await requireWorkspace(body.workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+      if (
+        !isGitBackedWorkspace(workspace)
+        && (body.useWorktree || body.baseBranch !== undefined)
+      ) {
+        return errorResponse(
+          "workspace_git_required",
+          "Directory workspaces do not support branches or worktrees.",
+          409,
+        );
+      }
       const modelValidation = await validateAgentModel(body.workspaceId, body.model);
       if (modelValidation) {
         return modelValidation;
@@ -687,6 +712,10 @@ export const agentsRoutes = defineRoutes({
           agent_code_invalid: {
             error: "agent_code_invalid",
             status: 400,
+          },
+          workspace_git_required: {
+            error: "workspace_git_required",
+            status: 409,
           },
         });
         if (response.status >= 500) {
@@ -760,6 +789,10 @@ export const agentsRoutes = defineRoutes({
           agent_code_invalid: {
             error: "agent_code_invalid",
             status: 400,
+          },
+          workspace_git_required: {
+            error: "workspace_git_required",
+            status: 409,
           },
         });
         if (response.status >= 500) {

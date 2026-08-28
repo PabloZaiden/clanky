@@ -376,17 +376,18 @@ function getWorkspaceSidebarActions(
   const workspaceId = workspaceNode.workspace.id;
   const workspaceArchived = workspaceNode.workspace.archived === true;
   const workspaceArchiving = handlers.archivingWorkspaceIds.has(workspaceId);
+  const isGitBacked = workspaceNode.workspace.workspaceType === "git";
   return withPrivateToggleAction(
     sidebarActionItems([
-      {
-        id: "new-task",
-        label: "New Task",
-        onClick: () => handlers.navigateWithinShell({
-          view: "compose",
-          kind: "task",
-          scopeId: workspaceId,
-        }),
-      },
+      ...(isGitBacked ? [{
+          id: "new-task",
+          label: "New Task",
+          onClick: () => handlers.navigateWithinShell({
+            view: "compose",
+            kind: "task",
+            scopeId: workspaceId,
+          }),
+        }] : []),
       {
         id: "new-chat",
         label: "New Chat",
@@ -422,22 +423,24 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
-      {
-        id: "pull-latest-changes",
-        label: handlers.pullingLatestWorkspaceIds.has(workspaceId)
-          ? "Pulling Latest Changes..."
-          : "Pull Latest Changes",
-        disabled: handlers.pullingLatestWorkspaceIds.has(workspaceId),
-        onClick: () => void handlers.pullLatestWorkspaceChanges(workspaceId),
-      },
-      {
-        id: "open-github",
-        label: "Open in GitHub",
-        onClick: () => void openWorkspaceGitHubUrl(
-          workspaceNode.workspace,
-          handlers.onError,
-        ),
-      },
+      ...(isGitBacked ? [
+        {
+          id: "pull-latest-changes",
+          label: handlers.pullingLatestWorkspaceIds.has(workspaceId)
+            ? "Pulling Latest Changes..."
+            : "Pull Latest Changes",
+          disabled: handlers.pullingLatestWorkspaceIds.has(workspaceId),
+          onClick: () => void handlers.pullLatestWorkspaceChanges(workspaceId),
+        },
+        {
+          id: "open-github",
+          label: "Open in GitHub",
+          onClick: () => void openWorkspaceGitHubUrl(
+            workspaceNode.workspace,
+            handlers.onError,
+          ),
+        },
+      ] : []),
       ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
         ? [{
             id: "new-ssh-session",
@@ -738,9 +741,10 @@ function buildSidebarNodes(
       [],
       handlers.showPrivateItems,
     );
+    const isGitBacked = workspaceNode.workspace.workspaceType === "git";
     const children: SidebarNode[] = [
-      {
-        type: "section",
+      ...(isGitBacked ? [{
+        type: "section" as const,
         id: `workspace:${workspaceId}:tasks`,
         title: "Tasks",
         action: {
@@ -797,7 +801,7 @@ function buildSidebarNodes(
             }),
           }] : []),
         ],
-      },
+      }] : []),
       {
         type: "section",
         id: `workspace:${workspaceId}:chats`,
@@ -882,7 +886,8 @@ function buildSidebarNodes(
       type: "item",
       id: `workspace:${workspaceId}`,
       title: workspaceNode.workspace.name,
-      searchText: workspaceNode.workspace.directory,
+      subtitle: isGitBacked ? "Git-backed workspace" : "Directory workspace",
+      searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
       route: { view: "workspace", workspaceId },
       actions: privateActions(
         getWorkspaceSidebarActions(workspaceNode, handlers),

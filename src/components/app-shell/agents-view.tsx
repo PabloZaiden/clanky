@@ -104,7 +104,11 @@ function AgentForm({
   branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
-  onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
+  onWorkspaceChange: (
+    workspaceId: string | null,
+    directory: string,
+    workspaceType?: Workspace["workspaceType"],
+  ) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   onUpdateAgent: UseAgentsResult["updateAgent"];
   onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];

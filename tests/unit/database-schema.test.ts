@@ -96,6 +96,7 @@ describe("database schema", () => {
       expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("workspaces")).toContain("allow_clanky_context");
       expect(columnNames("workspaces")).toContain("execution_node_id");
+      expect(columnNames("workspaces")).toContain("workspace_type");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
       expect(tableNames()).toContain("clanky_context_api_keys");
@@ -214,6 +215,32 @@ describe("database schema", () => {
       }>;
       const issueNumberColumn = columns.find((column) => column.name === "issue_number");
       expect(issueNumberColumn?.type).toBe("INTEGER");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v36 adds workspace types idempotently with a Git default", () => {
+    const migration = migrations.find((candidate) => candidate.version === 36);
+    if (!migration) {
+      throw new Error("Migration v36 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      const columns = workspaceColumnInfo(db);
+      const workspaceTypeColumn = columns.find((column) => column.name === "workspace_type");
+      expect(workspaceTypeColumn?.notnull).toBe(1);
+      expect(workspaceTypeColumn?.dflt_value).toBe("'git'");
+
+      db.run("INSERT INTO workspaces (id) VALUES (?)", ["legacy-workspace"]);
+      const row = db.query("SELECT workspace_type FROM workspaces WHERE id = ?")
+        .get("legacy-workspace") as { workspace_type: string };
+      expect(row.workspace_type).toBe("git");
     } finally {
       db.close();
     }

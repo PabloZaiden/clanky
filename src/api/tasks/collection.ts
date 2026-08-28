@@ -25,6 +25,9 @@ function mapTaskCreationError(error: unknown, workspaceId: string): Response | n
   if (error.code === "workspace_not_found") {
     return errorResponse("workspace_not_found", `Workspace not found: ${workspaceId}`, 404);
   }
+  if (error.code === "workspace_git_required") {
+    return errorResponse(error.code, error.message, 409);
+  }
 
   return errorResponse(error.code, error.message, 400);
 }
@@ -137,6 +140,9 @@ export const tasksCollectionRoutes = defineRoutes({
             `Workspace not found: ${validation.data.workspaceId}`,
             404,
           );
+        }
+        if (isDomainError(error) && error.code === "workspace_git_required") {
+          return errorResponse(error.code, error.message, 409);
         }
 
         log.error("Failed to generate task title", {

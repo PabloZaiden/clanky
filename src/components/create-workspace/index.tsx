@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent } fro
 import { Modal } from "@pablozaiden/webapp/web";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import type { AgentProvider, ServerSettings, SshServer } from "@/shared";
+import type { AgentProvider, ServerSettings, SshServer, WorkspaceType } from "@/shared";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { apiRequest } from "../../lib/api-client";
 import {
@@ -79,6 +79,7 @@ export function CreateWorkspaceModal({
   // Workspace form state
   const [name, setName] = useState("");
   const [directory, setDirectory] = useState("");
+  const [workspaceType, setWorkspaceType] = useState<WorkspaceType>("git");
   const [mode, setMode] = useState<"manual" | "automatic">("manual");
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticExecutionNodeId, setAutomaticExecutionNodeId] = useState<string | null>(null);
@@ -122,6 +123,7 @@ export function CreateWorkspaceModal({
     setMode("manual");
     setName("");
     setDirectory("");
+    setWorkspaceType("git");
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(registeredSshServers);
     setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
     setAutomaticExecutionNodeId(null);
@@ -209,6 +211,7 @@ export function CreateWorkspaceModal({
     const request: CreateWorkspaceRequest = {
       name: name.trim(),
       directory: directory.trim(),
+      workspaceType,
       serverSettings,
       executionNodeId: serverSettings.agent.transport === "stdio" ? executionNodeId : null,
     };
@@ -390,6 +393,8 @@ export function CreateWorkspaceModal({
             <ManualWorkspaceForm
               directory={directory}
               onDirectoryChange={setDirectory}
+              workspaceType={workspaceType}
+              onWorkspaceTypeChange={setWorkspaceType}
               defaultServerSettings={defaultServerSettings}
               executionNodeId={executionNodeId}
               onServerSettingsChange={handleServerSettingsChange}

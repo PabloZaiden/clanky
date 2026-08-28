@@ -269,6 +269,40 @@ describe("Tasks CRUD API Integration", () => {
       expect(["starting", "running", "completed"]).toContain(body.state.status);
     });
 
+    test("rejects task creation for directory workspaces", async () => {
+      const workspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Directory Task Workspace",
+          directory: testWorkDir,
+          workspaceType: "directory",
+          serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        }),
+      });
+      expect(workspaceResponse.status).toBe(201);
+      const workspace = await workspaceResponse.json() as { id: string };
+
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: workspace.id,
+          prompt: "This must not create a task",
+          name: "Directory Task",
+          planMode: false,
+          model: testModel,
+          useWorktree: false,
+        }),
+      });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: "workspace_git_required",
+      });
+    });
+
     test("creates a task with optional fields", async () => {
       const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",

@@ -122,7 +122,8 @@ export function CreateTaskForm({
     renderActions,
     uploadedPlan,
   });
-  const selectedWorkspace = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
+  const gitBackedWorkspaces = workspaces.filter((workspace) => workspace.workspaceType === "git");
+  const selectedWorkspace = gitBackedWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   const uploadedPlanLocked = !!uploadedPlan;
   const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
   const {
@@ -172,7 +173,7 @@ export function CreateTaskForm({
       {/* Workspace Selection */}
       <div>
         <WorkspaceSelector
-          workspaces={workspaces}
+          workspaces={gitBackedWorkspaces}
           loading={workspacesLoading}
           selectedWorkspaceId={selectedWorkspaceId}
           onSelect={handleWorkspaceSelect}

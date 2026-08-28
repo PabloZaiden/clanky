@@ -94,7 +94,7 @@ export function QuickChatModelRowContent({
 
     void fetchModels();
     return () => controller.abort();
-  }, [workspace?.directory, workspace?.id]);
+  }, [workspace?.directory, workspace?.id, workspace?.workspaceType]);
 
   const modelOptions = useMemo(() => ({
     showDisconnected: true,
@@ -116,7 +116,7 @@ export function QuickChatModelRowContent({
       await onUpdate({
         workspaceId: workspace?.id ?? "",
         model: null,
-        useWorktree: settings.useWorktree,
+        useWorktree: workspace?.workspaceType === "git" ? settings.useWorktree : false,
       });
       return;
     }
@@ -128,7 +128,7 @@ export function QuickChatModelRowContent({
         modelID: parsedModel.modelID,
         variant: parsedModel.variant,
       },
-      useWorktree: settings.useWorktree,
+      useWorktree: workspace.workspaceType === "git" ? settings.useWorktree : false,
     });
   }
 

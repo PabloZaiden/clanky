@@ -9,6 +9,7 @@ import type {
   Task,
   Workspace,
 } from "@/shared";
+import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
 import {
   stopTaskApi,
   type UseAgentsResult,
@@ -181,8 +182,19 @@ export function useShellActions({
   const handleSidebarMarkChatDone = useCallback(async (chat: Chat): Promise<void> => {
     await handleMarkChatDone(chat);
   }, [handleMarkChatDone]);
+  const canSpawnTasksFromSelectedChat = useMemo(() => {
+    if (!selectedChat || !isWorkspaceChat(selectedChat)) {
+      return true;
+    }
+
+    const workspaceId = getChatWorkspaceId(selectedChat);
+    return workspaceGroups.some(({ workspace }) =>
+      workspace.id === workspaceId && workspace.workspaceType === "git"
+    );
+  }, [selectedChat, workspaceGroups]);
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
+    canSpawnTasks: canSpawnTasksFromSelectedChat,
     hasCodeExplorerAction: true,
     onOpenCodeExplorer: (chat) => navigateWithinShell({
       view: "code-explorer",

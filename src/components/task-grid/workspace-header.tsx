@@ -47,7 +47,9 @@ export function WorkspaceHeader({
           {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
         </span>
         <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">
-          ({taskCount} {taskCount === 1 ? "task" : "tasks"})
+          {workspace.workspaceType === "git"
+            ? `(${taskCount} ${taskCount === 1 ? "task" : "tasks"})`
+            : "(directory workspace)"}
         </span>
       </div>
     </div>

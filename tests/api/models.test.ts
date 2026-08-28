@@ -37,6 +37,7 @@ function makeWorkspace(
     id,
     name: id,
     directory,
+    workspaceType: "git",
     createdAt: now,
     updatedAt: now,
     serverSettings: {

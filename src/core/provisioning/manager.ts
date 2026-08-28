@@ -420,6 +420,7 @@ export class ProvisioningManager {
         id: crypto.randomUUID(),
         name: record.job.config.name,
         directory: resolvedDirectory,
+        workspaceType: "git" as const,
         executionNodeId: executionNodeId ?? null,
         serverSettings,
         createdAt: now,

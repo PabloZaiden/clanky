@@ -18,6 +18,7 @@ export type TaskErrorCode =
   | "task_worktree_missing"
   | "operation_in_progress"
   | "invalid_task_input"
+  | "workspace_git_required"
   | "task_not_addressable"
   | "automatic_pr_flow_disabled"
   | "automatic_pr_flow_busy"
