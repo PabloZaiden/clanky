@@ -6,15 +6,11 @@ import { z } from "zod";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_PAIRING_DIRECTIONS,
-  MESH_CONFLICT_RESOLUTIONS,
-  MESH_SYNC_AGGREGATE_TYPES,
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
 export const MeshPairingDirectionSchema = z.enum(MESH_PAIRING_DIRECTIONS);
-export const MeshSyncAggregateTypeSchema = z.enum(MESH_SYNC_AGGREGATE_TYPES);
-export const MeshConflictResolutionSchema = z.enum(MESH_CONFLICT_RESOLUTIONS);
 export const MeshInstanceNameSchema = z.string()
   .trim()
   .min(1)
@@ -54,14 +50,6 @@ export const CompleteMeshPairingRequestSchema = z.object({
   fingerprint: z.string().trim().min(1),
 });
 
-export const ResolveMeshSyncConflictSchema = z.object({
-  resolution: MeshConflictResolutionSchema,
-});
-
-export const MeshTakeoverRequestSchema = z.object({
-  expectedGeneration: z.number().int().nonnegative().optional(),
-});
-
 export const RevokeMeshMemberRequestSchema = z.object({
   nodeId: z.string().trim().min(1),
 });
@@ -95,8 +83,6 @@ export const MeshPeerPairingApprovalSchema = z.object({
   approvedByNodeId: z.string().trim().min(1),
   approvedByInstanceName: MeshInstanceNameSchema.nullable().optional(),
   approvedByLocalUserId: z.string().trim().min(1),
-  activeNodeId: z.string().trim().min(1).nullable(),
-  takeoverGeneration: z.number().int().nonnegative(),
   endpoint: MeshEndpointSchema,
   transport: MeshTransportSchema,
   publicKey: z.string().min(1),
@@ -117,33 +103,7 @@ export const MeshPeerPairingApprovalSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshTakeoverEnvelopeSchema = z.object({
-  protocolVersion: z.literal(1),
-  linkId: z.string().trim().min(1),
-  senderNodeId: z.string().trim().min(1),
-  senderPublicKey: z.string().min(1),
-  senderFingerprint: z.string().trim().min(1),
-  generation: z.number().int().positive(),
-  claimedAt: z.string().datetime(),
-  claimOrigin: z.string().trim().min(1),
-  signature: z.string().trim().min(1),
-});
-
-const MeshSyncCheckpointSchema = z.object({
-  checkpointId: z.string().trim().min(1),
-  linkId: z.string().trim().min(1),
-  aggregateType: MeshSyncAggregateTypeSchema,
-  aggregateId: z.string().trim().min(1),
-  originNodeId: z.string().trim().min(1),
-  baseRevision: z.number().int().nonnegative(),
-  targetRevision: z.number().int().positive(),
-  basePayload: z.unknown().nullable(),
-  payload: z.unknown().nullable(),
-  tombstone: z.boolean(),
-  createdAt: z.string().datetime(),
-});
-
-const MeshMemberSnapshotSchema = z.object({
+const MeshMemberSchema = z.object({
   nodeId: z.string().trim().min(1),
   instanceName: MeshInstanceNameSchema.nullable().optional(),
   localUserId: z.string().trim().min(1),
@@ -156,7 +116,7 @@ const MeshMemberSnapshotSchema = z.object({
   encryptionPublicKey: z.string().min(1).optional(),
 });
 
-const MeshSyncIdentitySchema = z.object({
+export const MeshMembershipUpdateSchema = z.object({
   protocolVersion: z.literal(1),
   linkId: z.string().trim().min(1),
   senderNodeId: z.string().trim().min(1),
@@ -164,23 +124,18 @@ const MeshSyncIdentitySchema = z.object({
   senderFingerprint: z.string().trim().min(1),
   senderEncryptionPublicKey: z.string().min(1).optional(),
   nonce: z.string().trim().min(1),
-});
-
-export const MeshSyncPushSchema = MeshSyncIdentitySchema.extend({
-  checkpoints: z.array(MeshSyncCheckpointSchema).min(1).max(100),
-  members: z.array(MeshMemberSnapshotSchema).max(100).optional(),
-  takeover: MeshTakeoverEnvelopeSchema.optional(),
+  members: z.array(MeshMemberSchema).min(1).max(100),
   signature: z.string().trim().min(1),
 });
 
-export const MeshSyncAckSchema = MeshSyncIdentitySchema.extend({
-  acknowledgements: z.array(z.object({
-    checkpointId: z.string().trim().min(1),
-    aggregateType: MeshSyncAggregateTypeSchema,
-    aggregateId: z.string().trim().min(1),
-    originNodeId: z.string().trim().min(1),
-    appliedRevision: z.number().int().nonnegative(),
-  })).max(100),
+export const MeshHealthCheckSchema = z.object({
+  protocolVersion: z.literal(1),
+  linkId: z.string().trim().min(1),
+  senderNodeId: z.string().trim().min(1),
+  senderPublicKey: z.string().min(1),
+  senderFingerprint: z.string().trim().min(1),
+  nonce: z.string().trim().min(1),
+  sentAt: z.string().datetime(),
   signature: z.string().trim().min(1),
 });
 
@@ -189,11 +144,8 @@ export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNam
 export type ApproveMeshPairingRequest = z.infer<typeof ApproveMeshPairingRequestSchema>;
 export type RejectMeshPairingRequest = z.infer<typeof RejectMeshPairingRequestSchema>;
 export type CompleteMeshPairingRequest = z.infer<typeof CompleteMeshPairingRequestSchema>;
-export type ResolveMeshSyncConflictRequest = z.infer<typeof ResolveMeshSyncConflictSchema>;
-export type MeshTakeoverRequest = z.infer<typeof MeshTakeoverRequestSchema>;
 export type RevokeMeshMemberRequest = z.infer<typeof RevokeMeshMemberRequestSchema>;
-export type MeshTakeoverEnvelope = z.infer<typeof MeshTakeoverEnvelopeSchema>;
 export type MeshPeerPairingRequest = z.infer<typeof MeshPeerPairingRequestSchema>;
 export type MeshPeerPairingApproval = z.infer<typeof MeshPeerPairingApprovalSchema>;
-export type MeshSyncPush = z.infer<typeof MeshSyncPushSchema>;
-export type MeshSyncAck = z.infer<typeof MeshSyncAckSchema>;
+export type MeshMembershipUpdate = z.infer<typeof MeshMembershipUpdateSchema>;
+export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;

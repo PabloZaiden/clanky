@@ -226,6 +226,24 @@ describe("Workspace API Integration", () => {
     });
   });
 
+  describe("GET /api/workspaces/execution-targets", () => {
+    test("lists the local stdio target", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces/execution-targets`);
+      expect(response.ok).toBe(true);
+      const targets = await response.json() as Array<{
+        nodeId: string;
+        kind: string;
+        availability: string;
+      }>;
+      expect(targets).toHaveLength(1);
+      expect(targets[0]).toMatchObject({
+        kind: "local",
+        availability: "local",
+      });
+      expect(targets[0]!.nodeId.length).toBeGreaterThan(0);
+    });
+  });
+
   describe("sensitive workspace reads", () => {
     test("hides secrets on detail and server-settings reads unless sensitive=true", async () => {
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -306,7 +324,7 @@ describe("Workspace API Integration", () => {
       expect(data.allowClankyContext).toBe(false);
     });
 
-    test("assigns stdio ownership server-side instead of accepting a client node", async () => {
+    test("rejects an untrusted stdio execution node", async () => {
       const response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -318,12 +336,10 @@ describe("Workspace API Integration", () => {
         }),
       });
 
-      expect(response.ok).toBe(true);
-      const created = await response.json() as { id: string; executionNodeId?: string | null };
-      expect(created.executionNodeId).toBeTruthy();
-      expect(created.executionNodeId).not.toBe("attacker-node");
-      const persistedResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
-      expect((await persistedResponse.json()).executionNodeId).toBe(created.executionNodeId);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "workspace_execution_target_not_trusted",
+      });
     });
 
     test("keeps SSH workspace execution ownership null", async () => {

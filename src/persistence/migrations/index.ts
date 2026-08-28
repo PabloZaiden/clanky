@@ -1054,6 +1054,240 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 35,
+    name: "simplify_mesh_transport_control_plane",
+    transactional: false,
+    up: (db) => {
+      if (tableExists(db, "workspaces") && tableExists(db, "mesh_node_identity")) {
+        const cleanupRemoteWorkspaces = db.transaction(() => {
+          const deleteIfPresent = (tableName: string, sql: string): void => {
+            if (tableExists(db, tableName)) {
+              db.run(sql);
+            }
+          };
+          db.run("DROP TABLE IF EXISTS temp.mesh_remote_workspace_cleanup");
+          db.run(`
+            CREATE TEMP TABLE mesh_remote_workspace_cleanup (
+              workspace_id TEXT PRIMARY KEY
+            )
+          `);
+          db.run(`
+            INSERT INTO mesh_remote_workspace_cleanup (workspace_id)
+            SELECT workspace.id
+            FROM workspaces AS workspace
+            JOIN mesh_node_identity AS identity ON identity.singleton = 1
+            WHERE workspace.execution_node_id IS NOT NULL
+              AND workspace.execution_node_id <> identity.node_id
+          `);
+          deleteIfPresent("review_comments", `
+            DELETE FROM review_comments
+            WHERE task_id IN (
+              SELECT task.id
+              FROM tasks AS task
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = task.workspace_id
+            )
+          `);
+          deleteIfPresent("sessions", `
+            DELETE FROM sessions
+            WHERE task_id IN (
+              SELECT task.id
+              FROM tasks AS task
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = task.workspace_id
+            )
+          `);
+          deleteIfPresent("clanky_context_api_keys", `
+            DELETE FROM clanky_context_api_keys
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          deleteIfPresent("task_transcript_entries", `
+            DELETE FROM task_transcript_entries
+            WHERE task_id IN (
+              SELECT task.id
+              FROM tasks AS task
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = task.workspace_id
+            )
+          `);
+          deleteIfPresent("task_transcript_meta", `
+            DELETE FROM task_transcript_meta
+            WHERE task_id IN (
+              SELECT task.id
+              FROM tasks AS task
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = task.workspace_id
+            )
+          `);
+          deleteIfPresent("chat_transcript_entries", `
+            DELETE FROM chat_transcript_entries
+            WHERE chat_id IN (
+              SELECT chat.id
+              FROM chats AS chat
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = chat.workspace_id
+            )
+          `);
+          deleteIfPresent("chat_transcript_meta", `
+            DELETE FROM chat_transcript_meta
+            WHERE chat_id IN (
+              SELECT chat.id
+              FROM chats AS chat
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = chat.workspace_id
+            )
+          `);
+          deleteIfPresent("agent_run_transcript_entries", `
+            DELETE FROM agent_run_transcript_entries
+            WHERE agent_run_id IN (
+              SELECT run.id
+              FROM agent_runs AS run
+              JOIN agents AS agent ON agent.id = run.agent_id
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = agent.workspace_id
+            )
+          `);
+          deleteIfPresent("agent_run_transcript_meta", `
+            DELETE FROM agent_run_transcript_meta
+            WHERE agent_run_id IN (
+              SELECT run.id
+              FROM agent_runs AS run
+              JOIN agents AS agent ON agent.id = run.agent_id
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = agent.workspace_id
+            )
+          `);
+          deleteIfPresent("agent_runs", `
+            DELETE FROM agent_runs
+            WHERE agent_id IN (
+              SELECT agent.id
+              FROM agents AS agent
+              JOIN mesh_remote_workspace_cleanup AS cleanup
+                ON cleanup.workspace_id = agent.workspace_id
+            )
+          `);
+          deleteIfPresent("agents", `
+            DELETE FROM agents
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          deleteIfPresent("chats", `
+            DELETE FROM chats
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          deleteIfPresent("ssh_sessions", `
+            DELETE FROM ssh_sessions
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          deleteIfPresent("preview_sessions", `
+            DELETE FROM preview_sessions
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          deleteIfPresent("tasks", `
+            DELETE FROM tasks
+            WHERE workspace_id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          db.run(`
+            DELETE FROM workspaces
+            WHERE id IN (SELECT workspace_id FROM mesh_remote_workspace_cleanup)
+          `);
+          db.run("DROP TABLE mesh_remote_workspace_cleanup");
+        });
+        cleanupRemoteWorkspaces();
+      }
+
+      db.run("PRAGMA foreign_keys = OFF");
+      try {
+        const migrate = db.transaction(() => {
+          db.run("DROP TABLE IF EXISTS mesh_sync_conflicts");
+          db.run("DROP TABLE IF EXISTS mesh_sync_cursors");
+          db.run("DROP TABLE IF EXISTS mesh_sync_outbox");
+          db.run("DROP TABLE IF EXISTS mesh_sync_checkpoints");
+          db.run("DROP TABLE IF EXISTS mesh_link_claims");
+
+          if (tableExists(db, "mesh_pairing_approvals")) {
+            db.run(`
+              CREATE TABLE mesh_pairing_approvals_transport (
+                request_id TEXT PRIMARY KEY,
+                link_id TEXT NOT NULL,
+                approved_by_node_id TEXT NOT NULL,
+                approved_by_instance_name TEXT,
+                approved_by_local_user_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                transport TEXT NOT NULL CHECK (transport IN ('https', 'http')),
+                public_key TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                encryption_public_key TEXT,
+                signature TEXT NOT NULL,
+                members_json TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'accepted', 'rejected')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (request_id) REFERENCES mesh_pairing_requests(id) ON DELETE CASCADE,
+                FOREIGN KEY (approved_by_node_id) REFERENCES mesh_nodes(node_id) ON DELETE CASCADE
+              )
+            `);
+            db.run(`
+              INSERT INTO mesh_pairing_approvals_transport (
+                request_id, link_id, approved_by_node_id, approved_by_instance_name,
+                approved_by_local_user_id, endpoint, transport, public_key,
+                fingerprint, encryption_public_key, signature, members_json,
+                status, created_at, updated_at
+              )
+              SELECT request_id, link_id, approved_by_node_id, approved_by_instance_name,
+                approved_by_local_user_id, endpoint, transport, public_key,
+                fingerprint, encryption_public_key, signature, members_json,
+                status, created_at, updated_at
+              FROM mesh_pairing_approvals
+            `);
+            db.run("DROP TABLE mesh_pairing_approvals");
+            db.run("ALTER TABLE mesh_pairing_approvals_transport RENAME TO mesh_pairing_approvals");
+            db.run(`
+              CREATE INDEX idx_mesh_pairing_approvals_status
+              ON mesh_pairing_approvals(status, updated_at DESC)
+            `);
+          }
+
+          if (tableExists(db, "mesh_links")) {
+            db.run(`
+              CREATE TABLE mesh_links_transport (
+                link_id TEXT PRIMARY KEY,
+                local_user_id TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('active', 'revoked')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (local_user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
+              )
+            `);
+            db.run(`
+              INSERT INTO mesh_links_transport (
+                link_id, local_user_id, status, created_at, updated_at
+              )
+              SELECT link_id, local_user_id,
+                CASE WHEN status = 'revoked' THEN 'revoked' ELSE 'active' END,
+                created_at, updated_at
+              FROM mesh_links
+            `);
+            db.run("DROP TABLE mesh_links");
+            db.run("ALTER TABLE mesh_links_transport RENAME TO mesh_links");
+            db.run(`
+              CREATE INDEX idx_mesh_links_user
+              ON mesh_links(local_user_id, updated_at DESC)
+            `);
+          }
+        });
+        migrate();
+      } finally {
+        db.run("PRAGMA foreign_keys = ON");
+      }
+      const violations = db.query("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error("Mesh transport migration left foreign key violations.");
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

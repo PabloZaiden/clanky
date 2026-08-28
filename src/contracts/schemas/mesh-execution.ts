@@ -7,6 +7,7 @@ import {
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
+import { AgentProviderSchema } from "./workspace";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 
@@ -21,6 +22,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   targetNodeId: z.string().trim().min(1).max(200),
   workspaceId: z.string().trim().min(1).max(200),
   directory: MeshExecutionPathSchema,
+  provider: AgentProviderSchema,
   channel: z.union([z.literal(MESH_EXECUTION_CHANNEL), z.literal(MESH_ACP_CHANNEL)]),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),

@@ -5,17 +5,15 @@
 import type {
   MeshPeerPairingApproval,
   MeshPeerPairingRequest,
-  MeshSyncAck,
-  MeshSyncPush,
-  MeshTakeoverEnvelope,
+  MeshHealthCheck,
+  MeshMembershipUpdate,
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
 type UnsignedPairingRequest = Omit<MeshPeerPairingRequest, "signature">;
 type UnsignedPairingApproval = Omit<MeshPeerPairingApproval, "signature">;
-type UnsignedSyncPush = Omit<MeshSyncPush, "signature">;
-type UnsignedSyncAck = Omit<MeshSyncAck, "signature">;
-type UnsignedTakeover = Omit<MeshTakeoverEnvelope, "signature">;
+type UnsignedMembershipUpdate = Omit<MeshMembershipUpdate, "signature">;
+type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 
 export function buildMeshPairingRequestSigningPayload(
@@ -52,8 +50,6 @@ export function buildMeshPairingApprovalSigningPayload(
     envelope.approvedByNodeId,
     envelope.approvedByInstanceName ?? null,
     envelope.approvedByLocalUserId,
-    envelope.activeNodeId,
-    envelope.takeoverGeneration,
     envelope.endpoint,
     envelope.transport,
     envelope.publicKey,
@@ -63,9 +59,11 @@ export function buildMeshPairingApprovalSigningPayload(
   ]);
 }
 
-export function buildMeshSyncPushSigningPayload(envelope: UnsignedSyncPush): string {
+export function buildMeshMembershipUpdateSigningPayload(
+  envelope: UnsignedMembershipUpdate,
+): string {
   return JSON.stringify([
-    "clanky-mesh-sync-push-v1",
+    "clanky-mesh-membership-update-v1",
     envelope.protocolVersion,
     envelope.linkId,
     envelope.senderNodeId,
@@ -73,37 +71,22 @@ export function buildMeshSyncPushSigningPayload(envelope: UnsignedSyncPush): str
     envelope.senderFingerprint,
     envelope.senderEncryptionPublicKey ?? null,
     envelope.nonce,
-    envelope.members ?? [],
-    envelope.takeover ?? null,
-    envelope.checkpoints,
+    envelope.members,
   ]);
 }
 
-export function buildMeshSyncAckSigningPayload(envelope: UnsignedSyncAck): string {
+export function buildMeshHealthCheckSigningPayload(
+  envelope: UnsignedHealthCheck,
+): string {
   return JSON.stringify([
-    "clanky-mesh-sync-ack-v1",
+    "clanky-mesh-health-check-v1",
     envelope.protocolVersion,
     envelope.linkId,
     envelope.senderNodeId,
     envelope.senderPublicKey,
     envelope.senderFingerprint,
-    envelope.senderEncryptionPublicKey ?? null,
     envelope.nonce,
-    envelope.acknowledgements,
-  ]);
-}
-
-export function buildMeshTakeoverSigningPayload(envelope: UnsignedTakeover): string {
-  return JSON.stringify([
-    "clanky-mesh-takeover-v1",
-    envelope.protocolVersion,
-    envelope.linkId,
-    envelope.senderNodeId,
-    envelope.senderPublicKey,
-    envelope.senderFingerprint,
-    envelope.generation,
-    envelope.claimedAt,
-    envelope.claimOrigin,
+    envelope.sentAt,
   ]);
 }
 
@@ -122,6 +105,7 @@ export function buildMeshExecutionSessionSigningPayload(
     envelope.targetNodeId,
     envelope.workspaceId,
     envelope.directory,
+    envelope.provider,
     envelope.channel,
     envelope.nonce,
     envelope.expiresAt,

@@ -15,8 +15,6 @@ interface MeshMember {
 
 interface MeshLink {
   linkId: string;
-  activeNodeId: string | null;
-  takeoverGeneration: number;
   members: MeshMember[];
 }
 
@@ -313,7 +311,7 @@ describe("three-process mesh cluster", () => {
     meshRepositories = [];
   });
 
-  test("pairs, synchronizes, takes over, and survives a peer restart", async () => {
+  test("pairs, propagates membership, and survives a peer restart", async () => {
     for (const name of ["A", "B", "C"]) {
       meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-cluster-${name.toLowerCase()}-`)));
     }
@@ -335,42 +333,17 @@ describe("three-process mesh cluster", () => {
     await pairNodes(nodeC, nodeB);
 
     const converged = await waitForThreeMemberConvergence(meshNodes);
-    const nodeBId = converged[1]!.node.nodeId;
-    const nodeAId = converged[0]!.node.nodeId;
-    expect(getLink(converged[1]!).activeNodeId).toBe(nodeBId);
-    expect(getLink(converged[0]!).activeNodeId).toBe(nodeBId);
     expect(new Set(getLink(converged[0]!).members.map((member) => member.endpoint))).toEqual(
       new Set(meshNodes.map((node) => node.baseUrl)),
     );
 
-    const conflicts = await request(nodeA, "/api/mesh/conflicts");
-    expect(conflicts.status).toBe(200);
-    expect(conflicts.body).toMatchObject({
-      success: true,
-      conflicts: [],
-    });
-
-    const passiveMutation = await postJson(nodeA, "/api/mesh/pairing-requests", {
-      targetEndpoint: nodeC.baseUrl,
-    });
-    expect(passiveMutation.status).toBe(409);
-    expect(passiveMutation.body).toMatchObject({ error: "linked_node_not_active" });
-
-    const beforeTakeover = await getStatus(nodeA);
-    const takeover = await postJson(nodeA, "/api/mesh/takeover", {
-      expectedGeneration: getLink(beforeTakeover).takeoverGeneration,
-    });
-    expect(takeover.status).toBe(200);
-    await waitForCondition(async () => {
-      const statuses = await Promise.all(meshNodes.map((node) => getStatus(node)));
-      return statuses.every((status) => getLink(status).activeNodeId === nodeAId);
-    }, "The takeover did not propagate to all peers.");
+    expect((await request(nodeA, "/api/mesh/conflicts")).status).toBe(404);
+    expect((await request(nodeA, "/api/mesh/takeover")).status).toBe(404);
 
     const restartedB = nodeB;
     await stopMeshNode(restartedB);
     meshNodes[1] = await startMeshNode("B-restarted", restartedB.dataDir, restartedB.port);
     const restartedStatus = await getStatus(meshNodes[1]!);
-    expect(getLink(restartedStatus).activeNodeId).toBe(nodeAId);
     expect(getLink(restartedStatus).members).toHaveLength(3);
     expect(getLink(restartedStatus).members.map((member) => member.instanceName).sort()).toEqual([
       "Instance A",
@@ -379,7 +352,7 @@ describe("three-process mesh cluster", () => {
     ]);
   });
 
-  test("routes stdio workspace execution through its owner and reports owner outages", async () => {
+  test("keeps a remote-stdio workspace local while executing through its selected peer", async () => {
     for (const name of ["A", "B"]) {
       meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-execution-${name.toLowerCase()}-`)));
     }
@@ -403,18 +376,6 @@ describe("three-process mesh cluster", () => {
       expect(result.status).toBe(200);
     }
 
-    const workspaceResult = await postJson(nodeA, "/api/workspaces", {
-      name: "Remote execution workspace",
-      directory: repository,
-      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
-    });
-    expect(workspaceResult.status).toBe(201);
-    const workspace = workspaceResult.body as {
-      id: string;
-      executionNodeId: string | null;
-    };
-    expect(workspace.executionNodeId).toBe((await getStatus(nodeA)).node.nodeId);
-
     await pairNodes(nodeA, nodeB);
     await waitForCondition(async () => {
       const status = await getStatus(nodeB);
@@ -422,20 +383,47 @@ describe("three-process mesh cluster", () => {
         && status.links[0].members.every((member) => member.endpoint !== null);
     }, "The execution mesh did not converge.");
 
-    await waitForCondition(async () => {
-      const result = await request(nodeB, "/api/workspaces");
-      return result.status === 200
-        && Array.isArray(result.body)
-        && result.body.some((candidate) => (
-          typeof candidate === "object"
-          && candidate !== null
-          && "id" in candidate
-          && candidate.id === workspace.id
-        ));
-    }, "The stdio workspace did not replicate to the active node.");
+    const nodeBId = (await getStatus(nodeB)).node.nodeId;
+    const workspaceResult = await postJson(nodeA, "/api/workspaces", {
+      name: "Remote execution workspace",
+      directory: repository,
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      executionNodeId: nodeBId,
+    });
+    expect(workspaceResult.status).toBe(201);
+    const workspace = workspaceResult.body as {
+      id: string;
+      executionNodeId: string | null;
+    };
+    expect(workspace.executionNodeId).toBe(nodeBId);
+
+    const remoteWorkspaces = await request(nodeB, "/api/workspaces");
+    expect(remoteWorkspaces.status).toBe(200);
+    expect(remoteWorkspaces.body).toEqual([]);
+
+    const nodeAId = (await getStatus(nodeA)).node.nodeId;
+    const localEdit = await request(nodeA, `/api/workspaces/${workspace.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        executionNodeId: nodeAId,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      }),
+    });
+    expect(localEdit.status).toBe(200);
+    expect(localEdit.body).toMatchObject({ executionNodeId: nodeAId });
+
+    const remoteEdit = await request(nodeA, `/api/workspaces/${workspace.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        executionNodeId: nodeBId,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      }),
+    });
+    expect(remoteEdit.status).toBe(200);
+    expect(remoteEdit.body).toMatchObject({ executionNodeId: nodeBId });
 
     const remoteStatus = await request(
-      nodeB,
+      nodeA,
       `/api/workspaces/${workspace.id}/server-settings/status`,
     );
     expect(remoteStatus.status).toBe(200);
@@ -446,7 +434,7 @@ describe("three-process mesh cluster", () => {
     });
 
     const remoteRead = await request(
-      nodeB,
+      nodeA,
       `/api/workspaces/${workspace.id}/files/content?path=README.md`,
     );
     expect(remoteRead.status).toBe(200);
@@ -456,7 +444,7 @@ describe("three-process mesh cluster", () => {
     });
 
     const remoteWrite = await postJson(
-      nodeB,
+      nodeA,
       `/api/workspaces/${workspace.id}/files/write`,
       {
         path: "remote.txt",
@@ -469,45 +457,45 @@ describe("three-process mesh cluster", () => {
     expect(remoteWrite.status).toBe(200);
     expect(await Bun.file(join(repository, "remote.txt")).text()).toBe("written through owner\n");
 
-    await stopMeshNode(nodeA);
+    await stopMeshNode(nodeB);
     await waitForCondition(
       async () => {
         const status = await request(
-          nodeB,
+          nodeA,
           `/api/workspaces/${workspace.id}/server-settings/status`,
         );
         return status.status === 200
           && (status.body as { executionAvailability?: string }).executionAvailability === "remote-unavailable";
       },
-      "The active node did not observe the execution owner outage.",
+      "The workspace instance did not observe the execution peer outage.",
       15_000,
     );
 
     const unavailableRead = await request(
-      nodeB,
+      nodeA,
       `/api/workspaces/${workspace.id}/files/content?path=README.md`,
     );
     expect(unavailableRead.status).toBe(500);
     expect(unavailableRead.body).toMatchObject({ error: "workspace_file_error" });
 
-    meshNodes[0] = await startMeshNode("A-restarted", nodeA.dataDir, nodeA.port);
+    meshNodes[1] = await startMeshNode("B-restarted", nodeB.dataDir, nodeB.port);
     await waitForCondition(
       async () => {
         const status = await request(
-          nodeB,
+          nodeA,
           `/api/workspaces/${workspace.id}/server-settings/status`,
         );
         return status.status === 200
           && (status.body as { executionAvailability?: string }).executionAvailability === "remote-connected";
       },
-      "The active node did not recover remote execution after the owner restart.",
+      "The workspace instance did not recover remote execution after the peer restart.",
       15_000,
     );
 
     const recoveredRead = await request(
-      nodeB,
+      nodeA,
       `/api/workspaces/${workspace.id}/files/content?path=README.md`,
     );
     expect(recoveredRead.status).toBe(200);
-  });
+  }, { timeout: 30_000 });
 });

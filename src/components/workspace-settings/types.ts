@@ -17,11 +17,12 @@ export interface WorkspaceSettingsFormProps {
   onSave: (
     name: string,
     settings: ServerSettings,
+    executionNodeId: string | null,
     archived: boolean,
     allowClankyContext: boolean,
   ) => Promise<boolean>;
   /** Callback to test connection */
-  onTest: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
+  onTest: (settings: ServerSettings, executionNodeId: string | null) => Promise<{ success: boolean; error?: string }>;
   /** Callback to purge the workspace tasks covered by the terminal-state settings action */
   onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;
   /** Callback to delete the workspace */

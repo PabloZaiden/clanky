@@ -24,6 +24,7 @@ import {
   saveLastAutomaticWorkspaceSshServerId,
 } from "../../lib/automatic-workspace-preferences";
 import { useShellHeaderActions } from "./shell-header-actions";
+import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -54,6 +55,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceDirectory,
     setWorkspaceDirectory,
     workspaceServerSettings,
+    workspaceExecutionNodeId,
+    setWorkspaceExecutionNodeId,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,
@@ -61,6 +64,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceCreateSubmitting,
     automaticServerId,
     setAutomaticServerId,
+    automaticExecutionNodeId,
+    setAutomaticExecutionNodeId,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -83,6 +88,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     handleTestWorkspaceConnection,
     handleBackToAutomaticWorkspaceForm,
   } = workspaceCreate;
+  const { targets: executionTargets } = useWorkspaceExecutionTargets();
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
@@ -115,7 +121,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
   const automaticFormValid =
     workspaceName.trim().length > 0 &&
-    automaticServerId.trim().length > 0 &&
+    (Boolean(automaticExecutionNodeId) || automaticServerId.trim().length > 0) &&
     (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0) &&
     automaticBasePath.trim().length > 0 &&
     (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
@@ -272,10 +278,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               />
               <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
-                onChange={(settings: ServerSettings, isValid: boolean) => {
+                initialExecutionNodeId={workspaceExecutionNodeId}
+                onChange={(settings: ServerSettings, isValid: boolean, executionNodeId: string | null) => {
                   setWorkspaceServerSettings((current: ServerSettings) => {
                     return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
                   });
+                  setWorkspaceExecutionNodeId(executionNodeId);
                   setWorkspaceServerSettingsValid(isValid);
                 }}
                 onTest={handleTestWorkspaceConnection}
@@ -286,6 +294,24 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
             </>
           ) : (
             <div className="space-y-4">
+              <SelectField
+                id="automatic-execution-kind"
+                label="Provisioning and execution host"
+                value={automaticExecutionNodeId ?? ""}
+                onChange={(event) => setAutomaticExecutionNodeId(event.target.value || null)}
+              >
+                <option value="">Saved SSH server (devbox SSH)</option>
+                {executionTargets
+                  .filter((target) => !dashboardData.remoteOnly || target.kind === "mesh")
+                  .map((target) => (
+                    <option key={target.nodeId} value={target.nodeId}>
+                      {target.name} via stdio
+                      {target.availability === "offline" ? " (offline)" : ""}
+                    </option>
+                  ))}
+              </SelectField>
+
+              {!automaticExecutionNodeId && (
               <SelectField
                   id="automatic-ssh-server"
                   label="Saved SSH server"
@@ -306,7 +332,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     </option>
                   ))}
               </SelectField>
-                {servers.length === 0 && (
+              )}
+                {!automaticExecutionNodeId && servers.length === 0 && (
                   <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                     Register a saved SSH server first to use automatic workspace provisioning.
                   </p>
@@ -320,7 +347,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 placeholder="git@github.com:owner/repo.git"
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
-                hint={automaticCreateNewRepository ? "Disabled because this workspace will start from a new local git repository." : "Repository to clone on the remote host."}
+                hint={automaticCreateNewRepository ? "Disabled because this workspace will start from a new repository on the selected host." : "Repository to clone on the selected host."}
               />
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
@@ -345,7 +372,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
 
               <TextField
                 id="automatic-base-path"
-                label="Remote base path"
+                label="Base path"
                 value={automaticBasePath}
                 onChange={(event) => setAutomaticBasePath(event.target.value)}
                 placeholder="/workspaces"
@@ -366,7 +393,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   ))}
               </SelectField>
 
-              {!selectedServerHasStoredCredential && (
+              {!automaticExecutionNodeId && !selectedServerHasStoredCredential && (
                 <TextField
                   id="automatic-ssh-password"
                   label="SSH password"

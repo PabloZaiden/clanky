@@ -6,10 +6,8 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import {
   ApproveMeshPairingRequestSchema,
   CompleteMeshPairingRequestSchema,
-  MeshTakeoverRequestSchema,
   RevokeMeshMemberRequestSchema,
   RejectMeshPairingRequestSchema,
-  ResolveMeshSyncConflictSchema,
   StartMeshPairingRequestSchema,
   UpdateMeshInstanceNameSchema,
 } from "@/contracts/schemas/mesh";
@@ -17,8 +15,6 @@ import { meshManager } from "../core/mesh-manager";
 import { isDomainError } from "../core/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { resolveMeshSyncConflict } from "../core/mesh-sync-service";
-import { assertLocalMeshActive } from "../core/mesh-activity";
 
 export function meshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
@@ -101,25 +97,9 @@ export function meshErrorResponse(error: unknown): Response {
           status: 400,
           message: "The mesh endpoint protocol does not match its transport",
         },
-        linked_node_not_active: {
-          status: 409,
-          message: "This Clanky instance is not the active mesh node",
-        },
-        mesh_link_conflict: {
-          status: 409,
-          message: "The linked mesh has an unresolved authority conflict",
-        },
         mesh_link_revoked: {
           status: 403,
           message: "The linked mesh membership has been revoked",
-        },
-        mesh_takeover_generation_conflict: {
-          status: 409,
-          message: "The mesh authority changed before takeover was confirmed",
-        },
-        mesh_takeover_conflict: {
-          status: 409,
-          message: "The mesh has conflicting authority claims",
         },
         mesh_link_not_found: {
           status: 404,
@@ -129,17 +109,17 @@ export function meshErrorResponse(error: unknown): Response {
           status: 404,
           message: "The node is not a member of this mesh",
         },
-        mesh_active_node_revoke_requires_takeover: {
+        mesh_instance_name_conflict: {
           status: 409,
-          message: "Replace the active node before revoking it",
-        },
-        mesh_active_node_remove_requires_takeover: {
-          status: 409,
-          message: "Replace the active node before deleting its revocation",
+          message: "Instance names must be unique within a mesh",
         },
         mesh_member_not_revoked: {
           status: 409,
           message: "Only a revoked mesh member can have its revocation deleted",
+        },
+        mesh_member_self_revoke_invalid: {
+          status: 409,
+          message: "This instance cannot revoke its own mesh identity",
         },
         mesh_pairing_rollback_failed: {
           status: 500,
@@ -165,7 +145,7 @@ export const meshRoutes = defineRoutes({
   "/api/mesh/members/revoke": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Revoke a mesh member and stop sending new synchronized data to it.",
+    description: "Revoke a mesh member and stop trusting its transport identity.",
     tags: ["mesh", "membership"],
     async POST(req, ctx): Promise<Response> {
       const parsed = await parseAndValidate(RevokeMeshMemberRequestSchema, req);
@@ -238,6 +218,21 @@ export const meshRoutes = defineRoutes({
     },
   },
 
+  "/api/mesh/health": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Check the reachability of current mesh transport peers.",
+    tags: ["mesh", "health"],
+    async POST(_req, ctx): Promise<Response> {
+      try {
+        const status = await meshManager.checkHealth(ctx.requireUser().id);
+        return successResponse({ status });
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+
   "/api/mesh/instance-name": {
     auth: "user",
     sameOrigin: "mutations",
@@ -282,7 +277,6 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const user = ctx.requireUser();
-        await assertLocalMeshActive(user.id);
         const status = await meshManager.startPairing(
           user.id,
           user.username,
@@ -313,7 +307,6 @@ export const meshRoutes = defineRoutes({
         return meshErrorResponse(new Error("Mesh pairing request ID is required."));
       }
       try {
-        await assertLocalMeshActive(ctx.requireUser().id);
         const status = await meshManager.approvePairingRequest(
           ctx.requireUser().id,
           requestId,
@@ -371,7 +364,6 @@ export const meshRoutes = defineRoutes({
         return meshErrorResponse(new Error("Mesh pairing request ID is required."));
       }
       try {
-        await assertLocalMeshActive(ctx.requireUser().id);
         const status = await meshManager.rejectPairingRequest(
           ctx.requireUser().id,
           requestId,
@@ -384,85 +376,4 @@ export const meshRoutes = defineRoutes({
     },
   },
 
-  "/api/mesh/conflicts": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "List unresolved conflicts in linked mesh resources.",
-    tags: ["mesh", "sync"],
-    async GET(_req, ctx): Promise<Response> {
-      try {
-        const conflicts = await meshManager.listOpenConflicts(ctx.requireUser().id);
-        return successResponse({ conflicts });
-      } catch (error) {
-        return meshErrorResponse(error);
-      }
-    },
-  },
-
-  "/api/mesh/conflicts/:conflictId/resolve": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Resolve one linked mesh conflict explicitly.",
-    tags: ["mesh", "sync"],
-    async POST(req, ctx): Promise<Response> {
-      const parsed = await parseAndValidate(ResolveMeshSyncConflictSchema, req);
-      if (!parsed.success) {
-        return parsed.response;
-      }
-      const conflictId = ctx.params["conflictId"];
-      if (!conflictId) {
-        return meshErrorResponse(new Error("Mesh conflict ID is required."));
-      }
-      try {
-        await assertLocalMeshActive(ctx.requireUser().id);
-        const result = await resolveMeshSyncConflict(
-          ctx.requireUser().id,
-          conflictId,
-          parsed.data.resolution,
-        );
-        return successResponse({ conflict: result });
-      } catch (error) {
-        return meshErrorResponse(error);
-      }
-    },
-  },
-
-  "/api/mesh/takeover/preflight": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Inspect mesh authority and active work before an explicit takeover.",
-    tags: ["mesh", "authority"],
-    async GET(_req, ctx): Promise<Response> {
-      try {
-        return successResponse(await meshManager.getTakeoverPreflight(ctx.requireUser().id));
-      } catch (error) {
-        return meshErrorResponse(error);
-      }
-    },
-  },
-
-  "/api/mesh/takeover": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Explicitly claim this instance as the active node for the linked mesh.",
-    tags: ["mesh", "authority"],
-    async POST(req, ctx): Promise<Response> {
-      const parsed = await parseAndValidate(MeshTakeoverRequestSchema, req, {
-        allowEmptyBody: true,
-        emptyBodyValue: {},
-      });
-      if (!parsed.success) {
-        return parsed.response;
-      }
-      try {
-        const result = await meshManager.takeover(
-          ctx.requireUser().id,
-          parsed.data.expectedGeneration,
-        );
-        return successResponse(result);
-      } catch (error) {
-        return meshErrorResponse(error);
-      }
-    },
-  },
 });

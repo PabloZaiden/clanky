@@ -68,8 +68,14 @@ export function WorkspaceSettingsView({
           <WorkspaceSettingsForm
             workspace={workspaceFromHook}
             status={workspaceStatus}
-            onSave={async (name, settings, archived, allowClankyContext) => {
-              const success = await updateWorkspaceSettings(name, settings, archived, allowClankyContext);
+            onSave={async (name, settings, executionNodeId, archived, allowClankyContext) => {
+              const success = await updateWorkspaceSettings(
+                name,
+                settings,
+                executionNodeId,
+                archived,
+                allowClankyContext,
+              );
               if (success) {
                 await refreshWorkspaces();
               }
@@ -99,7 +105,7 @@ export function WorkspaceSettingsView({
             onValidityChange={setWorkspaceSettingsFormValid}
           />
 
-          {workspaceFromHook.sourceDirectory && (
+          {workspaceFromHook.sourceDirectory && workspaceFromHook.sshServerId && (
             <ProvisioningActionsSection
               workspace={workspaceFromHook}
               onRestart={() => navigateWithinShell({ view: "restart-workspace", workspaceId: workspaceFromHook.id })}

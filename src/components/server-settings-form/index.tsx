@@ -10,6 +10,7 @@ import type { SshServer } from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { SshFields } from "./ssh-fields";
 import { TestConnection } from "./test-connection";
+import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 
 const OTHER_SSH_SERVER_OPTION = "__other__";
 
@@ -20,10 +21,12 @@ function resolveRegisteredSshServerId(hostname: string, registeredSshServers: re
 export interface ServerSettingsFormProps {
   /** Initial server settings (for editing) */
   initialSettings?: ServerSettings;
+  /** Selected stdio execution node. */
+  initialExecutionNodeId?: string | null;
   /** Callback when settings change */
-  onChange: (settings: ServerSettings, isValid: boolean) => void;
+  onChange: (settings: ServerSettings, isValid: boolean, executionNodeId: string | null) => void;
   /** Callback to test connection - if not provided, test button is hidden */
-  onTest?: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
+  onTest?: (settings: ServerSettings, executionNodeId: string | null) => Promise<{ success: boolean; error?: string }>;
   /** Whether testing is in progress */
   testing?: boolean;
   /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
@@ -37,18 +40,26 @@ export interface ServerSettingsFormProps {
  */
 export function ServerSettingsForm({
   initialSettings,
+  initialExecutionNodeId = null,
   onChange,
   onTest,
   testing = false,
   remoteOnly = false,
   registeredSshServers = [],
 }: ServerSettingsFormProps) {
+  const { targets: executionTargets, loading: executionTargetsLoading } = useWorkspaceExecutionTargets();
+  const localExecutionTarget = executionTargets.find((target) => target.kind === "local");
+  const remoteExecutionTargets = executionTargets.filter((target) => target.kind === "mesh");
+  const preserveRemoteStdio = remoteOnly
+    && initialSettings?.agent.transport === "stdio"
+    && initialExecutionNodeId !== null;
   const [agentProvider, setAgentProvider] = useState<AgentProvider>(
     initialSettings?.agent.provider ?? "opencode",
   );
   const [agentTransport, setAgentTransport] = useState<AgentTransport>(
-    remoteOnly ? "ssh" : (initialSettings?.agent.transport ?? "stdio"),
+    remoteOnly && !preserveRemoteStdio ? "ssh" : (initialSettings?.agent.transport ?? "stdio"),
   );
+  const [executionNodeId, setExecutionNodeId] = useState<string | null>(initialExecutionNodeId);
   const [agentHostname, setAgentHostname] = useState(
     initialSettings?.agent.transport === "ssh" ? initialSettings.agent.hostname : "localhost",
   );
@@ -72,7 +83,10 @@ export function ServerSettingsForm({
 
   useEffect(() => {
     const nextProvider = initialSettings?.agent.provider ?? "opencode";
-    const nextTransport = remoteOnly ? "ssh" : (initialSettings?.agent.transport ?? "stdio");
+    const nextTransport = remoteOnly && !preserveRemoteStdio
+      ? "ssh"
+      : (initialSettings?.agent.transport ?? "stdio");
+    const nextExecutionNodeId = nextTransport === "stdio" ? initialExecutionNodeId : null;
     const nextHost = initialSettings?.agent.transport === "ssh" ? initialSettings.agent.hostname : "localhost";
     const nextSelectedRegisteredSshServerId = nextTransport === "ssh"
       ? resolveRegisteredSshServerId(nextHost, registeredSshServers)
@@ -83,6 +97,7 @@ export function ServerSettingsForm({
 
     setAgentProvider(nextProvider);
     setAgentTransport(nextTransport);
+    setExecutionNodeId(nextExecutionNodeId);
     setAgentHostname(nextHost);
     setSelectedRegisteredSshServerId(nextSelectedRegisteredSshServerId);
     setAgentPort(nextPort);
@@ -100,8 +115,25 @@ export function ServerSettingsForm({
       username: nextUsername,
       password: nextPassword,
     });
-    onChange(settings, validateSettings(settings));
-  }, [initialSettings, remoteOnly]);
+    onChange(settings, validateSettings(settings, nextExecutionNodeId), nextExecutionNodeId);
+  }, [initialSettings, initialExecutionNodeId, remoteOnly]);
+
+  useEffect(() => {
+    if (agentTransport !== "stdio" || executionTargetsLoading) {
+      return;
+    }
+    const selected = executionTargets.find((target) => target.nodeId === executionNodeId);
+    if (selected && (!remoteOnly || selected.kind === "mesh")) {
+      return;
+    }
+    const nextTarget = remoteOnly ? remoteExecutionTargets[0] : localExecutionTarget;
+    if (!nextTarget) {
+      return;
+    }
+    setExecutionNodeId(nextTarget.nodeId);
+    const settings = buildSettings();
+    onChange(settings, validateSettings(settings, nextTarget.nodeId), nextTarget.nodeId);
+  }, [agentTransport, executionNodeId, executionTargetsLoading, remoteOnly, executionTargets]);
 
   function buildSettings(overrides?: {
     provider?: AgentProvider;
@@ -147,11 +179,12 @@ export function ServerSettingsForm({
     };
   }
 
-  function validateSettings(settings: ServerSettings): boolean {
+  function validateSettings(settings: ServerSettings, selectedExecutionNodeId = executionNodeId): boolean {
     if (settings.agent.transport === "ssh") {
       return settings.agent.hostname.trim().length > 0;
     }
-    return true;
+    return Boolean(selectedExecutionNodeId)
+      && (!remoteOnly || remoteExecutionTargets.some((target) => target.nodeId === selectedExecutionNodeId));
   }
 
   function notifyChange(overrides?: {
@@ -162,9 +195,10 @@ export function ServerSettingsForm({
     port?: string;
     username?: string;
     password?: string;
-  }) {
+  }, selectedExecutionNodeId = executionNodeId) {
     const settings = buildSettings(overrides);
-    onChange(settings, validateSettings(settings));
+    const nodeId = settings.agent.transport === "stdio" ? selectedExecutionNodeId : null;
+    onChange(settings, validateSettings(settings, nodeId), nodeId);
   }
 
   const showRegisteredSshServerSelect = agentTransport === "ssh" && registeredSshServers.length > 0;
@@ -177,7 +211,8 @@ export function ServerSettingsForm({
     }
 
     setTestResult(null);
-    const result = await onTest(buildSettings());
+    const settings = buildSettings();
+    const result = await onTest(settings, settings.agent.transport === "stdio" ? executionNodeId : null);
     setTestResult(result);
   }
 
@@ -219,15 +254,63 @@ export function ServerSettingsForm({
                 const value = e.target.value as AgentTransport;
                 setAgentTransport(value);
                 setTestResult(null);
-                notifyChange({ transport: value });
+                const nextTarget = value === "stdio"
+                  ? (remoteOnly ? remoteExecutionTargets[0]?.nodeId : localExecutionTarget?.nodeId)
+                    ?? executionNodeId
+                  : null;
+                setExecutionNodeId(nextTarget);
+                notifyChange({ transport: value }, nextTarget);
               }}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
             >
-              <option value="stdio" disabled={remoteOnly}>stdio (local process)</option>
+              <option value="stdio" disabled={remoteOnly && remoteExecutionTargets.length === 0}>
+                stdio
+              </option>
               <option value="ssh">ssh</option>
             </select>
           </div>
         </div>
+
+        {agentTransport === "stdio" && (
+          <div>
+            <label htmlFor="agent-execution-node" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Execution host
+            </label>
+            <select
+              id="agent-execution-node"
+              value={executionNodeId ?? ""}
+              disabled={executionTargetsLoading}
+              onChange={(event) => {
+                const nodeId = event.target.value || null;
+                setExecutionNodeId(nodeId);
+                setTestResult(null);
+                notifyChange(undefined, nodeId);
+              }}
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
+            >
+              <option value="" disabled>
+                {executionTargetsLoading ? "Loading execution hosts..." : "Select an execution host"}
+              </option>
+              {executionTargets.map((target) => (
+                <option
+                  key={target.nodeId}
+                  value={target.nodeId}
+                  disabled={remoteOnly && target.kind === "local"}
+                >
+                  {target.kind === "local"
+                    ? `${target.name} (local)`
+                    : `${target.name}${target.availability === "offline" ? " (offline)" : ""}`}
+                </option>
+              ))}
+              {executionNodeId && !executionTargets.some((target) => target.nodeId === executionNodeId) && (
+                <option value={executionNodeId}>Mesh peer {executionNodeId.slice(0, 8)} (unavailable)</option>
+              )}
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Paired peers remain selectable while offline; connection attempts fail without automatic failover.
+            </p>
+          </div>
+        )}
 
         {agentTransport === "ssh" && (
           <SshFields

@@ -37,6 +37,7 @@ export function WorkspaceSettingsForm({
   const [archived, setArchived] = useState(false);
   const [allowClankyContext, setAllowClankyContext] = useState(false);
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
+  const [executionNodeId, setExecutionNodeId] = useState<string | null>(null);
   const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
 
   // Initialize form from workspace when the selected workspace changes
@@ -46,6 +47,7 @@ export function WorkspaceSettingsForm({
       setArchived(workspace.archived === true);
       setAllowClankyContext(workspace.allowClankyContext === true);
       setServerSettings(workspace.serverSettings);
+      setExecutionNodeId(workspace.executionNodeId ?? null);
       setIsServerSettingsValid(true);
       return;
     }
@@ -54,6 +56,7 @@ export function WorkspaceSettingsForm({
     setArchived(false);
     setAllowClankyContext(false);
     setServerSettings(null);
+    setExecutionNodeId(null);
     setIsServerSettingsValid(true);
   }, [workspace]);
 
@@ -63,7 +66,13 @@ export function WorkspaceSettingsForm({
     if (!serverSettings) return;
 
     log.debug("Saving workspace settings", { workspaceName: name.trim() });
-    const success = await onSave(name.trim(), serverSettings, archived, allowClankyContext);
+    const success = await onSave(
+      name.trim(),
+      serverSettings,
+      executionNodeId,
+      archived,
+      allowClankyContext,
+    );
     if (success) {
       log.debug("Workspace settings saved successfully");
       onSaved?.();
@@ -72,13 +81,18 @@ export function WorkspaceSettingsForm({
     }
   }
 
-  function handleServerSettingsChange(settings: ServerSettings, isValid: boolean) {
+  function handleServerSettingsChange(
+    settings: ServerSettings,
+    isValid: boolean,
+    selectedExecutionNodeId: string | null,
+  ) {
     log.debug("Server settings changed", {
       provider: settings.agent.provider,
       transport: settings.agent.transport,
       isValid,
     });
     setServerSettings(settings);
+    setExecutionNodeId(selectedExecutionNodeId);
     setIsServerSettingsValid(isValid);
   }
 
@@ -185,6 +199,7 @@ export function WorkspaceSettingsForm({
         {serverSettings && workspace && (
           <ServerSettingsForm
             initialSettings={workspace.serverSettings}
+            initialExecutionNodeId={workspace.executionNodeId ?? null}
             onChange={handleServerSettingsChange}
             onTest={onTest}
             testing={testing}

@@ -1,19 +1,17 @@
 /**
- * Authenticated gateway for CommandExecutor operations on a local workspace.
+ * Authenticated gateway for direct CommandExecutor operations on this host.
  *
- * This module is deliberately independent from BackendManager. A future mesh
- * client can use the session and RPC contracts without changing the execution
- * host's local command implementation.
+ * This module is deliberately independent from BackendManager. The signed
+ * caller supplies the absolute execution root, provider, and channel. The
+ * receiving host deliberately does not load replicated workspace or user data.
  */
 
 import { randomBytes } from "node:crypto";
 import { posix } from "node:path";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type {
   MeshExecutionRpcRequest,
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
-import type { Workspace } from "@/shared/workspace";
 import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_CHANNEL,
@@ -23,10 +21,9 @@ import {
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "@/shared/mesh-execution";
-import { getWorkspace } from "../persistence/workspaces";
-import { getDatabase } from "../persistence/database";
 import {
   getMeshLinkById,
+  getMeshNode,
   listMeshLinkMembers,
 } from "../persistence/mesh";
 import {
@@ -37,7 +34,6 @@ import { CommandExecutorImpl } from "./remote-command-executor";
 import type { CommandExecutor, CommandResult } from "./command-executor";
 import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
-import { runWithCurrentUser } from "./user-context";
 import type { AgentProvider } from "@/shared/settings";
 import { requireTrustedMeshPeer } from "./mesh-peer-auth";
 import {
@@ -48,22 +44,15 @@ const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
 const MAX_REQUEST_IDS = 512;
 
-interface RoutedWorkspace extends Workspace {
-  executionNodeId?: string | null;
-}
-
 interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
   linkId: string;
   callerNodeId: string;
-  workspaceId: string;
-  localUser: CurrentUser;
-  workspaceRoot: string;
+  executionRoot: string;
   directory: string;
   provider: AgentProvider;
   channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
-  authorityGeneration: number;
   expiresAt: number;
   callerEncryptionPublicKey: string;
   executor: CommandExecutor;
@@ -89,13 +78,11 @@ export interface MeshAcpSessionConfig {
 
 interface ValidatedExecutionSession {
   session: MeshExecutionSession;
-  workspace: RoutedWorkspace;
 }
 
 interface SessionValidationOptions {
   expectedChannel?: typeof MESH_ACP_CHANNEL;
-  memberErrorCode: "mesh_execution_authority_changed" | "mesh_peer_not_trusted";
-  workspaceErrorCode: "mesh_execution_authority_changed" | "mesh_execution_owner_mismatch";
+  memberErrorCode: "mesh_execution_context_changed" | "mesh_peer_not_trusted";
 }
 
 type MeshExecutionRpcResult =
@@ -147,41 +134,7 @@ export function assertMeshExecutionCwd(root: string, cwd: string): string {
   }
 }
 
-function toCurrentUser(row: {
-  id: string;
-  username: string;
-  role: CurrentUser["role"];
-}): CurrentUser {
-  return {
-    id: row.id,
-    username: row.username,
-    role: row.role,
-    isOwner: row.role === "owner",
-    isAdmin: row.role === "owner" || row.role === "admin",
-  };
-}
-
-function getMeshUser(localUserId: string): CurrentUser {
-  const row = getDatabase().query(`
-    SELECT id, username, role
-    FROM webapp_users
-    WHERE id = ? AND disabled_at IS NULL
-  `).get(localUserId) as {
-    id: string;
-    username: string;
-    role: CurrentUser["role"];
-  } | null;
-  if (!row) {
-    throw new DomainError("mesh_execution_user_not_found", "The mesh workspace owner is not available.");
-  }
-  return toCurrentUser(row);
-}
-
-async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<{
-  authorityGeneration: number;
-  localUser: CurrentUser;
-  workspace: RoutedWorkspace;
-}> {
+async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<void> {
   const identity = await ensureLocalMeshNodeIdentity();
   if (request.targetNodeId !== identity.nodeId) {
     throw new DomainError("mesh_execution_target_invalid", "The execution request targets another mesh node.");
@@ -201,31 +154,7 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
   if (link.status === "revoked") {
     throw new DomainError("mesh_link_revoked", "The mesh execution link has been revoked.");
   }
-  if (link.status === "conflict") {
-    throw new DomainError("mesh_link_conflict", "The mesh execution link has an unresolved authority conflict.");
-  }
-  if (link.activeNodeId !== request.callerNodeId) {
-    throw new DomainError("mesh_execution_caller_not_active", "Only the active mesh node may open an execution session.");
-  }
-  const localUser = getMeshUser(link.localUserId);
-  const workspace = await runWithCurrentUser(localUser, () => getWorkspace(request.workspaceId));
-  if (!workspace) {
-    throw new DomainError("workspace_not_found", "The requested workspace is not owned by this mesh member.");
-  }
-  const routedWorkspace = workspace as RoutedWorkspace;
-  if (routedWorkspace.serverSettings.agent.transport !== "stdio") {
-    throw new DomainError("mesh_execution_transport_unsupported", "Only stdio workspaces may use mesh execution.");
-  }
-  if (routedWorkspace.executionNodeId !== identity.nodeId) {
-    throw new DomainError("mesh_execution_owner_mismatch", "The workspace is not owned by this execution node.");
-  }
-  assertMeshExecutionCwd(routedWorkspace.directory, request.directory);
-
-  return {
-    authorityGeneration: link.takeoverGeneration,
-    localUser,
-    workspace: routedWorkspace,
-  };
+  assertMeshExecutionCwd(request.directory, request.directory);
 }
 
 export class MeshExecutionGateway {
@@ -279,41 +208,33 @@ export class MeshExecutionGateway {
     if (
       !link
       || link.status !== "active"
-      || link.activeNodeId !== session.callerNodeId
-      || link.takeoverGeneration !== session.authorityGeneration
     ) {
       this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_authority_changed", "The mesh execution authority has changed.");
+      throw new DomainError("mesh_execution_context_changed", "The mesh execution link is no longer active.");
     }
 
     const member = (await listMeshLinkMembers(session.linkId))
       .find((candidate) => candidate.nodeId === session.callerNodeId);
+    const node = await getMeshNode(session.callerNodeId);
     if (
       !member
       || member.status !== "active"
+      || !node
+      || node.status !== "active"
     ) {
       this.closeSession(session.sessionId);
       throw new DomainError(options.memberErrorCode, "The execution caller is no longer an active member.");
     }
 
-    const identity = await ensureLocalMeshNodeIdentity();
-    const workspace = await runWithCurrentUser(
-      session.localUser,
-      () => getWorkspace(session.workspaceId),
-    );
-    const routedWorkspace = workspace as RoutedWorkspace | null;
     if (
-      !routedWorkspace
-      || routedWorkspace.serverSettings.agent.transport !== "stdio"
-      || routedWorkspace.executionNodeId !== identity.nodeId
-      || routedWorkspace.directory !== session.workspaceRoot
-      || (options.expectedChannel !== undefined && session.channel !== options.expectedChannel)
+      options.expectedChannel !== undefined
+      && session.channel !== options.expectedChannel
     ) {
       this.closeSession(session.sessionId);
-      throw new DomainError(options.workspaceErrorCode, "The workspace execution ownership has changed.");
+      throw new DomainError("mesh_execution_context_changed", "The mesh execution channel is no longer valid.");
     }
 
-    return { session, workspace: routedWorkspace };
+    return { session };
   }
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
@@ -348,7 +269,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_peer_signature_invalid", "The execution session signature is invalid.");
     }
 
-    const { authorityGeneration, localUser, workspace } = await assertTrustedCaller(request);
+    await assertTrustedCaller(request);
     this.usedNonces.set(request.nonce, new Date(request.expiresAt).getTime());
     const sessionId = crypto.randomUUID();
     const sessionToken = randomBytes(32).toString("base64url");
@@ -361,18 +282,15 @@ export class MeshExecutionGateway {
       sessionToken,
       linkId: request.linkId,
       callerNodeId: request.callerNodeId,
-      workspaceId: request.workspaceId,
-      localUser,
-      workspaceRoot: workspace.directory,
-      directory: assertMeshExecutionCwd(workspace.directory, request.directory),
-      provider: workspace.serverSettings.agent.provider,
+      executionRoot: request.directory,
+      directory: assertMeshExecutionCwd(request.directory, request.directory),
+      provider: request.provider,
       channel: request.channel,
-      authorityGeneration,
       expiresAt,
       callerEncryptionPublicKey: request.callerEncryptionPublicKey,
       executor: new CommandExecutorImpl({
         provider: "local",
-        directory: workspace.directory,
+        directory: request.directory,
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
       }),
       requestIds: new Set(),
@@ -398,8 +316,7 @@ export class MeshExecutionGateway {
   ): Promise<MeshAcpSessionConfig> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_ACP_CHANNEL,
-      memberErrorCode: "mesh_execution_authority_changed",
-      workspaceErrorCode: "mesh_execution_authority_changed",
+      memberErrorCode: "mesh_execution_context_changed",
     });
     return {
       sessionId: session.sessionId,
@@ -424,7 +341,6 @@ export class MeshExecutionGateway {
       request.sessionToken,
       {
         memberErrorCode: "mesh_peer_not_trusted",
-        workspaceErrorCode: "mesh_execution_owner_mismatch",
       },
     );
 
@@ -443,7 +359,7 @@ export class MeshExecutionGateway {
     session.inFlight += 1;
 
     try {
-      const cwd = assertMeshExecutionCwd(session.workspaceRoot, request.cwd ?? session.directory);
+      const cwd = assertMeshExecutionCwd(session.executionRoot, request.cwd ?? session.directory);
       const executor = session.executor;
       switch (request.operation) {
         case "exec": {
@@ -462,21 +378,21 @@ export class MeshExecutionGateway {
         }
         case "fileExists": {
         if (!request.path) throw new DomainError("mesh_execution_request_invalid", "fileExists requires a path.");
-        return await executor.fileExists(assertMeshExecutionPath(session.workspaceRoot, request.path));
+        return await executor.fileExists(assertMeshExecutionPath(session.executionRoot, request.path));
         }
         case "directoryExists": {
         if (!request.path) throw new DomainError("mesh_execution_request_invalid", "directoryExists requires a path.");
-        return await executor.directoryExists(assertMeshExecutionPath(session.workspaceRoot, request.path));
+        return await executor.directoryExists(assertMeshExecutionPath(session.executionRoot, request.path));
         }
         case "readFile": {
         if (!request.path) throw new DomainError("mesh_execution_request_invalid", "readFile requires a path.");
-        const content = await executor.readFile(assertMeshExecutionPath(session.workspaceRoot, request.path));
+        const content = await executor.readFile(assertMeshExecutionPath(session.executionRoot, request.path));
         if (content !== null) assertStringSize(content, "file content");
         return content;
         }
         case "listDirectory": {
         const path = request.path
-          ? assertMeshExecutionPath(session.workspaceRoot, request.path)
+          ? assertMeshExecutionPath(session.executionRoot, request.path)
           : cwd;
         const entries = await executor.listDirectory(path, { includeHidden: request.includeHidden });
         assertStringSize(JSON.stringify(entries), "directory listing");
@@ -487,7 +403,7 @@ export class MeshExecutionGateway {
           throw new DomainError("mesh_execution_request_invalid", "writeFile requires a path and content.");
         }
         return await executor.writeFile(
-          assertMeshExecutionPath(session.workspaceRoot, request.path),
+          assertMeshExecutionPath(session.executionRoot, request.path),
           request.content,
         );
         }

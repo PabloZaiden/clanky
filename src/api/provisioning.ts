@@ -49,19 +49,22 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const server = await sshServerManager.getServer(validation.data.sshServerId);
-        if (!server) {
+        const server = validation.data.sshServerId
+          ? await sshServerManager.getServer(validation.data.sshServerId)
+          : null;
+        if (validation.data.sshServerId && !server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
 
         const credentialToken = validation.data.credentialToken?.trim();
-        const password = credentialToken
+        const password = credentialToken && server
           ? sshCredentialManager.getPasswordForToken(server.config.id, credentialToken)
           : undefined;
 
         const snapshot = await provisioningManager.startJob({
           name: validation.data.name,
-          sshServerId: validation.data.sshServerId,
+          sshServerId: validation.data.sshServerId ?? undefined,
+          executionNodeId: validation.data.executionNodeId ?? undefined,
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,

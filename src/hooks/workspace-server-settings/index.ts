@@ -11,6 +11,7 @@ import { useWorkspaceFetch } from "./use-fetch";
 import { useWorkspaceMutations } from "./use-mutations";
 import { useWorkspaceConnection } from "./use-connection";
 export type { UseWorkspaceServerSettingsResult } from "./types";
+export { useWorkspaceExecutionTargets } from "./use-execution-targets";
 
 /**
  * Hook for managing workspace-specific server settings.

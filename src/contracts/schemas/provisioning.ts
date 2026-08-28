@@ -8,7 +8,8 @@ export const ProvisioningJobModeSchema = z.enum(["provision", "rebuild", "restar
 
 export const CreateProvisioningJobRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
-  sshServerId: RequiredTrimmedStringSchema,
+  sshServerId: RequiredTrimmedStringSchema.nullish(),
+  executionNodeId: RequiredTrimmedStringSchema.nullish(),
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),
@@ -24,17 +25,23 @@ export const CreateProvisioningJobRequestSchema = z.object({
   workspaceId: z.string().trim().nullable(),
 }).refine((data) => {
   if (data.mode === "provision") {
+    if ((!data.sshServerId && !data.executionNodeId) || (data.sshServerId && data.executionNodeId)) {
+      return false;
+    }
     if (data.createNewRepository) {
       return data.basePath.length > 0 && (data.devboxTemplate ?? "").length > 0;
     }
     return data.repoUrl.length > 0 && data.basePath.length > 0;
   }
   if (data.mode === "arise") {
-    return true;
+    return Boolean(data.sshServerId) && !data.executionNodeId;
   }
-  return (data.targetDirectory ?? "").length > 0 && (data.workspaceId ?? "").length > 0;
+  return Boolean(data.sshServerId)
+    && !data.executionNodeId
+    && (data.targetDirectory ?? "").length > 0
+    && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "provision mode requires repoUrl and basePath, or basePath and devboxTemplate when createNewRepository is true; rebuild/restart mode requires targetDirectory and workspaceId; arise mode only requires the server context",
+  message: "provision mode requires an SSH server or stdio execution node plus repoUrl and basePath, or basePath and devboxTemplate when createNewRepository is true; rebuild/restart mode requires targetDirectory and workspaceId; arise mode only requires the server context",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

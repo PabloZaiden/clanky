@@ -79,7 +79,11 @@ export function WorkspaceSelector({
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>
             {showServerDetails
-              ? `${workspace.name} — ${getServerLabel(workspace.serverSettings, registeredSshServers)}`
+              ? `${workspace.name} — ${getServerLabel(
+                  workspace.serverSettings,
+                  registeredSshServers,
+                  { nodeId: workspace.executionNodeId },
+                )}`
               : workspace.name}
           </option>
         ))}

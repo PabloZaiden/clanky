@@ -188,25 +188,19 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/git/github-repository-url` | Resolve the GitHub repository URL for a workspace. |
 | GET | `/api/git/remote-status` | Check whether a git remote exists for a workspace. |
 | POST | `/api/internal/agent-prompt` | Internal endpoint used by the workspace-side deterministic agent runner to forward workspace prompt calls to the authenticated user's chat. |
-| GET | `/api/mesh/conflicts` | List unresolved conflicts in linked mesh resources. |
-| POST | `/api/mesh/conflicts/:conflictId/resolve` | Resolve one linked mesh conflict explicitly. |
 | POST | `/api/mesh/instance-name` | Set the persistent display name for this mesh instance. |
 | GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/pairing-approvals` | Receive a signed mesh pairing approval from another node. |
 | POST | `/api/mesh/internal/pairing-requests` | Receive a signed mesh pairing request from another node. |
-| POST | `/api/mesh/internal/sync` | Receive signed semantic mesh checkpoints from another node. |
-| POST | `/api/mesh/internal/takeover` | Receive a signed mesh takeover claim from another node. |
-| POST | `/api/mesh/members/revoke` | Revoke a mesh member and stop sending new synchronized data to it. |
+| POST | `/api/mesh/members/revoke` | Revoke a trusted mesh member. |
 | GET, POST | `/api/mesh/pairing-requests` | List or create mesh pairing requests. |
 | POST | `/api/mesh/pairing-requests/:requestId/approve` | Approve a pending mesh pairing request. |
 | POST | `/api/mesh/pairing-requests/:requestId/complete` | Confirm the peer fingerprint and complete an outgoing mesh pairing request. |
 | POST | `/api/mesh/pairing-requests/:requestId/reject` | Reject a pending mesh pairing request. |
 | POST | `/api/mesh/rejoin` | Rotate this revoked node identity and start a new mesh pairing flow. |
 | GET | `/api/mesh/status` | Get local mesh identity, linked accounts, peers, and pairing state. |
-| POST | `/api/mesh/takeover` | Explicitly claim this instance as the active node for the linked mesh. |
-| GET | `/api/mesh/takeover/preflight` | Inspect mesh authority and active work before an explicit takeover. |
 | GET | `/api/models` | List available AI models for a workspace. |
 | GET | `/api/models/variants` | List available model variants for a workspace. |
 | GET, PUT | `/api/preferences/dashboard-view-mode` | Persist the preferred dashboard layout. |

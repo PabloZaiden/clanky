@@ -40,9 +40,9 @@ export function WorkspaceHeader({
         </span>
         <span
           className="min-w-0 break-words text-xs text-gray-400 dark:text-gray-500 [overflow-wrap:anywhere]"
-          title={getServerLabel(workspace.serverSettings, registeredSshServers)}
+          title={getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
         >
-          {getServerLabel(workspace.serverSettings, registeredSshServers)}
+          {getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
         </span>
         <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">
           ({taskCount} {taskCount === 1 ? "task" : "tasks"})

@@ -81,7 +81,8 @@ export class ProvisioningManager {
         config: {
           id: jobId,
           name: options.name.trim(),
-          sshServerId: options.sshServerId.trim(),
+          sshServerId: normalizeOptionalValue(options.sshServerId),
+          executionNodeId: normalizeOptionalValue(options.executionNodeId),
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -175,10 +176,19 @@ export class ProvisioningManager {
     let createdWorkspaceId: string | undefined;
 
     try {
-      const { server, executor } = await sshServerManager.getCommandExecutor(
-        record.job.config.sshServerId,
-        password,
-      );
+      const executionNodeId = record.job.config.executionNodeId;
+      const stdioSettings: ServerSettings = {
+        agent: {
+          provider: record.job.config.provider,
+          transport: "stdio",
+        },
+      };
+      const sshTarget = record.job.config.sshServerId
+        ? await sshServerManager.getCommandExecutor(record.job.config.sshServerId, password)
+        : null;
+      const server = sshTarget?.server ?? null;
+      const executor = sshTarget?.executor
+        ?? await backendManager.createCommandExecutorForSettings(stdioSettings, "/", executionNodeId);
       const git = GitService.withExecutor(executor);
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
@@ -334,7 +344,9 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = status.workdir?.trim();
+      const resolvedDirectory = executionNodeId
+        ? targetDirectory
+        : status.workdir?.trim();
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -344,7 +356,7 @@ export class ProvisioningManager {
       }
 
       const resolvedPort = status.sshPort ?? status.port ?? getPublishedPortFallback(status);
-      if (!resolvedPort) {
+      if (!executionNodeId && !resolvedPort) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -356,8 +368,9 @@ export class ProvisioningManager {
         status.sshUser?.trim() ||
         devboxCredential.username?.trim() ||
         status.remoteUser?.trim() ||
-        server.username.trim();
-      if (!resolvedUsername) {
+        server?.username.trim()
+        || "";
+      if (!executionNodeId && !resolvedUsername) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -366,7 +379,7 @@ export class ProvisioningManager {
       }
 
       const resolvedPassword = status.password?.trim() || devboxCredential.password?.trim();
-      if (!resolvedPassword) {
+      if (!executionNodeId && !resolvedPassword) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -374,22 +387,26 @@ export class ProvisioningManager {
         );
       }
 
-      const serverSettings: ServerSettings = {
-        agent: {
-          provider: record.job.config.provider,
-          transport: "ssh",
-          hostname: server.address,
-          port: resolvedPort,
-          username: resolvedUsername,
-          password: resolvedPassword,
-        },
-      };
+      const serverSettings: ServerSettings = executionNodeId
+        ? stdioSettings
+        : {
+            agent: {
+              provider: record.job.config.provider,
+              transport: "ssh",
+              hostname: server!.address,
+              port: resolvedPort!,
+              username: resolvedUsername,
+              password: resolvedPassword,
+            },
+          };
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Resolved devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
+        executionNodeId
+          ? `Configured stdio execution on mesh node ${executionNodeId}`
+          : `Resolved devbox SSH endpoint ${resolvedUsername}@${server!.address}:${resolvedPort}`,
         "devbox_status",
       );
 
@@ -403,6 +420,7 @@ export class ProvisioningManager {
         id: crypto.randomUUID(),
         name: record.job.config.name,
         directory: resolvedDirectory,
+        executionNodeId: executionNodeId ?? null,
         serverSettings,
         createdAt: now,
         updatedAt: now,
@@ -422,7 +440,11 @@ export class ProvisioningManager {
       appendSystemLog(record, this.maxLogEntries, `Created workspace ${workspace.name}`, "create_workspace");
 
       setStep(record, this.maxLogEntries, "test_connection", "Testing workspace connection");
-      const connectionResult = await backendManager.testConnection(serverSettings, resolvedDirectory);
+      const connectionResult = await backendManager.testConnection(
+        serverSettings,
+        resolvedDirectory,
+        executionNodeId,
+      );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(
           "connection_test_failed",
@@ -569,8 +591,16 @@ export class ProvisioningManager {
         record.job.config.devcontainerSubpath = devcontainerSubpath;
       }
 
+      const sshServerId = record.job.config.sshServerId;
+      if (!sshServerId) {
+        throw new ProvisioningFailedError(
+          "missing_ssh_server",
+          "verify_devbox",
+          `${mode === "restart" ? "Restart" : "Rebuild"} mode requires an SSH server`,
+        );
+      }
       const { server, executor } = await sshServerManager.getCommandExecutor(
-        record.job.config.sshServerId,
+        sshServerId,
         password,
       );
 
@@ -787,8 +817,16 @@ export class ProvisioningManager {
     password: string | undefined,
   ): Promise<void> {
     try {
+      const sshServerId = record.job.config.sshServerId;
+      if (!sshServerId) {
+        throw new ProvisioningFailedError(
+          "missing_ssh_server",
+          "verify_devbox",
+          "Server arise mode requires an SSH server",
+        );
+      }
       const { executor } = await sshServerManager.getCommandExecutor(
-        record.job.config.sshServerId,
+        sshServerId,
         password,
       );
 

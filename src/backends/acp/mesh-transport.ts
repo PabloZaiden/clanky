@@ -104,6 +104,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       workspaceId: config.mesh.workspaceId,
       directory: config.directory,
       executionNodeId: config.mesh.executionNodeId,
+      provider: this.provider,
       channel: "acp",
     });
     this.sessionClient = sessionClient;

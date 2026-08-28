@@ -86,6 +86,7 @@ export function useWorkspaceMutations(
   const updateWorkspace = useCallback(async (
     name: string,
     settings: ServerSettings,
+    executionNodeId: string | null,
     archived: boolean,
     allowClankyContext: boolean,
   ): Promise<boolean> => {
@@ -101,7 +102,13 @@ export function useWorkspaceMutations(
       await apiRequest(`/api/workspaces/${workspaceId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, serverSettings: settings, archived, allowClankyContext }),
+        body: JSON.stringify({
+          name,
+          serverSettings: settings,
+          executionNodeId: settings.agent.transport === "stdio" ? executionNodeId : null,
+          archived,
+          allowClankyContext,
+        }),
         action: "Update workspace",
         fallbackMessage: "Failed to update workspace",
       });

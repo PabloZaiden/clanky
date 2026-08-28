@@ -136,6 +136,7 @@ export const serverSettingsRoutes = defineRoutes({
         // Optionally accept settings in the body to test proposed settings
         // If no body, use the workspace's current settings
         let settings = workspace.serverSettings;
+        let executionNodeId = workspace.executionNodeId;
 
         const bodyText = await req.text();
         if (bodyText.trim()) {
@@ -155,16 +156,31 @@ export const serverSettingsRoutes = defineRoutes({
           ) {
             settings = workspace.serverSettings;
           } else {
-            const parsedSettings = ServerSettingsSchema.safeParse(bodyJson);
-            if (!parsedSettings.success) {
-              const firstIssue = parsedSettings.error.issues[0]?.message ?? "Invalid server settings";
-              return errorResponse("validation_error", firstIssue, 400);
+            const proposed = TestConnectionRequestSchema.safeParse({
+              ...(typeof bodyJson === "object" && bodyJson !== null ? bodyJson : {}),
+              directory: workspace.directory,
+            });
+            if (proposed.success && "settings" in (bodyJson as object)) {
+              settings = proposed.data.settings;
+              executionNodeId = proposed.data.executionNodeId;
+            } else {
+              const parsedSettings = ServerSettingsSchema.safeParse(bodyJson);
+              if (!parsedSettings.success) {
+                const firstIssue = proposed.error?.issues[0]?.message
+                  ?? parsedSettings.error.issues[0]?.message
+                  ?? "Invalid server settings";
+                return errorResponse("validation_error", firstIssue, 400);
+              }
+              settings = parsedSettings.data;
             }
-            settings = parsedSettings.data;
           }
         }
 
-        const result = await workspaceManager.testConnection(settings, workspace.directory);
+        const result = await workspaceManager.testConnection(
+          settings,
+          workspace.directory,
+          executionNodeId,
+        );
         return Response.json(result);
       } catch (error) {
         log.error("Failed to test workspace connection:", String(error));
@@ -193,16 +209,34 @@ export const serverSettingsRoutes = defineRoutes({
         return result.response;
       }
 
-      const { settings, directory } = result.data;
+      const { settings, directory, executionNodeId } = result.data;
 
       try {
-        const testResult = await workspaceManager.testConnection(settings, directory);
+        const testResult = await workspaceManager.testConnection(settings, directory, executionNodeId);
         return Response.json(testResult);
       } catch (error) {
         log.error("Failed to test connection:", String(error));
         return internalErrorResponse(error, {
           error: "test_failed",
           message: "Failed to test connection",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/workspaces/execution-targets": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List local and paired mesh stdio execution targets.",
+    async GET() {
+      try {
+        return Response.json(await workspaceManager.listExecutionTargets());
+      } catch (error) {
+        log.error("Failed to list workspace execution targets:", String(error));
+        return internalErrorResponse(error, {
+          error: "execution_targets_failed",
+          message: "Failed to list workspace execution targets",
           status: 500,
         });
       }

@@ -21,6 +21,8 @@ export interface UseWorkspaceCreateResult {
   workspaceDirectory: string;
   setWorkspaceDirectory: (dir: string) => void;
   workspaceServerSettings: ServerSettings;
+  workspaceExecutionNodeId: string | null;
+  setWorkspaceExecutionNodeId: (nodeId: string | null) => void;
   setWorkspaceServerSettings: (settings: ServerSettings | ((current: ServerSettings) => ServerSettings)) => void;
   workspaceServerSettingsValid: boolean;
   setWorkspaceServerSettingsValid: (valid: boolean) => void;
@@ -28,6 +30,8 @@ export interface UseWorkspaceCreateResult {
   workspaceCreateSubmitting: boolean;
   automaticServerId: string;
   setAutomaticServerId: (id: string) => void;
+  automaticExecutionNodeId: string | null;
+  setAutomaticExecutionNodeId: (nodeId: string | null) => void;
   automaticRepoUrl: string;
   setAutomaticRepoUrl: (url: string) => void;
   automaticCreateNewRepository: boolean;
@@ -47,7 +51,10 @@ export interface UseWorkspaceCreateResult {
   automaticPassword: string;
   setAutomaticPassword: (password: string) => void;
   handleCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void;
-  handleTestWorkspaceConnection: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
+  handleTestWorkspaceConnection: (
+    settings: ServerSettings,
+    executionNodeId: string | null,
+  ) => Promise<{ success: boolean; error?: string }>;
   handleBackToAutomaticWorkspaceForm: () => void;
 }
 
@@ -76,10 +83,12 @@ export function useWorkspaceCreate({
   const [workspaceServerSettings, setWorkspaceServerSettings] = useState<ServerSettings>(() =>
     getCreateWorkspaceDefaultServerSettings(),
   );
+  const [workspaceExecutionNodeId, setWorkspaceExecutionNodeId] = useState<string | null>(null);
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
   const [automaticServerId, setAutomaticServerId] = useState("");
+  const [automaticExecutionNodeId, setAutomaticExecutionNodeId] = useState<string | null>(null);
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
@@ -118,11 +127,13 @@ export function useWorkspaceCreate({
     setWorkspaceName("");
     setWorkspaceDirectory("");
     setWorkspaceServerSettings(getCreateWorkspaceDefaultServerSettings());
+    setWorkspaceExecutionNodeId(null);
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
     setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
+    setAutomaticExecutionNodeId(null);
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
@@ -155,7 +166,10 @@ export function useWorkspaceCreate({
     }
   }, [provisioning.snapshot?.job.config.id, provisioning.snapshot?.job.state.status, refreshWorkspaces]);
 
-  async function handleTestWorkspaceConnection(settings: ServerSettings) {
+  async function handleTestWorkspaceConnection(
+    settings: ServerSettings,
+    executionNodeId: string | null,
+  ) {
     const trimmedDirectory = workspaceDirectory.trim();
     if (!trimmedDirectory) {
       return { success: false, error: "Enter a workspace directory first." };
@@ -166,7 +180,7 @@ export function useWorkspaceCreate({
       return await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings, directory: trimmedDirectory }),
+        body: JSON.stringify({ settings, directory: trimmedDirectory, executionNodeId }),
         action: "Test server connection",
         fallbackMessage: "Failed to test server connection",
       });
@@ -186,7 +200,8 @@ export function useWorkspaceCreate({
 
     setWorkspaceCreateMode("automatic");
     setWorkspaceName(config.name);
-    setAutomaticServerId(config.sshServerId);
+    setAutomaticServerId(config.sshServerId ?? "");
+    setAutomaticExecutionNodeId(config.executionNodeId ?? null);
     setAutomaticRepoUrl(config.repoUrl ?? "");
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
@@ -209,8 +224,8 @@ export function useWorkspaceCreate({
       }
 
       if (workspaceCreateMode === "automatic") {
-        if (!automaticServerId.trim() || !automaticBasePath.trim()) {
-          toast.error("Saved SSH server and remote base path are required.");
+        if ((!automaticExecutionNodeId && !automaticServerId.trim()) || !automaticBasePath.trim()) {
+          toast.error("An execution host and base path are required.");
           return;
         }
         if (!automaticCreateNewRepository && !automaticRepoUrl.trim()) {
@@ -224,7 +239,8 @@ export function useWorkspaceCreate({
 
         const snapshot = await provisioning.startJob({
           name,
-          sshServerId: automaticServerId,
+          sshServerId: automaticExecutionNodeId ? undefined : automaticServerId,
+          executionNodeId: automaticExecutionNodeId ?? undefined,
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
           devcontainerSubpath: automaticDevboxTemplate.trim()
@@ -258,6 +274,9 @@ export function useWorkspaceCreate({
           name,
           directory,
           serverSettings: workspaceServerSettings,
+          executionNodeId: workspaceServerSettings.agent.transport === "stdio"
+            ? workspaceExecutionNodeId
+            : null,
         };
         const workspace = await createWorkspace(request);
         if (!workspace) {
@@ -279,6 +298,8 @@ export function useWorkspaceCreate({
     workspaceDirectory,
     setWorkspaceDirectory,
     workspaceServerSettings,
+    workspaceExecutionNodeId,
+    setWorkspaceExecutionNodeId,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,
@@ -286,6 +307,8 @@ export function useWorkspaceCreate({
     workspaceCreateSubmitting,
     automaticServerId,
     setAutomaticServerId,
+    automaticExecutionNodeId,
+    setAutomaticExecutionNodeId,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,

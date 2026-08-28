@@ -355,10 +355,11 @@ class BackendManager {
 
   /**
    * Invalidate only mesh-owned stdio execution resources. SSH connections are
-   * intentionally left untouched when mesh authority or membership changes.
+   * intentionally left untouched when mesh membership or transport state changes.
    */
   async invalidateMeshExecutionConnections(): Promise<void> {
     await meshAcpGateway.closeAll();
+    const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
 
     for (const [workspaceId, state] of this.connections) {
       if (
@@ -375,6 +376,7 @@ class BackendManager {
       if (
         workspace?.serverSettings.agent.transport !== "stdio"
         || !workspace.executionNodeId
+        || workspace.executionNodeId === localNodeId
       ) {
         continue;
       }
@@ -383,7 +385,7 @@ class BackendManager {
     for (const key of this.commandExecutors.keys()) {
       try {
         const parsed = JSON.parse(key) as { executionNodeId?: string | null };
-        if (parsed.executionNodeId) {
+        if (parsed.executionNodeId && parsed.executionNodeId !== localNodeId) {
           const executor = this.commandExecutors.get(key);
           if (executor && "close" in executor && typeof executor.close === "function") {
             (executor as CommandExecutor & { close: () => void }).close();
@@ -446,12 +448,25 @@ class BackendManager {
    */
   async testConnection(
     settings: ServerSettings,
-    directory: string
+    directory: string,
+    executionNodeId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
+    const localNodeId = settings.agent.transport === "stdio"
+      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      : null;
+    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
+      ? (executionNodeId ?? localNodeId)
+      : null;
     // Reuse the configured test backend when present so tests can stub connection behavior.
     const testBackend = this.isTestBackend && this.testBackend
       ? this.testBackend
-      : this.createBackendForSettings(settings);
+      : this.createBackendForSettings(settings, settings.agent.transport === "stdio"
+        ? {
+            workspaceId: crypto.randomUUID(),
+            localNodeId,
+            executionNodeId: resolvedExecutionNodeId,
+          }
+        : undefined);
     const config = buildConnectionConfig(settings, directory);
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -494,7 +509,8 @@ class BackendManager {
    */
   async validateRemoteDirectory(
     settings: ServerSettings,
-    directory: string
+    directory: string,
+    executionNodeId?: string | null,
   ): Promise<{ success: boolean; isGitRepo?: boolean; directoryExists?: boolean; error?: string }> {
     log.debug("Validating remote directory", {
       directory,
@@ -522,16 +538,11 @@ class BackendManager {
 
     try {
       const execution = deriveExecutionSettings(settings);
-      const executor = new CommandExecutorImpl({
-        provider: execution.provider,
+      const executor = await this.createCommandExecutorForSettings(
+        settings,
         directory,
-        host: execution.sshTarget?.host,
-        port: execution.sshTarget?.port,
-        user: execution.sshTarget?.username,
-        password: execution.sshTarget?.password,
-        identityFile: execution.sshTarget?.identityFile,
-        timeoutMs: this.connectionTimeoutMs,
-      });
+        executionNodeId,
+      );
 
       if (execution.provider === "ssh") {
         const connectivityProbe = await executor.exec("true", [], { cwd: "/" });
@@ -542,6 +553,7 @@ class BackendManager {
             error: `Failed to connect to remote server: ${detail}`,
           };
         }
+
       }
 
       const directoryExists = await executor.directoryExists(directory);
@@ -557,6 +569,48 @@ class BackendManager {
       log.error("Failed to validate remote directory", { directory, error: String(error) });
       return { success: false, error: String(error) };
     }
+  }
+
+  async createCommandExecutorForSettings(
+    settings: ServerSettings,
+    directory: string,
+    executionNodeId?: string | null,
+  ): Promise<CommandExecutor> {
+    if (this.testExecutorFactory) {
+      return this.testExecutorFactory(directory);
+    }
+    const execution = deriveExecutionSettings(settings);
+    const localNodeId = settings.agent.transport === "stdio"
+      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      : null;
+    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
+      ? (executionNodeId ?? localNodeId)
+      : null;
+    if (
+      settings.agent.transport === "stdio"
+      && resolvedExecutionNodeId
+      && localNodeId
+      && resolvedExecutionNodeId !== localNodeId
+    ) {
+      return new MeshCommandExecutor({
+        workspaceId: crypto.randomUUID(),
+        directory,
+        executionNodeId: resolvedExecutionNodeId,
+        provider: settings.agent.provider,
+        localUserId: requireCurrentUserId(),
+        requestTimeoutMs: this.connectionTimeoutMs,
+      });
+    }
+    return new CommandExecutorImpl({
+      provider: execution.provider,
+      directory,
+      host: execution.sshTarget?.host,
+      port: execution.sshTarget?.port,
+      user: execution.sshTarget?.username,
+      password: execution.sshTarget?.password,
+      identityFile: execution.sshTarget?.identityFile,
+      timeoutMs: this.connectionTimeoutMs,
+    });
   }
 
   /**
@@ -838,6 +892,7 @@ class BackendManager {
         workspaceId,
         directory: dir,
         executionNodeId,
+        provider: state.settings.agent.provider,
         localUserId: requireCurrentUserId(),
       })
       : new CommandExecutorImpl({

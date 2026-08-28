@@ -10,7 +10,6 @@ import { requirePersistenceUserId } from "../ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 import { replaceChatTranscriptEntriesForUserInTransaction } from "./transcript";
 import { hydrateTranscriptStateForUser } from "../transcripts/store";
-import { scheduleMeshCheckpoint } from "../mesh-sync";
 
 const log = createLogger("persistence:chats");
 const STANDALONE_CHAT_CONDITION = "scope = 'workspace' AND task_id IS NULL";
@@ -95,12 +94,6 @@ export async function saveChat(chat: Chat): Promise<void> {
       `).run(...values);
       replaceChatTranscriptEntriesForUserInTransaction(db, chat, userId);
     })();
-    scheduleMeshCheckpoint({
-      userId,
-      aggregateType: "chat",
-      aggregateId: chat.config.id,
-      payload: chat,
-    });
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {
       throw uniqueConstraintError(
@@ -155,35 +148,13 @@ export async function loadTaskChat(taskId: string): Promise<Chat | null> {
 
 export async function deleteChat(chatId: string): Promise<boolean> {
   const userId = requirePersistenceUserId();
-  const previousChat = await loadChat(chatId);
   const result = getDatabase().prepare("DELETE FROM chats WHERE id = ? AND user_id = ?").run(chatId, userId);
-  if (result.changes > 0 && previousChat) {
-    scheduleMeshCheckpoint({
-      userId,
-      aggregateType: "chat",
-      aggregateId: chatId,
-      payload: previousChat,
-      tombstone: true,
-      eligible: true,
-    });
-  }
   return result.changes > 0;
 }
 
 export async function deleteChatsByTaskId(taskId: string): Promise<number> {
   const userId = requirePersistenceUserId();
-  const previousChat = await loadTaskChat(taskId);
   const result = getDatabase().prepare("DELETE FROM chats WHERE task_id = ? AND user_id = ?").run(taskId, userId);
-  if (result.changes > 0 && previousChat) {
-    scheduleMeshCheckpoint({
-      userId,
-      aggregateType: "chat",
-      aggregateId: previousChat.config.id,
-      payload: previousChat,
-      tombstone: true,
-      eligible: true,
-    });
-  }
   return result.changes;
 }
 

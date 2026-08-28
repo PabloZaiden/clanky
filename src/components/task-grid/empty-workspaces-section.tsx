@@ -49,9 +49,9 @@ export function EmptyWorkspacesSection({
                 <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">{workspace.name}</div>
                 <div
                   className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
-                  title={getServerLabel(workspace.serverSettings, registeredSshServers)}
+                  title={getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
                 >
-                  {getServerLabel(workspace.serverSettings, registeredSshServers)}
+                  {getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
                 </div>
               </div>
               <button

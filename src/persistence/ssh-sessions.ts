@@ -7,7 +7,6 @@ import { getDatabase } from "./database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "./errors";
-import { scheduleMeshCheckpoint } from "./mesh-sync";
 
 const log = createLogger("persistence:ssh-sessions");
 
@@ -120,12 +119,6 @@ export async function saveSshSession(session: SshSession): Promise<void> {
     }
     throw error;
   }
-  scheduleMeshCheckpoint({
-    userId: String(row["user_id"]),
-    aggregateType: "ssh_session",
-    aggregateId: session.config.id,
-    payload: session,
-  });
   log.debug("Saved SSH session", {
     id: session.config.id,
     workspaceId: session.config.workspaceId,
@@ -172,17 +165,6 @@ export async function countSshSessionsByWorkspace(workspaceId: string): Promise<
 export async function deleteSshSession(id: string): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const previous = await getSshSession(id);
   const result = db.run("DELETE FROM ssh_sessions WHERE id = ? AND user_id = ?", [id, userId]);
-  if (result.changes > 0 && previous) {
-    scheduleMeshCheckpoint({
-      userId,
-      aggregateType: "ssh_session",
-      aggregateId: id,
-      payload: previous,
-      tombstone: true,
-      eligible: true,
-    });
-  }
   return result.changes > 0;
 }

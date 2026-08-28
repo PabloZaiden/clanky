@@ -12,14 +12,10 @@ export interface ClankyCliContext {
 
 export type MeshOperation =
   | "status"
-  | "preflight"
-  | "takeover"
-  | "conflicts"
   | "pair-start"
   | "pair-approve"
   | "pair-complete"
   | "pair-reject"
-  | "conflict-resolve"
   | "revoke"
   | "rejoin";
 
@@ -31,8 +27,6 @@ export interface MeshCommand {
   linkId?: string;
   fingerprint?: string;
   reason?: string;
-  expectedGeneration?: number;
-  resolution?: "local" | "remote" | "dismiss";
 }
 
 function usageError(message: string): Error {
@@ -83,32 +77,16 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
   const [operation, ...operationArgs] = args;
   if (!operation) {
     throw usageError(
-      "Mesh command must be status, preflight, takeover, conflicts, revoke, rejoin, or pair",
+      "Mesh command must be status, revoke, rejoin, or pair",
     );
   }
 
-  if (operation === "status" || operation === "preflight") {
+  if (operation === "status") {
     const { positionals } = parseOptions(operationArgs, []);
     if (positionals.length > 0) {
       throw usageError(`Unexpected argument: ${positionals[0]}`);
     }
     return { operation };
-  }
-
-  if (operation === "takeover") {
-    const { positionals, options } = parseOptions(operationArgs, ["--expected-generation"]);
-    if (positionals.length > 0) {
-      throw usageError(`Unexpected argument: ${positionals[0]}`);
-    }
-    const rawGeneration = options["--expected-generation"];
-    const expectedGeneration = rawGeneration === undefined ? undefined : Number(rawGeneration);
-    if (
-      expectedGeneration !== undefined
-      && (!Number.isInteger(expectedGeneration) || expectedGeneration < 0)
-    ) {
-      throw usageError("--expected-generation must be a non-negative integer");
-    }
-    return { operation, expectedGeneration };
   }
 
   if (operation === "revoke") {
@@ -134,35 +112,9 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     };
   }
 
-  if (operation === "conflicts") {
-    const [conflictOperation, ...conflictArgs] = operationArgs;
-    if (!conflictOperation) {
-      return { operation };
-    }
-    if (conflictOperation !== "resolve") {
-      throw usageError("Mesh conflicts command must be list or resolve");
-    }
-    const { positionals, options } = parseOptions(conflictArgs, ["--resolution"]);
-    const resolution = options["--resolution"] as "local" | "remote" | "dismiss" | undefined;
-    if (
-      positionals.length !== 1
-      || !resolution
-      || !["local", "remote", "dismiss"].includes(resolution)
-    ) {
-      throw usageError(
-        "Mesh conflicts resolve requires an ID and --resolution local|remote|dismiss",
-      );
-    }
-    return {
-      operation: "conflict-resolve",
-      requestId: positionals[0],
-      resolution,
-    };
-  }
-
   if (operation !== "pair") {
     throw usageError(
-      "Mesh command must be status, preflight, takeover, conflicts, revoke, rejoin, or pair",
+      "Mesh command must be status, revoke, rejoin, or pair",
     );
   }
 
@@ -224,20 +176,6 @@ export function buildMeshRequest(command: MeshCommand): {
   switch (command.operation) {
     case "status":
       return { endpoint: "/api/mesh/status", method: "GET" };
-    case "preflight":
-      return { endpoint: "/api/mesh/takeover/preflight", method: "GET" };
-    case "conflicts":
-      return { endpoint: "/api/mesh/conflicts", method: "GET" };
-    case "takeover":
-      return {
-        endpoint: "/api/mesh/takeover",
-        method: "POST",
-        payload: JSON.stringify(
-          command.expectedGeneration === undefined
-            ? {}
-            : { expectedGeneration: command.expectedGeneration },
-        ),
-      };
     case "pair-start":
       return {
         endpoint: "/api/mesh/pairing-requests",
@@ -264,12 +202,6 @@ export function buildMeshRequest(command: MeshCommand): {
         endpoint: `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/reject`,
         method: "POST",
         payload: JSON.stringify(command.reason ? { reason: command.reason } : {}),
-      };
-    case "conflict-resolve":
-      return {
-        endpoint: `/api/mesh/conflicts/${encodeURIComponent(command.requestId ?? "")}/resolve`,
-        method: "POST",
-        payload: JSON.stringify({ resolution: command.resolution }),
       };
     case "revoke":
       return {
@@ -311,8 +243,8 @@ export async function runMeshCommand(
 
 export function createMeshCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Inspect, pair, and switch the active linked mesh instance.",
-    usage: "mesh <status|preflight|takeover|conflicts|revoke|rejoin|pair> [options]",
+    description: "Inspect and manage linked mesh instances.",
+    usage: "mesh <status|revoke|rejoin|pair> [options]",
     handler: runMeshCommand,
   };
 }

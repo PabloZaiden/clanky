@@ -9,17 +9,16 @@
 
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import {
+  MeshHealthCheckSchema,
   MeshPeerPairingApprovalSchema,
   MeshPeerPairingRequestSchema,
-  MeshSyncPushSchema,
-  MeshTakeoverEnvelopeSchema,
+  MeshMembershipUpdateSchema,
 } from "@/contracts/schemas/mesh";
 import {
   MeshExecutionRpcRequestSchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
 import { meshManager } from "../core/mesh-manager";
-import { receiveMeshSyncPush } from "../core/mesh-sync-manager";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
 import { errorResponse } from "./helpers";
@@ -31,6 +30,7 @@ function internalMeshErrorResponse(error: unknown): Response {
     const status = error.code === "mesh_pairing_request_expired"
       ? 410
       : error.code === "mesh_pairing_request_conflict"
+        || error.code === "mesh_instance_name_conflict"
         ? 409
         : error.code === "mesh_peer_not_trusted"
           ? 403
@@ -40,11 +40,9 @@ function internalMeshErrorResponse(error: unknown): Response {
             ? 403
           : error.code === "mesh_link_revoked"
             ? 403
-          : error.code === "mesh_link_conflict"
-            ? 409
           : error.code === "mesh_execution_caller_not_active"
             ? 409
-          : error.code === "mesh_execution_authority_changed"
+          : error.code === "mesh_execution_context_changed"
             ? 409
           : error.code === "mesh_execution_owner_mismatch"
             ? 403
@@ -108,46 +106,45 @@ export const meshInternalRoutes = defineRoutes({
       }
     },
   },
-  "/api/mesh/internal/sync": {
+  "/api/mesh/internal/membership": {
     auth: "public",
     sameOrigin: "never",
-    description: "Receive signed semantic mesh checkpoints from another node.",
+    description: "Receive a signed mesh membership metadata update from another node.",
     tags: ["mesh", "internal"],
     async POST(req): Promise<Response> {
-      const parsed = await parseAndValidate(MeshSyncPushSchema, req);
+      const parsed = await parseAndValidate(MeshMembershipUpdateSchema, req);
       if (!parsed.success) {
         return parsed.response;
       }
       const nodeId = req.headers.get("x-clanky-mesh-node-id");
       const requestId = req.headers.get("x-clanky-mesh-request-id");
       if (nodeId !== parsed.data.senderNodeId || requestId !== parsed.data.nonce) {
-        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed sync request.", 400);
+        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed membership update.", 400);
       }
       try {
-        return Response.json(await receiveMeshSyncPush(parsed.data, nodeId));
+        return Response.json(await meshManager.receiveMembershipUpdate(parsed.data));
       } catch (error) {
         return internalMeshErrorResponse(error);
       }
     },
   },
-  "/api/mesh/internal/takeover": {
+  "/api/mesh/internal/health": {
     auth: "public",
     sameOrigin: "never",
-    description: "Receive a signed mesh takeover claim from another node.",
-    tags: ["mesh", "internal"],
+    description: "Receive a signed mesh transport health check from another node.",
+    tags: ["mesh", "internal", "health"],
     async POST(req): Promise<Response> {
-      const parsed = await parseAndValidate(MeshTakeoverEnvelopeSchema, req);
+      const parsed = await parseAndValidate(MeshHealthCheckSchema, req);
       if (!parsed.success) {
         return parsed.response;
       }
       const nodeId = req.headers.get("x-clanky-mesh-node-id");
       const requestId = req.headers.get("x-clanky-mesh-request-id");
-      const expectedRequestId = `${parsed.data.linkId}:${parsed.data.generation}:${parsed.data.senderNodeId}`;
-      if (nodeId !== parsed.data.senderNodeId || requestId !== expectedRequestId) {
-        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed takeover claim.", 400);
+      if (nodeId !== parsed.data.senderNodeId || requestId !== parsed.data.nonce) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed health check.", 400);
       }
       try {
-        return Response.json(await meshManager.receiveTakeover(parsed.data));
+        return Response.json(await meshManager.receiveHealthCheck(parsed.data));
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

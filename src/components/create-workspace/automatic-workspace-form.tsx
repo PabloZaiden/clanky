@@ -5,9 +5,13 @@
 import { PASSWORD_INPUT_PROPS } from "../common";
 import type { AgentProvider, DevboxTemplateSummary, SshServer } from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
+import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 
 interface AutomaticWorkspaceFormProps {
   serverId: string;
+  executionNodeId: string | null;
+  onExecutionNodeIdChange: (nodeId: string | null) => void;
+  remoteOnly: boolean;
   onServerIdChange: (id: string) => void;
   repoUrl: string;
   onRepoUrlChange: (url: string) => void;
@@ -39,6 +43,9 @@ const AUTOMATIC_ADVANCED_PANEL_ID = "create-workspace-automatic-advanced-options
 
 export function AutomaticWorkspaceForm({
   serverId,
+  executionNodeId,
+  onExecutionNodeIdChange,
+  remoteOnly,
   onServerIdChange,
   repoUrl,
   onRepoUrlChange,
@@ -65,6 +72,7 @@ export function AutomaticWorkspaceForm({
   advancedOpen,
   onAdvancedOpenChange,
 }: AutomaticWorkspaceFormProps) {
+  const { targets: executionTargets } = useWorkspaceExecutionTargets();
   const trimmedDevboxTemplate = devboxTemplate.trim();
   const trimmedDevcontainerSubpath = devcontainerSubpath.trim();
   const trimmedGithubUser = githubUser.trim();
@@ -79,6 +87,31 @@ export function AutomaticWorkspaceForm({
 
   return (
     <>
+      <div>
+        <label
+          htmlFor="automatic-execution-host"
+          className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          Provisioning and Execution Host <span className="text-red-500">*</span>
+        </label>
+        <select
+          id="automatic-execution-host"
+          value={executionNodeId ?? ""}
+          onChange={(event) => onExecutionNodeIdChange(event.target.value || null)}
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+        >
+          <option value="">Saved SSH server (devbox SSH)</option>
+          {executionTargets
+            .filter((target) => !remoteOnly || target.kind === "mesh")
+            .map((target) => (
+              <option key={target.nodeId} value={target.nodeId}>
+                {target.name} via stdio{target.availability === "offline" ? " (offline)" : ""}
+              </option>
+            ))}
+        </select>
+      </div>
+
+      {!executionNodeId && (
       <div>
         <label
           htmlFor="automatic-ssh-server"
@@ -105,6 +138,7 @@ export function AutomaticWorkspaceForm({
           </p>
         )}
       </div>
+      )}
 
       <div>
         <label
@@ -139,7 +173,7 @@ export function AutomaticWorkspaceForm({
           htmlFor="automatic-base-path"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
         >
-          Remote Base Path <span className="text-red-500">*</span>
+          Base Path <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -171,7 +205,7 @@ export function AutomaticWorkspaceForm({
         </select>
       </div>
 
-      {!selectedServerHasStoredCredential && (
+      {!executionNodeId && !selectedServerHasStoredCredential && (
         <div>
           <label
             htmlFor="automatic-ssh-password"

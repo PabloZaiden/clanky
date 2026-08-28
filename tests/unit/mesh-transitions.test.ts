@@ -8,10 +8,8 @@ import {
   decideApproveMeshPairing,
   decideCompleteMeshPairing,
   decideCompleteOutgoingMeshPairing,
-  decideLocalMeshTakeover,
   decideReceiveMeshPairingApproval,
   decideRejectMeshPairing,
-  decideRemoteMeshTakeover,
 } from "../../src/domain/mesh-transitions";
 import { DomainError } from "../../src/domain/domain-error";
 
@@ -21,10 +19,6 @@ function link(overrides: Partial<MeshLinkRecord> = {}): MeshLinkRecord {
   return {
     linkId: "link-1",
     localUserId: "user-1",
-    activeNodeId: "node-1",
-    takeoverGeneration: 3,
-    activeClaimedAt: "2026-08-06T00:00:00.000Z",
-    activeClaimOrigin: "test",
     status: "active",
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-06T00:00:00.000Z",
@@ -67,8 +61,6 @@ function approval(overrides: Partial<MeshPairingApprovalRecord> = {}): MeshPairi
     approvedByNodeId: "node-2",
     approvedByInstanceName: "Remote",
     approvedByLocalUserId: "user-2",
-    activeNodeId: "node-2",
-    takeoverGeneration: 3,
     endpoint: "https://remote.example.test",
     transport: "https",
     publicKey: "remote-key",
@@ -94,69 +86,6 @@ function expectDomainError(action: () => unknown, code: string): void {
 }
 
 describe("mesh transition decisions", () => {
-  test("accepts a local takeover and derives the next generation", () => {
-    expect(decideLocalMeshTakeover({
-      link: link(),
-      member: { status: "active" },
-      nodeId: "node-2",
-    })).toEqual({
-      kind: "accepted",
-      generation: 4,
-    });
-  });
-
-  test("rejects a local takeover when the observed generation changed", () => {
-    expectDomainError(() => decideLocalMeshTakeover({
-      link: link(),
-      member: { status: "active" },
-      nodeId: "node-2",
-      expectedGeneration: 2,
-    }), "mesh_takeover_generation_conflict");
-  });
-
-  test("returns stale remote authority without overwriting newer state", () => {
-    expect(decideRemoteMeshTakeover({
-      link: link(),
-      member: { status: "active" },
-      nodeId: "node-2",
-      generation: 2,
-      claimedAt: "2026-08-07T00:00:00.000Z",
-      claimOrigin: "remote",
-      signature: "signature",
-    })).toEqual({
-      kind: "stale",
-      claim: {
-        linkId: "link-1",
-        nodeId: "node-1",
-        generation: 3,
-        claimedAt: "2026-08-06T00:00:00.000Z",
-        claimOrigin: "test",
-        signature: null,
-      },
-    });
-  });
-
-  test("materializes a same-generation competing takeover as a conflict decision", () => {
-    const decision = decideRemoteMeshTakeover({
-      link: link(),
-      member: { status: "active" },
-      nodeId: "node-2",
-      generation: 3,
-      claimedAt: "2026-08-07T00:00:00.000Z",
-      claimOrigin: "remote",
-      signature: "signature",
-    });
-    expect(decision.kind).toBe("conflict");
-    if (decision.kind === "conflict") {
-      expect(decision.error.code).toBe("mesh_takeover_conflict");
-      expect(decision.error.details).toMatchObject({
-        generation: 3,
-        activeNodeId: "node-1",
-        competingNodeId: "node-2",
-      });
-    }
-  });
-
   test("selects an existing user link for incoming pairing approval", () => {
     expect(decideApproveMeshPairing({
       request: request(),

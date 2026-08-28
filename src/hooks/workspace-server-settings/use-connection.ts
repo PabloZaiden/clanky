@@ -11,7 +11,10 @@ export function useWorkspaceConnection(
   const [testing, setTesting] = useState(false);
 
   const testConnection = useCallback(
-    async (testSettings?: ServerSettings): Promise<{ success: boolean; error?: string }> => {
+    async (
+      testSettings?: ServerSettings,
+      executionNodeId?: string | null,
+    ): Promise<{ success: boolean; error?: string }> => {
       if (!workspaceId) {
         return { success: false, error: "No workspace selected" };
       }
@@ -25,7 +28,9 @@ export function useWorkspaceConnection(
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: testSettings ? JSON.stringify(testSettings) : "{}",
+            body: testSettings
+              ? JSON.stringify({ settings: testSettings, executionNodeId })
+              : "{}",
             action: "Test workspace server connection",
             fallbackMessage: "Failed to test workspace server connection",
           },

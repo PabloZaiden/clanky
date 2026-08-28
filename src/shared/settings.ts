@@ -184,7 +184,10 @@ export function findRegisteredSshServer(
 /**
  * Build a deterministic, credential-free fingerprint for workspace routing.
  */
-export function getServerFingerprint(settings: ServerSettings): string {
+export function getServerFingerprint(
+  settings: ServerSettings,
+  executionNodeId?: string | null,
+): string {
   const provider = settings.agent.provider;
 
   if (settings.agent.transport === "ssh") {
@@ -194,7 +197,8 @@ export function getServerFingerprint(settings: ServerSettings): string {
     return `${provider}:ssh:${hostname}:${port}:${username}`;
   }
 
-  return `${provider}:stdio`;
+  const target = executionNodeId?.trim() || "local";
+  return `${provider}:stdio:${target}`;
 }
 
 /**
@@ -203,6 +207,11 @@ export function getServerFingerprint(settings: ServerSettings): string {
 export function getServerLabel(
   settings: ServerSettings,
   registeredSshServers: readonly SshServer[] = [],
+  executionTarget?: {
+    nodeId?: string | null;
+    localNodeId?: string | null;
+    instanceName?: string | null;
+  },
 ): string {
   if (settings.agent.transport === "ssh") {
     const hostname = settings.agent.hostname.trim() || "127.0.0.1";
@@ -212,6 +221,12 @@ export function getServerLabel(
     const hostDisplay = registeredServer?.config.name ?? hostname;
     const authority = username ? `${username}@${hostDisplay}` : hostDisplay;
     return `${settings.agent.provider} via ssh (${authority}:${port})`;
+  }
+
+  const nodeId = executionTarget?.nodeId?.trim();
+  if (nodeId && nodeId !== executionTarget?.localNodeId) {
+    const target = executionTarget?.instanceName?.trim() || `mesh peer ${nodeId.slice(0, 8)}`;
+    return `${settings.agent.provider} via stdio on ${target}`;
   }
 
   return `${settings.agent.provider} via local stdio`;

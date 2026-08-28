@@ -101,6 +101,9 @@ export const crudRoutes = defineRoutes({
                 status: 400,
                 message: "Directory must be a git repository",
               },
+              workspace_execution_target_not_trusted: {
+                status: 400,
+              },
             },
             fallback: {
               error: "create_failed",
@@ -180,6 +183,20 @@ export const crudRoutes = defineRoutes({
         }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
+        if (isDomainError(error)) {
+          return domainErrorResponse(error, {
+            mappings: {
+              workspace_execution_target_not_trusted: {
+                status: 400,
+              },
+            },
+            fallback: {
+              error: "update_failed",
+              message: "Failed to update workspace",
+              status: 500,
+            },
+          });
+        }
         log.error("Failed to update workspace:", String(error));
         return internalErrorResponse(error, {
           error: "update_failed",

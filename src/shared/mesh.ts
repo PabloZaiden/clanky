@@ -9,7 +9,7 @@ export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = typeof MESH_TRANSPORTS[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 
-export const MESH_LINK_STATUSES = ["active", "conflict", "revoked"] as const;
+export const MESH_LINK_STATUSES = ["active", "revoked"] as const;
 export type MeshLinkStatus = typeof MESH_LINK_STATUSES[number];
 
 export const MESH_MEMBER_STATUSES = [
@@ -36,29 +36,6 @@ export type MeshPairingDirection = typeof MESH_PAIRING_DIRECTIONS[number];
 export const MESH_PAIRING_APPROVAL_STATUSES = ["pending", "accepted", "rejected"] as const;
 export type MeshPairingApprovalStatus = typeof MESH_PAIRING_APPROVAL_STATUSES[number];
 
-export const MESH_SYNC_AGGREGATE_TYPES = [
-  "mesh_membership",
-  "workspace",
-  "ssh_server",
-  "ssh_server_session",
-  "ssh_session",
-  "task",
-  "chat",
-  "agent",
-  "agent_run",
-  "review_comment",
-] as const;
-export type MeshSyncAggregateType = typeof MESH_SYNC_AGGREGATE_TYPES[number];
-
-export const MESH_SYNC_OUTBOX_STATUSES = ["pending", "inflight", "failed"] as const;
-export type MeshSyncOutboxStatus = typeof MESH_SYNC_OUTBOX_STATUSES[number];
-
-export const MESH_SYNC_CONFLICT_STATUSES = ["open", "resolved", "dismissed"] as const;
-export type MeshSyncConflictStatus = typeof MESH_SYNC_CONFLICT_STATUSES[number];
-
-export const MESH_CONFLICT_RESOLUTIONS = ["local", "remote", "dismiss"] as const;
-export type MeshConflictResolution = typeof MESH_CONFLICT_RESOLUTIONS[number];
-
 export interface MeshNodeIdentity {
   nodeId: string;
   instanceName: string | null;
@@ -79,10 +56,6 @@ export interface MeshNodeRecord extends MeshNodeIdentity {
 export interface MeshLinkRecord {
   linkId: string;
   localUserId: string;
-  activeNodeId: string | null;
-  takeoverGeneration: number;
-  activeClaimedAt: string | null;
-  activeClaimOrigin: string | null;
   status: MeshLinkStatus;
   createdAt: string;
   updatedAt: string;
@@ -134,8 +107,6 @@ export interface MeshPairingApprovalRecord {
   approvedByNodeId: string;
   approvedByInstanceName?: string | null;
   approvedByLocalUserId: string;
-  activeNodeId: string | null;
-  takeoverGeneration: number;
   endpoint: string;
   transport: MeshTransport;
   publicKey: string;
@@ -170,63 +141,4 @@ export interface MeshStatusRecord {
   node: MeshNodeIdentity;
   links: MeshLinkStatusRecord[];
   pendingPairingRequests: MeshPairingRequestRecord[];
-}
-
-export interface MeshTakeoverRecord {
-  linkId: string;
-  nodeId: string;
-  generation: number;
-  claimedAt: string;
-  claimOrigin: string;
-  signature: string | null;
-}
-
-export interface MeshTakeoverClaimRecord extends MeshTakeoverRecord {
-  publicKey: string;
-  fingerprint: string;
-}
-
-export interface MeshSyncCheckpointRecord {
-  checkpointId: string;
-  linkId: string;
-  aggregateType: MeshSyncAggregateType;
-  aggregateId: string;
-  originNodeId: string;
-  baseRevision: number;
-  targetRevision: number;
-  basePayload: unknown;
-  payload: unknown;
-  tombstone: boolean;
-  createdAt: string;
-}
-
-export interface MeshSyncOutboxRecord {
-  peerNodeId: string;
-  checkpointId: string;
-  linkId: string;
-  aggregateType: MeshSyncAggregateType;
-  aggregateId: string;
-  originNodeId: string;
-  targetRevision: number;
-  status: MeshSyncOutboxStatus;
-  attempts: number;
-  nextAttemptAt: string;
-  lastError: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MeshSyncConflictRecord {
-  conflictId: string;
-  linkId: string;
-  aggregateType: MeshSyncAggregateType;
-  aggregateId: string;
-  originNodeId: string;
-  remoteRevision: number;
-  basePayload: unknown;
-  localPayload: unknown;
-  remotePayload: unknown;
-  status: MeshSyncConflictStatus;
-  createdAt: string;
-  updatedAt: string;
 }

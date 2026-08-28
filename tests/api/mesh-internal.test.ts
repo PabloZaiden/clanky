@@ -92,6 +92,7 @@ describe("mesh internal routes", () => {
         targetNodeId: "target-1",
         workspaceId: "workspace-1",
         directory: "/workspace",
+        provider: "opencode",
         channel: "command-executor",
         nonce: "nonce-1",
         expiresAt: new Date(Date.now() + 10_000).toISOString(),
@@ -125,6 +126,7 @@ describe("mesh internal routes", () => {
         targetNodeId: "target-1",
         workspaceId: "workspace-1",
         directory: "/workspace",
+        provider: "opencode",
         channel: "command-executor",
         nonce: "nonce-1",
         expiresAt: new Date(Date.now() + 10_000).toISOString(),
@@ -157,6 +159,7 @@ describe("mesh internal routes", () => {
         targetNodeId: "target-1",
         workspaceId: "workspace-1",
         directory: "/workspace",
+        provider: "opencode",
         channel: "command-executor",
         nonce: "nonce-1",
         expiresAt: new Date(Date.now() + 10_000).toISOString(),
@@ -212,7 +215,6 @@ describe("mesh internal routes", () => {
   test("requires matching identity headers on every signed control route", async () => {
     const pairing = createPairingEnvelope();
     const linkId = crypto.randomUUID();
-    const takeoverNodeId = crypto.randomUUID();
     const cases = [
       {
         path: "/api/mesh/internal/pairing-requests",
@@ -229,8 +231,6 @@ describe("mesh internal routes", () => {
           approvedByNodeId: pairing.requestedNodeId,
           approvedByInstanceName: "Approver",
           approvedByLocalUserId: "approver-user",
-          activeNodeId: null,
-          takeoverGeneration: 0,
           endpoint: pairing.endpoint,
           transport: pairing.transport,
           publicKey: pairing.publicKey,
@@ -242,7 +242,7 @@ describe("mesh internal routes", () => {
         requestId: pairing.requestId,
       },
       {
-        path: "/api/mesh/internal/sync",
+        path: "/api/mesh/internal/membership",
         payload: {
           protocolVersion: 1,
           linkId,
@@ -250,18 +250,16 @@ describe("mesh internal routes", () => {
           senderPublicKey: pairing.publicKey,
           senderFingerprint: pairing.fingerprint,
           nonce: crypto.randomUUID(),
-          checkpoints: [{
-            checkpointId: crypto.randomUUID(),
-            linkId,
-            aggregateType: "workspace",
-            aggregateId: crypto.randomUUID(),
-            originNodeId: pairing.requestedNodeId,
-            baseRevision: 0,
-            targetRevision: 1,
-            basePayload: null,
-            payload: { name: "remote" },
-            tombstone: false,
-            createdAt: new Date().toISOString(),
+          members: [{
+            nodeId: pairing.requestedNodeId,
+            instanceName: pairing.requestedInstanceName,
+            localUserId: pairing.requestedLocalUserId,
+            endpoint: pairing.endpoint,
+            transport: pairing.transport,
+            status: "active",
+            membershipGeneration: 1,
+            publicKey: pairing.publicKey,
+            fingerprint: pairing.fingerprint,
           }],
           signature: "signature",
         },
@@ -269,20 +267,19 @@ describe("mesh internal routes", () => {
         requestId: "not-the-nonce",
       },
       {
-        path: "/api/mesh/internal/takeover",
+        path: "/api/mesh/internal/health",
         payload: {
           protocolVersion: 1,
           linkId,
-          senderNodeId: takeoverNodeId,
+          senderNodeId: pairing.requestedNodeId,
           senderPublicKey: pairing.publicKey,
           senderFingerprint: pairing.fingerprint,
-          generation: 1,
-          claimedAt: new Date().toISOString(),
-          claimOrigin: "test",
+          nonce: crypto.randomUUID(),
+          sentAt: new Date().toISOString(),
           signature: "signature",
         },
-        nodeId: takeoverNodeId,
-        requestId: `${linkId}:1:${takeoverNodeId}`,
+        nodeId: pairing.requestedNodeId,
+        requestId: "not-the-nonce",
       },
     ] as const;
 

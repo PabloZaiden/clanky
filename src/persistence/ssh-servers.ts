@@ -8,7 +8,6 @@ import {
   normalizeSshConnectionMode,
   type SshServer,
   type SshServerConfig,
-  type SshServerPublicKey,
   type SshServerSession,
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -19,14 +18,8 @@ import {
   loadSshServerKeyPair,
 } from "./ssh-server-keys";
 import { requirePersistenceUserId } from "./ownership";
-import { scheduleMeshCheckpoint } from "./mesh-sync";
 
 const log = createLogger("persistence:ssh-servers");
-
-export interface MeshSshServerPayload {
-  config: SshServerConfig;
-  publicKey: SshServerPublicKey;
-}
 
 const ALLOWED_SSH_SERVER_COLUMNS = new Set([
   "id",
@@ -178,38 +171,9 @@ function persistSshServerConfig(config: SshServerConfig): void {
   );
 }
 
-export async function getSshServerMeshPayload(
-  config: SshServerConfig,
-): Promise<MeshSshServerPayload> {
-  const keyPair = await ensureSshServerKeyPair(config.id);
-  return {
-    config,
-    publicKey: {
-      algorithm: keyPair.algorithm,
-      publicKey: keyPair.publicKey,
-      fingerprint: keyPair.fingerprint,
-      version: keyPair.version,
-      createdAt: keyPair.createdAt,
-    },
-  };
-}
-
 export async function saveSshServerConfig(config: SshServerConfig): Promise<void> {
-  const meshPayload = await getSshServerMeshPayload(config);
+  await ensureSshServerKeyPair(config.id);
   persistSshServerConfig(config);
-  scheduleMeshCheckpoint({
-    userId: requirePersistenceUserId(),
-    aggregateType: "ssh_server",
-    aggregateId: config.id,
-    payload: meshPayload,
-  });
-}
-
-export async function saveSshServerFromMesh(
-  payload: MeshSshServerPayload,
-): Promise<void> {
-  await ensureSshServerKeyPair(payload.config.id);
-  persistSshServerConfig(payload.config);
 }
 
 export async function getSshServerConfig(id: string): Promise<SshServerConfig | null> {
@@ -242,21 +206,10 @@ export async function listSshServers(): Promise<SshServer[]> {
 export async function deleteSshServer(id: string): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const previous = await getSshServerConfig(id);
   const result = db.run("DELETE FROM ssh_servers WHERE id = ? AND user_id = ?", [id, userId]);
   const deleted = result.changes > 0;
   if (deleted) {
     await deleteSshServerKeyPair(id);
-    if (previous) {
-      scheduleMeshCheckpoint({
-        userId,
-        aggregateType: "ssh_server",
-        aggregateId: id,
-        payload: previous,
-        tombstone: true,
-        eligible: true,
-      });
-    }
     log.debug("Deleted SSH server", { id });
   }
   return deleted;
@@ -280,12 +233,6 @@ export async function saveSshServerSession(session: SshServerSession): Promise<v
      WHERE ssh_server_sessions.user_id = excluded.user_id`,
     Object.values(row) as Array<string | null>,
   );
-  scheduleMeshCheckpoint({
-    userId: String(row["user_id"]),
-    aggregateType: "ssh_server_session",
-    aggregateId: session.config.id,
-    payload: session,
-  });
 }
 
 export async function getSshServerSession(id: string): Promise<SshServerSession | null> {
@@ -313,17 +260,6 @@ export async function countSshServerSessionsByServerId(sshServerId: string): Pro
 export async function deleteSshServerSession(id: string): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const previous = await getSshServerSession(id);
   const result = db.run("DELETE FROM ssh_server_sessions WHERE id = ? AND user_id = ?", [id, userId]);
-  if (result.changes > 0 && previous) {
-    scheduleMeshCheckpoint({
-      userId,
-      aggregateType: "ssh_server_session",
-      aggregateId: id,
-      payload: previous,
-      tombstone: true,
-      eligible: true,
-    });
-  }
   return result.changes > 0;
 }

@@ -1,145 +1,16 @@
 /**
- * Pure transition decisions for mesh membership, pairing, and authority.
+ * Pure transition decisions for mesh membership and pairing.
  *
  * Persistence adapters may evaluate these decisions inside a transaction, but
  * this module never reads or writes storage and never performs transport work.
  */
 
 import type {
-  MeshLinkMemberRecord,
   MeshLinkRecord,
   MeshPairingApprovalRecord,
   MeshPairingRequestRecord,
-  MeshTakeoverRecord,
 } from "@/shared/mesh";
 import { DomainError } from "./domain-error";
-
-type MeshMemberSnapshot = Pick<MeshLinkMemberRecord, "status"> | null;
-
-export interface LocalMeshTakeoverTransitionInput {
-  link: MeshLinkRecord | null;
-  member: MeshMemberSnapshot;
-  nodeId: string;
-  expectedGeneration?: number;
-}
-
-export interface LocalMeshTakeoverDecision {
-  kind: "accepted";
-  generation: number;
-}
-
-export function decideLocalMeshTakeover(
-  input: LocalMeshTakeoverTransitionInput,
-): LocalMeshTakeoverDecision {
-  if (!input.link) {
-    throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-  }
-  if (input.link.status === "conflict") {
-    throw new DomainError("mesh_takeover_conflict", "The mesh link has an unresolved takeover conflict.");
-  }
-  if (
-    input.expectedGeneration !== undefined
-    && input.expectedGeneration !== input.link.takeoverGeneration
-  ) {
-    throw new DomainError(
-      "mesh_takeover_generation_conflict",
-      "The mesh link changed before takeover was confirmed.",
-      {
-        details: {
-          expectedGeneration: input.expectedGeneration,
-          currentGeneration: input.link.takeoverGeneration,
-          activeNodeId: input.link.activeNodeId,
-        },
-      },
-    );
-  }
-  if (!input.member || input.member.status !== "active") {
-    throw new DomainError("mesh_node_not_member", "The local node is not an active member of this mesh link.");
-  }
-  return {
-    kind: "accepted",
-    generation: Math.max(1, input.link.takeoverGeneration + 1),
-  };
-}
-
-export interface RemoteMeshTakeoverTransitionInput {
-  link: MeshLinkRecord | null;
-  member: MeshMemberSnapshot;
-  nodeId: string;
-  generation: number;
-  claimedAt: string;
-  claimOrigin: string;
-  signature: string;
-}
-
-export type RemoteMeshTakeoverDecision =
-  | {
-    kind: "accepted";
-    claim: MeshTakeoverRecord;
-  }
-  | {
-    kind: "stale";
-    claim: MeshTakeoverRecord;
-  }
-  | {
-    kind: "conflict";
-    error: DomainError<"mesh_takeover_conflict">;
-  };
-
-export function decideRemoteMeshTakeover(
-  input: RemoteMeshTakeoverTransitionInput,
-): RemoteMeshTakeoverDecision {
-  if (!input.link) {
-    throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-  }
-  if (!input.member || input.member.status !== "active") {
-    throw new DomainError("mesh_node_not_member", "The takeover node is not an active member of this mesh link.");
-  }
-  if (
-    input.generation === input.link.takeoverGeneration
-    && input.link.activeNodeId
-    && input.link.activeNodeId !== input.nodeId
-  ) {
-    return {
-      kind: "conflict",
-      error: new DomainError(
-        "mesh_takeover_conflict",
-        "The mesh link received two takeover claims for the same generation.",
-        {
-          details: {
-            generation: input.generation,
-            activeNodeId: input.link.activeNodeId,
-            competingNodeId: input.nodeId,
-          },
-        },
-      ),
-    };
-  }
-  if (input.generation < input.link.takeoverGeneration) {
-    return {
-      kind: "stale",
-      claim: {
-        linkId: input.link.linkId,
-        nodeId: input.link.activeNodeId ?? input.nodeId,
-        generation: input.link.takeoverGeneration,
-        claimedAt: input.link.activeClaimedAt ?? input.claimedAt,
-        claimOrigin: input.link.activeClaimOrigin ?? input.claimOrigin,
-        signature: null,
-      },
-    };
-  }
-  return {
-    kind: "accepted",
-    claim: {
-      linkId: input.link.linkId,
-      nodeId: input.nodeId,
-      generation: input.generation,
-      claimedAt: input.claimedAt,
-      claimOrigin: input.claimOrigin,
-      signature: input.signature,
-    },
-  };
-}
 
 export interface ApproveMeshPairingTransitionInput {
   request: MeshPairingRequestRecord | null;

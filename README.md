@@ -229,12 +229,14 @@ For mesh connections between trusted private-network instances, set
 reachable by its peer, such as `http://192.168.1.20:3000`. Do not expose an
 HTTP mesh endpoint to an untrusted network.
 
-Mesh can also relay `stdio` workspaces: the active instance remains the
-authority, while ACP processes and file/command operations run on the
-workspace's persisted execution owner. Keep mesh peers on a trusted network
-and use HTTPS (including WebSocket upgrades) when prompts, environment values,
-or file contents could cross an untrusted network. SSH-backed workspaces keep
-their existing routing and are not moved by mesh execution.
+Mesh provides pairing, membership, health, and trusted transport between
+independent Clanky instances. A workspace may use local `stdio`, `stdio via
+<mesh instance>`, or SSH; with remote `stdio`, ACP processes and
+file/command operations run on the selected peer while the workspace record
+and all application data remain local to the instance where it was created.
+Keep mesh peers on a trusted network and use HTTPS (including WebSocket
+upgrades) when prompts, environment values, or file contents could cross an
+untrusted network. SSH-backed workspaces keep their existing routing.
 
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
 public deployments. The image's trust-proxy defaults are intentionally unsafe

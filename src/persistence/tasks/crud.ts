@@ -11,7 +11,6 @@ import {
   hydrateTranscriptStateForUser,
   syncTranscriptEntriesInTransaction,
 } from "../transcripts/store";
-import { scheduleMeshCheckpoint } from "../mesh-sync";
 
 const log = createLogger("persistence:tasks");
 
@@ -135,12 +134,6 @@ export async function saveTask(task: Task): Promise<void> {
       task.state,
     );
   })();
-  scheduleMeshCheckpoint({
-    userId,
-    aggregateType: "task",
-    aggregateId: task.config.id,
-    payload: task,
-  });
   log.debug("Task saved to database", { id: task.config.id });
 }
 
@@ -189,23 +182,11 @@ export async function deleteTask(taskId: string): Promise<boolean> {
   log.debug("Deleting task", { taskId });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const previousTask = await loadTaskForUser(taskId, userId);
-
   const stmt = db.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?");
   const result = stmt.run(taskId, userId);
 
   const deleted = result.changes > 0;
   if (deleted) {
-    if (previousTask) {
-      scheduleMeshCheckpoint({
-        userId,
-        aggregateType: "task",
-        aggregateId: taskId,
-        payload: previousTask,
-        tombstone: true,
-        eligible: true,
-      });
-    }
     log.info("Task deleted", { taskId });
   } else {
     log.debug("Task not found for deletion", { taskId });

@@ -9,23 +9,24 @@
 import type {
   ApproveMeshPairingRequest,
   CompleteMeshPairingRequest,
+  MeshHealthCheck,
+  MeshMembershipUpdate,
   MeshPeerPairingRequest,
   MeshPeerPairingApproval,
   RejectMeshPairingRequest,
   StartMeshPairingRequest,
-  MeshTakeoverEnvelope,
 } from "@/contracts/schemas/mesh";
 import type {
   MeshLinkStatusRecord,
   MeshPairingMemberRecord,
-  MeshSyncConflictRecord,
   MeshStatusRecord,
 } from "@/shared/mesh";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
-  applyMeshLinkTakeover,
+  applyMeshMembershipUpdate,
   approveMeshPairingRequest,
-  claimMeshLinkForLocalUser,
+  assertMeshInstanceNameAvailable,
+  assertMeshLinkInstanceNameAvailable,
   completeOutgoingMeshPairingRequest,
   createMeshPairingRequest,
   getMeshPairingApproval,
@@ -33,6 +34,7 @@ import {
   getMeshLinkForLocalUser,
   getMeshNode,
   listMeshLinkMembers,
+  listMeshMembershipEntries,
   listMeshLinksForLocalUser,
   listPendingMeshPairingRequests,
   removeRevokedMeshLinkMember,
@@ -42,13 +44,9 @@ import {
   saveMeshPairingApproval,
   mergeMeshLinkMember,
   setMeshPairingApprovalStatus,
+  setMeshLinkMemberReachability,
   revokeMeshLinkMember,
-  setMeshLinkTakeoverSignature,
 } from "../persistence/mesh";
-import {
-  listOpenMeshSyncConflicts,
-  recordMeshMembershipCheckpoint,
-} from "../persistence/mesh-sync";
 import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
@@ -59,8 +57,9 @@ import {
 } from "../persistence/mesh-node-identity";
 import {
   buildMeshPairingApprovalSigningPayload,
+  buildMeshHealthCheckSigningPayload,
+  buildMeshMembershipUpdateSigningPayload,
   buildMeshPairingRequestSigningPayload,
-  buildMeshTakeoverSigningPayload,
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
@@ -70,10 +69,11 @@ import {
 } from "./mesh-transport-config";
 import { DomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
-import { bootstrapMeshPeerForUser } from "./mesh-sync-bootstrap";
-import { listTasksForUser } from "../persistence/tasks";
 import { backendManager } from "./backend/backend-manager";
-import { assertMeshPeerIdentity } from "./mesh-peer-auth";
+import {
+  assertMeshPeerIdentity,
+  requireTrustedMeshPeer,
+} from "./mesh-peer-auth";
 import {
   decideCompleteMeshPairing,
   decideReceiveMeshPairingApproval,
@@ -83,12 +83,178 @@ const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
 
 export class MeshManager {
-  async listOpenConflicts(localUserId: string): Promise<MeshSyncConflictRecord[]> {
-    const links = await listMeshLinksForLocalUser(localUserId);
-    const conflictsByLink = await Promise.all(
-      links.map((link) => listOpenMeshSyncConflicts(link.linkId)),
+  async checkHealth(localUserId: string): Promise<MeshStatusRecord> {
+    const identity = await ensureLocalMeshNodeIdentity();
+    const link = await getMeshLinkForLocalUser(localUserId);
+    if (!link) {
+      return await this.getStatus(localUserId);
+    }
+    const nonce = crypto.randomUUID();
+    const unsigned = {
+      protocolVersion: 1 as const,
+      linkId: link.linkId,
+      senderNodeId: identity.nodeId,
+      senderPublicKey: identity.publicKey,
+      senderFingerprint: identity.fingerprint,
+      nonce,
+      sentAt: new Date().toISOString(),
+    };
+    const signature = await signMeshPayload(buildMeshHealthCheckSigningPayload(unsigned));
+    const members = await listMeshLinkMembers(link.linkId);
+    await Promise.all(members
+      .filter((member) => member.nodeId !== identity.nodeId && member.status !== "revoked")
+      .map(async (member) => {
+        if (!member.endpoint) {
+          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
+          return;
+        }
+        try {
+          await postMeshControlMessage(
+            resolveMeshRoute(member.endpoint, "api/mesh/internal/health"),
+            { ...unsigned, signature },
+            nonce,
+          );
+          await setMeshLinkMemberReachability(link.linkId, member.nodeId, true);
+        } catch (error) {
+          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
+          log.debug("Mesh health check failed", {
+            linkId: link.linkId,
+            peerNodeId: member.nodeId,
+            error: String(error),
+          });
+        }
+      }));
+    return await this.getStatus(localUserId);
+  }
+
+  async receiveHealthCheck(
+    envelope: MeshHealthCheck,
+  ): Promise<{ status: "ok"; nodeId: string }> {
+    await requireTrustedMeshPeer({
+      linkId: envelope.linkId,
+      nodeId: envelope.senderNodeId,
+      publicKey: envelope.senderPublicKey,
+      fingerprint: envelope.senderFingerprint,
+      requireEncryptionKey: false,
+      context: "health check sender",
+    });
+    const { signature, ...unsigned } = envelope;
+    if (!verifyMeshPayloadSignature(
+      buildMeshHealthCheckSigningPayload(unsigned),
+      signature,
+      envelope.senderPublicKey,
+    )) {
+      throw new DomainError("mesh_peer_signature_invalid", "The health check signature is invalid.");
+    }
+    await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
+    return {
+      status: "ok",
+      nodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
+    };
+  }
+
+  private async propagateMembershipUpdate(
+    localUserId: string,
+    options: { includeRevokedPeers?: boolean } = {},
+  ): Promise<void> {
+    const identity = await ensureLocalMeshNodeIdentity();
+    const link = await getMeshLinkForLocalUser(localUserId);
+    if (!link) {
+      return;
+    }
+    const storedMembers = await listMeshMembershipEntries(link.linkId);
+    const localMember = storedMembers.find((member) => member.nodeId === identity.nodeId);
+    if (!localMember || localMember.status === "revoked") {
+      return;
+    }
+    const members = storedMembers.map((member) => ({
+      ...member,
+      status: member.status === "revoked" ? "revoked" as const : "active" as const,
+    }));
+    const nonce = crypto.randomUUID();
+    const unsigned = {
+      protocolVersion: 1 as const,
+      linkId: link.linkId,
+      senderNodeId: identity.nodeId,
+      senderPublicKey: identity.publicKey,
+      senderFingerprint: identity.fingerprint,
+      senderEncryptionPublicKey: identity.encryptionPublicKey,
+      nonce,
+      members,
+    };
+    const signature = await signMeshPayload(
+      buildMeshMembershipUpdateSigningPayload(unsigned),
     );
-    return conflictsByLink.flat();
+    await Promise.all(storedMembers
+      .filter((member) => (
+        member.nodeId !== identity.nodeId
+        && Boolean(member.endpoint)
+        && (
+          member.status !== "revoked"
+          || options.includeRevokedPeers === true
+        )
+      ))
+      .map(async (member) => {
+        try {
+          await postMeshControlMessage(
+            resolveMeshRoute(member.endpoint!, "api/mesh/internal/membership"),
+            { ...unsigned, signature },
+            nonce,
+          );
+          await setMeshLinkMemberReachability(link.linkId, member.nodeId, true);
+        } catch (error) {
+          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
+          log.warn("Mesh membership update delivery failed", {
+            linkId: link.linkId,
+            peerNodeId: member.nodeId,
+            error: String(error),
+          });
+        }
+      }));
+  }
+
+  async receiveMembershipUpdate(
+    envelope: MeshMembershipUpdate,
+  ): Promise<{ status: "accepted"; memberCount: number }> {
+    const trusted = await requireTrustedMeshPeer({
+      linkId: envelope.linkId,
+      nodeId: envelope.senderNodeId,
+      publicKey: envelope.senderPublicKey,
+      fingerprint: envelope.senderFingerprint,
+      encryptionPublicKey: envelope.senderEncryptionPublicKey,
+      requireEncryptionKey: false,
+      context: "membership update sender",
+    });
+    const { signature, ...unsigned } = envelope;
+    if (!verifyMeshPayloadSignature(
+      buildMeshMembershipUpdateSigningPayload(unsigned),
+      signature,
+      envelope.senderPublicKey,
+    )) {
+      throw new DomainError("mesh_peer_signature_invalid", "The membership update signature is invalid.");
+    }
+    for (const member of envelope.members) {
+      assertMeshPeerIdentity(member.publicKey, member.fingerprint, "membership update member");
+      if (member.endpoint) {
+        assertMeshEndpointAllowed(member.endpoint, member.transport);
+      }
+    }
+    const sender = envelope.members.find((member) => member.nodeId === envelope.senderNodeId);
+    if (
+      !sender
+      || sender.publicKey !== trusted.node.publicKey
+      || sender.fingerprint !== trusted.node.fingerprint
+      || sender.status === "revoked"
+    ) {
+      throw new DomainError(
+        "mesh_peer_identity_mismatch",
+        "The membership update does not contain the trusted sender identity.",
+      );
+    }
+    await applyMeshMembershipUpdate(envelope.linkId, envelope.members);
+    await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
+    await backendManager.invalidateMeshExecutionConnections();
+    return { status: "accepted", memberCount: envelope.members.length };
   }
 
   async getStatus(localUserId: string): Promise<MeshStatusRecord> {
@@ -121,36 +287,13 @@ export class MeshManager {
   }
 
   async setInstanceName(localUserId: string, value: string): Promise<MeshStatusRecord> {
+    const identity = await ensureLocalMeshNodeIdentity();
+    await assertMeshInstanceNameAvailable(localUserId, identity.nodeId, value);
     await setLocalMeshInstanceName(value);
     if (await getMeshLinkForLocalUser(localUserId)) {
-      await recordMeshMembershipCheckpoint(localUserId);
+      await this.propagateMembershipUpdate(localUserId);
     }
     return await this.getStatus(localUserId);
-  }
-
-  async getTakeoverPreflight(localUserId: string): Promise<{
-    linkId: string | null;
-    activeNodeId: string | null;
-    takeoverGeneration: number | null;
-    linkStatus: string | null;
-    activeTasks: Array<{ id: string; name: string; status: string }>;
-  }> {
-    const status = await this.getStatus(localUserId);
-    const link = status.links[0];
-    const activeTasks = (await listTasksForUser(localUserId))
-      .filter((task) => ["idle", "planning", "starting", "running", "waiting"].includes(task.state.status))
-      .map((task) => ({
-        id: task.config.id,
-        name: task.config.name,
-        status: task.state.status,
-      }));
-    return {
-      linkId: link?.linkId ?? null,
-      activeNodeId: link?.activeNodeId ?? null,
-      takeoverGeneration: link?.takeoverGeneration ?? null,
-      linkStatus: link?.status ?? null,
-      activeTasks,
-    };
   }
 
   async receivePairingRequest(
@@ -171,6 +314,13 @@ export class MeshManager {
     const knownNode = await getMeshNode(envelope.requestedNodeId);
     if (knownNode?.status === "revoked") {
       throw new DomainError("mesh_peer_revoked", "The pairing request uses a revoked mesh node identity.");
+    }
+    if (envelope.linkId) {
+      assertMeshLinkInstanceNameAvailable(
+        envelope.linkId,
+        envelope.requestedNodeId,
+        envelope.requestedInstanceName,
+      );
     }
     const { signature, ...unsigned } = envelope;
     const payload = buildMeshPairingRequestSigningPayload(unsigned);
@@ -328,6 +478,13 @@ export class MeshManager {
     localUserId: string,
     nodeId: string,
   ): Promise<MeshStatusRecord> {
+    const identity = await ensureLocalMeshNodeIdentity();
+    if (nodeId === identity.nodeId) {
+      throw new DomainError(
+        "mesh_member_self_revoke_invalid",
+        "A mesh instance cannot revoke its own transport identity.",
+      );
+    }
     const link = await listMeshLinksForLocalUser(localUserId).then((links) => links[0] ?? null);
     if (!link) {
       throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
@@ -338,7 +495,7 @@ export class MeshManager {
       nodeId,
     });
     await backendManager.invalidateMeshExecutionConnections();
-    await recordMeshMembershipCheckpoint(localUserId, { includeRevokedPeers: true });
+    await this.propagateMembershipUpdate(localUserId, { includeRevokedPeers: true });
     return await this.getStatus(localUserId);
   }
 
@@ -356,7 +513,7 @@ export class MeshManager {
       nodeId,
     });
     await backendManager.invalidateMeshExecutionConnections();
-    await recordMeshMembershipCheckpoint(localUserId);
+    await this.propagateMembershipUpdate(localUserId);
     return await this.getStatus(localUserId);
   }
 
@@ -407,6 +564,11 @@ export class MeshManager {
     if (approvedNode?.status === "revoked") {
       throw new DomainError("mesh_peer_revoked", "The pairing approval uses a revoked mesh node identity.");
     }
+    assertMeshLinkInstanceNameAvailable(
+      envelope.linkId,
+      envelope.approvedByNodeId,
+      envelope.approvedByInstanceName,
+    );
     await saveMeshNode({
       nodeId: envelope.approvedByNodeId,
       instanceName: envelope.approvedByInstanceName,
@@ -423,8 +585,6 @@ export class MeshManager {
       approvedByNodeId: envelope.approvedByNodeId,
       approvedByInstanceName: envelope.approvedByInstanceName,
       approvedByLocalUserId: envelope.approvedByLocalUserId,
-      activeNodeId: envelope.activeNodeId,
-      takeoverGeneration: envelope.takeoverGeneration,
       endpoint: envelope.endpoint,
       transport: envelope.transport,
       publicKey: envelope.publicKey,
@@ -484,8 +644,6 @@ export class MeshManager {
       remotePublicKey: approval.publicKey,
       remoteFingerprint: approval.fingerprint,
       remoteEncryptionPublicKey: approval.encryptionPublicKey,
-      activeNodeId: approval.activeNodeId,
-      takeoverGeneration: approval.takeoverGeneration,
       linkId: approval.linkId,
     });
     for (const member of approval.members) {
@@ -505,16 +663,7 @@ export class MeshManager {
     }
     await setMeshPairingApprovalStatus(requestId, "accepted");
     await backendManager.invalidateMeshExecutionConnections();
-    await recordMeshMembershipCheckpoint(localUserId);
-    queueMicrotask(() => {
-      void bootstrapMeshPeerForUser(localUserId).catch((error) => {
-        log.error("Mesh local bootstrap after pairing completion failed", {
-          linkId: approval.linkId,
-          peerNodeId: approval.approvedByNodeId,
-          error: String(error),
-        });
-      });
-    });
+    await this.propagateMembershipUpdate(localUserId);
     return await this.getStatus(localUserId);
   }
 
@@ -581,8 +730,6 @@ export class MeshManager {
         approvedByNodeId: identity.nodeId,
         approvedByInstanceName: instanceName,
         approvedByLocalUserId: localUserId,
-        activeNodeId: approval.link.activeNodeId,
-        takeoverGeneration: approval.link.takeoverGeneration,
         endpoint: localEndpoint,
         transport: localTransport,
         publicKey: identity.publicKey,
@@ -626,16 +773,7 @@ export class MeshManager {
       });
       throw error;
     }
-    await recordMeshMembershipCheckpoint(localUserId);
-    queueMicrotask(() => {
-      void bootstrapMeshPeerForUser(localUserId).catch((error) => {
-        log.error("Mesh peer bootstrap failed", {
-          linkId: approval.link.linkId,
-          peerNodeId: request.requestedNodeId,
-          error: String(error),
-        });
-      });
-    });
+    await this.propagateMembershipUpdate(localUserId);
     return await this.getStatus(localUserId);
   }
 
@@ -655,108 +793,6 @@ export class MeshManager {
     return await this.getStatus(localUserId);
   }
 
-  async takeover(
-    localUserId: string,
-    expectedGeneration?: number,
-  ): Promise<{
-    status: MeshStatusRecord;
-    generation: number;
-    warnings: string[];
-  }> {
-    const identity = await ensureLocalMeshNodeIdentity();
-    const link = await listMeshLinksForLocalUser(localUserId).then((links) => links[0] ?? null);
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
-    }
-    const claim = await claimMeshLinkForLocalUser({
-      linkId: link.linkId,
-      localUserId,
-      nodeId: identity.nodeId,
-      claimOrigin: "api",
-      expectedGeneration,
-    });
-    const unsigned = {
-      protocolVersion: 1 as const,
-      linkId: claim.linkId,
-      senderNodeId: identity.nodeId,
-      senderPublicKey: identity.publicKey,
-      senderFingerprint: identity.fingerprint,
-      generation: claim.generation,
-      claimedAt: claim.claimedAt,
-      claimOrigin: claim.claimOrigin,
-    };
-    const signature = await signMeshPayload(buildMeshTakeoverSigningPayload(unsigned));
-    await setMeshLinkTakeoverSignature({
-      linkId: claim.linkId,
-      nodeId: claim.nodeId,
-      generation: claim.generation,
-      signature,
-    });
-    await backendManager.invalidateMeshExecutionConnections();
-    const activeTasks = (await listTasksForUser(localUserId))
-      .filter((task) => ["idle", "planning", "starting", "running", "waiting"].includes(task.state.status));
-    const warnings: string[] = activeTasks.length > 0
-      ? [`${String(activeTasks.length)} task(s) remain active on their original node.`]
-      : [];
-    const members = await listMeshLinkMembers(claim.linkId);
-    await Promise.all(members
-      .filter((member) => member.nodeId !== identity.nodeId && member.status === "active")
-      .map(async (member) => {
-        if (!member.endpoint) {
-          warnings.push(`Peer ${member.nodeId} has no advertised endpoint.`);
-          return;
-        }
-        try {
-          await postMeshControlMessage(
-            resolveMeshRoute(member.endpoint, "api/mesh/internal/takeover"),
-            { ...unsigned, signature },
-            `${claim.linkId}:${claim.generation}:${identity.nodeId}`,
-          );
-        } catch (error) {
-          warnings.push(`Peer ${member.nodeId} did not receive the takeover claim: ${String(error)}`);
-          log.warn("Mesh takeover propagation failed", {
-            linkId: claim.linkId,
-            peerNodeId: member.nodeId,
-            generation: claim.generation,
-            error: String(error),
-          });
-        }
-      }));
-    return {
-      status: await this.getStatus(localUserId),
-      generation: claim.generation,
-      warnings,
-    };
-  }
-
-  async receiveTakeover(envelope: MeshTakeoverEnvelope): Promise<{ generation: number; status: string }> {
-    const node = await getMeshNode(envelope.senderNodeId);
-    if (!node || node.status === "revoked") {
-      throw new DomainError("mesh_peer_not_member", "The takeover sender is not a trusted mesh member.");
-    }
-    assertMeshPeerIdentity(envelope.senderPublicKey, envelope.senderFingerprint, "takeover sender");
-    if (envelope.senderFingerprint !== node.fingerprint) {
-      throw new DomainError("mesh_peer_identity_mismatch", "The takeover sender fingerprint does not match the trusted node.");
-    }
-    const { signature, ...unsigned } = envelope;
-    if (!verifyMeshPayloadSignature(
-      buildMeshTakeoverSigningPayload(unsigned),
-      signature,
-      envelope.senderPublicKey,
-    )) {
-      throw new DomainError("mesh_peer_signature_invalid", "The takeover signature is invalid.");
-    }
-    const claim = await applyMeshLinkTakeover({
-      linkId: envelope.linkId,
-      nodeId: envelope.senderNodeId,
-      generation: envelope.generation,
-      claimedAt: envelope.claimedAt,
-      claimOrigin: envelope.claimOrigin,
-      signature: envelope.signature,
-    });
-    await backendManager.invalidateMeshExecutionConnections();
-    return { generation: claim.generation, status: "accepted" };
-  }
 }
 
 export const meshManager = new MeshManager();

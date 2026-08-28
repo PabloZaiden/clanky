@@ -21,8 +21,6 @@ import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
-import { meshSyncWorker } from "./core/mesh-sync-worker";
-import { bootstrapMeshPeer } from "./core/mesh-sync-bootstrap";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import {
@@ -116,35 +114,15 @@ async function reconcileStartupState(): Promise<void> {
 
   let staleTasksReset = 0;
   let staleManagedContextsRevoked = 0;
-  let meshBootstrapSuccesses = 0;
-  let meshBootstrapFailures = 0;
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
-  });
-  await runForEachActiveUser(async (user) => {
-    try {
-      await bootstrapMeshPeer(user);
-      meshBootstrapSuccesses += 1;
-    } catch (error) {
-      meshBootstrapFailures += 1;
-      log.error("Mesh startup bootstrap failed", {
-        userId: user.id,
-        error: String(error),
-      });
-    }
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
   }
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
-  }
-  if (meshBootstrapSuccesses > 0) {
-    log.info(`Completed mesh startup bootstrap for ${meshBootstrapSuccesses} active users`);
-  }
-  if (meshBootstrapFailures > 0) {
-    log.error(`Mesh startup bootstrap failed for ${meshBootstrapFailures} active users`);
   }
 }
 
@@ -165,7 +143,6 @@ async function completeStartup(server: Server<WebAppWebSocketData>): Promise<voi
   }
   pushedTaskMonitor.start();
   agentScheduler.start();
-  meshSyncWorker.start();
 
   for (const message of getServerStartupMessages({
     host: appServer.config.host,
@@ -181,7 +158,6 @@ async function completeStartup(server: Server<WebAppWebSocketData>): Promise<voi
 function stopBackgroundWorkers(): void {
   pushedTaskMonitor.stop();
   agentScheduler.stop();
-  meshSyncWorker.stop();
 }
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({
