@@ -70,6 +70,7 @@ describe("Base Branch Invariant - Plan Mode", () => {
         directory: ctx.workDir,
         prompt: "Create a plan and execute it",
         planMode: true,
+        autoAcceptPlan: false,
       });
 
       expect(status).toBe(201);
@@ -130,6 +131,7 @@ describe("Base Branch Invariant - Plan Mode", () => {
         directory: ctx.workDir,
         prompt: "Plan and merge",
         planMode: true,
+        autoAcceptPlan: false,
       });
       const task = body as Task;
 
@@ -184,6 +186,7 @@ describe("Base Branch Invariant - Plan Mode", () => {
         directory: ctx.workDir,
         prompt: "Plan then push",
         planMode: true,
+        autoAcceptPlan: false,
       });
       const task = body as Task;
 
