@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildBuckets,
+  buildNativeTestArgs,
+  listTestFilesForMode,
   partitionFiles,
   resolveMaxWorkers,
+  resolveTestRunner,
   type TestBucket,
 } from "../../scripts/run-tests";
 
@@ -37,6 +40,37 @@ describe("test runner partitioning", () => {
     expect(resolveMaxWorkers({ CLANKY_TEST_MAX_WORKERS: "3" })).toBe(3);
   });
 
+  test("selects native execution by default and preserves custom retry mode", () => {
+    expect(resolveTestRunner({})).toBe("native");
+    expect(resolveTestRunner({ CI: "true" })).toBe("custom");
+    expect(resolveTestRunner({ CLANKY_TEST_RETRY_FAILED_BUCKETS: "1" })).toBe("custom");
+    expect(resolveTestRunner({}, ["--changed=HEAD"])).toBe("native");
+    expect(resolveTestRunner({ CLANKY_TEST_RUNNER: "custom" })).toBe("custom");
+    expect(resolveTestRunner({ CLANKY_TEST_RUNNER: "native", CI: "true" })).toBe("native");
+    expect(() => resolveTestRunner({ CLANKY_TEST_RUNNER: "unknown" })).toThrow("Unknown test runner");
+  });
+
+  test("builds a native command with deterministic worker and safety flags", () => {
+    expect(buildNativeTestArgs(["tests/a.test.ts"], 4, ["--shard=1/2"])).toEqual([
+      "test",
+      "--dots",
+      "--timeout",
+      "30000",
+      "--preload",
+      "./tests/backend-user-context.ts",
+      "--max-concurrency",
+      "1",
+      "--no-orphans",
+      "--parallel=4",
+      "--shard=1/2",
+      "tests/a.test.ts",
+    ]);
+    expect(buildNativeTestArgs([], Number.NaN)).toContain("--parallel=1");
+    expect(() => buildNativeTestArgs([], 4, ["--parallel=2"])).toThrow(
+      "cannot override runner option: --parallel",
+    );
+  });
+
   test("builds complete mode-specific buckets from discovered files", async () => {
     const backendBuckets = await buildBuckets("backend", 2);
     const allBuckets = await buildBuckets("all", 2);
@@ -53,5 +87,14 @@ describe("test runner partitioning", () => {
       expect(new Set(files).size).toBe(files.length);
       expect(buckets.every((bucket) => filesFromBucket(bucket).length > 0)).toBe(true);
     }
+  });
+
+  test("discovers each mode once without duplicate files", async () => {
+    const allFiles = await listTestFilesForMode("all");
+    const backendFiles = await listTestFilesForMode("backend");
+
+    expect(allFiles.length).toBeGreaterThan(0);
+    expect(new Set(allFiles).size).toBe(allFiles.length);
+    expect(backendFiles).toEqual(allFiles);
   });
 });

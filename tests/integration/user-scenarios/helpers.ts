@@ -393,6 +393,10 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     withPlanningDir = false,
   } = options;
 
+  // Stop stale engines before replacing their persistence context.
+  await taskManager.shutdown();
+  taskManager.resetForTesting();
+
   // Create temp directories
   // Resolve symlinks (macOS /var → /private/var) to match git's resolved paths
   const dataDir = await realpath(await mkdtemp(join(tmpdir(), "clanky-scenario-data-")));
@@ -439,9 +443,6 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     await runGit(remoteDir, ["--git-dir", remoteDir, "symbolic-ref", "HEAD", `refs/heads/${defaultBranch}`]);
   }
 
-  // Reset task manager to clear any stale engines from previous tests
-  taskManager.resetForTesting();
-
   // Set up mock backend
   const mockBackend = new ConfigurableMockBackend(mockResponses);
   const originalMockAcpEnv = process.env["CLANKY_MOCK_ACP"];
@@ -485,7 +486,8 @@ export async function teardownTestServer(ctx?: TestServerContext | null): Promis
   // Stop server
   ctx.server?.stop(true);
 
-  // Reset task manager (clear engines map)
+  // Stop engines before closing the database and removing their worktrees.
+  await taskManager.shutdown();
   taskManager.resetForTesting();
 
   // Reset backend manager

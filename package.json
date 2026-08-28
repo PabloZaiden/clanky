@@ -13,6 +13,7 @@
     "build:novnc": "bun scripts/novnc-vendor.ts",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
+    "test:changed": "bun scripts/run-tests.ts all --changed=HEAD",
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {

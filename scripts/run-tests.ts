@@ -33,8 +33,19 @@ interface RunTestBucketsDependencies {
   log: (message: string) => void;
 }
 
+export type TestRunnerName = "native" | "custom";
+
 const rootDir = `${import.meta.dir}/..`;
 const defaultMaxWorkers = 10;
+const protectedNativeOptions = new Set([
+  "--isolate",
+  "--max-concurrency",
+  "--no-isolate",
+  "--no-orphans",
+  "--parallel",
+  "--preload",
+  "--timeout",
+]);
 
 const suiteDefinitions: SuiteDefinition[] = [
   {
@@ -118,6 +129,17 @@ async function listTestFiles(pattern: string): Promise<string[]> {
   return files.sort();
 }
 
+export async function listTestFilesForMode(mode: "all" | "backend"): Promise<string[]> {
+  const files: string[] = [];
+  for (const suite of suiteDefinitions) {
+    if (!suite.modes.includes(mode)) {
+      continue;
+    }
+    files.push(...await listTestFiles(suite.pattern));
+  }
+  return files;
+}
+
 export function resolveMaxWorkers(sourceEnv: Record<string, string | undefined>): number {
   const parsedWorkerCount = Number.parseInt(sourceEnv["CLANKY_TEST_MAX_WORKERS"] ?? "", 10);
   if (Number.isNaN(parsedWorkerCount) || parsedWorkerCount === 0) {
@@ -195,6 +217,57 @@ export function formatBucketOutput(initialResult: TestResult, retryResult?: Test
   ].join("\n");
 }
 
+export function resolveTestRunner(
+  env: Record<string, string>,
+  nativeArgs: string[] = [],
+): TestRunnerName {
+  const requestedRunner = env["CLANKY_TEST_RUNNER"];
+  if (requestedRunner === "native" || requestedRunner === "custom") {
+    return requestedRunner;
+  }
+  if (requestedRunner !== undefined && requestedRunner !== "") {
+    throw new Error(`Unknown test runner: ${requestedRunner}`);
+  }
+
+  const changedSelectionRequested = nativeArgs.some((argument) =>
+    argument === "--changed" || argument.startsWith("--changed=")
+  );
+  if (changedSelectionRequested) {
+    return "native";
+  }
+  return shouldRetryFailedBuckets(env) ? "custom" : "native";
+}
+
+export function buildNativeTestArgs(
+  files: string[],
+  workerCapacity: number,
+  nativeArgs: string[] = [],
+): string[] {
+  for (const argument of nativeArgs) {
+    const optionName = argument.split("=", 1)[0];
+    if (protectedNativeOptions.has(optionName ?? "")) {
+      throw new Error(`Native test argument cannot override runner option: ${optionName}`);
+    }
+  }
+  const normalizedWorkerCapacity = Number.isFinite(workerCapacity)
+    ? Math.trunc(workerCapacity)
+    : 1;
+  return [
+    "test",
+    "--dots",
+    "--timeout",
+    "30000",
+    "--preload",
+    "./tests/backend-user-context.ts",
+    "--max-concurrency",
+    "1",
+    "--no-orphans",
+    `--parallel=${Math.max(1, normalizedWorkerCapacity)}`,
+    ...nativeArgs,
+    ...files,
+  ];
+}
+
 function formatCompletionSummary(elapsedMs: number, retriedBucketCount: number): string {
   const retrySuffix = retriedBucketCount > 0
     ? ` after retrying ${retriedBucketCount} failed bucket(s)`
@@ -228,10 +301,7 @@ export async function buildBuckets(
   const buckets: TestBucket[] = [];
 
   for (const suite of suiteDefinitions) {
-    if (!suite.modes.includes(mode) && mode !== "all") {
-      continue;
-    }
-    if (mode === "all" && !suite.modes.includes("all")) {
+    if (!suite.modes.includes(mode)) {
       continue;
     }
 
@@ -313,13 +383,50 @@ async function runBuckets(
   return results;
 }
 
-export async function runTestBuckets(
+async function runNativeTests(
+  mode: "all" | "backend",
+  env: Record<string, string>,
+  workerCapacity: number,
+  nativeArgs: string[],
+  log: (message: string) => void,
+): Promise<number> {
+  const files = await listTestFilesForMode(mode);
+  if (files.length === 0) {
+    log(`No ${mode} test files found.`);
+    return 0;
+  }
+
+  const args = buildNativeTestArgs(files, workerCapacity, nativeArgs);
+  log(`Running ${files.length} ${mode} test file(s) with Bun native workers...`);
+  log(`Using up to ${Math.max(1, Math.trunc(workerCapacity))} native worker process(es).`);
+  log("");
+
+  const proc = Bun.spawn({
+    cmd: [process.execPath, ...args],
+    cwd: rootDir,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    readStream(proc.stdout),
+    readStream(proc.stderr),
+    proc.exited,
+  ]);
+  const output = [stdout, stderr].filter((value) => value.length > 0).join("\n");
+  if (output.trim().length > 0) {
+    log(output.trim());
+  }
+  log("");
+  return exitCode === 0 ? 0 : 1;
+}
+
+async function runCustomTestBuckets(
   modeArg: string | undefined,
-  sourceEnv: Record<string, string | undefined> = process.env,
-  dependencies: Partial<RunTestBucketsDependencies> = {},
+  env: Record<string, string>,
+  dependencies: Partial<RunTestBucketsDependencies>,
 ): Promise<number> {
   const mode = assertValidMode(modeArg);
-  const env = buildEnv(sourceEnv);
   const startedAt = Date.now();
   const buildBucketsImpl = dependencies.buildBuckets ?? buildBuckets;
   const runBucketImpl = dependencies.runBucket ?? runBucket;
@@ -370,6 +477,28 @@ export async function runTestBuckets(
   return failed ? 1 : 0;
 }
 
+export async function runTestBuckets(
+  modeArg: string | undefined,
+  sourceEnv: Record<string, string | undefined> = process.env,
+  dependencies: Partial<RunTestBucketsDependencies> = {},
+  nativeArgs: string[] = [],
+): Promise<number> {
+  const mode = assertValidMode(modeArg);
+  const env = buildEnv(sourceEnv);
+  const log = dependencies.log ?? ((message: string) => console.log(message));
+  const configuredMaxWorkers = resolveMaxWorkers(env);
+  const hasInjectedDependencies = Object.values(dependencies).some(
+    (dependency) => dependency !== undefined,
+  );
+  if (hasInjectedDependencies || resolveTestRunner(env, nativeArgs) === "custom") {
+    if (nativeArgs.length > 0) {
+      throw new Error("Native test arguments require the native test runner");
+    }
+    return await runCustomTestBuckets(mode, env, dependencies);
+  }
+  return await runNativeTests(mode, env, configuredMaxWorkers, nativeArgs, log);
+}
+
 if (import.meta.main) {
-  process.exit(await runTestBuckets(process.argv[2]));
+  process.exit(await runTestBuckets(process.argv[2], process.env, {}, process.argv.slice(3)));
 }
