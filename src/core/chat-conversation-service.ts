@@ -699,6 +699,13 @@ export class ChatConversationService implements ChatConversationPort {
 
     if (event.type === "message.start") {
       const transcriptResult = streamState.interpreter.handle(event);
+      if (transcriptResult.flushedBlocks.length > 0) {
+        await this.flushChatStreamBlocks(
+          streamState,
+          transcriptResult.flushedBlocks,
+          now,
+        );
+      }
       if (isInterrupted) {
         return;
       }
