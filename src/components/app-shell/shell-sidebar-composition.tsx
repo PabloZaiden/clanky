@@ -2,6 +2,7 @@ import type {
   ActionMenuItem,
   SidebarItemRenderContext,
   SidebarNode,
+  SidebarNodeSnapshot,
   SidebarTab,
   WebAppRootProps,
   WebAppRoute,
@@ -83,6 +84,7 @@ export interface ShellSidebarCompositionOptions {
   workspaces: Workspace[];
   agents: Agent[];
   handlers: ShellSidebarActionHandlers;
+  sidebarSnapshotReady: boolean;
   quickChatUnavailableReason: string | null;
   quickChatCreating: boolean;
   onQuickChat: () => void;
@@ -1049,9 +1051,12 @@ function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefin
 export function buildShellSidebarComposition(
   options: ShellSidebarCompositionOptions,
 ): ShellSidebarComposition {
-  const getNodes = ({ search, activeTab }: { search: string; activeTab?: string }): SidebarNode[] => {
+  const getNodes = ({ search, activeTab }: { search: string; activeTab?: string }): SidebarNodeSnapshot => {
     const nodes = selectSidebarTabNodes(buildSidebarNodes(options), activeTab);
-    return search ? filterSidebarNodes(nodes as SearchableSidebarNode[], search) : nodes;
+    return {
+      nodes: search ? filterSidebarNodes(nodes as SearchableSidebarNode[], search) : nodes,
+      ready: options.sidebarSnapshotReady,
+    };
   };
   const sidebar = {
     search: true,
