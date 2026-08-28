@@ -2,8 +2,9 @@
  * Authenticated gateway for direct CommandExecutor operations on this host.
  *
  * This module is deliberately independent from BackendManager. The signed
- * caller supplies the absolute execution root, provider, and channel. The
- * receiving host deliberately does not load replicated workspace or user data.
+ * caller supplies the absolute execution root, provider, and channel. Pairing
+ * is the host-level trust boundary: the receiving host deliberately does not
+ * load replicated workspace or user data or apply a per-workspace root allowlist.
  */
 
 import { randomBytes } from "node:crypto";
@@ -335,7 +336,7 @@ export class MeshExecutionGateway {
     return session.callerEncryptionPublicKey;
   }
 
-  async execute(request: MeshExecutionRpcRequest): Promise<MeshExecutionRpcResult> {
+  async execute(request: MeshExecutionRpcRequest, signal?: AbortSignal): Promise<MeshExecutionRpcResult> {
     const { session } = await this.requireValidatedSession(
       request.sessionId,
       request.sessionToken,
@@ -370,6 +371,7 @@ export class MeshExecutionGateway {
           cwd,
           timeout: request.timeout,
           env: request.env,
+          signal,
           logFailures: false,
         });
         assertStringSize(result.stdout, "stdout");

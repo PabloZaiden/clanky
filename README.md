@@ -234,6 +234,10 @@ independent Clanky instances. A workspace may use local `stdio`, `stdio via
 <mesh instance>`, or SSH; with remote `stdio`, ACP processes and
 file/command operations run on the selected peer while the workspace record
 and all application data remain local to the instance where it was created.
+An active paired peer is a host-level trust boundary: it may request a remote
+execution session rooted at any absolute path on the receiving host, so Mesh
+does not provide per-workspace sandboxing or a host-side root allowlist. Pair
+only instances that are trusted with command and file access to that host.
 Keep mesh peers on a trusted network and use HTTPS (including WebSocket
 upgrades) when prompts, environment values, or file contents could cross an
 untrusted network. SSH-backed workspaces keep their existing routing.

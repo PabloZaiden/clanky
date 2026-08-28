@@ -122,8 +122,7 @@ export function ServerSettingsForm({
     if (agentTransport !== "stdio" || executionTargetsLoading) {
       return;
     }
-    const selected = executionTargets.find((target) => target.nodeId === executionNodeId);
-    if (selected && (!remoteOnly || selected.kind === "mesh")) {
+    if (executionNodeId) {
       return;
     }
     const nextTarget = remoteOnly ? remoteExecutionTargets[0] : localExecutionTarget;

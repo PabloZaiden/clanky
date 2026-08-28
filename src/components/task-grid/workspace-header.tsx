@@ -1,5 +1,5 @@
-import type { Workspace, SshServer } from "@/shared";
-import { getServerLabel } from "@/shared/settings";
+import type { Workspace, SshServer, WorkspaceExecutionTarget } from "@/shared";
+import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { WorkspaceGearIcon } from "./workspace-gear-icon";
 
 /** Workspace header with icon, name, settings button, path, and task count */
@@ -7,12 +7,14 @@ export function WorkspaceHeader({
   workspace,
   taskCount,
   registeredSshServers,
+  executionTargets,
   onOpenSettings,
   privateHidden = false,
 }: {
   workspace: Workspace;
   taskCount: number;
   registeredSshServers: readonly SshServer[];
+  executionTargets: readonly WorkspaceExecutionTarget[];
   onOpenSettings: () => void;
   privateHidden?: boolean;
 }) {
@@ -40,9 +42,9 @@ export function WorkspaceHeader({
         </span>
         <span
           className="min-w-0 break-words text-xs text-gray-400 dark:text-gray-500 [overflow-wrap:anywhere]"
-          title={getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
+          title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
         >
-          {getServerLabel(workspace.serverSettings, registeredSshServers, { nodeId: workspace.executionNodeId })}
+          {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
         </span>
         <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">
           ({taskCount} {taskCount === 1 ? "task" : "tasks"})

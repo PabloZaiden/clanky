@@ -286,6 +286,9 @@ export class MeshCommandExecutorClient {
     signal?: AbortSignal,
   ): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (signal?.aborted) {
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+      }
       await this.ensureSession();
       const session = this.session;
       const endpoint = this.endpoint;
@@ -364,6 +367,9 @@ export class MeshCommandExecutorClient {
     signal?: AbortSignal,
     requestTimeoutMs?: number,
   ): Promise<unknown> {
+    if (signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),

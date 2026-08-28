@@ -8,7 +8,8 @@
 import type { ChangeEvent } from "react";
 import type { SshServer } from "@/shared";
 import type { Workspace } from "@/shared/workspace";
-import { getServerLabel } from "@/shared/settings";
+import { useWorkspaceExecutionTargets } from "../hooks/workspace-server-settings";
+import { getWorkspaceServerLabel } from "../lib/workspace-label";
 
 export interface WorkspaceSelectorProps {
   /** List of available workspaces */
@@ -36,6 +37,8 @@ export function WorkspaceSelector({
   registeredSshServers = [],
   showServerDetails = true,
 }: WorkspaceSelectorProps) {
+  const { targets: executionTargets } = useWorkspaceExecutionTargets();
+
   // Handle workspace selection from dropdown
   function handleWorkspaceChange(e: ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
@@ -79,11 +82,7 @@ export function WorkspaceSelector({
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>
             {showServerDetails
-              ? `${workspace.name} — ${getServerLabel(
-                  workspace.serverSettings,
-                  registeredSshServers,
-                  { nodeId: workspace.executionNodeId },
-                )}`
+              ? `${workspace.name} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
               : workspace.name}
           </option>
         ))}

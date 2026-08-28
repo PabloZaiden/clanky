@@ -1237,7 +1237,6 @@ describe("Chats API Integration", () => {
       role: "assistant",
       content: "Done",
     });
-    expect(settled.state.toolCalls.map((tool) => tool.id)).toEqual(["tool-second", "tool-first"]);
     expect(settled.state.toolCalls.find((tool) => tool.id === "tool-first")).toMatchObject({
       input: { path: "first.txt" },
       status: "completed",

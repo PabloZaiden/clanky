@@ -201,11 +201,11 @@ export const meshInternalRoutes = defineRoutes({
         return errorResponse("mesh_peer_headers_invalid", "Mesh headers do not match the execution RPC.", 400);
       }
       try {
-        const result = await meshExecutionGateway.execute(parsed.data);
         const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
           parsed.data.sessionId,
           parsed.data.sessionToken,
         );
+        const result = await meshExecutionGateway.execute(parsed.data, req.signal);
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
