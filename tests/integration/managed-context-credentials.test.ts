@@ -51,6 +51,7 @@ describe("managed execution context credentials", () => {
       id: crypto.randomUUID(),
       name: "Managed Context Workspace",
       directory: join(tempDir, "workspace"),
+      workspaceType: "git",
       allowClankyContext: true,
       serverSettings: {
         agent: {

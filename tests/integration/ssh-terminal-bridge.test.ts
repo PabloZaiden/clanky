@@ -220,6 +220,7 @@ describe("SshTerminalBridge integration", () => {
         id: crypto.randomUUID(),
         name: "SSH Test Workspace",
         directory: workspaceDir,
+        workspaceType: "git",
         serverSettings: {
           agent: {
             provider: "opencode",

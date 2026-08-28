@@ -16,6 +16,7 @@ import {
   buildSpawnTaskPrompt,
 } from "../utils/chat-to-task-prompt";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { assertGitBackedWorkspace } from "./workspace-capabilities";
 
 const log = createLogger("chat-task-conversion-service");
 
@@ -54,6 +55,11 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
     if (isAgentChat(chat)) {
       throw new Error("Agent run chats cannot be spawned into tasks");
     }
+    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
+    }
+    assertGitBackedWorkspace(workspace, "Tasks require a Git-backed workspace.");
 
     const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
@@ -108,6 +114,11 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
     if (isAgentChat(chat)) {
       throw new Error("Agent run chats cannot be spawned into tasks");
     }
+    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
+    }
+    assertGitBackedWorkspace(workspace, "Tasks require a Git-backed workspace.");
 
     const working = await this.worktree.resolveWorkingDirectory(chat, {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),

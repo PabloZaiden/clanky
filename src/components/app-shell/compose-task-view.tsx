@@ -5,7 +5,7 @@ import {
   CreateTaskForm,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
@@ -40,6 +40,15 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
       dashboardData.resetCreateModalState();
     };
   }, [dashboardData.resetCreateModalState]);
+
+  if (composeWorkspace?.workspaceType === "directory") {
+    return (
+      <ErrorState
+        title="Tasks are unavailable"
+        description="Directory workspaces support chats and agents directly, but tasks require a Git-backed workspace."
+      />
+    );
+  }
 
   return (
     <>

@@ -32,6 +32,7 @@ import {
 } from "./deterministic-agent-generation";
 import { backendManager } from "./backend";
 import type { CommandExecutor } from "./command-executor";
+import { assertGitBackedWorkspace, isGitBackedWorkspace } from "./workspace-capabilities";
 
 const INTERRUPT_CHAT_ID_WAIT_MS = 2000;
 const INTERRUPT_CHAT_ID_POLL_MS = 50;
@@ -106,6 +107,15 @@ export class AgentManager {
         details: { workspaceId: options.workspaceId },
       });
     }
+    if (
+      !isGitBackedWorkspace(workspace)
+      && (options.useWorktree || options.baseBranch !== undefined)
+    ) {
+      assertGitBackedWorkspace(
+        workspace,
+        "Directory workspaces do not support branches or worktrees.",
+      );
+    }
     const now = createTimestamp();
     const nextRunAt = options.schedule.nextRunAt
       ?? calculateNextRunAt(options.schedule);
@@ -127,8 +137,8 @@ export class AgentManager {
       prompt: options.prompt,
       code,
       model: options.model,
-      baseBranch: options.baseBranch,
-      useWorktree: options.useWorktree,
+      baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,
+      useWorktree: isGitBackedWorkspace(workspace) ? options.useWorktree : false,
       schedule: {
         ...options.schedule,
         nextRunAt,
@@ -317,6 +327,17 @@ export class AgentManager {
     if (!agent) {
       return null;
     }
+    const workspace = await getWorkspace(agent.config.workspaceId);
+    if (
+      workspace
+      && !isGitBackedWorkspace(workspace)
+      && (updates.useWorktree === true || updates.baseBranch !== undefined && updates.baseBranch !== null)
+    ) {
+      assertGitBackedWorkspace(
+        workspace,
+        "Directory workspaces do not support branches or worktrees.",
+      );
+    }
     const nextSchedule = updates.schedule
       ? {
           ...updates.schedule,
@@ -342,8 +363,12 @@ export class AgentManager {
         prompt: updates.prompt ?? agent.config.prompt,
         code,
         model: updates.model ?? agent.config.model,
-        baseBranch: updates.baseBranch === null ? undefined : updates.baseBranch ?? agent.config.baseBranch,
-        useWorktree: updates.useWorktree ?? agent.config.useWorktree,
+        baseBranch: workspace && !isGitBackedWorkspace(workspace)
+          ? undefined
+          : updates.baseBranch === null ? undefined : updates.baseBranch ?? agent.config.baseBranch,
+        useWorktree: workspace && !isGitBackedWorkspace(workspace)
+          ? false
+          : updates.useWorktree ?? agent.config.useWorktree,
         schedule: nextSchedule,
         enabled,
         isPrivate: updates.isPrivate ?? agent.config.isPrivate,

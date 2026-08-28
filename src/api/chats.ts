@@ -70,6 +70,11 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "The connected agent does not support embedded document attachments",
         status: 422,
       },
+      workspace_git_required: {
+        error: "workspace_git_required",
+        message: "This operation requires a Git-backed workspace",
+        status: 409,
+      },
     } as const;
     if (error.code === "acp_connection_timed_out") {
       const isSsh = error.details["transport"] === "ssh";
@@ -218,6 +223,10 @@ export const chatsRoutes = defineRoutes({
         });
         return Response.json(await toLightweightChat(chat), { status: 201 });
       } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
         log.error("Failed to create chat", {
           workspaceId: body.workspaceId,
           error: String(error),
@@ -366,6 +375,10 @@ export const chatsRoutes = defineRoutes({
         }
         return Response.json(await toLightweightChat(updated));
       } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
         log.error("Failed to update chat", { chatId: ctx.params["id"]!, error: String(error) });
         return internalErrorResponse(error, {
           error: "update_failed",

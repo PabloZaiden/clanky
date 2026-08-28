@@ -119,8 +119,10 @@ export function useAgentCodeTest({
         code,
         workspaceId: selectedWorkspace.id,
         model: parsedTestModel,
-        baseBranch: baseBranch.trim() || undefined,
-        useWorktree,
+        baseBranch: selectedWorkspace.workspaceType === "git"
+          ? baseBranch.trim() || undefined
+          : undefined,
+        useWorktree: selectedWorkspace.workspaceType === "git" ? useWorktree : false,
         testRunId,
       } satisfies TestAgentCodeRequest, {
         signal: controller.signal,

@@ -58,6 +58,7 @@ describe("Git API Integration", () => {
       id: "git-test-workspace",
       name: "Git Test",
       directory: testWorkDir,
+      workspaceType: "git",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       serverSettings: getDefaultServerSettings(),
@@ -118,6 +119,33 @@ describe("Git API Integration", () => {
     test("returns 404 for an unknown workspace", async () => {
       const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=unknown-workspace`);
       expect(res.status).toBe(404);
+    });
+
+    test("rejects every Git endpoint for a directory workspace", async () => {
+      const workspaceId = "directory-git-api-workspace";
+      await createWorkspace({
+        id: workspaceId,
+        name: "Directory Git API",
+        directory: testWorkDir,
+        workspaceType: "directory",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      for (const endpoint of [
+        "branches",
+        "default-branch",
+        "remote-status",
+        "github-repository-url",
+        "github-issues",
+      ]) {
+        const response = await fetch(`${baseUrl}/api/git/${endpoint}?workspaceId=${workspaceId}`);
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          error: "workspace_git_required",
+        });
+      }
     });
 
     test("uses workspaceId as the only workspace identity", async () => {
@@ -325,6 +353,7 @@ describe("Git API Integration", () => {
         id: "git-test-workspace-persisted",
         name: "Git Test Persisted",
         directory: testWorkDir,
+        workspaceType: "git",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         serverSettings: {
@@ -354,6 +383,7 @@ describe("Git API Integration", () => {
         id: "git-test-workspace-non-github-persisted",
         name: "Git Test Non-GitHub Persisted",
         directory: testWorkDir,
+        workspaceType: "git",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         serverSettings: {

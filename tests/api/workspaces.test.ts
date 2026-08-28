@@ -322,6 +322,59 @@ describe("Workspace API Integration", () => {
       expect(data.createdAt).toBeDefined();
       expect(data.updatedAt).toBeDefined();
       expect(data.allowClankyContext).toBe(false);
+      expect(data.workspaceType).toBe("git");
+    });
+
+    test("creates and persists a directory workspace without requiring Git", async () => {
+      const nonGitDir = await mkdtemp(join(tmpdir(), "directory-workspace-"));
+
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Directory Workspace",
+          directory: nonGitDir,
+          workspaceType: "directory",
+          serverSettings: makeServerSettings(),
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const created = await response.json() as { id: string; workspaceType: string };
+      expect(created.workspaceType).toBe("directory");
+
+      const persisted = await getWorkspace(created.id);
+      expect(persisted?.workspaceType).toBe("directory");
+
+      await rm(nonGitDir, { recursive: true, force: true });
+    });
+
+    test("keeps a directory workspace type even when its directory contains Git", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Explicit Directory Workspace",
+          directory: testWorkDir,
+          workspaceType: "directory",
+          serverSettings: makeServerSettings(),
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const created = await response.json() as { id: string; workspaceType: string };
+      expect(created.workspaceType).toBe("directory");
+
+      const updateResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceType: "git",
+          name: "Still Directory",
+        }),
+      });
+      expect(updateResponse.status).toBe(200);
+      expect((await updateResponse.json()).workspaceType).toBe("directory");
     });
 
     test("rejects an untrusted stdio execution node", async () => {
@@ -717,6 +770,7 @@ describe("Workspace API Integration", () => {
         id: "auto-delete-workspace",
         name: "Auto Delete Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -753,6 +807,7 @@ describe("Workspace API Integration", () => {
         id: "auto-delete-trailing-base-workspace",
         name: "Auto Delete Trailing Base Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -789,6 +844,7 @@ describe("Workspace API Integration", () => {
         id: "auto-preserve-workspace",
         name: "Auto Preserve Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -847,6 +903,7 @@ describe("Workspace API Integration", () => {
         id: "auto-fail-workspace",
         name: "Auto Fail Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -907,6 +964,7 @@ describe("Workspace API Integration", () => {
         id: "auto-exists-fail-workspace",
         name: "Auto Exists Fail Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -943,6 +1001,7 @@ describe("Workspace API Integration", () => {
         id: "auto-token-fail-workspace",
         name: "Auto Token Fail Workspace",
         directory: testWorkDir,
+        workspaceType: "git",
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -976,6 +1035,29 @@ describe("Workspace API Integration", () => {
   });
 
   describe("POST /api/workspaces/:id/pull-latest-changes", () => {
+    test("rejects pull latest for a directory workspace", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Directory Pull Workspace",
+          directory: testWorkDir,
+          workspaceType: "directory",
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const workspace = await createResponse.json() as { id: string };
+
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: "workspace_git_required",
+      });
+    });
+
     test("pulls the latest changes for the default branch", async () => {
       const repos = await createPullTestRepos();
 

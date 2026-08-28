@@ -14,7 +14,7 @@ import {
   updateWorkspace as updateWorkspaceRecord,
 } from "../persistence/workspaces";
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
-import type { Workspace, WorkspaceExecutionTarget } from "@/shared/workspace";
+import { DEFAULT_WORKSPACE_TYPE, type Workspace, type WorkspaceExecutionTarget, type WorkspaceType } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { DomainError } from "./domain-error";
 import {
@@ -36,6 +36,7 @@ const log = createLogger("core:workspace-manager");
 export interface CreateWorkspaceInput {
   name: string;
   directory: string;
+  workspaceType?: WorkspaceType;
   serverSettings?: ServerSettings;
   executionNodeId?: string | null;
   archived?: boolean;
@@ -52,11 +53,12 @@ export type WorkspaceDirectoryValidation = Awaited<
 >;
 
 function normalizeCreateInput(input: CreateWorkspaceInput): Required<
-  Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings" | "allowClankyContext">
+  Pick<CreateWorkspaceInput, "name" | "directory" | "workspaceType" | "serverSettings" | "allowClankyContext">
 > & Pick<CreateWorkspaceInput, "executionNodeId" | "archived" | "isPrivate"> {
   return {
     name: input.name.trim(),
     directory: input.directory.trim(),
+    workspaceType: input.workspaceType ?? DEFAULT_WORKSPACE_TYPE,
     serverSettings: input.serverSettings ?? getDefaultServerSettings(),
     executionNodeId: input.executionNodeId,
     archived: input.archived,
@@ -67,6 +69,7 @@ function normalizeCreateInput(input: CreateWorkspaceInput): Required<
 
 function getValidationFailure(
   validation: WorkspaceDirectoryValidation,
+  workspaceType: WorkspaceType,
 ): { code: "validation_failed" | "directory_not_found" | "not_git_repo"; message: string } | null {
   if (!validation.success) {
     return {
@@ -82,7 +85,7 @@ function getValidationFailure(
     };
   }
 
-  if (!validation.isGitRepo) {
+  if (workspaceType === "git" && !validation.isGitRepo) {
     return {
       code: "not_git_repo",
       message: "Directory must be a git repository",
@@ -93,7 +96,7 @@ function getValidationFailure(
 }
 
 function createWorkspaceRecordFromInput(
-  input: Required<Pick<CreateWorkspaceInput, "name" | "directory" | "serverSettings" | "allowClankyContext">>
+  input: Required<Pick<CreateWorkspaceInput, "name" | "directory" | "workspaceType" | "serverSettings" | "allowClankyContext">>
     & Pick<CreateWorkspaceInput, "executionNodeId">
     & Pick<CreateWorkspaceInput, "archived" | "isPrivate">,
 ): Workspace {
@@ -102,6 +105,7 @@ function createWorkspaceRecordFromInput(
     id: crypto.randomUUID(),
     name: input.name,
     directory: input.directory,
+    workspaceType: input.workspaceType,
     executionNodeId: null,
     serverSettings: input.serverSettings,
     createdAt: now,
@@ -228,7 +232,7 @@ export class WorkspaceManager {
       normalized.directory,
       executionNodeId,
     );
-    const failure = getValidationFailure(validation);
+    const failure = getValidationFailure(validation, normalized.workspaceType);
     if (failure) {
       throw new DomainError(failure.code, failure.message, {
         details: {

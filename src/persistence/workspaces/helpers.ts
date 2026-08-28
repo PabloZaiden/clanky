@@ -2,7 +2,7 @@
  * Internal row-conversion helpers for workspace persistence.
  */
 
-import type { Workspace } from "@/shared/workspace";
+import { DEFAULT_WORKSPACE_TYPE, type Workspace } from "@/shared/workspace";
 import type { AgentProvider } from "@/shared/settings";
 import { getServerFingerprint, parseServerSettings } from "@/shared/settings";
 import { requirePersistenceUserId } from "../ownership";
@@ -13,6 +13,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     user_id: requirePersistenceUserId(),
     name: workspace.name,
     directory: workspace.directory,
+    workspace_type: workspace.workspaceType,
     execution_node_id: workspace.serverSettings.agent.transport === "stdio"
       ? workspace.executionNodeId ?? null
       : null,
@@ -37,6 +38,9 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     id: row["id"] as string,
     name: row["name"] as string,
     directory: row["directory"] as string,
+    workspaceType: row["workspace_type"] === "directory"
+      ? "directory"
+      : DEFAULT_WORKSPACE_TYPE,
     executionNodeId: (row["execution_node_id"] as string | null) ?? null,
     serverSettings: parseServerSettings(row["server_settings"] as string | null),
     createdAt: row["created_at"] as string,

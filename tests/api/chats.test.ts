@@ -10,6 +10,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { initializeDatabase } from "../../src/persistence/database";
 import { loadChat, saveChat, updateChatConfig, updateChatState } from "../../src/persistence/chats";
+import { createWorkspace } from "../../src/persistence/workspaces";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
@@ -2414,6 +2415,61 @@ describe("Chats API Integration", () => {
 
     const persisted = await loadChat(chatId);
     expect(persisted?.config.model).toEqual(updatedTestModel);
+  });
+
+  test("runs directory workspace chats directly and rejects Git options", async () => {
+    const workspaceId = crypto.randomUUID();
+    await createWorkspace({
+      id: workspaceId,
+      name: "Directory Chat Workspace",
+      directory: testWorkDir,
+      workspaceType: "directory",
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const directResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Direct directory chat",
+        workspaceId,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+    expect(directResponse.status).toBe(201);
+    const directChat = await directResponse.json();
+    expect(directChat.config.useWorktree).toBe(false);
+    expect(directChat.config.baseBranch).toBeUndefined();
+    expect(directChat.config.directory).toBe(testWorkDir);
+
+    const createWithGitOptionsResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid directory chat",
+        workspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: defaultBranch,
+      }),
+    });
+    expect(createWithGitOptionsResponse.status).toBe(409);
+    expect(await createWithGitOptionsResponse.json()).toMatchObject({
+      error: "workspace_git_required",
+    });
+
+    const updateWithGitOptionsResponse = await fetch(`${baseUrl}/api/chats/${directChat.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ useWorktree: true }),
+    });
+    expect(updateWithGitOptionsResponse.status).toBe(409);
+    expect(await updateWithGitOptionsResponse.json()).toMatchObject({
+      error: "workspace_git_required",
+    });
   });
 
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {

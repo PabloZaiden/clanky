@@ -35,8 +35,12 @@ export function WorkspaceView({
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
-  const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
-  const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
+  const activityTasks = workspace.workspaceType === "git"
+    ? relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status))
+    : [];
+  const historyTasks = workspace.workspaceType === "git"
+    ? relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status))
+    : [];
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
   const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedSessions.length > 0;

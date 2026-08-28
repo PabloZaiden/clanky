@@ -6,7 +6,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { backendManager } from "../../core/backend-manager";
 import { GitCommandError, GitService } from "../../core/git";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
+import { errorResponse, internalErrorResponse, requireGitBackedWorkspace, requireWorkspace, successResponse } from "../helpers";
 
 const log = createLogger("api:workspace-maintenance");
 
@@ -20,20 +20,24 @@ export const workspaceMaintenanceRoutes = defineRoutes({
       if (workspaceResult instanceof Response) {
         return workspaceResult;
       }
+      const gitWorkspace = requireGitBackedWorkspace(workspaceResult);
+      if (gitWorkspace instanceof Response) {
+        return gitWorkspace;
+      }
 
       try {
         const executor = await backendManager.getCommandExecutorAsync(
-          workspaceResult.id,
-          workspaceResult.directory,
+          gitWorkspace.id,
+          gitWorkspace.directory,
         );
         const git = GitService.withExecutor(executor);
 
-        if (!(await git.isGitRepo(workspaceResult.directory))) {
+        if (!(await git.isGitRepo(gitWorkspace.directory))) {
           return errorResponse("not_git_repo", "Workspace directory must be a git repository", 400);
         }
 
-        const defaultBranch = await git.getDefaultBranch(workspaceResult.directory);
-        const currentBranch = await git.getCurrentBranch(workspaceResult.directory);
+        const defaultBranch = await git.getDefaultBranch(gitWorkspace.directory);
+        const currentBranch = await git.getCurrentBranch(gitWorkspace.directory);
 
         if (currentBranch !== defaultBranch) {
           return errorResponse(
@@ -43,7 +47,7 @@ export const workspaceMaintenanceRoutes = defineRoutes({
           );
         }
 
-        if (await git.hasUncommittedChanges(workspaceResult.directory)) {
+        if (await git.hasUncommittedChanges(gitWorkspace.directory)) {
           return errorResponse(
             "uncommitted_changes",
             `Workspace has uncommitted changes on "${defaultBranch}". Commit or stash them before pulling latest changes.`,
@@ -51,7 +55,7 @@ export const workspaceMaintenanceRoutes = defineRoutes({
           );
         }
 
-        if (!(await git.hasRemote(workspaceResult.directory))) {
+        if (!(await git.hasRemote(gitWorkspace.directory))) {
           return errorResponse(
             "no_remote",
             "Workspace has no git remote configured. Add an origin remote before pulling latest changes.",
@@ -59,11 +63,11 @@ export const workspaceMaintenanceRoutes = defineRoutes({
           );
         }
 
-        await git.pullBranch(workspaceResult.directory, defaultBranch);
+        await git.pullBranch(gitWorkspace.directory, defaultBranch);
 
         log.info("Pulled latest changes for workspace", {
-          workspaceId: workspaceResult.id,
-          directory: workspaceResult.directory,
+          workspaceId: gitWorkspace.id,
+          directory: gitWorkspace.directory,
           defaultBranch,
         });
 
@@ -75,8 +79,8 @@ export const workspaceMaintenanceRoutes = defineRoutes({
       } catch (error) {
         if (error instanceof GitCommandError) {
           log.warn("Workspace pull latest action failed", {
-            workspaceId: workspaceResult.id,
-            directory: workspaceResult.directory,
+            workspaceId: gitWorkspace.id,
+            directory: gitWorkspace.directory,
             command: error.command,
             exitCode: error.exitCode,
             gitStderr: error.gitStderr,
@@ -90,8 +94,8 @@ export const workspaceMaintenanceRoutes = defineRoutes({
         }
 
         log.error("Workspace pull latest action failed unexpectedly", {
-          workspaceId: workspaceResult.id,
-          directory: workspaceResult.directory,
+          workspaceId: gitWorkspace.id,
+          directory: gitWorkspace.directory,
           error: String(error),
         });
         return internalErrorResponse(error, {

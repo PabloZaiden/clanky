@@ -20,6 +20,7 @@ const sshWorkspace: Workspace = {
   id: "workspace-id",
   name: "SSH workspace",
   directory: "/workspace",
+  workspaceType: "git",
   allowClankyContext: true,
   serverSettings: {
     agent: {

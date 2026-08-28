@@ -177,7 +177,11 @@ export interface UseAgentFormStateOptions {
   branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
-  onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
+  onWorkspaceChange: (
+    workspaceId: string | null,
+    directory: string,
+    workspaceType?: Workspace["workspaceType"],
+  ) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
   onUpdateAgent: UseAgentsResult["updateAgent"];
   onSaved: (agent: Agent) => void;
@@ -246,26 +250,40 @@ export function useAgentFormState({
       onWorkspaceChange(null, "");
       return;
     }
-    onWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
-  }, [onWorkspaceChange, selectedWorkspace?.directory, selectedWorkspace?.id]);
+    onWorkspaceChange(
+      selectedWorkspace.id,
+      selectedWorkspace.directory,
+      selectedWorkspace.workspaceType,
+    );
+  }, [
+    onWorkspaceChange,
+    selectedWorkspace?.directory,
+    selectedWorkspace?.id,
+    selectedWorkspace?.workspaceType,
+  ]);
 
   const modelsReady = Boolean(
     selectedWorkspace
       && modelsWorkspaceId === selectedWorkspace.id
       && !modelsLoading,
   );
+  const gitBackedWorkspace = selectedWorkspace?.workspaceType === "git";
   const branchesReady = Boolean(
     selectedWorkspace
-      && branchesWorkspaceId === selectedWorkspace.id
-      && !branchesLoading,
+      && (!gitBackedWorkspace || (
+        branchesWorkspaceId === selectedWorkspace.id
+        && !branchesLoading
+      )),
   );
   const modelSelectionValid = modelsReady && isModelKeyValid(models, draft.modelKey);
-  const branchSelectionValid = branchesReady
-    && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch);
+  const branchSelectionValid = !gitBackedWorkspace || (
+    branchesReady
+    && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch)
+  );
   const workspaceSelectionsReady = modelSelectionValid && branchSelectionValid;
 
   useEffect(() => {
-    if (!branchesReady) {
+    if (!gitBackedWorkspace || !branchesReady) {
       return;
     }
     const normalizedBranch = draft.baseBranch.trim();
@@ -367,7 +385,7 @@ export function useAgentFormState({
         unit: draft.intervalUnit,
       },
     };
-    const baseRequest = {
+    const baseRequest: Omit<CreateAgentRequest, "workspaceId" | "enabled"> = {
       name: draft.name.trim(),
       prompt: draft.prompt.trim(),
       code: code.trim() || null,
@@ -376,18 +394,26 @@ export function useAgentFormState({
         modelID: parsedModel.modelID,
         variant: parsedModel.variant ?? "",
       },
-      baseBranch: draft.baseBranch.trim() || undefined,
-      useWorktree: draft.useWorktree,
+      ...(gitBackedWorkspace
+        ? {
+            baseBranch: draft.baseBranch.trim() || undefined,
+            useWorktree: draft.useWorktree,
+          }
+        : {
+            useWorktree: false,
+          }),
       schedule,
     };
 
     setIsSubmitting(true);
     try {
       const savedAgent = mode === "edit" && agent
-        ? await onUpdateAgent(agent.config.id, {
-            ...baseRequest,
-            baseBranch: baseRequest.baseBranch ?? null,
-          } satisfies UpdateAgentRequest)
+        ? await onUpdateAgent(agent.config.id, gitBackedWorkspace
+          ? {
+              ...baseRequest,
+              baseBranch: baseRequest.baseBranch ?? null,
+            } satisfies UpdateAgentRequest
+          : baseRequest satisfies UpdateAgentRequest)
         : await onCreateAgent({
             ...baseRequest,
             workspaceId: selectedWorkspace.id,
@@ -406,6 +432,7 @@ export function useAgentFormState({
     branchSelectionValid,
     branchesReady,
     draft,
+    gitBackedWorkspace,
     modelSelectionValid,
     modelsReady,
     mode,

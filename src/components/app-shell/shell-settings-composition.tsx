@@ -73,7 +73,11 @@ export function buildShellSettingsSections({
                 onChange={(event) => void quickChatSettings.updateSettings({
                   workspaceId: event.currentTarget.value,
                   model: null,
-                  useWorktree: quickChatSettings.settings.useWorktree,
+                  useWorktree: workspaces.find(
+                    (workspace) => workspace.id === event.currentTarget.value,
+                  )?.workspaceType === "git"
+                    ? quickChatSettings.settings.useWorktree
+                    : false,
                 })}
                 disabled={quickChatSettings.loading || quickChatSettings.saving || workspacesLoading}
               >
@@ -82,7 +86,7 @@ export function buildShellSettingsSections({
                 </option>
                 {workspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
+                    {workspace.name}{workspace.workspaceType === "directory" ? " (directory)" : ""}
                   </option>
                 ))}
               </SettingsSelect>
@@ -103,7 +107,7 @@ export function buildShellSettingsSections({
             />
           ),
         },
-        {
+        ...(selectedQuickChatWorkspace?.workspaceType === "git" ? [{
           id: "quick-chat-worktree",
           title: "Use worktrees for quick chats",
           content: (
@@ -119,8 +123,8 @@ export function buildShellSettingsSections({
               disabled={quickChatSettings.loading || quickChatSettings.saving}
             />
           ),
-          contentPlacement: "inline",
-        },
+          contentPlacement: "inline" as const,
+        }] : []),
         {
           id: "quick-chat-clear",
           title: "Reset Quick Chat",

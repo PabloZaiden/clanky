@@ -15,6 +15,8 @@ import { AGENT_PROVIDER_IDS } from "@/shared";
  */
 export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 
+export const WorkspaceTypeSchema = z.enum(["git", "directory"]);
+
 /**
  * Agent transport options.
  * - stdio: local ACP CLI process
@@ -71,6 +73,7 @@ export const CreateWorkspaceRequestSchema = z.object({
   serverSettings: ServerSettingsSchema,
   executionNodeId: z.string().trim().min(1).nullable().optional(),
   allowClankyContext: z.boolean().optional(),
+  workspaceType: WorkspaceTypeSchema.default("git"),
 });
 
 /**

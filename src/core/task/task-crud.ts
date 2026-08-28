@@ -28,6 +28,8 @@ import { isWorkspaceDeletionInProgress } from "../workspace-deletion";
 import { getTaskWorkingDirectory, type GenerateTaskTitleOptions } from "./task-types";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError, TaskUpdateError, type TaskUpdateErrorCode } from "./task-errors";
+import { getWorkspace } from "../../persistence/workspaces";
+import { isGitBackedWorkspace } from "../workspace-capabilities";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -47,6 +49,15 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
     throw new TaskOperationError(
       "operation_in_progress",
       "Workspace deletion is in progress",
+      { details: { workspaceId: options.workspaceId } },
+    );
+  }
+
+  const workspace = await getWorkspace(options.workspaceId);
+  if (workspace && !isGitBackedWorkspace(workspace)) {
+    throw new TaskOperationError(
+      "workspace_git_required",
+      "Tasks require a Git-backed workspace.",
       { details: { workspaceId: options.workspaceId } },
     );
   }

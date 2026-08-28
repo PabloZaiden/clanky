@@ -19,6 +19,7 @@ function createWorkspace(): Workspace {
     id: "workspace-1",
     name: "Workspace One",
     directory: "/workspaces/one",
+    workspaceType: "git",
     serverSettings: getDefaultServerSettings(),
     createdAt: BASE_TIMESTAMP,
     updatedAt: BASE_TIMESTAMP,

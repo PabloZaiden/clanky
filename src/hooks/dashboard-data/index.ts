@@ -6,6 +6,7 @@
 
 import { useCallback } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
+import type { WorkspaceType } from "@/shared";
 import { useAppConfig } from "./use-app-config";
 import { useWorkspaceModels } from "./use-workspace-models";
 import { useWorkspaceBranches } from "./use-workspace-branches";
@@ -49,7 +50,11 @@ export interface UseDashboardDataResult {
   purgeTerminalTasks: () => Promise<import("../taskActions").PurgeTerminalTasksResult | null>;
 
   // Workspace change handler
-  handleWorkspaceChange: (workspaceId: string | null, directory: string) => void;
+  handleWorkspaceChange: (
+    workspaceId: string | null,
+    directory: string,
+    workspaceType?: WorkspaceType,
+  ) => void;
 
   // Reset state when modal closes
   resetCreateModalState: () => void;
@@ -61,19 +66,28 @@ export function useDashboardData(): UseDashboardDataResult {
   const workspaceBranches = useWorkspaceBranches();
   const planningDir = usePlanningDir();
 
-  const handleWorkspaceChange = useCallback((workspaceId: string | null, _directory: string) => {
+  const handleWorkspaceChange = useCallback((
+    workspaceId: string | null,
+    _directory: string,
+    workspaceType: WorkspaceType = "git",
+  ) => {
     log.debug("handleWorkspaceChange called", {
       workspaceId,
     });
     log.debug("Fetching workspace data", { workspaceId });
     workspaceModels.fetchModels(workspaceId);
-    workspaceBranches.fetchBranches(workspaceId);
-    workspaceBranches.fetchDefaultBranch(workspaceId);
+    if (workspaceType === "git") {
+      workspaceBranches.fetchBranches(workspaceId);
+      workspaceBranches.fetchDefaultBranch(workspaceId);
+    } else {
+      workspaceBranches.resetBranches();
+    }
     planningDir.checkPlanningDir(workspaceId);
   }, [
     planningDir.checkPlanningDir,
     workspaceBranches.fetchBranches,
     workspaceBranches.fetchDefaultBranch,
+    workspaceBranches.resetBranches,
     workspaceModels.fetchModels,
   ]);
 

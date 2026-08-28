@@ -113,11 +113,15 @@ export function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; 
   );
 }
 
-function getWorkspaceName(workspaceId: string | undefined, workspaces: Workspace[]): string | undefined {
+function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: Workspace[]): string | undefined {
   if (!workspaceId) {
     return undefined;
   }
-  return workspaces.find((workspace) => workspace.id === workspaceId)?.name;
+  const workspace = workspaces.find((item) => item.id === workspaceId);
+  if (!workspace) {
+    return undefined;
+  }
+  return `${workspace.name} · ${workspace.workspaceType === "git" ? "Git-backed workspace" : "Directory workspace"}`;
 }
 
 function getServerName(serverId: string | undefined, servers: SshServer[]): string | undefined {
@@ -139,7 +143,7 @@ function getChatScopeSubtitle(
   if (source?.kind === "ssh_server") {
     return getServerName(source.sshServerId, servers);
   }
-  return getWorkspaceName(source?.workspaceId ?? chat.config.workspaceId, workspaces);
+  return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
 }
 
 function getSshSessionScopeSubtitle({
@@ -161,7 +165,7 @@ function getSshSessionScopeSubtitle({
 
   const workspaceSession = sessions.find((session) => session.config.id === sshSessionId);
   if (workspaceSession) {
-    return getWorkspaceName(workspaceSession.config.workspaceId, workspaces);
+    return getWorkspaceScopeSubtitle(workspaceSession.config.workspaceId, workspaces);
   }
 
   for (const [serverId, serverSessions] of Object.entries(sessionsByServerId)) {
@@ -209,7 +213,7 @@ function getHeaderScopeSubtitle({
   switch (route.view) {
     case "task":
     case "task-files":
-      return getWorkspaceName(selectedTask?.config.workspaceId, workspaces);
+      return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
     case "chat":
     case "chat-transcript":
       return getChatScopeSubtitle(selectedChat, workspaces, servers);
@@ -222,21 +226,23 @@ function getHeaderScopeSubtitle({
         servers,
       });
     case "agent":
-      return getWorkspaceName(selectedAgent?.config.workspaceId, workspaces);
+      return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId, workspaces);
     case "agent-run":
-      return getWorkspaceName(selectedAgent?.config.workspaceId ?? agentRunWorkspaceId, workspaces);
+      return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId ?? agentRunWorkspaceId, workspaces);
     case "agents":
-      return getWorkspaceName(getRouteString(route, "workspaceId"), workspaces);
+      return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
     case "code-explorer": {
       const contentType = getRouteString(route, "contentType");
       if (contentType === "task") {
-        return getWorkspaceName(selectedTask?.config.workspaceId, workspaces);
+        return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
       }
       if (contentType === "chat") {
         return getChatScopeSubtitle(selectedChat, workspaces, servers);
       }
       if (contentType === "workspace") {
-        return selectedWorkspace?.name;
+        return selectedWorkspace
+          ? getWorkspaceScopeSubtitle(selectedWorkspace.id, workspaces)
+          : undefined;
       }
       if (contentType === "server") {
         return selectedServer?.config.name;
@@ -247,7 +253,9 @@ function getHeaderScopeSubtitle({
       if (composeKind === "workspace") {
         return undefined;
       }
-      return composeWorkspace?.name ?? composeServer?.config.name;
+      return composeWorkspace
+        ? getWorkspaceScopeSubtitle(composeWorkspace.id, workspaces)
+        : composeServer?.config.name;
     default:
       return undefined;
   }
@@ -350,14 +358,31 @@ export function useShellHeader({
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "SSH session" };
       case "workspace":
         if (!nodeModel) {
-          return { title: "Workspace" };
+          return {
+            title: selectedWorkspace?.name ?? "Workspace",
+            scopeSubtitle: selectedWorkspace
+              ? selectedWorkspace.workspaceType === "git"
+                ? "Git-backed workspace"
+                : "Directory workspace"
+              : undefined,
+          };
         }
         if (!selectedWorkspace) {
-          return { ...nodeModel, detailSubtitle: nodeModel.nodeSubtitle };
+          return {
+            ...nodeModel,
+            scopeSubtitle: nodeModel.nodeSubtitle,
+            detailSubtitle: nodeModel.nodeSubtitle,
+          };
         }
         const workspaceAgent = selectedWorkspace.serverSettings.agent;
         if (workspaceAgent.transport === "stdio") {
-          return { ...nodeModel, detailSubtitle: "stdio" };
+          return {
+            ...nodeModel,
+            scopeSubtitle: selectedWorkspace.workspaceType === "git"
+              ? "Git-backed workspace"
+              : "Directory workspace",
+            detailSubtitle: "stdio",
+          };
         }
         const workspaceHostname = workspaceAgent.hostname.trim() || "127.0.0.1";
         const workspacePort = workspaceAgent.port ?? 22;
@@ -365,6 +390,9 @@ export function useShellHeader({
         const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
         return {
           ...nodeModel,
+          scopeSubtitle: selectedWorkspace.workspaceType === "git"
+            ? "Git-backed workspace"
+            : "Directory workspace",
           detailSubtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
         };
       case "workspace-files":

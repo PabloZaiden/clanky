@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Workspace } from "@/shared";
+import type { Workspace, WorkspaceType } from "@/shared";
 import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
@@ -20,6 +20,8 @@ export interface UseWorkspaceCreateResult {
   setWorkspaceName: (name: string) => void;
   workspaceDirectory: string;
   setWorkspaceDirectory: (dir: string) => void;
+  workspaceType: WorkspaceType;
+  setWorkspaceType: (workspaceType: WorkspaceType) => void;
   workspaceServerSettings: ServerSettings;
   workspaceExecutionNodeId: string | null;
   setWorkspaceExecutionNodeId: (nodeId: string | null) => void;
@@ -80,6 +82,7 @@ export function useWorkspaceCreate({
   const [workspaceCreateMode, setWorkspaceCreateMode] = useState<"manual" | "automatic">("manual");
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceDirectory, setWorkspaceDirectory] = useState("");
+  const [workspaceType, setWorkspaceType] = useState<WorkspaceType>("git");
   const [workspaceServerSettings, setWorkspaceServerSettings] = useState<ServerSettings>(() =>
     getCreateWorkspaceDefaultServerSettings(),
   );
@@ -126,6 +129,7 @@ export function useWorkspaceCreate({
     setWorkspaceCreateMode("manual");
     setWorkspaceName("");
     setWorkspaceDirectory("");
+    setWorkspaceType("git");
     setWorkspaceServerSettings(getCreateWorkspaceDefaultServerSettings());
     setWorkspaceExecutionNodeId(null);
     setWorkspaceServerSettingsValid(true);
@@ -273,6 +277,7 @@ export function useWorkspaceCreate({
         const request: CreateWorkspaceRequest = {
           name,
           directory,
+          workspaceType,
           serverSettings: workspaceServerSettings,
           executionNodeId: workspaceServerSettings.agent.transport === "stdio"
             ? workspaceExecutionNodeId
@@ -297,6 +302,8 @@ export function useWorkspaceCreate({
     setWorkspaceName,
     workspaceDirectory,
     setWorkspaceDirectory,
+    workspaceType,
+    setWorkspaceType,
     workspaceServerSettings,
     workspaceExecutionNodeId,
     setWorkspaceExecutionNodeId,

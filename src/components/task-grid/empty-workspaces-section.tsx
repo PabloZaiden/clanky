@@ -48,7 +48,10 @@ export function EmptyWorkspacesSection({
           return (
             <div key={workspace.id} className={`flex min-w-0 items-start gap-2 rounded-md bg-gray-100 px-3 py-2 dark:bg-neutral-800 ${getPrivateContainerClassName(privateHidden)}`}>
               <div className="min-w-0">
-                <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">{workspace.name}</div>
+                <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">
+                  {workspace.name}
+                  {workspace.workspaceType === "directory" ? " (directory)" : ""}
+                </div>
                 <div
                   className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
                   title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}

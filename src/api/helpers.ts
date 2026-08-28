@@ -11,6 +11,7 @@ import type { ErrorResponse } from "@/contracts";
 import type { Workspace } from "@/shared/workspace";
 import { workspaceManager } from "../core/workspace-manager";
 import { isDomainError } from "../core/domain-error";
+import { assertGitBackedWorkspace } from "../core/workspace-capabilities";
 
 /**
  * Create a standardized error response.
@@ -118,4 +119,32 @@ export async function requireWorkspace(
     return errorResponse("workspace_not_found", "Workspace not found", 404);
   }
   return workspace;
+}
+
+/**
+ * Enforce Git-backed capabilities at API boundaries while keeping the
+ * workspace lookup and public error mapping consistent.
+ */
+export function requireGitBackedWorkspace(
+  workspace: Workspace,
+): Workspace | Response {
+  try {
+    assertGitBackedWorkspace(workspace);
+    return workspace;
+  } catch (error) {
+    return domainErrorResponse(error, {
+      mappings: {
+        workspace_git_required: {
+          error: "workspace_git_required",
+          message: "This operation requires a Git-backed workspace",
+          status: 409,
+        },
+      },
+      fallback: {
+        error: "workspace_capability_failed",
+        message: "Workspace capability validation failed",
+        status: 500,
+      },
+    });
+  }
 }
