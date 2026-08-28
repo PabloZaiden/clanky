@@ -89,6 +89,7 @@ describe("test runner partitioning", () => {
       const files = buckets.flatMap(filesFromBucket);
       expect(files.length).toBeGreaterThan(0);
       expect(new Set(files).size).toBe(files.length);
+      expect(buckets.every((bucket) => bucket.args.includes("--isolate"))).toBe(true);
       expect(buckets.every((bucket) => filesFromBucket(bucket).length > 0)).toBe(true);
     }
   });

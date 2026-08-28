@@ -264,7 +264,11 @@ bun dev
 Local `bun run test` and `bun run test:backend` use Bun's native file workers.
 Set `CLANKY_TEST_MAX_WORKERS` to control the worker capacity; the runner
 explicitly enables Bun's per-file `--isolate` mode with the shared
-backend-user preload and a conservative `--max-concurrency 1`. The
+backend-user preload and a conservative `--max-concurrency 1`. Both native
+discovery and custom bucket construction deduplicate files before execution,
+so every discovered file runs once. Both paths pass Bun's
+per-file `--isolate`; custom buckets also retain separate subprocess
+boundaries for their fresh-process retry behavior. The
 pull-request workflow still uses the same full-suite command, while `CI=true`
 (or `CLANKY_TEST_RETRY_FAILED_BUCKETS=1`) selects the custom coordinator so
 failed buckets can be retried in a fresh serial process. Set

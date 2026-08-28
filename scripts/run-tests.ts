@@ -7,6 +7,11 @@ interface SuiteDefinition {
   modes: Array<"all" | "backend">;
 }
 
+interface SuiteFiles {
+  suite: SuiteDefinition;
+  files: string[];
+}
+
 export interface TestBucket {
   id: string;
   label: string;
@@ -53,7 +58,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/unit",
     pattern: "tests/unit/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -61,7 +66,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/api",
     pattern: "tests/api/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -69,7 +74,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/e2e",
     pattern: "tests/e2e/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -77,7 +82,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/integration",
     pattern: "tests/integration/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
 ];
@@ -129,13 +134,31 @@ async function listTestFiles(pattern: string): Promise<string[]> {
   return files.sort();
 }
 
-export async function listTestFilesForMode(mode: "all" | "backend"): Promise<string[]> {
-  const files = new Set<string>();
+async function listTestFilesBySuiteForMode(mode: "all" | "backend"): Promise<SuiteFiles[]> {
+  const claimedFiles = new Set<string>();
+  const suiteFiles: SuiteFiles[] = [];
   for (const suite of suiteDefinitions) {
     if (!suite.modes.includes(mode)) {
       continue;
     }
-    for (const file of await listTestFiles(suite.pattern)) {
+    const files = (await listTestFiles(suite.pattern)).filter((file) => {
+      if (claimedFiles.has(file)) {
+        return false;
+      }
+      claimedFiles.add(file);
+      return true;
+    });
+    if (files.length > 0) {
+      suiteFiles.push({ suite, files });
+    }
+  }
+  return suiteFiles;
+}
+
+export async function listTestFilesForMode(mode: "all" | "backend"): Promise<string[]> {
+  const files = new Set<string>();
+  for (const suiteFiles of await listTestFilesBySuiteForMode(mode)) {
+    for (const file of suiteFiles.files) {
       files.add(file);
     }
   }
@@ -303,16 +326,7 @@ export async function buildBuckets(
 ): Promise<TestBucket[]> {
   const buckets: TestBucket[] = [];
 
-  for (const suite of suiteDefinitions) {
-    if (!suite.modes.includes(mode)) {
-      continue;
-    }
-
-    const files = await listTestFiles(suite.pattern);
-    if (files.length === 0) {
-      continue;
-    }
-
+  for (const { suite, files } of await listTestFilesBySuiteForMode(mode)) {
     const shards = partitionFiles(files, workerCapacity);
     for (const [index, shard] of shards.entries()) {
       if (shard.files.length === 0) {
