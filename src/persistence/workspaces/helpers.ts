@@ -7,15 +7,6 @@ import type { AgentProvider } from "@/shared/settings";
 import { getServerFingerprint, parseServerSettings } from "@/shared/settings";
 import { requirePersistenceUserId } from "../ownership";
 
-export interface MeshWorkspaceIdentityFile {
-  configured: boolean;
-}
-
-export interface MeshWorkspacePayload {
-  workspace: Workspace;
-  identityFile: MeshWorkspaceIdentityFile;
-}
-
 export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
   return {
     id: workspace.id,
@@ -25,7 +16,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     execution_node_id: workspace.serverSettings.agent.transport === "stdio"
       ? workspace.executionNodeId ?? null
       : null,
-    server_fingerprint: getServerFingerprint(workspace.serverSettings),
+    server_fingerprint: getServerFingerprint(workspace.serverSettings, workspace.executionNodeId),
     server_settings: JSON.stringify(workspace.serverSettings),
     created_at: workspace.createdAt,
     updated_at: workspace.updatedAt,
@@ -38,20 +29,6 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     base_path: workspace.basePath ?? null,
     devcontainer_subpath: workspace.devcontainerSubpath ?? null,
     provider: workspace.provider ?? null,
-  };
-}
-
-export function workspaceWithoutIdentityFile(workspace: Workspace): Workspace {
-  if (workspace.serverSettings.agent.transport !== "ssh") {
-    return workspace;
-  }
-
-  const { identityFile: _identityFile, ...agent } = workspace.serverSettings.agent;
-  return {
-    ...workspace,
-    serverSettings: {
-      agent,
-    },
   };
 }
 

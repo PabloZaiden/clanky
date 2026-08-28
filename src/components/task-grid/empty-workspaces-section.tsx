@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { Workspace, SshServer } from "@/shared";
+import type { Workspace, SshServer, WorkspaceExecutionTarget } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
-import { getServerLabel } from "@/shared/settings";
+import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
@@ -12,6 +12,7 @@ import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivat
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
   registeredSshServers: readonly SshServer[];
+  executionTargets: readonly WorkspaceExecutionTarget[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   showPrivateItems?: boolean;
@@ -21,6 +22,7 @@ export interface EmptyWorkspacesSectionProps {
 export function EmptyWorkspacesSection({
   workspaceGroups,
   registeredSshServers,
+  executionTargets,
   onOpenWorkspaceSettings,
   onDeleteWorkspace,
   showPrivateItems = false,
@@ -49,9 +51,9 @@ export function EmptyWorkspacesSection({
                 <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">{workspace.name}</div>
                 <div
                   className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
-                  title={getServerLabel(workspace.serverSettings, registeredSshServers)}
+                  title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
                 >
-                  {getServerLabel(workspace.serverSettings, registeredSshServers)}
+                  {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
                 </div>
               </div>
               <button

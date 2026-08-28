@@ -65,6 +65,7 @@ export function CreateWorkspaceModal({
     jobId: string | null;
     name: string;
     automaticServerId: string;
+    automaticExecutionNodeId: string | null;
     automaticRepoUrl: string;
     automaticBasePath: string;
     automaticDevcontainerSubpath: string;
@@ -80,6 +81,7 @@ export function CreateWorkspaceModal({
   const [directory, setDirectory] = useState("");
   const [mode, setMode] = useState<"manual" | "automatic">("manual");
   const [automaticServerId, setAutomaticServerId] = useState("");
+  const [automaticExecutionNodeId, setAutomaticExecutionNodeId] = useState<string | null>(null);
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
@@ -92,6 +94,7 @@ export function CreateWorkspaceModal({
 
   // Server settings state
   const [serverSettings, setServerSettings] = useState<ServerSettings>(defaultServerSettings);
+  const [executionNodeId, setExecutionNodeId] = useState<string | null>(null);
   const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
 
   // Test connection state (managed internally)
@@ -121,6 +124,7 @@ export function CreateWorkspaceModal({
     setDirectory("");
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(registeredSshServers);
     setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
+    setAutomaticExecutionNodeId(null);
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
@@ -131,6 +135,7 @@ export function CreateWorkspaceModal({
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
     setServerSettings(defaultServerSettings);
+    setExecutionNodeId(null);
     setIsServerSettingsValid(true);
     setTesting(false);
   }, [defaultServerSettings, hasActiveProvisioningJob, isOpen, registeredSshServers]);
@@ -161,6 +166,7 @@ export function CreateWorkspaceModal({
         jobId: null,
         name: name.trim(),
         automaticServerId,
+        automaticExecutionNodeId,
         automaticRepoUrl: automaticRepoUrl.trim(),
         automaticBasePath: automaticBasePath.trim(),
         automaticDevcontainerSubpath: automaticDevcontainerSubpath.trim(),
@@ -171,7 +177,8 @@ export function CreateWorkspaceModal({
       };
       const snapshot = await provisioning.startJob({
         name: name.trim(),
-        sshServerId: automaticServerId,
+        sshServerId: automaticExecutionNodeId ? undefined : automaticServerId,
+        executionNodeId: automaticExecutionNodeId ?? undefined,
         repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
         basePath: automaticBasePath.trim(),
         devcontainerSubpath: automaticDevboxTemplate.trim()
@@ -203,6 +210,7 @@ export function CreateWorkspaceModal({
       name: name.trim(),
       directory: directory.trim(),
       serverSettings,
+      executionNodeId: serverSettings.agent.transport === "stdio" ? executionNodeId : null,
     };
 
     const success = await onCreate(request);
@@ -212,13 +220,21 @@ export function CreateWorkspaceModal({
   }
 
   // Handle server settings change
-  function handleServerSettingsChange(settings: ServerSettings, isValid: boolean) {
+  function handleServerSettingsChange(
+    settings: ServerSettings,
+    isValid: boolean,
+    selectedExecutionNodeId: string | null,
+  ) {
     setServerSettings(settings);
+    setExecutionNodeId(selectedExecutionNodeId);
     setIsServerSettingsValid(isValid);
   }
 
   // Handle test connection - uses the directory from the form
-  const handleTestConnection = useCallback(async (settings: ServerSettings): Promise<{ success: boolean; error?: string }> => {
+  const handleTestConnection = useCallback(async (
+    settings: ServerSettings,
+    selectedExecutionNodeId: string | null,
+  ): Promise<{ success: boolean; error?: string }> => {
     const trimmedDirectory = directory.trim();
     if (!trimmedDirectory) {
       return { success: false, error: "Please enter a directory first" };
@@ -229,7 +245,11 @@ export function CreateWorkspaceModal({
       const result = await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings, directory: trimmedDirectory }),
+        body: JSON.stringify({
+          settings,
+          directory: trimmedDirectory,
+          executionNodeId: selectedExecutionNodeId,
+        }),
         action: "Test server connection",
         fallbackMessage: "Failed to test server connection",
       });
@@ -267,7 +287,7 @@ export function CreateWorkspaceModal({
     }
   }, [automaticCreateNewRepository, automaticDevboxTemplate, templates, templatesLoading]);
   const isAutomaticValid = isNameValid
-    && automaticServerId.trim().length > 0
+    && (Boolean(automaticExecutionNodeId) || automaticServerId.trim().length > 0)
     && (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0)
     && automaticBasePath.trim().length > 0
     && (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
@@ -287,7 +307,8 @@ export function CreateWorkspaceModal({
     const refMatchesActiveJob = saved?.jobId != null && saved.jobId === provisioning.activeJobId;
     const values = config ? {
       name: config.name,
-      automaticServerId: config.sshServerId,
+      automaticServerId: config.sshServerId ?? "",
+      automaticExecutionNodeId: config.executionNodeId ?? null,
       automaticRepoUrl: config.repoUrl ?? "",
       automaticCreateNewRepository: config.createNewRepository ?? false,
       automaticBasePath: config.basePath,
@@ -301,6 +322,7 @@ export function CreateWorkspaceModal({
       setMode("automatic");
       setName(values.name);
       setAutomaticServerId(values.automaticServerId);
+      setAutomaticExecutionNodeId(values.automaticExecutionNodeId);
       setAutomaticRepoUrl(values.automaticRepoUrl);
       setAutomaticCreateNewRepository(values.automaticCreateNewRepository);
       setAutomaticBasePath(values.automaticBasePath);
@@ -346,7 +368,7 @@ export function CreateWorkspaceModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Create Workspace"
-      description="Create a new workspace manually with server connection settings or provision one automatically over SSH."
+      description="Create a workspace manually or provision one automatically on an SSH server or stdio execution host."
       size="md"
       footer={footer}
     >
@@ -369,6 +391,7 @@ export function CreateWorkspaceModal({
               directory={directory}
               onDirectoryChange={setDirectory}
               defaultServerSettings={defaultServerSettings}
+              executionNodeId={executionNodeId}
               onServerSettingsChange={handleServerSettingsChange}
               onTestConnection={handleTestConnection}
               testing={testing}
@@ -378,6 +401,9 @@ export function CreateWorkspaceModal({
           ) : (
             <AutomaticWorkspaceForm
               serverId={automaticServerId}
+              executionNodeId={automaticExecutionNodeId}
+              onExecutionNodeIdChange={setAutomaticExecutionNodeId}
+              remoteOnly={remoteOnly}
               onServerIdChange={(serverId) => {
                 setAutomaticServerId(serverId);
                 saveLastAutomaticWorkspaceSshServerId(serverId);

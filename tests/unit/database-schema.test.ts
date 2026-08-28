@@ -598,17 +598,19 @@ describe("database schema", () => {
       const insertMigration = db.prepare(
         "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
       );
-      for (let version = 1; version <= 17; version += 1) {
-        insertMigration.run(version, `migration-${version}`, "now");
+      for (const candidate of migrations) {
+        if (candidate.version !== migration.version) {
+          insertMigration.run(candidate.version, candidate.name, "now");
+        }
       }
 
       expect(migration.transactional).toBe(false);
-      expect(runMigrations(db)).toBe(17);
+      expect(runMigrations(db)).toBe(1);
       expect((db.query("SELECT value FROM preserved").get() as { value: string }).value).toBe("kept");
       expect(Bun.file(dbPath).size).toBeLessThan(sizeBeforeVacuum);
       expect((db.query("PRAGMA freelist_count").get() as { freelist_count: number }).freelist_count).toBe(0);
       expect(runMigrations(db)).toBe(0);
-      expect(getSchemaVersion(db)).toBe(34);
+      expect(getSchemaVersion(db)).toBe(migrations.at(-1)?.version ?? 0);
     } finally {
       db.close();
       await rm(dataDir, { recursive: true, force: true });
@@ -628,6 +630,8 @@ describe("database schema", () => {
     const pairingEncryptionMigration = migrations.find((candidate) => candidate.version === 29);
     const pairingRequestEncryptionMigration = migrations.find((candidate) => candidate.version === 30);
     const pairingTargetLinkMigration = migrations.find((candidate) => candidate.version === 31);
+    const instanceNamesMigration = migrations.find((candidate) => candidate.version === 32);
+    const transportOnlyMigration = migrations.find((candidate) => candidate.version === 35);
     if (
       !identityMigration ||
       !directionMigration ||
@@ -640,7 +644,9 @@ describe("database schema", () => {
       !encryptionMigration ||
       !pairingEncryptionMigration ||
       !pairingRequestEncryptionMigration ||
-      !pairingTargetLinkMigration
+      !pairingTargetLinkMigration ||
+      !instanceNamesMigration ||
+      !transportOnlyMigration
     ) {
       throw new Error("Mesh migrations were not found");
     }
@@ -699,8 +705,148 @@ describe("database schema", () => {
       pairingRequestEncryptionMigration.up(db);
       pairingTargetLinkMigration.up(db);
       pairingTargetLinkMigration.up(db);
+      instanceNamesMigration.up(db);
+      instanceNamesMigration.up(db);
       const pairingRequestColumns = db.query("PRAGMA table_info(mesh_pairing_requests)").all() as Array<{ name: string }>;
       expect(pairingRequestColumns.map((column) => column.name)).toContain("target_link_id");
+      db.exec(`
+        CREATE TABLE workspaces (id TEXT PRIMARY KEY, execution_node_id TEXT);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, workspace_id TEXT);
+        CREATE TABLE review_comments (id TEXT PRIMARY KEY, task_id TEXT);
+        CREATE TABLE sessions (task_id TEXT PRIMARY KEY);
+        CREATE TABLE clanky_context_api_keys (workspace_id TEXT);
+        CREATE TABLE task_transcript_entries (task_id TEXT);
+        CREATE TABLE task_transcript_meta (task_id TEXT);
+        CREATE TABLE chats (id TEXT PRIMARY KEY, workspace_id TEXT);
+        CREATE TABLE chat_transcript_entries (chat_id TEXT);
+        CREATE TABLE chat_transcript_meta (chat_id TEXT);
+        CREATE TABLE ssh_sessions (id TEXT PRIMARY KEY, workspace_id TEXT);
+        CREATE TABLE preview_sessions (id TEXT PRIMARY KEY, workspace_id TEXT);
+        CREATE TABLE agents (id TEXT PRIMARY KEY, workspace_id TEXT);
+        CREATE TABLE agent_runs (id TEXT PRIMARY KEY, agent_id TEXT);
+        CREATE TABLE agent_run_transcript_entries (agent_run_id TEXT);
+        CREATE TABLE agent_run_transcript_meta (agent_run_id TEXT);
+        INSERT INTO webapp_users (id) VALUES ('local-user');
+        INSERT INTO mesh_node_identity (
+          singleton, node_id, instance_name, public_key, fingerprint,
+          encryption_public_key, created_at, updated_at
+        ) VALUES (
+          1, 'local-node', 'Local', 'local-key', 'identity-fingerprint',
+          NULL, 'now', 'now'
+        );
+        INSERT INTO workspaces VALUES
+          ('local-workspace', 'local-node'),
+          ('remote-workspace', 'remote-node');
+        INSERT INTO tasks VALUES
+          ('local-task', 'local-workspace'),
+          ('remote-task', 'remote-workspace');
+        INSERT INTO review_comments VALUES
+          ('local-review', 'local-task'),
+          ('remote-review', 'remote-task');
+        INSERT INTO sessions VALUES ('local-task'), ('remote-task');
+        INSERT INTO clanky_context_api_keys VALUES ('local-workspace'), ('remote-workspace');
+        INSERT INTO task_transcript_entries VALUES ('local-task'), ('remote-task');
+        INSERT INTO task_transcript_meta VALUES ('local-task'), ('remote-task');
+        INSERT INTO chats VALUES
+          ('local-chat', 'local-workspace'),
+          ('remote-chat', 'remote-workspace');
+        INSERT INTO chat_transcript_entries VALUES ('local-chat'), ('remote-chat');
+        INSERT INTO chat_transcript_meta VALUES ('local-chat'), ('remote-chat');
+        INSERT INTO ssh_sessions VALUES
+          ('local-ssh', 'local-workspace'),
+          ('remote-ssh', 'remote-workspace');
+        INSERT INTO preview_sessions VALUES
+          ('local-preview', 'local-workspace'),
+          ('remote-preview', 'remote-workspace');
+        INSERT INTO agents VALUES
+          ('local-agent', 'local-workspace'),
+          ('remote-agent', 'remote-workspace');
+        INSERT INTO agent_runs VALUES
+          ('local-run', 'local-agent'),
+          ('remote-run', 'remote-agent');
+        INSERT INTO agent_run_transcript_entries VALUES ('local-run'), ('remote-run');
+        INSERT INTO agent_run_transcript_meta VALUES ('local-run'), ('remote-run');
+        INSERT INTO mesh_nodes (
+          node_id, instance_name, public_key, fingerprint, encryption_public_key,
+          endpoint, transport, status, last_seen_at, created_at, updated_at
+        ) VALUES
+          ('local-node', 'Local', 'local-key', 'local-fingerprint', NULL,
+            'http://local.test', 'http', 'active', NULL, 'now', 'now'),
+          ('remote-node', 'Remote', 'remote-key', 'remote-fingerprint', NULL,
+            'http://remote.test', 'http', 'active', NULL, 'now', 'now');
+        INSERT INTO mesh_links (
+          link_id, local_user_id, active_node_id, takeover_generation,
+          active_claimed_at, active_claim_origin, status, created_at, updated_at
+        ) VALUES ('link-1', 'local-user', 'local-node', 2, 'now', 'test', 'conflict', 'now', 'now');
+        INSERT INTO mesh_link_members (
+          link_id, node_id, local_user_id, endpoint, transport, status,
+          membership_generation, last_seen_at, created_at, updated_at
+        ) VALUES
+          ('link-1', 'local-node', 'local-user', 'http://local.test', 'http', 'active', 1, 'now', 'now', 'now'),
+          ('link-1', 'remote-node', 'remote-user', 'http://remote.test', 'http', 'active', 1, 'now', 'now', 'now');
+        INSERT INTO mesh_pairing_requests (
+          id, direction, link_id, target_link_id, target_local_user_id,
+          requested_node_id, requested_instance_name, requested_local_user_id,
+          requested_username, endpoint, transport, public_key, fingerprint,
+          encryption_public_key, nonce, signature, status, expires_at,
+          approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
+        ) VALUES (
+          'request-1', 'outgoing', 'link-1', NULL, NULL,
+          'remote-node', 'Remote', 'remote-user', 'remote',
+          'http://remote.test', 'http', 'remote-key', 'remote-fingerprint',
+          NULL, 'nonce-1', 'request-signature', 'approved', 'later',
+          'now', 'local-user', NULL, 'now', 'now'
+        );
+        INSERT INTO mesh_pairing_approvals (
+          request_id, link_id, approved_by_node_id, approved_by_instance_name,
+          approved_by_local_user_id, active_node_id, takeover_generation,
+          endpoint, transport, public_key, fingerprint, encryption_public_key,
+          signature, members_json, status, created_at, updated_at
+        ) VALUES (
+          'request-1', 'link-1', 'remote-node', 'Remote', 'remote-user',
+          'local-node', 2, 'http://remote.test', 'http', 'remote-key',
+          'remote-fingerprint', NULL, 'approval-signature', '[]',
+          'accepted', 'now', 'now'
+        );
+      `);
+      transportOnlyMigration.up(db);
+      transportOnlyMigration.up(db);
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_sync_outbox'").get()).toBeNull();
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_link_claims'").get()).toBeNull();
+      const finalLinkColumns = db.query("PRAGMA table_info(mesh_links)").all() as Array<{ name: string }>;
+      expect(finalLinkColumns.map((column) => column.name)).not.toContain("active_node_id");
+      expect(finalLinkColumns.map((column) => column.name)).not.toContain("takeover_generation");
+      const finalApprovalColumns = db.query("PRAGMA table_info(mesh_pairing_approvals)").all() as Array<{ name: string }>;
+      expect(finalApprovalColumns.map((column) => column.name)).not.toContain("active_node_id");
+      expect(finalApprovalColumns.map((column) => column.name)).not.toContain("takeover_generation");
+      expect(db.query("SELECT status FROM mesh_links WHERE link_id = 'link-1'").get())
+        .toEqual({ status: "active" });
+      expect(db.query("SELECT status FROM mesh_pairing_approvals WHERE request_id = 'request-1'").get())
+        .toEqual({ status: "accepted" });
+      expect(db.query("SELECT id FROM workspaces ORDER BY id").all())
+        .toEqual([{ id: "local-workspace" }]);
+      for (const [tableName, remoteId] of [
+        ["tasks", "remote-task"],
+        ["review_comments", "remote-review"],
+        ["sessions", "remote-task"],
+        ["chats", "remote-chat"],
+        ["ssh_sessions", "remote-ssh"],
+        ["preview_sessions", "remote-preview"],
+        ["agents", "remote-agent"],
+        ["agent_runs", "remote-run"],
+      ] as const) {
+        const idColumn = tableName === "sessions" ? "task_id" : "id";
+        expect(db.query(`SELECT 1 FROM ${tableName} WHERE ${idColumn} = ?`).get(remoteId)).toBeNull();
+      }
+      expect(db.query("SELECT 1 FROM clanky_context_api_keys WHERE workspace_id = 'remote-workspace'").get())
+        .toBeNull();
+      expect(db.query("SELECT 1 FROM task_transcript_entries WHERE task_id = 'remote-task'").get())
+        .toBeNull();
+      expect(db.query("SELECT 1 FROM chat_transcript_entries WHERE chat_id = 'remote-chat'").get())
+        .toBeNull();
+      expect(db.query("SELECT 1 FROM agent_run_transcript_entries WHERE agent_run_id = 'remote-run'").get())
+        .toBeNull();
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
       db.close();
     }

@@ -49,8 +49,8 @@ describe("mesh transport configuration", () => {
     expect(resolveAdvertisedMeshEndpoint()).toBe("http://configured.example.test:4200");
     expect(resolveMeshRoute(
       resolveAdvertisedMeshEndpoint(),
-      "/api/mesh/internal/sync",
-    )).toBe("http://configured.example.test:4200/api/mesh/internal/sync");
+      "/api/mesh/internal/membership",
+    )).toBe("http://configured.example.test:4200/api/mesh/internal/membership");
   });
 
   test("rejects endpoints with query strings or fragments", () => {

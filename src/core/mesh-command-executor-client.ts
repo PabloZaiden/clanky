@@ -33,11 +33,13 @@ import type {
   CommandOptions,
   CommandResult,
 } from "./command-executor";
+import type { AgentProvider } from "@/shared/settings";
 
 export interface MeshCommandExecutorClientConfig {
   workspaceId: string;
   directory: string;
   executionNodeId: string;
+  provider: AgentProvider;
   localUserId?: string;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
@@ -97,6 +99,7 @@ export class MeshCommandExecutorClient {
   private readonly workspaceId: string;
   private readonly directory: string;
   private readonly executionNodeId: string;
+  private readonly provider: AgentProvider;
   private readonly localUserId?: string;
   private readonly requestTimeoutMs: number;
   private readonly fetchImpl: typeof globalThis.fetch;
@@ -109,6 +112,7 @@ export class MeshCommandExecutorClient {
     this.workspaceId = config.workspaceId;
     this.directory = config.directory;
     this.executionNodeId = config.executionNodeId;
+    this.provider = config.provider;
     this.localUserId = config.localUserId;
     this.requestTimeoutMs = config.requestTimeoutMs ?? MESH_EXECUTION_DEFAULT_TIMEOUT_MS;
     this.fetchImpl = config.fetch ?? globalThis.fetch;
@@ -134,13 +138,13 @@ export class MeshCommandExecutorClient {
     const localUserId = this.localUserId ?? requireCurrentUserId();
     const link = await getMeshLinkForLocalUser(localUserId);
     if (!link) {
-      throw new DomainError("mesh_link_not_found", "The workspace owner mesh link was not found.");
+      throw new DomainError("mesh_link_not_found", "The local mesh link was not found.");
     }
 
-    if (link.status !== "active" || link.activeNodeId !== identity.nodeId) {
+    if (link.status !== "active") {
       throw new DomainError(
-        "mesh_execution_owner_unavailable",
-        "The local mesh node is not the active mesh node.",
+        "mesh_execution_link_unavailable",
+        "The local mesh link is unavailable.",
       );
     }
 
@@ -148,10 +152,18 @@ export class MeshCommandExecutorClient {
       .find((candidate) => candidate.nodeId === this.executionNodeId);
     const node = await getMeshNode(this.executionNodeId);
     const endpoint = member?.endpoint ?? node?.endpoint;
-    if (!member || !node || member.status !== "active" || node.status !== "active" || !endpoint) {
+    if (
+      !member
+      || !node
+      || member.status === "pending"
+      || member.status === "revoked"
+      || node.status === "pending"
+      || node.status === "revoked"
+      || !endpoint
+    ) {
       throw new DomainError(
         "mesh_execution_endpoint_unavailable",
-        "The workspace execution owner has no usable mesh endpoint.",
+        "The selected workspace execution peer has no usable mesh endpoint.",
       );
     }
 
@@ -168,6 +180,7 @@ export class MeshCommandExecutorClient {
       targetNodeId: this.executionNodeId,
       workspaceId: this.workspaceId,
       directory: this.directory,
+      provider: this.provider,
       channel,
       nonce: crypto.randomUUID(),
       expiresAt,
@@ -273,6 +286,9 @@ export class MeshCommandExecutorClient {
     signal?: AbortSignal,
   ): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (signal?.aborted) {
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+      }
       await this.ensureSession();
       const session = this.session;
       const endpoint = this.endpoint;
@@ -319,7 +335,7 @@ export class MeshCommandExecutorClient {
           && (
             error.code === "mesh_execution_session_invalid"
             || error.code === "mesh_execution_session_expired"
-            || error.code === "mesh_execution_authority_changed"
+            || error.code === "mesh_execution_context_changed"
           )
         ) {
           this.session = null;
@@ -351,6 +367,9 @@ export class MeshCommandExecutorClient {
     signal?: AbortSignal,
     requestTimeoutMs?: number,
   ): Promise<unknown> {
+    if (signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
@@ -392,7 +411,7 @@ export class MeshCommandExecutorClient {
       if (signal?.aborted) {
         throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", { cause: error });
       }
-      throw new DomainError("mesh_execution_unreachable", "The mesh execution owner could not be reached.", {
+      throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
         cause: error,
       });
     } finally {

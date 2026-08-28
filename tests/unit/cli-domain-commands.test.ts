@@ -81,38 +81,21 @@ describe("CLI mesh command parsing and requests", () => {
       targetUserId: "user-2",
     });
     expect(parseMeshCommandArgs([
-      "conflicts",
-      "resolve",
-      "conflict-1",
-      "--resolution",
-      "remote",
+      "rejoin",
+      "https://peer.example",
+      "--target-user-id",
+      "user-2",
     ])).toEqual({
-      operation: "conflict-resolve",
-      requestId: "conflict-1",
-      resolution: "remote",
+      operation: "rejoin",
+      endpoint: "https://peer.example",
+      targetUserId: "user-2",
     });
-    expect(() => parseMeshCommandArgs([
-      "conflicts",
-      "resolve",
-      "conflict-1",
-      "--resolution",
-      "invalid",
-    ])).toThrow("local|remote|dismiss");
   });
 
   test("builds representative API requests", () => {
     expect(buildMeshRequest(parseMeshCommandArgs(["status"]))).toEqual({
       endpoint: "/api/mesh/status",
       method: "GET",
-    });
-    expect(buildMeshRequest(parseMeshCommandArgs([
-      "takeover",
-      "--expected-generation",
-      "4",
-    ]))).toEqual({
-      endpoint: "/api/mesh/takeover",
-      method: "POST",
-      payload: "{\"expectedGeneration\":4}",
     });
     expect(buildMeshRequest(parseMeshCommandArgs([
       "pair",
@@ -126,15 +109,12 @@ describe("CLI mesh command parsing and requests", () => {
       payload: "{\"linkId\":\"link-1\"}",
     });
     expect(buildMeshRequest(parseMeshCommandArgs([
-      "conflicts",
-      "resolve",
-      "conflict-1",
-      "--resolution",
-      "local",
+      "revoke",
+      "node-1",
     ]))).toEqual({
-      endpoint: "/api/mesh/conflicts/conflict-1/resolve",
+      endpoint: "/api/mesh/members/revoke",
       method: "POST",
-      payload: "{\"resolution\":\"local\"}",
+      payload: "{\"nodeId\":\"node-1\"}",
     });
   });
 });

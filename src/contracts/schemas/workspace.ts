@@ -69,6 +69,7 @@ export const CreateWorkspaceRequestSchema = z.object({
   name: z.string().min(1, "name is required"),
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
+  executionNodeId: z.string().trim().min(1).nullable().optional(),
   allowClankyContext: z.boolean().optional(),
 });
 
@@ -81,6 +82,7 @@ export const CreateWorkspaceRequestSchema = z.object({
 export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
+  executionNodeId: z.string().trim().min(1).nullable().optional(),
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
@@ -100,6 +102,7 @@ export const DeleteWorkspaceRequestSchema = z.object({
 export const TestConnectionRequestSchema = z.object({
   settings: ServerSettingsSchema,
   directory: z.string().min(1, "directory is required"),
+  executionNodeId: z.string().trim().min(1).nullable().optional(),
 });
 
 // Export inferred types

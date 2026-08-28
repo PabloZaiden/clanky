@@ -2,7 +2,8 @@ import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningL
 
 export interface StartProvisioningJobOptions {
   name: string;
-  sshServerId: string;
+  sshServerId?: string;
+  executionNodeId?: string;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

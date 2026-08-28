@@ -16,5 +16,4 @@ export * from "./ssh-server-keys";
 export * from "./preview-sessions";
 export * from "./context-api-keys";
 export * from "./mesh";
-export * from "./mesh-sync";
 export * from "./mesh-node-identity";

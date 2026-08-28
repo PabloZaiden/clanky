@@ -1,8 +1,8 @@
 /**
- * Recipient-bound encryption for semantic mesh checkpoint payloads.
+ * Recipient-bound encryption for mesh transport payloads.
  *
  * Node signing keys authenticate the protocol. A separate RSA key in the
- * node identity file wraps a per-checkpoint AES-GCM key so payloads are not
+ * node identity file wraps a per-message AES-GCM key so payloads are not
  * exposed to intermediate peers or network observers.
  */
 
@@ -14,7 +14,6 @@ import {
   publicEncrypt,
   randomBytes,
 } from "node:crypto";
-import type { MeshSyncCheckpointRecord } from "@/shared/mesh";
 import { DomainError } from "./domain-error";
 import { getLocalMeshEncryptionPrivateKey } from "../persistence/mesh-node-identity";
 
@@ -71,7 +70,7 @@ export function encryptMeshPayload(
   } catch (error) {
     throw new DomainError(
       "mesh_payload_encryption_failed",
-      "The mesh checkpoint payload could not be encrypted for its recipient.",
+      "The mesh payload could not be encrypted for its recipient.",
       { cause: error },
     );
   }
@@ -105,33 +104,8 @@ export async function decryptMeshPayload(value: unknown): Promise<unknown> {
   } catch (error) {
     throw new DomainError(
       "mesh_payload_decryption_failed",
-      "The mesh checkpoint payload could not be decrypted by this node.",
+      "The mesh payload could not be decrypted by this node.",
       { cause: error },
     );
   }
-}
-
-export function encryptMeshCheckpoint(
-  checkpoint: MeshSyncCheckpointRecord,
-  recipientEncryptionPublicKey: string,
-): MeshSyncCheckpointRecord {
-  return {
-    ...checkpoint,
-    basePayload: checkpoint.basePayload === null
-      ? null
-      : encryptMeshPayload(checkpoint.basePayload, recipientEncryptionPublicKey),
-    payload: checkpoint.payload === null
-      ? null
-      : encryptMeshPayload(checkpoint.payload, recipientEncryptionPublicKey),
-  };
-}
-
-export async function decryptMeshCheckpoint(
-  checkpoint: MeshSyncCheckpointRecord,
-): Promise<MeshSyncCheckpointRecord> {
-  return {
-    ...checkpoint,
-    basePayload: await decryptMeshPayload(checkpoint.basePayload),
-    payload: await decryptMeshPayload(checkpoint.payload),
-  };
 }

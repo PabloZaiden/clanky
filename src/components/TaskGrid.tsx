@@ -3,7 +3,7 @@
  * Supports both card grid and row list view modes.
  */
 
-import type { Task, SshServer } from "@/shared";
+import type { Task, SshServer, WorkspaceExecutionTarget } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { StatusGroups, WorkspaceGroup } from "../hooks/useTaskGrouping";
 import type { DashboardViewMode } from "@/shared/preferences";
@@ -17,6 +17,7 @@ export interface TaskGridProps {
   viewMode: DashboardViewMode;
   workspaceGroups: WorkspaceGroup[];
   registeredSshServers?: readonly SshServer[];
+  executionTargets: readonly WorkspaceExecutionTarget[];
   unassignedTasks: Task[];
   unassignedStatusGroups: StatusGroups;
   onSelectTask?: (taskId: string) => void;
@@ -33,6 +34,7 @@ export function TaskGrid({
   viewMode,
   workspaceGroups,
   registeredSshServers = [],
+  executionTargets,
   unassignedTasks,
   unassignedStatusGroups,
   onSelectTask,
@@ -95,6 +97,7 @@ export function TaskGrid({
               workspace={workspace}
               taskCount={workspaceTasks.length}
               registeredSshServers={registeredSshServers}
+              executionTargets={executionTargets}
               onOpenSettings={() => {
                 if (!workspacePrivateHidden) {
                   onOpenWorkspaceSettings(workspace.id);
@@ -132,6 +135,7 @@ export function TaskGrid({
       <EmptyWorkspacesSection
         workspaceGroups={workspaceGroups}
         registeredSshServers={registeredSshServers}
+        executionTargets={executionTargets}
         onOpenWorkspaceSettings={onOpenWorkspaceSettings}
         onDeleteWorkspace={onDeleteWorkspace}
         showPrivateItems={showPrivateItems}

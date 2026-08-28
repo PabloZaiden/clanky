@@ -13,8 +13,6 @@ import {
   hydrateTranscriptStateForUser,
 } from "../transcripts/store";
 import { CHAT_METADATA_COLUMNS } from "./crud";
-import { loadChat } from "./crud";
-import { scheduleMeshCheckpoint } from "../mesh-sync";
 
 const log = createLogger("persistence:chats");
 
@@ -29,8 +27,6 @@ export async function updateChatState(chatId: string, state: ChatState, options:
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
-  let shouldCheckpoint = false;
-
   const saved = db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
     if (!row) {
@@ -41,7 +37,6 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     if (options.expectedStatus !== undefined && chat.state.status !== options.expectedStatus) {
       return false;
     }
-    shouldCheckpoint = chat.state.status !== state.status;
     chat.state = state;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => {
@@ -89,17 +84,6 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     log.debug("Chat state updated", { chatId, status: state.status });
     return true;
   })();
-  if (saved && shouldCheckpoint) {
-    const chat = await loadChat(chatId);
-    if (chat) {
-      scheduleMeshCheckpoint({
-        userId,
-        aggregateType: "chat",
-        aggregateId: chatId,
-        payload: chat,
-      });
-    }
-  }
   return saved;
 }
 
@@ -142,16 +126,5 @@ export async function updateChatConfig(
     log.debug("Chat config updated", { chatId, name: config.name });
     return true;
   })();
-  if (saved) {
-    const chat = await loadChat(chatId);
-    if (chat) {
-      scheduleMeshCheckpoint({
-        userId,
-        aggregateType: "chat",
-        aggregateId: chatId,
-        payload: chat,
-      });
-    }
-  }
   return saved;
 }

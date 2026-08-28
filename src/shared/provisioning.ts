@@ -41,7 +41,8 @@ export interface ProvisioningJobError {
 export interface ProvisioningJobConfig {
   id: string;
   name: string;
-  sshServerId: string;
+  sshServerId?: string;
+  executionNodeId?: string;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

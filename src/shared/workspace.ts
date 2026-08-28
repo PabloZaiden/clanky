@@ -55,6 +55,13 @@ export interface Workspace {
   provider?: AgentProvider;
 }
 
+export interface WorkspaceExecutionTarget {
+  nodeId: string;
+  name: string;
+  kind: "local" | "mesh";
+  availability: "local" | "online" | "offline";
+}
+
 export type PublicAgentSettings =
   | Extract<ServerSettings["agent"], { transport: "stdio" }>
   | Omit<Extract<ServerSettings["agent"], { transport: "ssh" }>, "password" | "identityFile">;

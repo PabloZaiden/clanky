@@ -53,3 +53,4 @@ export {
   type ChatComposerDraftPersistenceDependencies,
   type ChatComposerDraftStorageLike,
 } from "./chat-composer-drafts";
+export { getWorkspaceServerLabel } from "./workspace-label";

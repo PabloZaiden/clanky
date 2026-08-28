@@ -10,11 +10,13 @@ import type {
 } from "./command-executor";
 import { DomainError } from "./domain-error";
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
+import type { AgentProvider } from "@/shared/settings";
 
 export interface MeshCommandExecutorConfig {
   workspaceId: string;
   directory: string;
   executionNodeId: string;
+  provider: AgentProvider;
   localUserId?: string;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;

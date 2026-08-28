@@ -122,20 +122,17 @@ function PairingRequest({
 function MeshMemberRow({
   member,
   localNodeId,
-  activeNodeId,
   saving,
   onRevoke,
   onRemoveRevocation,
 }: {
   member: MeshLinkMemberRecord;
   localNodeId: string;
-  activeNodeId: string | null;
   saving: boolean;
   onRevoke: () => void;
   onRemoveRevocation: () => void;
 }) {
   const isLocalInstance = member.nodeId === localNodeId;
-  const isAuthority = member.nodeId === activeNodeId;
   const memberDetails = [
     member.status === "active" ? null : formatPeerStatus(member.status),
     member.endpoint,
@@ -153,11 +150,6 @@ function MeshMemberRow({
           {isLocalInstance ? (
             <Badge variant="info" appearance="text">
               This instance
-            </Badge>
-          ) : null}
-          {isAuthority ? (
-            <Badge variant="success" appearance="text">
-              Authority
             </Badge>
           ) : null}
         </div>
@@ -187,13 +179,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [rejoinTargetUserId, setRejoinTargetUserId] = useState("");
   const [revokeNodeId, setRevokeNodeId] = useState<string | null>(null);
   const [removeRevocationNodeId, setRemoveRevocationNodeId] = useState<string | null>(null);
-  const [showTakeoverConfirm, setShowTakeoverConfirm] = useState(false);
   const [showRejoinConfirm, setShowRejoinConfirm] = useState(false);
-
-  useEffect(() => {
-    void mesh.loadPreflight();
-    void mesh.loadConflicts();
-  }, [mesh.loadConflicts, mesh.loadPreflight]);
 
   useEffect(() => {
     if (mesh.mutationError) {
@@ -202,7 +188,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   }, [mesh.mutationError, showToastError]);
 
   const link = mesh.status?.links[0] ?? null;
-  const localIsActive = link?.activeNodeId === mesh.status?.node.nodeId;
   const localMember = link?.members.find((member) => member.nodeId === mesh.status?.node.nodeId);
   const canRejoin = link?.status === "revoked" || localMember?.status === "revoked";
   const pendingRequests = mesh.status?.pendingPairingRequests ?? [];
@@ -253,7 +238,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
               key={member.nodeId}
               member={member}
               localNodeId={mesh.status?.node.nodeId ?? ""}
-              activeNodeId={link.activeNodeId}
               saving={mesh.saving}
               onRevoke={() => setRevokeNodeId(member.nodeId)}
               onRemoveRevocation={() => setRemoveRevocationNodeId(member.nodeId)}
@@ -261,32 +245,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
           ))}
         </div>
       ) : null}
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-sm font-medium">Authority</h4>
-          <Button
-            type="button"
-            size="sm"
-            variant="primary"
-            onClick={() => {
-              void mesh.loadPreflight().then((result) => {
-                if (result) {
-                  setShowTakeoverConfirm(true);
-                }
-              });
-            }}
-            disabled={!link || localIsActive || mesh.saving}
-          >
-            Take over
-          </Button>
-        </div>
-        {mesh.preflight && mesh.preflight.activeTasks.length > 0 ? (
-          <p className="text-xs text-amber-700 dark:text-amber-300">
-            {mesh.preflight.activeTasks.length} active task{mesh.preflight.activeTasks.length === 1 ? "" : "s"} will remain on the original node.
-          </p>
-        ) : null}
-      </div>
 
       <details className="space-y-4">
         <summary className="cursor-pointer text-sm font-medium">Mesh configuration</summary>
@@ -318,7 +276,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
           </form>
           <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-neutral-800">
             <p className="font-medium">
-              {link ? (localIsActive ? "Active mesh instance" : "Passive mesh instance") : "Not linked to a mesh"}
+              {link ? "Linked mesh instance" : "Not linked to a mesh"}
             </p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
               Instance name: <strong>{mesh.status?.node.instanceName ?? "Not configured"}</strong>
@@ -328,7 +286,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             </p>
             {link ? (
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                {link.members.length} member{link.members.length === 1 ? "" : "s"} · generation {link.takeoverGeneration}
+                {link.members.length} member{link.members.length === 1 ? "" : "s"}
               </p>
             ) : null}
           </div>
@@ -395,37 +353,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             </div>
           ) : null}
 
-          {mesh.conflicts.length > 0 ? (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Conflicts requiring a decision</h4>
-              {mesh.conflicts.map((conflict) => (
-                <div key={conflict.conflictId} className="space-y-2 rounded-md border border-amber-300 p-3 dark:border-amber-700">
-                  <p className="text-xs">
-                    {conflict.aggregateType} / {conflict.aggregateId}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(["local", "remote", "dismiss"] as const).map((resolution) => (
-                      <Button
-                        key={resolution}
-                        type="button"
-                        size="sm"
-                        variant={resolution === "dismiss" ? "ghost" : "secondary"}
-                        onClick={() => {
-                          void mesh.resolveConflict(conflict.conflictId, resolution).then((result) => {
-                            if (result) toast.success("Mesh conflict resolved.");
-                          });
-                        }}
-                        disabled={mesh.saving}
-                      >
-                        Keep {resolution}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
           {canRejoin ? (
             <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-700">
               <h4 className="text-sm font-medium">Rejoin mesh</h4>
@@ -434,8 +361,8 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
               </p>
               <MeshFormField
                 id="mesh-rejoin-endpoint"
-                label="Active instance URL"
-                description="The URL of the active mesh instance that should receive this rejoin request."
+                label="Mesh instance URL"
+                description="The URL of a current mesh member that should receive this rejoin request."
               >
                 <SettingsInput
                   id="mesh-rejoin-endpoint"
@@ -487,7 +414,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
           }
         }}
         title="Revoke mesh member"
-        message="This member will stop receiving new synchronized data. Rejoining requires a new pairing."
+        message="This member's transport identity will no longer be trusted. Rejoining requires a new pairing."
         confirmLabel="Revoke member"
         loading={mesh.saving}
         variant="danger"
@@ -508,23 +435,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         confirmLabel="Delete revocation"
         loading={mesh.saving}
         variant="danger"
-      />
-      <ConfirmModal
-        isOpen={showTakeoverConfirm}
-        onClose={() => setShowTakeoverConfirm(false)}
-        onConfirm={async () => {
-          const result = await mesh.takeover(mesh.preflight?.takeoverGeneration ?? undefined);
-          if (result) {
-            toast.success("This instance is now the active mesh node.");
-            setShowTakeoverConfirm(false);
-          }
-        }}
-        title="Take over mesh authority"
-        message={mesh.preflight?.activeTasks.length
-          ? `${mesh.preflight.activeTasks.length} active task(s) will continue on the original instance. Continue?`
-          : "Only this instance will execute active mesh work after takeover. Continue?"}
-        confirmLabel="Take over"
-        loading={mesh.saving}
       />
       <ConfirmModal
         isOpen={showRejoinConfirm}

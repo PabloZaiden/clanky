@@ -9,8 +9,9 @@ interface ManualWorkspaceFormProps {
   directory: string;
   onDirectoryChange: (value: string) => void;
   defaultServerSettings: ServerSettings;
-  onServerSettingsChange: (settings: ServerSettings, isValid: boolean) => void;
-  onTestConnection: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
+  executionNodeId: string | null;
+  onServerSettingsChange: (settings: ServerSettings, isValid: boolean, executionNodeId: string | null) => void;
+  onTestConnection: (settings: ServerSettings, executionNodeId: string | null) => Promise<{ success: boolean; error?: string }>;
   testing: boolean;
   remoteOnly: boolean;
   registeredSshServers: SshServer[];
@@ -20,6 +21,7 @@ export function ManualWorkspaceForm({
   directory,
   onDirectoryChange,
   defaultServerSettings,
+  executionNodeId,
   onServerSettingsChange,
   onTestConnection,
   testing,
@@ -51,6 +53,7 @@ export function ManualWorkspaceForm({
 
       <ServerSettingsForm
         initialSettings={defaultServerSettings}
+        initialExecutionNodeId={executionNodeId}
         onChange={onServerSettingsChange}
         onTest={onTestConnection}
         testing={testing}

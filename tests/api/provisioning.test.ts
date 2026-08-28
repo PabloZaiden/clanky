@@ -20,6 +20,7 @@ interface ProvisioningSnapshotResponse {
     job: {
       config: {
         id: string;
+        executionNodeId?: string;
         devcontainerSubpath?: string;
         devboxTemplate?: string;
         githubUser?: string;
@@ -40,6 +41,7 @@ interface ProvisioningSnapshotResponse {
   workspace?: {
     id: string;
     directory: string;
+    executionNodeId?: string | null;
     serverSettings?: {
       agent: Record<string, unknown>;
     };
@@ -95,6 +97,8 @@ describe("Provisioning API integration", () => {
     const db = getDatabase();
     provisioningManager.resetForTesting();
     sshServerManager.setExecutorFactoryForTesting(null);
+    backendManager.resetForTesting();
+    backendManager.setBackendForTesting(createMockBackend());
     db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_server_sessions");
@@ -117,6 +121,7 @@ describe("Provisioning API integration", () => {
         workdir: "/workspaces/example",
       }),
     });
+
     sshServerManager.setExecutorFactoryForTesting(() => executor);
 
     const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
@@ -155,6 +160,51 @@ describe("Provisioning API integration", () => {
     const logs = await logsResponse.json() as { success: boolean; logs: Array<{ text: string }> };
     expect(logs.success).toBe(true);
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
+  });
+
+  test("provisions through a stdio mesh execution node without an SSH server", async () => {
+    const executor = new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/devbox/workspaces/mesh-example",
+      }),
+    });
+    backendManager.setExecutorFactoryForTesting(() => executor);
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Mesh Example",
+        executionNodeId: "paired-mesh-node",
+        repoUrl: "https://github.com/octocat/mesh-example.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        githubUser: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        createNewRepository: false,
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    expect(started.job.config.executionNodeId).toBe("paired-mesh-node");
+
+    const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+    expect(completed.workspace).toMatchObject({
+      directory: "/workspaces/mesh-example",
+      executionNodeId: "paired-mesh-node",
+      serverSettings: {
+        agent: {
+          provider: "copilot",
+          transport: "stdio",
+        },
+      },
+    });
   });
 
   test("omits devbox GitHub user args when githubUser is blank", async () => {

@@ -27,9 +27,13 @@ export interface UseWorkspaceServerSettingsResult {
   updateWorkspace: (
     name: string,
     settings: ServerSettings,
+    executionNodeId: string | null,
     archived: boolean,
     allowClankyContext: boolean,
   ) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
-  testConnection: (settings?: ServerSettings) => Promise<{ success: boolean; error?: string }>;
+  testConnection: (
+    settings?: ServerSettings,
+    executionNodeId?: string | null,
+  ) => Promise<{ success: boolean; error?: string }>;
 }
