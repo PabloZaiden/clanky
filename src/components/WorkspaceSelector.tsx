@@ -82,8 +82,8 @@ export function WorkspaceSelector({
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>
             {showServerDetails
-              ? `${workspace.name}${workspace.workspaceType === "directory" ? " (directory)" : ""} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
-              : `${workspace.name}${workspace.workspaceType === "directory" ? " (directory)" : ""}`}
+              ? `${workspace.name} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
+              : workspace.name}
           </option>
         ))}
       </select>

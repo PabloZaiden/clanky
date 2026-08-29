@@ -45,7 +45,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     return (
       <ErrorState
         title="Tasks are unavailable"
-        description="Directory workspaces support chats and agents directly, but tasks require a Git-backed workspace."
+        description="Tasks need branch and worktree support. Select another workspace, or use chats and agents directly from this workspace."
       />
     );
   }

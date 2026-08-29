@@ -684,7 +684,7 @@ export function ComposeChatView({
 
         {!isServerChat && selectedWorkspace?.workspaceType === "directory" && (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Directory workspace: this chat runs directly in the workspace directory without branches or worktrees.
+          This chat runs directly at the selected path without branches or worktrees.
         </p>
         )}
 

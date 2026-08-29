@@ -286,9 +286,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="flex-1">
-                  <span className="block font-medium">Git-backed workspace</span>
+                  <span className="block font-medium">Enable task features</span>
                   <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                    Required for tasks, branches, worktrees, GitHub, and Git maintenance. Uncheck to run chats and agents directly in this directory.
+                    Tasks, branches, worktrees, GitHub, and Git maintenance are available when enabled. Disable to run chats and agents directly at the selected path.
                   </span>
                 </span>
               </label>

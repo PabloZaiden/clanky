@@ -50,7 +50,6 @@ export function EmptyWorkspacesSection({
               <div className="min-w-0">
                 <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">
                   {workspace.name}
-                  {workspace.workspaceType === "directory" ? " (directory)" : ""}
                 </div>
                 <div
                   className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"

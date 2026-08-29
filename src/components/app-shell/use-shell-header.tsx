@@ -121,7 +121,7 @@ function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: 
   if (!workspace) {
     return undefined;
   }
-  return `${workspace.name} · ${workspace.workspaceType === "git" ? "Git-backed workspace" : "Directory workspace"}`;
+  return workspace.name;
 }
 
 function getServerName(serverId: string | undefined, servers: SshServer[]): string | undefined {
@@ -360,27 +360,15 @@ export function useShellHeader({
         if (!nodeModel) {
           return {
             title: selectedWorkspace?.name ?? "Workspace",
-            scopeSubtitle: selectedWorkspace
-              ? selectedWorkspace.workspaceType === "git"
-                ? "Git-backed workspace"
-                : "Directory workspace"
-              : undefined,
           };
         }
         if (!selectedWorkspace) {
-          return {
-            ...nodeModel,
-            scopeSubtitle: nodeModel.nodeSubtitle,
-            detailSubtitle: nodeModel.nodeSubtitle,
-          };
+          return { ...nodeModel };
         }
         const workspaceAgent = selectedWorkspace.serverSettings.agent;
         if (workspaceAgent.transport === "stdio") {
           return {
             ...nodeModel,
-            scopeSubtitle: selectedWorkspace.workspaceType === "git"
-              ? "Git-backed workspace"
-              : "Directory workspace",
             detailSubtitle: "stdio",
           };
         }
@@ -390,9 +378,6 @@ export function useShellHeader({
         const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
         return {
           ...nodeModel,
-          scopeSubtitle: selectedWorkspace.workspaceType === "git"
-            ? "Git-backed workspace"
-            : "Directory workspace",
           detailSubtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
         };
       case "workspace-files":
