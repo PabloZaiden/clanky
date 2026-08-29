@@ -29,7 +29,7 @@ RUN case "$TARGETARCH" in \
     cp "dist/clanky-${BUN_TARGET#bun-}" /tmp/clanky
 
 # Production stage - minimal image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 WORKDIR /app
 
