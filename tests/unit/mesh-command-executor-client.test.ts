@@ -152,12 +152,13 @@ describe("mesh command executor client", () => {
     }
     const expiresAt = new Date(String(requestBody["expiresAt"])).getTime();
     const channel = requestBody["channel"];
-    if (typeof channel !== "string") {
-      throw new Error("The captured Mesh session request has no channel.");
+    if (channel !== "acp") {
+      throw new Error(`Unexpected Mesh session channel: ${String(channel)}`);
     }
-    expect(channel === "acp").toBe(true);
-    expect(expiresAt - requestReceivedAt).toBeLessThanOrEqual(MESH_ACP_SESSION_TTL_MS - 10_000);
-    expect(expiresAt - requestReceivedAt).toBeGreaterThan(MESH_ACP_SESSION_TTL_MS - 30_000);
-    expect(MESH_ACP_SESSION_REQUEST_TTL_MS).toBeLessThan(MESH_ACP_SESSION_TTL_MS);
+    expect<string>(channel).toBe("acp");
+    const observedTtlMs = expiresAt - requestReceivedAt;
+    expect(observedTtlMs).toBeLessThanOrEqual(MESH_ACP_SESSION_REQUEST_TTL_MS);
+    expect(observedTtlMs).toBeGreaterThan(MESH_ACP_SESSION_REQUEST_TTL_MS - 1_000);
+    expect(MESH_ACP_SESSION_TTL_MS - MESH_ACP_SESSION_REQUEST_TTL_MS).toBe(15_000);
   });
 });
