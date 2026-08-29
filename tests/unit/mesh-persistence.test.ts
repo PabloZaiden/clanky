@@ -9,8 +9,10 @@ import {
   getMeshNode,
   listMeshLinkMembers,
   listMeshMembershipEntries,
+  listPendingMeshPairingRequests,
   mergeMeshLinkMember,
   removeRevokedMeshLinkMember,
+  rejectMeshPairingRequest,
   revokeMeshLinkMember,
 } from "../../src/persistence/mesh";
 import {
@@ -263,5 +265,31 @@ describe("mesh transport control-plane persistence", () => {
     expect(getDatabase().query(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_sync_checkpoints'",
     ).get()).toBeNull();
+  });
+
+  test("lists and rejects a new-target request carrying a remote mesh link", async () => {
+    await setupDatabase();
+    const remote = createSigningIdentity();
+    const request = await createMeshPairingRequest({
+      direction: "incoming",
+      linkId: "remote-mesh-link",
+      requestedNodeId: "remote-node",
+      requestedInstanceName: "Remote instance",
+      requestedLocalUserId: "remote-user",
+      endpoint: "http://127.0.0.1:3002",
+      transport: "http",
+      publicKey: remote.publicKey,
+      fingerprint: remote.fingerprint,
+      nonce: crypto.randomUUID(),
+      signature: "signed-request",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect((await listPendingMeshPairingRequests("user-1")).map((item) => item.id)).toEqual([
+      request.id,
+    ]);
+    await expect(rejectMeshPairingRequest(request.id, "user-1", null)).resolves.toMatchObject({
+      status: "rejected",
+    });
   });
 });

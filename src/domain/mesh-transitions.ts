@@ -142,6 +142,7 @@ export interface RejectMeshPairingTransitionInput {
   request: MeshPairingRequestRecord | null;
   rejectingUserId: string;
   ownedLink: MeshLinkRecord | null;
+  localLinkExists: boolean;
   nowMs: number;
 }
 
@@ -161,7 +162,7 @@ export function decideRejectMeshPairing(
   }
   const ownsIncomingRequest = request.direction === "incoming"
     && (!request.targetLocalUserId || request.targetLocalUserId === input.rejectingUserId)
-    && (!request.linkId || input.ownedLink !== null);
+    && (!input.localLinkExists || input.ownedLink !== null);
   const ownsOutgoingRequest = request.direction === "outgoing"
     && request.requestedLocalUserId === input.rejectingUserId;
   if (!ownsIncomingRequest && !ownsOutgoingRequest) {
