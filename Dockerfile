@@ -4,10 +4,20 @@ FROM oven/bun:1 AS builder
 WORKDIR /clanky
 ARG TARGETARCH
 
-COPY . .
+# Keep dependency installation cacheable when application source changes.
+COPY package.json bun.lock bunfig.toml ./
 
-# Install dependencies
 RUN bun install --frozen-lockfile
+
+# Copy only the files needed to build the standalone binary.
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts/novnc-vendor.ts ./scripts/novnc-vendor.ts
+
+# The CI version is resolved outside the image build so package changes do not
+# invalidate the dependency layer on every image build.
+ARG CLANKY_VERSION=0.0.0-development
+RUN CLANKY_VERSION="$CLANKY_VERSION" bun -e 'const version = process.env["CLANKY_VERSION"]; if (!version) throw new Error("CLANKY_VERSION is required"); const path = "package.json"; const packageJson = await Bun.file(path).json(); packageJson.version = version; await Bun.write(path, `${JSON.stringify(packageJson, null, 2)}\n`);'
 
 # Build the standalone product binary
 RUN case "$TARGETARCH" in \
@@ -35,11 +45,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sshpass \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy the standalone product binary from builder
-COPY --from=builder /tmp/clanky /app/clanky
-
 # Create data directory
 RUN mkdir -p /app/data
+
+# Copy the standalone product binary from builder
+COPY --from=builder /tmp/clanky /app/clanky
 
 # Set environment variables
 ENV NODE_ENV=production
