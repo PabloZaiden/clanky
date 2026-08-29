@@ -177,6 +177,7 @@ describe("mesh transition decisions", () => {
       request: request({ targetLocalUserId: "another-user" }),
       rejectingUserId: "user-1",
       ownedLink: null,
+      localLinkExists: false,
       nowMs: now,
     }), "mesh_pairing_request_not_owned");
   });

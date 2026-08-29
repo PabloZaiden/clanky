@@ -1099,7 +1099,7 @@ export async function listPendingMeshPairingRequests(
           request.direction = 'incoming'
           AND (request.target_local_user_id = ? OR request.target_local_user_id IS NULL)
           AND (
-            COALESCE(request.link_id, request.target_link_id) IS NULL
+            link.link_id IS NULL
             OR link.local_user_id = ?
           )
         )
@@ -1583,17 +1583,21 @@ export async function rejectMeshPairingRequest(
       WHERE id = ?
     `).get(requestId) as MeshPairingRequestRow | null;
     const request = requestRow ? pairingRequestFromRow(requestRow) : null;
-    const ownedLinkRow = request?.linkId
+    const requestLinkId = requestRow?.link_id ?? requestRow?.target_link_id ?? null;
+    const localLinkRow = requestLinkId
       ? db.query(`
         SELECT link_id, local_user_id, status, created_at, updated_at
         FROM mesh_links
-        WHERE link_id = ? AND local_user_id = ?
-      `).get(request.linkId, rejectingUserId) as MeshLinkRow | null
+        WHERE link_id = ?
+      `).get(requestLinkId) as MeshLinkRow | null
       : null;
     decideRejectMeshPairing({
       request,
       rejectingUserId,
-      ownedLink: ownedLinkRow ? linkFromRow(ownedLinkRow) : null,
+      ownedLink: localLinkRow?.local_user_id === rejectingUserId
+        ? linkFromRow(localLinkRow)
+        : null,
+      localLinkExists: localLinkRow !== null,
       nowMs: Date.now(),
     });
     db.run(`
