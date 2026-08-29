@@ -9,6 +9,7 @@ import { pollUntil } from "../helpers/polling";
 interface MeshMember {
   nodeId: string;
   endpoint: string | null;
+  transport: "http" | "https";
   instanceName: string | null;
   status: string;
 }
@@ -28,6 +29,7 @@ interface MeshPairingRequest {
 interface MeshStatus {
   node: {
     nodeId: string;
+    meshEndpoint?: string | null;
   };
   links: MeshLink[];
   pendingPairingRequests: MeshPairingRequest[];
@@ -350,6 +352,62 @@ describe("three-process mesh cluster", () => {
       "Instance B",
       "Instance C",
     ]);
+  });
+
+  test("preserves the direct pairing route when a peer advertises another endpoint", async () => {
+    for (const name of ["A", "B"]) {
+      meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-asymmetric-${name.toLowerCase()}-`)));
+    }
+    meshNodes.push(await startMeshNode("A", meshDataDirs[0]!));
+    meshNodes.push(await startMeshNode("B", meshDataDirs[1]!));
+    const nodeA = meshNodes[0]!;
+    const nodeB = meshNodes[1]!;
+
+    for (const node of meshNodes) {
+      const result = await postJson(node, "/api/mesh/instance-name", {
+        instanceName: `Instance ${node.name}`,
+      });
+      expect(result.status).toBe(200);
+    }
+
+    const advertisedEndpoint = `https://localhost:${String(nodeB.port)}`;
+    const endpointResult = await postJson(nodeB, "/api/mesh/endpoint", {
+      meshEndpoint: advertisedEndpoint,
+    });
+    expect(endpointResult.status).toBe(200);
+    expect((await getStatus(nodeB)).node.meshEndpoint).toBe(advertisedEndpoint);
+
+    await pairNodes(nodeA, nodeB);
+    const nodeBId = (await getStatus(nodeB)).node.nodeId;
+    await waitForCondition(async () => {
+      const status = await getStatus(nodeA);
+      return getLink(status).members.some(
+        (member) => member.nodeId === nodeBId
+          && member.endpoint === nodeB.baseUrl
+          && member.transport === "http",
+      );
+    }, "The initiating node did not preserve the direct pairing route.");
+
+    const propagated = await postJson(nodeB, "/api/mesh/endpoint", {
+      meshEndpoint: advertisedEndpoint,
+    });
+    expect(propagated.status).toBe(200);
+    await waitForCondition(async () => {
+      const status = await getStatus(nodeA);
+      return getLink(status).members.find((member) => member.nodeId === nodeBId)?.endpoint === nodeB.baseUrl;
+    }, "Membership propagation replaced the direct pairing route.");
+
+    const restartedB = nodeB;
+    await stopMeshNode(restartedB);
+    meshNodes[1] = await startMeshNode("B-restarted", restartedB.dataDir, restartedB.port);
+    const restartedEndpoint = await postJson(meshNodes[1]!, "/api/mesh/endpoint", {
+      meshEndpoint: advertisedEndpoint,
+    });
+    expect(restartedEndpoint.status).toBe(200);
+    await waitForCondition(async () => {
+      const status = await getStatus(nodeA);
+      return getLink(status).members.find((member) => member.nodeId === nodeBId)?.endpoint === nodeB.baseUrl;
+    }, "A peer restart replaced the direct pairing route.");
   });
 
   test("keeps a remote-stdio workspace local while executing through its selected peer", async () => {

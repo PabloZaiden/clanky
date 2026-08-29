@@ -32,6 +32,7 @@ function request(overrides: Partial<MeshPairingRequestRecord> = {}): MeshPairing
     direction: "incoming",
     linkId: null,
     targetLocalUserId: "user-1",
+    targetEndpoint: null,
     requestedNodeId: "node-2",
     requestedInstanceName: "Remote",
     requestedLocalUserId: "user-2",
@@ -177,6 +178,7 @@ describe("mesh transition decisions", () => {
       request: request({ targetLocalUserId: "another-user" }),
       rejectingUserId: "user-1",
       ownedLink: null,
+      localLinkExists: false,
       nowMs: now,
     }), "mesh_pairing_request_not_owned");
   });

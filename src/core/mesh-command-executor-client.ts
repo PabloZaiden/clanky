@@ -13,7 +13,7 @@ import {
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
-  MESH_ACP_SESSION_TTL_MS,
+  MESH_ACP_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-execution";
 import {
   getMeshNode,
@@ -119,7 +119,7 @@ export class MeshCommandExecutorClient {
     this.channel = config.channel ?? MESH_EXECUTION_CHANNEL;
     this.sessionTtlMs = config.sessionTtlMs
       ?? (this.channel === MESH_ACP_CHANNEL
-        ? MESH_ACP_SESSION_TTL_MS
+        ? MESH_ACP_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
   }
 

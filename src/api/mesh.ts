@@ -9,6 +9,7 @@ import {
   RevokeMeshMemberRequestSchema,
   RejectMeshPairingRequestSchema,
   StartMeshPairingRequestSchema,
+  UpdateMeshEndpointSchema,
   UpdateMeshInstanceNameSchema,
 } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";
@@ -247,6 +248,28 @@ export const meshRoutes = defineRoutes({
         const status = await meshManager.setInstanceName(
           ctx.requireUser().id,
           parsed.data.instanceName,
+        );
+        return successResponse({ status });
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+
+  "/api/mesh/endpoint": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Set the endpoint this instance advertises for Mesh traffic.",
+    tags: ["mesh", "identity"],
+    async POST(req, ctx): Promise<Response> {
+      const parsed = await parseAndValidate(UpdateMeshEndpointSchema, req);
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      try {
+        const status = await meshManager.setMeshEndpoint(
+          ctx.requireUser().id,
+          parsed.data.meshEndpoint,
         );
         return successResponse({ status });
       } catch (error) {

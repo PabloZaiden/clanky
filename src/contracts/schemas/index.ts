@@ -167,6 +167,7 @@ export {
   MeshTransportSchema,
   MeshPairingDirectionSchema,
   MeshEndpointSchema,
+  UpdateMeshEndpointSchema,
   StartMeshPairingRequestSchema,
   ApproveMeshPairingRequestSchema,
   RejectMeshPairingRequestSchema,
@@ -184,6 +185,7 @@ export {
   type MeshPeerPairingApproval,
   type MeshMembershipUpdate,
   type MeshHealthCheck,
+  type UpdateMeshEndpointRequest,
 } from "./mesh";
 
 export {
