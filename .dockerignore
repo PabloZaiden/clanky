@@ -1,1 +1,26 @@
+# local-only files and metadata
+.git
+.github
+.clanky-planning
+.devcontainer
+.DS_Store
+.env*
+*.log
+
+# dependencies (bun install)
+node_modules
+/.bun-*
+/.tmp/
+
+# output and test-only files
+out
+dist
+coverage
+data
+docs
+tests
+*.tgz
+*.md
+
+# generated vendor output is recreated during the image build
 src/vendor/novnc-rfb.js
