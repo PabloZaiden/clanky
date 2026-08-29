@@ -246,6 +246,45 @@ describe("database schema", () => {
     }
   });
 
+  test("migration v37 adds Mesh endpoint routing columns idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 37);
+    if (!migration) {
+      throw new Error("Migration v37 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE mesh_node_identity (singleton INTEGER PRIMARY KEY);
+        CREATE TABLE mesh_pairing_requests (id TEXT PRIMARY KEY);
+        CREATE TABLE mesh_link_members (link_id TEXT, node_id TEXT);
+      `);
+
+      migration.up(db);
+      migration.up(db);
+
+      expect(
+        (db.query("PRAGMA table_info(mesh_node_identity)").all() as Array<{ name: string }>)
+          .map((column) => column.name),
+      ).toContain("mesh_endpoint");
+      expect(
+        (db.query("PRAGMA table_info(mesh_pairing_requests)").all() as Array<{ name: string }>)
+          .map((column) => column.name),
+      ).toContain("target_endpoint");
+      const memberColumns = db.query("PRAGMA table_info(mesh_link_members)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>;
+      expect(memberColumns).toContainEqual(expect.objectContaining({
+        name: "endpoint_source",
+        notnull: 1,
+        dflt_value: "'advertised'",
+      }));
+    } finally {
+      db.close();
+    }
+  });
+
   test("migration v10 converts legacy settings and task modes idempotently", () => {
     const migration = migrations.find((candidate) => candidate.version === 10);
     if (!migration) {

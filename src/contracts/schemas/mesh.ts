@@ -38,6 +38,10 @@ export const UpdateMeshInstanceNameSchema = z.object({
   instanceName: MeshInstanceNameSchema,
 });
 
+export const UpdateMeshEndpointSchema = z.object({
+  meshEndpoint: MeshEndpointSchema,
+});
+
 export const ApproveMeshPairingRequestSchema = z.object({
   linkId: z.string().trim().min(1).optional(),
 });
@@ -141,6 +145,7 @@ export const MeshHealthCheckSchema = z.object({
 
 export type StartMeshPairingRequest = z.infer<typeof StartMeshPairingRequestSchema>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
+export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
 export type ApproveMeshPairingRequest = z.infer<typeof ApproveMeshPairingRequestSchema>;
 export type RejectMeshPairingRequest = z.infer<typeof RejectMeshPairingRequestSchema>;
 export type CompleteMeshPairingRequest = z.infer<typeof CompleteMeshPairingRequestSchema>;

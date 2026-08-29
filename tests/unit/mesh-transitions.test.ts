@@ -32,6 +32,7 @@ function request(overrides: Partial<MeshPairingRequestRecord> = {}): MeshPairing
     direction: "incoming",
     linkId: null,
     targetLocalUserId: "user-1",
+    targetEndpoint: null,
     requestedNodeId: "node-2",
     requestedInstanceName: "Remote",
     requestedLocalUserId: "user-2",

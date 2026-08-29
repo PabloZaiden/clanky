@@ -33,6 +33,7 @@ import {
 } from "./mesh-node-identity";
 
 const log = createLogger("persistence:mesh");
+type MeshEndpointSource = "advertised" | "paired";
 
 function isExpiredPairingRequestError(error: unknown): error is DomainError {
   return error instanceof DomainError && error.code === "mesh_pairing_request_expired";
@@ -102,6 +103,7 @@ interface MeshLinkMemberRow {
   instance_name?: string | null;
   local_user_id: string;
   endpoint: string | null;
+  endpoint_source: MeshEndpointSource;
   transport: MeshTransport;
   status: MeshMemberStatus;
   membership_generation: number;
@@ -116,6 +118,7 @@ interface MeshPairingRequestRow {
   link_id: string | null;
   target_link_id: string | null;
   target_local_user_id: string | null;
+  target_endpoint: string | null;
   requested_node_id: string;
   requested_instance_name: string | null;
   requested_local_user_id: string;
@@ -179,6 +182,7 @@ export interface CreateMeshPairingRequestInput {
   nodeStatus?: MeshMemberStatus;
   linkId?: string | null;
   targetLocalUserId?: string | null;
+  targetEndpoint?: string | null;
   requestedNodeId: string;
   requestedInstanceName?: string | null;
   requestedLocalUserId: string;
@@ -203,12 +207,14 @@ export interface MeshPairingApprovalRollback {
     linkId: string | null;
     targetLinkId: string | null;
     targetLocalUserId: string | null;
+    targetEndpoint: string | null;
     status: MeshPairingStatus;
     approvedAt: string | null;
     approvedByUserId: string | null;
     rejectionReason: string | null;
   };
   previousMember: MeshLinkMemberRecord | null;
+  previousMemberEndpointSource: MeshEndpointSource | null;
   previousNode: MeshNodeRecord | null;
 }
 
@@ -333,6 +339,7 @@ function nodeFromRow(row: MeshNodeRow): MeshNodeRecord {
   return {
     nodeId: row.node_id,
     instanceName: row.instance_name ?? null,
+    meshEndpoint: row.endpoint,
     publicKey: row.public_key,
     fingerprint: row.fingerprint,
     encryptionPublicKey: row.encryption_public_key ?? undefined,
@@ -377,6 +384,7 @@ function pairingRequestFromRow(row: MeshPairingRequestRow): MeshPairingRequestRe
     direction: row.direction,
     linkId: row.link_id ?? row.target_link_id,
     targetLocalUserId: row.target_local_user_id,
+    targetEndpoint: row.target_endpoint,
     requestedNodeId: row.requested_node_id,
     requestedInstanceName: row.requested_instance_name ?? null,
     requestedLocalUserId: row.requested_local_user_id,
@@ -512,9 +520,9 @@ export async function createMeshLink(input: CreateMeshLinkInput): Promise<MeshLi
     `, [linkId, input.localUserId, now, now]);
     db.run(`
       INSERT INTO mesh_link_members (
-        link_id, node_id, local_user_id, endpoint, transport, status,
+        link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 'advertised', ?, 'active', 1, ?, ?, ?)
     `, [
       linkId,
       input.localNodeId,
@@ -577,7 +585,7 @@ export async function listMeshLinksForLocalUser(localUserId: string): Promise<Me
 export async function listMeshLinkMembers(linkId: string): Promise<MeshLinkMemberRecord[]> {
   const rows = getDatabase().query(`
     SELECT member.link_id, member.node_id, node.instance_name, member.local_user_id,
-      member.endpoint, member.transport, member.status, member.membership_generation,
+      member.endpoint, member.endpoint_source, member.transport, member.status, member.membership_generation,
       member.last_seen_at, member.created_at, member.updated_at
     FROM mesh_link_members AS member
     LEFT JOIN mesh_nodes AS node ON node.node_id = member.node_id
@@ -625,8 +633,8 @@ export async function listMeshMembershipEntries(
       nodeId: member.nodeId,
       instanceName: node.instanceName,
       localUserId: member.localUserId,
-      endpoint: member.endpoint,
-      transport: member.transport,
+      endpoint: node.endpoint,
+      transport: node.transport,
       status: member.status,
       membershipGeneration: member.membershipGeneration,
       publicKey: node.publicKey,
@@ -635,6 +643,26 @@ export async function listMeshMembershipEntries(
     });
   }
   return entries;
+}
+
+export async function setMeshLinkMemberEndpoint(input: {
+  linkId: string;
+  nodeId: string;
+  endpoint: string | null;
+  transport: MeshTransport;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  getDatabase().run(`
+    UPDATE mesh_link_members
+    SET endpoint = ?, transport = ?, endpoint_source = 'advertised', updated_at = ?
+    WHERE link_id = ? AND node_id = ?
+  `, [
+    input.endpoint,
+    input.transport,
+    now,
+    input.linkId,
+    input.nodeId,
+  ]);
 }
 
 export async function applyMeshMembershipUpdate(
@@ -685,7 +713,7 @@ export async function revokeMeshLinkMember(input: {
       throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
     }
     const member = db.query(`
-      SELECT link_id, node_id, local_user_id, endpoint, transport, status,
+      SELECT link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
       FROM mesh_link_members
       WHERE link_id = ? AND node_id = ?
@@ -736,7 +764,7 @@ export async function removeRevokedMeshLinkMember(input: {
       throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
     }
     const member = db.query(`
-      SELECT link_id, node_id, local_user_id, endpoint, transport, status,
+      SELECT link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
       FROM mesh_link_members
       WHERE link_id = ? AND node_id = ?
@@ -839,13 +867,19 @@ export async function mergeMeshLinkMember(input: {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
+  endpointSource?: MeshEndpointSource;
 }): Promise<MeshLinkMemberRecord> {
   const link = await getMeshLinkById(input.linkId);
   if (!link) {
     throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
   }
-  const existingMember = (await listMeshLinkMembers(input.linkId))
-    .find((candidate) => candidate.nodeId === input.nodeId);
+  const existingMemberRow = getDatabase().query(`
+    SELECT link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
+      membership_generation, last_seen_at, created_at, updated_at
+    FROM mesh_link_members
+    WHERE link_id = ? AND node_id = ?
+  `).get(input.linkId, input.nodeId) as MeshLinkMemberRow | null;
+  const existingMember = existingMemberRow ? memberFromRow(existingMemberRow) : null;
   if (existingMember && input.membershipGeneration < existingMember.membershipGeneration) {
     return existingMember;
   }
@@ -862,15 +896,22 @@ export async function mergeMeshLinkMember(input: {
     transport: input.transport,
     status: input.status,
   });
+  const requestedEndpointSource = input.endpointSource ?? "advertised";
+  const preserveLocalRoute = existingMemberRow?.endpoint_source === "paired"
+    && requestedEndpointSource !== "paired";
+  const endpointSource = preserveLocalRoute ? "paired" : requestedEndpointSource;
+  const endpoint = preserveLocalRoute ? existingMemberRow.endpoint : input.endpoint;
+  const transport = preserveLocalRoute ? existingMemberRow.transport : input.transport;
   const now = new Date().toISOString();
   getDatabase().run(`
     INSERT INTO mesh_link_members (
-      link_id, node_id, local_user_id, endpoint, transport, status,
+      link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
       membership_generation, last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(link_id, node_id) DO UPDATE SET
       local_user_id = excluded.local_user_id,
       endpoint = COALESCE(excluded.endpoint, mesh_link_members.endpoint),
+      endpoint_source = excluded.endpoint_source,
       transport = excluded.transport,
       status = CASE
         WHEN mesh_link_members.status = 'revoked' THEN 'revoked'
@@ -886,8 +927,9 @@ export async function mergeMeshLinkMember(input: {
     input.linkId,
     input.nodeId,
     input.localUserId,
-    input.endpoint,
-    input.transport,
+    endpoint,
+    endpointSource,
+    transport,
     input.status,
     input.membershipGeneration,
     now,
@@ -920,17 +962,18 @@ export async function createMeshPairingRequest(
   const now = new Date().toISOString();
   getDatabase().run(`
     INSERT INTO mesh_pairing_requests (
-      id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
+      id, direction, link_id, target_link_id, target_local_user_id, target_endpoint, requested_node_id,
       requested_instance_name, requested_local_user_id, requested_username, endpoint, transport,
       public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
       approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, ?)
   `, [
     id,
     direction,
     direction === "incoming" ? null : input.linkId ?? null,
     direction === "incoming" ? input.linkId ?? null : null,
     input.targetLocalUserId ?? null,
+    input.targetEndpoint ?? null,
     input.requestedNodeId,
     input.requestedInstanceName ?? null,
     input.requestedLocalUserId,
@@ -959,7 +1002,7 @@ export async function createMeshPairingRequest(
 
 export async function getMeshPairingRequest(id: string): Promise<MeshPairingRequestRecord | null> {
   const row = getDatabase().query(`
-    SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
+    SELECT id, direction, link_id, target_link_id, target_local_user_id, target_endpoint, requested_node_id,
       requested_instance_name, requested_local_user_id, requested_username, endpoint, transport,
       public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
       approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
@@ -1082,6 +1125,7 @@ export async function listPendingMeshPairingRequests(
   `, [now, now]);
   const rows = getDatabase().query(`
     SELECT request.id, request.link_id, request.target_link_id, request.target_local_user_id,
+      request.target_endpoint,
       request.direction,
       request.requested_node_id, request.requested_local_user_id,
       request.requested_instance_name, request.requested_username, request.endpoint, request.transport,
@@ -1127,7 +1171,7 @@ export async function approveMeshPairingRequest(input: {
   let rollback: MeshPairingApprovalRollback | null = null;
   runMeshPairingTransaction(db, input.requestId, now, () => {
     const requestRow = db.query(`
-      SELECT id, link_id, target_link_id, target_local_user_id, requested_node_id,
+      SELECT id, link_id, target_link_id, target_local_user_id, target_endpoint, requested_node_id,
         requested_instance_name,
         direction,
         requested_local_user_id, requested_username, endpoint, transport,
@@ -1171,7 +1215,7 @@ export async function approveMeshPairingRequest(input: {
     }
     const linkId = decision.linkId;
     const previousMemberRow = db.query(`
-      SELECT link_id, node_id, local_user_id, endpoint, transport, status,
+      SELECT link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
       FROM mesh_link_members
       WHERE link_id = ? AND node_id = ?
@@ -1192,12 +1236,14 @@ export async function approveMeshPairingRequest(input: {
         linkId: requestRow!.link_id,
         targetLinkId: requestRow!.target_link_id,
         targetLocalUserId: requestRow!.target_local_user_id,
+        targetEndpoint: requestRow!.target_endpoint,
         status: requestRow!.status,
         approvedAt: requestRow!.approved_at,
         approvedByUserId: requestRow!.approved_by_user_id,
         rejectionReason: requestRow!.rejection_reason,
       },
       previousMember: previousMemberRow ? memberFromRow(previousMemberRow) : null,
+      previousMemberEndpointSource: previousMemberRow?.endpoint_source ?? null,
       previousNode: previousNodeRow ? nodeFromRow(previousNodeRow) : null,
     };
     if (decision.createLink) {
@@ -1208,9 +1254,9 @@ export async function approveMeshPairingRequest(input: {
       `, [linkId, input.approvingUserId, now, now]);
       db.run(`
         INSERT INTO mesh_link_members (
-          link_id, node_id, local_user_id, endpoint, transport, status,
+          link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
           membership_generation, last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'advertised', ?, 'active', 1, ?, ?, ?)
       `, [
         linkId,
         input.localNodeId,
@@ -1232,12 +1278,15 @@ export async function approveMeshPairingRequest(input: {
 
     db.run(`
       INSERT INTO mesh_link_members (
-        link_id, node_id, local_user_id, endpoint, transport, status,
+        link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 'advertised', ?, 'active', 1, ?, ?, ?)
       ON CONFLICT(link_id, node_id) DO UPDATE SET
         local_user_id = excluded.local_user_id,
-        endpoint = excluded.endpoint,
+        endpoint = CASE
+          WHEN mesh_link_members.endpoint_source = 'paired' THEN mesh_link_members.endpoint
+          ELSE excluded.endpoint
+        END,
         transport = excluded.transport,
         status = 'active',
         last_seen_at = excluded.last_seen_at,
@@ -1321,12 +1370,13 @@ export async function rollbackMeshPairingApproval(
       const member = rollback.previousMember;
       db.run(`
         INSERT INTO mesh_link_members (
-          link_id, node_id, local_user_id, endpoint, transport, status,
+          link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
           membership_generation, last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(link_id, node_id) DO UPDATE SET
           local_user_id = excluded.local_user_id,
           endpoint = excluded.endpoint,
+          endpoint_source = excluded.endpoint_source,
           transport = excluded.transport,
           status = excluded.status,
           membership_generation = excluded.membership_generation,
@@ -1338,6 +1388,7 @@ export async function rollbackMeshPairingApproval(
         member.nodeId,
         member.localUserId,
         member.endpoint,
+        rollback.previousMemberEndpointSource ?? "advertised",
         member.transport,
         member.status,
         member.membershipGeneration,
@@ -1388,13 +1439,14 @@ export async function rollbackMeshPairingApproval(
     const previousRequest = rollback.previousRequest;
     db.run(`
       UPDATE mesh_pairing_requests
-      SET link_id = ?, target_link_id = ?, target_local_user_id = ?, status = ?,
+      SET link_id = ?, target_link_id = ?, target_local_user_id = ?, target_endpoint = ?, status = ?,
         approved_at = ?, approved_by_user_id = ?, rejection_reason = ?, updated_at = ?
       WHERE id = ?
     `, [
       previousRequest.linkId,
       previousRequest.targetLinkId,
       previousRequest.targetLocalUserId,
+      previousRequest.targetEndpoint,
       previousRequest.status,
       previousRequest.approvedAt,
       previousRequest.approvedByUserId,
@@ -1420,7 +1472,9 @@ export async function completeOutgoingMeshPairingRequest(input: {
   remoteInstanceName?: string | null;
   remoteLocalUserId: string;
   remoteEndpoint: string;
+  remoteAdvertisedEndpoint: string;
   remoteTransport: MeshTransport;
+  remoteAdvertisedTransport: MeshTransport;
   remotePublicKey: string;
   remoteFingerprint: string;
   remoteEncryptionPublicKey?: string;
@@ -1431,7 +1485,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   let resolvedLinkId: string | undefined;
   runMeshPairingTransaction(db, input.requestId, now, () => {
     const requestRow = db.query(`
-      SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
+      SELECT id, direction, link_id, target_link_id, target_local_user_id, target_endpoint, requested_node_id,
         requested_local_user_id, requested_username, endpoint, transport,
         public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
         approved_at, approved_by_user_id, rejection_reason, created_at, updated_at
@@ -1482,8 +1536,8 @@ export async function completeOutgoingMeshPairingRequest(input: {
       input.remotePublicKey,
       input.remoteFingerprint,
       input.remoteEncryptionPublicKey ?? null,
-      input.remoteEndpoint,
-      input.remoteTransport,
+      input.remoteAdvertisedEndpoint,
+      input.remoteAdvertisedTransport,
       now,
       now,
       now,
@@ -1502,9 +1556,9 @@ export async function completeOutgoingMeshPairingRequest(input: {
       ]);
       db.run(`
         INSERT INTO mesh_link_members (
-          link_id, node_id, local_user_id, endpoint, transport, status,
+          link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
           membership_generation, last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'advertised', ?, 'active', 1, ?, ?, ?)
       `, [
         input.linkId,
         input.localNodeId,
@@ -1525,12 +1579,13 @@ export async function completeOutgoingMeshPairingRequest(input: {
     }
     db.run(`
       INSERT INTO mesh_link_members (
-        link_id, node_id, local_user_id, endpoint, transport, status,
+        link_id, node_id, local_user_id, endpoint, endpoint_source, transport, status,
         membership_generation, last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 'paired', ?, 'active', 1, ?, ?, ?)
       ON CONFLICT(link_id, node_id) DO UPDATE SET
         local_user_id = excluded.local_user_id,
         endpoint = excluded.endpoint,
+        endpoint_source = excluded.endpoint_source,
         transport = excluded.transport,
         status = 'active',
         last_seen_at = excluded.last_seen_at,
@@ -1575,7 +1630,7 @@ export async function rejectMeshPairingRequest(
   const now = new Date().toISOString();
   runMeshPairingTransaction(db, requestId, now, () => {
     const requestRow = db.query(`
-      SELECT id, direction, link_id, target_link_id, target_local_user_id, requested_node_id,
+      SELECT id, direction, link_id, target_link_id, target_local_user_id, target_endpoint, requested_node_id,
         requested_local_user_id, requested_username, endpoint, transport,
         public_key, fingerprint, encryption_public_key, nonce, signature, status, expires_at,
         approved_at, approved_by_user_id, rejection_reason, created_at, updated_at

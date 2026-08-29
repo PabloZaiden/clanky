@@ -189,6 +189,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/git/remote-status` | Check whether a git remote exists for a workspace. |
 | POST | `/api/internal/agent-prompt` | Internal endpoint used by the workspace-side deterministic agent runner to forward workspace prompt calls to the authenticated user's chat. |
 | POST | `/api/mesh/instance-name` | Set the persistent display name for this mesh instance. |
+| POST | `/api/mesh/endpoint` | Set the endpoint this instance advertises for Mesh traffic. |
 | GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |

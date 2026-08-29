@@ -36,6 +36,9 @@ export function assertMeshEndpointAllowed(
   if (parsed.search || parsed.hash) {
     throw new DomainError("mesh_endpoint_invalid", "Mesh endpoint must not contain a query or fragment.");
   }
+  if (parsed.pathname !== "/") {
+    throw new DomainError("mesh_endpoint_invalid", "Mesh endpoint must not contain a path.");
+  }
   return parsed;
 }
 
@@ -44,8 +47,9 @@ export function getMeshTransport(endpoint: string): MeshTransport {
   return parsed.protocol === "https:" ? "https" : "http";
 }
 
-export function resolveAdvertisedMeshEndpoint(): string {
-  const configured = process.env["CLANKY_PUBLIC_BASE_URL"]?.trim();
+export function resolveAdvertisedMeshEndpoint(meshEndpoint?: string | null): string {
+  const explicit = meshEndpoint?.trim();
+  const configured = explicit || process.env["CLANKY_PUBLIC_BASE_URL"]?.trim();
   if (!configured) {
     throw new DomainError(
       "mesh_public_base_url_not_configured",
@@ -57,15 +61,11 @@ export function resolveAdvertisedMeshEndpoint(): string {
     parsed = assertMeshEndpointAllowed(configured);
   } catch (error) {
     throw new DomainError(
-      "mesh_public_base_url_invalid",
-      "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
+      explicit ? "mesh_endpoint_invalid" : "mesh_public_base_url_invalid",
+      explicit
+        ? "The configured Mesh endpoint must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment."
+        : "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
       { cause: error },
-    );
-  }
-  if (parsed.pathname !== "/") {
-    throw new DomainError(
-      "mesh_public_base_url_invalid",
-      "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
     );
   }
   return parsed.origin;
