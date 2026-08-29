@@ -53,6 +53,24 @@ describe("mesh transport configuration", () => {
     )).toBe("http://configured.example.test:4200/api/mesh/internal/membership");
   });
 
+  test("uses an explicit Mesh endpoint override without changing the public URL", () => {
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://browser.example.test:4200";
+
+    expect(resolveAdvertisedMeshEndpoint("http://mesh.example.test:4300"))
+      .toBe("http://mesh.example.test:4300");
+    expect(resolveAdvertisedMeshEndpoint()).toBe("http://browser.example.test:4200");
+  });
+
+  test("validates an explicit Mesh endpoint override", () => {
+    expect(() => resolveAdvertisedMeshEndpoint("http://mesh.example.test:4300/mesh"))
+      .toThrow(DomainError);
+    try {
+      resolveAdvertisedMeshEndpoint("http://mesh.example.test:4300/mesh");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "mesh_endpoint_invalid" });
+    }
+  });
+
   test("rejects endpoints with query strings or fragments", () => {
     expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100?mesh=1")).toThrow(DomainError);
     expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100/mesh#peer")).toThrow(DomainError);

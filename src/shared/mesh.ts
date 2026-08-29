@@ -39,6 +39,7 @@ export type MeshPairingApprovalStatus = typeof MESH_PAIRING_APPROVAL_STATUSES[nu
 export interface MeshNodeIdentity {
   nodeId: string;
   instanceName: string | null;
+  meshEndpoint: string | null;
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
@@ -80,6 +81,7 @@ export interface MeshPairingRequestRecord {
   direction: MeshPairingDirection;
   linkId: string | null;
   targetLocalUserId: string | null;
+  targetEndpoint: string | null;
   requestedNodeId: string;
   requestedInstanceName?: string | null;
   requestedLocalUserId: string;

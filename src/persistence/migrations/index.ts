@@ -1301,6 +1301,34 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 37,
+    name: "add_mesh_endpoint_routing",
+    up: (db) => {
+      if (tableExists(db, "mesh_node_identity")) {
+        const identityColumns = getTableColumns(db, "mesh_node_identity");
+        if (!identityColumns.includes("mesh_endpoint")) {
+          db.run("ALTER TABLE mesh_node_identity ADD COLUMN mesh_endpoint TEXT");
+        }
+      }
+      if (tableExists(db, "mesh_pairing_requests")) {
+        const requestColumns = getTableColumns(db, "mesh_pairing_requests");
+        if (!requestColumns.includes("target_endpoint")) {
+          db.run("ALTER TABLE mesh_pairing_requests ADD COLUMN target_endpoint TEXT");
+        }
+      }
+      if (tableExists(db, "mesh_link_members")) {
+        const memberColumns = getTableColumns(db, "mesh_link_members");
+        if (!memberColumns.includes("endpoint_source")) {
+          db.run(`
+            ALTER TABLE mesh_link_members
+            ADD COLUMN endpoint_source TEXT NOT NULL DEFAULT 'advertised'
+              CHECK (endpoint_source IN ('advertised', 'paired'))
+          `);
+        }
+      }
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);

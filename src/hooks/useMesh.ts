@@ -14,6 +14,7 @@ export interface UseMeshResult {
   mutationError: string | null;
   refresh: () => Promise<MeshStatusRecord | null>;
   updateInstanceName: (instanceName: string) => Promise<MeshStatusRecord | null>;
+  updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshStatusRecord | null>;
   startPairing: (targetEndpoint: string, targetLocalUserId?: string) => Promise<MeshStatusRecord | null>;
   approvePairing: (requestId: string, linkId?: string) => Promise<MeshStatusRecord | null>;
   completePairing: (requestId: string, fingerprint: string) => Promise<MeshStatusRecord | null>;
@@ -113,6 +114,15 @@ export function useMesh(): UseMeshResult {
     [mutationStatus],
   );
 
+  const updateMeshEndpoint = useCallback(
+    (meshEndpoint: string) => mutationStatus(
+      "/api/mesh/endpoint",
+      { meshEndpoint },
+      "Failed to save Mesh endpoint",
+    ),
+    [mutationStatus],
+  );
+
   const approvePairing = useCallback(
     (requestId: string, linkId?: string) => mutationStatus(
       `/api/mesh/pairing-requests/${encodeURIComponent(requestId)}/approve`,
@@ -181,6 +191,7 @@ export function useMesh(): UseMeshResult {
     mutationError,
     refresh,
     updateInstanceName,
+    updateMeshEndpoint,
     startPairing,
     approvePairing,
     completePairing,

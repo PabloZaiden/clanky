@@ -175,6 +175,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [endpoint, setEndpoint] = useState("");
   const [targetLocalUserId, setTargetLocalUserId] = useState("");
   const [instanceName, setInstanceName] = useState("");
+  const [meshEndpoint, setMeshEndpoint] = useState("");
   const [rejoinEndpoint, setRejoinEndpoint] = useState("");
   const [rejoinTargetUserId, setRejoinTargetUserId] = useState("");
   const [revokeNodeId, setRevokeNodeId] = useState<string | null>(null);
@@ -199,6 +200,12 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
     }
   }, [mesh.status?.node.instanceName]);
 
+  useEffect(() => {
+    if (mesh.status?.node.meshEndpoint !== undefined) {
+      setMeshEndpoint(mesh.status.node.meshEndpoint ?? "");
+    }
+  }, [mesh.status?.node.meshEndpoint]);
+
   async function saveInstanceName(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const result = await mesh.updateInstanceName(instanceName);
@@ -214,6 +221,14 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
       toast.success("Mesh pairing request sent.");
       setEndpoint("");
       setTargetLocalUserId("");
+    }
+  }
+
+  async function saveMeshEndpoint(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const result = await mesh.updateMeshEndpoint(meshEndpoint.trim());
+    if (result) {
+      toast.success("Mesh endpoint saved.");
     }
   }
 
@@ -274,6 +289,31 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
               </Button>
             </div>
           </form>
+          <form className="space-y-3" onSubmit={(event) => void saveMeshEndpoint(event)}>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-full min-w-0 sm:min-w-72 sm:max-w-xl sm:flex-1">
+                <MeshFormField
+                  id="mesh-endpoint"
+                  label="Mesh endpoint"
+                  description="The HTTP(S) address this instance advertises for Mesh traffic."
+                >
+                  <SettingsInput
+                    id="mesh-endpoint"
+                    type="url"
+                    required
+                    aria-describedby="mesh-endpoint-description"
+                    placeholder="https://mesh-reachable.example"
+                    value={meshEndpoint}
+                    onChange={(event) => setMeshEndpoint(event.currentTarget.value)}
+                    disabled={mesh.saving}
+                  />
+                </MeshFormField>
+              </div>
+              <Button type="submit" size="sm" className="shrink-0" loading={mesh.saving}>
+                Save Mesh endpoint
+              </Button>
+            </div>
+          </form>
           <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-neutral-800">
             <p className="font-medium">
               {link ? "Linked mesh instance" : "Not linked to a mesh"}
@@ -283,6 +323,9 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             </p>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
               Node fingerprint: <code className="break-all">{mesh.status?.node.fingerprint ?? "Loading..."}</code>
+            </p>
+            <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+              Mesh endpoint: <code className="break-all">{mesh.status?.node.meshEndpoint ?? "Not configured"}</code>
             </p>
             {link ? (
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">

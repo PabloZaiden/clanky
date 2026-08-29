@@ -18,6 +18,7 @@ import type {
 } from "@/contracts/schemas/mesh";
 import type {
   MeshLinkStatusRecord,
+  MeshNodeIdentity,
   MeshPairingMemberRecord,
   MeshStatusRecord,
 } from "@/shared/mesh";
@@ -51,6 +52,7 @@ import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
   rotateLocalMeshNodeIdentity,
+  setLocalMeshEndpoint,
   setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
@@ -82,9 +84,33 @@ import {
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
 
+async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
+  const identity = await ensureLocalMeshNodeIdentity();
+  if (identity.meshEndpoint !== null || !process.env["CLANKY_PUBLIC_BASE_URL"]?.trim()) {
+    return identity;
+  }
+  const endpoint = resolveAdvertisedMeshEndpoint();
+  const updatedIdentity = await setLocalMeshEndpoint(endpoint);
+  const existingNode = await getMeshNode(updatedIdentity.nodeId);
+  await saveMeshNode({
+    nodeId: updatedIdentity.nodeId,
+    instanceName: updatedIdentity.instanceName,
+    publicKey: updatedIdentity.publicKey,
+    fingerprint: updatedIdentity.fingerprint,
+    encryptionPublicKey: updatedIdentity.encryptionPublicKey,
+    endpoint,
+    transport: getMeshTransport(endpoint),
+    status: existingNode?.status ?? "active",
+  });
+  log.info("Materialized the configured public base URL as the local Mesh endpoint", {
+    endpoint,
+  });
+  return updatedIdentity;
+}
+
 export class MeshManager {
   async checkHealth(localUserId: string): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     const link = await getMeshLinkForLocalUser(localUserId);
     if (!link) {
       return await this.getStatus(localUserId);
@@ -157,7 +183,7 @@ export class MeshManager {
     localUserId: string,
     options: { includeRevokedPeers?: boolean } = {},
   ): Promise<void> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     const link = await getMeshLinkForLocalUser(localUserId);
     if (!link) {
       return;
@@ -258,7 +284,7 @@ export class MeshManager {
   }
 
   async getStatus(localUserId: string): Promise<MeshStatusRecord> {
-    const node = await ensureLocalMeshNodeIdentity();
+    const node = await ensureLocalMeshIdentityWithEndpoint();
     const links = await listMeshLinksForLocalUser(localUserId);
     const pendingRequests = await listPendingMeshPairingRequests(localUserId);
     const requestsWithApprovals = await Promise.all(pendingRequests.map(async (request) => {
@@ -287,9 +313,35 @@ export class MeshManager {
   }
 
   async setInstanceName(localUserId: string, value: string): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     await assertMeshInstanceNameAvailable(localUserId, identity.nodeId, value);
     await setLocalMeshInstanceName(value);
+    if (await getMeshLinkForLocalUser(localUserId)) {
+      await this.propagateMembershipUpdate(localUserId);
+    }
+    return await this.getStatus(localUserId);
+  }
+
+  async setMeshEndpoint(
+    localUserId: string,
+    value: string,
+  ): Promise<MeshStatusRecord> {
+    await ensureLocalMeshNodeIdentity();
+    const normalizedEndpoint = resolveAdvertisedMeshEndpoint(value);
+    const updatedIdentity = await setLocalMeshEndpoint(normalizedEndpoint);
+    const endpoint = resolveAdvertisedMeshEndpoint(updatedIdentity.meshEndpoint);
+    const transport = getMeshTransport(endpoint);
+    const existingNode = await getMeshNode(updatedIdentity.nodeId);
+    await saveMeshNode({
+      nodeId: updatedIdentity.nodeId,
+      instanceName: updatedIdentity.instanceName,
+      publicKey: updatedIdentity.publicKey,
+      fingerprint: updatedIdentity.fingerprint,
+      encryptionPublicKey: updatedIdentity.encryptionPublicKey,
+      endpoint,
+      transport,
+      status: existingNode?.status ?? "active",
+    });
     if (await getMeshLinkForLocalUser(localUserId)) {
       await this.propagateMembershipUpdate(localUserId);
     }
@@ -386,10 +438,10 @@ export class MeshManager {
     localUsername: string,
     input: StartMeshPairingRequest,
   ): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     const instanceName = requireMeshInstanceName(identity);
     const localLink = await getMeshLinkForLocalUser(localUserId);
-    const localEndpoint = resolveAdvertisedMeshEndpoint();
+    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
     const localTransport = getMeshTransport(localEndpoint);
     assertMeshEndpointAllowed(input.targetEndpoint);
     const requestId = crypto.randomUUID();
@@ -419,6 +471,7 @@ export class MeshManager {
       nodeStatus: "active",
       linkId: localLink?.linkId ?? null,
       targetLocalUserId: input.targetLocalUserId ?? null,
+      targetEndpoint: input.targetEndpoint,
       requestedNodeId: identity.nodeId,
       requestedInstanceName: instanceName,
       requestedLocalUserId: localUserId,
@@ -455,7 +508,7 @@ export class MeshManager {
     localUsername: string,
     input: StartMeshPairingRequest,
   ): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     requireMeshInstanceName(identity);
     const links = await listMeshLinksForLocalUser(localUserId);
     const link = links[0];
@@ -617,9 +670,9 @@ export class MeshManager {
       return await this.getStatus(localUserId);
     }
     const approval = pairingDecision.approval;
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     requireMeshInstanceName(identity);
-    const localEndpoint = resolveAdvertisedMeshEndpoint();
+    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
@@ -639,13 +692,21 @@ export class MeshManager {
       remoteNodeId: approval.approvedByNodeId,
       remoteInstanceName: approval.approvedByInstanceName,
       remoteLocalUserId: approval.approvedByLocalUserId,
-      remoteEndpoint: approval.endpoint,
+      remoteEndpoint: request?.targetEndpoint ?? approval.endpoint,
+      remoteAdvertisedEndpoint: approval.endpoint,
       remoteTransport: approval.transport,
       remotePublicKey: approval.publicKey,
       remoteFingerprint: approval.fingerprint,
       remoteEncryptionPublicKey: approval.encryptionPublicKey,
       linkId: approval.linkId,
     });
+    if (!request?.targetEndpoint) {
+      log.warn("Using the advertised Mesh endpoint for a legacy pairing request without a saved target endpoint", {
+        requestId,
+        remoteNodeId: approval.approvedByNodeId,
+        advertisedEndpoint: approval.endpoint,
+      });
+    }
     for (const member of approval.members) {
       await mergeMeshLinkMember({
         linkId: approval.linkId,
@@ -672,7 +733,7 @@ export class MeshManager {
     requestId: string,
     input: ApproveMeshPairingRequest,
   ): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshNodeIdentity();
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
     const instanceName = requireMeshInstanceName(identity);
     const request = await getMeshPairingRequest(requestId);
     if (!request) {
@@ -684,7 +745,7 @@ export class MeshManager {
         "The requesting instance must have a name before it can join this mesh.",
       );
     }
-    const localEndpoint = resolveAdvertisedMeshEndpoint();
+    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
     const localTransport = getMeshTransport(localEndpoint);
     await saveMeshNode({
       nodeId: identity.nodeId,
@@ -704,25 +765,7 @@ export class MeshManager {
       linkId: input.linkId,
     });
     try {
-      const members: MeshPairingMemberRecord[] = [];
-      for (const member of await listMeshLinkMembers(approval.link.linkId)) {
-        const node = await getMeshNode(member.nodeId);
-        if (!node) {
-          throw new DomainError("mesh_peer_not_found", "A mesh link member has no node identity.");
-        }
-        members.push({
-          nodeId: member.nodeId,
-          instanceName: node.instanceName,
-          localUserId: member.localUserId,
-          endpoint: member.endpoint,
-          transport: member.transport,
-          status: member.status,
-          membershipGeneration: member.membershipGeneration,
-          publicKey: node.publicKey,
-          fingerprint: node.fingerprint,
-          encryptionPublicKey: node.encryptionPublicKey,
-        });
-      }
+      const members: MeshPairingMemberRecord[] = await listMeshMembershipEntries(approval.link.linkId);
       const unsigned = {
         protocolVersion: 1 as const,
         requestId,
