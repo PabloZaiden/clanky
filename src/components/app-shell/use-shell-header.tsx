@@ -121,7 +121,13 @@ function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: 
   if (!workspace) {
     return undefined;
   }
-  return `${workspace.name} · ${workspace.workspaceType === "git" ? "Git-backed workspace" : "Directory workspace"}`;
+  return workspace.workspaceType === "directory"
+    ? `${workspace.name} · Directory workspace`
+    : workspace.name;
+}
+
+function getWorkspaceTypeSubtitle(workspace: Workspace): string | undefined {
+  return workspace.workspaceType === "directory" ? "Directory workspace" : undefined;
 }
 
 function getServerName(serverId: string | undefined, servers: SshServer[]): string | undefined {
@@ -361,9 +367,7 @@ export function useShellHeader({
           return {
             title: selectedWorkspace?.name ?? "Workspace",
             scopeSubtitle: selectedWorkspace
-              ? selectedWorkspace.workspaceType === "git"
-                ? "Git-backed workspace"
-                : "Directory workspace"
+              ? getWorkspaceTypeSubtitle(selectedWorkspace)
               : undefined,
           };
         }
@@ -378,9 +382,7 @@ export function useShellHeader({
         if (workspaceAgent.transport === "stdio") {
           return {
             ...nodeModel,
-            scopeSubtitle: selectedWorkspace.workspaceType === "git"
-              ? "Git-backed workspace"
-              : "Directory workspace",
+            scopeSubtitle: getWorkspaceTypeSubtitle(selectedWorkspace),
             detailSubtitle: "stdio",
           };
         }
@@ -390,9 +392,7 @@ export function useShellHeader({
         const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
         return {
           ...nodeModel,
-          scopeSubtitle: selectedWorkspace.workspaceType === "git"
-            ? "Git-backed workspace"
-            : "Directory workspace",
+          scopeSubtitle: getWorkspaceTypeSubtitle(selectedWorkspace),
           detailSubtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
         };
       case "workspace-files":

@@ -888,7 +888,7 @@ function buildSidebarNodes(
       type: "item",
       id: `workspace:${workspaceId}`,
       title: workspaceNode.workspace.name,
-      subtitle: isGitBacked ? "Git-backed workspace" : "Directory workspace",
+      subtitle: isGitBacked ? undefined : "Directory workspace",
       searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
       route: { view: "workspace", workspaceId },
       actions: privateActions(
