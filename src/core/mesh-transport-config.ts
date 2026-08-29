@@ -68,14 +68,6 @@ export function resolveAdvertisedMeshEndpoint(meshEndpoint?: string | null): str
       { cause: error },
     );
   }
-  if (parsed.pathname !== "/") {
-    throw new DomainError(
-      explicit ? "mesh_endpoint_invalid" : "mesh_public_base_url_invalid",
-      explicit
-        ? "The configured Mesh endpoint must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment."
-        : "CLANKY_PUBLIC_BASE_URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
-    );
-  }
   return parsed.origin;
 }
 

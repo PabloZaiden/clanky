@@ -683,6 +683,7 @@ export class MeshManager {
       transport: localTransport,
       status: "active",
     });
+    const remoteEndpoint = request?.targetEndpoint ?? approval.endpoint;
     await completeOutgoingMeshPairingRequest({
       requestId,
       localUserId,
@@ -692,9 +693,10 @@ export class MeshManager {
       remoteNodeId: approval.approvedByNodeId,
       remoteInstanceName: approval.approvedByInstanceName,
       remoteLocalUserId: approval.approvedByLocalUserId,
-      remoteEndpoint: request?.targetEndpoint ?? approval.endpoint,
+      remoteEndpoint,
+      remoteTransport: getMeshTransport(remoteEndpoint),
       remoteAdvertisedEndpoint: approval.endpoint,
-      remoteTransport: approval.transport,
+      remoteAdvertisedTransport: approval.transport,
       remotePublicKey: approval.publicKey,
       remoteFingerprint: approval.fingerprint,
       remoteEncryptionPublicKey: approval.encryptionPublicKey,

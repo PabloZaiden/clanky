@@ -1474,6 +1474,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   remoteEndpoint: string;
   remoteAdvertisedEndpoint: string;
   remoteTransport: MeshTransport;
+  remoteAdvertisedTransport: MeshTransport;
   remotePublicKey: string;
   remoteFingerprint: string;
   remoteEncryptionPublicKey?: string;
@@ -1536,7 +1537,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
       input.remoteFingerprint,
       input.remoteEncryptionPublicKey ?? null,
       input.remoteAdvertisedEndpoint,
-      input.remoteTransport,
+      input.remoteAdvertisedTransport,
       now,
       now,
       now,

@@ -9,6 +9,7 @@ import { pollUntil } from "../helpers/polling";
 interface MeshMember {
   nodeId: string;
   endpoint: string | null;
+  transport: "http" | "https";
   instanceName: string | null;
   status: string;
 }
@@ -369,7 +370,7 @@ describe("three-process mesh cluster", () => {
       expect(result.status).toBe(200);
     }
 
-    const advertisedEndpoint = `http://localhost:${String(nodeB.port)}`;
+    const advertisedEndpoint = `https://localhost:${String(nodeB.port)}`;
     const endpointResult = await postJson(nodeB, "/api/mesh/endpoint", {
       meshEndpoint: advertisedEndpoint,
     });
@@ -381,7 +382,9 @@ describe("three-process mesh cluster", () => {
     await waitForCondition(async () => {
       const status = await getStatus(nodeA);
       return getLink(status).members.some(
-        (member) => member.nodeId === nodeBId && member.endpoint === nodeB.baseUrl,
+        (member) => member.nodeId === nodeBId
+          && member.endpoint === nodeB.baseUrl
+          && member.transport === "http",
       );
     }, "The initiating node did not preserve the direct pairing route.");
 
