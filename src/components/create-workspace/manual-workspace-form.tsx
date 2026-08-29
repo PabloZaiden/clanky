@@ -65,10 +65,10 @@ export function ManualWorkspaceForm({
           />
           <span className="flex-1">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Git-backed workspace
+              Enable task features
             </span>
             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-              Required for tasks, branches, worktrees, GitHub, and Git maintenance. Uncheck to run chats and agents directly in this directory.
+              Tasks, branches, worktrees, GitHub, and Git maintenance are available when enabled. Disable to run chats and agents directly at the selected path.
             </span>
           </span>
         </label>

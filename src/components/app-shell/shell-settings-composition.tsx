@@ -86,7 +86,7 @@ export function buildShellSettingsSections({
                 </option>
                 {workspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}{workspace.workspaceType === "directory" ? " (directory)" : ""}
+                    {workspace.name}
                   </option>
                 ))}
               </SettingsSelect>

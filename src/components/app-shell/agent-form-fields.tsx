@@ -130,7 +130,7 @@ export function AgentFormFields({
         />
       ) : (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Directory workspace: this agent runs directly in the workspace directory without branches or worktrees.
+          This agent runs directly at the selected path without branches or worktrees.
         </p>
       )}
 

@@ -121,13 +121,7 @@ function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: 
   if (!workspace) {
     return undefined;
   }
-  return workspace.workspaceType === "directory"
-    ? `${workspace.name} · Directory workspace`
-    : workspace.name;
-}
-
-function getWorkspaceTypeSubtitle(workspace: Workspace): string | undefined {
-  return workspace.workspaceType === "directory" ? "Directory workspace" : undefined;
+  return workspace.name;
 }
 
 function getServerName(serverId: string | undefined, servers: SshServer[]): string | undefined {
@@ -366,23 +360,15 @@ export function useShellHeader({
         if (!nodeModel) {
           return {
             title: selectedWorkspace?.name ?? "Workspace",
-            scopeSubtitle: selectedWorkspace
-              ? getWorkspaceTypeSubtitle(selectedWorkspace)
-              : undefined,
           };
         }
         if (!selectedWorkspace) {
-          return {
-            ...nodeModel,
-            scopeSubtitle: nodeModel.nodeSubtitle,
-            detailSubtitle: nodeModel.nodeSubtitle,
-          };
+          return { ...nodeModel };
         }
         const workspaceAgent = selectedWorkspace.serverSettings.agent;
         if (workspaceAgent.transport === "stdio") {
           return {
             ...nodeModel,
-            scopeSubtitle: getWorkspaceTypeSubtitle(selectedWorkspace),
             detailSubtitle: "stdio",
           };
         }
@@ -392,7 +378,6 @@ export function useShellHeader({
         const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
         return {
           ...nodeModel,
-          scopeSubtitle: getWorkspaceTypeSubtitle(selectedWorkspace),
           detailSubtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
         };
       case "workspace-files":
