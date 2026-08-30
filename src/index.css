@@ -223,8 +223,15 @@
   }
 
   .markdown-renderer .markdown-table-cell {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
+}
+
+/* Keep intrinsic table sizing ahead of the framework's generic table overflow rule. */
+.markdown-renderer .markdown-table {
+  min-width: 100%;
+  width: fit-content;
+  max-width: none;
 }
 
 /* Safe-area and scrollbar utility classes */
