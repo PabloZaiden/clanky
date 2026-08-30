@@ -398,7 +398,10 @@ export const chatsRoutes = defineRoutes({
       }
 
       try {
-        await chatManager.deleteChat(ctx.params["id"]!, { deferCleanup: true });
+        const deleted = await chatManager.deleteChat(ctx.params["id"]!, { deferCleanup: true });
+        if (!deleted) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
         return successResponse();
       } catch (error) {
         log.error("Failed to delete chat", { chatId: ctx.params["id"]!, error: String(error) });

@@ -2,7 +2,7 @@
  * API integration tests for chat endpoints.
  */
 
-import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
@@ -15,6 +15,7 @@ import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 import { backendManager } from "../../src/core/backend-manager";
+import { chatManager } from "../../src/core/chat-manager";
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getManagedWorktreePath } from "../../src/core/git";
 import { getPlanFilePath } from "../../src/lib/planning-files";
@@ -463,6 +464,39 @@ describe("Chats API Integration", () => {
       cleanupExecutor.releaseCleanup();
       unsubscribe();
       backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    }
+  });
+
+  test("returns not found when chat deletion reports no deleted record", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unchanged Delete Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: defaultBranch,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const deleteChatSpy = spyOn(chatManager, "deleteChat").mockResolvedValue(false);
+
+    try {
+      const deleteResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+        method: "DELETE",
+      });
+
+      expect(deleteResponse.status).toBe(404);
+      expect(await deleteResponse.json()).toEqual({
+        error: "not_found",
+        message: "Chat not found",
+      });
+      expect(await loadChat(created.config.id)).not.toBeNull();
+    } finally {
+      deleteChatSpy.mockRestore();
+      await chatManager.deleteChat(created.config.id);
     }
   });
 
