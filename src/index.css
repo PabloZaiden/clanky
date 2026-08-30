@@ -221,6 +221,10 @@
   .markdown-renderer :not(pre) > code::after {
     content: none;
   }
+
+  .markdown-renderer .markdown-table-cell {
+    overflow-wrap: anywhere;
+  }
 }
 
 /* Safe-area and scrollbar utility classes */
