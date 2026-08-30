@@ -96,19 +96,19 @@ export function MarkdownRenderer({
             </pre>
           ),
           table: ({ children, className, ...props }) => (
-            <div className="max-w-full overflow-x-auto">
-              <table {...props} className={`min-w-max max-w-none ${className ?? ""}`.trim()}>
+            <div className="min-w-0 max-w-full overflow-x-auto">
+              <table {...props} className={`min-w-0 w-full max-w-full ${className ?? ""}`.trim()}>
                 {children}
               </table>
             </div>
           ),
           th: ({ children, className, ...props }) => (
-            <th {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
+            <th {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
               {renderTranscriptTextNodes(children, fileLinkContext)}
             </th>
           ),
           td: ({ children, className, ...props }) => (
-            <td {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
+            <td {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
               {renderTranscriptTextNodes(children, fileLinkContext)}
             </td>
           ),
