@@ -14,6 +14,7 @@ import {
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
 import { getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
+import type { Workspace } from "@/shared/workspace";
 import { taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { CommandExecutor } from "../command-executor";
@@ -35,6 +36,12 @@ import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../..
 import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
+
+interface WorkspaceBackendOptions {
+  workspaceId: string;
+  localNodeId: string | null;
+  executionNodeId: string | null;
+}
 
 /**
  * Backend manager supporting multiple workspace connections.
@@ -58,17 +65,66 @@ class BackendManager {
   private testSettings: ServerSettings = getDefaultServerSettings();
   /** Overridable connection timeout (ms) for testing. Defaults to the SSH reliability policy. */
   private connectionTimeoutMs: number = getSshReliabilityPolicy().connectionTimeoutMs;
+  private localMeshNodeId: string | null = null;
+  private localMeshNodeIdPromise: Promise<string> | null = null;
+  private localMeshNodeIdGeneration = 0;
+
+  private async getLocalMeshNodeId(): Promise<string> {
+    if (this.localMeshNodeId) {
+      return this.localMeshNodeId;
+    }
+
+    if (!this.localMeshNodeIdPromise) {
+      const generation = this.localMeshNodeIdGeneration;
+      const identityPromise = ensureLocalMeshNodeIdentity().then((identity) => {
+        if (this.localMeshNodeIdGeneration === generation) {
+          this.localMeshNodeId = identity.nodeId;
+        }
+        return identity.nodeId;
+      });
+      this.localMeshNodeIdPromise = identityPromise;
+    }
+
+    const identityPromise = this.localMeshNodeIdPromise;
+    try {
+      return await identityPromise;
+    } finally {
+      if (this.localMeshNodeIdPromise === identityPromise) {
+        this.localMeshNodeIdPromise = null;
+      }
+    }
+  }
+
+  invalidateLocalMeshNodeIdCache(): void {
+    this.localMeshNodeIdGeneration += 1;
+    this.localMeshNodeId = null;
+    this.localMeshNodeIdPromise = null;
+  }
+
+  private async getWorkspaceBackendOptions(
+    workspaceId: string,
+    settings: ServerSettings,
+    executionNodeId?: string | null,
+  ): Promise<WorkspaceBackendOptions> {
+    const localNodeId = settings.agent.transport === "stdio"
+      ? await this.getLocalMeshNodeId()
+      : null;
+    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
+      ? (executionNodeId ?? localNodeId)
+      : null;
+    return {
+      workspaceId,
+      localNodeId,
+      executionNodeId: resolvedExecutionNodeId,
+    };
+  }
 
   /**
    * Create a backend instance for the configured agent provider.
    */
   private createBackendForSettings(
     settings: ServerSettings,
-    workspaceOptions?: {
-      workspaceId: string;
-      localNodeId: string | null;
-      executionNodeId: string | null;
-    },
+    workspaceOptions?: WorkspaceBackendOptions,
   ): Backend {
     const transportLifecycleFactory = workspaceOptions && settings.agent.transport === "stdio"
       ? () => new WorkspaceAcpTransportLifecycle({
@@ -107,24 +163,21 @@ class BackendManager {
     }
 
     const settings = workspace.serverSettings;
-    const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
-      : null;
-    const executionNodeId = settings.agent.transport === "stdio"
-      ? (workspace.executionNodeId ?? localNodeId)
-      : null;
+    const workspaceOptions = await this.getWorkspaceBackendOptions(
+      workspaceId,
+      settings,
+      workspace.executionNodeId,
+    );
     let state = this.connections.get(workspaceId);
     if (!state) {
       state = {
         backend: this.createBackendForSettings(settings, {
-          workspaceId,
-          localNodeId,
-          executionNodeId,
+          ...workspaceOptions,
         }),
         settings,
         connectionError: null,
-        executionNodeId,
-        localNodeId,
+        executionNodeId: workspaceOptions.executionNodeId,
+        localNodeId: workspaceOptions.localNodeId,
       };
       this.connections.set(workspaceId, state);
       return state;
@@ -132,16 +185,14 @@ class BackendManager {
 
     if (
       state.settings.agent.provider !== settings.agent.provider
-      || state.executionNodeId !== executionNodeId
+      || state.executionNodeId !== workspaceOptions.executionNodeId
     ) {
       const previousBackend = state.backend;
       if (previousBackend.isConnected()) {
         await previousBackend.disconnect();
       }
       state.backend = this.createBackendForSettings(settings, {
-        workspaceId,
-        localNodeId,
-        executionNodeId,
+        ...workspaceOptions,
       });
       state.connectionError = null;
       this.clearCommandExecutorsForWorkspace(workspaceId);
@@ -151,8 +202,8 @@ class BackendManager {
       this.clearCommandExecutorsForWorkspace(workspaceId);
     }
     state.settings = settings;
-    state.executionNodeId = executionNodeId;
-    state.localNodeId = localNodeId;
+    state.executionNodeId = workspaceOptions.executionNodeId;
+    state.localNodeId = workspaceOptions.localNodeId;
     return state;
   }
 
@@ -359,7 +410,7 @@ class BackendManager {
    */
   async invalidateMeshExecutionConnections(): Promise<void> {
     await meshAcpGateway.closeAll();
-    const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
+    const localNodeId = await this.getLocalMeshNodeId();
 
     for (const [workspaceId, state] of this.connections) {
       if (
@@ -433,6 +484,7 @@ class BackendManager {
       this.taskConnections.clear();
     }
     this.commandExecutors.clear();
+    this.invalidateLocalMeshNodeIdCache();
 
     this.emitEvent({
       type: "server.reset",
@@ -452,7 +504,7 @@ class BackendManager {
     executionNodeId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
     const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      ? await this.getLocalMeshNodeId()
       : null;
     const resolvedExecutionNodeId = settings.agent.transport === "stdio"
       ? (executionNodeId ?? localNodeId)
@@ -581,7 +633,7 @@ class BackendManager {
     }
     const execution = deriveExecutionSettings(settings);
     const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      ? await this.getLocalMeshNodeId()
       : null;
     const resolvedExecutionNodeId = settings.agent.transport === "stdio"
       ? (executionNodeId ?? localNodeId)
@@ -636,7 +688,7 @@ class BackendManager {
     }
 
     if (settings.agent.transport === "stdio") {
-      const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
+      const localNodeId = await this.getLocalMeshNodeId();
       const executionNodeId = workspace.executionNodeId ?? localNodeId;
       if (executionNodeId === localNodeId) {
         status.executionAvailability = "local";
@@ -945,9 +997,37 @@ class BackendManager {
   }
 
   /**
-   * Create a new backend instance for ad-hoc operations (e.g. model discovery).
+   * Create a temporary backend for a workspace-scoped operation.
+   *
+   * Unlike a settings-only backend, this preserves the workspace execution
+   * node so remote stdio uses MeshAcpTransport instead of local stdio.
    */
-  createBackend(settings: ServerSettings): Backend {
+  async createBackendForWorkspace(
+    workspace: Workspace,
+    settings: ServerSettings = workspace.serverSettings,
+  ): Promise<Backend> {
+    if (this.isTestBackend && this.testBackend) {
+      return this.testBackend;
+    }
+
+    const workspaceOptions = await this.getWorkspaceBackendOptions(
+      workspace.id,
+      settings,
+      workspace.executionNodeId,
+    );
+    return this.createBackendForSettings(settings, workspaceOptions);
+  }
+
+  /**
+   * Create a backend for a connection that is not owned by a workspace.
+   *
+   * Standalone SSH-server chats use this path because their settings contain
+   * the complete SSH target and must not inherit workspace Mesh routing.
+   */
+  createStandaloneBackend(settings: ServerSettings): Backend {
+    if (this.isTestBackend && this.testBackend) {
+      return this.testBackend;
+    }
     return this.createBackendForSettings(settings);
   }
 

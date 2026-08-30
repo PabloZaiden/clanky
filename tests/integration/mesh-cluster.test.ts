@@ -48,6 +48,11 @@ interface MeshNodeProcess {
   stopped: boolean;
 }
 
+interface MeshNodeOptions {
+  mockAcp?: boolean;
+  remoteOnly?: boolean;
+}
+
 interface ApiResult {
   status: number;
   body: unknown;
@@ -131,6 +136,7 @@ async function startMeshNode(
   name: string,
   dataDir: string,
   existingPort?: number,
+  options: MeshNodeOptions = {},
 ): Promise<MeshNodeProcess> {
   const port = existingPort ?? await getAvailablePort();
   const baseUrl = `http://127.0.0.1:${String(port)}`;
@@ -142,8 +148,10 @@ async function startMeshNode(
       CLANKY_DISABLE_PASSKEY: "true",
       CLANKY_HOST: "127.0.0.1",
       CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_MOCK_ACP: options.mockAcp ? "true" : "false",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
+      CLANKY_REMOTE_ONLY: options.remoteOnly ? "true" : "false",
     },
     stdin: "ignore",
     stdout: "ignore",
@@ -555,5 +563,64 @@ describe("three-process mesh cluster", () => {
       `/api/workspaces/${workspace.id}/files/content?path=README.md`,
     );
     expect(recoveredRead.status).toBe(200);
+  }, { timeout: 30_000 });
+
+  test("discovers remote-stdio models from a remote-only owner", async () => {
+    for (const name of ["A", "B"]) {
+      meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-models-${name.toLowerCase()}-`)));
+    }
+    const repository = await mkdtemp(join(tmpdir(), "clanky-mesh-models-repo-"));
+    meshRepositories.push(repository);
+    await initializeGitRepository(repository, {
+      initialCommit: "readme",
+      initialFiles: { "README.md": "mesh models\n" },
+      initialCommitMessage: "initial",
+    });
+
+    meshNodes.push(await startMeshNode("A", meshDataDirs[0]!, undefined, { remoteOnly: true }));
+    meshNodes.push(await startMeshNode("B", meshDataDirs[1]!, undefined, { mockAcp: true }));
+    const nodeA = meshNodes[0]!;
+    const nodeB = meshNodes[1]!;
+
+    for (const node of meshNodes) {
+      const result = await postJson(node, "/api/mesh/instance-name", {
+        instanceName: `Instance ${node.name}`,
+      });
+      expect(result.status).toBe(200);
+    }
+
+    await pairNodes(nodeA, nodeB);
+    await waitForCondition(async () => {
+      const status = await getStatus(nodeA);
+      return status.links[0]?.members.length === 2
+        && status.links[0].members.every((member) => member.endpoint !== null);
+    }, "The model discovery mesh did not converge.");
+
+    const nodeBId = (await getStatus(nodeB)).node.nodeId;
+    const workspaceResult = await postJson(nodeA, "/api/workspaces", {
+      name: "Remote model workspace",
+      directory: repository,
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      executionNodeId: nodeBId,
+    });
+    expect(workspaceResult.status).toBe(201);
+    const workspace = workspaceResult.body as { id: string };
+
+    const models = await request(nodeA, `/api/models?workspaceId=${workspace.id}`);
+    expect(models.status).toBe(200);
+    expect(models.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        connected: true,
+        modelID: "mock-model",
+        providerID: "opencode",
+      }),
+    ]));
+
+    const variants = await request(
+      nodeA,
+      `/api/models/variants?workspaceId=${workspace.id}&modelID=mock-model`,
+    );
+    expect(variants.status).toBe(200);
+    expect(variants.body).toEqual({ variants: ["medium", "low", "high"] });
   }, { timeout: 30_000 });
 });

@@ -97,6 +97,7 @@ async function getAgentBackendModels(
   connectionId: string,
   directory: string,
   settings: ServerSettings,
+  workspace?: Workspace,
 ): Promise<ModelInfo[]> {
   const testBackend = backendManager.getTestBackend();
   if (testBackend) {
@@ -112,7 +113,9 @@ async function getAgentBackendModels(
     return await existingBackend.getModels(directory);
   }
 
-  const tempBackend = backendManager.createBackend(settings);
+  const tempBackend = workspace
+    ? await backendManager.createBackendForWorkspace(workspace, settings)
+    : backendManager.createStandaloneBackend(settings);
   try {
     await tempBackend.connect(buildConnectionConfig(settings, directory));
     return await tempBackend.getModels(directory);
@@ -130,6 +133,7 @@ async function getAgentBackendModelVariants(
   directory: string,
   settings: ServerSettings,
   modelID: string,
+  workspace?: Workspace,
 ): Promise<string[]> {
   const testBackend = backendManager.getTestBackend();
   if (testBackend) {
@@ -153,7 +157,9 @@ async function getAgentBackendModelVariants(
     return model?.variants && model.variants.length > 0 ? model.variants : [""];
   }
 
-  const tempBackend = backendManager.createBackend(settings);
+  const tempBackend = workspace
+    ? await backendManager.createBackendForWorkspace(workspace, settings)
+    : backendManager.createStandaloneBackend(settings);
   try {
     await tempBackend.connect(buildConnectionConfig(settings, directory));
     if (tempBackend.getModelVariants) {
@@ -187,13 +193,19 @@ export async function getModelsForWorkspace(
     });
   }
 
-  return await getModelsForSettings(workspaceId, workspace.directory, workspace.serverSettings);
+  return await getModelsForSettings(
+    workspaceId,
+    workspace.directory,
+    workspace.serverSettings,
+    workspace,
+  );
 }
 
 export async function getModelsForSettings(
   connectionId: string,
   directory: string,
   settings: ServerSettings,
+  workspaceOverride?: Workspace,
 ): Promise<ModelInfo[]> {
   const cacheKey = getModelListCacheKey(connectionId, settings.agent.provider, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
@@ -201,7 +213,12 @@ export async function getModelsForSettings(
     return cached;
   }
 
-  const models = await getAgentBackendModels(connectionId, directory, settings);
+  const models = await getAgentBackendModels(
+    connectionId,
+    directory,
+    settings,
+    workspaceOverride,
+  );
   const normalizedModels = normalizeDiscoveredModels(settings, models);
   if (normalizedModels.length > 0) {
     setCacheValue(modelListCache, cacheKey, normalizedModels);
@@ -229,7 +246,13 @@ export async function getModelVariantsForWorkspace(
     return cached;
   }
 
-  const variants = await getAgentBackendModelVariants(workspaceId, directory, settings, modelID);
+  const variants = await getAgentBackendModelVariants(
+    workspaceId,
+    directory,
+    settings,
+    modelID,
+    workspace,
+  );
   const normalizedVariants = variants.length > 0 ? variants : [""];
   setCacheValue(modelVariantCache, cacheKey, normalizedVariants);
   return normalizedVariants;

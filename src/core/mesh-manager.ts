@@ -524,6 +524,7 @@ export class MeshManager {
       );
     }
     await rotateLocalMeshNodeIdentity();
+    backendManager.invalidateLocalMeshNodeIdCache();
     return await this.startPairing(localUserId, localUsername, input);
   }
 
