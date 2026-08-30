@@ -65,6 +65,41 @@ class BackendManager {
   private testSettings: ServerSettings = getDefaultServerSettings();
   /** Overridable connection timeout (ms) for testing. Defaults to the SSH reliability policy. */
   private connectionTimeoutMs: number = getSshReliabilityPolicy().connectionTimeoutMs;
+  private localMeshNodeId: string | null = null;
+  private localMeshNodeIdPromise: Promise<string> | null = null;
+  private localMeshNodeIdGeneration = 0;
+
+  private async getLocalMeshNodeId(): Promise<string> {
+    if (this.localMeshNodeId) {
+      return this.localMeshNodeId;
+    }
+
+    if (!this.localMeshNodeIdPromise) {
+      const generation = this.localMeshNodeIdGeneration;
+      const identityPromise = ensureLocalMeshNodeIdentity().then((identity) => {
+        if (this.localMeshNodeIdGeneration === generation) {
+          this.localMeshNodeId = identity.nodeId;
+        }
+        return identity.nodeId;
+      });
+      this.localMeshNodeIdPromise = identityPromise;
+    }
+
+    const identityPromise = this.localMeshNodeIdPromise;
+    try {
+      return await identityPromise;
+    } finally {
+      if (this.localMeshNodeIdPromise === identityPromise) {
+        this.localMeshNodeIdPromise = null;
+      }
+    }
+  }
+
+  invalidateLocalMeshNodeIdCache(): void {
+    this.localMeshNodeIdGeneration += 1;
+    this.localMeshNodeId = null;
+    this.localMeshNodeIdPromise = null;
+  }
 
   private async getWorkspaceBackendOptions(
     workspaceId: string,
@@ -72,7 +107,7 @@ class BackendManager {
     executionNodeId?: string | null,
   ): Promise<WorkspaceBackendOptions> {
     const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      ? await this.getLocalMeshNodeId()
       : null;
     const resolvedExecutionNodeId = settings.agent.transport === "stdio"
       ? (executionNodeId ?? localNodeId)
@@ -375,7 +410,7 @@ class BackendManager {
    */
   async invalidateMeshExecutionConnections(): Promise<void> {
     await meshAcpGateway.closeAll();
-    const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
+    const localNodeId = await this.getLocalMeshNodeId();
 
     for (const [workspaceId, state] of this.connections) {
       if (
@@ -449,6 +484,7 @@ class BackendManager {
       this.taskConnections.clear();
     }
     this.commandExecutors.clear();
+    this.invalidateLocalMeshNodeIdCache();
 
     this.emitEvent({
       type: "server.reset",
@@ -468,7 +504,7 @@ class BackendManager {
     executionNodeId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
     const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      ? await this.getLocalMeshNodeId()
       : null;
     const resolvedExecutionNodeId = settings.agent.transport === "stdio"
       ? (executionNodeId ?? localNodeId)
@@ -597,7 +633,7 @@ class BackendManager {
     }
     const execution = deriveExecutionSettings(settings);
     const localNodeId = settings.agent.transport === "stdio"
-      ? (await ensureLocalMeshNodeIdentity()).nodeId
+      ? await this.getLocalMeshNodeId()
       : null;
     const resolvedExecutionNodeId = settings.agent.transport === "stdio"
       ? (executionNodeId ?? localNodeId)
@@ -652,7 +688,7 @@ class BackendManager {
     }
 
     if (settings.agent.transport === "stdio") {
-      const localNodeId = (await ensureLocalMeshNodeIdentity()).nodeId;
+      const localNodeId = await this.getLocalMeshNodeId();
       const executionNodeId = workspace.executionNodeId ?? localNodeId;
       if (executionNodeId === localNodeId) {
         status.executionAvailability = "local";
