@@ -27,6 +27,7 @@ import { assertGitBackedWorkspace, isGitBackedWorkspace } from "./workspace-capa
 import type {
   ChatConfigUpdates,
   ChatConversationPort,
+  DeleteChatOptions,
   ChatLifecyclePort,
   ChatSessionPort,
   ChatStatePort,
@@ -36,6 +37,8 @@ import type {
   CreateSshServerChatOptions,
   ImportExistingSessionOptions,
 } from "./chat-service-contracts";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -476,42 +479,128 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     return updatedChat;
   }
 
-  async deleteChat(chatId: string): Promise<boolean> {
+  async deleteChat(chatId: string, options: DeleteChatOptions = {}): Promise<boolean> {
     const chat = await this.state.getChat(chatId);
     if (!chat) {
       return false;
     }
-    const internalSshServerSessionId = chat.config.source?.kind === "ssh_server"
-      ? chat.config.source.sshServerSessionId
-      : null;
 
-    if (chat.config.scope !== "task" && chat.config.source?.kind !== "ssh_server") {
-      const identity = await managedContextIdentityResolver.forChat(
-        chat.config.id,
-        chat.config.workspaceId,
-      );
-      await managedCredentialService.revokeContextIfConfigured(identity);
+    if (options.deferCleanup) {
+      const user = requireCurrentUser();
+      this.conversation.closeActiveStream(chatId);
+      const deleted = await this.state.deletePersistedChat(chatId);
+      if (!deleted) {
+        return false;
+      }
+
+      this.state.emitChatDeleted(chat, createTimestamp());
+      this.scheduleDeferredChatCleanup(chat, user);
+      return true;
     }
 
-    this.conversation.closeActiveStream(chatId);
-    await this.session.disconnectChat(chatId);
-    await this.worktree.cleanupWorktree(chat);
+    await this.cleanupChatRuntime(chat, {
+      closeStream: () => this.conversation.closeActiveStream(chatId),
+    });
 
     const deleted = await this.state.deletePersistedChat(chatId);
     if (deleted) {
-      if (internalSshServerSessionId) {
-        const internalSession = await this.sshServerManager.getSession(internalSshServerSessionId);
-        if (internalSession) {
-          await this.sshServerManager.deleteInternalSessionRecord(internalSshServerSessionId);
-        } else {
-          log.warn("SSH-server chat transport session was already missing during chat deletion", {
-            chatId,
-            sshServerSessionId: internalSshServerSessionId,
-          });
-        }
-      }
+      await this.cleanupInternalSshSession(chat);
       this.state.emitChatDeleted(chat, createTimestamp());
     }
     return deleted;
+  }
+
+  private async cleanupChatRuntime(
+    chat: Chat,
+    options: { continueOnError?: boolean; closeStream?: () => void } = {},
+  ): Promise<void> {
+    const cleanupSteps: Array<{ label: string; run: () => Promise<void> }> = [];
+    if (chat.config.scope !== "task" && chat.config.source?.kind !== "ssh_server") {
+      cleanupSteps.push({
+        label: "managed credentials",
+        run: async () => {
+          const identity = await managedContextIdentityResolver.forChat(
+            chat.config.id,
+            chat.config.workspaceId,
+          );
+          await managedCredentialService.revokeContextIfConfigured(identity);
+        },
+      });
+    }
+    if (options.closeStream) {
+      cleanupSteps.push({
+        label: "active chat stream",
+        run: async () => {
+          options.closeStream?.();
+        },
+      });
+    }
+    cleanupSteps.push(
+      {
+        label: "chat session",
+        run: () => this.session.disconnectChat(chat.config.id),
+      },
+      {
+        label: "chat worktree",
+        run: () => this.worktree.cleanupWorktree(chat),
+      },
+    );
+
+    for (const step of cleanupSteps) {
+      if (options.continueOnError !== true) {
+        await step.run();
+        continue;
+      }
+
+      try {
+        await step.run();
+      } catch (error) {
+        log.error("Deferred chat cleanup step failed", {
+          chatId: chat.config.id,
+          step: step.label,
+          error: String(error),
+        });
+      }
+    }
+  }
+
+  private async cleanupInternalSshSession(chat: Chat): Promise<void> {
+    const internalSshServerSessionId = chat.config.source?.kind === "ssh_server"
+      ? chat.config.source.sshServerSessionId
+      : null;
+    if (!internalSshServerSessionId) {
+      return;
+    }
+
+    const internalSession = await this.sshServerManager.getSession(internalSshServerSessionId);
+    if (internalSession) {
+      await this.sshServerManager.deleteInternalSessionRecord(internalSshServerSessionId);
+      return;
+    }
+
+    log.warn("SSH-server chat transport session was already missing during chat deletion", {
+      chatId: chat.config.id,
+      sshServerSessionId: internalSshServerSessionId,
+    });
+  }
+
+  private scheduleDeferredChatCleanup(chat: Chat, user: CurrentUser): void {
+    // The persisted chat is already deleted; remote cleanup must not delay the HTTP response.
+    void runWithCurrentUser(user, async () => {
+      await this.cleanupChatRuntime(chat, { continueOnError: true });
+      try {
+        await this.cleanupInternalSshSession(chat);
+      } catch (error) {
+        log.error("Deferred SSH-server chat cleanup failed", {
+          chatId: chat.config.id,
+          error: String(error),
+        });
+      }
+    }).catch((error) => {
+      log.error("Deferred chat cleanup failed", {
+        chatId: chat.config.id,
+        error: String(error),
+      });
+    });
   }
 }

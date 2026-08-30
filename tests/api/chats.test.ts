@@ -62,6 +62,44 @@ class PlanSeedTrackingExecutor extends TestCommandExecutor {
   }
 }
 
+class DeferredWorktreeCleanupExecutor extends TestCommandExecutor {
+  blockWorktreeCleanup = false;
+  cleanupStarted = false;
+  cleanupFinished = false;
+  private readonly cleanupReleased: Promise<void>;
+  private releaseCleanupCallback: (() => void) | undefined;
+
+  constructor() {
+    super();
+    this.cleanupReleased = new Promise<void>((resolve) => {
+      this.releaseCleanupCallback = resolve;
+    });
+  }
+
+  releaseCleanup(): void {
+    this.releaseCleanupCallback?.();
+  }
+
+  override async exec(
+    command: string,
+    args: string[],
+    options?: Parameters<TestCommandExecutor["exec"]>[2],
+  ) {
+    const isWorktreeRemoval = command === "git"
+      && args.includes("worktree")
+      && args.includes("remove");
+    if (!this.blockWorktreeCleanup || !isWorktreeRemoval) {
+      return await super.exec(command, args, options);
+    }
+
+    this.cleanupStarted = true;
+    await this.cleanupReleased;
+    const result = await super.exec(command, args, options);
+    this.cleanupFinished = true;
+    return result;
+  }
+}
+
 function formatTranscriptTime(timestamp: string): string {
   return new Date(timestamp).toLocaleTimeString([], {
     hour: "2-digit",
@@ -327,6 +365,105 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("deletes the chat before deferred worktree cleanup finishes", async () => {
+    const cleanupExecutor = new DeferredWorktreeCleanupExecutor();
+    backendManager.setExecutorFactoryForTesting(() => cleanupExecutor);
+    const deletedEvents: ChatEvent[] = [];
+    const unsubscribe = chatEventEmitter.subscribe((event) => {
+      if (event.type === "chat.deleted") {
+        deletedEvents.push(event);
+      }
+    });
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Deferred Delete Chat",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: true,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+      const prepared = await pollUntil(
+        () => loadChat(created.config.id),
+        (chat): chat is Chat => Boolean(chat?.state.worktree?.worktreePath),
+        {
+          description: `chat ${created.config.id} to finish worktree preparation`,
+          timeoutMs: 10000,
+          formatLastObserved: (chat) => chat?.state.startupStage ?? "worktree pending",
+        },
+      );
+      const worktreePath = prepared.state.worktree?.worktreePath;
+      if (!worktreePath) {
+        throw new Error("Expected a prepared chat worktree");
+      }
+
+      cleanupExecutor.blockWorktreeCleanup = true;
+      let deleteResponse: Response | undefined;
+      let deleteError: unknown;
+      void fetch(`${baseUrl}/api/chats/${created.config.id}`, { method: "DELETE" }).then(
+        (response) => {
+          deleteResponse = response;
+        },
+        (error: unknown) => {
+          deleteError = error;
+        },
+      );
+
+      const completedDeleteResponse = await pollUntil(
+        () => deleteResponse,
+        (response): response is Response => response !== undefined,
+        {
+          description: `chat ${created.config.id} delete response before worktree cleanup`,
+          timeoutMs: 5000,
+          formatLastObserved: (response) => response
+            ? `HTTP ${response.status}`
+            : deleteError
+              ? `request failed: ${String(deleteError)}`
+              : "pending",
+        },
+      );
+      expect(completedDeleteResponse.status).toBe(200);
+      await completedDeleteResponse.json();
+      expect(await loadChat(created.config.id)).toBeNull();
+      const listedChats = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+      expect(listedChats.status).toBe(200);
+      const listed = await listedChats.json() as Chat[];
+      expect(listed.some((chat) => chat.config.id === created.config.id)).toBe(false);
+      expect(deletedEvents.filter((event) => event.chatId === created.config.id)).toHaveLength(1);
+
+      await pollUntil(
+        () => cleanupExecutor.cleanupStarted,
+        (started) => started,
+        {
+          description: `deferred worktree cleanup for chat ${created.config.id} to start`,
+          timeoutMs: 5000,
+        },
+      );
+      expect(cleanupExecutor.cleanupFinished).toBe(false);
+
+      cleanupExecutor.releaseCleanup();
+      await pollUntil(
+        () => cleanupExecutor.cleanupFinished,
+        (finished) => finished,
+        {
+          description: `deferred worktree cleanup for chat ${created.config.id} to finish`,
+          timeoutMs: 10000,
+        },
+      );
+      expect(await cleanupExecutor.directoryExists(worktreePath)).toBe(false);
+    } finally {
+      cleanupExecutor.releaseCleanup();
+      unsubscribe();
+      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    }
   });
 
   test("reports guarded chat config updates that do not match the current name", async () => {

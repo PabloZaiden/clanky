@@ -330,7 +330,7 @@ export const chatsRoutes = defineRoutes({
   "/api/chats/:id": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read, update, or delete a chat session.",
+    description: "Read, update, or delete a chat session; remote cleanup may continue after deletion.",
     requestSchema: UpdateChatRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChatSummary(ctx.params["id"]!);
@@ -388,8 +388,7 @@ export const chatsRoutes = defineRoutes({
       }
     },
 
-    async DELETE(req: Request, ctx): Promise<Response> {
-      ctx.server?.timeout(req, 0);
+    async DELETE(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
@@ -399,7 +398,7 @@ export const chatsRoutes = defineRoutes({
       }
 
       try {
-        await chatManager.deleteChat(ctx.params["id"]!);
+        await chatManager.deleteChat(ctx.params["id"]!, { deferCleanup: true });
         return successResponse();
       } catch (error) {
         log.error("Failed to delete chat", { chatId: ctx.params["id"]!, error: String(error) });

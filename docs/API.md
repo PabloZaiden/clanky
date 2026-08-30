@@ -166,7 +166,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/agents/code/test` | Test deterministic agent code without saving an agent or run. |
 | POST | `/api/agents/code/test/stream` | Stream deterministic agent code test output without saving an agent or run. |
 | GET, POST | `/api/chats` | List chats or create a chat session. |
-| GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session. |
+| GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session; remote cleanup may continue after deletion. |
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |

@@ -1,12 +1,10 @@
 import { expect, test } from "bun:test";
-import { chatsRoutes } from "../../src/api/chats";
 import { settingsRoutes } from "../../src/api/settings";
 import { archivedTasksRoutes } from "../../src/api/workspaces/archived-tasks";
 
 const LONG_RUNNING_CLEANUP_ROUTES = [
   settingsRoutes["/api/settings/purge-terminal-tasks"]!.POST!,
   archivedTasksRoutes["/api/workspaces/:id/archived-tasks/purge"]!.POST!,
-  chatsRoutes["/api/chats/:id"]!.DELETE!,
 ];
 
 test("disables Bun request idle timeout for long-running cleanup routes", async () => {
