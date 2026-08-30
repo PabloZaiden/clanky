@@ -45,6 +45,7 @@ interface UseShellActionsOptions {
   dashboardData: UseDashboardDataResult;
   toast: ToastService;
   markChatDone: UseChatsResult["markChatDone"];
+  deleteChat: UseChatsResult["deleteChat"];
   selectedChat: Chat | null;
   refreshChats: UseChatsResult["refresh"];
   updateChat: UseChatsResult["updateChat"];
@@ -77,6 +78,7 @@ export function useShellActions({
   dashboardData,
   toast,
   markChatDone,
+  deleteChat,
   selectedChat,
   refreshChats,
   updateChat,
@@ -204,6 +206,7 @@ export function useShellActions({
     onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
     onChatRenamed: refreshChats,
     onChatDone: handleMarkChatDone,
+    onDeleteChat: deleteChat,
     onChatDeleted: () => navigateWithinShell({ view: "home" }),
     onActionError: (message) => toast.error(message),
   });

@@ -76,6 +76,14 @@ export interface ReconnectChatOptions {
   credentialToken?: string | null;
 }
 
+export interface DeleteChatOptions {
+  /**
+   * Remove the persisted chat before running remote resource cleanup.
+   * Internal callers keep the synchronous cleanup behavior by default.
+   */
+  deferCleanup?: boolean;
+}
+
 export type ChatConfigUpdates = Partial<
   Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">
 >;
@@ -216,7 +224,7 @@ export interface ChatLifecyclePort {
   attachSession(chatId: string, session: SessionInfo): Promise<Chat | null>;
   getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }>;
   deleteTaskChat(taskId: string): Promise<boolean>;
-  deleteChat(chatId: string): Promise<boolean>;
+  deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean>;
 }
 
 export interface ChatTaskConversionPort {

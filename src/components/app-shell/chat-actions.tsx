@@ -32,6 +32,7 @@ interface UseChatActionsOptions {
   onTaskSpawned?: (task: Task) => void;
   onChatRenamed?: (chat: Chat) => void | Promise<void>;
   onChatDone?: (chat: Chat) => Chat | null | Promise<Chat | null>;
+  onDeleteChat: (chatId: string) => Promise<boolean>;
   onChatDeleted?: (chat: Chat) => void | Promise<void>;
   onActionError: (message: string) => void;
 }
@@ -130,6 +131,7 @@ export function useChatActions({
   onTaskSpawned,
   onChatRenamed,
   onChatDone,
+  onDeleteChat,
   onChatDeleted,
   onActionError,
 }: UseChatActionsOptions): ChatActionsController {
@@ -221,7 +223,7 @@ export function useChatActions({
     }
   }
 
-  async function deleteChat(): Promise<void> {
+  async function confirmDeleteChat(): Promise<void> {
     if (!deleteTarget || isDeletePending) {
       return;
     }
@@ -229,11 +231,11 @@ export function useChatActions({
     const target = deleteTarget;
     setIsDeletePending(true);
     try {
-      await apiRequest<unknown>(`/api/chats/${encodeURIComponent(target.config.id)}`, {
-        method: "DELETE",
-        action: "Delete chat",
-        fallbackMessage: "Failed to delete chat",
-      });
+      const deleted = await onDeleteChat(target.config.id);
+      if (!deleted) {
+        onActionError("Failed to delete chat");
+        return;
+      }
       setDeleteTarget(null);
       await onChatDeleted?.(target);
     } catch (error) {
@@ -289,6 +291,8 @@ export function useChatActions({
     isSpawnCurrentPlanPending,
     isSpawnPending,
     onActionError,
+    onChatDeleted,
+    onDeleteChat,
     onOpenCodeExplorer,
     onTaskSpawned,
   ]);
@@ -304,7 +308,7 @@ export function useChatActions({
       <ConfirmModal
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => void deleteChat()}
+        onConfirm={() => void confirmDeleteChat()}
         title="Delete chat?"
         message={`Delete "${deleteTarget?.config.name ?? "this chat"}"? This removes the saved chat session, transcript, and any worktree created for it.`}
         confirmLabel="Delete"

@@ -21,6 +21,7 @@ import { ChatInteractionService } from "./chat-interaction-service";
 import { ChatTaskConversionService } from "./chat-task-conversion-service";
 import type {
   ChatConfigUpdates,
+  DeleteChatOptions,
   ChatInteractionPort,
   ChatMessageOptions,
   ChatServiceBundle,
@@ -35,6 +36,7 @@ import type { Backend, ImportableSession } from "../backends/types";
 export type {
   ChatConfigUpdates,
   ChatMessageOptions,
+  DeleteChatOptions,
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateSshServerChatOptions,
@@ -239,8 +241,8 @@ export class ChatManager {
     return this.services.interaction.replyToPermission(chatId, requestId, decision);
   }
 
-  async deleteChat(chatId: string): Promise<boolean> {
-    return this.services.lifecycle.deleteChat(chatId);
+  async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {
+    return this.services.lifecycle.deleteChat(chatId, options);
   }
 
   async spawnTaskFromChat(chatId: string): Promise<Task> {

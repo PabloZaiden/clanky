@@ -32,6 +32,7 @@ export function useShellResources(route: WebAppRoute) {
     createSshServerChat,
     updateChat,
     markChatDone,
+    deleteChat,
   } = useChats();
   const agents = useAgents();
   const {
@@ -183,6 +184,7 @@ export function useShellResources(route: WebAppRoute) {
     createSshServerChat,
     updateChat,
     markChatDone,
+    deleteChat,
     agents,
     tasks,
     tasksLoading,
