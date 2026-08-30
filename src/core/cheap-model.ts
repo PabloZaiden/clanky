@@ -18,7 +18,12 @@ async function getWorkspaceModels(
   directory: string,
 ): Promise<ModelInfo[]> {
   const workspace = await workspaceManager.requireWorkspace(workspaceId);
-  return await getModelsForSettings(workspaceId, directory, workspace.serverSettings);
+  return await getModelsForSettings(
+    workspaceId,
+    directory,
+    workspace.serverSettings,
+    workspace,
+  );
 }
 
 function hasEnabledModel(models: ModelInfo[], model: ModelConfig): boolean {
