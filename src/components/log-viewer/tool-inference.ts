@@ -304,6 +304,7 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
     case "read_bash":
     case "write_bash":
     case "web_fetch":
+    case "web_search":
     case "todo":
     case "skill":
     case "rubber_duck":
@@ -332,6 +333,7 @@ export function getToolMeta(
       "sql",
       "github_mcp",
       "web_fetch",
+      "web_search",
       "todo",
       "skill",
       "rubber_duck",
@@ -718,6 +720,8 @@ export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaCo
       return buildGitHubMcpDetails(tool.input, tool);
     case "web_fetch":
       return buildWebFetchDetails(tool.input, tool);
+    case "web_search":
+      return null;
     case "todo":
       return buildTodoDetails(tool.input, tool);
     case "skill":

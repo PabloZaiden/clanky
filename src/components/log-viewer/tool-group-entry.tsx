@@ -31,6 +31,7 @@ function getPluralToolLabel(kind: InferredToolKind): string {
       return "commands";
     case "rg":
     case "glob":
+    case "web_search":
       return "searches";
     case "apply_patch":
       return "patches";

@@ -12,6 +12,7 @@ export type ToolCallKind =
   | "sql"
   | "github_mcp"
   | "web_fetch"
+  | "web_search"
   | "todo"
   | "skill"
   | "rubber_duck"
@@ -75,6 +76,55 @@ function getPathsField(input: Record<string, unknown>): string[] | undefined {
   return value;
 }
 
+function getStringArrayField(input: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  const value = input?.[key];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    return undefined;
+  }
+  return value;
+}
+
+function getActionField(input: Record<string, unknown>): Record<string, unknown> | undefined {
+  return isRecord(input["action"]) ? input["action"] : undefined;
+}
+
+function hasNonEmptyStringArray(value: string[] | undefined): boolean {
+  return value?.some((entry) => entry.trim().length > 0) ?? false;
+}
+
+function getFirstNonEmptyString(value: string[] | undefined): string | undefined {
+  const entry = value?.find((candidate) => candidate.trim().length > 0);
+  return entry?.trim();
+}
+
+function isWebSearchInput(input: Record<string, unknown>): boolean {
+  const normalizedType = getStringField(input, "type")?.toLowerCase().replace(/[-_]/g, "");
+  if (normalizedType === "websearch") {
+    return true;
+  }
+
+  const action = getActionField(input);
+  const normalizedActionType = getStringField(action ?? {}, "type")?.toLowerCase();
+  if (normalizedActionType !== "search") {
+    return false;
+  }
+
+  return Boolean(
+    getStringField(input, "query")
+    || hasNonEmptyStringArray(getStringArrayField(input, "queries"))
+    || getStringField(action ?? {}, "query")
+    || hasNonEmptyStringArray(getStringArrayField(action, "queries")),
+  );
+}
+
+function getWebSearchQuery(input: Record<string, unknown>): string | undefined {
+  const action = getActionField(input);
+  return getStringField(input, "query")
+    ?? getStringField(action ?? {}, "query")
+    ?? getFirstNonEmptyString(getStringArrayField(input, "queries"))
+    ?? getFirstNonEmptyString(getStringArrayField(action, "queries"));
+}
+
 function hasOnlyKeys(input: Record<string, unknown>, allowedKeys: string[]): boolean {
   return Object.keys(input).every((key) => allowedKeys.includes(key));
 }
@@ -123,6 +173,9 @@ function getNamedKind(name: string | undefined, input?: Record<string, unknown>)
   }
   if (normalized === "fetch" || normalized === "webfetch" || normalized === "web_fetch") {
     return "web_fetch";
+  }
+  if (normalized === "websearch" || normalized === "web_search" || normalized === "web-search") {
+    return "web_search";
   }
   if (normalized === "todowrite") {
     return "todo";
@@ -271,6 +324,10 @@ export function inferToolCallKind(tool: ToolCallRecord): ToolCallKind {
 
   if (getStringField(input, "agent_type") === "rubber-duck") {
     return "rubber_duck";
+  }
+
+  if (isWebSearchInput(input)) {
+    return "web_search";
   }
 
   const inputNamedKind = getInputNamedKind(input);
@@ -470,6 +527,10 @@ export function getToolCallSummary(
       const url = input ? getStringField(input, "url") : undefined;
       return `Fetch ${url ?? "URL"}`;
     }
+    case "web_search": {
+      const query = input ? getWebSearchQuery(input) : undefined;
+      return query ? `Search the web for '${truncateSummary(query, 100)}'` : "Search the web";
+    }
     case "todo": {
       const todos = input?.["todos"];
       return Array.isArray(todos) ? `Update todo list (${todos.length})` : "Update todo list";
@@ -507,7 +568,7 @@ export function getToolCallOutputLabel(kind: ToolCallKind, status: ToolCallRecor
   if (kind === "sql") {
     return "Done";
   }
-  if (kind === "view" || kind === "glob" || kind === "rg" || kind === "apply_patch") {
+  if (kind === "view" || kind === "glob" || kind === "rg" || kind === "web_search" || kind === "apply_patch") {
     return "Result";
   }
   return "Output";
