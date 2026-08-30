@@ -97,7 +97,7 @@ export function MarkdownRenderer({
           ),
           table: ({ children, className, ...props }) => (
             <div className="min-w-0 max-w-full overflow-x-auto">
-              <table {...props} className={`min-w-0 w-full max-w-full ${className ?? ""}`.trim()}>
+              <table {...props} className={`markdown-table min-w-full w-fit max-w-none table-auto ${className ?? ""}`.trim()}>
                 {children}
               </table>
             </div>
