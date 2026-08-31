@@ -11,6 +11,7 @@ export * from "./migrations";
 export * from "./workspaces";
 export * from "./review-comments";
 export * from "./ssh-sessions";
+export * from "./terminal-sessions";
 export * from "./ssh-servers";
 export * from "./ssh-server-keys";
 export * from "./preview-sessions";

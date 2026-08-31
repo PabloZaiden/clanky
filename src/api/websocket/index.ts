@@ -2,6 +2,7 @@
  * WebSocket handlers for Clanky Tasks Management System.
  *
  * Supports raw websocket surfaces:
+ * - WS /api/terminal for canonical workspace terminal streams
  * - WS /api/ssh-terminal for interactive SSH terminal streams
  * - WS /api/vnc for raw VNC traffic
  * - WS /api/previews/bridge for live-preview forwarding
@@ -17,13 +18,21 @@
  */
 
 export type { WebSocketData } from "./types";
-export { startTerminalBridge, sendTerminalAuthError } from "./terminal";
+export {
+  startTerminalBridge,
+  startWorkspaceTerminalBridge,
+  sendTerminalAuthError,
+} from "./terminal";
 export { open, close, error, activeConnections, MAX_CONNECTIONS } from "./connection";
 export { createMessageHandler } from "./message-handler";
 
 import { open, close, error } from "./connection";
 import { createMessageHandler } from "./message-handler";
-import { startTerminalBridge, sendTerminalAuthError } from "./terminal";
+import {
+  startTerminalBridge,
+  startWorkspaceTerminalBridge,
+  sendTerminalAuthError,
+} from "./terminal";
 
 /**
  * WebSocket message handlers for Bun.serve().
@@ -35,12 +44,14 @@ import { startTerminalBridge, sendTerminalAuthError } from "./terminal";
  */
 export const websocketHandlers = {
   startTerminalBridge,
+  startWorkspaceTerminalBridge,
   sendTerminalAuthError,
   open,
   close,
   error,
 } as {
   startTerminalBridge: typeof startTerminalBridge;
+  startWorkspaceTerminalBridge: typeof startWorkspaceTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
   open: typeof open;
   close: typeof close;

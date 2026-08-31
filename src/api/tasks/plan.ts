@@ -102,9 +102,12 @@ export const tasksPlanRoutes = defineRoutes({
         const result = await taskManager.acceptPlan(ctx.params["id"]!, {
           mode: validation.data.mode,
         });
-        const response: PlanAcceptResponse = result.mode === "open_ssh"
-          ? { success: true, mode: result.mode, sshSession: result.sshSession }
-          : { success: true, mode: result.mode };
+        let response: PlanAcceptResponse;
+        if (result.mode === "open_terminal") {
+          response = { success: true, mode: "open_terminal", terminalSession: result.terminalSession };
+        } else {
+          response = { success: true, mode: result.mode };
+        }
         return Response.json(response);
       } catch (error) {
         if (isTaskOperationError(error)) {

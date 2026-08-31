@@ -11,7 +11,7 @@ export interface SshTerminalBridgeOptions {
 }
 
 export interface SshTerminalBridgeConnectOptions {
-  sessionKind?: "workspace" | "standalone";
+  sessionKind?: "workspace" | "terminal" | "standalone";
   credentialToken?: string;
 }
 

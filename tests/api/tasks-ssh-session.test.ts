@@ -73,7 +73,7 @@ describe("Task SSH session API integration", () => {
     taskManager.resetForTesting();
     const db = getDatabase();
     db.run("DELETE FROM preview_sessions");
-    db.run("DELETE FROM ssh_sessions");
+    db.run("DELETE FROM terminal_sessions");
     db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
     executor.deleteCommands = [];

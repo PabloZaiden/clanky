@@ -3,7 +3,7 @@
  * associations.
  */
 
-export const MANAGED_CONTEXT_TYPES = ["task", "chat", "agent_run", "ssh_session"] as const;
+export const MANAGED_CONTEXT_TYPES = ["task", "chat", "agent_run", "ssh_session", "terminal_session"] as const;
 
 export type ManagedContextType = typeof MANAGED_CONTEXT_TYPES[number];
 

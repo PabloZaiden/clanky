@@ -9,7 +9,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, SshSession } from "@/shared";
+import type { Task, SshSession, WorkspaceTerminalSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
@@ -57,7 +57,7 @@ export interface UseTaskActionsResult {
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  acceptPlan: (mode?: "start_task" | "open_ssh") => Promise<AcceptPlanResult>;
+  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
@@ -75,6 +75,7 @@ export interface UseTaskActionsResult {
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
+  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 
 export function useTaskActions(params: UseTaskActionsParams): UseTaskActionsResult {

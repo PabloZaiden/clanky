@@ -41,9 +41,13 @@ export function TaskFilesView({
       chats={[]}
       workspaces={workspace ? [workspace] : []}
       sessions={sessions}
+      terminalSessions={[]}
       servers={[]}
       sessionsByServerId={{}}
       createSession={createSession}
+      createTerminalSession={async () => {
+        throw new Error("Workspace terminal sessions are unavailable in task code explorer context.");
+      }}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
       sshSessionDetailsComponent={sshSessionDetailsComponent}

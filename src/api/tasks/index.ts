@@ -25,6 +25,7 @@ export { tasksDraftRoutes } from "./draft";
 export { tasksAcceptPushRoutes } from "./accept-push";
 export { tasksDiscardPurgeRoutes } from "./discard-purge";
 export { tasksSshSessionRoutes } from "./ssh-session";
+export { tasksTerminalSessionRoutes } from "./terminal-session";
 export { tasksPendingRoutes } from "./pending";
 export { tasksPlanRoutes } from "./plan";
 export { tasksStopRoutes } from "./stop";
@@ -36,6 +37,7 @@ import { tasksDraftRoutes } from "./draft";
 import { tasksAcceptPushRoutes } from "./accept-push";
 import { tasksDiscardPurgeRoutes } from "./discard-purge";
 import { tasksSshSessionRoutes } from "./ssh-session";
+import { tasksTerminalSessionRoutes } from "./terminal-session";
 import { tasksPendingRoutes } from "./pending";
 import { tasksPlanRoutes } from "./plan";
 import { tasksDataRoutes } from "./data";
@@ -53,6 +55,7 @@ export const tasksRoutes = defineRoutes({
   ...tasksAcceptPushRoutes,
   ...tasksDiscardPurgeRoutes,
   ...tasksSshSessionRoutes,
+  ...tasksTerminalSessionRoutes,
   ...tasksPendingRoutes,
   ...tasksPlanRoutes,
   ...tasksDataRoutes,

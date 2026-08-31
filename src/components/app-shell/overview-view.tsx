@@ -25,8 +25,11 @@ function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
   if (item.kind === "ssh-server-chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
   }
+  if (item.kind === "terminal-session") {
+    return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
+  }
   if (item.kind === "ssh-session") {
-    return { view: "ssh", sshSessionId: item.sessionNode.session.config.id };
+    return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
   }
   return { view: "ssh", sshSessionId: item.sessionNode.id };
 }
@@ -75,6 +78,9 @@ function isActiveWorkPrivateHidden(item: SidebarActiveWorkItem, showPrivateItems
     return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.server.config]), showPrivateItems);
   }
   if (item.kind === "ssh-session") {
+    return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.workspace]), showPrivateItems);
+  }
+  if (item.kind === "terminal-session") {
     return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.workspace]), showPrivateItems);
   }
   return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.server.config]), showPrivateItems);

@@ -12,6 +12,7 @@ import type {
   PreviewEvent,
   ProvisioningEvent,
   SshSessionEvent,
+  TerminalSessionEvent,
   TaskEvent,
 } from "@/shared";
 import { createToolCallSummary } from "@/shared";
@@ -29,6 +30,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   agents: "agents",
   agentRuns: "agent-runs",
   sshSessions: "ssh-sessions",
+  terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   previews: "previews",
 } as const;
@@ -88,6 +90,7 @@ export type ClankyDomainEvent =
   | ChatEvent
   | AgentEvent
   | SshSessionEvent
+  | TerminalSessionEvent
   | ProvisioningEvent
   | PreviewEvent;
 
@@ -255,7 +258,7 @@ export function publishClankyDomainEvent(
     case "task.stopped":
     case "task.session_aborted":
     case "task.completed":
-    case "task.ssh_handoff":
+    case "task.terminal_handoff":
     case "task.error":
     case "task.merged":
     case "task.accepted":
@@ -380,6 +383,15 @@ export function publishClankyDomainEvent(
       return;
     case "ssh_session.deleted":
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.sshSessions, event.sshSessionId);
+      return;
+
+    case "terminal_session.created":
+    case "terminal_session.updated":
+    case "terminal_session.status":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
+      return;
+    case "terminal_session.deleted":
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
       return;
 
     case "provisioning.started":

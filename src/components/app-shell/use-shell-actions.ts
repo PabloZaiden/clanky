@@ -8,6 +8,7 @@ import type {
   SshSession,
   Task,
   Workspace,
+  WorkspaceTerminalSession,
 } from "@/shared";
 import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
 import {
@@ -20,6 +21,7 @@ import {
   type UseSshServersResult,
   type UseSshSessionsResult,
   type UseTasksResult,
+  type UseTerminalSessionsResult,
   type UseWorkspacesResult,
   type WorkspaceGroup,
 } from "../../hooks";
@@ -56,6 +58,8 @@ interface UseShellActionsOptions {
   updateServer: UseSshServersResult["updateServer"];
   refreshSshServers: UseSshServersResult["refresh"];
   deleteWorkspaceSshSession: UseSshSessionsResult["deleteSession"];
+  updateTerminalSession: UseTerminalSessionsResult["updateSession"];
+  deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   deleteStandaloneSession: UseSshServersResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
   quickChatSettings: UseQuickChatSettingsResult;
@@ -89,6 +93,8 @@ export function useShellActions({
   updateServer,
   refreshSshServers,
   deleteWorkspaceSshSession,
+  updateTerminalSession,
+  deleteTerminalSession,
   deleteStandaloneSession,
   createChat,
   quickChatSettings,
@@ -219,6 +225,8 @@ export function useShellActions({
     updateStandaloneSession,
     refreshSshServers,
     deleteWorkspaceSshSession,
+    updateTerminalSession,
+    deleteTerminalSession,
     deleteStandaloneSession,
     agents,
     createChat,
@@ -262,6 +270,14 @@ export function useShellActions({
       toast.error(String(error));
     }
   }, [toast, updateWorkspaceSshSession]);
+
+  const toggleTerminalSessionPrivate = useCallback(async (session: WorkspaceTerminalSession): Promise<void> => {
+    try {
+      await updateTerminalSession(session.config.id, { isPrivate: !session.config.isPrivate });
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [toast, updateTerminalSession]);
 
   const toggleSshServerPrivate = useCallback(async (server: SshServer): Promise<void> => {
     const updated = await updateServer(server.config.id, { isPrivate: !server.config.isPrivate });
@@ -311,6 +327,7 @@ export function useShellActions({
     toggleAgentPrivate,
     toggleWorkspacePrivate,
     toggleWorkspaceSshSessionPrivate,
+    toggleTerminalSessionPrivate,
     toggleSshServerPrivate,
     toggleStandaloneSshSessionPrivate,
     stopSidebarTask,

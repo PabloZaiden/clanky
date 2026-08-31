@@ -9,6 +9,7 @@ export * from "./common";
 export { TaskCard } from "./TaskCard";
 export { TaskDetails } from "./TaskDetails";
 export { SshSessionDetails } from "./SshSessionDetails";
+export { TerminalSessionDetails, type TerminalSessionDetailsProps } from "./ssh-session/terminal-session-details";
 export { ConversationViewer, LogViewer } from "./LogViewer";
 export { ChatDetails } from "./ChatDetails";
 export { CreateTaskForm } from "./CreateTaskForm";

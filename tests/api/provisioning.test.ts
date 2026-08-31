@@ -8,6 +8,8 @@ import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
+import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
+import { createMeshLink, mergeMeshLinkMember, saveMeshNode } from "../../src/persistence/mesh";
 import type { ProvisioningJobSnapshot } from "@/shared";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
@@ -15,6 +17,7 @@ import {
   createDevboxStatusOutput,
 } from "../mocks/provisioning-test-executor";
 import { pollUntil } from "../helpers/polling";
+import { seedTestOwnerUser } from "../setup";
 
 interface ProvisioningSnapshotResponse {
     job: {
@@ -114,6 +117,38 @@ describe("Provisioning API integration", () => {
     });
   }
 
+  async function seedMeshExecutionTarget(): Promise<void> {
+    seedTestOwnerUser();
+    const identity = await ensureLocalMeshNodeIdentity();
+    await saveMeshNode({
+      nodeId: identity.nodeId,
+      instanceName: identity.instanceName,
+      publicKey: identity.publicKey,
+      fingerprint: identity.fingerprint,
+      endpoint: identity.meshEndpoint,
+      transport: "http",
+      status: "active",
+    });
+    const link = await createMeshLink({
+      localUserId: "admin",
+      localNodeId: identity.nodeId,
+      localNodeEndpoint: identity.meshEndpoint,
+      localNodeTransport: "http",
+    });
+    await mergeMeshLinkMember({
+      linkId: link.linkId,
+      nodeId: "paired-mesh-node",
+      instanceName: "Paired mesh node",
+      localUserId: "admin",
+      endpoint: null,
+      transport: "http",
+      status: "active",
+      membershipGeneration: 1,
+      publicKey: "paired-mesh-public-key",
+      fingerprint: "paired-mesh-fingerprint",
+    });
+  }
+
   test("creates a provisioning job and completes with a workspace snapshot", async () => {
     const sshServer = await createServer();
     const executor = new ProvisioningTestExecutor({
@@ -163,6 +198,7 @@ describe("Provisioning API integration", () => {
   });
 
   test("provisions through a stdio mesh execution node without an SSH server", async () => {
+    await seedMeshExecutionTarget();
     const executor = new ProvisioningTestExecutor({
       devboxStatusOutput: createDevboxStatusOutput({
         workdir: "/devbox/workspaces/mesh-example",

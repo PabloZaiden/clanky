@@ -36,11 +36,14 @@ import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../..
 import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
+import { resolveWorkspaceExecutionTarget } from "../workspace-execution-target";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
   localNodeId: string | null;
   executionNodeId: string | null;
+  executionTargetKind: "local" | "mesh" | "ssh";
+  executionTargetKey: string;
 }
 
 /**
@@ -109,13 +112,21 @@ class BackendManager {
     const localNodeId = settings.agent.transport === "stdio"
       ? await this.getLocalMeshNodeId()
       : null;
-    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
-      ? (executionNodeId ?? localNodeId)
-      : null;
+    const target = await resolveWorkspaceExecutionTarget(
+      { serverSettings: settings, executionNodeId },
+      { localNodeId },
+    );
+    const resolvedExecutionNodeId = target.kind === "ssh"
+      ? null
+      : target.kind === "mesh"
+        ? target.nodeId
+        : target.executionNodeId;
     return {
       workspaceId,
       localNodeId,
       executionNodeId: resolvedExecutionNodeId,
+      executionTargetKind: target.kind,
+      executionTargetKey: target.targetKey,
     };
   }
 
@@ -178,6 +189,8 @@ class BackendManager {
         connectionError: null,
         executionNodeId: workspaceOptions.executionNodeId,
         localNodeId: workspaceOptions.localNodeId,
+        executionTargetKind: workspaceOptions.executionTargetKind,
+        executionTargetKey: workspaceOptions.executionTargetKey,
       };
       this.connections.set(workspaceId, state);
       return state;
@@ -186,6 +199,7 @@ class BackendManager {
     if (
       state.settings.agent.provider !== settings.agent.provider
       || state.executionNodeId !== workspaceOptions.executionNodeId
+      || state.executionTargetKind !== workspaceOptions.executionTargetKind
     ) {
       const previousBackend = state.backend;
       if (previousBackend.isConnected()) {
@@ -204,6 +218,8 @@ class BackendManager {
     state.settings = settings;
     state.executionNodeId = workspaceOptions.executionNodeId;
     state.localNodeId = workspaceOptions.localNodeId;
+    state.executionTargetKind = workspaceOptions.executionTargetKind;
+    state.executionTargetKey = workspaceOptions.executionTargetKey;
     return state;
   }
 
@@ -214,9 +230,7 @@ class BackendManager {
       directory,
       provider: execution.provider,
       sshTarget: execution.sshTarget ?? null,
-      executionNodeId: settings.agent.transport === "stdio"
-        ? (this.connections.get(workspaceId)?.executionNodeId ?? null)
-        : null,
+      executionTargetKey: this.connections.get(workspaceId)?.executionTargetKey ?? null,
     });
   }
 
@@ -410,6 +424,10 @@ class BackendManager {
    */
   async invalidateMeshExecutionConnections(): Promise<void> {
     await meshAcpGateway.closeAll();
+    const { meshTerminalGateway } = await import("../mesh-terminal-gateway");
+    const { closeAllMeshTerminalConnections } = await import("../terminal");
+    await meshTerminalGateway.closeAll();
+    await closeAllMeshTerminalConnections();
     const localNodeId = await this.getLocalMeshNodeId();
 
     for (const [workspaceId, state] of this.connections) {
@@ -506,9 +524,15 @@ class BackendManager {
     const localNodeId = settings.agent.transport === "stdio"
       ? await this.getLocalMeshNodeId()
       : null;
-    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
-      ? (executionNodeId ?? localNodeId)
-      : null;
+    const target = await resolveWorkspaceExecutionTarget(
+      { serverSettings: settings, executionNodeId },
+      { localNodeId },
+    );
+    const resolvedExecutionNodeId = target.kind === "ssh"
+      ? null
+      : target.kind === "mesh"
+        ? target.nodeId
+        : target.executionNodeId;
     // Reuse the configured test backend when present so tests can stub connection behavior.
     const testBackend = this.isTestBackend && this.testBackend
       ? this.testBackend
@@ -517,6 +541,8 @@ class BackendManager {
             workspaceId: crypto.randomUUID(),
             localNodeId,
             executionNodeId: resolvedExecutionNodeId,
+            executionTargetKind: target.kind,
+            executionTargetKey: target.targetKey,
           }
         : undefined);
     const config = buildConnectionConfig(settings, directory);
@@ -635,19 +661,15 @@ class BackendManager {
     const localNodeId = settings.agent.transport === "stdio"
       ? await this.getLocalMeshNodeId()
       : null;
-    const resolvedExecutionNodeId = settings.agent.transport === "stdio"
-      ? (executionNodeId ?? localNodeId)
-      : null;
-    if (
-      settings.agent.transport === "stdio"
-      && resolvedExecutionNodeId
-      && localNodeId
-      && resolvedExecutionNodeId !== localNodeId
-    ) {
+    const target = await resolveWorkspaceExecutionTarget(
+      { serverSettings: settings, executionNodeId },
+      { localNodeId },
+    );
+    if (target.kind === "mesh") {
       return new MeshCommandExecutor({
         workspaceId: crypto.randomUUID(),
         directory,
-        executionNodeId: resolvedExecutionNodeId,
+        executionNodeId: target.nodeId,
         provider: settings.agent.provider,
         localUserId: requireCurrentUserId(),
         requestTimeoutMs: this.connectionTimeoutMs,
@@ -687,26 +709,25 @@ class BackendManager {
       return status;
     }
 
-    if (settings.agent.transport === "stdio") {
+    const target = await resolveWorkspaceExecutionTarget(workspace);
+    if (target.kind === "local") {
+      status.executionAvailability = "local";
+    } else if (target.kind === "mesh") {
       const localNodeId = await this.getLocalMeshNodeId();
-      const executionNodeId = workspace.executionNodeId ?? localNodeId;
-      if (executionNodeId === localNodeId) {
-        status.executionAvailability = "local";
-      } else {
-        const link = await getMeshLinkForLocalUser(requireCurrentUserId());
-        const member = link
-          ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === executionNodeId)
-          : undefined;
-        const node = await getMeshNode(executionNodeId);
-        status.executionAvailability = (
-          link?.status === "active"
-          && member?.status === "active"
-          && node?.status === "active"
-          && Boolean(member.endpoint ?? node.endpoint)
-        )
-          ? "remote-connected"
-          : "remote-unavailable";
-      }
+      const link = await getMeshLinkForLocalUser(requireCurrentUserId());
+      const member = link
+        ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === target.nodeId)
+        : undefined;
+      const node = await getMeshNode(target.nodeId);
+      status.executionAvailability = (
+        target.nodeId !== localNodeId
+        && link?.status === "active"
+        && member?.status === "active"
+        && node?.status === "active"
+        && Boolean(member.endpoint ?? node.endpoint)
+      )
+        ? "remote-connected"
+        : "remote-unavailable";
     } else {
       status.executionAvailability = "local";
     }
@@ -843,6 +864,9 @@ class BackendManager {
       workspaceId,
       localNodeId: workspaceState.localNodeId ?? null,
       executionNodeId: workspaceState.executionNodeId ?? null,
+      executionTargetKind: workspaceState.executionTargetKind
+        ?? (workspaceState.settings.agent.transport === "ssh" ? "ssh" : "local"),
+      executionTargetKey: workspaceState.executionTargetKey ?? "",
     });
     this.taskConnections.set(taskId, {
       backend,
@@ -936,10 +960,8 @@ class BackendManager {
     };
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
     const executionNodeId = state.executionNodeId;
-    const executor = state.settings.agent.transport === "stdio"
+    const executor = state.executionTargetKind === "mesh"
       && executionNodeId
-      && state.localNodeId
-      && executionNodeId !== state.localNodeId
       ? new MeshCommandExecutor({
         workspaceId,
         directory: dir,

@@ -7,7 +7,7 @@ import type {
   WebAppRootProps,
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
+import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
@@ -41,6 +41,8 @@ export type SshSessionActionTarget =
   | { kind: "workspace"; id: string; name: string }
   | { kind: "standalone"; id: string; name: string; serverId: string };
 
+export type TerminalSessionActionTarget = { id: string; name: string };
+
 type SearchableSidebarNode = PrivateSidebarNode & {
   searchText?: string;
 };
@@ -67,6 +69,9 @@ export interface ShellSidebarActionHandlers {
   stopSidebarTask: (task: Task) => void | Promise<void>;
   openRenameSshSession: (target: SshSessionActionTarget) => void;
   openDeleteSshSession: (target: SshSessionActionTarget) => void;
+  toggleTerminalSessionPrivate: (session: WorkspaceTerminalSession) => void | Promise<void>;
+  openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
+  openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
   pullLatestWorkspaceChanges: (workspaceId: string) => void | Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
   toggleWorkspaceArchived: (workspace: Workspace) => void | Promise<void>;
@@ -241,6 +246,10 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
     case "ssh":
       return getRouteString(route, "sshSessionId")
         ? { view: "ssh", sshSessionId: getRouteString(route, "sshSessionId")! }
+        : null;
+    case "terminal":
+      return getRouteString(route, "terminalSessionId")
+        ? { view: "terminal", terminalSessionId: getRouteString(route, "terminalSessionId")! }
         : null;
     case "workspace":
     case "workspace-files":
@@ -443,17 +452,15 @@ function getWorkspaceSidebarActions(
           ),
         },
       ] : []),
-      ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
-        ? [{
-            id: "new-ssh-session",
-            label: "New SSH Session",
-            onClick: () => handlers.navigateWithinShell({
-              view: "compose",
-              kind: "ssh-session",
-              workspaceId,
-            }),
-          }]
-        : []),
+      {
+        id: "new-terminal-session",
+        label: "New Terminal",
+        onClick: () => handlers.navigateWithinShell({
+          view: "compose",
+          kind: "terminal-session",
+          workspaceId,
+        }),
+      },
       {
         id: workspaceArchived ? "unarchive-workspace" : "archive-workspace",
         label: workspaceArchiving
@@ -553,6 +560,29 @@ function getSshSessionSidebarActions(
       return;
     }
     void handlers.toggleStandaloneSshSessionPrivate(target.serverId, session as SshServerSession);
+  });
+}
+
+function getTerminalSessionSidebarActions(
+  target: TerminalSessionActionTarget,
+  session: WorkspaceTerminalSession,
+  handlers: ShellSidebarActionHandlers,
+): ActionMenuItem[] {
+  const baseActions = sidebarActionItems([
+    {
+      id: "rename-terminal-session",
+      label: "Rename",
+      onClick: () => handlers.openRenameTerminalSession(target),
+    },
+    {
+      id: "delete-terminal-session",
+      label: "Delete Session",
+      destructive: true,
+      onClick: () => handlers.openDeleteTerminalSession(target),
+    },
+  ]);
+  return withPrivateToggleAction(baseActions, session.config, () => {
+    void handlers.toggleTerminalSessionPrivate(session);
   });
 }
 
@@ -677,6 +707,32 @@ function buildSidebarNodes(
       }, privateHidden);
     }
 
+    // Workspace terminal sessions (canonical terminal domain)
+    if (item.kind === "terminal-session") {
+      const terminalId = item.sessionNode.session.config.id;
+      const terminalSession = item.sessionNode.session;
+      const privateHidden = getPrivateHidden(terminalSession.config, [item.workspace], handlers.showPrivateItems);
+      const terminalActions = getTerminalSessionSidebarActions({
+        id: terminalId,
+        name: terminalSession.config.name,
+      }, terminalSession, handlers);
+      return privateSidebarPresentation({
+        type: "item",
+        id: item.key,
+        title: item.sessionNode.title,
+        subtitle: item.workspaceName,
+        badge: item.sessionNode.badge,
+        badgeVariant: item.sessionNode.badgeVariant,
+        badgeAppearance: "text",
+        itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem("Terminal"),
+        route: { view: "ssh", sshSessionId: terminalId },
+        actions: privateActions(terminalActions, privateHidden, terminalSession.config.isPrivate === true),
+        pinnable: true,
+        pinId: item.key,
+      }, privateHidden);
+    }
+
     const sessionId = item.kind === "ssh-session"
       ? item.sessionNode.session.config.id
       : item.sessionNode.id;
@@ -704,8 +760,8 @@ function buildSidebarNodes(
       badgeVariant: item.sessionNode.badgeVariant,
       badgeAppearance: "text",
       itemLayout: "subtitle-above-title",
-      render: renderActiveWorkSidebarItem("SSH session"),
-      route: { view: "ssh", sshSessionId: sessionId },
+      render: renderActiveWorkSidebarItem("Terminal"),
+      route: { view: "terminal", terminalSessionId: sessionId },
       actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
       pinnable: true,
       pinId: item.key,
@@ -847,38 +903,37 @@ function buildSidebarNodes(
       },
       {
         type: "section",
-        id: `workspace:${workspaceId}:ssh-sessions`,
-        title: "SSH sessions",
+        id: `workspace:${workspaceId}:terminal-sessions`,
+        title: "Terminals",
         action: {
-          id: "new-ssh-session",
-          title: "New SSH session",
+          id: "new-terminal-session",
+          title: "New terminal",
           label: "New",
           route: workspacePrivateHidden
             ? undefined
-            : { view: "compose", kind: "ssh-session", workspaceId },
+            : { view: "compose", kind: "terminal-session", workspaceId },
         },
-        children: workspaceNode.sshSessions.map((sessionNode): SidebarNode => {
+        children: workspaceNode.terminalSessions.map((terminalNode): SidebarNode => {
           const privateHidden = getPrivateHidden(
-            sessionNode.session.config,
+            terminalNode.session.config,
             [workspaceNode.workspace],
             handlers.showPrivateItems,
           );
-          const actions = getSshSessionSidebarActions({
-            kind: "workspace",
-            id: sessionNode.session.config.id,
-            name: sessionNode.session.config.name,
-          }, sessionNode.session, handlers);
+          const actions = getTerminalSessionSidebarActions({
+            id: terminalNode.session.config.id,
+            name: terminalNode.session.config.name,
+          }, terminalNode.session, handlers);
           return privateSidebarPresentation({
             type: "item",
-            id: `ssh-session:${sessionNode.session.config.id}`,
-            title: sessionNode.title,
-            subtitle: sessionNode.subtitle,
-            badge: sessionNode.badge,
-            badgeVariant: sessionNode.badgeVariant,
-            route: { view: "ssh", sshSessionId: sessionNode.session.config.id },
-            actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
+            id: `terminal-session:${terminalNode.session.config.id}`,
+            title: terminalNode.title,
+            subtitle: terminalNode.subtitle,
+            badge: terminalNode.badge,
+            badgeVariant: terminalNode.badgeVariant,
+            route: { view: "terminal", terminalSessionId: terminalNode.session.config.id },
+            actions: privateActions(actions, privateHidden, terminalNode.session.config.isPrivate === true),
             pinnable: true,
-            pinId: `ssh-session:${sessionNode.session.config.id}`,
+            pinId: `terminal-session:${terminalNode.session.config.id}`,
           }, privateHidden);
         }),
       },

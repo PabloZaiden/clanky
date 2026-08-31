@@ -11,6 +11,7 @@ interface InfoTabProps {
   onOpenTaskFiles: () => void;
   sshConnecting: boolean;
   onConnectViaSsh: () => void;
+  onConnectTerminal: () => void;
   planningSettingsSubmitting: boolean;
   onUpdatePlanningSettings: (
     request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">,
@@ -22,7 +23,8 @@ export function InfoTab({
   labels,
   onOpenTaskFiles,
   sshConnecting,
-  onConnectViaSsh,
+  onConnectViaSsh: _onConnectViaSsh,
+  onConnectTerminal,
   planningSettingsSubmitting,
   onUpdatePlanningSettings,
 }: InfoTabProps) {
@@ -226,7 +228,7 @@ export function InfoTab({
           </button>
 
           <button
-            onClick={onConnectViaSsh}
+            onClick={onConnectTerminal}
             disabled={sshConnecting}
             className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -235,10 +237,10 @@ export function InfoTab({
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {sshConnecting ? "Connecting..." : "Connect via ssh"}
+                {sshConnecting ? "Connecting..." : "Open terminal"}
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                Open or reconnect to this task&apos;s persistent SSH session
+                Open or reconnect to this task&apos;s persistent terminal session
               </div>
             </div>
             <span className="text-gray-400 dark:text-gray-500">→</span>

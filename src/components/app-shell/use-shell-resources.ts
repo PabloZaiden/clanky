@@ -16,6 +16,7 @@ import {
   useSshSessions,
   useTaskGrouping,
   useTasks,
+  useTerminalSessions,
   useWorkspaces,
 } from "../../hooks";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
@@ -69,17 +70,26 @@ export function useShellResources(route: WebAppRoute) {
     updateSession: updateStandaloneSession,
     deleteSession: deleteStandaloneSession,
   } = useSshServers({ realtime: false });
+  const {
+    sessions: terminalSessions,
+    loading: terminalSessionsLoading,
+    error: terminalSessionsError,
+    refresh: refreshTerminalSessions,
+    createSession: createTerminalSession,
+    updateSession: updateTerminalSession,
+    deleteSession: deleteTerminalSession,
+  } = useTerminalSessions({ realtime: false });
 
   const refreshSshSessionsAndServers = useCallback(async (): Promise<void> => {
     await Promise.all([
       refreshSshSessions({ showLoading: false }),
       refreshSshServers({ showLoading: false }),
+      refreshTerminalSessions({ showLoading: false }),
     ]);
-  }, [refreshSshServers, refreshSshSessions]);
+  }, [refreshSshServers, refreshSshSessions, refreshTerminalSessions]);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions"],
-    filters: { resource: "ssh-sessions" },
+    resources: ["ssh-sessions", "terminal-sessions"],
     refresh: refreshSshSessionsAndServers,
     onReconnect: refreshSshSessionsAndServers,
   });
@@ -119,8 +129,9 @@ export function useShellResources(route: WebAppRoute) {
       tasks,
       chats,
       sessions,
+      terminalSessions,
     }),
-    [chats, tasks, sessions, workspaces],
+    [chats, tasks, sessions, terminalSessions, workspaces],
   );
   const serverNodes = useMemo(
     () => buildServerSidebarNodes({
@@ -155,6 +166,7 @@ export function useShellResources(route: WebAppRoute) {
     || tasksLoading
     || sshSessionsLoading
     || sshServersLoading
+    || terminalSessionsLoading
     || workspacesLoading
     || agents.loading;
   const shellErrors = [
@@ -162,6 +174,7 @@ export function useShellResources(route: WebAppRoute) {
     tasksError,
     sshSessionsError,
     sshServersError,
+    terminalSessionsError,
     workspaceError,
     agents.error,
   ].filter((error): error is string => Boolean(error));
@@ -214,6 +227,13 @@ export function useShellResources(route: WebAppRoute) {
     createStandaloneSession,
     updateStandaloneSession,
     deleteStandaloneSession,
+    terminalSessions,
+    terminalSessionsLoading,
+    terminalSessionsError,
+    refreshTerminalSessions,
+    createTerminalSession,
+    updateTerminalSession,
+    deleteTerminalSession,
     workspaces,
     workspacesLoading,
     workspacesSaving,

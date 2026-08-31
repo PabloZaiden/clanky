@@ -1,7 +1,7 @@
 import { useMemo, type ComponentType } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
-import type { CreateSshSessionRequest } from "@/contracts";
+import type { Chat, Task, SshConnectionMode, SshSession, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { CreateSshSessionRequest, CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { FileExplorerView } from "./file-explorer-view";
@@ -18,9 +18,11 @@ interface CodeExplorerViewProps {
   chats: Chat[];
   workspaces: Workspace[];
   sessions: SshSession[];
+  terminalSessions: WorkspaceTerminalSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
   createStandaloneSession: (
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
@@ -35,9 +37,11 @@ export function CodeExplorerView({
   chats,
   workspaces,
   sessions,
+  terminalSessions,
   servers,
   sessionsByServerId,
   createSession,
+  createTerminalSession,
   createStandaloneSession,
   onNavigate,
   sshSessionDetailsComponent,
@@ -55,9 +59,11 @@ export function CodeExplorerView({
     chats,
     workspaces,
     sessions,
+    terminalSessions,
     servers,
     sessionsByServerId,
     createSession,
+    createTerminalSession,
     createStandaloneSession,
   });
 

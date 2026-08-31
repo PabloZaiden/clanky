@@ -516,7 +516,7 @@ describe("Plan Mode API Integration", () => {
   });
 
   describe("POST /api/tasks/:id/plan/accept", () => {
-    test("accepts the plan in open_ssh mode and returns the linked ssh session", async () => {
+    test("accepts the plan in legacy open_ssh mode and returns the linked terminal session", async () => {
       const sshWorkDir = await createTestWorkDir();
       try {
         const sshWorkspaceId = await getOrCreateWorkspace(sshWorkDir, "SSH Test Workspace", {
@@ -558,8 +558,8 @@ describe("Plan Mode API Integration", () => {
         expect(acceptResponse.status).toBe(200);
         const data = await acceptResponse.json();
         expect(data.success).toBe(true);
-        expect(data.mode).toBe("open_ssh");
-        expect(data.sshSession?.config?.taskId).toBe(id);
+        expect(data.mode).toBe("open_terminal");
+        expect(data.terminalSession?.config?.taskId).toBe(id);
 
         const task = await waitForStatus(id, ["completed"]);
         expect((task["state"] as { status: string }).status).toBe("completed");

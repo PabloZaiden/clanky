@@ -142,6 +142,7 @@ export function TaskDetailsTabContent({
           onOpenTaskFiles={actions.handleOpenTaskFiles}
           sshConnecting={actions.sshConnecting}
           onConnectViaSsh={actions.handleConnectViaSsh}
+          onConnectTerminal={actions.handleConnectTerminal}
           planningSettingsSubmitting={actions.planningSettingsSubmitting}
           onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />

@@ -15,7 +15,7 @@ import type {
   Chat,
   ReviewComment,
   SshServer,
-  SshSession,
+  WorkspaceTerminalSession,
   WorkspaceFileEntry,
   WorkspaceFileKind,
   WorkspaceFileNode,
@@ -50,6 +50,8 @@ import {
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   CreateProvisioningJobRequestSchema,
+  CreateTerminalSessionRequestSchema,
+  UpdateTerminalSessionRequestSchema,
   ListFileExplorerRequestSchema,
   GetFileExplorerTreeRequestSchema,
   GetFileExplorerFileRequestSchema,
@@ -407,6 +409,16 @@ export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 export type UpdateSshSessionRequest = z.infer<typeof UpdateSshSessionRequestSchema>;
 
 /**
+ * Request body for POST /api/terminal-sessions.
+ */
+export type CreateTerminalSessionRequest = z.infer<typeof CreateTerminalSessionRequestSchema>;
+
+/**
+ * Request body for PATCH /api/terminal-sessions/:id.
+ */
+export type UpdateTerminalSessionRequest = z.infer<typeof UpdateTerminalSessionRequestSchema>;
+
+/**
  * Request body for POST /api/ssh-servers.
  */
 export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema>;
@@ -577,9 +589,9 @@ export type PlanAcceptResponse =
   | {
       success: true;
       /** Which acceptance path was taken */
-      mode: "open_ssh";
-      /** Linked SSH session created or reused for the task */
-      sshSession: SshSession;
+      mode: "open_terminal";
+      /** Linked workspace terminal session created or reused for the task */
+      terminalSession: WorkspaceTerminalSession;
     };
 
 /**

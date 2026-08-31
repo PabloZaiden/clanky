@@ -33,9 +33,13 @@ export function ServerFilesView({
       chats={[]}
       workspaces={[]}
       sessions={[]}
+      terminalSessions={[]}
       servers={[server]}
       sessionsByServerId={{ [server.config.id]: sessions }}
       createSession={createSession}
+      createTerminalSession={async () => {
+        throw new Error("Workspace terminal sessions are unavailable in server code explorer context.");
+      }}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
     />

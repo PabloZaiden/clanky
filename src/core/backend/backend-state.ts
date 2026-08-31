@@ -34,6 +34,8 @@ export interface WorkspaceConnectionState {
   connectionError: string | null;
   executionNodeId?: string | null;
   localNodeId?: string | null;
+  executionTargetKind?: "local" | "mesh" | "ssh";
+  executionTargetKey?: string;
 }
 
 /**

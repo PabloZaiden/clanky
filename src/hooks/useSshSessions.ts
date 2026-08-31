@@ -114,8 +114,7 @@ export function useSshSessions({ realtime = true }: UseSshSessionsOptions = {}):
   }, []);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions"],
-    filters: { resource: "ssh-sessions" },
+    resources: ["ssh-sessions", "terminal-sessions"],
     enabled: realtime,
     refresh: refreshInBackground,
     onReconnect: refreshInBackground,

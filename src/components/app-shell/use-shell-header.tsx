@@ -68,6 +68,7 @@ interface UseShellHeaderOptions {
   agents: UseAgentsResult;
   servers: SshServer[];
   sessions: SshSession[];
+  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   workspaces: Workspace[];
   editingAgentId: ShellDialogComposition["editingAgentId"];
@@ -177,6 +178,20 @@ function getSshSessionScopeSubtitle({
   return undefined;
 }
 
+function getTerminalSessionScopeSubtitle(
+  terminalSessionId: string | undefined,
+  terminalSessions: import("@/shared").WorkspaceTerminalSession[],
+  workspaces: Workspace[],
+): string | undefined {
+  if (!terminalSessionId) {
+    return undefined;
+  }
+  const terminalSession = terminalSessions.find((session) => session.config.id === terminalSessionId);
+  return terminalSession
+    ? getWorkspaceScopeSubtitle(terminalSession.config.workspaceId, workspaces)
+    : undefined;
+}
+
 interface HeaderScopeOptions {
   route: WebAppRoute;
   composeKind: string | undefined;
@@ -189,6 +204,7 @@ interface HeaderScopeOptions {
   selectedAgent: Agent | null;
   agentRunWorkspaceId: string | undefined;
   sessions: SshSession[];
+  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   servers: SshServer[];
   workspaces: Workspace[];
@@ -206,6 +222,7 @@ function getHeaderScopeSubtitle({
   selectedAgent,
   agentRunWorkspaceId,
   sessions,
+  terminalSessions,
   sessionsByServerId,
   servers,
   workspaces,
@@ -225,6 +242,12 @@ function getHeaderScopeSubtitle({
         workspaces,
         servers,
       });
+    case "terminal":
+      return getTerminalSessionScopeSubtitle(
+        getRouteString(route, "terminalSessionId"),
+        terminalSessions,
+        workspaces,
+      );
     case "agent":
       return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId, workspaces);
     case "agent-run":
@@ -281,6 +304,7 @@ export function useShellHeader({
   agents,
   servers,
   sessions,
+  terminalSessions,
   sessionsByServerId,
   workspaces,
   editingAgentId,
@@ -323,6 +347,7 @@ export function useShellHeader({
       selectedAgent,
       agentRunWorkspaceId: agentRun?.configSnapshot.workspaceId,
       sessions,
+      terminalSessions,
       sessionsByServerId,
       servers,
       workspaces,
@@ -356,6 +381,8 @@ export function useShellHeader({
           : { title: "Chat transcript" };
       case "ssh":
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "SSH session" };
+      case "terminal":
+        return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "Terminal" };
       case "workspace":
         if (!nodeModel) {
           return {
@@ -555,6 +582,7 @@ export function useShellHeader({
     selectedTask,
     selectedWorkspace,
     sessions,
+    terminalSessions,
     servers,
     sessionsByServerId,
     taskId,

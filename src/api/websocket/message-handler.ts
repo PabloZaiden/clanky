@@ -5,6 +5,8 @@ import type { WebSocketData } from "./types";
 import type { startTerminalBridge, sendTerminalAuthError } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
+import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
+import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 
 const log = createLogger("api:websocket");
 
@@ -27,6 +29,26 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           error: String(error),
         });
         ws.close(1003, "Invalid mesh ACP message");
+      });
+      return;
+    }
+
+    if (
+      ws.data.meshTerminalMode
+      && ws.data.meshTerminalSessionId
+      && ws.data.meshTerminalSessionToken
+    ) {
+      void meshTerminalGateway.message(
+        ws.data.meshTerminalSessionId,
+        ws.data.meshTerminalSessionToken,
+        msg,
+        ws,
+      ).catch((error: Error) => {
+        log.warn("Mesh terminal relay message failed", {
+          sessionId: ws.data.meshTerminalSessionId,
+          error: String(error),
+        });
+        ws.close(1003, "Invalid Mesh terminal message");
       });
       return;
     }
@@ -98,6 +120,10 @@ export function createMessageHandler(helpers: TerminalHelpers) {
 
       if (ws.data.terminalMode && ws.data.terminalBridge) {
         if (data.type === "terminal.input" && typeof data.data === "string") {
+          if (Buffer.byteLength(data.data, "utf8") > MESH_TERMINAL_MAX_INPUT_BYTES) {
+            ws.close(1009, "Terminal input is too large");
+            return;
+          }
           ws.data.terminalBridge.sendInput(data.data);
           return;
         }
@@ -109,14 +135,15 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           if (!ws.data.user) {
             helpers.sendTerminalAuthError(
               ws,
-              "Authenticated user context is required for SSH terminal resize",
+              "Authenticated user context is required for terminal resize",
             );
             return;
           }
           const resize = () => ws.data.terminalBridge!.resize(data.cols, data.rows);
           const resizePromise = runWithCurrentUser(ws.data.user, resize);
           void resizePromise.catch((resizeError: Error) => {
-            log.warn("Ignoring SSH terminal resize error", {
+            log.warn("Ignoring terminal resize error", {
+              terminalSessionId: ws.data.workspaceTerminalSessionId,
               sshSessionId: ws.data.sshSessionId,
               sshServerSessionId: ws.data.sshServerSessionId,
               error: String(resizeError),

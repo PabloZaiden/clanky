@@ -29,6 +29,9 @@ const sidebarHandlers = {
   stopSidebarTask: () => undefined,
   openRenameSshSession: () => undefined,
   openDeleteSshSession: () => undefined,
+  toggleTerminalSessionPrivate: () => undefined,
+  openRenameTerminalSession: () => undefined,
+  openDeleteTerminalSession: () => undefined,
   pullLatestWorkspaceChanges: () => undefined,
   pullingLatestWorkspaceIds: new Set<string>(),
   toggleWorkspaceArchived: () => undefined,
@@ -69,6 +72,7 @@ function createWorkspaceGroup(workspace: Workspace): SidebarWorkspaceGroupNode {
       chats: [],
       historyChats: [],
       sshSessions: [],
+      terminalSessions: [],
       hasActivity: false,
     }],
   };

@@ -37,9 +37,13 @@ export function WorkspaceFilesView({
       chats={[]}
       workspaces={[workspace]}
       sessions={sessions}
+      terminalSessions={[]}
       servers={[]}
       sessionsByServerId={{}}
       createSession={createSession}
+      createTerminalSession={async () => {
+        throw new Error("Workspace terminal sessions are unavailable in workspace files context.");
+      }}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
       sshSessionDetailsComponent={sshSessionDetailsComponent}

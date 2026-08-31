@@ -6,6 +6,8 @@ import { DomainError } from "./domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
 import { managedCredentialService } from "./managed-credential-service";
+import { terminalSessionManager } from "./terminal-session-manager";
+import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -91,6 +93,16 @@ export async function deleteWorkspaceWithOptions(
   id: string,
   options: DeleteWorkspaceOptions = {},
 ): Promise<DeleteWorkspaceResult> {
+  return await withWorkspaceExecutionLock(
+    id,
+    async () => await deleteWorkspaceWithOptionsUnlocked(id, options),
+  );
+}
+
+async function deleteWorkspaceWithOptionsUnlocked(
+  id: string,
+  options: DeleteWorkspaceOptions,
+): Promise<DeleteWorkspaceResult> {
   if (workspaceDeletionLocks.has(id)) {
     return deletionFailure(
       "workspace_deletion_in_progress",
@@ -136,6 +148,7 @@ export async function deleteWorkspaceWithOptions(
       await deleteProvisionedServerDirectory(workspace, options.credentialToken);
     }
 
+    await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {

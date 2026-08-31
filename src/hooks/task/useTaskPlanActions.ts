@@ -18,7 +18,7 @@ const log = createLogger("useTask");
 
 export interface UseTaskPlanActionsResult {
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  acceptPlan: (mode?: "start_task" | "open_ssh") => Promise<AcceptPlanResult>;
+  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
 }
 
@@ -59,7 +59,7 @@ export function useTaskPlanActions(params: UseTaskActionsParams): UseTaskPlanAct
   );
 
   const acceptPlan = useCallback(
-    async (mode: "start_task" | "open_ssh" = "start_task"): Promise<AcceptPlanResult> => {
+    async (mode: "start_task" | "open_terminal" = "start_task"): Promise<AcceptPlanResult> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction<AcceptPlanResult>("acceptPlan", actionTaskId, {
         success: false,

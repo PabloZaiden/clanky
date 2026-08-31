@@ -49,7 +49,7 @@ export function TaskDetails({
        stopTask, setPending, sendFollowUp, loadToolDetails,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
       sendPlanFeedback, acceptPlan, discardPlan,
-     addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh,
+     addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh, connectTerminal,
     } = useTask(taskId);
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
@@ -79,7 +79,7 @@ export function TaskDetails({
      },
       toast,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
-      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
+      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, connectTerminal, update,
       fetchReviewComments: content.fetchReviewComments,
     });
   const { models, modelsLoading } = useAvailableModels({ workspaceId: task?.config.workspaceId });

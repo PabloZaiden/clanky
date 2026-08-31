@@ -9,6 +9,7 @@ import {
   enablePullRequestAutoMergeApi,
   sendFollowUpApi,
   getOrCreateTaskSshSessionApi,
+  getOrCreateTaskTerminalSessionApi,
   type AddressCommentsResult,
   type PullRequestAutoMergeResult,
   startAutomaticPrFlowApi,
@@ -16,7 +17,7 @@ import {
   type AutomaticPrFlowResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { SshSession } from "@/shared";
+import type { SshSession, WorkspaceTerminalSession } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
@@ -33,6 +34,7 @@ export interface UseTaskFollowUpActionsResult {
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
+  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 
 export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFollowUpActionsResult {
@@ -236,6 +238,39 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     }
   }, [isActiveTask, taskId, setError]);
 
+  const connectTerminal = useCallback(async (): Promise<WorkspaceTerminalSession | null> => {
+    const actionTaskId = taskId;
+    if (!isActiveTask(actionTaskId)) {
+      log.debug("Ignoring stale task action", {
+        actionName: "connectTerminal",
+        expectedTaskId: actionTaskId,
+        activeTaskId: "(stale)",
+      });
+      return null;
+    }
+    log.debug("Connecting task terminal session", { taskId: actionTaskId });
+    try {
+      const session = await getOrCreateTaskTerminalSessionApi(actionTaskId);
+      if (!isActiveTask(actionTaskId)) {
+        return null;
+      }
+      return session;
+    } catch (err) {
+      if (!isActiveTask(actionTaskId)) {
+        log.debug("Ignoring stale task action error", {
+          actionName: "connectTerminal",
+          expectedTaskId: actionTaskId,
+          activeTaskId: "(stale)",
+          error: String(err),
+        });
+        return null;
+      }
+      log.error("Failed to connect task terminal session", { taskId: actionTaskId, error: String(err) });
+      setError(String(err));
+      return null;
+    }
+  }, [isActiveTask, taskId, setError]);
+
   return {
     addressReviewComments,
     enablePullRequestAutoMerge,
@@ -243,5 +278,6 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     stopAutomaticPrFlow,
     sendFollowUp,
     connectViaSsh,
+    connectTerminal,
   };
 }

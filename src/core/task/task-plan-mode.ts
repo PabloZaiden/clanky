@@ -6,7 +6,7 @@ import {
 } from "../../persistence/tasks";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
-import { sshSessionManager } from "../ssh-session-manager";
+import { terminalSessionManager } from "../terminal-session-manager";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
@@ -77,13 +77,13 @@ export async function acceptPlanImpl(
   const planServerUrl = engine.state.session?.serverUrl;
   const now = createTimestamp();
 
-  const targetStatus = mode === "open_ssh" ? "completed" : "starting";
+  const targetStatus = mode === "open_terminal" ? "completed" : "starting";
   assertValidTransition(engine.state.status, targetStatus, "acceptPlan");
   const updatedState: Partial<TaskState> = {
     status: targetStatus,
     startedAt: engine.state.startedAt ?? now,
-    completedAt: mode === "open_ssh" ? now : engine.state.completedAt,
-    pendingPrompt: mode === "open_ssh" ? undefined : engine.state.pendingPrompt,
+    completedAt: mode === "open_terminal" ? now : engine.state.completedAt,
+    pendingPrompt: mode === "open_terminal" ? undefined : engine.state.pendingPrompt,
     fullyAutonomousPending: engine.config.fullyAutonomous === true && mode === "start_task",
     planMode: {
       ...engine.state.planMode,
@@ -107,18 +107,18 @@ export async function acceptPlanImpl(
     timestamp: now,
   });
 
-  if (mode === "open_ssh") {
+  if (mode === "open_terminal") {
     ctx.emitter.emit({
-      type: "task.ssh_handoff",
+      type: "task.terminal_handoff",
       taskId,
       totalIterations: engine.state.currentIteration,
       timestamp: now,
     });
 
-    const sshSession = await sshSessionManager.getOrCreateTaskSession(taskId);
+    const terminalSession = await terminalSessionManager.getOrCreateTaskSession(taskId);
     return {
       mode,
-      sshSession,
+      terminalSession,
     };
   }
 

@@ -1,11 +1,16 @@
 import type { ServerWebSocket } from "bun";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
-import { startTerminalBridge } from "./terminal";
+import {
+  releaseWorkspaceTerminalSocket,
+  startTerminalBridge,
+  startWorkspaceTerminalBridge,
+} from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
 import { runWithCurrentUser } from "../../core/user-context";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
+import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
 
 const log = createLogger("api:websocket");
 
@@ -48,6 +53,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
     sshSessionId,
     sshServerSessionId,
+    workspaceTerminalSessionId,
     terminalMode,
     vncMode,
     vncSessionId,
@@ -55,6 +61,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     meshAcpMode,
     meshAcpSessionId,
     meshAcpSessionToken,
+    meshTerminalMode,
+    meshTerminalSessionId,
+    meshTerminalSessionToken,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -77,6 +86,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     previewBridgeMode: previewBridgeMode ?? false,
     sshSessionId: sshSessionId ?? "none",
     sshServerSessionId: sshServerSessionId ?? "none",
+    workspaceTerminalSessionId: workspaceTerminalSessionId ?? "none",
     vncSessionId: vncSessionId ?? "none",
     activeConnections: activeConnections.size,
   });
@@ -96,6 +106,26 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       });
       ws.close(1011, "Mesh ACP relay unavailable");
     });
+    return;
+  }
+
+  if (meshTerminalMode && meshTerminalSessionId && meshTerminalSessionToken) {
+    void meshTerminalGateway.open(
+      ws,
+      meshTerminalSessionId,
+      meshTerminalSessionToken,
+    ).catch((error: Error) => {
+      log.warn("Failed to open Mesh terminal relay", {
+        sessionId: meshTerminalSessionId,
+        error: String(error),
+      });
+      ws.close(1011, "Mesh terminal relay unavailable");
+    });
+    return;
+  }
+
+  if (terminalMode && workspaceTerminalSessionId) {
+    void startWorkspaceTerminalBridge(ws);
     return;
   }
 
@@ -163,6 +193,12 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
+  ws.data.workspaceTerminalAttachment?.release();
+  ws.data.workspaceTerminalAttachment = undefined;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId ?? ws.data.sshSessionId;
+  if (workspaceTerminalSessionId) {
+    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  }
 
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
@@ -174,6 +210,9 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
     void meshAcpGateway.close(ws.data.meshAcpSessionId);
+  }
+  if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
+    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
   }
   clearPreviewBridgeKeepalive(ws);
 }
@@ -197,6 +236,12 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
+  ws.data.workspaceTerminalAttachment?.release();
+  ws.data.workspaceTerminalAttachment = undefined;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId ?? ws.data.sshSessionId;
+  if (workspaceTerminalSessionId) {
+    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  }
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
     ws.data.vncSocket = undefined;
@@ -206,6 +251,9 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
     void meshAcpGateway.close(ws.data.meshAcpSessionId);
+  }
+  if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
+    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
   }
   clearPreviewBridgeKeepalive(ws);
 }

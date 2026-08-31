@@ -23,6 +23,8 @@ import {
   type DeleteWorkspaceResult,
 } from "./workspace-deletion";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
+import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
 import {
   getMeshLinkForLocalUser,
@@ -30,6 +32,7 @@ import {
   listMeshLinkMembers,
 } from "../persistence/mesh";
 import { requireCurrentUserId } from "./user-context";
+import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 
 const log = createLogger("core:workspace-manager");
 
@@ -45,7 +48,7 @@ export interface CreateWorkspaceInput {
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "serverSettings" | "executionNodeId" | "isPrivate" | "archived" | "allowClankyContext">
+  Pick<Workspace, "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
 >;
 
 export type WorkspaceDirectoryValidation = Awaited<
@@ -107,6 +110,7 @@ function createWorkspaceRecordFromInput(
     directory: input.directory,
     workspaceType: input.workspaceType,
     executionNodeId: null,
+    executionTargetRevision: 1,
     serverSettings: input.serverSettings,
     createdAt: now,
     updatedAt: now,
@@ -121,36 +125,13 @@ export class WorkspaceManager {
     serverSettings: ServerSettings,
     executionNodeId?: string | null,
   ): Promise<string | null> {
-    if (serverSettings.agent.transport !== "stdio") {
+    const target = await resolveWorkspaceExecutionTarget(
+      { serverSettings, executionNodeId },
+    );
+    if (target.kind === "ssh") {
       return null;
     }
-    const identity = await ensureLocalMeshNodeIdentity();
-    const targetNodeId = executionNodeId ?? identity.nodeId;
-    if (targetNodeId === identity.nodeId) {
-      return targetNodeId;
-    }
-    const link = await getMeshLinkForLocalUser(requireCurrentUserId());
-    const member = link
-      ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === targetNodeId)
-      : undefined;
-    const node = await getMeshNode(targetNodeId);
-    if (
-      !link
-      || link.status !== "active"
-      || !member
-      || member.status === "pending"
-      || member.status === "revoked"
-      || !node
-      || node.status === "pending"
-      || node.status === "revoked"
-    ) {
-      throw new DomainError(
-        "workspace_execution_target_not_trusted",
-        "The selected stdio execution target is not a trusted mesh peer.",
-        { details: { executionNodeId: targetNodeId } },
-      );
-    }
-    return targetNodeId;
+    return target.kind === "mesh" ? target.nodeId : target.executionNodeId;
   }
 
   async getWorkspace(id: string): Promise<Workspace | null> {
@@ -257,6 +238,15 @@ export class WorkspaceManager {
     id: string,
     updates: UpdateWorkspaceInput,
   ): Promise<Workspace | null> {
+    return await withWorkspaceExecutionLock(id, async () => {
+      return await this.updateWorkspaceUnlocked(id, updates);
+    });
+  }
+
+  private async updateWorkspaceUnlocked(
+    id: string,
+    updates: UpdateWorkspaceInput,
+  ): Promise<Workspace | null> {
     const current = await this.getWorkspace(id);
     if (!current) {
       return null;
@@ -267,10 +257,21 @@ export class WorkspaceManager {
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
     const nextSettings = updates.serverSettings ?? current.serverSettings;
     const requestedExecutionNodeId = nextSettings.agent.transport === "stdio"
-      ? updates.executionNodeId
+      ? updates.executionNodeId ?? (
+        current.serverSettings.agent.transport === "stdio"
+          ? current.executionNodeId
+          : null
+      )
       : null;
-    const executionTargetChanged = updates.executionNodeId !== undefined
-      && requestedExecutionNodeId !== current.executionNodeId;
+    const currentTarget = await resolveWorkspaceExecutionTarget(
+      current,
+      { validateMeshTarget: false },
+    );
+    const nextTarget = await resolveWorkspaceExecutionTarget(
+      { serverSettings: nextSettings, executionNodeId: requestedExecutionNodeId },
+      { validateMeshTarget: false },
+    );
+    const executionTargetChanged = currentTarget.targetKey !== nextTarget.targetKey;
     const privateChanged = updates.isPrivate !== undefined
       && updates.isPrivate !== (current.isPrivate === true);
     const archivedChanged = updates.archived !== undefined
@@ -278,10 +279,30 @@ export class WorkspaceManager {
     const allowClankyContextChanged = updates.allowClankyContext !== undefined
       && updates.allowClankyContext !== (current.allowClankyContext === true);
 
-    if (!nameChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged) {
+    const devcontainerSubpathChanged = updates.devcontainerSubpath !== undefined
+      && updates.devcontainerSubpath !== current.devcontainerSubpath;
+
+    if (!nameChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !devcontainerSubpathChanged) {
       return current;
     }
 
+    if (executionTargetChanged) {
+      const terminalCount = await countTerminalSessionsByWorkspace(id);
+      if (terminalCount > 0) {
+        throw new DomainError(
+          "workspace_execution_target_in_use",
+          "Delete existing workspace terminals before changing the execution target.",
+          { details: { workspaceId: id, terminalCount } },
+        );
+      }
+    }
+
+    const resolvedNextTarget = serverSettingsChanged || updates.executionNodeId !== undefined
+      ? await resolveWorkspaceExecutionTarget({
+        serverSettings: nextSettings,
+        executionNodeId: requestedExecutionNodeId,
+      })
+      : nextTarget;
     const normalizedUpdates: UpdateWorkspaceInput = {};
     if (nameChanged) {
       normalizedUpdates.name = updates.name;
@@ -289,11 +310,15 @@ export class WorkspaceManager {
     if (serverSettingsChanged) {
       normalizedUpdates.serverSettings = updates.serverSettings;
     }
-    if (serverSettingsChanged || executionTargetChanged) {
-      normalizedUpdates.executionNodeId = await this.resolveExecutionNodeId(
-        nextSettings,
-        updates.executionNodeId ?? current.executionNodeId,
-      );
+    if (serverSettingsChanged || updates.executionNodeId !== undefined) {
+      normalizedUpdates.executionNodeId = resolvedNextTarget.kind === "ssh"
+        ? null
+        : resolvedNextTarget.kind === "mesh"
+          ? resolvedNextTarget.nodeId
+          : resolvedNextTarget.executionNodeId;
+    }
+    if (executionTargetChanged) {
+      normalizedUpdates.executionTargetRevision = (current.executionTargetRevision ?? 1) + 1;
     }
     if (privateChanged) {
       normalizedUpdates.isPrivate = updates.isPrivate;
@@ -303,6 +328,9 @@ export class WorkspaceManager {
     }
     if (allowClankyContextChanged) {
       normalizedUpdates.allowClankyContext = updates.allowClankyContext;
+    }
+    if (devcontainerSubpathChanged) {
+      normalizedUpdates.devcontainerSubpath = updates.devcontainerSubpath;
     }
 
     const workspace = await updateWorkspaceRecord(id, normalizedUpdates);

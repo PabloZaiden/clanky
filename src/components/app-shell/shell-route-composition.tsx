@@ -15,6 +15,7 @@ const ROUTE_VIEWS = [
   "task-files",
   "chat",
   "chat-transcript",
+  "terminal",
   "ssh",
   "workspace",
   "workspace-files",

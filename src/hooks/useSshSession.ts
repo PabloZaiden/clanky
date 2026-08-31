@@ -111,9 +111,11 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
   }, [refreshInternal]);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions"],
+    resources: sessionKind === "standalone"
+      ? ["ssh-sessions"]
+      : ["ssh-sessions", "terminal-sessions"],
     ids: [sessionId],
-    filters: { resource: "ssh-sessions", id: sessionId },
+    filters: { id: sessionId },
     enabled: sessionKind !== null,
     refresh: (event) => {
       if (event.action === "deleted") {

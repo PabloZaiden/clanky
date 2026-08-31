@@ -1,12 +1,13 @@
-import type { SshSession, SshConnectionMode, Workspace } from "@/shared";
+import type { SshSession, SshConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { CreateSshSessionRequest, CreateSshServerRequest } from "@/contracts";
+import type { CreateSshSessionRequest, CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
+import { TerminalSessionComposer } from "./terminal-session-composer";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
@@ -14,7 +15,7 @@ import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AgentComposer } from "./agents-view";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "terminal-session" | "ssh-server" | "ssh-server-chat";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
@@ -23,6 +24,7 @@ export function isComposeKind(value: string): value is ComposeKind {
     "agent",
     "workspace",
     "ssh-session",
+    "terminal-session",
     "ssh-server",
     "ssh-server-chat",
   ].includes(value);
@@ -53,6 +55,7 @@ interface ComposeViewProps {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   sessions: SshSession[];
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
   createStandaloneSession: (
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
@@ -89,6 +92,7 @@ export function ComposeView(props: ComposeViewProps) {
     workspaceCreate,
     sessions: _sessions,
     createSession,
+    createTerminalSession,
     createStandaloneSession,
     createServer,
     updateServer,
@@ -169,6 +173,24 @@ export function ComposeView(props: ComposeViewProps) {
         createChat={createChat}
         importExistingChat={importExistingChat}
         createSshServerChat={createSshServerChat}
+      />
+    );
+  }
+
+  if (kind === "terminal-session") {
+    return (
+      <TerminalSessionComposer
+        workspaces={workspaces}
+        initialWorkspaceId={composeWorkspace?.id}
+        onCancel={() =>
+          navigateWithinShell(
+            composeWorkspace
+              ? { view: "workspace", workspaceId: composeWorkspace.id }
+              : { view: "home" },
+          )
+        }
+        onNavigate={navigateWithinShell}
+        onCreateTerminalSession={createTerminalSession}
       />
     );
   }

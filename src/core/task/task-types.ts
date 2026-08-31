@@ -1,6 +1,6 @@
 import type { CheapModelSelection, TaskPromptMode, Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { SshSession } from "@/shared/ssh-session";
+import type { WorkspaceTerminalSession } from "@/shared/terminal-session";
 import type { TaskResult } from "./task-errors";
 export type {
   TaskFailure,
@@ -87,7 +87,7 @@ export interface GenerateTaskTitleOptions {
 }
 
 export interface AcceptPlanOptions {
-  mode?: "start_task" | "open_ssh";
+  mode?: "start_task" | "open_terminal";
   executionPrompt?: string;
   executionPromptMode?: TaskPromptMode;
 }
@@ -97,8 +97,8 @@ export type AcceptPlanResult =
       mode: "start_task";
     }
   | {
-      mode: "open_ssh";
-      sshSession: SshSession;
+      mode: "open_terminal";
+      terminalSession: WorkspaceTerminalSession;
     };
 
 /**

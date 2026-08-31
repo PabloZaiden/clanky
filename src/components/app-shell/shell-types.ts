@@ -1,6 +1,6 @@
 import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
 import { isStandaloneChat } from "@/shared/chat";
-import type { Agent, Chat, Task, SshSession, Workspace } from "@/shared";
+import type { Agent, Chat, Task, SshSession, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import {
   getChatStatusBadgeVariant,
@@ -14,6 +14,15 @@ export type SidebarWorkspaceGroupId = "all";
 
 export interface SidebarWorkspaceSessionNode {
   session: SshSession;
+  title: string;
+  subtitle: string;
+  badge: string;
+  badgeVariant: BadgeVariant;
+  createdAt: string;
+}
+
+export interface SidebarWorkspaceTerminalNode {
+  session: WorkspaceTerminalSession;
   title: string;
   subtitle: string;
   badge: string;
@@ -50,6 +59,7 @@ export interface SidebarWorkspaceNode {
   chats: SidebarChatNode[];
   historyChats: SidebarChatNode[];
   sshSessions: SidebarWorkspaceSessionNode[];
+  terminalSessions: SidebarWorkspaceTerminalNode[];
   hasActivity: boolean;
 }
 
@@ -105,6 +115,13 @@ export type SidebarActiveWorkItem =
       workspace: Workspace;
       workspaceName: string;
       sessionNode: SidebarWorkspaceSessionNode;
+    }
+  | {
+      kind: "terminal-session";
+      key: string;
+      workspace: Workspace;
+      workspaceName: string;
+      sessionNode: SidebarWorkspaceTerminalNode;
     }
   | {
       kind: "ssh-server-session";
@@ -164,6 +181,10 @@ export function getSshConnectionModeLabel(mode: "direct" | "dtach" | string): st
   return mode === "direct" ? "Direct SSH" : "Persistent SSH";
 }
 
+export function getTerminalConnectionModeLabel(mode: "direct" | "dtach" | string): string {
+  return mode === "direct" ? "Direct" : "Persistent";
+}
+
 export function getProvisioningStatusBadgeVariant(status: string | undefined): BadgeVariant {
   switch (status) {
     case "completed":
@@ -198,6 +219,23 @@ function createWorkspaceSessionNode(
   };
 }
 
+function createWorkspaceTerminalNode(
+  session: WorkspaceTerminalSession,
+  taskNameById: ReadonlyMap<string, string>,
+): SidebarWorkspaceTerminalNode {
+  const linkedTaskName = session.config.taskId ? taskNameById.get(session.config.taskId) : undefined;
+  return {
+    session,
+    title: session.config.name,
+    subtitle: linkedTaskName
+      ? `${linkedTaskName} · ${getTerminalConnectionModeLabel(session.config.connectionMode)}`
+      : getTerminalConnectionModeLabel(session.config.connectionMode),
+    badge: getSshSessionStatusLabel(session.state.status),
+    badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
+    createdAt: session.config.createdAt,
+  };
+}
+
 function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
   return [...items].sort((left, right) => getValue(right).localeCompare(getValue(left)));
 }
@@ -212,16 +250,20 @@ export function buildWorkspaceSidebarGroups({
   tasks,
   chats,
   sessions,
+  terminalSessions = [],
 }: {
   workspaces: Workspace[];
   tasks: Task[];
   chats: Chat[];
   sessions: SshSession[];
+  terminalSessions?: WorkspaceTerminalSession[];
 }): SidebarWorkspaceGroupNode[] {
   const tasksByWorkspaceId = new Map<string, Task[]>();
   const chatsByWorkspaceId = new Map<string, Chat[]>();
   const sessionsByWorkspaceId = new Map<string, SshSession[]>();
+  const terminalsByWorkspaceId = new Map<string, WorkspaceTerminalSession[]>();
   const taskNameById = new Map(tasks.map((task) => [task.config.id, task.config.name]));
+  const terminalSessionIds = new Set(terminalSessions.map((session) => session.config.id));
 
   for (const task of tasks) {
     const workspaceTasks = tasksByWorkspaceId.get(task.config.workspaceId) ?? [];
@@ -239,9 +281,18 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const session of sessions) {
+    if (terminalSessionIds.has(session.config.id)) {
+      continue;
+    }
     const workspaceSessions = sessionsByWorkspaceId.get(session.config.workspaceId) ?? [];
     workspaceSessions.push(session);
     sessionsByWorkspaceId.set(session.config.workspaceId, workspaceSessions);
+  }
+
+  for (const terminal of terminalSessions) {
+    const workspaceTerminals = terminalsByWorkspaceId.get(terminal.config.workspaceId) ?? [];
+    workspaceTerminals.push(terminal);
+    terminalsByWorkspaceId.set(terminal.config.workspaceId, workspaceTerminals);
   }
 
   const workspaceNodes = workspaces.map((workspace) => {
@@ -253,6 +304,11 @@ export function buildWorkspaceSidebarGroups({
       (session) => session.config.createdAt,
     )
       .map((session) => createWorkspaceSessionNode(session, taskNameById));
+    const workspaceTerminals = sortByDesc(
+      terminalsByWorkspaceId.get(workspace.id) ?? [],
+      (terminal) => terminal.config.createdAt,
+    )
+      .map((terminal) => createWorkspaceTerminalNode(terminal, taskNameById));
     const taskNodes = workspaceTasks.map((task) => {
       const statusPill = getTaskStatusPill(task);
       return {
@@ -281,7 +337,8 @@ export function buildWorkspaceSidebarGroups({
       chats: activeChatNodes,
       historyChats: historyChatNodes,
       sshSessions: workspaceSessions,
-      hasActivity: activeTaskNodes.length > 0 || activeChatNodes.length > 0 || workspaceSessions.length > 0,
+      terminalSessions: workspaceTerminals,
+      hasActivity: activeTaskNodes.length > 0 || activeChatNodes.length > 0 || workspaceSessions.length > 0 || workspaceTerminals.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
@@ -339,6 +396,16 @@ export function buildActiveWorkSidebarItems(
           workspace: workspaceNode.workspace,
           workspaceName,
           sessionNode,
+        });
+      }
+
+      for (const terminalNode of workspaceNode.terminalSessions) {
+        sessionItems.push({
+          kind: "terminal-session",
+          key: `terminal-session:${terminalNode.session.config.id}`,
+          workspace: workspaceNode.workspace,
+          workspaceName,
+          sessionNode: terminalNode,
         });
       }
     }

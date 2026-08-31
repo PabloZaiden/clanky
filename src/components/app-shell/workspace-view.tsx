@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import type { Agent, Chat, SshServer, Workspace } from "@/shared";
 import type { useChats, useTasks, useSshSessions } from "../../hooks";
+import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
@@ -18,6 +20,7 @@ export function WorkspaceView({
   relatedTasks,
   relatedChats,
   relatedSessions,
+  relatedTerminalSessions,
   relatedAgents,
   agentsLoading,
   agentsError,
@@ -28,6 +31,7 @@ export function WorkspaceView({
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
   relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
+  relatedTerminalSessions: UseTerminalSessionsResult["sessions"];
   relatedAgents: Agent[];
   agentsLoading: boolean;
   agentsError: string | null;
@@ -43,7 +47,15 @@ export function WorkspaceView({
     : [];
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
-  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedSessions.length > 0;
+  const terminalSessionIds = useMemo(
+    () => new Set(relatedTerminalSessions.map((session) => session.config.id)),
+    [relatedTerminalSessions],
+  );
+  const legacySessions = useMemo(
+    () => relatedSessions.filter((session) => !terminalSessionIds.has(session.config.id)),
+    [relatedSessions, terminalSessionIds],
+  );
+  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || legacySessions.length > 0 || relatedTerminalSessions.length > 0;
   const historyDescription = "Completed tasks and chats marked as done.";
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
@@ -84,7 +96,7 @@ export function WorkspaceView({
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
               {activityChats.map(renderChatRow)}
-              {relatedSessions.map((session) => {
+              {legacySessions.map((session) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
                 return (
                   <ClankyListRow
@@ -93,6 +105,19 @@ export function WorkspaceView({
                     description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
                     badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
                     onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
+                    privateHidden={privateHidden}
+                  />
+                );
+              })}
+              {relatedTerminalSessions.map((terminal) => {
+                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(terminal.config, [workspace]), showPrivateItems);
+                return (
+                  <ClankyListRow
+                    key={terminal.config.id}
+                    title={terminal.config.name}
+                    description={terminal.config.connectionMode === "direct" ? "Direct" : "Persistent"}
+                    badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(terminal.state.status)}>{getSshSessionStatusLabel(terminal.state.status)}</StatusBadge>}
+                    onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id }) : undefined}
                     privateHidden={privateHidden}
                   />
                 );

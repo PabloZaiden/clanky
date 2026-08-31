@@ -114,6 +114,13 @@ export {
   UpdateSshSessionRequestSchema,
 } from "./ssh-session";
 
+// Terminal session schemas
+export {
+  TerminalConnectionModeSchema,
+  CreateTerminalSessionRequestSchema,
+  UpdateTerminalSessionRequestSchema,
+} from "./terminal-session";
+
 // Shared file explorer schemas
 export {
   FileExplorerRelativePathSchema,
@@ -194,3 +201,12 @@ export {
   type MeshExecutionSessionRequest,
   type MeshExecutionRpcRequest,
 } from "./mesh-execution";
+
+export {
+  MeshTerminalSessionRequestSchema,
+  MeshTerminalClientFrameSchema,
+  MeshTerminalServerFrameSchema,
+  type MeshTerminalSessionRequest,
+  type MeshTerminalClientFrame,
+  type MeshTerminalServerFrame,
+} from "./mesh-terminal";

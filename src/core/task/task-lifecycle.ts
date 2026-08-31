@@ -12,7 +12,7 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
-import { sshSessionManager } from "../ssh-session-manager";
+import { terminalSessionManager } from "../terminal-session-manager";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
@@ -230,11 +230,11 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
   }
 
   try {
-    await sshSessionManager.deleteSessionByTaskId(taskId);
+    await terminalSessionManager.deleteSessionByTaskId(taskId);
   } catch (error) {
     return taskFailure(
       "task_ssh_session_failed",
-      "Failed to delete linked SSH session",
+      "Failed to delete linked terminal session",
       { cause: error, details: { taskId } },
     );
   }

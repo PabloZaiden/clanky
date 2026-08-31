@@ -71,6 +71,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "ssh_sessions",
   "ssh_servers",
   "ssh_server_sessions",
+  "terminal_sessions",
   "vnc_sessions",
   "preview_sessions",
   "workspaces",
@@ -185,6 +186,9 @@ export const migrations: Migration[] = [
       ] as const;
 
       for (const tableName of privateTables) {
+        if (!tableExists(db, tableName)) {
+          continue;
+        }
         const columns = getTableColumns(db, tableName);
         if (columns.includes("is_private")) {
           continue;
@@ -1326,6 +1330,106 @@ export const migrations: Migration[] = [
               CHECK (endpoint_source IN ('advertised', 'paired'))
           `);
         }
+      }
+    },
+  },
+  {
+    version: 38,
+    name: "add_terminal_sessions",
+    up: (db) => {
+      // Verify the old ssh_sessions table is empty before replacing it.
+      // This migration is structural only — no row copy or conversion.
+      if (tableExists(db, "ssh_sessions")) {
+        const count = db.query("SELECT COUNT(*) AS cnt FROM ssh_sessions").get() as { cnt: number };
+        if (count.cnt > 0) {
+          throw new Error(
+            `Cannot migrate to terminal_sessions: ssh_sessions still contains ${count.cnt} row(s). `
+            + "Delete all workspace SSH sessions before upgrading.",
+          );
+        }
+      }
+
+      if (tableExists(db, "workspaces")) {
+        const workspaceColumns = getTableColumns(db, "workspaces");
+        if (!workspaceColumns.includes("execution_target_revision")) {
+          db.run(
+            "ALTER TABLE workspaces ADD COLUMN execution_target_revision INTEGER NOT NULL DEFAULT 1",
+          );
+        }
+      }
+
+      // Create the terminal_sessions table if it doesn't already exist
+      // (clean databases get it from the baseline schema).
+      if (!tableExists(db, "terminal_sessions")) {
+        db.run(`
+          CREATE TABLE terminal_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            directory TEXT NOT NULL,
+            remote_session_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ready',
+            last_connected_at TEXT,
+            error_message TEXT,
+            task_id TEXT,
+            connection_mode TEXT NOT NULL DEFAULT 'dtach',
+            use_tmux INTEGER NOT NULL DEFAULT 0,
+            runtime_connection_mode TEXT,
+            notice_message TEXT,
+            target_transport TEXT NOT NULL DEFAULT 'stdio',
+            target_key TEXT NOT NULL DEFAULT '',
+            target_revision INTEGER NOT NULL DEFAULT 1,
+            target_hostname TEXT,
+            target_port INTEGER,
+            target_username TEXT,
+            target_execution_node_id TEXT,
+            is_private INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+          )
+        `);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_terminal_sessions_workspace_id
+          ON terminal_sessions(user_id, workspace_id)
+        `);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_terminal_sessions_created_at
+          ON terminal_sessions(user_id, created_at DESC)
+        `);
+        db.run(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_terminal_sessions_task_id_unique
+          ON terminal_sessions(user_id, task_id)
+          WHERE task_id IS NOT NULL
+        `);
+      }
+
+      if (tableExists(db, "terminal_sessions")) {
+        const terminalColumns = getTableColumns(db, "terminal_sessions");
+        if (!terminalColumns.includes("target_key")) {
+          db.run("ALTER TABLE terminal_sessions ADD COLUMN target_key TEXT NOT NULL DEFAULT ''");
+        }
+        if (!terminalColumns.includes("target_revision")) {
+          db.run("ALTER TABLE terminal_sessions ADD COLUMN target_revision INTEGER NOT NULL DEFAULT 1");
+        }
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_terminal_sessions_workspace_id
+          ON terminal_sessions(user_id, workspace_id)
+        `);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_terminal_sessions_created_at
+          ON terminal_sessions(user_id, created_at DESC)
+        `);
+        db.run(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_terminal_sessions_task_id_unique
+          ON terminal_sessions(user_id, task_id)
+          WHERE task_id IS NOT NULL
+        `);
+      }
+
+      if (tableExists(db, "ssh_sessions")) {
+        db.run("DROP TABLE ssh_sessions");
       }
     },
   },

@@ -8,8 +8,8 @@ import {
   createWorkspace,
   deleteWorkspace,
   getWorkspace,
-  updateWorkspace,
 } from "../../persistence/workspaces";
+import { workspaceManager } from "../workspace-manager";
 import type { ProvisioningJob, ProvisioningJobSnapshot, ProvisioningLogEntry, ServerSettings } from "@/shared";
 import { DEFAULT_JOB_RETENTION_MS, DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { buildError, getPublishedPortFallback, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
@@ -737,7 +737,7 @@ export class ProvisioningManager {
       );
 
       // Update the existing workspace's server settings (port/password may change after rebuild)
-      const updatedWorkspace = await updateWorkspace(workspaceId, {
+      const updatedWorkspace = await workspaceManager.updateWorkspace(workspaceId, {
         serverSettings,
         ...(devcontainerSubpath !== workspace.devcontainerSubpath
           ? { devcontainerSubpath }

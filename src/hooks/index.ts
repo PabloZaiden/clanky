@@ -16,6 +16,8 @@ export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks
 export { useTask, type UseTaskResult } from "./useTask";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";
 export { useSshSession, type UseSshSessionResult } from "./useSshSession";
+export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
+export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWorkspacePreviews";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
@@ -68,6 +70,8 @@ export {
   purgeTerminalTasksApi,
   getTaskSshSessionApi,
   getOrCreateTaskSshSessionApi,
+  getTaskTerminalSessionApi,
+  getOrCreateTaskTerminalSessionApi,
   setPendingPromptApi,
   clearPendingPromptApi,
   markMergedApi,
