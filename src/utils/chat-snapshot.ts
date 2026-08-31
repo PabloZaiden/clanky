@@ -30,6 +30,11 @@ export function applyChatStatusEvent(
       ...current.state,
       status,
       lastActivityAt: timestamp,
+      ...(status !== "starting"
+        ? {
+            startupStage: undefined,
+          }
+        : {}),
       ...(isChatTerminalStatus(status)
         ? {
             activeMessageId: undefined,
