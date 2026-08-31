@@ -1433,6 +1433,20 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 39,
+    name: "normalize_legacy_managed_context_types",
+    up: (db) => {
+      if (!tableExists(db, "clanky_context_api_keys")) {
+        return;
+      }
+      db.run(`
+        UPDATE clanky_context_api_keys
+        SET context_type = 'terminal_session'
+        WHERE context_type = 'ssh_session'
+      `);
+    },
+  },
 ];
 
 const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
