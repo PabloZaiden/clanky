@@ -525,11 +525,14 @@ export const chatsRoutes = defineRoutes({
       }
 
       try {
-        await chatManager.sendMessage(ctx.params["id"]!, {
+        const updated = await chatManager.sendMessage(ctx.params["id"]!, {
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
         });
-        return successResponse({ chatId: ctx.params["id"]! });
+        return successResponse({
+          chatId: ctx.params["id"]!,
+          chat: await toLightweightChat(updated),
+        });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {

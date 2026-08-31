@@ -726,7 +726,7 @@ function buildSidebarNodes(
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
         render: renderActiveWorkSidebarItem("Terminal"),
-        route: { view: "ssh", sshSessionId: terminalId },
+        route: { view: "terminal", terminalSessionId: terminalId },
         actions: privateActions(terminalActions, privateHidden, terminalSession.config.isPrivate === true),
         pinnable: true,
         pinId: item.key,

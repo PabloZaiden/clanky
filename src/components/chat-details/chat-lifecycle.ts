@@ -26,6 +26,7 @@ import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
   getStreamingActivityStatus,
+  mergeChatSummarySnapshot,
 } from "../../utils/chat-snapshot";
 import type {
   ChatLifecycleResult,
@@ -94,15 +95,11 @@ function mergeDisplayToolCall(
 }
 
 function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
+  const merged = mergeChatSummarySnapshot(current, incoming);
   return {
-    ...current,
-    config: {
-      ...current.config,
-      ...incoming.config,
-    },
+    ...merged,
     state: {
-      ...current.state,
-      ...incoming.state,
+      ...merged.state,
       messages: [],
       logs: [],
       toolCalls: [],
@@ -135,6 +132,7 @@ function applyChatStreamEvent(
             status: event.message.role === "assistant"
               ? getStreamingActivityStatus(current.state.status)
               : current.state.status,
+            ...(event.message.role === "assistant" ? { startupStage: undefined } : {}),
             lastActivityAt: event.timestamp,
           },
         },
@@ -175,6 +173,7 @@ function applyChatStreamEvent(
             status: event.role === "assistant"
               ? getStreamingActivityStatus(current.state.status)
               : current.state.status,
+            ...(event.role === "assistant" ? { startupStage: undefined } : {}),
             activeMessageId: event.messageId,
             lastActivityAt: event.timestamp,
           },
@@ -192,6 +191,7 @@ function applyChatStreamEvent(
           state: {
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
+            startupStage: undefined,
             lastActivityAt: event.timestamp,
           },
         },
@@ -213,6 +213,7 @@ function applyChatStreamEvent(
           state: {
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
+            startupStage: undefined,
             lastActivityAt: event.timestamp,
           },
         },
@@ -237,6 +238,7 @@ function applyChatStreamEvent(
             state: {
               ...current.state,
               status: getStreamingActivityStatus(current.state.status),
+              startupStage: undefined,
               lastActivityAt: event.timestamp,
             },
           },
@@ -248,6 +250,7 @@ function applyChatStreamEvent(
           state: {
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
+            startupStage: undefined,
             lastActivityAt: event.timestamp,
           },
         },
@@ -264,6 +267,7 @@ function applyChatStreamEvent(
             state: {
               ...current.state,
               status: getStreamingActivityStatus(current.state.status),
+              startupStage: undefined,
               lastActivityAt: event.timestamp,
             },
           },
@@ -310,6 +314,7 @@ function applyChatStreamEvent(
             state: {
               ...current.state,
               status: getStreamingActivityStatus(current.state.status),
+              startupStage: undefined,
               lastActivityAt: event.timestamp,
             },
           },
@@ -324,6 +329,7 @@ function applyChatStreamEvent(
           state: {
             ...current.state,
             status: getStreamingActivityStatus(current.state.status),
+            startupStage: undefined,
             lastActivityAt: event.timestamp,
           },
         },
@@ -411,7 +417,10 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         const data = await readApiResponse<ChatSnapshot>(response);
         const hydrated = hydrateChatSnapshot(data);
         snapshotEtagRef.current = response.headers.get("ETag");
-        setChatState(hydrated.chat);
+        const currentChat = chatRef.current;
+        setChatState(currentChat
+          ? mergeOperationalChatSnapshot(currentChat, hydrated.chat)
+          : hydrated.chat);
         const currentTranscript = transcriptRef.current;
         setTranscriptState({
           messages: mergeTranscriptSnapshotRecords(
@@ -532,6 +541,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         ...current.state,
         status: "starting",
         error: undefined,
+        startupStage: undefined,
         activeMessageId: undefined,
         interruptRequested: false,
       },

@@ -50,4 +50,28 @@ describe("workspace terminal attachment registry", () => {
 
     unblockWorkspaceTerminalAttachment(sessionId);
   });
+
+  test("restores the previous attachment when replacing it fails", async () => {
+    const sessionId = crypto.randomUUID();
+    let previousDisposeCount = 0;
+    const previous = {
+      connection: {
+        dispose: async () => {
+          previousDisposeCount += 1;
+          throw new Error("dispose failed");
+        },
+      },
+    };
+    const replacement = createDisposableConnection();
+    const previousHandle = await claimWorkspaceTerminalAttachment(sessionId, previous.connection);
+
+    await expect(
+      claimWorkspaceTerminalAttachment(sessionId, replacement.connection),
+    ).rejects.toThrow("dispose failed");
+
+    expect(previousDisposeCount).toBe(1);
+    expect(replacement.getDisposeCount()).toBe(1);
+    expect(previousHandle.isActive()).toBe(true);
+    previousHandle.release();
+  });
 });

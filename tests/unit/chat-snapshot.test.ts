@@ -47,6 +47,7 @@ describe("chat snapshot merging", () => {
     const current = createChat("streaming", "2026-07-18T01:00:01.000Z", {
       activeMessageId: "message-1",
       interruptRequested: true,
+      startupStage: "sending_prompt",
     });
 
     const updated = applyChatStatusEvent(current, "idle", "2026-07-18T01:00:02.000Z");
@@ -55,6 +56,18 @@ describe("chat snapshot merging", () => {
     expect(updated.state.lastActivityAt).toBe("2026-07-18T01:00:02.000Z");
     expect(updated.state.activeMessageId).toBeUndefined();
     expect(updated.state.interruptRequested).toBe(false);
+    expect(updated.state.startupStage).toBeUndefined();
+  });
+
+  test("clears the startup stage when a chat starts streaming", () => {
+    const current = createChat("starting", "2026-07-18T01:00:01.000Z", {
+      startupStage: "sending_prompt",
+    });
+
+    const updated = applyChatStatusEvent(current, "streaming", "2026-07-18T01:00:02.000Z");
+
+    expect(updated.state.status).toBe("streaming");
+    expect(updated.state.startupStage).toBeUndefined();
   });
 
   test("treats done as terminal and clears active response state", () => {
@@ -73,6 +86,7 @@ describe("chat snapshot merging", () => {
   test("ignores a stale terminal status event", () => {
     const current = createChat("streaming", CURRENT_ACTIVITY, {
       activeMessageId: "message-1",
+      startupStage: "sending_prompt",
     });
 
     const updated = applyChatStatusEvent(current, "idle", "2026-07-18T01:00:01.000Z");
@@ -80,6 +94,7 @@ describe("chat snapshot merging", () => {
     expect(updated).toBe(current);
     expect(updated.state.status).toBe("streaming");
     expect(updated.state.activeMessageId).toBe("message-1");
+    expect(updated.state.startupStage).toBe("sending_prompt");
   });
 
   test("applies a newer terminal snapshot over stale streaming state", () => {
@@ -125,6 +140,18 @@ describe("chat snapshot merging", () => {
 
     expect(merged.state.status).toBe("done");
     expect(merged.state.completedAt).toBe(CURRENT_ACTIVITY);
+  });
+
+  test("does not reintroduce a stale startup stage over a newer idle snapshot", () => {
+    const current = createChat("idle", CURRENT_ACTIVITY);
+    const incoming = createChat("starting", "2026-07-18T00:59:59.000Z", {
+      startupStage: "sending_prompt",
+    });
+
+    const merged = mergeChatSummarySnapshot(current, incoming);
+
+    expect(merged.state.status).toBe("idle");
+    expect(merged.state.startupStage).toBeUndefined();
   });
 
   test("allows a genuinely newer busy transition after an idle snapshot", () => {

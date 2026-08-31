@@ -38,7 +38,22 @@ export async function claimWorkspaceTerminalAttachment(
   const previous = activeAttachments.get(sessionId);
   activeAttachments.set(sessionId, attachment);
   if (previous) {
-    await previous.connection.dispose();
+    try {
+      await previous.connection.dispose();
+    } catch (error) {
+      if (activeAttachments.get(sessionId) === attachment) {
+        activeAttachments.set(sessionId, previous);
+      }
+      try {
+        await connection.dispose();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          "Failed to replace the existing terminal attachment.",
+        );
+      }
+      throw error;
+    }
   }
 
   if (
