@@ -2,7 +2,7 @@ import type { ServerWebSocket } from "bun";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
-import type { startTerminalBridge, sendTerminalAuthError } from "./terminal";
+import type { startSshServerTerminalBridge, sendTerminalAuthError } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
@@ -11,7 +11,7 @@ import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 const log = createLogger("api:websocket");
 
 type TerminalHelpers = {
-  startTerminalBridge: typeof startTerminalBridge;
+  startSshServerTerminalBridge: typeof startSshServerTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
 };
 
@@ -106,7 +106,7 @@ export function createMessageHandler(helpers: TerminalHelpers) {
             );
             return;
           }
-          void helpers.startTerminalBridge(ws, credentialToken);
+          void helpers.startSshServerTerminalBridge(ws, credentialToken);
           return;
         }
         if (data.type !== "ping") {
@@ -144,7 +144,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           void resizePromise.catch((resizeError: Error) => {
             log.warn("Ignoring terminal resize error", {
               terminalSessionId: ws.data.workspaceTerminalSessionId,
-              sshSessionId: ws.data.sshSessionId,
               sshServerSessionId: ws.data.sshServerSessionId,
               error: String(resizeError),
             });

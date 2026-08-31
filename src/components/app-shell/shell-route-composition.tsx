@@ -129,7 +129,10 @@ export function getShellRouteSelection(
             ? (workspaces.find((workspace) => workspace.id === selectedChat?.config.workspaceId) ?? null)
             : null;
   const composeWorkspace =
-    route.view === "compose" && composeKind !== "ssh-server" && composeKind !== "ssh-server-chat"
+    route.view === "compose"
+      && composeKind !== "ssh-session"
+      && composeKind !== "ssh-server"
+      && composeKind !== "ssh-server-chat"
       ? (workspaces.find((workspace) => workspace.id === (workspaceId ?? composeScopeId)) ?? null)
       : null;
   const composeServer =

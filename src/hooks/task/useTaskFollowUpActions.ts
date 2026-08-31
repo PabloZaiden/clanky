@@ -1,6 +1,6 @@
 /**
  * Follow-up and review actions for the useTask hook.
- * Handles reviewer comments, terminal-state follow-ups, and task SSH connections.
+ * Handles reviewer comments, terminal-state follow-ups, and task terminal connections.
  */
 
 import { useCallback } from "react";
@@ -8,7 +8,6 @@ import {
   addressReviewCommentsApi,
   enablePullRequestAutoMergeApi,
   sendFollowUpApi,
-  getOrCreateTaskSshSessionApi,
   getOrCreateTaskTerminalSessionApi,
   type AddressCommentsResult,
   type PullRequestAutoMergeResult,
@@ -17,7 +16,7 @@ import {
   type AutomaticPrFlowResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { SshSession, WorkspaceTerminalSession } from "@/shared";
+import type { WorkspaceTerminalSession } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
@@ -33,7 +32,6 @@ export interface UseTaskFollowUpActionsResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  connectViaSsh: () => Promise<SshSession | null>;
   connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 
@@ -205,39 +203,6 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     }
   }, [ignoreStaleTaskAction, ignoreStaleTaskError, isActiveTask, taskId, refresh, setError]);
 
-  const connectViaSsh = useCallback(async (): Promise<SshSession | null> => {
-    const actionTaskId = taskId;
-    if (!isActiveTask(actionTaskId)) {
-      log.debug("Ignoring stale task action", {
-        actionName: "connectViaSsh",
-        expectedTaskId: actionTaskId,
-        activeTaskId: "(stale)",
-      });
-      return null;
-    }
-    log.debug("Connecting task SSH session", { taskId: actionTaskId });
-    try {
-      const session = await getOrCreateTaskSshSessionApi(actionTaskId);
-      if (!isActiveTask(actionTaskId)) {
-        return null;
-      }
-      return session;
-    } catch (err) {
-      if (!isActiveTask(actionTaskId)) {
-        log.debug("Ignoring stale task action error", {
-          actionName: "connectViaSsh",
-          expectedTaskId: actionTaskId,
-          activeTaskId: "(stale)",
-          error: String(err),
-        });
-        return null;
-      }
-      log.error("Failed to connect task SSH session", { taskId: actionTaskId, error: String(err) });
-      setError(String(err));
-      return null;
-    }
-  }, [isActiveTask, taskId, setError]);
-
   const connectTerminal = useCallback(async (): Promise<WorkspaceTerminalSession | null> => {
     const actionTaskId = taskId;
     if (!isActiveTask(actionTaskId)) {
@@ -277,7 +242,6 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     startAutomaticPrFlow,
     stopAutomaticPrFlow,
     sendFollowUp,
-    connectViaSsh,
     connectTerminal,
   };
 }

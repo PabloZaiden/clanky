@@ -1,26 +1,23 @@
-import { useMemo } from "react";
-import type { Agent, Chat, SshServer, Workspace } from "@/shared";
-import type { useChats, useTasks, useSshSessions } from "../../hooks";
+import type { Agent, Chat, Workspace } from "@/shared";
+import type { useChats, useTasks } from "../../hooks";
 import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
   getChatStatusBadgeVariant,
   formatStatusLabel,
-  getSshSessionStatusBadgeVariant,
-  getSshSessionStatusLabel,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
 } from "../common";
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
-import { getTerminalConnectionModeLabel } from "./shell-types";
 
 export function WorkspaceView({
   workspace,
   relatedTasks,
   relatedChats,
-  relatedSessions,
   relatedTerminalSessions,
   relatedAgents,
   agentsLoading,
@@ -31,12 +28,10 @@ export function WorkspaceView({
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
-  relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
   relatedTerminalSessions: UseTerminalSessionsResult["sessions"];
   relatedAgents: Agent[];
   agentsLoading: boolean;
   agentsError: string | null;
-  registeredSshServers: readonly SshServer[];
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
@@ -48,15 +43,7 @@ export function WorkspaceView({
     : [];
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
-  const terminalSessionIds = useMemo(
-    () => new Set(relatedTerminalSessions.map((session) => session.config.id)),
-    [relatedTerminalSessions],
-  );
-  const legacySessions = useMemo(
-    () => relatedSessions.filter((session) => !terminalSessionIds.has(session.config.id)),
-    [relatedSessions, terminalSessionIds],
-  );
-  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || legacySessions.length > 0 || relatedTerminalSessions.length > 0;
+  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedTerminalSessions.length > 0;
   const historyDescription = "Completed tasks and chats marked as done.";
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
@@ -97,19 +84,6 @@ export function WorkspaceView({
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
               {activityChats.map(renderChatRow)}
-              {legacySessions.map((session) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
-                return (
-                  <ClankyListRow
-                    key={session.config.id}
-                    title={session.config.name}
-                    description={getTerminalConnectionModeLabel(session.config.connectionMode)}
-                    badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
-                    onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: session.config.id }) : undefined}
-                    privateHidden={privateHidden}
-                  />
-                );
-              })}
               {relatedTerminalSessions.map((terminal) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(terminal.config, [workspace]), showPrivateItems);
                 return (
@@ -117,7 +91,7 @@ export function WorkspaceView({
                     key={terminal.config.id}
                     title={terminal.config.name}
                     description={terminal.config.connectionMode === "direct" ? "Direct" : "Persistent"}
-                    badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(terminal.state.status)}>{getSshSessionStatusLabel(terminal.state.status)}</StatusBadge>}
+                    badge={<StatusBadge variant={getTerminalSessionStatusBadgeVariant(terminal.state.status)}>{getTerminalSessionStatusLabel(terminal.state.status)}</StatusBadge>}
                     onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id }) : undefined}
                     privateHidden={privateHidden}
                   />

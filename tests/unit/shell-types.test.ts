@@ -8,7 +8,7 @@ import {
 } from "../../src/components/app-shell/shell-types";
 import type { Chat } from "@/shared/chat";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
-import type { SshSession } from "@/shared/ssh-session";
+import type { WorkspaceTerminalSession } from "@/shared/terminal-session";
 import { getDefaultServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 
@@ -48,7 +48,7 @@ function createSshServer(): SshServer {
   };
 }
 
-function createWorkspaceSession(): SshSession {
+function createWorkspaceSession(): WorkspaceTerminalSession {
   return {
     config: {
       id: "workspace-session-1",
@@ -58,6 +58,11 @@ function createWorkspaceSession(): SshSession {
       connectionMode: "dtach",
       useTmux: false,
       remoteSessionName: "workspace-session",
+      targetBinding: {
+        transport: "stdio",
+        targetKey: "local-target",
+        workspaceRevision: 1,
+      },
       createdAt: BASE_TIMESTAMP,
       updatedAt: BASE_TIMESTAMP,
     },
@@ -145,14 +150,14 @@ function createAgentChat(): Chat {
 }
 
 describe("sidebar node builders", () => {
-  test("keeps workspace SSH sessions out of SSH server session nodes", () => {
+  test("keeps workspace terminals out of SSH server session nodes", () => {
     const workspaceSession = createWorkspaceSession();
     const serverSession = createServerSession();
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [createWorkspace()],
       tasks: [],
       chats: [],
-      sessions: [workspaceSession],
+      terminalSessions: [workspaceSession],
     });
     const serverNodes = buildServerSidebarNodes({
       servers: [createSshServer()],
@@ -165,7 +170,7 @@ describe("sidebar node builders", () => {
     const workspaceNode = workspaceGroups[0]!.workspaces[0]!;
     const serverNode = serverNodes[0]!;
 
-    expect(workspaceNode.sshSessions.map((sessionNode) => sessionNode.session.config.id)).toEqual([
+    expect(workspaceNode.terminalSessions.map((sessionNode) => sessionNode.session.config.id)).toEqual([
       "workspace-session-1",
     ]);
     expect(serverNode.sessions.map((sessionNode) => sessionNode.id)).toEqual([
@@ -174,7 +179,7 @@ describe("sidebar node builders", () => {
     expect(serverNode.sessions.some((sessionNode) => sessionNode.id === "workspace-session-1")).toBe(false);
 
     expect(buildActiveWorkSidebarItems(workspaceGroups, { serverNodes }).map((item) => item.key)).toEqual([
-      "ssh-session:workspace-session-1",
+      "terminal-session:workspace-session-1",
       "ssh-server-session:server-session-1",
     ]);
   });
@@ -185,7 +190,7 @@ describe("sidebar node builders", () => {
       workspaces: [createWorkspace()],
       tasks: [],
       chats: [quickChat],
-      sessions: [],
+      terminalSessions: [],
     });
     expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([
       "chat:chat-1",
@@ -201,7 +206,7 @@ describe("sidebar node builders", () => {
       workspaces: [createWorkspace()],
       tasks: [],
       chats: [activeWorkspaceChat, doneWorkspaceChat],
-      sessions: [],
+      terminalSessions: [],
     });
     const serverNodes = buildServerSidebarNodes({
       servers: [createSshServer()],
@@ -227,7 +232,7 @@ describe("sidebar node builders", () => {
       workspaces: [createWorkspace()],
       tasks: [],
       chats: [createChat(), createAgentChat()],
-      sessions: [],
+      terminalSessions: [],
     });
 
     const workspaceNode = workspaceGroups[0]!.workspaces[0]!;
@@ -243,7 +248,7 @@ describe("sidebar node builders", () => {
       workspaces: [archivedWorkspace],
       tasks: [],
       chats: [createChat()],
-      sessions: [createWorkspaceSession()],
+      terminalSessions: [createWorkspaceSession()],
     });
 
     expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([]);

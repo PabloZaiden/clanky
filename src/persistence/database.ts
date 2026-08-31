@@ -742,7 +742,6 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS agents");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
-    db!.run("DROP TABLE IF EXISTS ssh_sessions");
     db!.run("DROP TABLE IF EXISTS terminal_sessions");
     db!.run("DROP TABLE IF EXISTS task_transcript_meta");
     db!.run("DROP TABLE IF EXISTS task_transcript_entries");

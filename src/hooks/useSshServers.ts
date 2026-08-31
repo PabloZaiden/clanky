@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SshConnectionMode, SshServer, SshServerSession } from "@/shared";
-import type { CreateSshServerRequest, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
+import type { TerminalConnectionMode, SshServer, SshServerSession } from "@/shared";
+import type { CreateSshServerRequest, UpdateSshServerSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import {
   createStandaloneSshSessionApi,
@@ -31,9 +31,9 @@ export interface UseSshServersResult {
   deleteServer: (id: string) => Promise<boolean>;
   createSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
-  updateSession: (serverId: string, sessionId: string, request: UpdateSshSessionRequest) => Promise<SshServerSession>;
+  updateSession: (serverId: string, sessionId: string, request: UpdateSshServerSessionRequest) => Promise<SshServerSession>;
   deleteSession: (serverId: string, sessionId: string) => Promise<boolean>;
   hasStoredCredential: (serverId: string) => boolean;
 }
@@ -138,7 +138,7 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
 
   const createSession = useCallback(async (
     serverId: string,
-    options: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean } = {},
+    options: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean } = {},
   ): Promise<SshServerSession> => {
     try {
       setError(null);
@@ -163,7 +163,7 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
   const updateSession = useCallback(async (
     serverId: string,
     sessionId: string,
-    request: UpdateSshSessionRequest,
+    request: UpdateSshServerSessionRequest,
   ): Promise<SshServerSession> => {
     try {
       setError(null);
@@ -200,8 +200,8 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
   }, []);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions"],
-    filters: { resource: "ssh-sessions" },
+    resources: ["ssh-server-sessions"],
+    filters: { resource: "ssh-server-sessions" },
     enabled: realtime,
     refresh: () => refresh({ showLoading: false }),
     onReconnect: () => refresh({ showLoading: false }),

@@ -1,9 +1,8 @@
-import { useMemo, type ComponentType } from "react";
+import { useMemo } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, Task, SshConnectionMode, SshSession, Workspace, WorkspaceTerminalSession } from "@/shared";
-import type { CreateSshSessionRequest, CreateTerminalSessionRequest } from "@/contracts";
+import type { Chat, Task, TerminalConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
-import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { FileExplorerView } from "./file-explorer-view";
 import {
   getCodeExplorerOptionGroups,
@@ -17,18 +16,15 @@ interface CodeExplorerViewProps {
   tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
-  sessions: SshSession[];
   terminalSessions: WorkspaceTerminalSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
-  createStandaloneSession: (
+  createStandaloneSession?: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
   onNavigate: (route: WebAppRoute) => void;
-  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function CodeExplorerView({
@@ -36,15 +32,12 @@ export function CodeExplorerView({
   tasks,
   chats,
   workspaces,
-  sessions,
   terminalSessions,
   servers,
   sessionsByServerId,
-  createSession,
   createTerminalSession,
   createStandaloneSession,
   onNavigate,
-  sshSessionDetailsComponent,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
     tasks,
@@ -58,11 +51,9 @@ export function CodeExplorerView({
     tasks,
     chats,
     workspaces,
-    sessions,
     terminalSessions,
     servers,
     sessionsByServerId,
-    createSession,
     createTerminalSession,
     createStandaloneSession,
   });
@@ -131,7 +122,6 @@ export function CodeExplorerView({
       testIdPrefix={resolvedTarget.testIdPrefix}
       credentialPromptName={resolvedTarget.credentialPromptName}
       initialFilePath={resolvedTarget.initialFilePath}
-      sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );
 }

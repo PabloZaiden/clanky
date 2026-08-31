@@ -13,7 +13,6 @@ import {
   useQuickChatSettings,
   useSchedulerTimezone,
   useSshServers,
-  useSshSessions,
   useTaskGrouping,
   useTasks,
   useTerminalSessions,
@@ -49,15 +48,6 @@ export function useShellResources(route: WebAppRoute) {
     purgeArchivedWorkspaceTasks,
   } = useTasks();
   const {
-    sessions,
-    loading: sshSessionsLoading,
-    error: sshSessionsError,
-    refresh: refreshSshSessions,
-    createSession,
-    updateSession: updateWorkspaceSshSession,
-    deleteSession: deleteWorkspaceSshSession,
-  } = useSshSessions({ realtime: false });
-  const {
     servers,
     sessionsByServerId,
     loading: sshServersLoading,
@@ -82,14 +72,13 @@ export function useShellResources(route: WebAppRoute) {
 
   const refreshSshSessionsAndServers = useCallback(async (): Promise<void> => {
     await Promise.all([
-      refreshSshSessions({ showLoading: false }),
       refreshSshServers({ showLoading: false }),
       refreshTerminalSessions({ showLoading: false }),
     ]);
-  }, [refreshSshServers, refreshSshSessions, refreshTerminalSessions]);
+  }, [refreshSshServers, refreshTerminalSessions]);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-sessions", "terminal-sessions"],
+    resources: ["ssh-server-sessions", "terminal-sessions"],
     refresh: refreshSshSessionsAndServers,
     onReconnect: refreshSshSessionsAndServers,
   });
@@ -128,10 +117,9 @@ export function useShellResources(route: WebAppRoute) {
       workspaces,
       tasks,
       chats,
-      sessions,
       terminalSessions,
     }),
-    [chats, tasks, sessions, terminalSessions, workspaces],
+    [chats, tasks, terminalSessions, workspaces],
   );
   const serverNodes = useMemo(
     () => buildServerSidebarNodes({
@@ -164,7 +152,6 @@ export function useShellResources(route: WebAppRoute) {
 
   const shellLoading = chatsLoading
     || tasksLoading
-    || sshSessionsLoading
     || sshServersLoading
     || terminalSessionsLoading
     || workspacesLoading
@@ -172,7 +159,6 @@ export function useShellResources(route: WebAppRoute) {
   const shellErrors = [
     chatsError,
     tasksError,
-    sshSessionsError,
     sshServersError,
     terminalSessionsError,
     workspaceError,
@@ -209,13 +195,6 @@ export function useShellResources(route: WebAppRoute) {
     updateTask,
     purgeTask,
     purgeArchivedWorkspaceTasks,
-    sessions,
-    sshSessionsLoading,
-    sshSessionsError,
-    refreshSshSessions,
-    createSession,
-    updateWorkspaceSshSession,
-    deleteWorkspaceSshSession,
     servers,
     sessionsByServerId,
     sshServersLoading,

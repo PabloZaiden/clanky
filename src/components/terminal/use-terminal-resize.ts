@@ -5,7 +5,7 @@
 import { useCallback } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { SendTerminalPayloadFn } from "./use-ssh-sender";
+import type { SendTerminalPayloadFn } from "./use-terminal-sender";
 
 interface UseTerminalResizeParams {
   lastSentResizeRef: React.MutableRefObject<{ cols: number; rows: number } | null>;

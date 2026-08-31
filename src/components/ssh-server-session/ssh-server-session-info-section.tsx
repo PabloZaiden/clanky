@@ -1,26 +1,29 @@
 import { useMemo, useState } from "react";
 import { StatusBadge } from "../common";
-import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../../utils";
-import { CompactBar } from "./compact-bar";
-import { isStandaloneSession } from "./session-utils";
-import type { SshSession } from "./session-utils";
+import { getEffectiveTerminalConnectionMode, getTerminalConnectionModeLabel, isPersistentTerminalSession } from "../../utils";
+import { CompactBar } from "../terminal/compact-bar";
+import type { SshServerSession } from "@/shared";
 
-export interface SessionInfoSectionProps {
-  session: SshSession;
+export interface SshServerSessionInfoSectionProps {
+  session: SshServerSession;
   standaloneServerName: string | null;
   standaloneServerTarget: string | null;
 }
 
-export function SessionInfoSection({ session, standaloneServerName, standaloneServerTarget }: SessionInfoSectionProps) {
+export function SshServerSessionInfoSection({
+  session,
+  standaloneServerName,
+  standaloneServerTarget,
+}: SshServerSessionInfoSectionProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const effectiveConnectionMode = useMemo(() => getEffectiveSshConnectionMode(session), [session]);
-  const hasPersistentSession = useMemo(() => isPersistentSshSession(session), [session]);
+  const effectiveConnectionMode = useMemo(() => getEffectiveTerminalConnectionMode(session), [session]);
+  const hasPersistentSession = useMemo(() => isPersistentTerminalSession(session), [session]);
 
   const summary = useMemo(() => (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400">
       <StatusBadge variant={effectiveConnectionMode === "direct" ? "info" : "default"} className="shrink-0">
-        {getSshConnectionModeLabel(effectiveConnectionMode ?? session.config.connectionMode)}
+        {getTerminalConnectionModeLabel(effectiveConnectionMode)}
       </StatusBadge>
 
       {session.state.notice && (
@@ -47,23 +50,23 @@ export function SessionInfoSection({ session, standaloneServerName, standaloneSe
         <div className="min-w-0">
           <dt className="text-gray-500 dark:text-gray-400">Mode</dt>
           <dd className="text-gray-900 dark:text-gray-100">
-            {getSshConnectionModeLabel(effectiveConnectionMode ?? session.config.connectionMode)}
+            {getTerminalConnectionModeLabel(effectiveConnectionMode)}
           </dd>
         </div>
         <div className="min-w-0">
           <dt className="text-gray-500 dark:text-gray-400">
-            {isStandaloneSession(session) ? "Server" : "Workspace ID"}
+            Server
           </dt>
-          <dd className={isStandaloneSession(session) ? "break-words text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]" : "break-words font-mono text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]"}>
-            {isStandaloneSession(session) ? standaloneServerName : session.config.workspaceId}
+          <dd className="break-words text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
+            {standaloneServerName}
           </dd>
         </div>
         <div className="min-w-0">
           <dt className="text-gray-500 dark:text-gray-400">
-            {isStandaloneSession(session) ? "Address" : "Directory"}
+            Address
           </dt>
           <dd className="break-words font-mono text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-            {isStandaloneSession(session) ? standaloneServerTarget : session.config.directory}
+            {standaloneServerTarget}
           </dd>
         </div>
         {hasPersistentSession ? (

@@ -50,9 +50,9 @@ The recommended workflow is to treat Clanky as a controller for SSH-backed devel
 
 *Review the accumulated changes before accepting or pushing them.*
 
-![SSH Sessions](assets/screenshots/desktop/ssh.jpg)
+![Terminals](assets/screenshots/desktop/ssh.jpg)
 
-*Open persistent SSH sessions alongside task execution.*
+*Open persistent terminals alongside task execution.*
 </details>
 
 ## Installation

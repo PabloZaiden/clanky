@@ -6,18 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSshServerApi } from "../../hooks";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import type { SshServer } from "@/shared";
-import type { SshSessionKind } from "../../hooks/useSshSession";
-import { isStandaloneSession, type SshSession } from "./session-utils";
+import type { SshServerSession } from "@/shared";
 
 interface UseStandaloneSessionParams {
-  session: SshSession | null;
-  sessionKind: SshSessionKind | null;
+  session: SshServerSession | null;
   showErrorToast: (message: string) => void;
 }
 
 export function useStandaloneSession({
   session,
-  sessionKind,
   showErrorToast,
 }: UseStandaloneSessionParams) {
   const [standaloneServer, setStandaloneServer] = useState<SshServer | null>(null);
@@ -36,16 +33,8 @@ export function useStandaloneSession({
     pendingStandaloneActionRef.current = pendingStandaloneAction;
   }, [pendingStandaloneAction]);
 
-  useEffect(() => {
-    if (sessionKind !== "standalone") {
-      setStandaloneCredentialToken(null);
-      setShowPasswordPrompt(false);
-      setPendingStandaloneAction(null);
-    }
-  }, [sessionKind]);
-
   const standaloneServerId = useMemo(() => {
-    if (!session || !isStandaloneSession(session)) {
+    if (!session) {
       return null;
     }
     return session.config.sshServerId;

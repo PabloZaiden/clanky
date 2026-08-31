@@ -49,7 +49,7 @@ describe("raw WebSocket upgrade flow", () => {
       createRouteContext(),
     );
     expect(sshResponse?.status).toBe(400);
-    expect(await sshResponse?.text()).toBe("sshSessionId or sshServerSessionId is required");
+    expect(await sshResponse?.text()).toBe("sshServerSessionId is required");
 
     const terminalResponse = await getRouteHandler("/api/terminal")(
       new Request("http://localhost/api/terminal"),

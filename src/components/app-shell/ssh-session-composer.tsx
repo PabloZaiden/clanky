@@ -1,7 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import type { SshConnectionMode, SshServer, Workspace } from "@/shared";
-import { useSshServers, useSshSessions } from "../../hooks";
-import { WorkspaceSelector } from "../WorkspaceSelector";
+import type { SshServer, TerminalConnectionMode } from "@/shared";
+import { useSshServers } from "../../hooks";
 import { Button } from "../common";
 import { Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useShellHeaderActions } from "./shell-header-actions";
@@ -23,48 +22,29 @@ function storeUseTmuxPreference(useTmux: boolean): void {
 }
 
 export function SshSessionComposer({
-  workspaces,
   servers,
-  initialWorkspaceId,
   initialServerId,
   onCancel,
   onNavigate,
-  onCreateWorkspaceSession,
   onCreateStandaloneSession,
 }: {
-  workspaces: Workspace[];
   servers: SshServer[];
-  initialWorkspaceId?: string;
   initialServerId?: string;
   onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
-  onCreateWorkspaceSession: ReturnType<typeof useSshSessions>["createSession"];
   onCreateStandaloneSession: ReturnType<typeof useSshServers>["createSession"];
 }) {
   const toast = useToast();
   const formId = useId();
-  const [targetType, setTargetType] = useState<"workspace" | "server">(
-    initialWorkspaceId ? "workspace" : initialServerId ? "server" : (workspaces.length > 0 ? "workspace" : "server"),
-  );
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(initialWorkspaceId ?? workspaces[0]?.id);
   const [selectedServerId, setSelectedServerId] = useState(initialServerId ?? servers[0]?.config.id ?? "");
-  const [connectionMode, setConnectionMode] = useState<SshConnectionMode>("dtach");
+  const [connectionMode, setConnectionMode] = useState<TerminalConnectionMode>("dtach");
   const [useTmux, setUseTmux] = useState(readStoredUseTmuxPreference);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!initialWorkspaceId) {
-      return;
-    }
-    setTargetType("workspace");
-    setSelectedWorkspaceId(initialWorkspaceId);
-  }, [initialWorkspaceId]);
 
   useEffect(() => {
     if (!initialServerId) {
       return;
     }
-    setTargetType("server");
     setSelectedServerId(initialServerId);
   }, [initialServerId]);
 
@@ -72,12 +52,6 @@ export function SshSessionComposer({
     setUseTmux(nextUseTmux);
     storeUseTmuxPreference(nextUseTmux);
   }
-
-  useEffect(() => {
-    if (!selectedWorkspaceId && (initialWorkspaceId || workspaces[0])) {
-      setSelectedWorkspaceId(initialWorkspaceId ?? workspaces[0]?.id);
-    }
-  }, [initialWorkspaceId, selectedWorkspaceId, workspaces]);
 
   useEffect(() => {
     if (!selectedServerId && servers[0]) {
@@ -89,21 +63,6 @@ export function SshSessionComposer({
     event.preventDefault();
     setSubmitting(true);
     try {
-      if (targetType === "workspace") {
-        if (!selectedWorkspaceId) {
-          toast.error("Select a workspace first.");
-          return;
-        }
-        const session = await onCreateWorkspaceSession({
-          workspaceId: selectedWorkspaceId,
-          name: "Terminal",
-          connectionMode,
-          useTmux,
-        });
-        onNavigate({ view: "terminal", terminalSessionId: session.config.id });
-        return;
-      }
-
       if (!selectedServerId) {
         toast.error("Select a server first.");
         return;
@@ -114,7 +73,7 @@ export function SshSessionComposer({
         connectionMode,
         useTmux,
       });
-      onNavigate({ view: "ssh", sshSessionId: session.config.id });
+      onNavigate({ view: "ssh", sshServerSessionId: session.config.id });
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -128,7 +87,7 @@ export function SshSessionComposer({
         Cancel
       </Button>
       <Button type="submit" form={formId} size="sm" loading={submitting}>
-        {targetType === "workspace" ? "Create Terminal" : "Create SSH Session"}
+        Create SSH Session
       </Button>
     </>,
   );
@@ -137,36 +96,20 @@ export function SshSessionComposer({
     <form id={formId} className="space-y-6 pt-1 sm:pt-0" onSubmit={(event) => void handleSubmit(event)}>
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel padding="compact">
-          <label htmlFor="ssh-target-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Target type
-          </label>
-          <select
-            id="ssh-target-type"
-            value={targetType}
-            onChange={(event) => setTargetType(event.target.value as "workspace" | "server")}
-            className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
-          >
-            <option value="workspace">Workspace</option>
-            <option value="server">Standalone SSH server</option>
-          </select>
-        </Panel>
-        <Panel padding="compact">
           <label htmlFor="ssh-connection-mode" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Connection mode
           </label>
           <select
             id="ssh-connection-mode"
             value={connectionMode}
-            onChange={(event) => setConnectionMode(event.target.value as SshConnectionMode)}
+            onChange={(event) => setConnectionMode(event.target.value as TerminalConnectionMode)}
             className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
           >
-            <option value="dtach">{targetType === "workspace" ? "Persistent" : "Persistent SSH"}</option>
-            <option value="direct">{targetType === "workspace" ? "Direct" : "Direct SSH"}</option>
+            <option value="dtach">Persistent SSH</option>
+            <option value="direct">Direct SSH</option>
           </select>
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {targetType === "workspace"
-              ? "Persistent survives reconnects; direct is better for one-off debugging sessions."
-              : "Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions."}
+            Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
           </p>
         </Panel>
       </div>
@@ -191,40 +134,29 @@ export function SshSessionComposer({
         </label>
       </Panel>
 
-      {targetType === "workspace" ? (
-        <Panel padding="compact">
-          <WorkspaceSelector
-            workspaces={workspaces}
-            selectedWorkspaceId={selectedWorkspaceId}
-            onSelect={(workspaceId) => setSelectedWorkspaceId(workspaceId ?? undefined)}
-            registeredSshServers={servers}
-          />
-        </Panel>
-      ) : (
-        <Panel padding="compact">
-          <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Server
-          </label>
-          <select
-            id="ssh-server"
-            value={selectedServerId}
-            onChange={(event) => setSelectedServerId(event.target.value)}
-            className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
-          >
-            <option value="">Select a server…</option>
-            {servers.map((server) => (
-              <option key={server.config.id} value={server.config.id}>
-                {server.config.name} — {server.config.username}@{server.config.address}
-              </option>
-            ))}
-          </select>
-          {servers.length === 0 && (
-            <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-              Register a standalone SSH server first.
-            </p>
-          )}
-        </Panel>
-      )}
+      <Panel padding="compact">
+        <label htmlFor="ssh-server" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Server
+        </label>
+        <select
+          id="ssh-server"
+          value={selectedServerId}
+          onChange={(event) => setSelectedServerId(event.target.value)}
+          className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
+        >
+          <option value="">Select a server…</option>
+          {servers.map((server) => (
+            <option key={server.config.id} value={server.config.id}>
+              {server.config.name} — {server.config.username}@{server.config.address}
+            </option>
+          ))}
+        </select>
+        {servers.length === 0 && (
+          <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+            Register a standalone SSH server first.
+          </p>
+        )}
+      </Panel>
     </form>
   );
 }

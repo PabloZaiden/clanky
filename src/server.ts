@@ -27,7 +27,7 @@ import {
   agentEventEmitter,
   chatEventEmitter,
   provisioningEventEmitter,
-  sshSessionEventEmitter,
+  sshServerSessionEventEmitter,
   terminalSessionEventEmitter,
   taskEventEmitter,
   previewEventEmitter,
@@ -102,7 +102,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     taskEventEmitter.subscribe(publishEvent),
     chatEventEmitter.subscribe(publishEvent),
     agentEventEmitter.subscribe(publishEvent),
-    sshSessionEventEmitter.subscribe(publishEvent),
+    sshServerSessionEventEmitter.subscribe(publishEvent),
     terminalSessionEventEmitter.subscribe(publishEvent),
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
@@ -194,18 +194,16 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       const url = new URL(req.url);
-      const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
       const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
 
-      if (!sshSessionId && !sshServerSessionId) {
-        return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+      if (!sshServerSessionId) {
+        return new Response("sshServerSessionId is required", { status: 400 });
       }
 
       return authorizedRawWebSocketUpgrade(user.id, () => {
         const upgraded = ctx.server?.upgrade(req, {
           data: {
             webappSocketHandler: "clanky",
-            sshSessionId,
             sshServerSessionId,
             terminalMode: true,
             user,

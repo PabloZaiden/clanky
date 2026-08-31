@@ -30,8 +30,8 @@ export interface TaskDetailsProps {
   onBack?: () => void;
   /** Whether to render the back button in shell layouts */
   showBackButton?: boolean;
-  /** Navigate to the SSH session details view */
-  onSelectSshSession?: (sshSessionId: string) => void;
+  /** Navigate to the terminal session details view */
+  onSelectTerminalSession?: (terminalSessionId: string) => void;
   /** Navigate to the task-scoped code explorer view */
   onOpenTaskFiles?: (taskId: string) => void;
 }
@@ -40,7 +40,7 @@ export function TaskDetails({
   taskId,
   onBack,
   showBackButton = true,
-  onSelectSshSession,
+  onSelectTerminalSession,
   onOpenTaskFiles,
 }: TaskDetailsProps) {
    const {
@@ -49,7 +49,7 @@ export function TaskDetails({
        stopTask, setPending, sendFollowUp, loadToolDetails,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
       sendPlanFeedback, acceptPlan, discardPlan,
-     addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh, connectTerminal,
+     addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectTerminal,
     } = useTask(taskId);
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
@@ -65,7 +65,7 @@ export function TaskDetails({
   });
   const actions = useTaskActions({
     onBack,
-    onSelectSshSession,
+    onSelectTerminalSession,
     onOpenTaskFiles: () => {
       if (onOpenTaskFiles) {
         onOpenTaskFiles(taskId);
@@ -79,7 +79,7 @@ export function TaskDetails({
      },
       toast,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
-      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, connectTerminal, update,
+      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectTerminal, update,
       fetchReviewComments: content.fetchReviewComments,
     });
   const { models, modelsLoading } = useAvailableModels({ workspaceId: task?.config.workspaceId });

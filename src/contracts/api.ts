@@ -36,12 +36,11 @@ import {
   UpdateChatRequestSchema,
   ImportExistingChatRequestSchema,
   AddressCommentsRequestSchema,
-  CreateSshSessionRequestSchema,
-  UpdateSshSessionRequestSchema,
   PlanAcceptRequestSchema,
   CreateSshServerRequestSchema,
   UpdateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
+  UpdateSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
@@ -201,11 +200,6 @@ export type GenerateTaskTitleRequest = z.infer<typeof GenerateTaskTitleRequestSc
 export interface GenerateTaskTitleResponse {
   title: string;
 }
-
-/**
- * Request body for POST /api/ssh-sessions.
- */
-export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSchema>;
 
 /**
  * Request body for PATCH /api/tasks/:id endpoint.
@@ -404,9 +398,9 @@ export interface FileExplorerConflictResponse {
 export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 
 /**
- * Request body for PATCH /api/ssh-sessions/:id.
+ * Request body for PATCH /api/ssh-server-sessions/:id.
  */
-export type UpdateSshSessionRequest = z.infer<typeof UpdateSshSessionRequestSchema>;
+export type UpdateSshServerSessionRequest = z.infer<typeof UpdateSshServerSessionRequestSchema>;
 
 /**
  * Request body for POST /api/terminal-sessions.

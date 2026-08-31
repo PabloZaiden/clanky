@@ -167,32 +167,6 @@ describe("Terminal sessions API integration", () => {
     expect(created.state.status).toBe("ready");
   });
 
-  test("legacy SSH aliases reject mutations for local stdio terminals", async () => {
-    const workspace = await createWorkspace({ transport: "stdio" });
-    const createResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId: workspace.id,
-        name: "Local Terminal",
-      }),
-    });
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as WorkspaceTerminalSession;
-
-    const renameResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Should stay unchanged" }),
-    });
-
-    expect(renameResponse.status).toBe(400);
-    const currentResponse = await fetch(`${baseUrl}/api/terminal-sessions/${created.config.id}`);
-    expect(currentResponse.ok).toBe(true);
-    const current = await currentResponse.json() as WorkspaceTerminalSession;
-    expect(current.config.name).toBe("Local Terminal");
-  });
-
   test("renames a terminal session", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
 

@@ -1,10 +1,10 @@
 /**
- * Core refs and status state for an SSH terminal WebSocket connection.
+ * Core refs and status state for a terminal WebSocket connection.
  */
 
 import { useRef, useState } from "react";
 
-export interface SshSocketState {
+export interface TerminalSocketState {
   socketStatus: "connecting" | "open" | "closed";
   setSocketStatus: (status: "connecting" | "open" | "closed") => void;
   terminalSocketRef: React.MutableRefObject<WebSocket | null>;
@@ -16,7 +16,7 @@ export interface SshSocketState {
   standaloneTokenRecoveryAttemptedRef: React.MutableRefObject<boolean>;
 }
 
-export function useSshSocketState(): SshSocketState {
+export function useTerminalSocketState(): TerminalSocketState {
   const [socketStatus, setSocketStatus] = useState<"connecting" | "open" | "closed">("connecting");
   const terminalSocketRef = useRef<WebSocket | null>(null);
   const terminalReadyRef = useRef(false);

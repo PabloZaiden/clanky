@@ -75,7 +75,6 @@ describe("Task terminal session API integration", () => {
     const db = getDatabase();
     db.run("DELETE FROM preview_sessions");
     db.run("DELETE FROM terminal_sessions");
-    db.run("DELETE FROM terminal_sessions");
     db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
     executor.deleteCommands = [];
@@ -208,34 +207,66 @@ describe("Task terminal session API integration", () => {
       method: "POST",
     });
     expect(secondResponse.ok).toBe(true);
-    const secondSession = await secondResponse.json() as WorkspaceTerminalSession;
+    const secondSession = await secondResponse.json() as {
+      config: { id: string };
+    };
 
     const getResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`);
     expect(getResponse.ok).toBe(true);
-    const fetchedSession = await getResponse.json() as WorkspaceTerminalSession;
+    const fetchedSession = await getResponse.json() as {
+      config: { id: string };
+    };
 
     expect(firstSession.config.taskId).toBe(task.config.id);
     expect(firstSession.config.directory).toBe(worktreePath);
     expect(secondSession.config.id).toBe(firstSession.config.id);
     expect(fetchedSession.config.id).toBe(firstSession.config.id);
-
-    // Verify target binding
     expect(firstSession.config.targetBinding.transport).toBe("ssh");
     expect(firstSession.config.targetBinding.hostname).toBe("localhost");
   });
 
-  test("creates task-linked terminal session for local stdio workspace", async () => {
+  test("creates a linked terminal session for stdio workspaces", async () => {
     const workspace = await createWorkspace("stdio");
     const task = await createTask(workspace.id);
-    await waitForTaskWorktree(task.config.id);
 
     const response = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
       method: "POST",
     });
+
     expect(response.ok).toBe(true);
-    const session = await response.json() as WorkspaceTerminalSession;
-    expect(session.config.targetBinding.transport).toBe("stdio");
+    const session = await response.json() as {
+      config: { taskId?: string; targetBinding: { transport: string } };
+    };
     expect(session.config.taskId).toBe(task.config.id);
+    expect(session.config.targetBinding.transport).toBe("stdio");
+  });
+
+  test("purging a task deletes its linked terminal session", async () => {
+    const workspace = await createWorkspace("ssh");
+    const task = await createTask(workspace.id);
+    await waitForTaskWorktree(task.config.id);
+
+    const sessionResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
+      method: "POST",
+    });
+    expect(sessionResponse.ok).toBe(true);
+    const session = await sessionResponse.json() as {
+      config: { id: string; remoteSessionName: string };
+    };
+
+    const discardResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/discard`, {
+      method: "POST",
+    });
+    expect(discardResponse.ok).toBe(true);
+
+    const purgeResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/purge`, {
+      method: "POST",
+    });
+    expect(purgeResponse.ok).toBe(true);
+
+    const getSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`);
+    expect(getSessionResponse.status).toBe(404);
+    expect(executor.deleteCommands.some((command) => command.includes(session.config.remoteSessionName))).toBe(true);
   });
 
   test("enforces per-user task uniqueness for terminal sessions", async () => {
@@ -243,19 +274,18 @@ describe("Task terminal session API integration", () => {
     const task = await createTask(workspace.id);
     await waitForTaskWorktree(task.config.id);
 
-    const first = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
+    const firstResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
       method: "POST",
     });
-    expect(first.ok).toBe(true);
-    const firstSession = await first.json() as WorkspaceTerminalSession;
+    expect(firstResponse.ok).toBe(true);
+    const firstSession = await firstResponse.json() as WorkspaceTerminalSession;
 
-    const second = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
+    const secondResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
       method: "POST",
     });
-    expect(second.ok).toBe(true);
-    const secondSession = await second.json() as WorkspaceTerminalSession;
+    expect(secondResponse.ok).toBe(true);
+    const secondSession = await secondResponse.json() as WorkspaceTerminalSession;
 
-    // Same session is returned — uniqueness constraint is honored
     expect(secondSession.config.id).toBe(firstSession.config.id);
   });
 

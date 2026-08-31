@@ -1,23 +1,23 @@
 /**
- * Compositor hook for managing the SSH terminal WebSocket connection and I/O.
+ * Compositor hook for managing the terminal WebSocket connection and I/O.
  * Delegates to focused sub-hooks for socket state, sending, output, resize, and lifecycle.
  */
 
 import type React from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { SshSessionKind } from "../../hooks/useSshSession";
-import { useSshSocketState } from "./use-ssh-socket-state";
-import { useSshSender } from "./use-ssh-sender";
+export type TerminalSessionKind = "workspace" | "standalone";
+import { useTerminalSocketState } from "./use-terminal-socket-state";
+import { useTerminalSender } from "./use-terminal-sender";
 import { useTerminalOutput } from "./use-terminal-output";
 import { useTerminalResize } from "./use-terminal-resize";
-import { useSshLifecycle } from "./use-ssh-lifecycle";
+import { useTerminalLifecycle } from "./use-terminal-lifecycle";
 
-interface UseSshConnectionParams {
+interface UseTerminalConnectionParams {
   terminalUrl: string | null;
   terminalRef: React.MutableRefObject<Terminal | null>;
   fitAddonRef: React.MutableRefObject<FitAddon | null>;
-  sessionKind: SshSessionKind | null;
+  sessionKind: TerminalSessionKind | null;
   focusTerminal: () => void;
   refresh: () => Promise<void>;
   showErrorToast: (message: string) => void;
@@ -29,7 +29,7 @@ interface UseSshConnectionParams {
   setShowPasswordPrompt: (show: boolean) => void;
 }
 
-export function useSshConnection({
+export function useTerminalConnection({
   terminalUrl,
   terminalRef,
   fitAddonRef,
@@ -43,10 +43,10 @@ export function useSshConnection({
   setStandaloneCredentialToken,
   setPendingStandaloneAction,
   setShowPasswordPrompt,
-}: UseSshConnectionParams) {
-  const socketState = useSshSocketState();
+}: UseTerminalConnectionParams) {
+  const socketState = useTerminalSocketState();
 
-  const { sendTerminalPayload, sendTerminalInput } = useSshSender({
+  const { sendTerminalPayload, sendTerminalInput } = useTerminalSender({
     terminalSocketRef: socketState.terminalSocketRef,
     terminalReadyRef: socketState.terminalReadyRef,
     focusTerminal,
@@ -67,7 +67,7 @@ export function useSshConnection({
     sendTerminalPayload,
   });
 
-  const { markTerminalReady, connectTerminal, recoverTerminalOnForeground } = useSshLifecycle({
+  const { markTerminalReady, connectTerminal, recoverTerminalOnForeground } = useTerminalLifecycle({
     terminalUrl,
     terminalRef,
     sessionKind,

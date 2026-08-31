@@ -5,7 +5,6 @@ import type {
   Chat,
   SshServer,
   SshServerSession,
-  SshSession,
   Task,
   Workspace,
   WorkspaceTerminalSession,
@@ -19,7 +18,6 @@ import {
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
   type UseSshServersResult,
-  type UseSshSessionsResult,
   type UseTasksResult,
   type UseTerminalSessionsResult,
   type UseWorkspacesResult,
@@ -53,11 +51,9 @@ interface UseShellActionsOptions {
   updateChat: UseChatsResult["updateChat"];
   agents: UseAgentsResult;
   updateTask: UseTasksResult["updateTask"];
-  updateWorkspaceSshSession: UseSshSessionsResult["updateSession"];
   updateStandaloneSession: UseSshServersResult["updateSession"];
   updateServer: UseSshServersResult["updateServer"];
   refreshSshServers: UseSshServersResult["refresh"];
-  deleteWorkspaceSshSession: UseSshSessionsResult["deleteSession"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   deleteStandaloneSession: UseSshServersResult["deleteSession"];
@@ -88,11 +84,9 @@ export function useShellActions({
   updateChat,
   agents,
   updateTask,
-  updateWorkspaceSshSession,
   updateStandaloneSession,
   updateServer,
   refreshSshServers,
-  deleteWorkspaceSshSession,
   updateTerminalSession,
   deleteTerminalSession,
   deleteStandaloneSession,
@@ -221,10 +215,8 @@ export function useShellActions({
     route,
     navigateWithinShell,
     onError: toast.error,
-    updateWorkspaceSshSession,
     updateStandaloneSession,
     refreshSshServers,
-    deleteWorkspaceSshSession,
     updateTerminalSession,
     deleteTerminalSession,
     deleteStandaloneSession,
@@ -262,14 +254,6 @@ export function useShellActions({
       toast.error(workspace.isPrivate ? "Failed to unmark workspace as private" : "Failed to mark workspace as private");
     }
   }, [toast, updateWorkspace]);
-
-  const toggleWorkspaceSshSessionPrivate = useCallback(async (session: SshSession): Promise<void> => {
-    try {
-      await updateWorkspaceSshSession(session.config.id, { isPrivate: !session.config.isPrivate });
-    } catch (error) {
-      toast.error(String(error));
-    }
-  }, [toast, updateWorkspaceSshSession]);
 
   const toggleTerminalSessionPrivate = useCallback(async (session: WorkspaceTerminalSession): Promise<void> => {
     try {
@@ -326,7 +310,6 @@ export function useShellActions({
     toggleChatPrivate,
     toggleAgentPrivate,
     toggleWorkspacePrivate,
-    toggleWorkspaceSshSessionPrivate,
     toggleTerminalSessionPrivate,
     toggleSshServerPrivate,
     toggleStandaloneSshSessionPrivate,

@@ -5,12 +5,12 @@
 import { useCallback, useEffect } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { appWebSocketUrl } from "../../lib/public-path";
-import type { SshSessionKind } from "../../hooks/useSshSession";
+import type { TerminalSessionKind } from "./use-terminal-connection";
 
-interface UseSshLifecycleParams {
+interface UseTerminalLifecycleParams {
   terminalUrl: string | null;
   terminalRef: React.MutableRefObject<Terminal | null>;
-  sessionKind: SshSessionKind | null;
+  sessionKind: TerminalSessionKind | null;
   terminalSocketRef: React.MutableRefObject<WebSocket | null>;
   terminalReadyRef: React.MutableRefObject<boolean>;
   pendingOutputRef: React.MutableRefObject<string[]>;
@@ -32,7 +32,7 @@ interface UseSshLifecycleParams {
   setShowPasswordPrompt: (show: boolean) => void;
 }
 
-export function useSshLifecycle({
+export function useTerminalLifecycle({
   terminalUrl,
   terminalRef,
   sessionKind,
@@ -55,7 +55,7 @@ export function useSshLifecycle({
   setStandaloneCredentialToken,
   setPendingStandaloneAction,
   setShowPasswordPrompt,
-}: UseSshLifecycleParams) {
+}: UseTerminalLifecycleParams) {
   const markTerminalReady = useCallback(() => {
     if (terminalReadyRef.current) {
       return;

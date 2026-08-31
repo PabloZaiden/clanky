@@ -22,7 +22,6 @@ import type {
   Chat,
   SshServer,
   SshServerSession,
-  SshSession,
   Task,
   Workspace,
 } from "@/shared";
@@ -67,7 +66,6 @@ interface UseShellHeaderOptions {
   chatsLoading: boolean;
   agents: UseAgentsResult;
   servers: SshServer[];
-  sessions: SshSession[];
   terminalSessions: import("@/shared").WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   workspaces: Workspace[];
@@ -147,30 +145,21 @@ function getChatScopeSubtitle(
   return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
 }
 
-function getSshSessionScopeSubtitle({
-  sshSessionId,
-  sessions,
+function getStandaloneSshSessionScopeSubtitle({
+  sshServerSessionId,
   sessionsByServerId,
-  workspaces,
   servers,
 }: {
-  sshSessionId: string | undefined;
-  sessions: SshSession[];
+  sshServerSessionId: string | undefined;
   sessionsByServerId: Record<string, SshServerSession[]>;
-  workspaces: Workspace[];
   servers: SshServer[];
 }): string | undefined {
-  if (!sshSessionId) {
+  if (!sshServerSessionId) {
     return undefined;
   }
 
-  const workspaceSession = sessions.find((session) => session.config.id === sshSessionId);
-  if (workspaceSession) {
-    return getWorkspaceScopeSubtitle(workspaceSession.config.workspaceId, workspaces);
-  }
-
   for (const [serverId, serverSessions] of Object.entries(sessionsByServerId)) {
-    if (serverSessions.some((session) => session.config.id === sshSessionId)) {
+    if (serverSessions.some((session) => session.config.id === sshServerSessionId)) {
       return getServerName(serverId, servers);
     }
   }
@@ -203,7 +192,6 @@ interface HeaderScopeOptions {
   selectedServer: SshServer | null;
   selectedAgent: Agent | null;
   agentRunWorkspaceId: string | undefined;
-  sessions: SshSession[];
   terminalSessions: import("@/shared").WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   servers: SshServer[];
@@ -221,7 +209,6 @@ function getHeaderScopeSubtitle({
   selectedServer,
   selectedAgent,
   agentRunWorkspaceId,
-  sessions,
   terminalSessions,
   sessionsByServerId,
   servers,
@@ -235,19 +222,11 @@ function getHeaderScopeSubtitle({
     case "chat-transcript":
       return getChatScopeSubtitle(selectedChat, workspaces, servers);
     case "ssh":
-      {
-        const sshSessionId = getRouteString(route, "sshSessionId");
-        const terminalSession = terminalSessions.find((session) => session.config.id === sshSessionId);
-        return terminalSession
-          ? getWorkspaceScopeSubtitle(terminalSession.config.workspaceId, workspaces)
-          : getSshSessionScopeSubtitle({
-              sshSessionId,
-              sessions,
-              sessionsByServerId,
-              workspaces,
-              servers,
-            });
-      }
+      return getStandaloneSshSessionScopeSubtitle({
+        sshServerSessionId: getRouteString(route, "sshServerSessionId"),
+        sessionsByServerId,
+        servers,
+      });
     case "terminal":
       return getTerminalSessionScopeSubtitle(
         getRouteString(route, "terminalSessionId"),
@@ -309,7 +288,6 @@ export function useShellHeader({
   chatsLoading,
   agents,
   servers,
-  sessions,
   terminalSessions,
   sessionsByServerId,
   workspaces,
@@ -317,16 +295,8 @@ export function useShellHeader({
   composeActionState,
 }: UseShellHeaderOptions) {
   const headerOwnerRoute = useMemo(() => {
-    const ownerRoute = getHeaderOwnerRoute(route);
-    if (route.view !== "ssh") {
-      return ownerRoute;
-    }
-
-    const sshSessionId = getRouteString(route, "sshSessionId");
-    return sshSessionId && terminalSessions.some((session) => session.config.id === sshSessionId)
-      ? { view: "terminal", terminalSessionId: sshSessionId }
-      : ownerRoute;
-  }, [route, terminalSessions]);
+    return getHeaderOwnerRoute(route);
+  }, [route]);
   const headerNode = useMemo(
     () => headerOwnerRoute
       ? headerNodes.find((node) => sidebarNodeMatchesRoute(node, headerOwnerRoute)) ?? null
@@ -362,7 +332,6 @@ export function useShellHeader({
       selectedServer,
       selectedAgent,
       agentRunWorkspaceId: agentRun?.configSnapshot.workspaceId,
-      sessions,
       terminalSessions,
       sessionsByServerId,
       servers,
@@ -398,9 +367,7 @@ export function useShellHeader({
       case "ssh":
         return nodeModel
           ? { ...nodeModel, scopeSubtitle }
-          : terminalSessions.some((session) => session.config.id === getRouteString(route, "sshSessionId"))
-            ? { title: "Terminal", scopeSubtitle }
-            : { title: "SSH session" };
+          : { title: "SSH session", scopeSubtitle };
       case "terminal":
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "Terminal" };
       case "workspace":
@@ -568,11 +535,7 @@ export function useShellHeader({
         }
         if (composeKind === "ssh-session") {
           return {
-            title: composeServer
-              ? "Create an SSH session"
-              : composeWorkspace
-                ? "Create a terminal"
-                : "Create a session",
+            title: composeServer ? "Create an SSH session" : "Create a standalone SSH session",
             scopeSubtitle,
           };
         }
@@ -608,7 +571,6 @@ export function useShellHeader({
     selectedServer,
     selectedTask,
     selectedWorkspace,
-    sessions,
     terminalSessions,
     servers,
     sessionsByServerId,

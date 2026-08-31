@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { log, replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
-import type { SshSession, WorkspaceTerminalSession } from "@/shared";
+import type { WorkspaceTerminalSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
@@ -17,7 +17,7 @@ import type {
 
 interface UseTaskActionsOptions {
   onBack?: () => void;
-  onSelectSshSession?: (sshSessionId: string) => void;
+  onSelectTerminalSession?: (terminalSessionId: string) => void;
   onOpenTaskFiles?: () => void;
   toast: ToastService;
   accept: () => Promise<AcceptPlanResult | unknown>;
@@ -34,7 +34,6 @@ interface UseTaskActionsOptions {
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
-  connectViaSsh: () => Promise<SshSession | null>;
   connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
   update: (request: UpdateTaskRequest) => Promise<boolean>;
   fetchReviewComments: () => Promise<void>;
@@ -56,7 +55,7 @@ export interface UseTaskActionsResult {
   planActionSubmitting: boolean;
   automaticPrFlowSubmitting: boolean;
   pullRequestAutoMergeSubmitting: boolean;
-  sshConnecting: boolean;
+  terminalConnecting: boolean;
   planningSettingsSubmitting: boolean;
 
   // Modal open/close setters
@@ -88,7 +87,6 @@ export interface UseTaskActionsResult {
   handleStopAutomaticPrFlow: () => Promise<void>;
   handleAcceptPlan: (mode?: "start_task" | "open_terminal") => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
-  handleConnectViaSsh: () => Promise<void>;
   handleConnectTerminal: () => Promise<void>;
   handleOpenTaskFiles: () => void;
   handleUpdatePlanningSettings: (request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">) => Promise<boolean>;
@@ -96,7 +94,7 @@ export interface UseTaskActionsResult {
 
 export function useTaskActions({
   onBack,
-  onSelectSshSession,
+  onSelectTerminalSession,
   onOpenTaskFiles,
   toast,
   accept,
@@ -113,7 +111,6 @@ export function useTaskActions({
   stopAutomaticPrFlow,
   acceptPlan,
   discardPlan,
-  connectViaSsh,
   connectTerminal,
   update,
   fetchReviewComments,
@@ -132,19 +129,15 @@ export function useTaskActions({
   const [stopAutomaticPrFlowModal, setStopAutomaticPrFlowModal] = useState(false);
   const [automaticPrFlowSubmitting, setAutomaticPrFlowSubmitting] = useState(false);
   const [pullRequestAutoMergeSubmitting, setPullRequestAutoMergeSubmitting] = useState(false);
-  const [sshConnecting, setSshConnecting] = useState(false);
+  const [terminalConnecting, setTerminalConnecting] = useState(false);
   const [planningSettingsSubmitting, setPlanningSettingsSubmitting] = useState(false);
 
-  function navigateToSshSession(sshSessionId: string) {
-    if (onSelectSshSession) {
-      onSelectSshSession(sshSessionId);
-    } else {
-      replaceWebAppRoute({ view: "terminal", terminalSessionId: sshSessionId });
-    }
-  }
-
   function navigateToTerminalSession(terminalSessionId: string) {
-    replaceWebAppRoute({ view: "terminal", terminalSessionId });
+    if (onSelectTerminalSession) {
+      onSelectTerminalSession(terminalSessionId);
+    } else {
+      replaceWebAppRoute({ view: "terminal", terminalSessionId });
+    }
   }
 
   async function handleDelete() {
@@ -289,22 +282,8 @@ export function useTaskActions({
     onBack?.();
   }
 
-  async function handleConnectViaSsh() {
-    setSshConnecting(true);
-    try {
-      const session = await connectViaSsh();
-      if (!session) {
-        toast.error("Failed to connect via ssh");
-        return;
-      }
-      navigateToSshSession(session.config.id);
-    } finally {
-      setSshConnecting(false);
-    }
-  }
-
   async function handleConnectTerminal() {
-    setSshConnecting(true);
+    setTerminalConnecting(true);
     try {
       const session = await connectTerminal();
       if (!session) {
@@ -313,7 +292,7 @@ export function useTaskActions({
       }
       navigateToTerminalSession(session.config.id);
     } finally {
-      setSshConnecting(false);
+      setTerminalConnecting(false);
     }
   }
 
@@ -347,7 +326,7 @@ export function useTaskActions({
     planActionSubmitting,
     automaticPrFlowSubmitting,
     pullRequestAutoMergeSubmitting,
-    sshConnecting,
+    terminalConnecting,
     planningSettingsSubmitting,
     setDeleteModal,
     setAcceptModal,
@@ -375,7 +354,6 @@ export function useTaskActions({
     handleStopAutomaticPrFlow,
     handleAcceptPlan,
     handleDiscardPlan,
-    handleConnectViaSsh,
     handleConnectTerminal,
     handleOpenTaskFiles,
     handleUpdatePlanningSettings,

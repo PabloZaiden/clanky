@@ -2,8 +2,8 @@ import type { Chat, SshServer, SshServerSession } from "@/shared";
 import {
   formatStatusLabel,
   getChatStatusBadgeVariant,
-  getSshSessionStatusBadgeVariant,
-  getSshSessionStatusLabel,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
   StatusBadge,
 } from "../common";
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
@@ -101,11 +101,11 @@ export function SshServerView({
                   title={session.config.name}
                   description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
                   badge={(
-                    <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>
-                      {getSshSessionStatusLabel(session.state.status)}
+                    <StatusBadge variant={getTerminalSessionStatusBadgeVariant(session.state.status)}>
+                      {getTerminalSessionStatusLabel(session.state.status)}
                     </StatusBadge>
                   )}
-                  onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
+                  onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshServerSessionId: session.config.id }) : undefined}
                   privateHidden={privateHidden}
                 />
               );

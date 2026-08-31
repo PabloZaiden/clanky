@@ -189,10 +189,8 @@ export const PlanFeedbackRequestSchema = z.object({
  * Schema for plan acceptance - POST /api/tasks/:id/plan/accept
  */
 export const PlanAcceptRequestSchema = z.object({
-  mode: z.enum(["start_task", "open_terminal", "open_ssh"]),
-}).transform((value) => ({
-  mode: value.mode === "open_ssh" ? "open_terminal" as const : value.mode,
-}));
+  mode: z.enum(["start_task", "open_terminal"]),
+});
 
 /**
  * Schema for pending prompt - PUT /api/tasks/:id/pending-prompt

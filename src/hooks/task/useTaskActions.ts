@@ -5,11 +5,11 @@
  * - useTaskGitActions       – accept, push, updateBranch
  * - useTaskPlanActions      – sendPlanFeedback, acceptPlan, discardPlan
  * - useTaskPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
- * - useTaskFollowUpActions  – sendFollowUp, connectViaSsh, addressReviewComments
+ * - useTaskFollowUpActions  – sendFollowUp, connectTerminal, addressReviewComments
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, SshSession, WorkspaceTerminalSession } from "@/shared";
+import type { Task, WorkspaceTerminalSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
@@ -74,7 +74,6 @@ export interface UseTaskActionsResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  connectViaSsh: () => Promise<SshSession | null>;
   connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 

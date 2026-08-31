@@ -19,7 +19,7 @@
 
 export type { WebSocketData } from "./types";
 export {
-  startTerminalBridge,
+  startSshServerTerminalBridge,
   startWorkspaceTerminalBridge,
   sendTerminalAuthError,
 } from "./terminal";
@@ -29,7 +29,7 @@ export { createMessageHandler } from "./message-handler";
 import { open, close, error } from "./connection";
 import { createMessageHandler } from "./message-handler";
 import {
-  startTerminalBridge,
+  startSshServerTerminalBridge,
   startWorkspaceTerminalBridge,
   sendTerminalAuthError,
 } from "./terminal";
@@ -39,18 +39,18 @@ import {
  * These handlers manage raw WebSocket transport lifecycles.
  *
  * `message` is created via a factory that holds a reference to `websocketHandlers`
- * itself so that spying on `websocketHandlers.startTerminalBridge` in tests correctly
+ * itself so that spying on `websocketHandlers.startSshServerTerminalBridge` in tests correctly
  * intercepts calls made from inside the message handler.
  */
 export const websocketHandlers = {
-  startTerminalBridge,
+  startSshServerTerminalBridge,
   startWorkspaceTerminalBridge,
   sendTerminalAuthError,
   open,
   close,
   error,
 } as {
-  startTerminalBridge: typeof startTerminalBridge;
+  startSshServerTerminalBridge: typeof startSshServerTerminalBridge;
   startWorkspaceTerminalBridge: typeof startWorkspaceTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
   open: typeof open;

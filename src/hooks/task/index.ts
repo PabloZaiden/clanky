@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, SshSession, WorkspaceTerminalSession } from "@/shared";
+import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, WorkspaceTerminalSession } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { LogEntry } from "../../components/LogViewer";
@@ -115,8 +115,6 @@ export interface UseTaskResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  /** Get or create the task's linked SSH session */
-  connectViaSsh: () => Promise<SshSession | null>;
   /** Get or create the task's linked terminal session */
   connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }

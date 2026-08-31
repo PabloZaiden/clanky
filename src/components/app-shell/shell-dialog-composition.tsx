@@ -12,21 +12,21 @@ import type {
   UseChatsResult,
   UseQuickChatSettingsResult,
   UseSshServersResult,
-  UseSshSessionsResult,
   UseTerminalSessionsResult,
 } from "../../hooks";
-import { RenameSshSessionModal } from "../RenameSshSessionModal";
+import { RenameSessionModal } from "../RenameSessionModal";
 import { getRouteString } from "./route-fields";
-import type { SshSessionActionTarget, TerminalSessionActionTarget } from "./shell-sidebar-composition";
+import type {
+  StandaloneSshSessionActionTarget,
+  TerminalSessionActionTarget,
+} from "./shell-sidebar-composition";
 
 interface ShellDialogCompositionOptions {
   route: WebAppRoute;
   navigateWithinShell: (route: WebAppRoute) => void;
   onError: ToastService["error"];
-  updateWorkspaceSshSession: UseSshSessionsResult["updateSession"];
   updateStandaloneSession: UseSshServersResult["updateSession"];
   refreshSshServers: UseSshServersResult["refresh"];
-  deleteWorkspaceSshSession: UseSshSessionsResult["deleteSession"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   deleteStandaloneSession: UseSshServersResult["deleteSession"];
@@ -42,8 +42,8 @@ export interface ShellDialogComposition {
   setEditingAgentId: (agentId: string) => void;
   cancelAgentEdit: () => void;
   handleAgentSaved: (agent: Agent) => void;
-  openRenameSshSession: (target: SshSessionActionTarget) => void;
-  openDeleteSshSession: (target: SshSessionActionTarget) => void;
+  openRenameStandaloneSshSession: (target: StandaloneSshSessionActionTarget) => void;
+  openDeleteStandaloneSshSession: (target: StandaloneSshSessionActionTarget) => void;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
   openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
   setDeleteAgentTarget: (agent: Agent) => void;
@@ -57,10 +57,8 @@ export function useShellDialogComposition({
   route,
   navigateWithinShell,
   onError,
-  updateWorkspaceSshSession,
   updateStandaloneSession,
   refreshSshServers,
-  deleteWorkspaceSshSession,
   updateTerminalSession,
   deleteTerminalSession,
   deleteStandaloneSession,
@@ -70,8 +68,8 @@ export function useShellDialogComposition({
   quickChatWorkspace,
   chatActionModals,
 }: ShellDialogCompositionOptions): ShellDialogComposition {
-  const [renameSshSessionTarget, setRenameSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
-  const [deleteSshSessionTarget, setDeleteSshSessionTarget] = useState<SshSessionActionTarget | null>(null);
+  const [renameStandaloneSshSessionTarget, setRenameStandaloneSshSessionTarget] = useState<StandaloneSshSessionActionTarget | null>(null);
+  const [deleteStandaloneSshSessionTarget, setDeleteStandaloneSshSessionTarget] = useState<StandaloneSshSessionActionTarget | null>(null);
   const [renameTerminalSessionTarget, setRenameTerminalSessionTarget] = useState<TerminalSessionActionTarget | null>(null);
   const [deleteTerminalSessionTarget, setDeleteTerminalSessionTarget] = useState<TerminalSessionActionTarget | null>(null);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
@@ -81,12 +79,12 @@ export function useShellDialogComposition({
   const [purgeAgentPending, setPurgeAgentPending] = useState(false);
   const [quickChatCreating, setQuickChatCreating] = useState(false);
 
-  const openRenameSshSession = useCallback((target: SshSessionActionTarget) => {
-    setRenameSshSessionTarget(target);
+  const openRenameStandaloneSshSession = useCallback((target: StandaloneSshSessionActionTarget) => {
+    setRenameStandaloneSshSessionTarget(target);
   }, []);
 
-  const openDeleteSshSession = useCallback((target: SshSessionActionTarget) => {
-    setDeleteSshSessionTarget(target);
+  const openDeleteStandaloneSshSession = useCallback((target: StandaloneSshSessionActionTarget) => {
+    setDeleteStandaloneSshSessionTarget(target);
   }, []);
 
   const openRenameTerminalSession = useCallback((target: TerminalSessionActionTarget) => {
@@ -97,46 +95,39 @@ export function useShellDialogComposition({
     setDeleteTerminalSessionTarget(target);
   }, []);
 
-  const renameSshSession = useCallback(async (newName: string): Promise<void> => {
-    if (!renameSshSessionTarget) {
+  const renameStandaloneSshSession = useCallback(async (newName: string): Promise<void> => {
+    if (!renameStandaloneSshSessionTarget) {
       return;
     }
-    if (renameSshSessionTarget.kind === "workspace") {
-      await updateWorkspaceSshSession(renameSshSessionTarget.id, { name: newName });
-    } else {
-      await updateStandaloneSession(renameSshSessionTarget.serverId, renameSshSessionTarget.id, { name: newName });
-      await refreshSshServers();
-    }
-    setRenameSshSessionTarget(null);
+    await updateStandaloneSession(
+      renameStandaloneSshSessionTarget.serverId,
+      renameStandaloneSshSessionTarget.id,
+      { name: newName },
+    );
+    await refreshSshServers();
+    setRenameStandaloneSshSessionTarget(null);
   }, [
     refreshSshServers,
-    renameSshSessionTarget,
+    renameStandaloneSshSessionTarget,
     updateStandaloneSession,
-    updateWorkspaceSshSession,
   ]);
 
-  const deleteSshSession = useCallback(async (): Promise<void> => {
-    if (!deleteSshSessionTarget) {
+  const deleteStandaloneSshSessionAction = useCallback(async (): Promise<void> => {
+    if (!deleteStandaloneSshSessionTarget) {
       return;
     }
     try {
-      const success = deleteSshSessionTarget.kind === "workspace"
-        ? await deleteWorkspaceSshSession(deleteSshSessionTarget.id)
-        : await deleteStandaloneSession(deleteSshSessionTarget.serverId, deleteSshSessionTarget.id);
+      const success = await deleteStandaloneSession(
+        deleteStandaloneSshSessionTarget.serverId,
+        deleteStandaloneSshSessionTarget.id,
+      );
       if (!success) {
-        onError(deleteSshSessionTarget.kind === "workspace"
-          ? "Failed to delete terminal session."
-          : "Failed to delete SSH session.");
+        onError("Failed to delete SSH session.");
         return;
       }
-      const deletedActiveSession = deleteSshSessionTarget.kind === "workspace"
-        ? (route.view === "terminal"
-          && getRouteString(route, "terminalSessionId") === deleteSshSessionTarget.id)
-          || (route.view === "ssh"
-            && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id)
-        : route.view === "ssh"
-          && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id;
-      setDeleteSshSessionTarget(null);
+      const deletedActiveSession = route.view === "ssh"
+        && getRouteString(route, "sshServerSessionId") === deleteStandaloneSshSessionTarget.id;
+      setDeleteStandaloneSshSessionTarget(null);
       if (deletedActiveSession) {
         navigateWithinShell({ view: "home" });
       }
@@ -144,9 +135,8 @@ export function useShellDialogComposition({
       onError(String(error));
     }
   }, [
-    deleteSshSessionTarget,
+    deleteStandaloneSshSessionTarget,
     deleteStandaloneSession,
-    deleteWorkspaceSshSession,
     navigateWithinShell,
     onError,
     route,
@@ -278,27 +268,25 @@ export function useShellDialogComposition({
 
   const modals = (
     <>
-      <RenameSshSessionModal
-        isOpen={Boolean(renameSshSessionTarget)}
-        onClose={() => setRenameSshSessionTarget(null)}
-        currentName={renameSshSessionTarget?.name ?? ""}
-        onRename={renameSshSession}
-        sessionKind={renameSshSessionTarget?.kind === "workspace" ? "terminal" : "ssh"}
+      <RenameSessionModal
+        isOpen={Boolean(renameStandaloneSshSessionTarget)}
+        onClose={() => setRenameStandaloneSshSessionTarget(null)}
+        currentName={renameStandaloneSshSessionTarget?.name ?? ""}
+        onRename={renameStandaloneSshSession}
+        sessionKind="ssh"
       />
       <ConfirmModal
-        isOpen={Boolean(deleteSshSessionTarget)}
-        onClose={() => setDeleteSshSessionTarget(null)}
-        onConfirm={() => void deleteSshSession()}
-        title={deleteSshSessionTarget?.kind === "workspace" ? "Delete terminal session?" : "Delete SSH session?"}
-        message={deleteSshSessionTarget
-          ? deleteSshSessionTarget.kind === "workspace"
-            ? `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent session.`
-            : `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent remote session.`
+        isOpen={Boolean(deleteStandaloneSshSessionTarget)}
+        onClose={() => setDeleteStandaloneSshSessionTarget(null)}
+        onConfirm={() => void deleteStandaloneSshSessionAction()}
+        title="Delete SSH session?"
+        message={deleteStandaloneSshSessionTarget
+          ? `This removes "${deleteStandaloneSshSessionTarget.name}" from Clanky and attempts to stop any persistent remote session.`
           : ""}
         confirmLabel="Delete"
         loading={false}
       />
-      <RenameSshSessionModal
+      <RenameSessionModal
         isOpen={Boolean(renameTerminalSessionTarget)}
         onClose={() => setRenameTerminalSessionTarget(null)}
         currentName={renameTerminalSessionTarget?.name ?? ""}
@@ -360,8 +348,8 @@ export function useShellDialogComposition({
     setEditingAgentId,
     cancelAgentEdit,
     handleAgentSaved,
-    openRenameSshSession,
-    openDeleteSshSession,
+    openRenameStandaloneSshSession,
+    openDeleteStandaloneSshSession,
     openRenameTerminalSession,
     openDeleteTerminalSession,
     setDeleteAgentTarget,

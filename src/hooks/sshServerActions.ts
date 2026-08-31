@@ -1,5 +1,5 @@
-import type { DevboxTemplateSummary, SshServer, SshConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
-import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshSessionRequest, UpdateSshServerRequest } from "@/contracts";
+import type { DevboxTemplateSummary, SshServer, TerminalConnectionMode, SshServerPrerequisiteReport, SshServerSession, VncSession } from "@/shared";
+import type { CheckSshServerPrerequisitesRequest, CreateSshServerRequest, GetDevboxTemplatesRequest, ListSshServersResponse, UpdateSshServerSessionRequest, UpdateSshServerRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { ApiError, isApiErrorCode } from "../lib/api-error";
 import { apiRequest } from "../lib/api-client";
@@ -114,7 +114,7 @@ export async function deleteSshServerApi(id: string): Promise<boolean> {
 export async function createStandaloneSshSessionApi(options: {
   serverId: string;
   name: string;
-  connectionMode: SshConnectionMode;
+  connectionMode: TerminalConnectionMode;
   useTmux?: boolean;
 }): Promise<SshServerSession> {
   return await apiCall<SshServerSession>(
@@ -135,9 +135,9 @@ export async function createStandaloneSshSessionApi(options: {
 
 export async function updateStandaloneSshSessionApi(
   sessionId: string,
-  request: UpdateSshSessionRequest,
+  request: UpdateSshServerSessionRequest,
 ): Promise<SshServerSession> {
-  const body: UpdateSshSessionRequest = {};
+  const body: UpdateSshServerSessionRequest = {};
   if (typeof request.name === "string") {
     body.name = request.name.trim();
   }

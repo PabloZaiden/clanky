@@ -269,7 +269,7 @@ describe("managed execution context credentials", () => {
       const staleIdentity = {
         userId: testOwnerUser.id,
         workspaceId: workspace.id,
-        contextType: "ssh_session" as const,
+        contextType: "terminal_session" as const,
         contextId: crypto.randomUUID(),
       };
       await managedCredentialService.ensureCredentialForRuntime(staleIdentity);

@@ -1,5 +1,5 @@
 /**
- * Hooks for sending data over an SSH terminal WebSocket.
+ * Hooks for sending data over a terminal WebSocket.
  */
 
 import { useCallback } from "react";
@@ -9,19 +9,19 @@ export type SendTerminalPayloadFn = (
   options?: { focusTerminal?: boolean; notifyOnFailure?: boolean },
 ) => boolean;
 
-interface UseSshSenderParams {
+interface UseTerminalSenderParams {
   terminalSocketRef: React.MutableRefObject<WebSocket | null>;
   terminalReadyRef: React.MutableRefObject<boolean>;
   focusTerminal: () => void;
   showErrorToast: (message: string) => void;
 }
 
-export function useSshSender({
+export function useTerminalSender({
   terminalSocketRef,
   terminalReadyRef,
   focusTerminal,
   showErrorToast,
-}: UseSshSenderParams) {
+}: UseTerminalSenderParams) {
   const sendTerminalPayload: SendTerminalPayloadFn = useCallback((payload, options) => {
     if (terminalSocketRef.current?.readyState !== WebSocket.OPEN || !terminalReadyRef.current) {
       if (options?.notifyOnFailure ?? true) {

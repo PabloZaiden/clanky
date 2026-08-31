@@ -46,10 +46,6 @@ import {
 
 const log = createLogger("core:terminal-session-manager");
 
-interface TerminalSessionOperationOptions {
-  expectedTargetKind?: "ssh";
-}
-
 function buildRemoteSessionName(id: string): string {
   return `clanky-${id.replace(/-/g, "").slice(0, 24)}`;
 }
@@ -128,20 +124,9 @@ export class TerminalSessionManager {
 
   async createSession(
     request: CreateTerminalSessionRequest,
-    options: TerminalSessionOperationOptions = {},
   ): Promise<WorkspaceTerminalSession> {
     return await withWorkspaceExecutionLock(request.workspaceId, async () => {
       const workspace = await requireWorkspace(request.workspaceId);
-      if (options.expectedTargetKind) {
-        const target = await resolveWorkspaceExecutionTarget(workspace);
-        if (target.kind !== options.expectedTargetKind) {
-          throw new DomainError(
-            "ssh_transport_required",
-            "SSH sessions require a workspace configured with ssh transport",
-            { details: { workspaceId: workspace.id } },
-          );
-        }
-      }
       const connectionMode = request.connectionMode ?? DEFAULT_TERMINAL_CONNECTION_MODE;
       const useTmux = request.useTmux ?? DEFAULT_TERMINAL_USE_TMUX;
       await touchWorkspace(workspace.id);
@@ -223,7 +208,6 @@ export class TerminalSessionManager {
 
   async getOrCreateTaskSession(
     taskId: string,
-    options: TerminalSessionOperationOptions = {},
   ): Promise<WorkspaceTerminalSession> {
     const { taskManager } = await import("./task-manager");
     const task = await taskManager.getTask(taskId) ?? await loadTask(taskId);
@@ -241,16 +225,6 @@ export class TerminalSessionManager {
       }
 
       const currentWorkspace = await requireWorkspace(workspace.id);
-      if (options.expectedTargetKind) {
-        const target = await resolveWorkspaceExecutionTarget(currentWorkspace);
-        if (target.kind !== options.expectedTargetKind) {
-          throw new DomainError(
-            "ssh_transport_required",
-            "SSH sessions require a workspace configured with ssh transport",
-            { details: { workspaceId: currentWorkspace.id } },
-          );
-        }
-      }
       await touchWorkspace(currentWorkspace.id);
 
       const directory = task.config.useWorktree

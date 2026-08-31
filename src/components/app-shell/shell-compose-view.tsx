@@ -1,6 +1,6 @@
-import type { SshSession, SshConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { TerminalConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { CreateSshSessionRequest, CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
+import type { CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
@@ -52,13 +52,10 @@ interface ComposeViewProps {
   workspaceError: string | null;
   servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  sessions: SshSession[];
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (
@@ -90,8 +87,6 @@ export function ComposeView(props: ComposeViewProps) {
     workspaceError,
     servers,
     workspaceCreate,
-    sessions: _sessions,
-    createSession,
     createTerminalSession,
     createStandaloneSession,
     createServer,
@@ -100,10 +95,6 @@ export function ComposeView(props: ComposeViewProps) {
     provisioning,
     workspacesSaving,
   } = props;
-
-  const sshWorkspaces = workspaces.filter(
-    (workspace) => workspace.serverSettings.agent.transport === "ssh",
-  );
 
   if (kind === "task") {
     return (
@@ -198,21 +189,16 @@ export function ComposeView(props: ComposeViewProps) {
   if (kind === "ssh-session") {
     return (
       <SshSessionComposer
-        workspaces={sshWorkspaces}
         servers={servers}
-        initialWorkspaceId={composeWorkspace?.id}
         initialServerId={composeServer?.config.id}
         onCancel={() =>
           navigateWithinShell(
-            composeWorkspace
-              ? { view: "workspace", workspaceId: composeWorkspace.id }
-              : composeServer
+            composeServer
                 ? { view: "ssh-server", serverId: composeServer.config.id }
                 : { view: "home" },
           )
         }
         onNavigate={navigateWithinShell}
-        onCreateWorkspaceSession={createSession}
         onCreateStandaloneSession={createStandaloneSession}
       />
     );

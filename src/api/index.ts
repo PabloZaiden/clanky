@@ -12,7 +12,6 @@
  * - workspaces: Workspace CRUD, server settings, previews, and file operations
  * - agents-md: AGENTS.md optimization for Clanky
  * - ssh-servers: Standalone SSH server registry, credentials, sessions, VNC, and files
- * - ssh-sessions: Workspace-backed persistent SSH sessions
  * - terminal-sessions: Transport-neutral workspace terminal sessions
  * - provisioning: Remote workspace provisioning jobs
  * - chats: Standalone and task-linked chat sessions
@@ -37,7 +36,6 @@ import { workspacesRoutes } from "./workspaces";
 import { agentsMdRoutes } from "./agents-md";
 import { sshServersRoutes } from "./ssh-servers";
 import { sshServerFilesRoutes } from "./ssh-server-files";
-import { sshSessionsRoutes } from "./ssh-sessions";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
@@ -61,7 +59,6 @@ const nativeApiRoutes = {
   ...agentsMdRoutes,
   ...sshServerFilesRoutes,
   ...sshServersRoutes,
-  ...sshSessionsRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
   ...chatsRoutes,
@@ -105,7 +102,6 @@ export * from "./workspaces";
 export * from "./agents-md";
 export * from "./ssh-servers";
 export * from "./ssh-server-files";
-export * from "./ssh-sessions";
 export * from "./terminal-sessions";
 export * from "./websocket";
 export * from "./provisioning";

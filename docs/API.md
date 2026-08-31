@@ -246,8 +246,8 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/ssh-servers/:id/public-key` | Read the public key for a standalone SSH server. |
 | GET, POST | `/api/ssh-servers/:id/sessions` | List or create standalone SSH server sessions. |
 | GET, POST | `/api/ssh-servers/:id/vnc-sessions` | List or create VNC sessions for a standalone SSH server. |
-| GET, POST | `/api/ssh-sessions` | Create a workspace-backed SSH session. |
-| GET, PATCH, DELETE | `/api/ssh-sessions/:id` | Update or delete a workspace-backed SSH session. |
+| GET, POST | `/api/terminal-sessions` | List or create a workspace-backed terminal session. |
+| GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a workspace-backed terminal session. |
 | GET | `/api/ssh-terminal` | Open the raw websocket bridge for an SSH terminal. |
 | GET, POST | `/api/tasks` | List tasks or create a new task. |
 | GET, PUT, PATCH, DELETE | `/api/tasks/:id` | Read, update, or delete a task. |
@@ -276,7 +276,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/tasks/:id/push` | Push a completed, max-iteration, or locally accepted task branch to the remote repository. |
 | GET | `/api/tasks/:id/review-history` | Read review history for a task. |
 | GET | `/api/tasks/:id/snapshot` | Read the complete lightweight transcript snapshot for a task. |
-| GET, POST | `/api/tasks/:id/ssh-session` | Read or create a task-backed SSH session. |
+| GET, POST | `/api/tasks/:id/terminal-session` | Read or create a task-backed terminal session. |
 | GET | `/api/tasks/:id/status-file` | Read a task's status tracking document. |
 | POST | `/api/tasks/:id/stop` | Stop an active task run. |
 | GET | `/api/tasks/:id/tool-calls/:toolCallId` | Read one complete task tool-call payload. |
@@ -731,37 +731,35 @@ Permanently delete a draft or archived task from storage. Purge accepts
 | 404 | `not_found` | Task not found |
 | 400 | `purge_failed` | Cannot purge (task is not in a purgeable archived state) |
 
-#### GET /api/tasks/:id/ssh-session
+#### GET /api/tasks/:id/terminal-session
 
-Get the persistent SSH session linked to a task.
+Get the terminal session linked to a task.
 
 **Response**
 
-Returns the SSH session object.
+Returns the terminal session object.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Task or linked SSH session not found |
-| 400 | `invalid_session_configuration` | Task cannot open an SSH session with its current transport/setup |
-| 500 | `ssh_session_error` | Failed to read SSH session data |
+| 404 | `not_found` | Task or linked terminal session not found |
+| 500 | `terminal_session_error` | Failed to read terminal session data |
 
-#### POST /api/tasks/:id/ssh-session
+#### POST /api/tasks/:id/terminal-session
 
-Create or reuse the persistent SSH session linked to a task.
+Create or reuse the terminal session linked to a task.
 
 **Response**
 
-Returns the SSH session object.
+Returns the terminal session object.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
 | 404 | `not_found` | Task not found |
-| 400 | `invalid_session_configuration` | Task cannot open an SSH session with its current transport/setup |
-| 500 | `ssh_session_error` | Failed to create the SSH session |
+| 500 | `terminal_session_error` | Failed to create the terminal session |
 
 #### POST /api/tasks/:id/mark-merged
 
@@ -1084,7 +1082,7 @@ Send feedback to refine the plan during planning phase.
 
 #### POST /api/tasks/:id/plan/accept
 
-Accept the plan and either start autonomous execution or hand the work off to SSH.
+Accept the plan and either start autonomous execution or open a terminal for the task.
 
 The request body is required and selects the acceptance path.
 
@@ -1105,15 +1103,15 @@ The request body is required and selects the acceptance path.
 }
 ```
 
-When the accepted plan is handed off directly to SSH:
+When the accepted plan opens the task terminal:
 
 ```json
 {
   "success": true,
-  "mode": "open_ssh",
-  "sshSession": {
+  "mode": "open_terminal",
+  "terminalSession": {
     "config": {
-      "id": "ssh-uuid",
+      "id": "terminal-uuid",
       "name": "Task Shell",
       "workspaceId": "ws-abc123",
       "taskId": "abc-123",
@@ -2252,13 +2250,14 @@ The endpoint uses the same archived-task predicate as the workspace purge endpoi
 
 ---
 
-### SSH Sessions
+### Terminal Sessions
 
-Workspace-backed SSH sessions are persistent dtach-backed sessions created against SSH-configured workspaces.
+Workspace-backed terminal sessions are persistent dtach-backed sessions that work with local stdio,
+Mesh-routed stdio, and SSH workspace transports.
 
-#### GET /api/ssh-sessions
+#### GET /api/terminal-sessions
 
-List SSH sessions. Optionally filter to one workspace.
+List terminal sessions. Optionally filter to one workspace.
 
 **Query Parameters**
 
@@ -2268,11 +2267,11 @@ List SSH sessions. Optionally filter to one workspace.
 
 **Response**
 
-Returns an array of SSH session objects.
+Returns an array of terminal session objects.
 
-#### POST /api/ssh-sessions
+#### POST /api/terminal-sessions
 
-Create a persistent SSH session for a workspace.
+Create a persistent terminal session for a workspace.
 
 **Request Body**
 
@@ -2287,24 +2286,24 @@ Create a persistent SSH session for a workspace.
 
 **Response**
 
-Returns the created SSH session object with status `201 Created`.
+Returns the created terminal session object with status `201 Created`.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `invalid_session_configuration` | The workspace cannot open a persistent SSH session with its current setup |
+| 400 | `invalid_session_configuration` | The workspace cannot open a persistent terminal session with its current setup |
 | 400 | `validation_error` | Missing or invalid request fields |
 | 404 | `not_found` | Workspace not found |
-| 500 | `ssh_session_error` | Failed to create the session |
+| 500 | `terminal_session_error` | Failed to create the session |
 
-#### GET /api/ssh-sessions/:id
+#### GET /api/terminal-sessions/:id
 
-Get one SSH session.
+Get one terminal session.
 
-#### PATCH /api/ssh-sessions/:id
+#### PATCH /api/terminal-sessions/:id
 
-Rename an SSH session.
+Rename a terminal session.
 
 **Request Body**
 
@@ -2314,9 +2313,9 @@ Rename an SSH session.
 }
 ```
 
-#### DELETE /api/ssh-sessions/:id
+#### DELETE /api/terminal-sessions/:id
 
-Delete an SSH session.
+Delete a terminal session.
 
 **Response**
 
@@ -2805,7 +2804,7 @@ parameters are combined with AND. Common filters are:
 
 | Parameter | Description |
 |-----------|-------------|
-| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `ssh-sessions`, `provisioning-jobs`, or `previews` |
+| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `ssh-server-sessions`, `provisioning-jobs`, or `previews` |
 | `id` | Entity ID for a resource invalidation |
 | `scope` | Resource scope, such as an agent ID for `agent-runs` or a workspace ID for `previews` |
 | `taskId` | Target a retained task stream |
@@ -2863,7 +2862,8 @@ Resource invalidations use these resource names and actions:
 | `chats.changed`, `chats.deleted` | Chat collection or entity changed/deleted |
 | `agents.changed`, `agents.deleted` | Agent collection or entity changed/deleted |
 | `agent-runs.changed`, `agent-runs.deleted` | Agent-run collection or entity changed/deleted |
-| `ssh-sessions.changed`, `ssh-sessions.deleted` | SSH-session collection or entity changed/deleted |
+| `terminal-sessions.changed`, `terminal-sessions.deleted` | Workspace terminal collection or entity changed/deleted |
+| `ssh-server-sessions.changed`, `ssh-server-sessions.deleted` | Standalone SSH-server session collection or entity changed/deleted |
 | `provisioning-jobs.changed`, `provisioning-jobs.deleted` | Provisioning-job collection or entity changed/deleted |
 | `previews.changed`, `previews.deleted` | Preview collection or entity changed/deleted |
 
@@ -2932,8 +2932,7 @@ Dedicated WebSocket endpoint for interactive SSH terminal sessions.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `sshSessionId` | One of `sshSessionId` or `sshServerSessionId` is required | Connect to a workspace-backed SSH session |
-| `sshServerSessionId` | One of `sshSessionId` or `sshServerSessionId` is required | Connect to a standalone SSH server session |
+| `sshServerSessionId` | Required | Connect to a standalone SSH server session |
 
 Standalone SSH server sessions require an initial auth message after the socket opens:
 

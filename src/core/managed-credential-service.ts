@@ -549,10 +549,6 @@ export class ManagedCredentialService {
         const run = await loadAgentRun(association.contextId);
         return run?.configSnapshot.workspaceId === association.workspaceId;
       }
-      case "ssh_session": {
-        const session = await getTerminalSession(association.contextId);
-        return session?.config.workspaceId === association.workspaceId;
-      }
       case "terminal_session": {
         const session = await getTerminalSession(association.contextId);
         return session?.config.workspaceId === association.workspaceId;

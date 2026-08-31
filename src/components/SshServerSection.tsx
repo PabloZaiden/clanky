@@ -1,6 +1,6 @@
 import type { SshServer, SshServerSession } from "@/shared";
-import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Button, Card, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
+import { getEffectiveTerminalConnectionMode, getTerminalConnectionModeLabel, isPersistentTerminalSession } from "../utils";
+import { Button, Card, getTerminalSessionStatusBadgeVariant, getTerminalSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshServerSectionProps {
   servers: SshServer[];
@@ -86,7 +86,7 @@ export function SshServerSection({
                   ) : (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {sessions.map((session) => {
-                        const effectiveConnectionMode = getEffectiveSshConnectionMode(session);
+                        const effectiveConnectionMode = getEffectiveTerminalConnectionMode(session);
                         return (
                           <button
                             key={session.config.id}
@@ -100,16 +100,16 @@ export function SshServerSection({
                                   {session.config.name}
                                 </p>
                                 <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                                  Mode: {getSshConnectionModeLabel(effectiveConnectionMode)}
+                                  Mode: {getTerminalConnectionModeLabel(effectiveConnectionMode)}
                                 </p>
-                                {isPersistentSshSession(session) && (
+                                {isPersistentTerminalSession(session) && (
                                   <p className="mt-1 break-words text-xs font-mono text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                                     Persistent ID: {session.config.remoteSessionName}
                                   </p>
                                 )}
                               </div>
-                              <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)} className="shrink-0">
-                                {getSshSessionStatusLabel(session.state.status)}
+                              <StatusBadge variant={getTerminalSessionStatusBadgeVariant(session.state.status)} className="shrink-0">
+                                {getTerminalSessionStatusLabel(session.state.status)}
                               </StatusBadge>
                             </div>
                           </button>

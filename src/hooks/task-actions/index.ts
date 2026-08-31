@@ -7,5 +7,4 @@ export * from "./lifecycle-actions";
 export * from "./plan-actions";
 export * from "./pending-actions";
 export * from "./review-actions";
-export * from "./ssh-actions";
 export * from "./terminal-actions";

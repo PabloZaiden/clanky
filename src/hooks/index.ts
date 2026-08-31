@@ -14,8 +14,10 @@ export { useChats, type UseChatsResult } from "./useChats";
 export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";
-export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";
-export { useSshSession, type UseSshSessionResult } from "./useSshSession";
+export {
+  useSshServerSession,
+  type UseSshServerSessionResult,
+} from "./useSshServerSession";
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
@@ -68,8 +70,6 @@ export {
   manualCompleteTaskApi,
   purgeArchivedWorkspaceTasksApi,
   purgeTerminalTasksApi,
-  getTaskSshSessionApi,
-  getOrCreateTaskSshSessionApi,
   getTaskTerminalSessionApi,
   getOrCreateTaskTerminalSessionApi,
   setPendingPromptApi,

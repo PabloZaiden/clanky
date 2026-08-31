@@ -2,7 +2,10 @@
  * Standalone SSH server and credential domain types.
  */
 
-import type { SshSessionBaseConfig, SshSessionState } from "./ssh-session";
+import type {
+  TerminalConnectionMode,
+  TerminalSessionState,
+} from "./terminal-session";
 
 export type SshKeyAlgorithm = "RSA-OAEP-256";
 
@@ -77,18 +80,25 @@ export interface SshCredentialExchangeResponse {
 /**
  * Standalone SSH session configuration.
  */
-export interface SshServerSessionConfig extends SshSessionBaseConfig {
+export interface SshServerSessionConfig {
+  id: string;
+  name: string;
   sshServerId: string;
+  connectionMode: TerminalConnectionMode;
+  useTmux: boolean;
+  remoteSessionName: string;
+  createdAt: string;
+  updatedAt: string;
   isPrivate?: boolean;
 }
 
 /**
  * Standalone SSH session backed by a registered SSH server rather than a
- * workspace. Like workspace SSH sessions, these can use persistent or direct SSH.
+ * workspace. These can use persistent or direct SSH.
  */
 export interface SshServerSession {
   config: SshServerSessionConfig;
-  state: SshSessionState;
+  state: TerminalSessionState;
 }
 
 export type VncSessionStatus =

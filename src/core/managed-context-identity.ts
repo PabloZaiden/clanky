@@ -90,18 +90,6 @@ export class ManagedContextIdentityResolver {
     );
   }
 
-  async forSshSession(sessionId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const session = await getTerminalSession(sessionId);
-    if (!session) {
-      throw missingContext("ssh_session", sessionId);
-    }
-    return this.createIdentity(
-      "terminal_session",
-      sessionId,
-      ensureWorkspace("terminal_session", sessionId, session.config.workspaceId, expectedWorkspaceId),
-    );
-  }
-
   async forTerminalSession(sessionId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
     const session = await getTerminalSession(sessionId);
     if (!session) {

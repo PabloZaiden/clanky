@@ -179,9 +179,9 @@ const TASK_ERROR_MAPPINGS: Readonly<
     message: "Task git operation failed",
     status: 500,
   },
-  task_ssh_session_failed: {
-    error: "task_ssh_session_failed",
-    message: "Task SSH session operation failed",
+  task_terminal_session_failed: {
+    error: "task_terminal_session_failed",
+    message: "Task terminal session operation failed",
     status: 500,
   },
   task_file_operation_failed: {

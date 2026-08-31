@@ -233,7 +233,7 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
     await terminalSessionManager.deleteSessionByTaskId(taskId);
   } catch (error) {
     return taskFailure(
-      "task_ssh_session_failed",
+      "task_terminal_session_failed",
       "Failed to delete linked terminal session",
       { cause: error, details: { taskId } },
     );

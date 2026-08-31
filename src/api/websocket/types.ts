@@ -8,8 +8,6 @@ import type { WorkspaceTerminalAttachmentHandle } from "../../core/workspace-ter
  * Stored in the WebSocket's data property for per-connection state.
  */
 export interface WebSocketData {
-  /** Optional SSH session ID to attach a terminal */
-  sshSessionId?: string;
   /** Optional standalone SSH server session ID to attach a terminal */
   sshServerSessionId?: string;
   /** Canonical workspace terminal session ID */

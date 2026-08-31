@@ -2,8 +2,26 @@
  * Core manager for standalone SSH servers and server-owned SSH sessions.
  */
 
-import { DEFAULT_SSH_CONNECTION_MODE, DEFAULT_SSH_SESSION_USE_TMUX, type DevboxTemplateSummary, type SshConnectionMode, type SshServer, type SshServerConfig, type SshServerPrerequisiteReport, type SshSessionStatus, type SshServerSession } from "@/shared";
-import { type CreateSshServerRequest, type CreateSshServerSessionRequest, type CheckSshServerPrerequisitesRequest, type GetDevboxTemplatesRequest, type DeleteSshServerSessionRequest, type UpdateSshServerRequest, type UpdateSshSessionRequest } from "@/contracts";
+import {
+  DEFAULT_TERMINAL_CONNECTION_MODE,
+  DEFAULT_TERMINAL_USE_TMUX,
+  type DevboxTemplateSummary,
+  type TerminalConnectionMode,
+  type SshServer,
+  type SshServerConfig,
+  type SshServerPrerequisiteReport,
+  type TerminalSessionStatus,
+  type SshServerSession,
+} from "@/shared";
+import {
+  type CreateSshServerRequest,
+  type CreateSshServerSessionRequest,
+  type CheckSshServerPrerequisitesRequest,
+  type GetDevboxTemplatesRequest,
+  type DeleteSshServerSessionRequest,
+  type UpdateSshServerRequest,
+  type UpdateSshServerSessionRequest,
+} from "@/contracts";
 import type { CommandExecutor } from "./command-executor";
 import {
   countSshServerSessionsByServerId,
@@ -18,12 +36,12 @@ import {
   saveSshServerSession,
 } from "../persistence/ssh-servers";
 import { listChatSummariesBySshServer } from "../persistence/chats";
-import { buildDefaultSshSessionName } from "../utils";
-import { isPersistentSshSession } from "../utils";
+import { buildDefaultSshServerSessionName } from "../utils";
+import { isPersistentTerminalSession } from "../utils";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { CommandExecutorImpl } from "./remote-command-executor";
-import { sshSessionEventEmitter } from "./event-emitter";
+import { sshServerSessionEventEmitter } from "./event-emitter";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
@@ -174,7 +192,7 @@ export class SshServerManager {
   async createSession(serverId: string, request: CreateSshServerSessionRequest): Promise<SshServerSession> {
     const server = await this.requireServerConfig(serverId);
     const connectionMode = this.getConnectionMode(request);
-    const useTmux = request.useTmux ?? DEFAULT_SSH_SESSION_USE_TMUX;
+    const useTmux = request.useTmux ?? DEFAULT_TERMINAL_USE_TMUX;
 
     const now = new Date().toISOString();
     const sessionCount = await countSshServerSessionsByServerId(serverId);
@@ -183,7 +201,7 @@ export class SshServerManager {
       config: {
         id: sessionId,
         sshServerId: serverId,
-        name: request.name?.trim() || buildDefaultSshSessionName(server.name, sessionCount),
+        name: request.name?.trim() || buildDefaultSshServerSessionName(server.name, sessionCount),
         connectionMode,
         useTmux,
         remoteSessionName: buildRemoteSessionName(sessionId),
@@ -195,17 +213,16 @@ export class SshServerManager {
       },
     };
     await saveSshServerSession(session);
-    sshSessionEventEmitter.emit({
-      type: "ssh_session.status",
-      sshSessionId: session.config.id,
-      status: session.state.status,
-      error: session.state.error,
+    sshServerSessionEventEmitter.emit({
+      type: "ssh_server_session.created",
+      sshServerSessionId: session.config.id,
+      session,
       timestamp: session.config.updatedAt,
     });
     return session;
   }
 
-  async updateSession(id: string, request: UpdateSshSessionRequest): Promise<SshServerSession> {
+  async updateSession(id: string, request: UpdateSshServerSessionRequest): Promise<SshServerSession> {
     const session = await this.requireSession(id);
     const updated: SshServerSession = {
       config: {
@@ -217,6 +234,12 @@ export class SshServerManager {
       state: session.state,
     };
     await saveSshServerSession(updated);
+    sshServerSessionEventEmitter.emit({
+      type: "ssh_server_session.updated",
+      sshServerSessionId: updated.config.id,
+      session: updated,
+      timestamp: updated.config.updatedAt,
+    });
     return updated;
   }
 
@@ -226,9 +249,9 @@ export class SshServerManager {
 
     const deleted = await deleteSshServerSession(id);
     if (deleted) {
-      sshSessionEventEmitter.emit({
-        type: "ssh_session.deleted",
-        sshSessionId: id,
+      sshServerSessionEventEmitter.emit({
+        type: "ssh_server_session.deleted",
+        sshServerSessionId: id,
         timestamp: new Date().toISOString(),
       });
     }
@@ -262,7 +285,7 @@ export class SshServerManager {
     };
   }
 
-  async markStatus(id: string, status: SshSessionStatus, error?: string): Promise<SshServerSession> {
+  async markStatus(id: string, status: TerminalSessionStatus, error?: string): Promise<SshServerSession> {
     const session = await this.requireSession(id);
     const updatedSession: SshServerSession = {
       config: {
@@ -279,9 +302,9 @@ export class SshServerManager {
       },
     };
     await saveSshServerSession(updatedSession);
-    sshSessionEventEmitter.emit({
-      type: "ssh_session.status",
-      sshSessionId: id,
+    sshServerSessionEventEmitter.emit({
+      type: "ssh_server_session.status",
+      sshServerSessionId: id,
       status,
       error: updatedSession.state.error,
       timestamp: updatedSession.config.updatedAt,
@@ -291,7 +314,7 @@ export class SshServerManager {
 
   async updateRuntimeConnectionState(
     id: string,
-    options: { runtimeConnectionMode?: SshConnectionMode; notice?: string },
+    options: { runtimeConnectionMode?: TerminalConnectionMode; notice?: string },
   ): Promise<SshServerSession> {
     const session = await this.requireSession(id);
     const updatedSession: SshServerSession = {
@@ -306,11 +329,10 @@ export class SshServerManager {
       },
     };
     await saveSshServerSession(updatedSession);
-    sshSessionEventEmitter.emit({
-      type: "ssh_session.status",
-      sshSessionId: updatedSession.config.id,
-      status: updatedSession.state.status,
-      error: updatedSession.state.error,
+    sshServerSessionEventEmitter.emit({
+      type: "ssh_server_session.updated",
+      sshServerSessionId: updatedSession.config.id,
+      session: updatedSession,
       timestamp: updatedSession.config.updatedAt,
     });
     return updatedSession;
@@ -320,8 +342,8 @@ export class SshServerManager {
     this.testExecutorFactory = factory;
   }
 
-  private getConnectionMode(request: { connectionMode?: SshConnectionMode }): SshConnectionMode {
-    return request.connectionMode ?? DEFAULT_SSH_CONNECTION_MODE;
+  private getConnectionMode(request: { connectionMode?: TerminalConnectionMode }): TerminalConnectionMode {
+    return request.connectionMode ?? DEFAULT_TERMINAL_CONNECTION_MODE;
   }
 
   private buildExecutor(server: SshServerConfig, password: string): CommandExecutor {
@@ -366,7 +388,7 @@ export class SshServerManager {
     session: SshServerSession,
     request: DeleteSshServerSessionRequest,
   ): Promise<void> {
-    if (!isPersistentSshSession(session)) {
+    if (!isPersistentTerminalSession(session)) {
       return;
     }
 
@@ -387,7 +409,7 @@ export class SshServerManager {
       }
     } catch (error) {
       log.warn("Failed to stop remote standalone persistent SSH session during deletion", {
-        sshSessionId: session.config.id,
+        sshServerSessionId: session.config.id,
         sshServerId: session.config.sshServerId,
         remoteSessionName: session.config.remoteSessionName,
         status: session.state.status,

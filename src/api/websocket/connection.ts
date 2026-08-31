@@ -3,7 +3,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
 import {
   releaseWorkspaceTerminalSocket,
-  startTerminalBridge,
+  startSshServerTerminalBridge,
   startWorkspaceTerminalBridge,
 } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
@@ -51,7 +51,6 @@ function clearPreviewBridgeKeepalive(ws: ServerWebSocket<WebSocketData>): void {
  */
 export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
-    sshSessionId,
     sshServerSessionId,
     workspaceTerminalSessionId,
     terminalMode,
@@ -84,7 +83,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     terminalMode: terminalMode ?? false,
     vncMode: vncMode ?? false,
     previewBridgeMode: previewBridgeMode ?? false,
-    sshSessionId: sshSessionId ?? "none",
     sshServerSessionId: sshServerSessionId ?? "none",
     workspaceTerminalSessionId: workspaceTerminalSessionId ?? "none",
     vncSessionId: vncSessionId ?? "none",
@@ -129,14 +127,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     return;
   }
 
-  // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
-  const terminalSessionId = sshSessionId ?? sshServerSessionId;
-  if (terminalMode && terminalSessionId) {
-    if (sshServerSessionId) {
-      return;
-    }
-
-    void startTerminalBridge(ws);
+  // Standalone SSH server terminal sockets attach directly and do not subscribe to app events.
+  if (terminalMode && sshServerSessionId) {
+    void startSshServerTerminalBridge(ws);
     return;
   }
 
@@ -195,7 +188,7 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   }
   ws.data.workspaceTerminalAttachment?.release();
   ws.data.workspaceTerminalAttachment = undefined;
-  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId ?? ws.data.sshSessionId;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
   if (workspaceTerminalSessionId) {
     releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
   }
@@ -225,7 +218,6 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
 export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
-    sshSessionId: ws.data.sshSessionId,
     sshServerSessionId: ws.data.sshServerSessionId,
     vncSessionId: ws.data.vncSessionId,
     previewBridgeSessionId: ws.data.previewBridgeSessionId,
@@ -238,7 +230,7 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   }
   ws.data.workspaceTerminalAttachment?.release();
   ws.data.workspaceTerminalAttachment = undefined;
-  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId ?? ws.data.sshSessionId;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
   if (workspaceTerminalSessionId) {
     releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
   }

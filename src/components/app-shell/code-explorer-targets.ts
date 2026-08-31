@@ -1,11 +1,11 @@
-import type { Chat, Task, SshConnectionMode, SshSession, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { CreateSshSessionRequest, CreateTerminalSessionRequest } from "@/contracts";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/terminal-actions";
 import type { CodeExplorerTarget } from "./shell-types";
 
-type ExplorerSession = SshSession | SshServerSession | WorkspaceTerminalSession;
+type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
 
 export interface CodeExplorerTerminalOptions {
   useTmux?: boolean;
@@ -65,14 +65,12 @@ interface ResolveCodeExplorerTargetArgs {
   tasks: Task[];
   chats: Chat[];
   servers: SshServer[];
-  sessions: SshSession[];
   terminalSessions: WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
-  createStandaloneSession: (
+  createStandaloneSession?: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: import("@/shared").TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
 }
 
@@ -101,26 +99,12 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   }
 }
 
-function supportsTaskTerminal(task: Task, sessions: SshSession[], terminalSessions: WorkspaceTerminalSession[]): boolean {
-  if (sessions.some((session) => session.config.taskId === task.config.id)) {
-    return true;
-  }
+function supportsTaskTerminal(task: Task, terminalSessions: WorkspaceTerminalSession[]): boolean {
   if (terminalSessions.some((session) => session.config.taskId === task.config.id)) {
     return true;
   }
 
   return task.config.useWorktree || Boolean(task.state.git?.worktreePath);
-}
-
-function mergeWorkspaceSessions(
-  sessions: SshSession[],
-  terminalSessions: WorkspaceTerminalSession[],
-): ExplorerSession[] {
-  const terminalIds = new Set(terminalSessions.map((session) => session.config.id));
-  return [
-    ...terminalSessions,
-    ...sessions.filter((session) => !terminalIds.has(session.config.id)),
-  ];
 }
 
 export function getCodeExplorerOptions({
@@ -175,10 +159,8 @@ export function resolveCodeExplorerTarget({
   tasks,
   chats,
   servers,
-  sessions,
   terminalSessions,
   sessionsByServerId,
-  createSession: _createSession,
   createTerminalSession,
   createStandaloneSession,
 }: ResolveCodeExplorerTargetArgs): ResolvedCodeExplorerTarget | null {
@@ -196,9 +178,7 @@ export function resolveCodeExplorerTarget({
       }
 
       const defaultRootDirectory = trimDirectory(workspace.directory);
-      const workspaceSessions = sessions.filter((session) => session.config.workspaceId === workspace.id);
       const workspaceTerminals = terminalSessions.filter((terminal) => terminal.config.workspaceId === workspace.id);
-      const allSessions = mergeWorkspaceSessions(workspaceSessions, workspaceTerminals);
       const hasTerminal = true;
 
       return {
@@ -217,7 +197,7 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: allSessions,
+        sessions: workspaceTerminals,
         hasTerminal,
         emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
         terminalSelectLabel: "Select workspace terminal session",
@@ -245,10 +225,8 @@ export function resolveCodeExplorerTarget({
 
       const defaultRootDirectory = getTaskCodeExplorerRootDirectory(task);
       const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const taskSessions = sessions.filter((session) => session.config.taskId === task.config.id);
       const taskTerminals = terminalSessions.filter((terminal) => terminal.config.taskId === task.config.id);
-      const allTaskSessions = mergeWorkspaceSessions(taskSessions, taskTerminals);
-      const hasTerminal = supportsTaskTerminal(task, taskSessions, taskTerminals);
+      const hasTerminal = supportsTaskTerminal(task, taskTerminals);
 
       return {
         routeTarget: target,
@@ -266,7 +244,7 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: allTaskSessions,
+        sessions: taskTerminals,
         hasTerminal,
         emptyTerminalMessage: hasTerminal
           ? "Choose the task terminal session or open the task terminal."
@@ -282,6 +260,9 @@ export function resolveCodeExplorerTarget({
       const server = servers.find((candidate) => candidate.config.id === routeTargetId);
       if (!server) {
         return null;
+      }
+      if (!createStandaloneSession) {
+        throw new Error("Standalone SSH session creation is unavailable for server code explorer");
       }
 
       const defaultRootDirectory = trimDirectory(server.config.repositoriesBasePath ?? undefined);
@@ -329,9 +310,7 @@ export function resolveCodeExplorerTarget({
 
       const defaultRootDirectory = getChatCodeExplorerRootDirectory(chat);
       const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const workspaceSessions = sessions.filter((session) => session.config.workspaceId === workspace.id);
       const workspaceTerminals = terminalSessions.filter((terminal) => terminal.config.workspaceId === workspace.id);
-      const allSessions = mergeWorkspaceSessions(workspaceSessions, workspaceTerminals);
       const hasTerminal = true;
 
       return {
@@ -350,7 +329,7 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: allSessions,
+        sessions: workspaceTerminals,
         hasTerminal,
         emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
         terminalSelectLabel: "Select workspace terminal session",

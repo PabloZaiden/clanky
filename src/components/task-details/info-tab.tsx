@@ -9,8 +9,7 @@ interface InfoTabProps {
   task: Task;
   labels: EntityLabels;
   onOpenTaskFiles: () => void;
-  sshConnecting: boolean;
-  onConnectViaSsh: () => void;
+  terminalConnecting: boolean;
   onConnectTerminal: () => void;
   planningSettingsSubmitting: boolean;
   onUpdatePlanningSettings: (
@@ -22,8 +21,7 @@ export function InfoTab({
   task,
   labels,
   onOpenTaskFiles,
-  sshConnecting,
-  onConnectViaSsh: _onConnectViaSsh,
+  terminalConnecting,
   onConnectTerminal,
   planningSettingsSubmitting,
   onUpdatePlanningSettings,
@@ -229,7 +227,7 @@ export function InfoTab({
 
           <button
             onClick={onConnectTerminal}
-            disabled={sshConnecting}
+            disabled={terminalConnecting}
             className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
@@ -237,7 +235,7 @@ export function InfoTab({
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {sshConnecting ? "Connecting..." : "Open terminal"}
+                {terminalConnecting ? "Connecting..." : "Open terminal"}
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 Open or reconnect to this task&apos;s persistent terminal session

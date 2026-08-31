@@ -699,7 +699,7 @@ INSERT INTO tasks (
   'admin',
   'Dashboard filters',
   '/workspaces/demo-storefront',
-  'Design and implement dashboard filtering for tasks, chats, and SSH sessions.',
+  'Design and implement dashboard filtering for tasks, chats, and terminals.',
   '2026-04-16T18:40:00.000Z',
   '2026-04-16T19:10:00.000Z',
   'demo-workspace-webapp',

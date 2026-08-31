@@ -108,12 +108,6 @@ export {
   normalizeQuickChatSettings,
 } from "./preferences";
 
-// SSH session schemas
-export {
-  CreateSshSessionRequestSchema,
-  UpdateSshSessionRequestSchema,
-} from "./ssh-session";
-
 // Terminal session schemas
 export {
   TerminalConnectionModeSchema,
@@ -146,6 +140,7 @@ export {
   SshCredentialExchangeRequestSchema,
   SshCredentialTokenSchema,
   CreateSshServerSessionRequestSchema,
+  UpdateSshServerSessionRequestSchema,
   DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
@@ -157,6 +152,7 @@ export {
   type SshCredentialExchangeRequest,
   type SshCredentialToken,
   type CreateSshServerSessionRequest,
+  type UpdateSshServerSessionRequest,
   type DeleteSshServerSessionRequest,
   type CheckSshServerPrerequisitesRequest,
   type GetDevboxTemplatesRequest,

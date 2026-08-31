@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { SshSession, WorkspaceFileEntry, WorkspaceTerminalSession } from "@/shared";
+import type { WorkspaceFileEntry, WorkspaceTerminalSession } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
 import {
   useFileExplorer,
@@ -10,8 +10,8 @@ import {
 } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
-import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
-import { TerminalSessionDetails } from "../ssh-session/terminal-session-details";
+import { SshServerSessionDetails } from "../SshServerSessionDetails";
+import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
@@ -44,7 +44,7 @@ function FileIcon() {
 }
 
 type ExplorerPane = "editor" | "terminal";
-type ExplorerSession = SshSession | SshServerSession | WorkspaceTerminalSession;
+type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
 
 function isWorkspaceTerminalSession(session: ExplorerSession): session is WorkspaceTerminalSession {
   return "targetBinding" in session.config;
@@ -102,7 +102,6 @@ interface FileExplorerViewProps {
   credentialPromptName?: string;
   initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => WebAppRoute;
-  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function FileExplorerView({
@@ -121,7 +120,6 @@ export function FileExplorerView({
   credentialPromptName,
   initialFilePath,
   buildRoute,
-  sshSessionDetailsComponent: SshSessionDetailsComponent = SshSessionDetails,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "server"
@@ -763,8 +761,8 @@ export function FileExplorerView({
                     forcedFocusMode={true}
                   />
                 ) : selectedSession ? (
-                  <SshSessionDetailsComponent
-                    sshSessionId={selectedSessionId}
+                  <SshServerSessionDetails
+                    sshServerSessionId={selectedSessionId}
                     showBackButton={false}
                     forcedFocusMode={true}
                   />

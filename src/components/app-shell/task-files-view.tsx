@@ -1,23 +1,15 @@
-import type { ComponentType } from "react";
-import type { Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
-import type { CreateSshSessionRequest } from "@/contracts";
-import type { SshServerSession } from "@/shared/ssh-server";
-import type { SshSessionDetailsProps } from "../SshSessionDetails";
+import type { Task, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { CodeExplorerView } from "./code-explorer-view";
 
 interface TaskFilesViewProps {
   task: Task;
   workspace: Workspace | null;
-  sessions: SshSession[];
+  sessions: WorkspaceTerminalSession[];
   startDirectory?: string;
-  createSession?: (request: CreateSshSessionRequest) => Promise<SshSession>;
-  createStandaloneSession?: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
-  ) => Promise<SshServerSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
-  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function TaskFilesView({
@@ -25,14 +17,8 @@ export function TaskFilesView({
   workspace,
   sessions,
   startDirectory,
-  createSession = async () => {
-    throw new Error("Workspace SSH sessions are unavailable in task code explorer context.");
-  },
-  createStandaloneSession = async () => {
-    throw new Error("Standalone SSH sessions are unavailable in task code explorer context.");
-  },
+  createTerminalSession,
   onNavigate,
-  sshSessionDetailsComponent,
 }: TaskFilesViewProps) {
   return (
     <CodeExplorerView
@@ -40,17 +26,11 @@ export function TaskFilesView({
       tasks={[task]}
       chats={[]}
       workspaces={workspace ? [workspace] : []}
-      sessions={sessions}
-      terminalSessions={[]}
+      terminalSessions={sessions}
       servers={[]}
       sessionsByServerId={{}}
-      createSession={createSession}
-      createTerminalSession={async () => {
-        throw new Error("Workspace terminal sessions are unavailable in task code explorer context.");
-      }}
-      createStandaloneSession={createStandaloneSession}
+      createTerminalSession={createTerminalSession}
       onNavigate={onNavigate}
-      sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );
 }

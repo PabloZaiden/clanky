@@ -28,7 +28,6 @@ export * from "./ssh-credential-manager";
 export * from "./ssh-connection-target";
 export * from "./ssh-server-manager";
 export * from "./ssh-server-key-manager";
-export * from "./ssh-session-manager";
 export * from "./terminal-session-manager";
 export * from "./workspace-terminal-connection";
 export * from "./workspace-terminal-attachment-registry";
