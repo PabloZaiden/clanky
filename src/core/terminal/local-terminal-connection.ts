@@ -8,6 +8,7 @@ import {
   buildPersistentSessionBackendInstallHint,
   buildPersistentSessionBackendProbeCommand,
   buildPersistentSessionReadyCommand,
+  buildPersistentSessionResizeCommand,
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../ssh-persistent-session";
 import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
@@ -340,7 +341,32 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (!this.ready || !this.terminal || this.terminal.closed) {
       throw new DomainError("terminal_connection_unavailable", "The terminal connection is not connected.");
     }
-    this.terminal.resize(normalizeSize(cols, 2), normalizeSize(rows, 1));
+    const normalizedCols = normalizeSize(cols, 2);
+    const normalizedRows = normalizeSize(rows, 1);
+    if (this.activeMode === "dtach") {
+      const result = await this.config.executor.exec(
+        "bash",
+        [
+          "-lc",
+          buildPersistentSessionResizeCommand(
+            this.config.sessionId,
+            normalizedCols,
+            normalizedRows,
+          ),
+        ],
+        {
+          cwd: this.config.directory,
+          timeout: DEFAULT_COMMAND_TIMEOUT_MS,
+        },
+      );
+      if (!result.success) {
+        throw new DomainError(
+          "terminal_resize_failed",
+          result.stderr.trim() || result.stdout.trim() || "Failed to resize the persistent terminal session.",
+        );
+      }
+    }
+    this.terminal.resize(normalizedCols, normalizedRows);
   }
 
   async dispose(): Promise<void> {
