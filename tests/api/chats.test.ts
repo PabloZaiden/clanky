@@ -340,11 +340,10 @@ describe("Chats API Integration", () => {
     });
     expect(sendResponse.status).toBe(200);
     const sendData = await sendResponse.json();
-    expect(sendData).toEqual({
-      success: true,
-      chatId: created.config.id,
-    });
-    expect(sendData.state).toBeUndefined();
+    expect(sendData.success).toBe(true);
+    expect(sendData.chatId).toBe(created.config.id);
+    expect(sendData.chat.config.id).toBe(created.config.id);
+    expect(sendData.chat.state.startupStage).toBeUndefined();
 
     const settled = await waitForChatIdle(created.config.id) as {
       state: {
@@ -2578,6 +2577,9 @@ describe("Chats API Integration", () => {
       }),
     });
     expect(sendResponse.status).toBe(200);
+    const sendData = await sendResponse.json();
+    expect(sendData.chat.config.model).toEqual(updatedTestModel);
+    expect(sendData.chat.state.startupStage).toBeUndefined();
 
     await waitForChatIdle(chatId);
 

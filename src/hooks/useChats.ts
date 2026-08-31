@@ -54,6 +54,7 @@ function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: strin
       state: {
         ...chat.state,
         status: nextStatus,
+        ...(nextStatus !== "starting" ? { startupStage: undefined } : {}),
         lastActivityAt: shouldUpdateActivity ? timestamp : chat.state.lastActivityAt,
       },
     };
