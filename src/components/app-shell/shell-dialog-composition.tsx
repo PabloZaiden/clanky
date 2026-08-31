@@ -124,11 +124,18 @@ export function useShellDialogComposition({
         ? await deleteWorkspaceSshSession(deleteSshSessionTarget.id)
         : await deleteStandaloneSession(deleteSshSessionTarget.serverId, deleteSshSessionTarget.id);
       if (!success) {
-        onError("Failed to delete SSH session.");
+        onError(deleteSshSessionTarget.kind === "workspace"
+          ? "Failed to delete terminal session."
+          : "Failed to delete SSH session.");
         return;
       }
-      const deletedActiveSession = route.view === "ssh"
-        && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id;
+      const deletedActiveSession = deleteSshSessionTarget.kind === "workspace"
+        ? (route.view === "terminal"
+          && getRouteString(route, "terminalSessionId") === deleteSshSessionTarget.id)
+          || (route.view === "ssh"
+            && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id)
+        : route.view === "ssh"
+          && getRouteString(route, "sshSessionId") === deleteSshSessionTarget.id;
       setDeleteSshSessionTarget(null);
       if (deletedActiveSession) {
         navigateWithinShell({ view: "home" });
@@ -276,14 +283,17 @@ export function useShellDialogComposition({
         onClose={() => setRenameSshSessionTarget(null)}
         currentName={renameSshSessionTarget?.name ?? ""}
         onRename={renameSshSession}
+        sessionKind={renameSshSessionTarget?.kind === "workspace" ? "terminal" : "ssh"}
       />
       <ConfirmModal
         isOpen={Boolean(deleteSshSessionTarget)}
         onClose={() => setDeleteSshSessionTarget(null)}
         onConfirm={() => void deleteSshSession()}
-        title="Delete SSH session?"
+        title={deleteSshSessionTarget?.kind === "workspace" ? "Delete terminal session?" : "Delete SSH session?"}
         message={deleteSshSessionTarget
-          ? `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent remote session.`
+          ? deleteSshSessionTarget.kind === "workspace"
+            ? `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent session.`
+            : `This removes "${deleteSshSessionTarget.name}" from Clanky and attempts to stop any persistent remote session.`
           : ""}
         confirmLabel="Delete"
         loading={false}
@@ -293,6 +303,7 @@ export function useShellDialogComposition({
         onClose={() => setRenameTerminalSessionTarget(null)}
         currentName={renameTerminalSessionTarget?.name ?? ""}
         onRename={renameTerminalSession}
+        sessionKind="terminal"
       />
       <ConfirmModal
         isOpen={Boolean(deleteTerminalSessionTarget)}

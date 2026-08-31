@@ -139,7 +139,7 @@ export function useTaskActions({
     if (onSelectSshSession) {
       onSelectSshSession(sshSessionId);
     } else {
-      replaceWebAppRoute({ view: "ssh", sshSessionId });
+      replaceWebAppRoute({ view: "terminal", terminalSessionId: sshSessionId });
     }
   }
 

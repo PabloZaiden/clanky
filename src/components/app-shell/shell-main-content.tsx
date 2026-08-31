@@ -299,7 +299,7 @@ function renderMainContent(props: ShellMainContentProps) {
           void refreshTasks();
         }}
         showBackButton={false}
-        onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
+        onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "terminal", terminalSessionId: sshSessionId })}
         onOpenTaskFiles={(selectedTaskId) => navigateWithinShell({
           view: "code-explorer",
           contentType: "task",

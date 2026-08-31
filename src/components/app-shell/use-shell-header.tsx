@@ -235,13 +235,19 @@ function getHeaderScopeSubtitle({
     case "chat-transcript":
       return getChatScopeSubtitle(selectedChat, workspaces, servers);
     case "ssh":
-      return getSshSessionScopeSubtitle({
-        sshSessionId: getRouteString(route, "sshSessionId"),
-        sessions,
-        sessionsByServerId,
-        workspaces,
-        servers,
-      });
+      {
+        const sshSessionId = getRouteString(route, "sshSessionId");
+        const terminalSession = terminalSessions.find((session) => session.config.id === sshSessionId);
+        return terminalSession
+          ? getWorkspaceScopeSubtitle(terminalSession.config.workspaceId, workspaces)
+          : getSshSessionScopeSubtitle({
+              sshSessionId,
+              sessions,
+              sessionsByServerId,
+              workspaces,
+              servers,
+            });
+      }
     case "terminal":
       return getTerminalSessionScopeSubtitle(
         getRouteString(route, "terminalSessionId"),
@@ -310,7 +316,17 @@ export function useShellHeader({
   editingAgentId,
   composeActionState,
 }: UseShellHeaderOptions) {
-  const headerOwnerRoute = useMemo(() => getHeaderOwnerRoute(route), [route]);
+  const headerOwnerRoute = useMemo(() => {
+    const ownerRoute = getHeaderOwnerRoute(route);
+    if (route.view !== "ssh") {
+      return ownerRoute;
+    }
+
+    const sshSessionId = getRouteString(route, "sshSessionId");
+    return sshSessionId && terminalSessions.some((session) => session.config.id === sshSessionId)
+      ? { view: "terminal", terminalSessionId: sshSessionId }
+      : ownerRoute;
+  }, [route, terminalSessions]);
   const headerNode = useMemo(
     () => headerOwnerRoute
       ? headerNodes.find((node) => sidebarNodeMatchesRoute(node, headerOwnerRoute)) ?? null
@@ -380,7 +396,11 @@ export function useShellHeader({
           ? { title: nodeModel.title, scopeSubtitle, detailSubtitle: "Transcript" }
           : { title: "Chat transcript" };
       case "ssh":
-        return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "SSH session" };
+        return nodeModel
+          ? { ...nodeModel, scopeSubtitle }
+          : terminalSessions.some((session) => session.config.id === getRouteString(route, "sshSessionId"))
+            ? { title: "Terminal", scopeSubtitle }
+            : { title: "SSH session" };
       case "terminal":
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "Terminal" };
       case "workspace":
@@ -547,7 +567,14 @@ export function useShellHeader({
           return { title: "Create a workspace" };
         }
         if (composeKind === "ssh-session") {
-          return { title: "Create an SSH session", scopeSubtitle };
+          return {
+            title: composeServer
+              ? "Create an SSH session"
+              : composeWorkspace
+                ? "Create a terminal"
+                : "Create a session",
+            scopeSubtitle,
+          };
         }
         if (composeKind === "ssh-server") {
           return {

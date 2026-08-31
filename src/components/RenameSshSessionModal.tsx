@@ -1,5 +1,5 @@
 /**
- * Modal component for renaming an SSH session.
+ * Modal component for renaming a terminal session or SSH session.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -11,10 +11,12 @@ export interface RenameSshSessionModalProps {
   isOpen: boolean;
   /** Callback when modal should close */
   onClose: () => void;
-  /** Current SSH session name */
+  /** Current session name */
   currentName: string;
-  /** Callback to rename the SSH session */
+  /** Callback to rename the session */
   onRename: (newName: string) => Promise<void>;
+  /** Session kind controls the user-facing terminology. */
+  sessionKind?: "ssh" | "terminal";
 }
 
 export function RenameSshSessionModal({
@@ -22,6 +24,7 @@ export function RenameSshSessionModal({
   onClose,
   currentName,
   onRename,
+  sessionKind = "ssh",
 }: RenameSshSessionModalProps) {
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -82,11 +85,13 @@ export function RenameSshSessionModal({
     }
   }
 
+  const sessionLabel = sessionKind === "terminal" ? "Terminal" : "SSH Session";
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
-      title="Rename SSH Session"
+      title={`Rename ${sessionLabel}`}
       size="sm"
       closeOnOverlayClick={!loading}
       footer={(
@@ -111,7 +116,7 @@ export function RenameSshSessionModal({
             htmlFor="ssh-session-name"
             className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
           >
-            SSH Session Name
+            {sessionLabel} Name
           </label>
           <input
             ref={inputRef}
@@ -125,7 +130,7 @@ export function RenameSshSessionModal({
             disabled={loading}
             maxLength={100}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-neutral-700 dark:border-gray-600 dark:text-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="Enter SSH session name"
+            placeholder={`Enter ${sessionLabel.toLowerCase()} name`}
           />
           {error && (
             <p className="mt-1 text-sm text-red-600 dark:text-red-400">

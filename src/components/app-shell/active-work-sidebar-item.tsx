@@ -4,7 +4,7 @@ import {
   type SidebarNode,
 } from "@pablozaiden/webapp/web";
 
-export type ActiveWorkSidebarItemType = "Task" | "Chat" | "SSH session" | "Terminal";
+export type ActiveWorkSidebarItemType = "Task" | "Chat" | "Terminal";
 
 export function ActiveWorkSidebarItem({
   node,

@@ -14,6 +14,7 @@ import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
+import { getTerminalConnectionModeLabel } from "./shell-types";
 
 export function WorkspaceView({
   workspace,
@@ -102,9 +103,9 @@ export function WorkspaceView({
                   <ClankyListRow
                     key={session.config.id}
                     title={session.config.name}
-                    description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
+                    description={getTerminalConnectionModeLabel(session.config.connectionMode)}
                     badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
-                    onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
+                    onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: session.config.id }) : undefined}
                     privateHidden={privateHidden}
                   />
                 );

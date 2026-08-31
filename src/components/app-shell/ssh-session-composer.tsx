@@ -91,16 +91,16 @@ export function SshSessionComposer({
     try {
       if (targetType === "workspace") {
         if (!selectedWorkspaceId) {
-          toast.error("Select an SSH workspace first.");
+          toast.error("Select a workspace first.");
           return;
         }
         const session = await onCreateWorkspaceSession({
           workspaceId: selectedWorkspaceId,
-          name: "SSH session",
+          name: "Terminal",
           connectionMode,
           useTmux,
         });
-        onNavigate({ view: "ssh", sshSessionId: session.config.id });
+        onNavigate({ view: "terminal", terminalSessionId: session.config.id });
         return;
       }
 
@@ -128,7 +128,7 @@ export function SshSessionComposer({
         Cancel
       </Button>
       <Button type="submit" form={formId} size="sm" loading={submitting}>
-        Create SSH Session
+        {targetType === "workspace" ? "Create Terminal" : "Create SSH Session"}
       </Button>
     </>,
   );
@@ -160,11 +160,13 @@ export function SshSessionComposer({
             onChange={(event) => setConnectionMode(event.target.value as SshConnectionMode)}
             className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
           >
-            <option value="dtach">Persistent SSH</option>
-            <option value="direct">Direct SSH</option>
+            <option value="dtach">{targetType === "workspace" ? "Persistent" : "Persistent SSH"}</option>
+            <option value="direct">{targetType === "workspace" ? "Direct" : "Direct SSH"}</option>
           </select>
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
+            {targetType === "workspace"
+              ? "Persistent survives reconnects; direct is better for one-off debugging sessions."
+              : "Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions."}
           </p>
         </Panel>
       </div>

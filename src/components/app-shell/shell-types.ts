@@ -211,8 +211,8 @@ function createWorkspaceSessionNode(
     session,
     title: session.config.name,
     subtitle: linkedTaskName
-      ? `${linkedTaskName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`
-      : getSshConnectionModeLabel(session.config.connectionMode),
+      ? `${linkedTaskName} · ${getTerminalConnectionModeLabel(session.config.connectionMode)}`
+      : getTerminalConnectionModeLabel(session.config.connectionMode),
     badge: getSshSessionStatusLabel(session.state.status),
     badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
     createdAt: session.config.createdAt,
