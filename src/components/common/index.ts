@@ -20,8 +20,8 @@ export {
 export {
   getAgentStatusBadgeVariant,
   getChatStatusBadgeVariant,
-  getSshSessionStatusBadgeVariant,
-  getSshSessionStatusLabel,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
 } from "./status-variants";

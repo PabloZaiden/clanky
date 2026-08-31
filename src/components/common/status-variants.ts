@@ -1,4 +1,4 @@
-import type { AgentStatus, ChatStatus, ProvisioningJobStatus, SshSessionStatus } from "@/shared";
+import type { AgentStatus, ChatStatus, ProvisioningJobStatus, TerminalSessionStatus } from "@/shared";
 import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
 export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
@@ -43,7 +43,7 @@ export function getAgentStatusBadgeVariant(status: AgentStatus | string): BadgeV
   }
 }
 
-export function getSshSessionStatusBadgeVariant(status: SshSessionStatus): BadgeVariant {
+export function getTerminalSessionStatusBadgeVariant(status: TerminalSessionStatus): BadgeVariant {
   switch (status) {
     case "connected":
       return "success";
@@ -59,7 +59,7 @@ export function getSshSessionStatusBadgeVariant(status: SshSessionStatus): Badge
   }
 }
 
-export function getSshSessionStatusLabel(status: SshSessionStatus): string {
+export function getTerminalSessionStatusLabel(status: TerminalSessionStatus): string {
   switch (status) {
     case "connected": return "Connected";
     case "connecting": return "Connecting";

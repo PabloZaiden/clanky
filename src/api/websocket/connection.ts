@@ -1,11 +1,16 @@
 import type { ServerWebSocket } from "bun";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
-import { startTerminalBridge } from "./terminal";
+import {
+  releaseWorkspaceTerminalSocket,
+  startSshServerTerminalBridge,
+  startWorkspaceTerminalBridge,
+} from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
 import { runWithCurrentUser } from "../../core/user-context";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
+import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
 
 const log = createLogger("api:websocket");
 
@@ -46,8 +51,8 @@ function clearPreviewBridgeKeepalive(ws: ServerWebSocket<WebSocketData>): void {
  */
 export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
-    sshSessionId,
     sshServerSessionId,
+    workspaceTerminalSessionId,
     terminalMode,
     vncMode,
     vncSessionId,
@@ -55,6 +60,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     meshAcpMode,
     meshAcpSessionId,
     meshAcpSessionToken,
+    meshTerminalMode,
+    meshTerminalSessionId,
+    meshTerminalSessionToken,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -75,8 +83,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     terminalMode: terminalMode ?? false,
     vncMode: vncMode ?? false,
     previewBridgeMode: previewBridgeMode ?? false,
-    sshSessionId: sshSessionId ?? "none",
     sshServerSessionId: sshServerSessionId ?? "none",
+    workspaceTerminalSessionId: workspaceTerminalSessionId ?? "none",
     vncSessionId: vncSessionId ?? "none",
     activeConnections: activeConnections.size,
   });
@@ -99,14 +107,29 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     return;
   }
 
-  // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
-  const terminalSessionId = sshSessionId ?? sshServerSessionId;
-  if (terminalMode && terminalSessionId) {
-    if (sshServerSessionId) {
-      return;
-    }
+  if (meshTerminalMode && meshTerminalSessionId && meshTerminalSessionToken) {
+    void meshTerminalGateway.open(
+      ws,
+      meshTerminalSessionId,
+      meshTerminalSessionToken,
+    ).catch((error: Error) => {
+      log.warn("Failed to open Mesh terminal relay", {
+        sessionId: meshTerminalSessionId,
+        error: String(error),
+      });
+      ws.close(1011, "Mesh terminal relay unavailable");
+    });
+    return;
+  }
 
-    void startTerminalBridge(ws);
+  if (terminalMode && workspaceTerminalSessionId) {
+    void startWorkspaceTerminalBridge(ws);
+    return;
+  }
+
+  // Standalone SSH server terminal sockets attach directly and do not subscribe to app events.
+  if (terminalMode && sshServerSessionId) {
+    void startSshServerTerminalBridge(ws);
     return;
   }
 
@@ -163,6 +186,12 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
+  ws.data.workspaceTerminalAttachment?.release();
+  ws.data.workspaceTerminalAttachment = undefined;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
+  if (workspaceTerminalSessionId) {
+    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  }
 
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
@@ -175,6 +204,9 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
     void meshAcpGateway.close(ws.data.meshAcpSessionId);
   }
+  if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
+    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
+  }
   clearPreviewBridgeKeepalive(ws);
 }
 
@@ -186,7 +218,6 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
 export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
-    sshSessionId: ws.data.sshSessionId,
     sshServerSessionId: ws.data.sshServerSessionId,
     vncSessionId: ws.data.vncSessionId,
     previewBridgeSessionId: ws.data.previewBridgeSessionId,
@@ -197,6 +228,12 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
+  ws.data.workspaceTerminalAttachment?.release();
+  ws.data.workspaceTerminalAttachment = undefined;
+  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
+  if (workspaceTerminalSessionId) {
+    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  }
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
     ws.data.vncSocket = undefined;
@@ -206,6 +243,9 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
     void meshAcpGateway.close(ws.data.meshAcpSessionId);
+  }
+  if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
+    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
   }
   clearPreviewBridgeKeepalive(ws);
 }

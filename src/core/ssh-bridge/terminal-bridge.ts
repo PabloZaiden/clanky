@@ -5,20 +5,26 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { CommandExecutor } from "../command-executor";
-import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "@/shared";
+import type {
+  SshServerSession,
+  TerminalConnectionMode,
+  Workspace,
+  WorkspaceTerminalSession,
+} from "@/shared";
 import { getWorkspace } from "../../persistence/workspaces";
 import {
   buildPersistentSessionBackendInstallHint,
   buildPersistentSessionBackendProbeCommand,
   buildPersistentSessionReadyCommand,
+  hasPersistentSession,
   buildPersistentSessionResizeCommand,
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../ssh-persistent-session";
-import { sshSessionManager } from "../ssh-session-manager";
 import { sshServerManager } from "../ssh-server-manager";
+import { terminalSessionManager } from "../terminal-session-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { backendManager } from "../backend-manager";
-import { getEffectiveSshConnectionMode } from "../../utils";
+import { getEffectiveTerminalConnectionMode } from "../../utils";
 import type { SshTerminalBridgeOptions, SshTerminalBridgeConnectOptions } from "./types";
 import {
   SESSION_READY_POLL_INTERVAL_MS,
@@ -28,7 +34,7 @@ import {
   MAX_PENDING_OSC_SEQUENCE_BYTES,
 } from "./constants";
 import {
-  buildSshSpawnConfig,
+  buildWorkspaceSshSpawnConfig,
   buildStandaloneSshSpawnConfig,
   buildDirectReadyCommand,
   buildDirectResizeCommand,
@@ -38,12 +44,14 @@ import { requireCurrentUser, runWithCurrentUser } from "../user-context";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService, type ManagedRuntimeCredential } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
+import { DomainError } from "../domain-error";
+import { isWorkspaceTerminalAttachmentBlocked } from "../workspace-terminal-attachment-registry";
 
 const log = createLogger("core:ssh-terminal-bridge");
 
 export class SshTerminalBridge {
   private proc: ChildProcessWithoutNullStreams | null = null;
-  private session: SshSession | null = null;
+  private session: WorkspaceTerminalSession | null = null;
   private standaloneSession: SshServerSession | null = null;
   private workspace: Workspace | null = null;
   private standaloneExecutor: CommandExecutor | null = null;
@@ -59,14 +67,16 @@ export class SshTerminalBridge {
   private user: CurrentUser | null = null;
   private lastProcessExitCode: number | null = null;
   private suppressNextExitNotification = false;
+  private disposed = false;
 
   constructor(
     private readonly sessionId: string,
     private readonly options: SshTerminalBridgeOptions,
-    private readonly connectOptions: SshTerminalBridgeConnectOptions = {},
+    private readonly connectOptions: SshTerminalBridgeConnectOptions,
   ) {}
 
   async connect(): Promise<void> {
+    this.assertNotDisposed();
     if (this.ready && this.proc && this.proc.exitCode === null && this.proc.signalCode === null) {
       return;
     }
@@ -86,6 +96,7 @@ export class SshTerminalBridge {
   }
 
   private async connectInternal(): Promise<void> {
+    this.assertNotDisposed();
     this.user = requireCurrentUser();
     this.closing = false;
     this.ready = false;
@@ -96,7 +107,10 @@ export class SshTerminalBridge {
     this.lastProcessExitCode = null;
     this.suppressNextExitNotification = false;
 
-    this.session = await sshSessionManager.getSession(this.sessionId);
+    this.session = this.connectOptions.sessionKind === "terminal"
+      ? await terminalSessionManager.getSession(this.sessionId)
+      : null;
+    this.assertNotDisposed();
     let managedCredential: ManagedRuntimeCredential | undefined;
     let spawnConfig: { command: string; args: string[]; env: NodeJS.ProcessEnv };
     let persistentRuntimeAttachOnly = false;
@@ -105,19 +119,23 @@ export class SshTerminalBridge {
         this.sessionId,
         this.connectOptions.credentialToken ?? "",
       );
+      this.assertNotDisposed();
       this.session = null;
       this.workspace = null;
       this.standaloneSession = await this.resolveStandaloneSessionMode(connection.session, connection.executor);
+      this.assertNotDisposed();
       this.standaloneExecutor = connection.executor;
       this.commandCwd = "/";
       await sshServerManager.markStatus(this.sessionId, "connecting");
+      this.assertNotDisposed();
       spawnConfig = buildStandaloneSshSpawnConfig(connection.target, this.standaloneSession);
     } else {
       if (!this.session) {
-        throw new Error(`SSH session not found: ${this.sessionId}`);
+        throw new Error(`Terminal session not found: ${this.sessionId}`);
       }
 
       this.workspace = await getWorkspace(this.session.config.workspaceId);
+      this.assertNotDisposed();
       if (!this.workspace) {
         throw new Error(`Workspace not found: ${this.session.config.workspaceId}`);
       }
@@ -127,13 +145,16 @@ export class SshTerminalBridge {
       this.commandCwd = this.workspace.directory;
 
       this.session = await this.resolveWorkspaceSessionMode(this.session, this.workspace);
-      await sshSessionManager.markStatus(this.sessionId, "connecting");
+      this.assertNotDisposed();
+      await this.markStatus("connecting");
+      this.assertNotDisposed();
 
       const runtime = await this.getWorkspaceRuntimeEnvironment(this.workspace, this.session);
+      this.assertNotDisposed();
       managedCredential = runtime.credential;
       persistentRuntimeAttachOnly = runtime.persistentRuntimeExists;
       try {
-        spawnConfig = buildSshSpawnConfig(
+        spawnConfig = buildWorkspaceSshSpawnConfig(
           this.workspace,
           this.session,
           runtime.environment,
@@ -151,6 +172,8 @@ export class SshTerminalBridge {
         return;
       } catch (error) {
         if (
+          !this.disposed
+          &&
           persistentRuntimeAttachOnly
           && this.lastProcessExitCode === PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE
           && this.workspace
@@ -158,12 +181,12 @@ export class SshTerminalBridge {
         ) {
           persistentRuntimeAttachOnly = false;
           try {
-            const identity = await managedContextIdentityResolver.forSshSession(
+            const identity = await managedContextIdentityResolver.forTerminalSession(
               this.session.config.id,
               this.workspace.id,
             );
             managedCredential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
-            spawnConfig = buildSshSpawnConfig(
+            spawnConfig = buildWorkspaceSshSpawnConfig(
               this.workspace,
               this.session,
               buildManagedContextEnvironment(managedCredential),
@@ -207,6 +230,7 @@ export class SshTerminalBridge {
     spawnConfig: { command: string; args: string[]; env: NodeJS.ProcessEnv; startupStdin?: string },
     suppressExitNotificationOnFailure: boolean,
   ): Promise<void> {
+    this.assertNotDisposed();
     this.lastProcessExitCode = null;
     this.startupError = undefined;
     this.skipCloseStatusUpdate = false;
@@ -244,11 +268,16 @@ export class SshTerminalBridge {
           }
 
           try {
-            if (!skipStatusUpdate) {
+            if (
+              !skipStatusUpdate
+              && !(
+                this.connectOptions.sessionKind === "terminal"
+                && isWorkspaceTerminalAttachmentBlocked(this.sessionId))
+            ) {
               await this.runWithBridgeUser(() => this.markStatus(nextStatus, error));
             }
           } catch (statusError) {
-            log.error("Failed to update SSH session status after terminal close", {
+            log.error("Failed to update terminal status after SSH terminal close", {
               sessionId: this.sessionId,
               error: String(statusError),
             });
@@ -276,8 +305,10 @@ export class SshTerminalBridge {
 
     try {
       await this.waitForRemoteSessionReady();
+      this.assertNotDisposed();
       this.ready = true;
       await this.markStatus("connected");
+      this.assertNotDisposed();
     } catch (error) {
       const startupError = error instanceof Error ? error : new Error(String(error));
       this.ready = false;
@@ -375,14 +406,17 @@ export class SshTerminalBridge {
   }
 
   private async waitForRemoteSessionReady(): Promise<void> {
+    this.assertNotDisposed();
     if (!this.session && !this.standaloneSession) {
       throw new Error("SSH terminal is not connected");
     }
 
     const executor = await this.getCommandExecutor();
+    this.assertNotDisposed();
     const deadline = Date.now() + (this.options.readyTimeoutMs ?? DEFAULT_SESSION_READY_TIMEOUT_MS);
     if (this.getConnectionMode() === "direct") {
       while (Date.now() < deadline) {
+        this.assertNotDisposed();
         if (!this.proc) {
           throw new Error("SSH terminal is not connected");
         }
@@ -402,6 +436,7 @@ export class SshTerminalBridge {
           return;
         }
 
+        this.assertNotDisposed();
         await Bun.sleep(SESSION_READY_POLL_INTERVAL_MS);
       }
 
@@ -409,6 +444,7 @@ export class SshTerminalBridge {
     }
 
     while (Date.now() < deadline) {
+      this.assertNotDisposed();
       if (!this.proc) {
         throw new Error("SSH terminal is not connected");
       }
@@ -433,6 +469,7 @@ export class SshTerminalBridge {
         return;
       }
 
+      this.assertNotDisposed();
       await Bun.sleep(SESSION_READY_POLL_INTERVAL_MS);
     }
 
@@ -451,6 +488,7 @@ export class SshTerminalBridge {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
     this.closing = true;
     this.ready = false;
     if (!this.proc) {
@@ -468,12 +506,20 @@ export class SshTerminalBridge {
   }
 
   private async markStatus(status: "connecting" | "connected" | "disconnected" | "failed", error?: string): Promise<void> {
+    if (
+      this.connectOptions.sessionKind === "terminal"
+      && isWorkspaceTerminalAttachmentBlocked(this.sessionId)
+    ) {
+      return;
+    }
     if (this.connectOptions.sessionKind === "standalone") {
       await sshServerManager.markStatus(this.sessionId, status, error);
       return;
     }
-
-    await sshSessionManager.markStatus(this.sessionId, status, error);
+    if (this.connectOptions.sessionKind === "terminal") {
+      await terminalSessionManager.markStatus(this.sessionId, status, error);
+      return;
+    }
   }
 
   private runWithBridgeUser<T>(callback: () => T): T {
@@ -496,41 +542,41 @@ export class SshTerminalBridge {
     return await backendManager.getCommandExecutorAsync(this.workspace.id, this.workspace.directory);
   }
 
-  private getConnectionMode(): SshConnectionMode {
+  private getConnectionMode(): TerminalConnectionMode {
     if (this.connectOptions.sessionKind === "standalone") {
       if (!this.standaloneSession) {
         throw new Error("SSH terminal is not connected");
       }
-      return getEffectiveSshConnectionMode(this.standaloneSession);
+      return getEffectiveTerminalConnectionMode(this.standaloneSession);
     }
     if (!this.session) {
       throw new Error("SSH terminal is not connected");
     }
-    return getEffectiveSshConnectionMode(this.session);
+    return getEffectiveTerminalConnectionMode(this.session);
   }
 
-  private async resolveWorkspaceSessionMode(session: SshSession, workspace: Workspace): Promise<SshSession> {
+  private async resolveWorkspaceSessionMode(
+    session: WorkspaceTerminalSession,
+    workspace: Workspace,
+  ): Promise<WorkspaceTerminalSession> {
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
     return await this.resolvePersistentBackendMode(
       session,
       executor,
-      async (options) => await sshSessionManager.updateRuntimeConnectionState(session.config.id, options),
+      async (options) => await terminalSessionManager.updateRuntimeConnectionState(session.config.id, options),
     );
   }
 
   private async getWorkspaceRuntimeEnvironment(
     workspace: Workspace,
-    session: SshSession,
+    session: WorkspaceTerminalSession,
   ): Promise<{
     environment?: Record<string, string>;
     credential?: ManagedRuntimeCredential;
     persistentRuntimeExists: boolean;
   }> {
-    const identity = await managedContextIdentityResolver.forSshSession(
-      session.config.id,
-      workspace.id,
-    );
-    const persistentRuntimeExists = getEffectiveSshConnectionMode(session) === "dtach"
+    const identity = await managedContextIdentityResolver.forTerminalSession(session.config.id, workspace.id);
+    const persistentRuntimeExists = getEffectiveTerminalConnectionMode(session) === "dtach"
       && await this.hasPersistentRuntime(workspace, session);
     if (persistentRuntimeExists) {
       return { persistentRuntimeExists };
@@ -547,22 +593,19 @@ export class SshTerminalBridge {
     };
   }
 
-  private async hasPersistentRuntime(workspace: Workspace, session: SshSession): Promise<boolean> {
+  private async hasPersistentRuntime(workspace: Workspace, session: WorkspaceTerminalSession): Promise<boolean> {
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    const result = await executor.exec("bash", [
-      "-lc",
-      buildPersistentSessionReadyCommand({
+    return await hasPersistentSession(
+      executor,
+      {
         config: {
           id: session.config.id,
           remoteSessionName: session.config.remoteSessionName,
         },
-      }),
-    ], {
-      cwd: workspace.directory,
-      timeout: DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
-      logFailures: false,
-    });
-    return result.success;
+      },
+      workspace.directory,
+      DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
+    );
   }
 
   private async resolveStandaloneSessionMode(
@@ -577,12 +620,12 @@ export class SshTerminalBridge {
   }
 
   private async resolvePersistentBackendMode<TSession extends {
-    config: { id: string; connectionMode: SshConnectionMode };
-    state: { runtimeConnectionMode?: SshConnectionMode; notice?: string };
+    config: { id: string; connectionMode: TerminalConnectionMode };
+    state: { runtimeConnectionMode?: TerminalConnectionMode; notice?: string };
   }>(
     session: TSession,
     executor: CommandExecutor,
-    updateRuntimeState: (options: { runtimeConnectionMode?: SshConnectionMode; notice?: string }) => Promise<TSession>,
+    updateRuntimeState: (options: { runtimeConnectionMode?: TerminalConnectionMode; notice?: string }) => Promise<TSession>,
   ): Promise<TSession> {
     if (session.config.connectionMode === "direct") {
       if (session.state.runtimeConnectionMode || session.state.notice) {
@@ -595,6 +638,7 @@ export class SshTerminalBridge {
       cwd: "/",
       timeout: DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
     });
+    this.assertNotDisposed();
     if (result.success) {
       if (session.state.runtimeConnectionMode || session.state.notice) {
         return await updateRuntimeState({});
@@ -647,5 +691,11 @@ export class SshTerminalBridge {
       throw new Error("SSH terminal is not connected");
     }
     return this.session.config.remoteSessionName;
+  }
+
+  private assertNotDisposed(): void {
+    if (this.disposed) {
+      throw new DomainError("terminal_connection_closed", "The terminal connection is closed.");
+    }
   }
 }

@@ -30,7 +30,7 @@ const TRANSITION_TABLE: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
 
   // planning: AI is generating a plan, awaiting user approval
   // → starting: plan accepted and pre-execution sync/setup begins (acceptPlan start_task)
-  // → completed: plan accepted directly into manual SSH handoff (acceptPlan open_ssh)
+  // → completed: plan accepted directly into a manual terminal handoff
   // → stopped: user stops during planning
   // → failed: unrecoverable error during planning
   // → deleted: delete during planning

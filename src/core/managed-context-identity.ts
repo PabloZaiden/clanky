@@ -6,7 +6,7 @@ import type { ManagedContextIdentity, ManagedContextType } from "@/shared/contex
 import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
-import { getSshSession } from "../persistence/ssh-sessions";
+import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "./domain-error";
 import { requireCurrentUserId } from "./user-context";
 
@@ -90,15 +90,15 @@ export class ManagedContextIdentityResolver {
     );
   }
 
-  async forSshSession(sessionId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const session = await getSshSession(sessionId);
+  async forTerminalSession(sessionId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
+    const session = await getTerminalSession(sessionId);
     if (!session) {
-      throw missingContext("ssh_session", sessionId);
+      throw missingContext("terminal_session", sessionId);
     }
     return this.createIdentity(
-      "ssh_session",
+      "terminal_session",
       sessionId,
-      ensureWorkspace("ssh_session", sessionId, session.config.workspaceId, expectedWorkspaceId),
+      ensureWorkspace("terminal_session", sessionId, session.config.workspaceId, expectedWorkspaceId),
     );
   }
 

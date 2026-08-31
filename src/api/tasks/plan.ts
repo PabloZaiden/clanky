@@ -3,7 +3,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Task plan management routes.
  *
  * - POST /api/tasks/:id/plan/feedback        - Send feedback to refine the plan
- * - POST /api/tasks/:id/plan/accept          - Accept the plan and start execution or open SSH
+ * - POST /api/tasks/:id/plan/accept          - Accept the plan and start execution or open a terminal
  * - POST /api/tasks/:id/plan/discard         - Discard the plan and delete the task
  */
 
@@ -84,7 +84,7 @@ export const tasksPlanRoutes = defineRoutes({
     description: "Accept a generated task plan.",
     requestSchema: PlanAcceptRequestSchema,
     /**
-     * POST /api/tasks/:id/plan/accept - Accept the plan and either start execution or open SSH.
+     * POST /api/tasks/:id/plan/accept - Accept the plan and either start execution or open a terminal.
      *
      * Accepts the current plan and transitions the task from planning status
      * to starting or completed, depending on the chosen acceptance mode.
@@ -102,9 +102,12 @@ export const tasksPlanRoutes = defineRoutes({
         const result = await taskManager.acceptPlan(ctx.params["id"]!, {
           mode: validation.data.mode,
         });
-        const response: PlanAcceptResponse = result.mode === "open_ssh"
-          ? { success: true, mode: result.mode, sshSession: result.sshSession }
-          : { success: true, mode: result.mode };
+        let response: PlanAcceptResponse;
+        if (result.mode === "open_terminal") {
+          response = { success: true, mode: "open_terminal", terminalSession: result.terminalSession };
+        } else {
+          response = { success: true, mode: result.mode };
+        }
         return Response.json(response);
       } catch (error) {
         if (isTaskOperationError(error)) {

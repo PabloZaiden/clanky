@@ -5,11 +5,11 @@
  * - useTaskGitActions       – accept, push, updateBranch
  * - useTaskPlanActions      – sendPlanFeedback, acceptPlan, discardPlan
  * - useTaskPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
- * - useTaskFollowUpActions  – sendFollowUp, connectViaSsh, addressReviewComments
+ * - useTaskFollowUpActions  – sendFollowUp, connectTerminal, addressReviewComments
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, SshSession } from "@/shared";
+import type { Task, WorkspaceTerminalSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
@@ -57,7 +57,7 @@ export interface UseTaskActionsResult {
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  acceptPlan: (mode?: "start_task" | "open_ssh") => Promise<AcceptPlanResult>;
+  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
@@ -74,7 +74,7 @@ export interface UseTaskActionsResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  connectViaSsh: () => Promise<SshSession | null>;
+  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 
 export function useTaskActions(params: UseTaskActionsParams): UseTaskActionsResult {

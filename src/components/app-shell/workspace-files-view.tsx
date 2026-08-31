@@ -1,34 +1,22 @@
-import type { ComponentType } from "react";
-import type { SshConnectionMode, SshSession, Workspace } from "@/shared";
-import type { CreateSshSessionRequest } from "@/contracts";
-import type { SshServerSession } from "@/shared/ssh-server";
-import type { SshSessionDetailsProps } from "../SshSessionDetails";
+import type { Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { CodeExplorerView } from "./code-explorer-view";
 
 interface WorkspaceFilesViewProps {
   workspace: Workspace;
-  sessions: SshSession[];
+  sessions: WorkspaceTerminalSession[];
   startDirectory?: string;
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
-  createStandaloneSession?: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
-  ) => Promise<SshServerSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
-  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function WorkspaceFilesView({
   workspace,
   sessions,
   startDirectory,
-  createSession,
-  createStandaloneSession = async () => {
-    throw new Error("Standalone SSH sessions are unavailable in workspace code explorer context.");
-  },
+  createTerminalSession,
   onNavigate,
-  sshSessionDetailsComponent,
 }: WorkspaceFilesViewProps) {
   return (
     <CodeExplorerView
@@ -36,13 +24,11 @@ export function WorkspaceFilesView({
       tasks={[]}
       chats={[]}
       workspaces={[workspace]}
-      sessions={sessions}
+      terminalSessions={sessions}
       servers={[]}
       sessionsByServerId={{}}
-      createSession={createSession}
-      createStandaloneSession={createStandaloneSession}
+      createTerminalSession={createTerminalSession}
       onNavigate={onNavigate}
-      sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );
 }

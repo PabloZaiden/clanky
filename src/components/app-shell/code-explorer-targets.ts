@@ -1,11 +1,11 @@
-import type { Chat, Task, SshConnectionMode, SshSession, Workspace } from "@/shared";
+import type { Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { CreateSshSessionRequest } from "@/contracts";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
-import { getOrCreateTaskSshSessionApi } from "../../hooks/task-actions/ssh-actions";
+import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/terminal-actions";
 import type { CodeExplorerTarget } from "./shell-types";
 
-type ExplorerSession = SshSession | SshServerSession;
+type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
 
 export interface CodeExplorerTerminalOptions {
   useTmux?: boolean;
@@ -65,12 +65,12 @@ interface ResolveCodeExplorerTargetArgs {
   tasks: Task[];
   chats: Chat[];
   servers: SshServer[];
-  sessions: SshSession[];
+  terminalSessions: WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
-  createStandaloneSession: (
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
+  createStandaloneSession?: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: import("@/shared").TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
 }
 
@@ -99,8 +99,8 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   }
 }
 
-function supportsTaskTerminal(task: Task, sessions: SshSession[]): boolean {
-  if (sessions.some((session) => session.config.taskId === task.config.id)) {
+function supportsTaskTerminal(task: Task, terminalSessions: WorkspaceTerminalSession[]): boolean {
+  if (terminalSessions.some((session) => session.config.taskId === task.config.id)) {
     return true;
   }
 
@@ -159,9 +159,9 @@ export function resolveCodeExplorerTarget({
   tasks,
   chats,
   servers,
-  sessions,
+  terminalSessions,
   sessionsByServerId,
-  createSession,
+  createTerminalSession,
   createStandaloneSession,
 }: ResolveCodeExplorerTargetArgs): ResolvedCodeExplorerTarget | null {
   if (!target) {
@@ -178,8 +178,8 @@ export function resolveCodeExplorerTarget({
       }
 
       const defaultRootDirectory = trimDirectory(workspace.directory);
-      const workspaceSessions = sessions.filter((session) => session.config.workspaceId === workspace.id);
-      const hasTerminal = workspace.serverSettings.agent.transport === "ssh";
+      const workspaceTerminals = terminalSessions.filter((terminal) => terminal.config.workspaceId === workspace.id);
+      const hasTerminal = true;
 
       return {
         routeTarget: target,
@@ -197,19 +197,17 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: workspaceSessions,
+        sessions: workspaceTerminals,
         hasTerminal,
-        emptyTerminalMessage: hasTerminal
-          ? "Choose an existing SSH session or create a new one."
-          : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
-        terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createSession({
+        emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
+        terminalSelectLabel: "Select workspace terminal session",
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
           workspaceId: workspace.id,
           name: `${workspace.name} terminal`,
           connectionMode: "dtach",
           useTmux: options?.useTmux,
         }),
-        canChooseTerminalTmux: hasTerminal,
+        canChooseTerminalTmux: true,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
@@ -227,8 +225,8 @@ export function resolveCodeExplorerTarget({
 
       const defaultRootDirectory = getTaskCodeExplorerRootDirectory(task);
       const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const taskSessions = sessions.filter((session) => session.config.taskId === task.config.id);
-      const hasTerminal = workspace.serverSettings.agent.transport === "ssh" && supportsTaskTerminal(task, taskSessions);
+      const taskTerminals = terminalSessions.filter((terminal) => terminal.config.taskId === task.config.id);
+      const hasTerminal = supportsTaskTerminal(task, taskTerminals);
 
       return {
         routeTarget: target,
@@ -246,13 +244,13 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: taskSessions,
+        sessions: taskTerminals,
         hasTerminal,
         emptyTerminalMessage: hasTerminal
-          ? "Choose the task SSH session or open the task terminal."
-          : "This task does not have a task-linked terminal yet. Start or reconnect the task SSH session from the info tab.",
-        terminalSelectLabel: "Select task SSH session",
-        onCreateTerminal: async () => await getOrCreateTaskSshSessionApi(task.config.id),
+          ? "Choose the task terminal session or open the task terminal."
+          : "This task does not have a task-linked terminal yet. Open the task terminal from the info tab.",
+        terminalSelectLabel: "Select task terminal session",
+        onCreateTerminal: async () => await getOrCreateTaskTerminalSessionApi(task.config.id),
         canChooseTerminalTmux: false,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
@@ -262,6 +260,9 @@ export function resolveCodeExplorerTarget({
       const server = servers.find((candidate) => candidate.config.id === routeTargetId);
       if (!server) {
         return null;
+      }
+      if (!createStandaloneSession) {
+        throw new Error("Standalone SSH session creation is unavailable for server code explorer");
       }
 
       const defaultRootDirectory = trimDirectory(server.config.repositoriesBasePath ?? undefined);
@@ -309,8 +310,8 @@ export function resolveCodeExplorerTarget({
 
       const defaultRootDirectory = getChatCodeExplorerRootDirectory(chat);
       const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const workspaceSessions = sessions.filter((session) => session.config.workspaceId === workspace.id);
-      const hasTerminal = workspace.serverSettings.agent.transport === "ssh";
+      const workspaceTerminals = terminalSessions.filter((terminal) => terminal.config.workspaceId === workspace.id);
+      const hasTerminal = true;
 
       return {
         routeTarget: target,
@@ -328,19 +329,17 @@ export function resolveCodeExplorerTarget({
             ? startDirectory.trim()
             : undefined,
         }),
-        sessions: workspaceSessions,
+        sessions: workspaceTerminals,
         hasTerminal,
-        emptyTerminalMessage: hasTerminal
-          ? "Choose an existing SSH session or create a new one."
-          : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
-        terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createSession({
+        emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
+        terminalSelectLabel: "Select workspace terminal session",
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
           workspaceId: workspace.id,
           name: `${workspace.name} terminal`,
           connectionMode: "dtach",
           useTmux: options?.useTmux,
         }),
-        canChooseTerminalTmux: hasTerminal,
+        canChooseTerminalTmux: true,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };

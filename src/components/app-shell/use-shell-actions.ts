@@ -5,9 +5,9 @@ import type {
   Chat,
   SshServer,
   SshServerSession,
-  SshSession,
   Task,
   Workspace,
+  WorkspaceTerminalSession,
 } from "@/shared";
 import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
 import {
@@ -18,8 +18,8 @@ import {
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
   type UseSshServersResult,
-  type UseSshSessionsResult,
   type UseTasksResult,
+  type UseTerminalSessionsResult,
   type UseWorkspacesResult,
   type WorkspaceGroup,
 } from "../../hooks";
@@ -51,11 +51,11 @@ interface UseShellActionsOptions {
   updateChat: UseChatsResult["updateChat"];
   agents: UseAgentsResult;
   updateTask: UseTasksResult["updateTask"];
-  updateWorkspaceSshSession: UseSshSessionsResult["updateSession"];
   updateStandaloneSession: UseSshServersResult["updateSession"];
   updateServer: UseSshServersResult["updateServer"];
   refreshSshServers: UseSshServersResult["refresh"];
-  deleteWorkspaceSshSession: UseSshSessionsResult["deleteSession"];
+  updateTerminalSession: UseTerminalSessionsResult["updateSession"];
+  deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   deleteStandaloneSession: UseSshServersResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
   quickChatSettings: UseQuickChatSettingsResult;
@@ -84,11 +84,11 @@ export function useShellActions({
   updateChat,
   agents,
   updateTask,
-  updateWorkspaceSshSession,
   updateStandaloneSession,
   updateServer,
   refreshSshServers,
-  deleteWorkspaceSshSession,
+  updateTerminalSession,
+  deleteTerminalSession,
   deleteStandaloneSession,
   createChat,
   quickChatSettings,
@@ -215,10 +215,10 @@ export function useShellActions({
     route,
     navigateWithinShell,
     onError: toast.error,
-    updateWorkspaceSshSession,
     updateStandaloneSession,
     refreshSshServers,
-    deleteWorkspaceSshSession,
+    updateTerminalSession,
+    deleteTerminalSession,
     deleteStandaloneSession,
     agents,
     createChat,
@@ -255,13 +255,13 @@ export function useShellActions({
     }
   }, [toast, updateWorkspace]);
 
-  const toggleWorkspaceSshSessionPrivate = useCallback(async (session: SshSession): Promise<void> => {
+  const toggleTerminalSessionPrivate = useCallback(async (session: WorkspaceTerminalSession): Promise<void> => {
     try {
-      await updateWorkspaceSshSession(session.config.id, { isPrivate: !session.config.isPrivate });
+      await updateTerminalSession(session.config.id, { isPrivate: !session.config.isPrivate });
     } catch (error) {
       toast.error(String(error));
     }
-  }, [toast, updateWorkspaceSshSession]);
+  }, [toast, updateTerminalSession]);
 
   const toggleSshServerPrivate = useCallback(async (server: SshServer): Promise<void> => {
     const updated = await updateServer(server.config.id, { isPrivate: !server.config.isPrivate });
@@ -310,7 +310,7 @@ export function useShellActions({
     toggleChatPrivate,
     toggleAgentPrivate,
     toggleWorkspacePrivate,
-    toggleWorkspaceSshSessionPrivate,
+    toggleTerminalSessionPrivate,
     toggleSshServerPrivate,
     toggleStandaloneSshSessionPrivate,
     stopSidebarTask,

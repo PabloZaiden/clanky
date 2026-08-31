@@ -4,6 +4,7 @@
 
 import { buildShellBootstrapCommand } from "./ssh-shell-bootstrap";
 import { buildManagedContextShellBootstrap } from "./managed-context-environment";
+import type { CommandExecutor } from "./command-executor";
 
 const DTACH_INSTALL_HINT = [
   "dtach is not available on the remote host.",
@@ -255,6 +256,25 @@ export function buildPersistentSessionReadyCommand(session: {
     "session_tty_path=$(cat \"$session_tty_file\" 2>/dev/null || true);",
     "[ -n \"$session_tty_path\" ]",
   ].join("\n");
+}
+
+export async function hasPersistentSession(
+  executor: CommandExecutor,
+  session: {
+    config: Pick<PersistentSshSessionConfigLike, "id" | "remoteSessionName">;
+  },
+  cwd: string,
+  timeout: number,
+): Promise<boolean> {
+  const result = await executor.exec("bash", [
+    "-lc",
+    buildPersistentSessionReadyCommand(session),
+  ], {
+    cwd,
+    timeout,
+    logFailures: false,
+  });
+  return result.success;
 }
 
 export function buildPersistentSessionResizeCommand(sessionId: string, cols: number, rows: number): string {

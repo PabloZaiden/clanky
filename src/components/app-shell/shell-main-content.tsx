@@ -1,6 +1,5 @@
 import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, Task, SshSession, Workspace } from "@/shared";
-import type { CreateSshSessionRequest } from "@/contracts";
+import type { Chat, Task, Workspace } from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -8,7 +7,8 @@ import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
-import { SshSessionDetails } from "../SshSessionDetails";
+import { SshServerSessionDetails } from "../SshServerSessionDetails";
+import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
 import { DraftTaskComposer } from "./shell-composers";
 import { ComposeView, isComposeKind } from "./shell-compose-view";
@@ -39,7 +39,7 @@ export interface ShellMainContentProps {
   tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
-  sessions: SshSession[];
+  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
   serverNodes: SidebarServerNode[];
@@ -64,13 +64,12 @@ export interface ShellMainContentProps {
   clearOptimisticTaskStart: (taskId: string) => void;
   refreshChats: () => Promise<void>;
   purgeTask: (taskId: string) => Promise<boolean>;
-  refreshSshSessions: () => Promise<void>;
   refreshSshServers: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
-  createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
+  createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").WorkspaceTerminalSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: import("@/shared").SshConnectionMode; useTmux?: boolean },
+    options?: { name?: string; connectionMode?: import("@/shared").TerminalConnectionMode; useTmux?: boolean },
   ) => Promise<import("@/shared/ssh-server").SshServerSession>;
   createServer: (
     request: import("@/contracts").CreateSshServerRequest,
@@ -170,7 +169,7 @@ function renderMainContent(props: ShellMainContentProps) {
     tasks,
     chats,
     workspaces,
-    sessions,
+    terminalSessions,
     servers,
     sessionsByServerId,
     serverNodes,
@@ -184,12 +183,13 @@ function renderMainContent(props: ShellMainContentProps) {
     selectedServer,
     refreshTasks,
     refreshChats,
-    refreshSshSessions,
     refreshSshServers,
     refreshWorkspaces,
     purgeTask,
     deleteServer,
     deleteWorkspace,
+    createTerminalSession,
+    createStandaloneSession,
     dashboardData,
     schedulerTimezone,
     createChat,
@@ -292,7 +292,7 @@ function renderMainContent(props: ShellMainContentProps) {
           void refreshTasks();
         }}
         showBackButton={false}
-        onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
+        onSelectTerminalSession={(terminalSessionId) => navigateWithinShell({ view: "terminal", terminalSessionId })}
         onOpenTaskFiles={(selectedTaskId) => navigateWithinShell({
           view: "code-explorer",
           contentType: "task",
@@ -317,11 +317,11 @@ function renderMainContent(props: ShellMainContentProps) {
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
-        sessions={sessions}
+        terminalSessions={terminalSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        createSession={props.createSession}
-        createStandaloneSession={props.createStandaloneSession}
+        createTerminalSession={createTerminalSession}
+        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -356,17 +356,33 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
-  if (route.view === "ssh") {
-    const sshSessionId = getRouteString(route, "sshSessionId");
-    if (!sshSessionId) {
-      return missingRouteParameter(route.view, "sshSessionId");
+  if (route.view === "terminal") {
+    const terminalSessionId = getRouteString(route, "terminalSessionId");
+    if (!terminalSessionId) {
+      return missingRouteParameter(route.view, "terminalSessionId");
     }
+
     return (
-      <SshSessionDetails
-        sshSessionId={sshSessionId}
+      <TerminalSessionDetails
+        terminalSessionId={terminalSessionId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
-          void refreshSshSessions();
+        }}
+        showBackButton={false}
+      />
+    );
+  }
+
+  if (route.view === "ssh") {
+    const sshServerSessionId = getRouteString(route, "sshServerSessionId");
+    if (!sshServerSessionId) {
+      return missingRouteParameter(route.view, "sshServerSessionId");
+    }
+    return (
+      <SshServerSessionDetails
+        sshServerSessionId={sshServerSessionId}
+        onBack={() => {
+          navigateWithinShell({ view: "home" });
           void refreshSshServers();
         }}
         showBackButton={false}
@@ -385,8 +401,8 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     const relatedTasks = tasks.filter((task) => task.config.workspaceId === selectedWorkspace.id);
     const relatedChats = chats.filter((chat) => chat.config.workspaceId === selectedWorkspace.id);
-    const relatedSessions = sessions.filter(
-      (session) => session.config.workspaceId === selectedWorkspace.id,
+    const relatedTerminalSessions = terminalSessions.filter(
+      (terminal) => terminal.config.workspaceId === selectedWorkspace.id,
     );
     const relatedAgents = agents.agents.filter((agent) => agent.config.workspaceId === selectedWorkspace.id);
     return (
@@ -394,11 +410,10 @@ function renderMainContent(props: ShellMainContentProps) {
         workspace={selectedWorkspace}
         relatedTasks={relatedTasks}
         relatedChats={relatedChats}
-        relatedSessions={relatedSessions}
+        relatedTerminalSessions={relatedTerminalSessions}
         relatedAgents={relatedAgents}
         agentsLoading={agents.loading}
         agentsError={agents.error}
-        registeredSshServers={servers}
         onNavigate={navigateWithinShell}
         showPrivateItems={showPrivateItems}
       />
@@ -420,11 +435,11 @@ function renderMainContent(props: ShellMainContentProps) {
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
-        sessions={sessions}
+        terminalSessions={terminalSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        createSession={props.createSession}
-        createStandaloneSession={props.createStandaloneSession}
+        createTerminalSession={createTerminalSession}
+        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -561,11 +576,11 @@ function renderMainContent(props: ShellMainContentProps) {
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
-        sessions={sessions}
+        terminalSessions={terminalSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        createSession={props.createSession}
-        createStandaloneSession={props.createStandaloneSession}
+        createTerminalSession={createTerminalSession}
+        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -578,11 +593,11 @@ function renderMainContent(props: ShellMainContentProps) {
         tasks={tasks}
         chats={chats}
         workspaces={workspaces}
-        sessions={sessions}
+        terminalSessions={terminalSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
-        createSession={props.createSession}
-        createStandaloneSession={props.createStandaloneSession}
+        createTerminalSession={createTerminalSession}
+        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -666,9 +681,8 @@ function renderMainContent(props: ShellMainContentProps) {
         workspaceError={workspaceError}
         servers={servers}
         workspaceCreate={props.workspaceCreate}
-        sessions={sessions}
-        createSession={props.createSession}
-        createStandaloneSession={props.createStandaloneSession}
+        createTerminalSession={createTerminalSession}
+        createStandaloneSession={createStandaloneSession}
         createServer={props.createServer}
         updateServer={props.updateServer}
         composeServerSessionCount={props.composeServerSessionCount}
@@ -702,6 +716,7 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
   return props.route.view === "agent-run"
     || props.route.view === "chat"
     || props.route.view === "code-explorer"
+    || props.route.view === "terminal"
     || props.route.view === "ssh"
     || props.route.view === "task-files"
     || props.route.view === "vnc-session"

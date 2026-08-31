@@ -521,7 +521,7 @@ ON CONFLICT(id) DO UPDATE SET
   last_error_code = excluded.last_error_code,
   active_run_id = excluded.active_run_id;
 
-INSERT INTO ssh_sessions (
+INSERT INTO terminal_sessions (
   id,
   user_id,
   name,
@@ -536,7 +536,10 @@ INSERT INTO ssh_sessions (
   task_id,
   connection_mode,
   runtime_connection_mode,
-  notice_message
+  notice_message,
+  target_transport,
+  target_key,
+  target_revision
 ) VALUES (
   'demo-workspace-session-api',
   'admin',
@@ -552,7 +555,10 @@ INSERT INTO ssh_sessions (
   NULL,
   'dtach',
   NULL,
-  'Ready for a new terminal tab.'
+  'Ready for a new terminal tab.',
+  'ssh',
+  'demo-ssh-target',
+  1
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -567,9 +573,12 @@ ON CONFLICT(id) DO UPDATE SET
   task_id = excluded.task_id,
   connection_mode = excluded.connection_mode,
   runtime_connection_mode = excluded.runtime_connection_mode,
-  notice_message = excluded.notice_message;
+  notice_message = excluded.notice_message,
+  target_transport = excluded.target_transport,
+  target_key = excluded.target_key,
+  target_revision = excluded.target_revision;
 
-INSERT INTO ssh_sessions (
+INSERT INTO terminal_sessions (
   id,
   user_id,
   name,
@@ -584,7 +593,10 @@ INSERT INTO ssh_sessions (
   task_id,
   connection_mode,
   runtime_connection_mode,
-  notice_message
+  notice_message,
+  target_transport,
+  target_key,
+  target_revision
 ) VALUES (
   'demo-workspace-session-task-running',
   'admin',
@@ -600,7 +612,10 @@ INSERT INTO ssh_sessions (
   'demo-task-running',
   'dtach',
   NULL,
-  'Bound to the running task worktree.'
+  'Bound to the running task worktree.',
+  'ssh',
+  'demo-ssh-target',
+  1
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -615,7 +630,10 @@ ON CONFLICT(id) DO UPDATE SET
   task_id = excluded.task_id,
   connection_mode = excluded.connection_mode,
   runtime_connection_mode = excluded.runtime_connection_mode,
-  notice_message = excluded.notice_message;
+  notice_message = excluded.notice_message,
+  target_transport = excluded.target_transport,
+  target_key = excluded.target_key,
+  target_revision = excluded.target_revision;
 
 INSERT INTO tasks (
   id,
@@ -681,7 +699,7 @@ INSERT INTO tasks (
   'admin',
   'Dashboard filters',
   '/workspaces/demo-storefront',
-  'Design and implement dashboard filtering for tasks, chats, and SSH sessions.',
+  'Design and implement dashboard filtering for tasks, chats, and terminals.',
   '2026-04-16T18:40:00.000Z',
   '2026-04-16T19:10:00.000Z',
   'demo-workspace-webapp',

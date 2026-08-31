@@ -25,7 +25,7 @@ export type TaskErrorCode =
   | "task_no_remote"
   | "task_operation_failed"
   | "task_git_operation_failed"
-  | "task_ssh_session_failed"
+  | "task_terminal_session_failed"
   | "task_file_operation_failed"
   | "task_session_reconnect_failed"
   | "uncommitted_changes"

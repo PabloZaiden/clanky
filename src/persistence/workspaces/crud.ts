@@ -62,13 +62,14 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "serverSettings" | "executionNodeId" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+    "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
     hasNameUpdate: updates.name !== undefined,
     hasSettingsUpdate: updates.serverSettings !== undefined,
+    hasExecutionTargetRevisionUpdate: updates.executionTargetRevision !== undefined,
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
     hasPrivateUpdate: updates.isPrivate !== undefined,
     hasArchivedUpdate: updates.archived !== undefined,
@@ -105,6 +106,11 @@ export async function updateWorkspace(
         values.push(getServerFingerprint(existing.serverSettings, updates.executionNodeId));
       }
     }
+  }
+
+  if (updates.executionTargetRevision !== undefined) {
+    setClauses.push("execution_target_revision = ?");
+    values.push(Math.max(1, Math.floor(updates.executionTargetRevision)));
   }
 
   if (updates.devcontainerSubpath !== undefined) {

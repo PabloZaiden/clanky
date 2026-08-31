@@ -7,7 +7,7 @@ import type {
   WebAppRootProps,
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { Agent, Chat, SshServer, SshServerSession, SshSession, Task, Workspace } from "@/shared";
+import type { Agent, Chat, SshServer, SshServerSession, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
@@ -37,9 +37,9 @@ import {
   type ActiveWorkSidebarItemType,
 } from "./active-work-sidebar-item";
 
-export type SshSessionActionTarget =
-  | { kind: "workspace"; id: string; name: string }
-  | { kind: "standalone"; id: string; name: string; serverId: string };
+export type StandaloneSshSessionActionTarget = { id: string; name: string; serverId: string };
+
+export type TerminalSessionActionTarget = { id: string; name: string };
 
 type SearchableSidebarNode = PrivateSidebarNode & {
   searchText?: string;
@@ -58,15 +58,17 @@ export interface ShellSidebarActionHandlers {
   markChatDone: (chat: Chat) => void | Promise<void>;
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
-  toggleWorkspaceSshSessionPrivate: (session: SshSession) => void | Promise<void>;
   toggleSshServerPrivate: (server: SshServer) => void | Promise<void>;
   toggleStandaloneSshSessionPrivate: (
     serverId: string,
     session: SshServerSession,
   ) => void | Promise<void>;
   stopSidebarTask: (task: Task) => void | Promise<void>;
-  openRenameSshSession: (target: SshSessionActionTarget) => void;
-  openDeleteSshSession: (target: SshSessionActionTarget) => void;
+  openRenameStandaloneSshSession: (target: StandaloneSshSessionActionTarget) => void;
+  openDeleteStandaloneSshSession: (target: StandaloneSshSessionActionTarget) => void;
+  toggleTerminalSessionPrivate: (session: WorkspaceTerminalSession) => void | Promise<void>;
+  openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
+  openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
   pullLatestWorkspaceChanges: (workspaceId: string) => void | Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
   toggleWorkspaceArchived: (workspace: Workspace) => void | Promise<void>;
@@ -239,8 +241,12 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
         ? { view: "chat", chatId: getRouteString(route, "chatId")! }
         : null;
     case "ssh":
-      return getRouteString(route, "sshSessionId")
-        ? { view: "ssh", sshSessionId: getRouteString(route, "sshSessionId")! }
+      return getRouteString(route, "sshServerSessionId")
+        ? { view: "ssh", sshServerSessionId: getRouteString(route, "sshServerSessionId")! }
+        : null;
+    case "terminal":
+      return getRouteString(route, "terminalSessionId")
+        ? { view: "terminal", terminalSessionId: getRouteString(route, "terminalSessionId")! }
         : null;
     case "workspace":
     case "workspace-files":
@@ -443,17 +449,15 @@ function getWorkspaceSidebarActions(
           ),
         },
       ] : []),
-      ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
-        ? [{
-            id: "new-ssh-session",
-            label: "New SSH Session",
-            onClick: () => handlers.navigateWithinShell({
-              view: "compose",
-              kind: "ssh-session",
-              workspaceId,
-            }),
-          }]
-        : []),
+      {
+        id: "new-terminal-session",
+        label: "New Terminal",
+        onClick: () => handlers.navigateWithinShell({
+          view: "compose",
+          kind: "terminal-session",
+          workspaceId,
+        }),
+      },
       {
         id: workspaceArchived ? "unarchive-workspace" : "archive-workspace",
         label: workspaceArchiving
@@ -529,30 +533,49 @@ function getSshServerSidebarActions(
   );
 }
 
-function getSshSessionSidebarActions(
-  target: SshSessionActionTarget,
-  session: SshSession | SshServerSession,
+function getStandaloneSshSessionSidebarActions(
+  target: StandaloneSshSessionActionTarget,
+  session: SshServerSession,
   handlers: ShellSidebarActionHandlers,
 ): ActionMenuItem[] {
   const baseActions = sidebarActionItems([
     {
-      id: "rename-ssh-session",
+      id: "rename-standalone-ssh-session",
       label: "Rename",
-      onClick: () => handlers.openRenameSshSession(target),
+      onClick: () => handlers.openRenameStandaloneSshSession(target),
     },
     {
-      id: "delete-ssh-session",
+      id: "delete-standalone-ssh-session",
       label: "Delete Session",
       destructive: true,
-      onClick: () => handlers.openDeleteSshSession(target),
+      onClick: () => handlers.openDeleteStandaloneSshSession(target),
     },
   ]);
   return withPrivateToggleAction(baseActions, session.config, () => {
-    if (target.kind === "workspace") {
-      void handlers.toggleWorkspaceSshSessionPrivate(session as SshSession);
-      return;
-    }
-    void handlers.toggleStandaloneSshSessionPrivate(target.serverId, session as SshServerSession);
+    void handlers.toggleStandaloneSshSessionPrivate(target.serverId, session);
+  });
+}
+
+function getTerminalSessionSidebarActions(
+  target: TerminalSessionActionTarget,
+  session: WorkspaceTerminalSession,
+  handlers: ShellSidebarActionHandlers,
+): ActionMenuItem[] {
+  const baseActions = sidebarActionItems([
+    {
+      id: "rename-terminal-session",
+      label: "Rename",
+      onClick: () => handlers.openRenameTerminalSession(target),
+    },
+    {
+      id: "delete-terminal-session",
+      label: "Delete Session",
+      destructive: true,
+      onClick: () => handlers.openDeleteTerminalSession(target),
+    },
+  ]);
+  return withPrivateToggleAction(baseActions, session.config, () => {
+    void handlers.toggleTerminalSessionPrivate(session);
   });
 }
 
@@ -677,35 +700,52 @@ function buildSidebarNodes(
       }, privateHidden);
     }
 
-    const sessionId = item.kind === "ssh-session"
-      ? item.sessionNode.session.config.id
-      : item.sessionNode.id;
+    // Workspace terminal sessions (canonical terminal domain)
+    if (item.kind === "terminal-session") {
+      const terminalId = item.sessionNode.session.config.id;
+      const terminalSession = item.sessionNode.session;
+      const privateHidden = getPrivateHidden(terminalSession.config, [item.workspace], handlers.showPrivateItems);
+      const terminalActions = getTerminalSessionSidebarActions({
+        id: terminalId,
+        name: terminalSession.config.name,
+      }, terminalSession, handlers);
+      return privateSidebarPresentation({
+        type: "item",
+        id: item.key,
+        title: item.sessionNode.title,
+        subtitle: item.workspaceName,
+        badge: item.sessionNode.badge,
+        badgeVariant: item.sessionNode.badgeVariant,
+        badgeAppearance: "text",
+        itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem("Terminal"),
+        route: { view: "terminal", terminalSessionId: terminalId },
+        actions: privateActions(terminalActions, privateHidden, terminalSession.config.isPrivate === true),
+        pinnable: true,
+        pinId: item.key,
+      }, privateHidden);
+    }
+
+    const sessionId = item.sessionNode.id;
     const session = item.sessionNode.session;
-    const ancestors = item.kind === "ssh-session" ? [item.workspace] : [item.server.config];
+    const ancestors = [item.server.config];
     const privateHidden = getPrivateHidden(session.config, ancestors, handlers.showPrivateItems);
-    const sessionActions = item.kind === "ssh-session"
-      ? getSshSessionSidebarActions({
-          kind: "workspace",
-          id: sessionId,
-          name: item.sessionNode.session.config.name,
-        }, session, handlers)
-      : getSshSessionSidebarActions({
-          kind: "standalone",
-          id: sessionId,
-          name: item.sessionNode.title,
-          serverId: item.server.config.id,
-        }, session, handlers);
+    const sessionActions = getStandaloneSshSessionSidebarActions({
+      id: sessionId,
+      name: item.sessionNode.title,
+      serverId: item.server.config.id,
+    }, session, handlers);
     return privateSidebarPresentation({
       type: "item",
       id: item.key,
       title: item.sessionNode.title,
-      subtitle: item.kind === "ssh-session" ? item.workspaceName : item.serverName,
+      subtitle: item.serverName,
       badge: item.sessionNode.badge,
       badgeVariant: item.sessionNode.badgeVariant,
       badgeAppearance: "text",
       itemLayout: "subtitle-above-title",
-      render: renderActiveWorkSidebarItem("SSH session"),
-      route: { view: "ssh", sshSessionId: sessionId },
+      render: renderActiveWorkSidebarItem("Terminal"),
+      route: { view: "ssh", sshServerSessionId: sessionId },
       actions: privateActions(sessionActions, privateHidden, session.config.isPrivate === true),
       pinnable: true,
       pinId: item.key,
@@ -847,38 +887,37 @@ function buildSidebarNodes(
       },
       {
         type: "section",
-        id: `workspace:${workspaceId}:ssh-sessions`,
-        title: "SSH sessions",
+        id: `workspace:${workspaceId}:terminal-sessions`,
+        title: "Terminals",
         action: {
-          id: "new-ssh-session",
-          title: "New SSH session",
+          id: "new-terminal-session",
+          title: "New terminal",
           label: "New",
           route: workspacePrivateHidden
             ? undefined
-            : { view: "compose", kind: "ssh-session", workspaceId },
+            : { view: "compose", kind: "terminal-session", workspaceId },
         },
-        children: workspaceNode.sshSessions.map((sessionNode): SidebarNode => {
+        children: workspaceNode.terminalSessions.map((terminalNode): SidebarNode => {
           const privateHidden = getPrivateHidden(
-            sessionNode.session.config,
+            terminalNode.session.config,
             [workspaceNode.workspace],
             handlers.showPrivateItems,
           );
-          const actions = getSshSessionSidebarActions({
-            kind: "workspace",
-            id: sessionNode.session.config.id,
-            name: sessionNode.session.config.name,
-          }, sessionNode.session, handlers);
+          const actions = getTerminalSessionSidebarActions({
+            id: terminalNode.session.config.id,
+            name: terminalNode.session.config.name,
+          }, terminalNode.session, handlers);
           return privateSidebarPresentation({
             type: "item",
-            id: `ssh-session:${sessionNode.session.config.id}`,
-            title: sessionNode.title,
-            subtitle: sessionNode.subtitle,
-            badge: sessionNode.badge,
-            badgeVariant: sessionNode.badgeVariant,
-            route: { view: "ssh", sshSessionId: sessionNode.session.config.id },
-            actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
+            id: `terminal-session:${terminalNode.session.config.id}`,
+            title: terminalNode.title,
+            subtitle: terminalNode.subtitle,
+            badge: terminalNode.badge,
+            badgeVariant: terminalNode.badgeVariant,
+            route: { view: "terminal", terminalSessionId: terminalNode.session.config.id },
+            actions: privateActions(actions, privateHidden, terminalNode.session.config.isPrivate === true),
             pinnable: true,
-            pinId: `ssh-session:${sessionNode.session.config.id}`,
+            pinId: `terminal-session:${terminalNode.session.config.id}`,
           }, privateHidden);
         }),
       },
@@ -947,8 +986,7 @@ function buildSidebarNodes(
               [serverNode.server.config],
               handlers.showPrivateItems,
             );
-            const actions = getSshSessionSidebarActions({
-              kind: "standalone",
+            const actions = getStandaloneSshSessionSidebarActions({
               id: sessionNode.id,
               name: sessionNode.title,
               serverId,
@@ -960,7 +998,7 @@ function buildSidebarNodes(
               subtitle: sessionNode.subtitle,
               badge: sessionNode.badge,
               badgeVariant: sessionNode.badgeVariant,
-              route: { view: "ssh", sshSessionId: sessionNode.id },
+              route: { view: "ssh", sshServerSessionId: sessionNode.id },
               actions: privateActions(actions, privateHidden, sessionNode.session.config.isPrivate === true),
               pinnable: true,
               pinId: `ssh-server-session:${sessionNode.id}`,

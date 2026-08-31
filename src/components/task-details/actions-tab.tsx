@@ -10,7 +10,7 @@ interface ActionsTabProps {
   isPlanReady: boolean;
   planContent: FileContentResponse | null;
   planActionSubmitting: boolean;
-  onAcceptPlan: (mode: "start_task" | "open_ssh") => void;
+  onAcceptPlan: (mode: "start_task" | "open_terminal") => void;
   onDiscardPlanModal: () => void;
   state: TaskState;
   loadingPullRequestDestination: boolean;
@@ -102,7 +102,7 @@ export function ActionsTab({
                 <span className="text-gray-400 dark:text-gray-500">→</span>
               </button>
               <button
-                onClick={() => onAcceptPlan("open_ssh")}
+                onClick={() => onAcceptPlan("open_terminal")}
                 disabled={planActionSubmitting || !isPlanReady || !planContent?.content?.trim()}
                 className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -111,11 +111,11 @@ export function ActionsTab({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {planActionSubmitting ? "Accepting..." : "Accept Plan & Open SSH"}
+                    {planActionSubmitting ? "Accepting..." : "Accept Plan & Open Terminal"}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     {isPlanReady
-                      ? "Accept the plan, mark the task complete, and open its SSH session"
+                      ? "Accept the plan, mark the task complete, and open its terminal session"
                       : "Waiting for AI to finish writing the plan..."}
                   </div>
                 </div>

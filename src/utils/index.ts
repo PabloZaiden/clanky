@@ -35,15 +35,15 @@ export { normalizeCommitScope } from "./commit-scope";
 
 export { formatFileSize, formatRelativeTime } from "./format";
 
-export { buildDefaultSshSessionName, buildTaskSshSessionName } from "./ssh-session-name";
+export { buildDefaultSshServerSessionName } from "./ssh-server-session-name";
 
 export { readClipboardContent, writeTextToClipboard, type ClipboardReadResult } from "./clipboard";
 
 export { buildPreviewCliCommand, getPreviewWorkspaceReference } from "./preview-command";
 
 export {
-  getEffectiveSshConnectionMode,
-  getSshConnectionModeLabel,
-  isPersistentSshConnectionMode,
-  isPersistentSshSession,
-} from "./ssh-connection-mode";
+  getEffectiveTerminalConnectionMode,
+  getTerminalConnectionModeLabel,
+  isPersistentTerminalConnectionMode,
+  isPersistentTerminalSession,
+} from "./terminal-connection-mode";

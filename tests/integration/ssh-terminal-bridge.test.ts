@@ -5,12 +5,14 @@ import { join } from "path";
 import { createServer } from "node:net";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { initializeDatabase, closeDatabase } from "../../src/persistence/database";
-import { saveSshSession } from "../../src/persistence/ssh-sessions";
 import { backendManager } from "../../src/core/backend-manager";
 import { SshTerminalBridge } from "../../src/core/ssh-terminal-bridge";
-import type { SshSession, Workspace } from "@/shared";
+import { terminalSessionManager } from "../../src/core/terminal-session-manager";
+import type { Workspace } from "@/shared";
 import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
+import { runWithCurrentUser } from "../../src/core/user-context";
+import { testOwnerUser } from "../setup";
 
 interface CommandRunResult {
   exitCode: number;
@@ -234,47 +236,39 @@ describe("SshTerminalBridge integration", () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await createWorkspace(workspace);
-
-      const session: SshSession = {
-        config: {
-          id: crypto.randomUUID(),
-          name: "Bridge Session",
+      await runWithCurrentUser(testOwnerUser, async () => {
+        await createWorkspace(workspace);
+        const session = await terminalSessionManager.createSession({
           workspaceId: workspace.id,
-          directory: workspaceDir,
+          name: "Bridge Session",
           connectionMode: "dtach",
           useTmux: true,
-          remoteSessionName: `clanky-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        state: {
-          status: "ready",
-        },
-      };
-      await saveSshSession(session);
+        });
 
-      let output = "";
-      const bridge = new SshTerminalBridge(session.config.id, {
-        onOutput: (chunk) => {
-          output += chunk;
-        },
-        readyTimeoutMs: 30_000,
+        let output = "";
+        const bridge = new SshTerminalBridge(session.config.id, {
+          onOutput: (chunk) => {
+            output += chunk;
+          },
+          readyTimeoutMs: 30_000,
+        }, {
+          sessionKind: "terminal",
+        });
+
+        await bridge.connect();
+        await bridge.resize(120, 32);
+        bridge.sendInput("size=$(stty size); printf 'SSH_BRIDGE_SIZE:%s:DONE\\n' \"$size\"\n");
+        bridge.sendInput("echo SSH_BRIDGE_OK\n");
+
+        await waitForCondition(
+          async () => output.includes("SSH_BRIDGE_OK") && output.includes("SSH_BRIDGE_SIZE:32 120:DONE"),
+          () => `Timed out waiting for SSH terminal output. Last output:\n${output}`,
+        );
+
+        expect(output).toContain("SSH_BRIDGE_SIZE:32 120:DONE");
+        expect(output).toContain("SSH_BRIDGE_OK");
+        await bridge.dispose();
       });
-
-      await bridge.connect();
-      await bridge.resize(120, 32);
-      bridge.sendInput("size=$(stty size); printf 'SSH_BRIDGE_SIZE:%s:DONE\\n' \"$size\"\n");
-      bridge.sendInput("echo SSH_BRIDGE_OK\n");
-
-      await waitForCondition(
-        async () => output.includes("SSH_BRIDGE_OK") && output.includes("SSH_BRIDGE_SIZE:32 120:DONE"),
-        () => `Timed out waiting for SSH terminal output. Last output:\n${output}`,
-      );
-
-      expect(output).toContain("SSH_BRIDGE_SIZE:32 120:DONE");
-      expect(output).toContain("SSH_BRIDGE_OK");
-      await bridge.dispose();
     } finally {
       sshd.kill();
       await sshd.exited;

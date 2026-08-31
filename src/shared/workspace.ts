@@ -31,6 +31,8 @@ export interface Workspace {
   workspaceType: WorkspaceType;
   /** Mesh node that owns execution of this workspace when using stdio transport */
   executionNodeId?: string | null;
+  /** Monotonic revision of the workspace execution target */
+  executionTargetRevision?: number;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */

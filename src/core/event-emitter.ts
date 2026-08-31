@@ -4,7 +4,7 @@
  * No external dependencies - uses native patterns.
  */
 
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "@/shared";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshServerSessionEvent, TerminalSessionEvent } from "@/shared";
 import { log } from "@pablozaiden/webapp/server";
 import { getCurrentUserId } from "./user-context";
 
@@ -87,9 +87,14 @@ export const chatEventEmitter = new SimpleEventEmitter<ChatEvent>();
 export const agentEventEmitter = new SimpleEventEmitter<AgentEvent>();
 
 /**
- * Global event emitter instance for SSH session events.
+ * Global event emitter instance for standalone SSH-server session events.
  */
-export const sshSessionEventEmitter = new SimpleEventEmitter<SshSessionEvent>();
+export const sshServerSessionEventEmitter = new SimpleEventEmitter<SshServerSessionEvent>();
+
+/**
+ * Global event emitter instance for workspace terminal session events.
+ */
+export const terminalSessionEventEmitter = new SimpleEventEmitter<TerminalSessionEvent>();
 
 /**
  * Global event emitter instance for provisioning job events.

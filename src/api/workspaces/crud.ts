@@ -104,6 +104,9 @@ export const crudRoutes = defineRoutes({
               workspace_execution_target_not_trusted: {
                 status: 400,
               },
+              workspace_execution_target_in_use: {
+                status: 409,
+              },
             },
             fallback: {
               error: "create_failed",

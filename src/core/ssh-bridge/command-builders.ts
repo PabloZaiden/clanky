@@ -2,7 +2,12 @@
  * Shell command builders for the SSH terminal bridge.
  */
 
-import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "@/shared";
+import type {
+  SshServerSession,
+  TerminalConnectionMode,
+  Workspace,
+  WorkspaceTerminalSession,
+} from "@/shared";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import {
   buildPersistentSessionAttachCommand,
@@ -14,7 +19,7 @@ import {
   type SshConnectionTarget,
   getSshConnectionTargetFromWorkspace,
 } from "../ssh-connection-target";
-import { getEffectiveSshConnectionMode } from "../../utils";
+import { getEffectiveTerminalConnectionMode } from "../../utils";
 import {
   buildManagedContextShellBootstrap,
   buildManagedContextStdinPayload,
@@ -62,15 +67,15 @@ function buildSessionStartupCommand(
       id: string;
       remoteSessionName: string;
       directory?: string;
-      connectionMode: SshConnectionMode;
+      connectionMode: TerminalConnectionMode;
       useTmux?: boolean;
     };
-    state?: { runtimeConnectionMode?: SshConnectionMode };
+    state?: { runtimeConnectionMode?: TerminalConnectionMode };
   },
   runtimeEnvironment?: Record<string, string>,
   allowPersistentSessionCreate = true,
 ): string {
-  return getEffectiveSshConnectionMode(session) === "direct"
+  return getEffectiveTerminalConnectionMode(session) === "direct"
     ? buildDirectShellCommand(session, runtimeEnvironment)
     : buildPersistentSessionAttachCommand(session, runtimeEnvironment, {
       allowCreate: allowPersistentSessionCreate,
@@ -88,9 +93,9 @@ function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
   };
 }
 
-export function buildSshSpawnConfig(
+export function buildWorkspaceSshSpawnConfig(
   workspace: Workspace,
-  session: SshSession,
+  session: WorkspaceTerminalSession,
   runtimeEnvironment?: Record<string, string>,
   allowPersistentSessionCreate = true,
 ): {

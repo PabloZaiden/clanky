@@ -27,7 +27,7 @@ import {
 import { loadAgentRun } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
-import { getSshSession } from "../persistence/ssh-sessions";
+import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import { DomainError } from "./domain-error";
 import { requireCurrentUser } from "./user-context";
@@ -549,8 +549,8 @@ export class ManagedCredentialService {
         const run = await loadAgentRun(association.contextId);
         return run?.configSnapshot.workspaceId === association.workspaceId;
       }
-      case "ssh_session": {
-        const session = await getSshSession(association.contextId);
+      case "terminal_session": {
+        const session = await getTerminalSession(association.contextId);
         return session?.config.workspaceId === association.workspaceId;
       }
     }

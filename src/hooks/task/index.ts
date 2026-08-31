@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, SshSession } from "@/shared";
+import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, WorkspaceTerminalSession } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { LogEntry } from "../../components/LogViewer";
@@ -94,7 +94,7 @@ export interface UseTaskResult {
   /** Send feedback to refine the plan (only works when task is in planning status) */
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   /** Accept the plan via the requested mode (only works when task is in planning status) */
-  acceptPlan: (mode?: "start_task" | "open_ssh") => Promise<AcceptPlanResult>;
+  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   /** Discard the plan and delete the task (only works when task is in planning status) */
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged tasks with reviewMode.addressable = true) */
@@ -115,8 +115,8 @@ export interface UseTaskResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  /** Get or create the task's linked SSH session */
-  connectViaSsh: () => Promise<SshSession | null>;
+  /** Get or create the task's linked terminal session */
+  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
 }
 
 /**

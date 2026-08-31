@@ -49,7 +49,14 @@ describe("raw WebSocket upgrade flow", () => {
       createRouteContext(),
     );
     expect(sshResponse?.status).toBe(400);
-    expect(await sshResponse?.text()).toBe("sshSessionId or sshServerSessionId is required");
+    expect(await sshResponse?.text()).toBe("sshServerSessionId is required");
+
+    const terminalResponse = await getRouteHandler("/api/terminal")(
+      new Request("http://localhost/api/terminal"),
+      createRouteContext(),
+    );
+    expect(terminalResponse?.status).toBe(400);
+    expect(await terminalResponse?.text()).toBe("terminalSessionId is required");
 
     const vncResponse = await getRouteHandler("/api/vnc")(
       new Request("http://localhost/api/vnc"),

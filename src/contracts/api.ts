@@ -15,7 +15,7 @@ import type {
   Chat,
   ReviewComment,
   SshServer,
-  SshSession,
+  WorkspaceTerminalSession,
   WorkspaceFileEntry,
   WorkspaceFileKind,
   WorkspaceFileNode,
@@ -36,12 +36,11 @@ import {
   UpdateChatRequestSchema,
   ImportExistingChatRequestSchema,
   AddressCommentsRequestSchema,
-  CreateSshSessionRequestSchema,
-  UpdateSshSessionRequestSchema,
   PlanAcceptRequestSchema,
   CreateSshServerRequestSchema,
   UpdateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
+  UpdateSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
@@ -50,6 +49,8 @@ import {
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   CreateProvisioningJobRequestSchema,
+  CreateTerminalSessionRequestSchema,
+  UpdateTerminalSessionRequestSchema,
   ListFileExplorerRequestSchema,
   GetFileExplorerTreeRequestSchema,
   GetFileExplorerFileRequestSchema,
@@ -199,11 +200,6 @@ export type GenerateTaskTitleRequest = z.infer<typeof GenerateTaskTitleRequestSc
 export interface GenerateTaskTitleResponse {
   title: string;
 }
-
-/**
- * Request body for POST /api/ssh-sessions.
- */
-export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSchema>;
 
 /**
  * Request body for PATCH /api/tasks/:id endpoint.
@@ -402,9 +398,19 @@ export interface FileExplorerConflictResponse {
 export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 
 /**
- * Request body for PATCH /api/ssh-sessions/:id.
+ * Request body for PATCH /api/ssh-server-sessions/:id.
  */
-export type UpdateSshSessionRequest = z.infer<typeof UpdateSshSessionRequestSchema>;
+export type UpdateSshServerSessionRequest = z.infer<typeof UpdateSshServerSessionRequestSchema>;
+
+/**
+ * Request body for POST /api/terminal-sessions.
+ */
+export type CreateTerminalSessionRequest = z.infer<typeof CreateTerminalSessionRequestSchema>;
+
+/**
+ * Request body for PATCH /api/terminal-sessions/:id.
+ */
+export type UpdateTerminalSessionRequest = z.infer<typeof UpdateTerminalSessionRequestSchema>;
 
 /**
  * Request body for POST /api/ssh-servers.
@@ -577,9 +583,9 @@ export type PlanAcceptResponse =
   | {
       success: true;
       /** Which acceptance path was taken */
-      mode: "open_ssh";
-      /** Linked SSH session created or reused for the task */
-      sshSession: SshSession;
+      mode: "open_terminal";
+      /** Linked workspace terminal session created or reused for the task */
+      terminalSession: WorkspaceTerminalSession;
     };
 
 /**

@@ -10,7 +10,7 @@ import { sshServerKeyManager } from "../core/ssh-server-key-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { CheckSshServerPrerequisitesRequestSchema, CreateSshServerChatRequestSchema, CreateSshServerRequestSchema, CreateSshServerSessionRequestSchema, GetDevboxTemplatesRequestSchema, DiscoverSshServerChatProvidersRequestSchema, DiscoverSshServerChatModelsRequestSchema, DeleteSshServerSessionRequestSchema, SshCredentialExchangeRequestSchema, UpdateSshServerRequestSchema, UpdateSshSessionRequestSchema } from "@/contracts/schemas";
+import { CheckSshServerPrerequisitesRequestSchema, CreateSshServerChatRequestSchema, CreateSshServerRequestSchema, CreateSshServerSessionRequestSchema, GetDevboxTemplatesRequestSchema, DiscoverSshServerChatProvidersRequestSchema, DiscoverSshServerChatModelsRequestSchema, DeleteSshServerSessionRequestSchema, SshCredentialExchangeRequestSchema, UpdateSshServerRequestSchema, UpdateSshServerSessionRequestSchema } from "@/contracts/schemas";
 import { getModelsForSettings } from "../core/model-discovery";
 import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
@@ -410,7 +410,7 @@ export const sshServersRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read, update, or delete a standalone SSH server session.",
-    requestSchema: UpdateSshSessionRequestSchema,
+    requestSchema: UpdateSshServerSessionRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const session = await sshServerManager.getSession(ctx.params["id"]!);
@@ -428,7 +428,7 @@ export const sshServersRoutes = defineRoutes({
     },
 
     async PATCH(req: Request, ctx): Promise<Response> {
-      const validation = await parseAndValidate(UpdateSshSessionRequestSchema, req);
+      const validation = await parseAndValidate(UpdateSshServerSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }

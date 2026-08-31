@@ -383,6 +383,48 @@ function backfillWorkspaceExecutionNodeOwnership(nodeId: string): void {
   }
 }
 
+function remapLocalWorkspaceExecutionNode(previousNodeId: string, replacementNodeId: string): void {
+  const db = getDatabase();
+  if (!db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get("workspaces")) {
+    return;
+  }
+
+  const rows = db.query(`
+    SELECT id, server_settings
+    FROM workspaces
+    WHERE execution_node_id = ?
+  `).all(previousNodeId) as Array<{
+    id: string;
+    server_settings: string | null;
+  }>;
+  const update = db.prepare(`
+    UPDATE workspaces
+    SET execution_node_id = ?
+    WHERE id = ? AND execution_node_id = ?
+  `);
+
+  for (const row of rows) {
+    let parsed: unknown;
+    try {
+      parsed = row.server_settings ? JSON.parse(row.server_settings) : null;
+    } catch (error) {
+      log.warn("Skipping workspace execution ownership remap for invalid settings", {
+        workspaceId: row.id,
+        error: String(error),
+      });
+      continue;
+    }
+    const agent = typeof parsed === "object" && parsed !== null
+      && typeof (parsed as Record<string, unknown>)["agent"] === "object"
+      && (parsed as Record<string, unknown>)["agent"] !== null
+      ? (parsed as Record<string, unknown>)["agent"] as Record<string, unknown>
+      : null;
+    if (agent?.["transport"] === "stdio") {
+      update.run(replacementNodeId, row.id, previousNodeId);
+    }
+  }
+}
+
 /**
  * Ensure that this data directory has a durable node identity.
  */
@@ -494,6 +536,7 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
         replacement.createdAt,
         replacement.updatedAt,
       ]);
+      remapLocalWorkspaceExecutionNode(current.nodeId, replacement.nodeId);
       db.run(`
         INSERT INTO mesh_nodes (
         node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,

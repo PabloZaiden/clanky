@@ -2,7 +2,7 @@
  * Plan-related task actions: feedback, accept, and discard.
  */
 
-import type { SshSession } from "@/shared";
+import type { WorkspaceTerminalSession } from "@/shared";
 import type { PlanAcceptResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
@@ -17,8 +17,8 @@ export type AcceptPlanResult =
     }
   | {
       success: true;
-      mode: "open_ssh";
-      sshSession: SshSession;
+      mode: "open_terminal";
+      terminalSession: WorkspaceTerminalSession;
     }
   | {
       success: false;
@@ -45,7 +45,7 @@ export async function sendPlanFeedbackApi(
  */
 export async function acceptPlanApi(
   taskId: string,
-  mode: "start_task" | "open_ssh" = "start_task",
+  mode: "start_task" | "open_terminal" = "start_task",
 ): Promise<AcceptPlanResult> {
   const data = await apiCall<PlanAcceptResponse>(
     `/api/tasks/${taskId}/plan/accept`,
@@ -56,11 +56,11 @@ export async function acceptPlanApi(
     },
     "Accept plan",
   );
-  if (data.mode === "open_ssh") {
+  if (data.mode === "open_terminal") {
     return {
       success: true,
       mode: data.mode,
-      sshSession: data.sshSession,
+      terminalSession: data.terminalSession,
     };
   }
   return {

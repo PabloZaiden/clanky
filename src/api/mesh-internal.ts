@@ -18,8 +18,10 @@ import {
   MeshExecutionRpcRequestSchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
+import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
 import { meshManager } from "../core/mesh-manager";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
+import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
@@ -51,6 +53,14 @@ function internalMeshErrorResponse(error: unknown): Response {
           : error.code === "mesh_execution_session_invalid"
             || error.code === "mesh_execution_session_expired"
             ? 401
+          : error.code === "mesh_terminal_session_invalid"
+            || error.code === "mesh_terminal_session_expired"
+            ? 401
+          : error.code === "mesh_terminal_context_changed"
+            || error.code === "mesh_terminal_target_invalid"
+            ? 403
+          : error.code.startsWith("mesh_terminal_")
+            ? 400
           : error.code.startsWith("mesh_execution_")
             ? 400
           : error.code.startsWith("mesh_peer_") || error.code.startsWith("mesh_endpoint_")
@@ -238,6 +248,63 @@ export const meshInternalRoutes = defineRoutes({
           },
         });
         return upgraded ? undefined : errorResponse("mesh_acp_upgrade_failed", "Mesh ACP WebSocket upgrade failed.", 400);
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/terminal/session": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Establish a signed, encrypted Mesh interactive terminal session.",
+    tags: ["mesh", "internal", "terminal"],
+    async POST(req): Promise<Response> {
+      const parsed = await parseAndValidate(MeshTerminalSessionRequestSchema, req);
+      if (!parsed.success) return parsed.response;
+      const nodeId = req.headers.get("x-clanky-mesh-node-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (nodeId !== parsed.data.callerNodeId || requestId !== parsed.data.requestId) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the terminal session.", 400);
+      }
+      try {
+        const session = await meshTerminalGateway.createSession(parsed.data);
+        return Response.json({
+          protocolVersion: session.protocolVersion,
+          capability: session.capability,
+          sessionId: session.sessionId,
+          expiresAt: session.expiresAt,
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: session.sessionToken },
+            parsed.data.callerEncryptionPublicKey,
+          ),
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/terminal": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Open an authenticated Mesh interactive terminal stream.",
+    tags: ["mesh", "internal", "terminal"],
+    async GET(req, ctx): Promise<Response | undefined> {
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_terminal_session_invalid", "Mesh terminal session headers are required.", 401);
+      }
+      try {
+        await meshTerminalGateway.authorize(sessionId, sessionToken);
+        const upgraded = ctx.server?.upgrade(req, {
+          data: {
+            webappSocketHandler: "clanky",
+            meshTerminalMode: true,
+            meshTerminalSessionId: sessionId,
+            meshTerminalSessionToken: sessionToken,
+          },
+        });
+        return upgraded ? undefined : errorResponse("mesh_terminal_upgrade_failed", "Mesh terminal WebSocket upgrade failed.", 400);
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

@@ -72,6 +72,19 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("mesh internal routes", () => {
+  test("requires Mesh terminal session headers before WebSocket upgrade", async () => {
+    const route = meshInternalRoutes["/api/mesh/internal/terminal"]!.GET!;
+    const response = await route(
+      new Request("http://mesh.test/api/mesh/internal/terminal"),
+      undefined as never,
+    );
+
+    expect(response?.status).toBe(401);
+    await expect(readJson(response!)).resolves.toMatchObject({
+      error: "mesh_terminal_session_invalid",
+    });
+  });
+
   test("rejects execution requests whose identity headers do not match the body", async () => {
     const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
     const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {

@@ -4,23 +4,181 @@ import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
+import { createWorkspaceTerminalConnection } from "../../core/workspace-terminal-connection";
 
 const log = createLogger("api:websocket");
 const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
+const SAFE_WORKSPACE_TERMINAL_ERROR_MESSAGE = "Terminal connection failed";
 const KNOWN_TERMINAL_DOMAIN_ERROR_CODES = new Set([
   "invalid_credential_token",
   "ssh_server_not_found",
   "ssh_server_session_not_found",
-  "ssh_session_not_found",
   "workspace_not_found",
+  "terminal_session_not_found",
+  "terminal_session_closing",
+  "terminal_target_mismatch",
+  "terminal_execution_target_changed",
+  "terminal_directory_unavailable",
+  "terminal_connection_unavailable",
+  "terminal_persistent_session_attach_unavailable",
+  "mesh_terminal_capability_unavailable",
+  "mesh_terminal_capability_mismatch",
+  "mesh_terminal_target_unavailable",
+  "mesh_terminal_link_unavailable",
+  "mesh_terminal_session_expired",
 ]);
+
+const activeWorkspaceTerminalSockets = new Map<string, ServerWebSocket<WebSocketData>>();
+
+function claimWorkspaceTerminalSocket(
+  terminalSessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): void {
+  const previous = activeWorkspaceTerminalSockets.get(terminalSessionId);
+  if (previous && previous !== ws) {
+    try {
+      previous.close(1000, "Terminal reattached");
+    } catch (error) {
+      log.debug("Failed to close the previous workspace terminal attachment", {
+        terminalSessionId,
+        error: String(error),
+      });
+    }
+  }
+  activeWorkspaceTerminalSockets.set(terminalSessionId, ws);
+}
+
+function isWorkspaceTerminalSocketActive(
+  terminalSessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): boolean {
+  return activeWorkspaceTerminalSockets.get(terminalSessionId) === ws;
+}
+
+export function releaseWorkspaceTerminalSocket(
+  terminalSessionId: string,
+  ws: ServerWebSocket<WebSocketData>,
+): void {
+  if (activeWorkspaceTerminalSockets.get(terminalSessionId) === ws) {
+    activeWorkspaceTerminalSockets.delete(terminalSessionId);
+  }
+}
 
 export interface TerminalErrorPayload {
   code?: string;
   message: string;
 }
 
-export function getTerminalErrorPayload(error: unknown): TerminalErrorPayload {
+export async function startWorkspaceTerminalBridge(
+  ws: ServerWebSocket<WebSocketData>,
+): Promise<void> {
+  const terminalSessionId = ws.data.workspaceTerminalSessionId;
+  if (!terminalSessionId || ws.data.terminalBridge) {
+    return;
+  }
+  if (!ws.data.user) {
+    sendTerminalAuthError(ws, "Authenticated user context is required for terminal connections");
+    return;
+  }
+
+  claimWorkspaceTerminalSocket(terminalSessionId, ws);
+  try {
+    const { connection, attachment, resolved } = await runWithCurrentUser(
+      ws.data.user,
+      async () => await createWorkspaceTerminalConnection(terminalSessionId, {
+        onOutput: (chunk) => {
+          try {
+            ws.send(JSON.stringify({ type: "terminal.output", data: chunk }));
+          } catch (sendError) {
+            log.trace("Failed to send terminal output", {
+              error: String(sendError),
+              terminalSessionId,
+            });
+          }
+        },
+        onClipboardCopy: (text) => {
+          try {
+            ws.send(JSON.stringify({ type: "terminal.clipboard", text }));
+          } catch (sendError) {
+            log.trace("Failed to send terminal clipboard event", {
+              error: String(sendError),
+              terminalSessionId,
+            });
+          }
+        },
+        onError: (error) => {
+          const payload = getTerminalErrorPayload(error, SAFE_WORKSPACE_TERMINAL_ERROR_MESSAGE);
+          try {
+            ws.send(JSON.stringify({ type: "terminal.error", ...payload }));
+          } catch (sendError) {
+            log.trace("Failed to send terminal error", {
+              error: String(sendError),
+              terminalSessionId,
+            });
+          }
+        },
+        onExit: (code, signal) => {
+          try {
+            ws.send(JSON.stringify({ type: "terminal.closed", code, signal }));
+          } catch (sendError) {
+            log.trace("Failed to send terminal close event", {
+              error: String(sendError),
+              terminalSessionId,
+            });
+          }
+        },
+      }),
+    );
+    if (!isWorkspaceTerminalSocketActive(terminalSessionId, ws)) {
+      await connection.dispose();
+      attachment.release();
+      return;
+    }
+    ws.data.terminalBridge = connection;
+    ws.data.workspaceTerminalAttachment = attachment;
+    const result = await runWithCurrentUser(ws.data.user, async () => await connection.connect());
+    if (!isWorkspaceTerminalSocketActive(terminalSessionId, ws)) {
+      await connection.dispose();
+      attachment.release();
+      ws.data.terminalBridge = undefined;
+      return;
+    }
+    ws.data.workspaceTerminalTransport = resolved.transport;
+    ws.send(JSON.stringify({
+      type: "terminal.connected",
+      terminalSessionId,
+      transport: resolved.transport,
+      runtimeConnectionMode: result.runtimeConnectionMode,
+      notice: result.notice ?? null,
+    }));
+  } catch (error) {
+    const payload = getTerminalErrorPayload(error);
+    log.error("Failed to connect workspace terminal", {
+      terminalSessionId,
+      transport: ws.data.workspaceTerminalTransport ?? "unresolved",
+      error: String(error),
+    });
+    try {
+      ws.send(JSON.stringify({ type: "terminal.error", ...payload }));
+    } catch (sendError) {
+      log.trace("Failed to send terminal startup error", {
+        error: String(sendError),
+        terminalSessionId,
+      });
+    }
+    const bridge = ws.data.terminalBridge;
+    ws.data.terminalBridge = undefined;
+    ws.data.workspaceTerminalAttachment?.release();
+    ws.data.workspaceTerminalAttachment = undefined;
+    releaseWorkspaceTerminalSocket(terminalSessionId, ws);
+    await bridge?.dispose();
+  }
+}
+
+export function getTerminalErrorPayload(
+  error: unknown,
+  fallbackMessage = SAFE_TERMINAL_ERROR_MESSAGE,
+): TerminalErrorPayload {
   if (isDomainError(error) && KNOWN_TERMINAL_DOMAIN_ERROR_CODES.has(error.code)) {
     return {
       code: error.code,
@@ -28,16 +186,15 @@ export function getTerminalErrorPayload(error: unknown): TerminalErrorPayload {
     };
   }
 
-  return { message: SAFE_TERMINAL_ERROR_MESSAGE };
+  return { message: fallbackMessage };
 }
 
-export async function startTerminalBridge(
+export async function startSshServerTerminalBridge(
   ws: ServerWebSocket<WebSocketData>,
   credentialToken?: string,
 ): Promise<void> {
-  const { sshSessionId, sshServerSessionId } = ws.data;
-  const terminalSessionId = sshSessionId ?? sshServerSessionId;
-  if (!terminalSessionId || ws.data.terminalBridge) {
+  const { sshServerSessionId } = ws.data;
+  if (!sshServerSessionId || ws.data.terminalBridge) {
     return;
   }
   if (!ws.data.user) {
@@ -45,19 +202,19 @@ export async function startTerminalBridge(
     return;
   }
 
-  const bridge = new SshTerminalBridge(terminalSessionId, {
+  const bridge = new SshTerminalBridge(sshServerSessionId, {
     onOutput: (chunk) => {
       try {
         ws.send(JSON.stringify({ type: "terminal.output", data: chunk }));
       } catch (sendError) {
-        log.trace("Failed to send terminal output", { error: String(sendError), sshSessionId });
+        log.trace("Failed to send SSH server terminal output", { error: String(sendError), sshServerSessionId });
       }
     },
     onClipboardCopy: (text) => {
       try {
         ws.send(JSON.stringify({ type: "terminal.clipboard", text }));
       } catch (sendError) {
-        log.trace("Failed to send terminal clipboard event", { error: String(sendError), sshSessionId });
+        log.trace("Failed to send SSH server terminal clipboard event", { error: String(sendError), sshServerSessionId });
       }
     },
     onError: (error) => {
@@ -68,7 +225,7 @@ export async function startTerminalBridge(
           ...payload,
         }));
       } catch (sendError) {
-        log.trace("Failed to send terminal error", { error: String(sendError), sshSessionId });
+        log.trace("Failed to send SSH server terminal error", { error: String(sendError), sshServerSessionId });
       }
     },
     onExit: (code, signal) => {
@@ -79,29 +236,24 @@ export async function startTerminalBridge(
           signal,
         }));
       } catch (sendError) {
-        log.trace("Failed to send terminal close event", { error: String(sendError), sshSessionId });
+        log.trace("Failed to send SSH server terminal close event", { error: String(sendError), sshServerSessionId });
       }
     },
-  }, sshServerSessionId
-    ? {
-        sessionKind: "standalone",
-        credentialToken,
-      }
-    : undefined);
+  }, {
+    sessionKind: "standalone",
+    credentialToken,
+  });
   ws.data.terminalBridge = bridge;
 
   try {
     await runWithCurrentUser(ws.data.user, () => bridge.connect());
     ws.send(JSON.stringify({
       type: "terminal.connected",
-      sshSessionId: sshSessionId ?? null,
-      sshServerSessionId: sshServerSessionId ?? null,
+      sshServerSessionId,
     }));
   } catch (error) {
     const payload = getTerminalErrorPayload(error);
-    log.error("Failed to connect SSH terminal bridge", {
-      terminalSessionId,
-      sshSessionId,
+    log.error("Failed to connect SSH server terminal bridge", {
       sshServerSessionId,
       error: String(error),
     });
@@ -113,7 +265,7 @@ export async function startTerminalBridge(
     } catch (sendError) {
       log.trace("Failed to send terminal startup error", {
         error: String(sendError),
-        sshSessionId: terminalSessionId,
+        sshServerSessionId,
       });
     }
     await bridge.dispose();

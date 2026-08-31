@@ -17,6 +17,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     execution_node_id: workspace.serverSettings.agent.transport === "stdio"
       ? workspace.executionNodeId ?? null
       : null,
+    execution_target_revision: Math.max(1, Math.floor(workspace.executionTargetRevision ?? 1)),
     server_fingerprint: getServerFingerprint(workspace.serverSettings, workspace.executionNodeId),
     server_settings: JSON.stringify(workspace.serverSettings),
     created_at: workspace.createdAt,
@@ -42,6 +43,9 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
       ? "directory"
       : DEFAULT_WORKSPACE_TYPE,
     executionNodeId: (row["execution_node_id"] as string | null) ?? null,
+    executionTargetRevision: typeof row["execution_target_revision"] === "number"
+      ? Math.max(1, Math.floor(row["execution_target_revision"] as number))
+      : 1,
     serverSettings: parseServerSettings(row["server_settings"] as string | null),
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,

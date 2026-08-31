@@ -11,7 +11,8 @@ import type {
   ChatEvent,
   PreviewEvent,
   ProvisioningEvent,
-  SshSessionEvent,
+  SshServerSessionEvent,
+  TerminalSessionEvent,
   TaskEvent,
 } from "@/shared";
 import { createToolCallSummary } from "@/shared";
@@ -28,7 +29,8 @@ export const CLANKY_REALTIME_RESOURCES = {
   chats: "chats",
   agents: "agents",
   agentRuns: "agent-runs",
-  sshSessions: "ssh-sessions",
+  sshServerSessions: "ssh-server-sessions",
+  terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   previews: "previews",
 } as const;
@@ -87,7 +89,8 @@ export type ClankyDomainEvent =
   | TaskEvent
   | ChatEvent
   | AgentEvent
-  | SshSessionEvent
+  | SshServerSessionEvent
+  | TerminalSessionEvent
   | ProvisioningEvent
   | PreviewEvent;
 
@@ -255,7 +258,7 @@ export function publishClankyDomainEvent(
     case "task.stopped":
     case "task.session_aborted":
     case "task.completed":
-    case "task.ssh_handoff":
+    case "task.terminal_handoff":
     case "task.error":
     case "task.merged":
     case "task.accepted":
@@ -373,13 +376,32 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
       return;
 
-    case "ssh_session.created":
-    case "ssh_session.updated":
-    case "ssh_session.status":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.sshSessions, event.sshSessionId);
+    case "ssh_server_session.created":
+    case "ssh_server_session.updated":
+    case "ssh_server_session.status":
+      publishChanged(
+        publisher,
+        owner,
+        CLANKY_REALTIME_RESOURCES.sshServerSessions,
+        event.sshServerSessionId,
+      );
       return;
-    case "ssh_session.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.sshSessions, event.sshSessionId);
+    case "ssh_server_session.deleted":
+      publishDeleted(
+        publisher,
+        owner,
+        CLANKY_REALTIME_RESOURCES.sshServerSessions,
+        event.sshServerSessionId,
+      );
+      return;
+
+    case "terminal_session.created":
+    case "terminal_session.updated":
+    case "terminal_session.status":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
+      return;
+    case "terminal_session.deleted":
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
       return;
 
     case "provisioning.started":

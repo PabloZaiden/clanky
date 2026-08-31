@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { SshSession, WorkspaceFileEntry } from "@/shared";
+import type { WorkspaceFileEntry, WorkspaceTerminalSession } from "@/shared";
 import type { SshServerSession } from "@/shared/ssh-server";
 import {
   useFileExplorer,
@@ -10,7 +10,8 @@ import {
 } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
-import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
+import { SshServerSessionDetails } from "../SshServerSessionDetails";
+import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
@@ -43,7 +44,11 @@ function FileIcon() {
 }
 
 type ExplorerPane = "editor" | "terminal";
-type ExplorerSession = SshSession | SshServerSession;
+type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
+
+function isWorkspaceTerminalSession(session: ExplorerSession): session is WorkspaceTerminalSession {
+  return "targetBinding" in session.config;
+}
 
 function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
@@ -97,7 +102,6 @@ interface FileExplorerViewProps {
   credentialPromptName?: string;
   initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => WebAppRoute;
-  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function FileExplorerView({
@@ -116,7 +120,6 @@ export function FileExplorerView({
   credentialPromptName,
   initialFilePath,
   buildRoute,
-  sshSessionDetailsComponent: SshSessionDetailsComponent = SshSessionDetails,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "server"
@@ -174,10 +177,14 @@ export function FileExplorerView({
     () => selectableSessions.find((session) => session.id === selectedSessionId)?.name ?? "",
     [selectableSessions, selectedSessionId],
   );
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.config.id === selectedSessionId),
+    [selectedSessionId, sessions],
+  );
 
   useEffect(() => {
-    if (!selectedSessionId && selectableSessions[0]?.id) {
-      setSelectedSessionId(selectableSessions[0].id);
+    if (!selectableSessions.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(selectableSessions[0]?.id ?? "");
     }
   }, [selectableSessions, selectedSessionId]);
 
@@ -729,7 +736,7 @@ export function FileExplorerView({
                     aria-label={terminalSelectLabel}
                     title={selectedSessionName || undefined}
                   >
-                    <option value="">Select SSH session</option>
+                    <option value="">Select terminal</option>
                     {selectableSessions.map((session) => (
                       <option key={session.id} value={session.id}>
                         {session.name}
@@ -747,9 +754,15 @@ export function FileExplorerView({
                 </div>
               </div>
               <div className="flex min-h-0 flex-1 overflow-hidden">
-                {selectedSessionId ? (
-                  <SshSessionDetailsComponent
-                    sshSessionId={selectedSessionId}
+                {selectedSession && isWorkspaceTerminalSession(selectedSession) ? (
+                  <TerminalSessionDetails
+                    terminalSessionId={selectedSessionId}
+                    showBackButton={false}
+                    forcedFocusMode={true}
+                  />
+                ) : selectedSession ? (
+                  <SshServerSessionDetails
+                    sshServerSessionId={selectedSessionId}
                     showBackButton={false}
                     forcedFocusMode={true}
                   />

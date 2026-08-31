@@ -3,9 +3,9 @@
  */
 
 import {
-  DEFAULT_SSH_CONNECTION_MODE,
-  normalizeSshSessionUseTmux,
-  normalizeSshConnectionMode,
+  DEFAULT_TERMINAL_CONNECTION_MODE,
+  normalizeTerminalUseTmux,
+  normalizeTerminalConnectionMode,
   type SshServer,
   type SshServerConfig,
   type SshServerSession,
@@ -112,10 +112,11 @@ function rowToSshServerSession(row: Record<string, unknown>): SshServerSession {
         id: row["id"] as string,
         sshServerId: row["ssh_server_id"] as string,
         name: row["name"] as string,
-        connectionMode: normalizeSshConnectionMode(
-          (row["connection_mode"] as SshServerSession["config"]["connectionMode"] | null) ?? DEFAULT_SSH_CONNECTION_MODE,
+        connectionMode: normalizeTerminalConnectionMode(
+          (row["connection_mode"] as SshServerSession["config"]["connectionMode"] | null)
+            ?? DEFAULT_TERMINAL_CONNECTION_MODE,
         ),
-        useTmux: normalizeSshSessionUseTmux(row["use_tmux"]),
+        useTmux: normalizeTerminalUseTmux(row["use_tmux"]),
         remoteSessionName: row["remote_session_name"] as string,
         createdAt: row["created_at"] as string,
         updatedAt: row["updated_at"] as string,
@@ -126,7 +127,7 @@ function rowToSshServerSession(row: Record<string, unknown>): SshServerSession {
       lastConnectedAt: (row["last_connected_at"] as string | null) ?? undefined,
       error: (row["error_message"] as string | null) ?? undefined,
       runtimeConnectionMode: (row["runtime_connection_mode"] as string | null)
-        ? normalizeSshConnectionMode(row["runtime_connection_mode"])
+        ? normalizeTerminalConnectionMode(row["runtime_connection_mode"])
         : undefined,
       notice: (row["notice_message"] as string | null) ?? undefined,
     },

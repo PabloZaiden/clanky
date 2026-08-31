@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { log, replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
-import type { SshSession } from "@/shared";
+import type { WorkspaceTerminalSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
@@ -17,7 +17,7 @@ import type {
 
 interface UseTaskActionsOptions {
   onBack?: () => void;
-  onSelectSshSession?: (sshSessionId: string) => void;
+  onSelectTerminalSession?: (terminalSessionId: string) => void;
   onOpenTaskFiles?: () => void;
   toast: ToastService;
   accept: () => Promise<AcceptPlanResult | unknown>;
@@ -32,9 +32,9 @@ interface UseTaskActionsOptions {
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
-  acceptPlan: (mode?: "start_task" | "open_ssh") => Promise<AcceptPlanResult>;
+  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
-  connectViaSsh: () => Promise<SshSession | null>;
+  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
   update: (request: UpdateTaskRequest) => Promise<boolean>;
   fetchReviewComments: () => Promise<void>;
 }
@@ -55,7 +55,7 @@ export interface UseTaskActionsResult {
   planActionSubmitting: boolean;
   automaticPrFlowSubmitting: boolean;
   pullRequestAutoMergeSubmitting: boolean;
-  sshConnecting: boolean;
+  terminalConnecting: boolean;
   planningSettingsSubmitting: boolean;
 
   // Modal open/close setters
@@ -85,16 +85,16 @@ export interface UseTaskActionsResult {
   handleEnablePullRequestAutoMerge: () => Promise<void>;
   handleStartAutomaticPrFlow: () => Promise<void>;
   handleStopAutomaticPrFlow: () => Promise<void>;
-  handleAcceptPlan: (mode?: "start_task" | "open_ssh") => Promise<void>;
+  handleAcceptPlan: (mode?: "start_task" | "open_terminal") => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
-  handleConnectViaSsh: () => Promise<void>;
+  handleConnectTerminal: () => Promise<void>;
   handleOpenTaskFiles: () => void;
   handleUpdatePlanningSettings: (request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">) => Promise<boolean>;
 }
 
 export function useTaskActions({
   onBack,
-  onSelectSshSession,
+  onSelectTerminalSession,
   onOpenTaskFiles,
   toast,
   accept,
@@ -111,7 +111,7 @@ export function useTaskActions({
   stopAutomaticPrFlow,
   acceptPlan,
   discardPlan,
-  connectViaSsh,
+  connectTerminal,
   update,
   fetchReviewComments,
 }: UseTaskActionsOptions): UseTaskActionsResult {
@@ -129,14 +129,14 @@ export function useTaskActions({
   const [stopAutomaticPrFlowModal, setStopAutomaticPrFlowModal] = useState(false);
   const [automaticPrFlowSubmitting, setAutomaticPrFlowSubmitting] = useState(false);
   const [pullRequestAutoMergeSubmitting, setPullRequestAutoMergeSubmitting] = useState(false);
-  const [sshConnecting, setSshConnecting] = useState(false);
+  const [terminalConnecting, setTerminalConnecting] = useState(false);
   const [planningSettingsSubmitting, setPlanningSettingsSubmitting] = useState(false);
 
-  function navigateToSshSession(sshSessionId: string) {
-    if (onSelectSshSession) {
-      onSelectSshSession(sshSessionId);
+  function navigateToTerminalSession(terminalSessionId: string) {
+    if (onSelectTerminalSession) {
+      onSelectTerminalSession(terminalSessionId);
     } else {
-      replaceWebAppRoute({ view: "ssh", sshSessionId });
+      replaceWebAppRoute({ view: "terminal", terminalSessionId });
     }
   }
 
@@ -249,16 +249,19 @@ export function useTaskActions({
     }
   }
 
-  async function handleAcceptPlan(mode: "start_task" | "open_ssh" = "start_task") {
+  async function handleAcceptPlan(mode: "start_task" | "open_terminal" = "start_task") {
     setPlanActionSubmitting(true);
     try {
       const result = await acceptPlan(mode);
       if (!result.success) {
-        toast.error(mode === "open_ssh" ? "Failed to accept plan and open SSH" : "Failed to accept plan");
+        const errorLabel = mode === "open_terminal"
+          ? "Failed to accept plan and open terminal"
+          : "Failed to accept plan";
+        toast.error(errorLabel);
         return;
       }
-      if (result.success && result.mode === "open_ssh") {
-        navigateToSshSession(result.sshSession.config.id);
+      if (result.success && result.mode === "open_terminal") {
+        navigateToTerminalSession(result.terminalSession.config.id);
       }
     } finally {
       setPlanActionSubmitting(false);
@@ -279,17 +282,17 @@ export function useTaskActions({
     onBack?.();
   }
 
-  async function handleConnectViaSsh() {
-    setSshConnecting(true);
+  async function handleConnectTerminal() {
+    setTerminalConnecting(true);
     try {
-      const session = await connectViaSsh();
+      const session = await connectTerminal();
       if (!session) {
-        toast.error("Failed to connect via ssh");
+        toast.error("Failed to open terminal session");
         return;
       }
-      navigateToSshSession(session.config.id);
+      navigateToTerminalSession(session.config.id);
     } finally {
-      setSshConnecting(false);
+      setTerminalConnecting(false);
     }
   }
 
@@ -323,7 +326,7 @@ export function useTaskActions({
     planActionSubmitting,
     automaticPrFlowSubmitting,
     pullRequestAutoMergeSubmitting,
-    sshConnecting,
+    terminalConnecting,
     planningSettingsSubmitting,
     setDeleteModal,
     setAcceptModal,
@@ -351,7 +354,7 @@ export function useTaskActions({
     handleStopAutomaticPrFlow,
     handleAcceptPlan,
     handleDiscardPlan,
-    handleConnectViaSsh,
+    handleConnectTerminal,
     handleOpenTaskFiles,
     handleUpdatePlanningSettings,
   };

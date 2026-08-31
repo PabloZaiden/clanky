@@ -1,12 +1,13 @@
-import type { Agent, Chat, SshServer, Workspace } from "@/shared";
-import type { useChats, useTasks, useSshSessions } from "../../hooks";
+import type { Agent, Chat, Workspace } from "@/shared";
+import type { useChats, useTasks } from "../../hooks";
+import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
   getChatStatusBadgeVariant,
   formatStatusLabel,
-  getSshSessionStatusBadgeVariant,
-  getSshSessionStatusLabel,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
 } from "../common";
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
@@ -17,7 +18,7 @@ export function WorkspaceView({
   workspace,
   relatedTasks,
   relatedChats,
-  relatedSessions,
+  relatedTerminalSessions,
   relatedAgents,
   agentsLoading,
   agentsError,
@@ -27,11 +28,10 @@ export function WorkspaceView({
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
-  relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
+  relatedTerminalSessions: UseTerminalSessionsResult["sessions"];
   relatedAgents: Agent[];
   agentsLoading: boolean;
   agentsError: string | null;
-  registeredSshServers: readonly SshServer[];
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
@@ -43,7 +43,7 @@ export function WorkspaceView({
     : [];
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
-  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedSessions.length > 0;
+  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedTerminalSessions.length > 0;
   const historyDescription = "Completed tasks and chats marked as done.";
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
@@ -84,15 +84,15 @@ export function WorkspaceView({
             <div className="space-y-2">
               {activityTasks.map((task) => renderTaskRow(task))}
               {activityChats.map(renderChatRow)}
-              {relatedSessions.map((session) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(session.config, [workspace]), showPrivateItems);
+              {relatedTerminalSessions.map((terminal) => {
+                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(terminal.config, [workspace]), showPrivateItems);
                 return (
                   <ClankyListRow
-                    key={session.config.id}
-                    title={session.config.name}
-                    description={session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
-                    badge={<StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)}>{getSshSessionStatusLabel(session.state.status)}</StatusBadge>}
-                    onClick={!privateHidden ? () => onNavigate({ view: "ssh", sshSessionId: session.config.id }) : undefined}
+                    key={terminal.config.id}
+                    title={terminal.config.name}
+                    description={terminal.config.connectionMode === "direct" ? "Direct" : "Persistent"}
+                    badge={<StatusBadge variant={getTerminalSessionStatusBadgeVariant(terminal.state.status)}>{getTerminalSessionStatusLabel(terminal.state.status)}</StatusBadge>}
+                    onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id }) : undefined}
                     privateHidden={privateHidden}
                   />
                 );

@@ -12,11 +12,20 @@ const PRIVATE_FLAG_TABLE_NAMES = [
   "chats",
   "agents",
   "ssh_servers",
-  "ssh_sessions",
   "ssh_server_sessions",
+  "terminal_sessions",
 ] as const;
 
 type PrivateFlagTableName = typeof PRIVATE_FLAG_TABLE_NAMES[number];
+
+const HISTORICAL_PRIVATE_FLAG_TABLE_NAMES = [
+  "workspaces",
+  "tasks",
+  "chats",
+  "agents",
+  "ssh_servers",
+  "ssh_server_sessions",
+] as const satisfies readonly PrivateFlagTableName[];
 
 async function withTempDataDir(run: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-schema-"));
@@ -96,10 +105,17 @@ describe("database schema", () => {
       expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("workspaces")).toContain("allow_clanky_context");
       expect(columnNames("workspaces")).toContain("execution_node_id");
+      expect(columnNames("workspaces")).toContain("execution_target_revision");
       expect(columnNames("workspaces")).toContain("workspace_type");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
       expect(tableNames()).toContain("clanky_context_api_keys");
+      expect(tableNames()).toContain("terminal_sessions");
+      const terminalCols = (getDatabase().query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
+      expect(terminalCols).toContain("target_transport");
+      expect(terminalCols).toContain("target_key");
+      expect(terminalCols).toContain("target_revision");
+      expect(tableNames()).not.toContain("ssh_sessions");
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
@@ -135,14 +151,14 @@ describe("database schema", () => {
     }
     const db = new Database(":memory:");
     try {
-      for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
+      for (const tableName of HISTORICAL_PRIVATE_FLAG_TABLE_NAMES) {
         db.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY)`);
       }
 
       migration.up(db);
       migration.up(db);
 
-      for (const tableName of PRIVATE_FLAG_TABLE_NAMES) {
+      for (const tableName of HISTORICAL_PRIVATE_FLAG_TABLE_NAMES) {
         const columns = privateFlagColumnInfo(db, tableName);
         const privateColumn = columns.find((column) => column.name === "is_private");
         expect(privateColumn?.notnull).toBe(1);
@@ -916,5 +932,65 @@ describe("database schema", () => {
     } finally {
       db.close();
     }
+  });
+
+  test("migration v38 creates terminal_sessions and rejects non-empty ssh_sessions", async () => {
+    await withTempDataDir(async () => {
+      await initializeDatabase();
+      const db = getDatabase();
+
+      // Verify terminal_sessions table exists from baseline
+      expect(tableNames()).toContain("terminal_sessions");
+      const cols = (db.query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
+      expect(cols).toContain("target_transport");
+      expect(cols).toContain("target_hostname");
+      expect(cols).toContain("target_port");
+      expect(cols).toContain("target_username");
+      expect(cols).toContain("target_execution_node_id");
+      expect(cols).toContain("task_id");
+      expect(cols).toContain("connection_mode");
+      expect(cols).toContain("is_private");
+      expect(cols).toContain("target_key");
+      expect(cols).toContain("target_revision");
+
+      // Migration v38 is idempotent on clean databases
+      const migration = migrations.find((m) => m.version === 38);
+      if (!migration) {
+        throw new Error("Migration v38 was not found");
+      }
+      migration.up(db);
+      expect(tableNames()).toContain("terminal_sessions");
+    });
+  });
+
+  test("migration v38 fails if ssh_sessions contains rows", () => {
+    const db = new Database(":memory:");
+    db.run("PRAGMA foreign_keys = ON");
+    // Create minimal ssh_sessions and workspaces for testing
+    db.run(`
+      CREATE TABLE workspaces (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        directory TEXT NOT NULL
+      )
+    `);
+    db.run(`
+      CREATE TABLE ssh_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+      )
+    `);
+    db.run("INSERT INTO workspaces (id, user_id, name, directory) VALUES ('w1', 'u1', 'W1', '/tmp')");
+    db.run("INSERT INTO ssh_sessions (id, user_id, workspace_id) VALUES ('s1', 'u1', 'w1')");
+
+    const migration = migrations.find((m) => m.version === 38);
+    if (!migration) {
+      throw new Error("Migration v38 was not found");
+    }
+    expect(() => migration.up(db)).toThrow(/ssh_sessions still contains/);
+    db.close();
   });
 });

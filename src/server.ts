@@ -27,7 +27,8 @@ import {
   agentEventEmitter,
   chatEventEmitter,
   provisioningEventEmitter,
-  sshSessionEventEmitter,
+  sshServerSessionEventEmitter,
+  terminalSessionEventEmitter,
   taskEventEmitter,
   previewEventEmitter,
 } from "./core/event-emitter";
@@ -40,6 +41,11 @@ import {
 } from "./realtime";
 import { installRealtimeHeartbeat } from "./realtime-heartbeat";
 import { CLANKY_VERSION } from "./version";
+import { resolveWorkspaceTerminal } from "./core/workspace-terminal-connection";
+import { isDomainError } from "./core/domain-error";
+import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
+import { closeAllMeshTerminalConnections } from "./core/terminal";
+import { runWithCurrentUser } from "./core/user-context";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 
@@ -96,7 +102,8 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     taskEventEmitter.subscribe(publishEvent),
     chatEventEmitter.subscribe(publishEvent),
     agentEventEmitter.subscribe(publishEvent),
-    sshSessionEventEmitter.subscribe(publishEvent),
+    sshServerSessionEventEmitter.subscribe(publishEvent),
+    terminalSessionEventEmitter.subscribe(publishEvent),
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
   ];
@@ -187,18 +194,16 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       const url = new URL(req.url);
-      const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
       const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
 
-      if (!sshSessionId && !sshServerSessionId) {
-        return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+      if (!sshServerSessionId) {
+        return new Response("sshServerSessionId is required", { status: 400 });
       }
 
       return authorizedRawWebSocketUpgrade(user.id, () => {
         const upgraded = ctx.server?.upgrade(req, {
           data: {
             webappSocketHandler: "clanky",
-            sshSessionId,
             sshServerSessionId,
             terminalMode: true,
             user,
@@ -206,6 +211,45 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         });
         return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
       });
+    },
+  },
+  "/api/terminal": {
+    auth: "user",
+    sameOrigin: "always",
+    description: "Open the raw websocket bridge for a workspace terminal.",
+    async GET(req, ctx): Promise<Response | undefined> {
+      const user = ctx.requireUser();
+      const terminalSessionId = new URL(req.url).searchParams.get("terminalSessionId")?.trim();
+      if (!terminalSessionId) {
+        return new Response("terminalSessionId is required", { status: 400 });
+      }
+      try {
+        const resolved = await runWithCurrentUser(
+          user,
+          async () => await resolveWorkspaceTerminal(terminalSessionId),
+        );
+        return authorizedRawWebSocketUpgrade(user.id, () => {
+          const upgraded = ctx.server?.upgrade(req, {
+            data: {
+              webappSocketHandler: "clanky",
+              workspaceTerminalSessionId: terminalSessionId,
+              workspaceTerminalTransport: resolved.transport,
+              terminalMode: true,
+              user,
+            },
+          });
+          return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+        });
+      } catch (error) {
+        if (isDomainError(error)) {
+          const status = error.code === "terminal_session_not_found"
+            || error.code === "workspace_not_found"
+            ? 404
+            : 409;
+          return Response.json({ error: error.code, message: error.message }, { status });
+        }
+        throw error;
+      }
     },
   },
   "/api/vnc": {
@@ -272,10 +316,12 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     lifecycle: {
       beforeStart: reconcileStartupState,
       afterStart: completeStartup,
-      beforeStop: () => {
+      beforeStop: async () => {
         realtimeHeartbeatCleanup?.();
         realtimeHeartbeatCleanup = undefined;
         stopBackgroundWorkers();
+        await meshTerminalGateway.closeAll();
+        await closeAllMeshTerminalConnections();
       },
     },
     configResponse: (req) => {

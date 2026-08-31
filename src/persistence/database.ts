@@ -192,6 +192,7 @@ function createTables(database: Database): void {
         name TEXT NOT NULL,
         directory TEXT NOT NULL,
         execution_node_id TEXT,
+        execution_target_revision INTEGER NOT NULL DEFAULT 1,
         server_fingerprint TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -375,9 +376,9 @@ function createTables(database: Database): void {
       )
     `);
 
-    // SSH sessions table - workspace-level SSH sessions
+    // Terminal sessions table - transport-neutral workspace terminal sessions
     database.run(`
-      CREATE TABLE IF NOT EXISTS ssh_sessions (
+      CREATE TABLE IF NOT EXISTS terminal_sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         name TEXT NOT NULL,
@@ -394,6 +395,14 @@ function createTables(database: Database): void {
         use_tmux INTEGER NOT NULL DEFAULT 0,
         runtime_connection_mode TEXT,
         notice_message TEXT,
+        target_transport TEXT NOT NULL DEFAULT 'stdio',
+        target_key TEXT NOT NULL DEFAULT '',
+        target_revision INTEGER NOT NULL DEFAULT 1,
+        target_hostname TEXT,
+        target_port INTEGER,
+        target_username TEXT,
+        target_execution_node_id TEXT,
+        is_private INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       )
     `);
@@ -617,21 +626,18 @@ function createTables(database: Database): void {
       DROP INDEX IF EXISTS idx_chats_directory
     `);
 
-    // SSH sessions indexes
+    // Terminal sessions indexes
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_ssh_sessions_workspace_id
-      ON ssh_sessions(user_id, workspace_id)
+      CREATE INDEX IF NOT EXISTS idx_terminal_sessions_workspace_id
+      ON terminal_sessions(user_id, workspace_id)
     `);
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_ssh_sessions_created_at
-      ON ssh_sessions(user_id, created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_terminal_sessions_created_at
+      ON terminal_sessions(user_id, created_at DESC)
     `);
     database.run(`
-      DROP INDEX IF EXISTS idx_ssh_sessions_task_id_unique
-    `);
-    database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_ssh_sessions_task_id_unique
-      ON ssh_sessions(user_id, task_id)
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_terminal_sessions_task_id_unique
+      ON terminal_sessions(user_id, task_id)
       WHERE task_id IS NOT NULL
     `);
 
@@ -736,7 +742,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS agents");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
-    db!.run("DROP TABLE IF EXISTS ssh_sessions");
+    db!.run("DROP TABLE IF EXISTS terminal_sessions");
     db!.run("DROP TABLE IF EXISTS task_transcript_meta");
     db!.run("DROP TABLE IF EXISTS task_transcript_entries");
     db!.run("DROP TABLE IF EXISTS tasks");

@@ -108,11 +108,12 @@ export {
   normalizeQuickChatSettings,
 } from "./preferences";
 
-// SSH session schemas
+// Terminal session schemas
 export {
-  CreateSshSessionRequestSchema,
-  UpdateSshSessionRequestSchema,
-} from "./ssh-session";
+  TerminalConnectionModeSchema,
+  CreateTerminalSessionRequestSchema,
+  UpdateTerminalSessionRequestSchema,
+} from "./terminal-session";
 
 // Shared file explorer schemas
 export {
@@ -139,6 +140,7 @@ export {
   SshCredentialExchangeRequestSchema,
   SshCredentialTokenSchema,
   CreateSshServerSessionRequestSchema,
+  UpdateSshServerSessionRequestSchema,
   DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
@@ -150,6 +152,7 @@ export {
   type SshCredentialExchangeRequest,
   type SshCredentialToken,
   type CreateSshServerSessionRequest,
+  type UpdateSshServerSessionRequest,
   type DeleteSshServerSessionRequest,
   type CheckSshServerPrerequisitesRequest,
   type GetDevboxTemplatesRequest,
@@ -194,3 +197,12 @@ export {
   type MeshExecutionSessionRequest,
   type MeshExecutionRpcRequest,
 } from "./mesh-execution";
+
+export {
+  MeshTerminalSessionRequestSchema,
+  MeshTerminalClientFrameSchema,
+  MeshTerminalServerFrameSchema,
+  type MeshTerminalSessionRequest,
+  type MeshTerminalClientFrame,
+  type MeshTerminalServerFrame,
+} from "./mesh-terminal";

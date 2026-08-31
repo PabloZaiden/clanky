@@ -611,7 +611,7 @@ export interface TaskCompletedEvent {
  * This path skips autonomous execution while moving the task to a completed state.
  */
 export interface TaskSshHandoffEvent {
-  type: "task.ssh_handoff";
+  type: "task.terminal_handoff";
   /** ID of the task that was handed off */
   taskId: string;
   /** Total number of iterations executed before the handoff */
