@@ -993,4 +993,52 @@ describe("database schema", () => {
     expect(() => migration.up(db)).toThrow(/ssh_sessions still contains/);
     db.close();
   });
+
+  test("migration v39 normalizes legacy managed context types idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 39);
+    if (!migration) {
+      throw new Error("Migration v39 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run(`
+        CREATE TABLE clanky_context_api_keys (
+          user_id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          context_type TEXT NOT NULL,
+          context_id TEXT NOT NULL,
+          api_key_id TEXT NOT NULL UNIQUE,
+          generation INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          revoked_at TEXT,
+          PRIMARY KEY (user_id, workspace_id, context_type, context_id, generation)
+        )
+      `);
+      db.run(`
+        INSERT INTO clanky_context_api_keys (
+          user_id, workspace_id, context_type, context_id, api_key_id, generation, created_at
+        ) VALUES
+          ('user-1', 'workspace-1', 'ssh_session', 'legacy-session', 'key-1', 1, '2026-01-01T00:00:00.000Z'),
+          ('user-1', 'workspace-1', 'terminal_session', 'current-session', 'key-2', 1, '2026-01-01T00:00:00.000Z'),
+          ('user-1', 'workspace-1', 'chat', 'chat-1', 'key-3', 1, '2026-01-01T00:00:00.000Z')
+      `);
+
+      migration.up(db);
+      migration.up(db);
+
+      expect(
+        db.query(`
+          SELECT context_id, context_type
+          FROM clanky_context_api_keys
+          ORDER BY context_id
+        `).all(),
+      ).toEqual([
+        { context_id: "chat-1", context_type: "chat" },
+        { context_id: "current-session", context_type: "terminal_session" },
+        { context_id: "legacy-session", context_type: "terminal_session" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
 });
