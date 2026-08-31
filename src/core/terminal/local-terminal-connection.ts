@@ -459,7 +459,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       && !this.allowPersistentSessionCreate
       && processHandle.exitCode === PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE
       && error instanceof DomainError
-      && error.code === "terminal_process_exited"
+      && error.code === "terminal_persistent_session_attach_unavailable"
     );
   }
 

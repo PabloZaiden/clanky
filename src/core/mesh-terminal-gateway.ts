@@ -94,27 +94,25 @@ function parseManagedEnvironment(value: unknown): Record<string, string> | undef
   return Object.keys(environment).length > 0 ? environment : undefined;
 }
 
-function splitUtf8(value: string, maximumBytes: number): string[] {
+export function splitUtf8(value: string, maximumBytes: number): string[] {
   if (Buffer.byteLength(value, "utf8") <= maximumBytes) {
     return [value];
   }
   const chunks: string[] = [];
-  let cursor = 0;
-  while (cursor < value.length) {
-    let low = cursor + 1;
-    let high = value.length;
-    let end = low;
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2);
-      if (Buffer.byteLength(value.slice(cursor, middle), "utf8") <= maximumBytes) {
-        end = middle;
-        low = middle + 1;
-      } else {
-        high = middle - 1;
-      }
+  let currentChunk = "";
+  let currentBytes = 0;
+  for (const codePoint of value) {
+    const codePointBytes = Buffer.byteLength(codePoint, "utf8");
+    if (currentChunk && currentBytes + codePointBytes > maximumBytes) {
+      chunks.push(currentChunk);
+      currentChunk = "";
+      currentBytes = 0;
     }
-    chunks.push(value.slice(cursor, end));
-    cursor = end;
+    currentChunk += codePoint;
+    currentBytes += codePointBytes;
+  }
+  if (currentChunk) {
+    chunks.push(currentChunk);
   }
   return chunks;
 }

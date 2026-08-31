@@ -5,6 +5,7 @@ import {
   type MeshTerminalSessionRequest,
 } from "../../src/contracts/schemas/mesh-terminal";
 import { buildMeshTerminalSessionSigningPayload } from "../../src/core/mesh-terminal-protocol";
+import { splitUtf8 } from "../../src/core/mesh-terminal-gateway";
 import {
   MESH_TERMINAL_CAPABILITY,
   MESH_TERMINAL_MAX_INPUT_BYTES,
@@ -74,5 +75,14 @@ describe("Mesh terminal protocol", () => {
       type: "terminal.input",
       data: "é".repeat((MESH_TERMINAL_MAX_INPUT_BYTES / 2) + 1),
     }).success).toBe(false);
+  });
+
+  test("splits terminal output without breaking Unicode code points", () => {
+    const value = "a😀b😀c";
+    const chunks = splitUtf8(value, 5);
+
+    expect(chunks.join("")).toBe(value);
+    expect(chunks.every((chunk) => Buffer.byteLength(chunk, "utf8") <= 5)).toBe(true);
+    expect(chunks).toEqual(["a😀", "b😀", "c"]);
   });
 });
