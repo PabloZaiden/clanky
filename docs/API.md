@@ -1924,11 +1924,15 @@ The response is binary and streamed through `CommandExecutor`; it is not a
 JSON API response. Directories return `invalid_path_type`. `HEAD` returns the
 same file metadata without transferring bytes.
 
-The response includes `Content-Disposition`, `Content-Type`, `Content-Length`,
-`Cache-Control: no-store`, and `X-Content-Type-Options: nosniff`. Request
-cancellation aborts an in-progress remote stream. The other file-explorer
-operations (listing, reading, writing, renaming, and deleting) retain their
-active-root containment rules.
+The response includes `Content-Disposition`, `Content-Type`,
+`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and the
+authoritative `X-Clanky-Download-Size` metadata header. `HEAD` responses also
+include `Content-Length`. A streamed `GET` may use chunked transfer without a
+`Content-Length` header when the selected host is reached through Mesh or
+another remote stream; clients that need the size should use
+`X-Clanky-Download-Size`. Request cancellation aborts an in-progress remote
+stream. The other file-explorer operations (listing, reading, writing,
+renaming, and deleting) retain their active-root containment rules.
 
 **Errors**
 
