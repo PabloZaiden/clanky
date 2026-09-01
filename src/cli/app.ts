@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { createWebAppCli } from "@pablozaiden/webapp/cli";
 import { createRouteCatalog } from "@pablozaiden/webapp/server";
 import { routes, getWebAppServer } from "../server";
@@ -20,6 +21,20 @@ const CLANKY_UPDATER_CONFIG = {
   ],
 };
 
+async function buildClankyFromSource(sourcePath: string): Promise<void> {
+  const bunExecutable = Bun.which("bun") ?? process.execPath;
+  const build = Bun.spawn([bunExecutable, "run", "build"], {
+    cwd: sourcePath,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await build.exited;
+  if (exitCode !== 0) {
+    throw new Error(`Clanky development build failed with exit code ${String(exitCode)}`);
+  }
+}
+
 export function createClankyCli() {
   const appContext: ClankyCliContext = {
     routeCatalog: createRouteCatalog(routes),
@@ -32,6 +47,12 @@ export function createClankyCli() {
     realtimePath: "/api/ws",
     routeCatalog: appContext.routeCatalog,
     update: CLANKY_UPDATER_CONFIG,
+    serve: {
+      development: {
+        build: async ({ sourcePath }) => await buildClankyFromSource(sourcePath),
+        command: ({ sourcePath }) => [resolve(sourcePath, "dist", "clanky"), "serve"],
+      },
+    },
     start: async () => {
       await (await getWebAppServer()).start();
     },
