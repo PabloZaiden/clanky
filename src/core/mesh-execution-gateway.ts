@@ -461,7 +461,6 @@ export class MeshExecutionGateway {
         reader?.releaseLock();
       } catch {
         // The reader can still be locked while an abort is being delivered.
-        return;
       }
       closed = true;
       signal?.removeEventListener("abort", abortHandler);

@@ -106,7 +106,6 @@ function createProcessStdoutStream(
       reader?.releaseLock();
     } catch {
       // The reader may still be locked while cancellation is being delivered.
-      return;
     }
     finished = true;
     cleanup();
