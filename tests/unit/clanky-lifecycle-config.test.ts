@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClankyCli } from "../../src/cli";
 
@@ -37,7 +38,7 @@ async function readServeConfig(): Promise<{
 
 describe("Clanky lifecycle state configuration", () => {
   test("defaults local state to .clanky under HOME", async () => {
-    const home = await mkdtemp("/tmp/clanky-home-test-");
+    const home = await mkdtemp(join(tmpdir(), "clanky-home-test-"));
     temporaryRoots.push(home);
     process.env["HOME"] = home;
     delete process.env["CLANKY_DATA_DIR"];
@@ -49,7 +50,7 @@ describe("Clanky lifecycle state configuration", () => {
   });
 
   test("uses CLANKY_DATA_DIR as the complete state override", async () => {
-    const home = await mkdtemp("/tmp/clanky-home-test-");
+    const home = await mkdtemp(join(tmpdir(), "clanky-home-test-"));
     temporaryRoots.push(home);
     const dataDir = join(home, "custom-state");
     process.env["HOME"] = home;

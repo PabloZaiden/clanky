@@ -22,7 +22,10 @@ const CLANKY_UPDATER_CONFIG = {
 };
 
 async function buildClankyFromSource(sourcePath: string): Promise<void> {
-  const bunExecutable = Bun.which("bun") ?? process.execPath;
+  const bunExecutable = Bun.which("bun");
+  if (!bunExecutable) {
+    throw new Error("serve up --dev requires the Bun executable to be available as `bun` on PATH");
+  }
   const build = Bun.spawn([bunExecutable, "run", "build"], {
     cwd: sourcePath,
     stdin: "ignore",
