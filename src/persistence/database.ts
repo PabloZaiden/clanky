@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdir, rm, unlink } from "fs/promises";
 import { runMigrations } from "./migrations";
-import { createLogger } from "@pablozaiden/webapp/server";
+import { createLogger, resolveAppDataDir } from "@pablozaiden/webapp/server";
 import { DatabaseNotInitializedError } from "./errors";
 
 const log = createLogger("database");
@@ -17,10 +17,14 @@ let db: Database | null = null;
 
 /**
  * Get the root data directory path.
- * Can be overridden via CLANKY_DATA_DIR environment variable.
+ * Defaults to the user's .clanky state directory and can be overridden
+ * completely via CLANKY_DATA_DIR.
  */
 export function getDataDir(): string {
-  return process.env["CLANKY_DATA_DIR"] ?? "./data";
+  return resolveAppDataDir({
+    envPrefix: "CLANKY",
+    appDirectoryName: ".clanky",
+  });
 }
 
 /**

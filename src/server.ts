@@ -294,6 +294,7 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",
+    appDirectoryName: ".clanky",
     web: {
       entry: "./frontend.tsx",
       icons: {

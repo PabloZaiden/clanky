@@ -90,6 +90,15 @@ clanky update --version v0.8.1
 # Installed server binary (embedded API + web, same-origin)
 clanky serve
 
+# Start or replace a detached local server
+clanky serve up
+clanky serve status
+clanky serve down
+
+# Build and start the configured source checkout
+clanky serve config set development.source-path "$PWD"
+clanky serve up --dev
+
 # Source development (combined API + web, same-origin)
 bun dev
 
@@ -151,7 +160,7 @@ clanky ws
 | --- | --- | --- |
 | `CLANKY_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `CLANKY_PORT` | HTTP port | `3000` |
-| `CLANKY_DATA_DIR` | Data directory for SQLite persistence | `./data` |
+| `CLANKY_DATA_DIR` | Complete override for Clanky state, including SQLite, config, detached-server metadata, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) browser origin without a path, query, or fragment; used to initialize the Mesh endpoint when none is saved | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
@@ -159,6 +168,11 @@ clanky ws
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
 | `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
 | `CLANKY_LOG_LEVEL` | Server log level override | `info` |
+
+Without `CLANKY_DATA_DIR`, local state is stored in `$HOME/.clanky`
+regardless of the directory from which Clanky is launched. The `serve config`
+commands persist host, port, and development source-path settings in that
+directory; environment variables and one-shot `serve` flags take precedence.
 
 SSH retry, keepalive, timeout, and handshake-concurrency values are fixed
 application constants in `src/core/ssh-reliability-policy.ts`.
