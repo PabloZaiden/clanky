@@ -24,5 +24,6 @@ export const MESH_EXECUTION_OPERATIONS = [
   "readFile",
   "listDirectory",
   "writeFile",
+  "copyFile",
 ] as const;
 export type MeshExecutionOperation = typeof MESH_EXECUTION_OPERATIONS[number];

@@ -7,6 +7,8 @@ import type {
   CommandOptions,
   CommandResult,
   FileStreamOptions,
+  FileWriteStreamOptions,
+  FileWriteStreamResult,
 } from "./command-executor";
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
 import type { AgentProvider } from "@/shared/settings";
@@ -54,6 +56,18 @@ export class MeshCommandExecutor implements CommandExecutor {
 
   async writeFile(path: string, content: string): Promise<boolean> {
     return await this.client.writeFile(path, content);
+  }
+
+  async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    return await this.client.writeFileStream(path, stream, options);
+  }
+
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    return await this.client.copyFile(sourcePath, destinationPath);
   }
 
   close(): void {

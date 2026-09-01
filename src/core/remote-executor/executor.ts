@@ -772,6 +772,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         });
         const reader = stream.getReader();
         let bytesWritten = 0;
+        let sizeLimitExceeded = false;
         try {
           while (true) {
             if (options?.signal?.aborted) {
@@ -779,6 +780,18 @@ export class CommandExecutorImpl implements CommandExecutor {
             }
             const { done, value } = await reader.read();
             if (done) {
+              break;
+            }
+            if (
+              options?.maxBytes !== undefined
+              && bytesWritten + value.byteLength > options.maxBytes
+            ) {
+              sizeLimitExceeded = true;
+              try {
+                await reader.cancel();
+              } catch {
+                // Preserve the size-limit result when stream cancellation races the source.
+              }
               break;
             }
             const canContinue = writeStream.write(value);
@@ -797,6 +810,14 @@ export class CommandExecutorImpl implements CommandExecutor {
           });
         }
 
+        if (sizeLimitExceeded) {
+          return {
+            success: false,
+            bytesWritten,
+            error: "Upload stream exceeds the maximum accepted size",
+            errorCode: "size_limit",
+          };
+        }
         return { success: true, bytesWritten };
       } catch (error) {
         return { success: false, bytesWritten: 0, error: String(error) };
@@ -859,6 +880,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         });
 
     let bytesWritten = 0;
+    let sizeLimitExceeded = false;
     const abortHandler = () => {
       try {
         proc.kill();
@@ -885,6 +907,18 @@ export class CommandExecutorImpl implements CommandExecutor {
           if (done) {
             break;
           }
+          if (
+            options?.maxBytes !== undefined
+            && bytesWritten + value.byteLength > options.maxBytes
+          ) {
+            sizeLimitExceeded = true;
+            try {
+              await reader.cancel();
+            } catch {
+              // Preserve the size-limit result when stream cancellation races the source.
+            }
+            break;
+          }
           stdin.write(value);
           bytesWritten += value.byteLength;
         }
@@ -897,6 +931,14 @@ export class CommandExecutorImpl implements CommandExecutor {
       ]);
       if (options?.signal?.aborted) {
         return { success: false, bytesWritten, error: "Write aborted" };
+      }
+      if (sizeLimitExceeded) {
+        return {
+          success: false,
+          bytesWritten,
+          error: "Upload stream exceeds the maximum accepted size",
+          errorCode: "size_limit",
+        };
       }
       if (exitCode !== 0) {
         return {

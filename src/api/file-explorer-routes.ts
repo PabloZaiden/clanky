@@ -122,6 +122,8 @@ function mapFileExplorerError(
       case "upload_session_target_mismatch":
       case "invalid_upload_state":
         return errorResponse("invalid_upload_state", error.message, 400);
+      case "upload_size_exceeded":
+        return errorResponse("upload_size_exceeded", error.message, 413);
       case "invalid_preview_type":
         return errorResponse("invalid_preview_type", error.message, 400);
       case "invalid_credential_token":

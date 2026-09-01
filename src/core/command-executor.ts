@@ -64,12 +64,15 @@ export interface FileWriteStreamOptions {
   append?: boolean;
   /** Expected file size before writing; rejects when the current size differs */
   expectedOffset?: number;
+  /** Maximum number of bytes accepted from this stream */
+  maxBytes?: number;
 }
 
 export interface FileWriteStreamResult {
   success: boolean;
   bytesWritten: number;
   error?: string;
+  errorCode?: "size_limit";
 }
 
 /**

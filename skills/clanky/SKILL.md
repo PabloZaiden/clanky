@@ -72,6 +72,9 @@ clanky workspace exec <WORKSPACE_ID_OR_EXACT_NAME> --cwd /tmp -- sh -lc 'printf 
 clanky workspace download <WORKSPACE_ID_OR_EXACT_NAME> /tmp/report.bin
 clanky workspace download <WORKSPACE_ID_OR_EXACT_NAME> packages/app/dist/app.tar.gz \
   --output ./app.tar.gz
+
+clanky workspace upload <WORKSPACE_ID_OR_EXACT_NAME> ./app.tar.gz \
+  --remote-path packages/app/dist/app.tar.gz --force
 ```
 
 `workspace exec` is the preferred path for one-shot, non-interactive commands.
@@ -90,12 +93,25 @@ basename is used in the current directory. Use `--output -` to write bytes to
 stdout, and `--force` to allow replacing an existing local file. Do not use
 `clanky api` for downloads because that command parses responses as JSON/text.
 
+`workspace upload` is the preferred path for sending one regular local file to
+the execution host. It uses the existing streamed upload session with
+replayable 8 MiB chunks, up to three attempts per chunk, progress-independent
+offsets, and atomic completion. Pass `--remote-path PATH` to choose the
+destination; without it, the local basename is placed in the workspace
+directory. Relative remote paths start at the workspace directory, while
+absolute paths are used directly on the selected host. The destination
+directory must already exist, and `--force` is required to replace an existing
+file. Uploads are not recursive and do not read stdin.
+
 The workspace is an execution-host selector, not a filesystem sandbox.
 Relative `--cwd` and download paths start at the configured workspace directory;
 absolute paths refer directly to the selected host and may be outside that
 directory. `workspace exec` buffers stdout and stderr with an 8 MiB limit per
 stream. For larger output, redirect it to a file on the host and download that
 file; downloads have no application-level 8 MiB limit and are streamed.
+Uploads likewise have no total 8 MiB limit; 8 MiB is only the default chunk
+size. Local, SSH, and Mesh-selected workspaces use the same commands and
+transfer semantics.
 
 Both commands resolve an exact workspace ID first, then an exact
 case-sensitive workspace name. Names must be unique. They use the selected

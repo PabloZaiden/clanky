@@ -284,6 +284,22 @@ export class TestCommandExecutor implements CommandExecutor {
           if (done) {
             break;
           }
+          if (
+            options?.maxBytes !== undefined
+            && bytesWritten + value.byteLength > options.maxBytes
+          ) {
+            try {
+              await reader.cancel();
+            } catch {
+              // Preserve the size-limit result when stream cancellation races the source.
+            }
+            return {
+              success: false,
+              bytesWritten,
+              error: "Upload stream exceeds the maximum accepted size",
+              errorCode: "size_limit",
+            };
+          }
           const canContinue = writeStream.write(value);
           bytesWritten += value.byteLength;
           if (!canContinue) {

@@ -39,10 +39,9 @@ import type {
   WorkspaceFileWriteResponse,
   WriteFileExplorerRequest,
 } from "@/contracts";
+import { retryFileUploadChunk, uploadFileInChunks } from "@/shared";
 
 const MAX_CONCURRENT_METADATA_REQUESTS = 10;
-const DEFAULT_UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
-const MAX_UPLOAD_CHUNK_ATTEMPTS = 3;
 
 let activeMetadataRequests = 0;
 const queuedMetadataRequestStarters: Array<() => void> = [];
@@ -519,30 +518,6 @@ async function cancelFileExplorerUploadApi(
   );
 }
 
-async function writeUploadChunkWithRetries(
-  target: FileExplorerTarget,
-  uploadId: string,
-  offset: number,
-  chunk: Blob,
-  options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse> {
-  let lastError: unknown = null;
-  for (let attempt = 1; attempt <= MAX_UPLOAD_CHUNK_ATTEMPTS; attempt += 1) {
-    if (options?.signal?.aborted) {
-      throw createAbortError(options.signal);
-    }
-    try {
-      return await writeFileExplorerUploadChunkApi(target, uploadId, offset, chunk, options);
-    } catch (error) {
-      lastError = error;
-      if (options?.signal?.aborted || attempt === MAX_UPLOAD_CHUNK_ATTEMPTS) {
-        throw error;
-      }
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
-}
-
 export async function uploadFileExplorerFileApi(
   target: FileExplorerTarget,
   directory: string,
@@ -560,21 +535,29 @@ export async function uploadFileExplorerFileApi(
     startDirectory: startDirectory ?? null,
   }, { startDirectory, signal: options?.signal });
 
-  let offset = 0;
-  const chunkSize = options?.chunkSizeBytes ?? DEFAULT_UPLOAD_CHUNK_SIZE_BYTES;
   try {
-    while (offset < file.size) {
-      const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
-      const response = await writeUploadChunkWithRetries(target, session.uploadId, offset, chunk, {
-        startDirectory,
+    await uploadFileInChunks(
+      file.size,
+      (chunkOffset, endOffset) => file.slice(chunkOffset, endOffset),
+      async (chunkOffset, chunk) => {
+        const response = await retryFileUploadChunk(
+          () => writeFileExplorerUploadChunkApi(target, session.uploadId, chunkOffset, chunk, {
+            startDirectory,
+            signal: options?.signal,
+          }),
+          { signal: options?.signal },
+        );
+        return {
+          bytesWritten: response.bytesWritten,
+          nextOffset: response.nextOffset,
+        };
+      },
+      {
+        chunkSizeBytes: options?.chunkSizeBytes,
         signal: options?.signal,
-      });
-      offset = response.nextOffset;
-      options?.onProgress?.({
-        bytesUploaded: offset,
-        totalBytes: file.size,
-      });
-    }
+        onProgress: options?.onProgress,
+      },
+    );
     return await completeFileExplorerUploadApi(target, session.uploadId, {
       startDirectory,
       signal: options?.signal,

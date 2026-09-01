@@ -193,6 +193,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
+| POST | `/api/mesh/internal/execution/file` | Receive a streamed file chunk in an authenticated mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/pairing-approvals` | Receive a signed mesh pairing approval from another node. |
 | POST | `/api/mesh/internal/pairing-requests` | Receive a signed mesh pairing request from another node. |
 | POST | `/api/mesh/members/revoke` | Revoke a trusted mesh member. |
@@ -1943,6 +1944,69 @@ renaming, and deleting) retain their active-root containment rules.
 | 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
 | 404 | `file_not_found` | The requested file does not exist on the selected host. |
 | 500 | `workspace_file_error` | File download failed. |
+
+#### POST /api/workspaces/:id/files/upload
+
+Create a streamed upload session for a regular file on the host selected by the
+workspace. The upload is finalized atomically only after all declared bytes
+have been received. The selected host may be local, SSH, or a Mesh execution
+peer.
+
+**Request Body**
+
+```json
+{
+  "directory": "dist",
+  "fileName": "app.tar.gz",
+  "size": 12582912,
+  "overwrite": false,
+  "startDirectory": null
+}
+```
+
+`directory` is relative to `startDirectory` (or `workspace.directory` when it
+is omitted), and `fileName` must be a single file name. As with downloads and
+execution, an absolute `startDirectory` is used directly on the selected host;
+the workspace directory is not a filesystem sandbox. The destination directory
+must already exist.
+
+The response is `201` with an `uploadId`. Send the file body in one or more
+raw binary requests:
+
+```text
+POST /api/workspaces/ws-abc123/files/upload/chunk?uploadId=<UPLOAD_ID>&offset=0
+Content-Type: application/octet-stream
+```
+
+`offset` must equal the number of bytes already accepted. The server enforces
+the declared `size` against the bytes actually consumed from the request body;
+it does not rely on `Content-Length`. A chunk that exceeds the remaining size
+returns `413 upload_size_exceeded` and does not write beyond the declared
+file size. Clients may retry a failed chunk from its original offset.
+
+Complete the upload after the response's `nextOffset` reaches `size`:
+
+```json
+POST /api/workspaces/ws-abc123/files/upload/complete
+
+{ "uploadId": "<UPLOAD_ID>" }
+```
+
+Use `POST /api/workspaces/:id/files/upload/cancel` with the upload ID to remove
+an abandoned temporary upload. The browser and CLI clients use replayable
+8 MiB chunks with up to three attempts; 8 MiB is a chunking default, not a
+total file-size limit. Mesh forwards each chunk as a binary stream, so uploads
+larger than the mesh JSON result limit are supported.
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `validation_error` | Upload metadata or chunk parameters are invalid. |
+| 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
+| 409 | `file_conflict` | The destination exists and overwrite was not requested. |
+| 413 | `upload_size_exceeded` | The request body exceeds the remaining declared upload size. |
+| 500 | `workspace_file_error` | Upload, completion, or cancellation failed. |
 
 #### POST /api/workspaces/:id/archived-tasks/purge
 

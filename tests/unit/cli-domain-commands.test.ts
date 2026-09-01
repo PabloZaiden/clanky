@@ -108,6 +108,23 @@ describe("CLI workspace command parsing", () => {
     });
   });
 
+  test("parses upload source, destination, and force options", () => {
+    expect(parseWorkspaceCommandArgs([
+      "upload",
+      "workspace-id",
+      "artifact.tar.gz",
+      "--remote-path",
+      "/tmp/artifact.tar.gz",
+      "--force",
+    ])).toEqual({
+      operation: "upload",
+      workspace: "workspace-id",
+      localPath: "artifact.tar.gz",
+      remotePath: "/tmp/artifact.tar.gz",
+      force: true,
+    });
+  });
+
   test("requires a command separator for exec", () => {
     expect(() => parseWorkspaceCommandArgs(["exec", "workspace-id", "printf"]))
       .toThrow("workspace exec requires -- before COMMAND");

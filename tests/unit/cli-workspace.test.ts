@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -69,7 +69,11 @@ describe("CLI workspace commands", () => {
       requests.push({ url, init });
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-api-key");
       if (url.pathname === "/api/workspaces") {
-        return Response.json([{ id: "ws-1", name: "Build workspace" }]);
+        return Response.json([{
+          id: "ws-1",
+          name: "Build workspace",
+          directory: "/workspace/repo",
+        }]);
       }
       return Response.json({
         workspaceId: "ws-1",
@@ -106,7 +110,11 @@ describe("CLI workspace commands", () => {
       let downloadUrl: URL | undefined;
       const fetchFn = createFetch((url) => {
         if (url.pathname === "/api/workspaces") {
-          return Response.json([{ id: "ws-1", name: "Build workspace" }]);
+          return Response.json([{
+            id: "ws-1",
+            name: "Build workspace",
+            directory: "/workspace/repo",
+          }]);
         }
         downloadUrl = url;
         return new Response(new ReadableStream<Uint8Array>({
@@ -137,6 +145,161 @@ describe("CLI workspace commands", () => {
       expect(stderrChunks).toEqual([]);
     } finally {
       await rm(destinationDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("uploads binary chunks to an absolute remote destination", async () => {
+    const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-workspace-upload-"));
+    try {
+      const sourcePath = join(sourceDirectory, "artifact.bin");
+      const sourceBytes = Uint8Array.from(
+        { length: 8 * 1024 * 1024 + 7 },
+        (_, index) => index % 256,
+      );
+      await writeFile(sourcePath, sourceBytes);
+
+      const requests: Array<{ url: URL; init: RequestInit }> = [];
+      const uploadedChunks: Uint8Array[] = [];
+      const chunkAttempts = new Map<number, number>();
+      const fetchFn = createFetch(async (url, init) => {
+        requests.push({ url, init });
+        if (url.pathname === "/api/workspaces") {
+          return Response.json([{
+            id: "ws-1",
+            name: "Build workspace",
+            directory: "/workspace/repo",
+          }]);
+        }
+        if (url.pathname.endsWith("/files/upload")) {
+          expect(JSON.parse(String(init.body))).toEqual({
+            directory: "",
+            fileName: "artifact.bin",
+            size: sourceBytes.byteLength,
+            overwrite: true,
+            startDirectory: "/tmp/uploads",
+          });
+          return Response.json({ uploadId: "upload-1" }, { status: 201 });
+        }
+        if (url.pathname.endsWith("/files/upload/chunk")) {
+          const offset = Number(url.searchParams.get("offset"));
+          const attempt = (chunkAttempts.get(offset) ?? 0) + 1;
+          chunkAttempts.set(offset, attempt);
+          if (offset === 0 && attempt === 1) {
+            return Response.json({ error: "temporary peer failure" }, { status: 503 });
+          }
+          const bytes = new Uint8Array(await new Response(init.body as BodyInit).arrayBuffer());
+          uploadedChunks.push(bytes);
+          return Response.json({
+            success: true,
+            uploadId: "upload-1",
+            bytesWritten: bytes.byteLength,
+            nextOffset: offset + bytes.byteLength,
+          });
+        }
+        if (url.pathname.endsWith("/files/upload/complete")) {
+          expect(JSON.parse(String(init.body))).toEqual({
+            uploadId: "upload-1",
+            startDirectory: "/tmp/uploads",
+          });
+          return Response.json({
+            success: true,
+            file: { path: "artifact.bin" },
+            overwritten: true,
+          });
+        }
+        throw new Error(`Unexpected request: ${url.pathname}`);
+      });
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+      const result = await runWorkspaceCommand(createWorkspaceContext(
+        [
+          "upload",
+          "Build workspace",
+          sourcePath,
+          "--remote-path",
+          "/tmp/uploads/artifact.bin",
+          "--force",
+        ],
+        fetchFn,
+        stdoutChunks,
+        stderrChunks,
+      ));
+
+      expect(result).toEqual({ exitCode: 0 });
+      const uploadedBytes = new Uint8Array(
+        uploadedChunks.reduce((total, chunk) => total + chunk.byteLength, 0),
+      );
+      let uploadedOffset = 0;
+      for (const chunk of uploadedChunks) {
+        uploadedBytes.set(chunk, uploadedOffset);
+        uploadedOffset += chunk.byteLength;
+      }
+      expect(uploadedBytes).toEqual(sourceBytes);
+      expect(uploadedChunks).toHaveLength(2);
+      expect(chunkAttempts.get(0)).toBe(2);
+      expect(chunkAttempts.get(8 * 1024 * 1024)).toBe(1);
+      expect(requests[1]?.url.pathname).toBe("/api/workspaces/ws-1/files/upload");
+      expect(requests[2]?.url.searchParams.get("startDirectory")).toBe("/tmp/uploads");
+      expect(stdoutChunks).toEqual([`Uploaded ${sourcePath} to /tmp/uploads/artifact.bin\n`]);
+      expect(stderrChunks).toEqual([]);
+    } finally {
+      await rm(sourceDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("uses the workspace directory and local basename by default", async () => {
+    const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-workspace-upload-default-"));
+    try {
+      const sourcePath = join(sourceDirectory, "notes.txt");
+      await writeFile(sourcePath, "notes\n");
+      let createBody: Record<string, unknown> | undefined;
+      const fetchFn = createFetch((url, init) => {
+        if (url.pathname === "/api/workspaces") {
+          return Response.json([{
+            id: "ws-1",
+            name: "Build workspace",
+            directory: "/workspace/repo",
+          }]);
+        }
+        if (url.pathname.endsWith("/files/upload")) {
+          createBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+          return Response.json({ uploadId: "upload-2" }, { status: 201 });
+        }
+        if (url.pathname.endsWith("/files/upload/chunk")) {
+          return Response.json({
+            success: true,
+            uploadId: "upload-2",
+            bytesWritten: 6,
+            nextOffset: 6,
+          });
+        }
+        return Response.json({
+          success: true,
+          file: { path: "notes.txt" },
+          overwritten: false,
+        });
+      });
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+      const result = await runWorkspaceCommand(createWorkspaceContext(
+        ["upload", "ws-1", sourcePath],
+        fetchFn,
+        stdoutChunks,
+        stderrChunks,
+      ));
+
+      expect(result).toEqual({ exitCode: 0 });
+      expect(createBody).toEqual({
+        directory: "",
+        fileName: "notes.txt",
+        size: 6,
+        overwrite: false,
+        startDirectory: "/workspace/repo",
+      });
+      expect(stdoutChunks).toEqual([`Uploaded ${sourcePath} to /workspace/repo/notes.txt\n`]);
+      expect(stderrChunks).toEqual([]);
+    } finally {
+      await rm(sourceDirectory, { recursive: true, force: true });
     }
   });
 });

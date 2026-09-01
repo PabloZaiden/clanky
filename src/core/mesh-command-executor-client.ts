@@ -32,6 +32,8 @@ import { requireCurrentUserId } from "./user-context";
 import type {
   CommandOptions,
   CommandResult,
+  FileWriteStreamOptions,
+  FileWriteStreamResult,
 } from "./command-executor";
 import type { AgentProvider } from "@/shared/settings";
 
@@ -108,6 +110,7 @@ export class MeshCommandExecutorClient {
   private session: MeshExecutionSession | null = null;
   private endpoint: string | null = null;
   private readonly activeStreamControllers = new Set<AbortController>();
+  private readonly activeRequestControllers = new Set<AbortController>();
 
   constructor(config: MeshCommandExecutorClientConfig) {
     this.workspaceId = config.workspaceId;
@@ -280,6 +283,120 @@ export class MeshCommandExecutorClient {
 
   async writeFile(path: string, content: string): Promise<boolean> {
     return await this.execute<boolean>({ operation: "writeFile", path, content });
+  }
+
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    return await this.execute<boolean>({
+      operation: "copyFile",
+      sourcePath,
+      destinationPath,
+    });
+  }
+
+  async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    if (options?.signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+    }
+    await this.ensureSession();
+    const session = this.session;
+    const endpoint = this.endpoint;
+    if (!session || !endpoint) {
+      throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    const abortHandler = () => controller.abort();
+    options?.signal?.addEventListener("abort", abortHandler, { once: true });
+    this.activeRequestControllers.add(controller);
+    try {
+      const url = new URL(resolveMeshRoute(endpoint, "api/mesh/internal/execution/file"));
+      url.searchParams.set("path", path);
+      url.searchParams.set("append", options?.append ? "1" : "0");
+      if (options?.expectedOffset !== undefined) {
+        url.searchParams.set("expectedOffset", String(options.expectedOffset));
+      }
+      if (options?.maxBytes !== undefined) {
+        url.searchParams.set("maxBytes", String(options.maxBytes));
+      }
+
+      const response = await this.fetchImpl(url, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/octet-stream",
+          "x-clanky-mesh-session-id": session.sessionId,
+          "x-clanky-mesh-session-token": session.sessionToken,
+        },
+        body: stream,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw await this.readErrorResponse(response);
+      }
+      const body = parseResponseShape<{
+        success: unknown;
+        bytesWritten: unknown;
+        error?: unknown;
+        errorCode?: unknown;
+      }>(
+        await response.json(),
+        ["success", "bytesWritten"],
+        "The mesh file write response is invalid.",
+      );
+      const success = body.success;
+      const bytesWritten = body.bytesWritten;
+      if (
+        typeof success !== "boolean"
+        || typeof bytesWritten !== "number"
+        || !Number.isSafeInteger(bytesWritten)
+        || bytesWritten < 0
+        || (body.error !== undefined && typeof body.error !== "string")
+        || (body.errorCode !== undefined && body.errorCode !== "size_limit")
+      ) {
+        throw new DomainError("mesh_execution_response_invalid", "The mesh file write response is invalid.");
+      }
+      return {
+        success,
+        bytesWritten,
+        ...(typeof body.error === "string" ? { error: body.error } : {}),
+        ...(body.errorCode === "size_limit" ? { errorCode: body.errorCode } : {}),
+      };
+    } catch (error) {
+      if (error instanceof DomainError) {
+        if (
+          error.code === "mesh_execution_session_invalid"
+          || error.code === "mesh_execution_session_expired"
+          || error.code === "mesh_execution_context_changed"
+        ) {
+          this.session = null;
+        }
+        if (error.code === "mesh_execution_aborted") {
+          this.closeSession();
+        }
+        throw error;
+      }
+      if (options?.signal?.aborted) {
+        this.closeSession();
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", { cause: error });
+      }
+      if (controller.signal.aborted) {
+        throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
+          cause: error,
+        });
+      }
+      throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
+        cause: error,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+      options?.signal?.removeEventListener("abort", abortHandler);
+      this.activeRequestControllers.delete(controller);
+    }
   }
 
   async streamFile(path: string, signal?: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
@@ -524,6 +641,10 @@ export class MeshCommandExecutorClient {
       controller.abort();
     }
     this.activeStreamControllers.clear();
+    for (const controller of this.activeRequestControllers) {
+      controller.abort();
+    }
+    this.activeRequestControllers.clear();
     this.session = null;
     this.endpoint = null;
   }

@@ -37,6 +37,8 @@ import {
   isCommandOutputLimitError,
   type CommandExecutor,
   type CommandResult,
+  type FileWriteStreamOptions,
+  type FileWriteStreamResult,
 } from "./command-executor";
 import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
@@ -60,6 +62,7 @@ interface MeshExecutionSession {
   callerEncryptionPublicKey: string;
   executor: CommandExecutor;
   requestIds: Set<string>;
+  activeControllers: Set<AbortController>;
   inFlight: number;
   expiryTimer?: ReturnType<typeof setTimeout>;
 }
@@ -116,6 +119,11 @@ export function assertMeshExecutionPath(_root: string, requested: string): strin
 
 export function assertMeshExecutionCwd(_root: string, cwd: string): string {
   return assertMeshExecutionPath(_root, cwd);
+}
+
+interface SessionOperation {
+  signal: AbortSignal;
+  cleanup: () => void;
 }
 
 async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<void> {
@@ -278,6 +286,7 @@ export class MeshExecutionGateway {
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
       }),
       requestIds: new Set(),
+      activeControllers: new Set(),
       inFlight: 0,
     };
     const expiryTimer = setTimeout(() => {
@@ -406,6 +415,21 @@ export class MeshExecutionGateway {
           request.content,
         );
         }
+        case "copyFile": {
+        if (!request.sourcePath || !request.destinationPath) {
+          throw new DomainError("mesh_execution_request_invalid", "copyFile requires sourcePath and destinationPath.");
+        }
+        if (!executor.copyFile) {
+          throw new DomainError(
+            "mesh_execution_operation_unsupported",
+            "The execution host does not support file copying.",
+          );
+        }
+        return await executor.copyFile(
+          assertMeshExecutionPath(session.executionRoot, request.sourcePath),
+          assertMeshExecutionPath(session.executionRoot, request.destinationPath),
+        );
+        }
       }
 
     } finally {
@@ -432,19 +456,66 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
     }
 
+    const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
     try {
-      const stream = await session.executor.streamFile(path, { signal });
+      const stream = await session.executor.streamFile(path, { signal: operation.signal });
       if (!stream) {
+        operation.cleanup();
         session.inFlight -= 1;
         return null;
       }
-      return this.trackStream(stream, signal, () => {
+      return this.trackStream(stream, operation.signal, () => {
+        operation.cleanup();
         session.inFlight -= 1;
       });
     } catch (error) {
+      operation.cleanup();
       session.inFlight -= 1;
       throw error;
+    }
+  }
+
+  async writeFileStream(
+    sessionId: string,
+    sessionToken: string,
+    requestedPath: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+    signal?: AbortSignal,
+  ): Promise<FileWriteStreamResult> {
+    const { session } = await this.requireValidatedSession(
+      sessionId,
+      sessionToken,
+      { memberErrorCode: "mesh_peer_not_trusted" },
+    );
+    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+      throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    }
+    const path = assertMeshExecutionPath(session.executionRoot, requestedPath);
+    const writeFileStream = session.executor.writeFileStream;
+    if (!writeFileStream) {
+      throw new DomainError(
+        "mesh_execution_operation_unsupported",
+        "The execution host does not support streamed file writes.",
+      );
+    }
+    if (signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+    }
+
+    const operation = this.startSessionOperation(session, signal);
+    session.inFlight += 1;
+    try {
+      return await writeFileStream.call(session.executor, path, stream, {
+        append: options?.append,
+        expectedOffset: options?.expectedOffset,
+        maxBytes: options?.maxBytes,
+        signal: operation.signal,
+      });
+    } finally {
+      operation.cleanup();
+      session.inFlight -= 1;
     }
   }
 
@@ -507,6 +578,30 @@ export class MeshExecutionGateway {
     });
   }
 
+  private startSessionOperation(
+    session: MeshExecutionSession,
+    signal?: AbortSignal,
+  ): SessionOperation {
+    const controller = new AbortController();
+    const abortHandler = () => controller.abort();
+    if (signal?.aborted) {
+      controller.abort();
+    } else {
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    }
+    session.activeControllers.add(controller);
+    let cleaned = false;
+    return {
+      signal: controller.signal,
+      cleanup: () => {
+        if (cleaned) return;
+        cleaned = true;
+        signal?.removeEventListener("abort", abortHandler);
+        session.activeControllers.delete(controller);
+      },
+    };
+  }
+
   closeAll(): void {
     for (const sessionId of this.sessions.keys()) {
       this.closeSession(sessionId);
@@ -519,6 +614,10 @@ export class MeshExecutionGateway {
     if (!session) {
       return;
     }
+    for (const controller of session.activeControllers) {
+      controller.abort();
+    }
+    session.activeControllers.clear();
     this.sessions.delete(sessionId);
     if (session.expiryTimer !== undefined) {
       clearTimeout(session.expiryTimer);

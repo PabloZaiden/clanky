@@ -1,5 +1,5 @@
-import { dirname, posix as pathPosix } from "node:path";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { basename as localBasename, dirname, posix as pathPosix } from "node:path";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
   getAuthorizedHeaders,
@@ -16,6 +16,7 @@ import type {
   WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import { WorkspaceExecResponseSchema } from "@/contracts/schemas";
+import { retryFileUploadChunk, uploadFileInChunks } from "@/shared";
 import type { ClankyCliContext } from "./mesh";
 
 export interface WorkspaceExecCommand {
@@ -35,11 +36,20 @@ export interface WorkspaceDownloadCommand {
   force: boolean;
 }
 
-export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceDownloadCommand;
+export interface WorkspaceUploadCommand {
+  operation: "upload";
+  workspace: string;
+  localPath: string;
+  remotePath?: string;
+  force: boolean;
+}
+
+export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceDownloadCommand | WorkspaceUploadCommand;
 
 interface WorkspaceSummary {
   id: string;
   name: string;
+  directory: string;
 }
 
 interface WorkspaceCliContext {
@@ -144,6 +154,39 @@ function parseDownloadOptions(
   return { positionals, output, force };
 }
 
+function parseUploadOptions(
+  args: readonly string[],
+): { positionals: string[]; remotePath?: string; force: boolean } {
+  const positionals: string[] = [];
+  let remotePath: string | undefined;
+  let force = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) continue;
+    if (arg === "--force") {
+      if (force) throw usageError("--force may only be specified once");
+      force = true;
+      continue;
+    }
+    if (!arg.startsWith("--")) {
+      positionals.push(arg);
+      continue;
+    }
+    const [rawName, inlineValue] = arg.split("=", 2);
+    const name = rawName ?? arg;
+    if (name !== "--remote-path") {
+      throw usageError(`Unknown workspace option: ${name}`);
+    }
+    if (remotePath !== undefined) {
+      throw usageError("--remote-path may only be specified once");
+    }
+    const parsed = parseOptionValue(args, index, name, inlineValue);
+    remotePath = parsed.value;
+    index = parsed.nextIndex;
+  }
+  return { positionals, remotePath, force };
+}
+
 function parseTimeout(value: string): number {
   const timeoutMs = Number(value);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60 * 1000) {
@@ -195,7 +238,21 @@ export function parseWorkspaceCommandArgs(args: readonly string[]): WorkspaceCom
     };
   }
 
-  throw usageError("workspace command must be exec or download");
+  if (operation === "upload") {
+    const { positionals, remotePath, force } = parseUploadOptions(operationArgs);
+    if (positionals.length !== 2 || !positionals[0] || !positionals[1]) {
+      throw usageError("workspace upload requires a workspace ID or name and a local file path");
+    }
+    return {
+      operation,
+      workspace: positionals[0],
+      localPath: positionals[1],
+      remotePath,
+      force,
+    };
+  }
+
+  throw usageError("workspace command must be exec, download, or upload");
 }
 
 async function resolveWorkspaceAuth(input: WorkspaceCliContext): Promise<WorkspaceCliAuth> {
@@ -310,6 +367,7 @@ async function resolveWorkspace(
     && typeof value === "object"
     && typeof (value as Record<string, unknown>)["id"] === "string"
     && typeof (value as Record<string, unknown>)["name"] === "string"
+    && typeof (value as Record<string, unknown>)["directory"] === "string"
   ));
   const idMatch = workspaces.find((workspace) => workspace.id === reference);
   if (idMatch) return idMatch;
@@ -508,6 +566,265 @@ async function runWorkspaceDownload(
   }
 }
 
+interface WorkspaceUploadDestination {
+  absolutePath: string;
+  startDirectory: string;
+  fileName: string;
+}
+
+interface WorkspaceUploadChunk {
+  bytesWritten: number;
+  nextOffset: number;
+}
+
+function resolveWorkspaceUploadDestination(
+  workspace: WorkspaceSummary,
+  localPath: string,
+  requestedRemotePath?: string,
+): WorkspaceUploadDestination {
+  if (!workspace.directory.startsWith("/")) {
+    throw new Error("The workspace directory is not an absolute host path");
+  }
+  const localName = localBasename(localPath);
+  const requestedPath = requestedRemotePath?.trim() || localName;
+  if (!requestedPath || requestedPath.endsWith("/")) {
+    throw new Error("The remote upload path must name a file");
+  }
+  const absolutePath = requestedPath.startsWith("/")
+    ? pathPosix.normalize(requestedPath)
+    : pathPosix.resolve(workspace.directory, requestedPath);
+  const fileName = pathPosix.basename(absolutePath);
+  if (!fileName || fileName === "." || fileName === "/") {
+    throw new Error("The remote upload path must name a file");
+  }
+  return {
+    absolutePath,
+    startDirectory: pathPosix.dirname(absolutePath),
+    fileName,
+  };
+}
+
+function uploadResponseRecord(body: unknown, message: string): Record<string, unknown> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error(message);
+  }
+  return body as Record<string, unknown>;
+}
+
+async function createWorkspaceUploadSession(
+  input: WorkspaceCliContext,
+  auth: WorkspaceCliAuth,
+  workspace: WorkspaceSummary,
+  destination: WorkspaceUploadDestination,
+  size: number,
+  overwrite: boolean,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetchWorkspaceApi(
+    input,
+    auth,
+    `/api/workspaces/${encodeURIComponent(workspace.id)}/files/upload`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        directory: "",
+        fileName: destination.fileName,
+        size,
+        overwrite,
+        startDirectory: destination.startDirectory,
+      }),
+      signal,
+    },
+  );
+  const body = await readResponseBody(response);
+  if (!response.ok) {
+    throw new Error(responseErrorMessage(body, `Workspace upload failed (HTTP ${String(response.status)})`));
+  }
+  const record = uploadResponseRecord(body, "The workspace upload session response is invalid");
+  if (typeof record["uploadId"] !== "string" || record["uploadId"].length === 0) {
+    throw new Error("The workspace upload session response is invalid");
+  }
+  return record["uploadId"];
+}
+
+async function uploadWorkspaceChunk(
+  input: WorkspaceCliContext,
+  auth: WorkspaceCliAuth,
+  workspace: WorkspaceSummary,
+  uploadId: string,
+  startDirectory: string,
+  offset: number,
+  chunk: Blob,
+  signal?: AbortSignal,
+): Promise<WorkspaceUploadChunk> {
+  return await retryFileUploadChunk(async () => {
+    const url = new URL(
+      `/api/workspaces/${encodeURIComponent(workspace.id)}/files/upload/chunk`,
+      `${auth.baseUrl}/`,
+    );
+    url.searchParams.set("uploadId", uploadId);
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("startDirectory", startDirectory);
+    const response = await fetchWorkspaceApi(input, auth, url.pathname + url.search, {
+      method: "POST",
+      headers: { "content-type": "application/octet-stream" },
+      body: chunk,
+      signal,
+    });
+    const body = await readResponseBody(response);
+    if (!response.ok) {
+      throw new Error(responseErrorMessage(body, `Workspace upload chunk failed (HTTP ${String(response.status)})`));
+    }
+    const record = uploadResponseRecord(body, "The workspace upload chunk response is invalid");
+    const bytesWritten = record["bytesWritten"];
+    const nextOffset = record["nextOffset"];
+    if (
+      record["success"] !== true
+      || typeof bytesWritten !== "number"
+      || !Number.isSafeInteger(bytesWritten)
+      || bytesWritten <= 0
+      || bytesWritten > chunk.size
+      || typeof nextOffset !== "number"
+      || !Number.isSafeInteger(nextOffset)
+      || nextOffset !== offset + bytesWritten
+    ) {
+      throw new Error("The workspace upload chunk response is invalid");
+    }
+    return { bytesWritten, nextOffset };
+  }, { signal });
+}
+
+async function completeWorkspaceUpload(
+  input: WorkspaceCliContext,
+  auth: WorkspaceCliAuth,
+  workspace: WorkspaceSummary,
+  uploadId: string,
+  startDirectory: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetchWorkspaceApi(
+    input,
+    auth,
+    `/api/workspaces/${encodeURIComponent(workspace.id)}/files/upload/complete`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ uploadId, startDirectory }),
+      signal,
+    },
+  );
+  const body = await readResponseBody(response);
+  if (!response.ok) {
+    throw new Error(responseErrorMessage(body, `Workspace upload completion failed (HTTP ${String(response.status)})`));
+  }
+  const record = uploadResponseRecord(body, "The workspace upload completion response is invalid");
+  if (record["success"] !== true) {
+    throw new Error("The workspace upload completion response is invalid");
+  }
+}
+
+async function cancelWorkspaceUpload(
+  input: WorkspaceCliContext,
+  auth: WorkspaceCliAuth,
+  workspace: WorkspaceSummary,
+  uploadId: string,
+  startDirectory: string,
+): Promise<void> {
+  const response = await fetchWorkspaceApi(
+    input,
+    auth,
+    `/api/workspaces/${encodeURIComponent(workspace.id)}/files/upload/cancel`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ uploadId, startDirectory }),
+    },
+  );
+  const body = await readResponseBody(response);
+  if (!response.ok) {
+    throw new Error(responseErrorMessage(body, `Workspace upload cancellation failed (HTTP ${String(response.status)})`));
+  }
+}
+
+async function runWorkspaceUpload(
+  command: WorkspaceUploadCommand,
+  input: WorkspaceCliContext,
+  output: WebAppCliCommandContext<ClankyCliContext>,
+  signal?: AbortSignal,
+): Promise<CliCommandResult> {
+  const auth = await resolveWorkspaceAuth(input);
+  const workspace = await resolveWorkspace(input, auth, command.workspace, signal);
+  let fileStat;
+  try {
+    fileStat = await stat(command.localPath);
+  } catch (error) {
+    throw new Error(`Unable to read local file: ${command.localPath}`, { cause: error });
+  }
+  if (!fileStat.isFile()) {
+    throw new Error(`Local upload source is not a regular file: ${command.localPath}`);
+  }
+  if (!Number.isSafeInteger(fileStat.size) || fileStat.size < 0) {
+    throw new Error(`Local upload source has an invalid size: ${command.localPath}`);
+  }
+
+  const destination = resolveWorkspaceUploadDestination(
+    workspace,
+    command.localPath,
+    command.remotePath,
+  );
+  const uploadId = await createWorkspaceUploadSession(
+    input,
+    auth,
+    workspace,
+    destination,
+    fileStat.size,
+    command.force,
+    signal,
+  );
+  try {
+    const file = Bun.file(command.localPath);
+    await uploadFileInChunks(
+      fileStat.size,
+      (offset, endOffset) => file.slice(offset, endOffset),
+      async (offset, chunk) => await uploadWorkspaceChunk(
+        input,
+        auth,
+        workspace,
+        uploadId,
+        destination.startDirectory,
+        offset,
+        chunk,
+        signal,
+      ),
+      { signal },
+    );
+    await completeWorkspaceUpload(
+      input,
+      auth,
+      workspace,
+      uploadId,
+      destination.startDirectory,
+      signal,
+    );
+    output.stdout.write(`Uploaded ${command.localPath} to ${destination.absolutePath}\n`);
+    return { exitCode: 0 };
+  } catch (error) {
+    try {
+      await cancelWorkspaceUpload(
+        input,
+        auth,
+        workspace,
+        uploadId,
+        destination.startDirectory,
+      );
+    } catch {
+      // Preserve the original upload failure when cleanup cannot reach the server.
+    }
+    throw error;
+  }
+}
+
 export async function runWorkspaceCommand(
   context: WebAppCliCommandContext<ClankyCliContext>,
 ): Promise<CliCommandResult> {
@@ -526,7 +843,10 @@ export async function runWorkspaceCommand(
     if (command.operation === "exec") {
       return await runWorkspaceExec(command, input, context, controller.signal);
     }
-    return await runWorkspaceDownload(command, input, context, controller.signal);
+    if (command.operation === "download") {
+      return await runWorkspaceDownload(command, input, context, controller.signal);
+    }
+    return await runWorkspaceUpload(command, input, context, controller.signal);
   } catch (error) {
     if (controller.signal.aborted) {
       return { exitCode: 130, error: "Workspace operation was aborted" };
@@ -543,8 +863,8 @@ export async function runWorkspaceCommand(
 
 export function createWorkspaceCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Execute commands and download files from a workspace host.",
-    usage: "workspace <exec|download> ...",
+    description: "Execute commands and transfer files from a workspace host.",
+    usage: "workspace <exec|download|upload> ...",
     handler: runWorkspaceCommand,
   };
 }

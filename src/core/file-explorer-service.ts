@@ -1199,9 +1199,16 @@ export class FileExplorerService {
     const result = await target.executor.writeFileStream(session.tempAbsolutePath, stream, {
       append: true,
       expectedOffset: offset,
+      maxBytes: session.size - session.bytesWritten,
       signal: options?.signal,
     });
     if (!result.success) {
+      if (result.errorCode === "size_limit") {
+        throw new FileExplorerError(
+          "upload_size_exceeded",
+          "Upload chunk exceeds the remaining declared file size",
+        );
+      }
       throw new FileExplorerError(
         "invalid_upload_state",
         result.error ?? "Failed to write upload chunk",
@@ -1239,6 +1246,13 @@ export class FileExplorerService {
     }
     if (session.overwrite) {
       assertOverwriteKindCompatible(existingFinalEntry, "file");
+    }
+
+    if (session.size === 0) {
+      const initialized = await target.executor.writeFile(session.tempAbsolutePath, "");
+      if (!initialized) {
+        throw fileExplorerOperationError("Failed to initialize empty upload");
+      }
     }
 
     const result = await target.executor.exec("bash", [
