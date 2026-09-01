@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.5.8
+version: 0.5.9
 description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating framework apps, adding routes, auth, settings, realtime, sidebar actions, Docker, GitHub Actions, screenshots, Playwright validation, or explaining how to test applications that use webapp with Playwright.'
 ---
 
@@ -49,6 +49,36 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
 - When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
+
+## Server state and lifecycle
+
+- The framework owns the application state directory. It defaults to
+  `$HOME/.<app-directory-name>`, deriving the name from `envPrefix` when
+  `appDirectoryName` is omitted (`MY_APP` becomes `.my-app`).
+- `{PREFIX}_DATA_DIR` replaces the default state directory completely. Keep
+  framework SQLite data, `config.json`, detached-server metadata, and
+  `logs/server.log` under that resolved directory; do not add an app-local
+  `./data` fallback when using `createWebAppServer`.
+- Use the built-in lifecycle commands without aliases:
+  `serve` for foreground operation, `serve up` for a detached server,
+  `serve down` for idempotent shutdown, `serve status` for inspection, and
+  `serve config show|set|unset` for persisted bootstrap settings.
+- `config.json` stores only validated bootstrap values: `server.host`,
+  `server.port`, and `development.sourcePath`. Environment variables override
+  persisted host and port values; `serve up/down/status --host/--port` are
+  one-shot overrides.
+- `serve up --dev` never accepts a source path argument. It requires
+  `development.sourcePath` to be configured and existing, invokes the
+  application-provided build adapter before stopping the current server, and
+  then launches the generated binary without a `--dev` flag. A failed build
+  must leave the current server running.
+- Applications provide only their development build and generated command;
+  do not put an application's `dist` layout or bespoke process-manager script
+  into the framework. The detached parent must not construct the app or open
+  its database before spawning the child.
+- Lifecycle process ownership checks must refuse to stop an unrecognized
+  process that occupies the configured port. Keep PID/log writes atomic and
+  use the framework's state-directory and locking helpers.
 
 ## Visual validation with Playwright
 
