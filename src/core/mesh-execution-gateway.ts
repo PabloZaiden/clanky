@@ -4,7 +4,8 @@
  * This module is deliberately independent from BackendManager. The signed
  * caller supplies the absolute execution root, provider, and channel. Pairing
  * is the host-level trust boundary: the receiving host deliberately does not
- * load replicated workspace or user data or apply a per-workspace root allowlist.
+ * load replicated workspace or user data or apply a per-workspace filesystem
+ * sandbox.
  */
 
 import { randomBytes } from "node:crypto";
@@ -32,14 +33,15 @@ import {
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { CommandExecutorImpl } from "./remote-command-executor";
-import type { CommandExecutor, CommandResult } from "./command-executor";
+import {
+  isCommandOutputLimitError,
+  type CommandExecutor,
+  type CommandResult,
+} from "./command-executor";
 import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
 import { requireTrustedMeshPeer } from "./mesh-peer-auth";
-import {
-  assertManagedWorktreePath,
-} from "./git";
 
 const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
@@ -102,37 +104,18 @@ function assertStringSize(value: string, field: string): void {
   }
 }
 
-export function assertMeshExecutionPath(root: string, requested: string): string {
+export function assertMeshExecutionPath(_root: string, requested: string): string {
   if (
-    !root.startsWith("/")
-    || !requested.startsWith("/")
-    || root.includes("\0")
+    !requested.startsWith("/")
     || requested.includes("\0")
   ) {
     throw new DomainError("mesh_execution_path_invalid", "The execution path must be an absolute path without NUL bytes.");
   }
-  const normalizedRoot = posix.resolve(root);
-  const normalizedPath = posix.resolve(requested);
-  if (normalizedPath !== normalizedRoot && !normalizedPath.startsWith(`${normalizedRoot}/`)) {
-    throw new DomainError("mesh_execution_path_invalid", "The execution path is outside the workspace root.");
-  }
-  return normalizedPath;
+  return posix.resolve(requested);
 }
 
-export function assertMeshExecutionCwd(root: string, cwd: string): string {
-  const normalized = assertMeshExecutionPath(root, cwd);
-  if (normalized === posix.resolve(root)) {
-    return normalized;
-  }
-  try {
-    return assertManagedWorktreePath(root, normalized);
-  } catch (error) {
-    throw new DomainError(
-      "mesh_execution_cwd_invalid",
-      "The execution cwd must be the workspace root or a managed worktree.",
-      { cause: error },
-    );
-  }
+export function assertMeshExecutionCwd(_root: string, cwd: string): string {
+  return assertMeshExecutionPath(_root, cwd);
 }
 
 async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<void> {
@@ -367,17 +350,31 @@ export class MeshExecutionGateway {
         if (!request.command) {
           throw new DomainError("mesh_execution_request_invalid", "exec requires a command.");
         }
-        const result = await executor.exec(request.command, request.args ?? [], {
-          cwd,
-          timeout: request.timeout,
-          env: request.env,
-          signal,
-          logFailures: false,
-        });
+        let result: CommandResult;
+        try {
+          result = await executor.exec(request.command, request.args ?? [], {
+            cwd,
+            timeout: request.timeout,
+            maxOutputBytes: request.maxOutputBytes,
+            env: request.env,
+            signal,
+            logFailures: false,
+          });
+        } catch (error) {
+          if (isCommandOutputLimitError(error)) {
+            throw new DomainError(
+              "mesh_execution_result_too_large",
+              `The ${error.stream} exceeds the mesh execution size limit.`,
+              { cause: error },
+            );
+          }
+          throw error;
+        }
         assertStringSize(result.stdout, "stdout");
         assertStringSize(result.stderr, "stderr");
         return result;
         }
+
         case "fileExists": {
         if (!request.path) throw new DomainError("mesh_execution_request_invalid", "fileExists requires a path.");
         return await executor.fileExists(assertMeshExecutionPath(session.executionRoot, request.path));
@@ -410,9 +407,105 @@ export class MeshExecutionGateway {
         );
         }
       }
+
     } finally {
       session.inFlight -= 1;
     }
+  }
+
+  async streamFile(
+    sessionId: string,
+    sessionToken: string,
+    requestedPath: string,
+    signal?: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const { session } = await this.requireValidatedSession(
+      sessionId,
+      sessionToken,
+      { memberErrorCode: "mesh_peer_not_trusted" },
+    );
+    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+      throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    }
+    const path = assertMeshExecutionPath(session.executionRoot, requestedPath);
+    if (signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+    }
+
+    session.inFlight += 1;
+    try {
+      const stream = await session.executor.streamFile(path, { signal });
+      if (!stream) {
+        session.inFlight -= 1;
+        return null;
+      }
+      return this.trackStream(stream, signal, () => {
+        session.inFlight -= 1;
+      });
+    } catch (error) {
+      session.inFlight -= 1;
+      throw error;
+    }
+  }
+
+  private trackStream(
+    stream: ReadableStream<Uint8Array>,
+    signal: AbortSignal | undefined,
+    onClosed: () => void,
+  ): ReadableStream<Uint8Array> {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      try {
+        reader?.releaseLock();
+      } catch {
+        // The reader can still be locked while an abort is being delivered.
+        return;
+      }
+      closed = true;
+      signal?.removeEventListener("abort", abortHandler);
+      onClosed();
+    };
+    const abortHandler = () => {
+      void reader?.cancel().catch(() => undefined);
+    };
+    signal?.addEventListener("abort", abortHandler, { once: true });
+
+    return new ReadableStream<Uint8Array>({
+      start() {
+        reader = stream.getReader();
+      },
+      async pull(controller) {
+        if (!reader) {
+          controller.error(new DomainError(
+            "mesh_execution_response_invalid",
+            "The mesh file stream reader is unavailable.",
+          ));
+          finish();
+          return;
+        }
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            finish();
+            return;
+          }
+          controller.enqueue(value);
+        } catch (error) {
+          controller.error(error);
+          finish();
+        }
+      },
+      async cancel(reason) {
+        try {
+          await reader?.cancel(reason);
+        } finally {
+          finish();
+        }
+      },
+    });
   }
 
   closeAll(): void {

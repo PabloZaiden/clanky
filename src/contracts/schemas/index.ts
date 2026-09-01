@@ -199,6 +199,13 @@ export {
 } from "./mesh-execution";
 
 export {
+  WorkspaceExecRequestSchema,
+  WorkspaceExecResponseSchema,
+  type WorkspaceExecRequest,
+  type WorkspaceExecResponse,
+} from "./workspace-execution";
+
+export {
   MeshTerminalSessionRequestSchema,
   MeshTerminalClientFrameSchema,
   MeshTerminalServerFrameSchema,

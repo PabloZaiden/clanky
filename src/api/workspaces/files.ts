@@ -14,6 +14,7 @@ async function resolveWorkspaceFileTarget(
   _req: Request,
   workspaceId: string,
   startDirectory?: string,
+  options?: { allowOutsideRoot?: boolean },
 ): Promise<FileExplorerTarget> {
   const workspaceResult = await requireWorkspace(workspaceId);
   if (workspaceResult instanceof Response) {
@@ -34,6 +35,7 @@ async function resolveWorkspaceFileTarget(
     id: workspaceResult.id,
     rootDirectory,
     pathScopeLabel: "active workspace explorer root",
+    allowOutsideRoot: options?.allowOutsideRoot === true,
     executor,
   };
 }
@@ -45,5 +47,7 @@ export const workspaceFilesRoutes = createFileExplorerRoutes({
   responseIdField: "workspaceId",
   invalidPathError: "invalid_workspace_path",
   internalError: "workspace_file_error",
+  downloadDescription: "Stream a workspace file from the selected execution host.",
+  allowOutsideRootForDownload: true,
   resolveTarget: resolveWorkspaceFileTarget,
 });

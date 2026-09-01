@@ -5,6 +5,7 @@ import { routes, getWebAppServer } from "../server";
 import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
+import { createWorkspaceCommand } from "./workspace";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -79,6 +80,7 @@ export function createClankyCli() {
           return { exitCode };
         },
       },
+      workspace: createWorkspaceCommand(),
     },
   });
 }

@@ -61,6 +61,8 @@ import {
   UploadFileExplorerChunkRequestSchema,
   CompleteFileExplorerUploadRequestSchema,
   CancelFileExplorerUploadRequestSchema,
+  WorkspaceExecRequestSchema,
+  WorkspaceExecResponseSchema,
 } from "./schemas";
 import type { z } from "zod";
 
@@ -223,6 +225,8 @@ export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;
+export type WorkspaceExecRequest = z.infer<typeof WorkspaceExecRequestSchema>;
+export type WorkspaceExecResponse = z.infer<typeof WorkspaceExecResponseSchema>;
 
 export type ListChatsResponse = Chat[];
 

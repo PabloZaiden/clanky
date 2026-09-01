@@ -14,6 +14,7 @@ import type {
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../../src/core/command-executor";
+import { CommandOutputLimitError } from "../../src/core/command-executor";
 
 /**
  * TestCommandExecutor runs commands locally for testing purposes.
@@ -27,6 +28,7 @@ export class TestCommandExecutor implements CommandExecutor {
    * progressively while still running.
    */
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+    let abortHandler: (() => void) | undefined;
     try {
       const cwd = options?.cwd ?? process.cwd();
       if (options?.signal?.aborted) {
@@ -50,7 +52,6 @@ export class TestCommandExecutor implements CommandExecutor {
       // Support mid-execution signal-based kill so long-running commands
       // (e.g. the deterministic agent Node.js runner) can be cancelled.
       let killed = false;
-      let abortHandler: (() => void) | undefined;
       if (options?.signal) {
         abortHandler = () => {
           killed = true;
@@ -61,6 +62,7 @@ export class TestCommandExecutor implements CommandExecutor {
 
       // Stream stdout incrementally so runners can deliver output while running.
       const stdoutChunks: string[] = [];
+      let stdoutBytes = 0;
       const stdoutPromise = (async () => {
         const decoder = new TextDecoder();
         const reader = proc.stdout.getReader();
@@ -68,6 +70,16 @@ export class TestCommandExecutor implements CommandExecutor {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            stdoutBytes += value.byteLength;
+            if (
+              options?.maxOutputBytes !== undefined
+              && stdoutBytes > options.maxOutputBytes
+            ) {
+              try { proc.kill(); } catch { /* ignore */ }
+              const error = new CommandOutputLimitError("stdout", options.maxOutputBytes);
+              try { await reader.cancel(error); } catch { /* preserve limit error */ }
+              throw error;
+            }
             const chunk = decoder.decode(value, { stream: true });
             stdoutChunks.push(chunk);
             options?.onStdoutChunk?.(chunk);
@@ -83,15 +95,58 @@ export class TestCommandExecutor implements CommandExecutor {
         return stdoutChunks.join("");
       })();
 
-      const [stdout, stderr, exitCode] = await Promise.all([
+      const stderrPromise = (async () => {
+        const decoder = new TextDecoder();
+        const reader = proc.stderr.getReader();
+        let stderrBytes = 0;
+        const chunks: string[] = [];
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            stderrBytes += value.byteLength;
+            if (
+              options?.maxOutputBytes !== undefined
+              && stderrBytes > options.maxOutputBytes
+            ) {
+              try { proc.kill(); } catch { /* ignore */ }
+              const error = new CommandOutputLimitError("stderr", options.maxOutputBytes);
+              try { await reader.cancel(error); } catch { /* preserve limit error */ }
+              throw error;
+            }
+            chunks.push(decoder.decode(value, { stream: true }));
+          }
+          const finalChunk = decoder.decode();
+          if (finalChunk) chunks.push(finalChunk);
+        } finally {
+          reader.releaseLock();
+        }
+        return chunks.join("");
+      })();
+
+      const results = await Promise.allSettled([
         stdoutPromise,
-        new Response(proc.stderr).text(),
+        stderrPromise,
         proc.exited,
       ]);
-
-      if (abortHandler && options?.signal) {
-        options.signal.removeEventListener("abort", abortHandler);
+      const outputLimitResult = results.find(
+        (result): result is PromiseRejectedResult => (
+          result.status === "rejected"
+          && result.reason instanceof CommandOutputLimitError
+        ),
+      );
+      if (outputLimitResult) {
+        throw outputLimitResult.reason;
       }
+      const rejectedResult = results.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      if (rejectedResult) {
+        throw rejectedResult.reason;
+      }
+      const stdout = results[0].status === "fulfilled" ? results[0].value : "";
+      const stderr = results[1].status === "fulfilled" ? results[1].value : "";
+      const exitCode = results[2].status === "fulfilled" ? results[2].value : 1;
 
       options?.onStderrChunk?.(stderr);
 
@@ -111,12 +166,19 @@ export class TestCommandExecutor implements CommandExecutor {
         exitCode,
       };
     } catch (error) {
+      if (error instanceof CommandOutputLimitError) {
+        throw error;
+      }
       return {
         success: false,
         stdout: "",
         stderr: String(error),
         exitCode: 1,
       };
+    } finally {
+      if (abortHandler && options?.signal) {
+        options.signal.removeEventListener("abort", abortHandler);
+      }
     }
   }
 

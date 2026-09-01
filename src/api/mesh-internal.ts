@@ -53,6 +53,8 @@ function internalMeshErrorResponse(error: unknown): Response {
           : error.code === "mesh_execution_session_invalid"
             || error.code === "mesh_execution_session_expired"
             ? 401
+          : error.code === "mesh_execution_result_too_large"
+            ? 413
           : error.code === "mesh_terminal_session_invalid"
             || error.code === "mesh_terminal_session_expired"
             ? 401
@@ -220,6 +222,42 @@ export const meshInternalRoutes = defineRoutes({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
           encryptedPayload: encryptMeshPayload(result, encryptionPublicKey),
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/execution/file": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Stream a file from an authenticated Mesh CommandExecutor session.",
+    tags: ["mesh", "internal", "execution"],
+    async GET(req): Promise<Response> {
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      const requestedPath = new URL(req.url).searchParams.get("path");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_execution_session_invalid", "Mesh execution session headers are required.", 401);
+      }
+      if (!requestedPath) {
+        return errorResponse("mesh_execution_request_invalid", "A file path is required.", 400);
+      }
+      try {
+        const stream = await meshExecutionGateway.streamFile(
+          sessionId,
+          sessionToken,
+          requestedPath,
+          req.signal,
+        );
+        if (!stream) {
+          return errorResponse("file_not_found", "Requested file does not exist", 404);
+        }
+        return new Response(stream, {
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "application/octet-stream",
+          },
         });
       } catch (error) {
         return internalMeshErrorResponse(error);

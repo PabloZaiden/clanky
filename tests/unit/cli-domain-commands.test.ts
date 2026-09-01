@@ -4,6 +4,7 @@ import {
   parseMeshCommandArgs,
 } from "../../src/cli/mesh";
 import { parsePreviewCommandArgs } from "../../src/cli/preview";
+import { parseWorkspaceCommandArgs } from "../../src/cli/workspace";
 
 describe("CLI preview command parsing", () => {
   test("requires workspace and port", () => {
@@ -67,6 +68,52 @@ describe("CLI preview command parsing", () => {
   });
 });
 
+describe("CLI workspace command parsing", () => {
+  test("parses exec options and preserves command arguments after --", () => {
+    expect(parseWorkspaceCommandArgs([
+      "exec",
+      "workspace-name",
+      "--cwd",
+      "/tmp",
+      "--timeout",
+      "5000",
+      "--",
+      "printf",
+      "%s",
+      "--value",
+    ])).toEqual({
+      operation: "exec",
+      workspace: "workspace-name",
+      cwd: "/tmp",
+      timeoutMs: 5000,
+      command: "printf",
+      args: ["%s", "--value"],
+    });
+  });
+
+  test("parses download output and force options", () => {
+    expect(parseWorkspaceCommandArgs([
+      "download",
+      "workspace-id",
+      "/tmp/report.bin",
+      "--output",
+      "report.bin",
+      "--force",
+    ])).toEqual({
+      operation: "download",
+      workspace: "workspace-id",
+      remotePath: "/tmp/report.bin",
+      output: "report.bin",
+      force: true,
+    });
+  });
+
+  test("requires a command separator for exec", () => {
+    expect(() => parseWorkspaceCommandArgs(["exec", "workspace-id", "printf"]))
+      .toThrow("workspace exec requires -- before COMMAND");
+  });
+});
+
 describe("CLI mesh command parsing and requests", () => {
   test("parses representative subcommands and options", () => {
     expect(parseMeshCommandArgs([
@@ -80,6 +127,7 @@ describe("CLI mesh command parsing and requests", () => {
       endpoint: "https://peer.example",
       targetUserId: "user-2",
     });
+
     expect(parseMeshCommandArgs([
       "rejoin",
       "https://peer.example",

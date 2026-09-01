@@ -102,6 +102,67 @@ afterEach(async () => {
 });
 
 describe("mesh command executor client", () => {
+  test("streams arbitrary host files and propagates cancellation", async () => {
+    const {
+      localIdentity,
+      localUserId,
+      remoteNodeId,
+    } = await setupClientMesh();
+    const encryptionPublicKey = localIdentity.encryptionPublicKey;
+    if (!encryptionPublicKey) {
+      throw new Error("The local Mesh identity has no encryption public key.");
+    }
+
+    let streamCancelled = false;
+    const fetchImpl: typeof globalThis.fetch = Object.assign(
+      async (
+        url: Parameters<typeof globalThis.fetch>[0],
+        init?: Parameters<typeof globalThis.fetch>[1],
+      ): Promise<Response> => {
+        if (init?.method === "GET") {
+          const stream = new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new TextEncoder().encode("mesh file payload"));
+            },
+            cancel() {
+              streamCancelled = true;
+            },
+          });
+          return new Response(stream, { status: 200 });
+        }
+        const parsedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(new URL(String(url)).pathname).toContain("/api/mesh/internal/execution/session");
+        return Response.json({
+          protocolVersion: 1,
+          sessionId: "session-file-1",
+          expiresAt: parsedBody["expiresAt"],
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: "s".repeat(32) },
+            encryptionPublicKey,
+          ),
+        });
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    );
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace/repo",
+      executionNodeId: remoteNodeId,
+      provider: "copilot",
+      localUserId,
+      fetch: fetchImpl,
+    });
+
+    const stream = await client.streamFile("/tmp/report.bin");
+    expect(stream).toBeDefined();
+    const reader = stream!.getReader();
+    const firstChunk = await reader.read();
+    expect(new TextDecoder().decode(firstChunk.value)).toBe("mesh file payload");
+    await reader.cancel();
+    expect(streamCancelled).toBe(true);
+    client.closeSession();
+  });
+
   test("requests ACP sessions below the gateway lifetime limit", async () => {
     const {
       localIdentity,

@@ -432,6 +432,18 @@ describe("workspace files API integration", () => {
     }
   });
 
+  test("downloads an absolute path from anywhere on the workspace host", async () => {
+    const workspace = await createWorkspace();
+    const outsidePath = join(alternateRootDir, "notes", "todo.txt");
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(outsidePath)}`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"todo.txt\"");
+    expect(await response.text()).toBe("alternate root note\n");
+  });
+
   test("starts streaming files larger than the previous file explorer download limit without base64 buffering", async () => {
     const largeDownloadExecutor = new LargeDownloadExecutor();
     backendManager.setExecutorFactoryForTesting(() => largeDownloadExecutor);

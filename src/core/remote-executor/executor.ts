@@ -17,6 +17,7 @@ import type {
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../command-executor";
+import { CommandOutputLimitError } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
@@ -98,9 +99,21 @@ function createProcessStdoutStream(
       abortHandler = undefined;
     }
   };
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    try {
+      reader?.releaseLock();
+    } catch {
+      // The reader may still be locked while cancellation is being delivered.
+      return;
+    }
+    finished = true;
+    cleanup();
+  };
 
   return new ReadableStream<Uint8Array>({
-    async start(controller: ReadableStreamDefaultController<Uint8Array>) {
+    start() {
       const stdoutReader = stdout.getReader();
       reader = stdoutReader;
       abortHandler = () => {
@@ -109,70 +122,72 @@ function createProcessStdoutStream(
         killProcess();
       };
 
+      if (signal?.aborted) {
+        abortHandler();
+        return;
+      }
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    },
+    async pull(controller: ReadableStreamDefaultController<Uint8Array>) {
+      if (!reader) {
+        controller.error(new Error(`${label} stream reader is unavailable`));
+        finish();
+        return;
+      }
+
       try {
-        if (signal?.aborted) {
-          abortHandler();
-          controller.error(new Error(`${label} aborted`));
-          return;
-        }
-
-        signal?.addEventListener("abort", abortHandler, { once: true });
-
-        while (true) {
-          const { done, value } = await stdoutReader.read();
-          if (done) {
-            break;
-          }
+        const { done, value } = await reader.read();
+        if (done) {
           if (cancelled) {
+            finish();
             return;
           }
+          const processResult = await Promise.race([
+            processCompletionPromise,
+            cancelledPromise,
+          ]);
+          if (processResult === "cancelled" || cancelled) {
+            finish();
+            return;
+          }
+          if (processResult.type === "error") {
+            controller.error(
+              processResult.error instanceof Error
+                ? processResult.error
+                : new Error(String(processResult.error)),
+            );
+            finish();
+            return;
+          }
+          if (processResult.exitCode !== 0) {
+            controller.error(
+              new Error(processResult.stderr.trim() || `${label} failed with exit code ${processResult.exitCode}`),
+            );
+            finish();
+            return;
+          }
+          controller.close();
+          finish();
+          return;
+        }
+        if (!cancelled) {
           controller.enqueue(value);
         }
-
-        if (cancelled) {
-          return;
-        }
-
-        const processResult = await Promise.race([
-          processCompletionPromise,
-          cancelledPromise,
-        ]);
-        if (processResult === "cancelled" || cancelled) {
-          return;
-        }
-        if (processResult.type === "error") {
-          controller.error(
-            processResult.error instanceof Error
-              ? processResult.error
-              : new Error(String(processResult.error)),
-          );
-          return;
-        }
-        if (processResult.exitCode !== 0) {
-          controller.error(
-            new Error(processResult.stderr.trim() || `${label} failed with exit code ${processResult.exitCode}`),
-          );
-          return;
-        }
-        controller.close();
       } catch (error) {
         if (!cancelled) {
           controller.error(error instanceof Error ? error : new Error(String(error)));
         }
-      } finally {
-        cleanup();
-        try {
-          stdoutReader.releaseLock();
-        } catch {
-          // The reader may already be released by an abort-before-start cleanup.
-        }
+        finish();
       }
     },
-    cancel() {
+    async cancel() {
       markCancelled();
-      cleanup();
-      void reader?.cancel().catch(() => undefined);
-      killProcess();
+      try {
+        await reader?.cancel();
+      } finally {
+        finish();
+        killProcess();
+      }
     },
   });
 }
@@ -222,9 +237,30 @@ export class CommandExecutorImpl implements CommandExecutor {
       const signal = options?.signal;
       const onStdoutChunk = options?.onStdoutChunk;
       const onStderrChunk = options?.onStderrChunk;
+      const maxOutputBytes = options?.maxOutputBytes;
       const result = this.provider === "ssh"
-        ? await this.execSsh(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk)
-        : await this.execLocal(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk);
+        ? await this.execSsh(
+          command,
+          args,
+          cwd,
+          timeout,
+          env,
+          signal,
+          onStdoutChunk,
+          onStderrChunk,
+          maxOutputBytes,
+        )
+        : await this.execLocal(
+          command,
+          args,
+          cwd,
+          timeout,
+          env,
+          signal,
+          onStdoutChunk,
+          onStderrChunk,
+          maxOutputBytes,
+        );
 
       if (!result.success && options?.logFailures !== false) {
         log.error(`${LOG_PREFIX} Command failed: ${cmdStr}`);
@@ -275,7 +311,11 @@ export class CommandExecutorImpl implements CommandExecutor {
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
+    maxOutputBytes?: number,
   ): Promise<CommandResult> {
+    let proc: Bun.Subprocess | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let abortHandler: (() => void) | undefined;
     try {
       if (signal?.aborted) {
         return {
@@ -292,27 +332,41 @@ export class CommandExecutorImpl implements CommandExecutor {
         ...env,
       };
 
-      const proc = Bun.spawn([command, ...args], {
+      const subprocess = Bun.spawn([command, ...args], {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
         env: commandEnv,
       });
+      proc = subprocess;
 
-      const stdoutPromise = readProcessStream(proc.stdout, onStdoutChunk);
-      const stderrPromise = readProcessStream(proc.stderr, onStderrChunk);
+      const killProcess = () => {
+        try {
+          proc?.kill();
+        } catch {
+          // Ignore kill errors while stopping a process after an output limit.
+        }
+      };
+      const stdoutPromise = readProcessStream(subprocess.stdout, onStdoutChunk, {
+        maxBytes: maxOutputBytes,
+        streamName: "stdout",
+        onLimit: killProcess,
+      });
+      const stderrPromise = readProcessStream(subprocess.stderr, onStderrChunk, {
+        maxBytes: maxOutputBytes,
+        streamName: "stderr",
+        onLimit: killProcess,
+      });
 
       let timedOut = false;
       let aborted = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      let abortHandler: (() => void) | undefined;
       const timeoutPromise = timeoutMs === undefined
         ? undefined
         : new Promise<number>((resolve) => {
             timeoutId = setTimeout(() => {
               timedOut = true;
               try {
-                proc.kill();
+                subprocess.kill();
               } catch {
                 // Ignore kill errors during timeout cleanup
               }
@@ -328,7 +382,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         if (signal.aborted) {
           aborted = true;
           try {
-            proc.kill();
+            subprocess.kill();
           } catch {
             // Ignore kill errors during abort cleanup
           }
@@ -339,7 +393,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         abortHandler = () => {
           aborted = true;
           try {
-            proc.kill();
+            subprocess.kill();
           } catch {
             // Ignore kill errors during abort cleanup
           }
@@ -349,7 +403,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         signal.addEventListener("abort", abortHandler, { once: true });
       });
 
-      const racePromises: Promise<number>[] = [proc.exited];
+      const racePromises: Promise<number>[] = [subprocess.exited];
       if (timeoutPromise) {
         racePromises.push(timeoutPromise);
       }
@@ -364,7 +418,28 @@ export class CommandExecutorImpl implements CommandExecutor {
         signal.removeEventListener("abort", abortHandler);
       }
 
-      const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+      const streamResults = await Promise.allSettled([stdoutPromise, stderrPromise]);
+      const outputLimitResult = streamResults.find(
+        (result): result is PromiseRejectedResult => (
+          result.status === "rejected"
+          && result.reason instanceof CommandOutputLimitError
+        ),
+      );
+      if (outputLimitResult) {
+        throw outputLimitResult.reason;
+      }
+      const streamError = streamResults.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      if (streamError) {
+        throw streamError.reason;
+      }
+      const stdout = streamResults[0].status === "fulfilled"
+        ? streamResults[0].value
+        : "";
+      const stderr = streamResults[1].status === "fulfilled"
+        ? streamResults[1].value
+        : "";
 
       if (timedOut) {
         return {
@@ -391,12 +466,22 @@ export class CommandExecutorImpl implements CommandExecutor {
         exitCode: racedExitCode,
       };
     } catch (error) {
+      if (error instanceof CommandOutputLimitError) {
+        throw error;
+      }
       return {
         success: false,
         stdout: "",
         stderr: String(error),
         exitCode: 1,
       };
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
     }
   }
 
@@ -409,6 +494,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
+    maxOutputBytes?: number,
   ): Promise<CommandResult> {
     if (!this.host) {
       return {
@@ -462,6 +548,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         signal,
         onStdoutChunk,
         onStderrChunk,
+        maxOutputBytes,
       );
     }
 
@@ -472,6 +559,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       signal,
       onStdoutChunk,
       onStderrChunk,
+      maxOutputBytes,
     );
   }
 
@@ -492,6 +580,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
+    maxOutputBytes?: number,
   ): Promise<CommandResult> {
     const initializerKey = this.buildSshControlMasterInitializerKey(sshTarget);
     const initializer = sshControlMasterInitializers.get(initializerKey);
@@ -504,6 +593,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         signal,
         onStdoutChunk,
         onStderrChunk,
+        maxOutputBytes,
       );
     }
 
@@ -514,6 +604,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       signal,
       onStdoutChunk,
       onStderrChunk,
+      maxOutputBytes,
     );
     sshControlMasterInitializers.set(initializerKey, currentCommand);
     currentCommand.finally(() => {
@@ -529,6 +620,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     signal?: AbortSignal,
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
+    maxOutputBytes?: number,
   ): Promise<CommandResult> {
     return await this.execLocal(
       "ssh",
@@ -546,6 +638,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       signal,
       onStdoutChunk,
       onStderrChunk,
+      maxOutputBytes,
     );
   }
 

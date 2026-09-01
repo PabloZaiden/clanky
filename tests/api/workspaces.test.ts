@@ -553,6 +553,100 @@ describe("Workspace API Integration", () => {
     });
   });
 
+  describe("POST /api/workspaces/:id/exec", () => {
+    async function createExecutionWorkspace(name: string): Promise<{ id: string }> {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          directory: testWorkDir,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(response.status).toBe(201);
+      return await response.json() as { id: string };
+    }
+
+    test("executes a command with an arbitrary absolute cwd", async () => {
+      const workspace = await createExecutionWorkspace("Execution Workspace");
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "pwd",
+          args: [],
+          cwd: tmpdir(),
+        }),
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toMatchObject({
+        workspaceId: workspace.id,
+        success: true,
+        stdout: `${tmpdir()}\n`,
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+
+    test("returns command failures in the response envelope", async () => {
+      const workspace = await createExecutionWorkspace("Failed Execution Workspace");
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "sh",
+          args: ["-c", "printf 'failure\\n' >&2; exit 7"],
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        workspaceId: workspace.id,
+        success: false,
+        stdout: "",
+        stderr: "failure\n",
+        exitCode: 7,
+      });
+    });
+
+    test("rejects a cwd that does not exist", async () => {
+      const workspace = await createExecutionWorkspace("Invalid Cwd Workspace");
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "pwd",
+          args: [],
+          cwd: join(testWorkDir, "does-not-exist"),
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "workspace_exec_cwd_not_found",
+      });
+    });
+
+    test("rejects command output larger than the response limit", async () => {
+      const workspace = await createExecutionWorkspace("Large Output Workspace");
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "head",
+          args: ["-c", "8388609", "/dev/zero"],
+        }),
+      });
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toMatchObject({
+        error: "workspace_exec_output_limit_exceeded",
+      });
+    });
+  });
+
   describe("GET /api/workspaces/:id", () => {
     test("returns workspace by id", async () => {
       // Create a workspace

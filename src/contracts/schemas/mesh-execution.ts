@@ -39,6 +39,7 @@ export const MeshExecutionRpcRequestSchema = z.object({
   args: z.array(z.string().max(16_384)).max(256).optional(),
   cwd: MeshExecutionPathSchema.optional(),
   timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
+  maxOutputBytes: z.number().int().min(1).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
   path: MeshExecutionPathSchema.optional(),
   content: z.string().max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
