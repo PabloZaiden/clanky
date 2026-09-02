@@ -8,7 +8,7 @@
         "@huggingface/transformers": "4.2.0",
         "@monaco-editor/react": "4.7.0",
         "@novnc/novnc": "1.7.0",
-        "@pablozaiden/webapp": "1.9.0",
+        "@pablozaiden/webapp": "1.9.2",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-webgl": "0.19.0",
@@ -21,7 +21,7 @@
         "reflect-metadata": "0.2.2",
         "remark-gfm": "4.0.1",
         "tailwindcss": "4.3.3",
-        "zod": "4.4.3",
+        "zod": "4.5.4",
       },
       "devDependencies": {
         "@types/bun": "1.4.0",
@@ -126,7 +126,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@0.0.7", "", { "peerDependencies": { "typescript": "^7.0.0" } }, "sha512-ZIcBfkxatiMYajviF8TKu6Yt7aUMWOLp2DufTLFqOJqQQzv8p8TNt5IesHirfFy9R2vIFnz1gRsUk5CBm+5eaw=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.9.0", "", { "dependencies": { "@pablozaiden/installer": "0.0.7", "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.4.3" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "sha512-LwIrhurKhIqpoQx5QBjCzEcI5DXsSwDeEjYbvVmSEejqS1gWGWN1FRBw+oKEuykJSDqzpkAr7W9C17etBmLjWQ=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.9.2", "", { "dependencies": { "@pablozaiden/installer": "0.0.7", "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.5.4" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "sha512-xxc0QYUzcOwBhsthqWDhFjjlWLPQ2/xnr5eDEpbJWBiva4AAIm8gTOCNBMvCrYFj6YCAbenOqnnjZsQHnk5ixQ=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.6.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.6.0", "asn1js": "^3.0.6", "tslib": "^2.8.1" } }, "sha512-cBRCKtYPF7vJGN76/yG8VbxRcHLPF3HnkoHhKOZeHpoVtbMYfY9ROKtH3DtYUY9m8uI1Mh47PRhHf2hSK3xcSQ=="],
 
@@ -542,7 +542,7 @@
 
     "vfile-message": ["vfile-message@4.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "unist-util-stringify-position": "^4.0.0" } }, "sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw=="],
 
-    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "zod": ["zod@4.5.4", "", {}, "sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
