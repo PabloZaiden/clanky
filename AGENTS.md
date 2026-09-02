@@ -441,6 +441,76 @@ test("hello world", () => {
 - **Do not add tests for wrappers around `fetch`, endpoint string construction, button click plumbing, modal open/close mechanics, default labels, placeholder text, aria wording, CSS utility classes, DOM nesting, or visibility-only toggles.**
 - **Do not add removal-only regression tests.** Avoid tests whose main value is proving old UI/copy/behavior is gone unless the absence is a security or explicit product contract.
 
+### Test value decision gate
+
+Before adding or keeping a test, identify the user-visible behavior, the
+public boundary that exercises it, and the regression it would catch. Keep the
+test only when the answer is concrete:
+
+- **Assert behavior, not structure.** Prefer HTTP responses, CLI output, public
+  websocket messages, persisted records, filesystem effects on the workspace
+  host, state transitions, and externally observable cleanup. If a production
+  refactor could preserve the behavior while breaking the test, rewrite or
+  delete the test.
+- **Use the highest practical boundary.** API tests should exercise real HTTP
+  requests; integration tests should cover workflows crossing multiple
+  subsystems; E2E tests should use the real application boundary sparingly.
+  Do not duplicate the same workflow in both API and integration suites just
+  because the files have different directory names.
+- **Keep unit tests exceptional.** A unit test is justified only for a small,
+  stable domain contract that is hard or unsafe to prove through a public
+  workflow, such as migration/data-loss guards, path containment, protocol
+  signing/framing, secret redaction, shell injection, scheduling, or
+  cancellation/lifecycle races. Add a short rationale next to each such test.
+- **Prefer one scenario per rule.** Do not multiply tests for every verb,
+  endpoint, or resource when they exercise the same validation, `400`/`404`
+  mapping, field round-trip, or default. Retain additional cases only when
+  they protect a distinct status/error code, security boundary, state
+  transition, data-safety rule, or external compatibility contract.
+
+### Test boundary and harness rules
+
+- `tests/native-api-server.ts` invokes route handlers with a test context; it
+  does **not** run the framework authentication or same-origin middleware.
+  Tests using `serveNativeApiRoutes()` must not claim to cover authentication,
+  authorization middleware, CSRF, or same-origin enforcement. Test those
+  behaviors by booting the real framework/server boundary, and keep route
+  metadata checks as a defense-in-depth contract rather than a substitute for
+  an authenticated request.
+- API tests must not import persistence modules to arrange or assert route
+  behavior, and must not spy on a manager merely to prove delegation. Arrange
+  state through the API or a documented test fixture, then assert the public
+  response and resulting behavior. Direct persistence tests belong only to
+  persistence/migration contracts that cannot be covered higher up.
+- Use deterministic local doubles only at genuine external seams (for
+  example, a local ACP runtime or GitHub adapter). Do not test that a mock was
+  called, that a fake adapter returned its own value, or that a private map,
+  event emitter, translator, or controller followed an implementation
+  sequence. Promote the scenario to an API/integration test instead.
+- Internal agent prompt wording, headings, log messages, request construction,
+  generated SQL/GraphQL, and internal event ordering are not contracts unless
+  an external protocol or security rule explicitly requires them. Assert the
+  resulting user-visible output, persisted state, side effect, or stable
+  protocol payload.
+- Do not leave empty `describe` blocks or lifecycle hooks after removing their
+  tests. A zero-test suite or bucket must fail discovery rather than report a
+  false-green run.
+
+### Test review checklist
+
+For every new or substantially changed test, answer these questions in the
+review:
+
+1. What real regression would this catch?
+2. Which public boundary or justified pure contract does it exercise?
+3. Could an implementation refactor preserve behavior and invalidate this
+   assertion? If yes, make the assertion more behavioral or remove it.
+4. Is the behavior already covered at a higher layer? If yes, merge or delete
+   the lower-level duplicate.
+5. If it is an exceptional unit test, why is a public-boundary test
+   impractical, and what security, data-safety, protocol, or lifecycle risk
+   makes the unit contract worth retaining?
+
 ### Test Patterns
 
 1. **API tests** (`tests/api/`): Preferred for most coverage. Exercise real HTTP requests, persistence, workspace setup, and observable API responses.

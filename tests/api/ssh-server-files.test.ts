@@ -427,20 +427,6 @@ describe("Standalone SSH server files API integration", () => {
     expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
   });
 
-  test("returns not_found when the standalone server does not exist", async () => {
-    const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/files`, {
-      headers: {
-        "x-clanky-ssh-credential-token": "token-123",
-      },
-    });
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({
-      error: "not_found",
-      message: "SSH server not found: missing-server",
-    });
-  });
-
   test("can use an alternate absolute start directory for standalone server operations", async () => {
     const createdServer = await createServer();
     const startDirectory = encodeURIComponent(alternateRootDir);

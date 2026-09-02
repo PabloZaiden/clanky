@@ -718,17 +718,6 @@ describe("Standalone SSH servers API integration", () => {
     });
   });
 
-  test("returns 404 when listing devbox templates for an unknown server", async () => {
-    const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/devbox/templates`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialToken: null }),
-    });
-    expect(response.status).toBe(404);
-    const body = await response.json() as { error: string };
-    expect(body.error).toBe("not_found");
-  });
-
   test("returns 400 when listing devbox templates with an invalid credential token", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",

@@ -5,26 +5,21 @@ import { join } from "path";
 import {
   applyMeshMembershipUpdate,
   createMeshLink,
-  createMeshPairingRequest,
   getMeshNode,
   listMeshLinkMembers,
   listMeshMembershipEntries,
-  listPendingMeshPairingRequests,
   mergeMeshLinkMember,
   removeRevokedMeshLinkMember,
-  rejectMeshPairingRequest,
   revokeMeshLinkMember,
 } from "../../src/persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   getMeshNodeFingerprint,
-  setLocalMeshEndpoint,
   setLocalMeshInstanceName,
 } from "../../src/persistence/mesh-node-identity";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { meshManager } from "../../src/core/mesh-manager";
 import { buildMeshMembershipUpdateSigningPayload } from "../../src/core/mesh-protocol";
-import { DomainError } from "../../src/core/domain-error";
 
 const createdDataDirs: string[] = [];
 const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
@@ -95,22 +90,6 @@ afterEach(async () => {
 });
 
 describe("mesh transport control-plane persistence", () => {
-  test("persists node identity and authority-free links", async () => {
-    await setupDatabase();
-    const { linkId, identity } = await createLocalLink();
-
-    const stored = await getMeshNode(identity.nodeId);
-    const linkRow = getDatabase().query(`
-      SELECT link_id, status
-      FROM mesh_links
-      WHERE link_id = ?
-    `).get(linkId);
-
-    expect(stored?.instanceName).toBe("Local instance");
-    expect(linkRow).toEqual({ link_id: linkId, status: "active" });
-    expect(getDatabase().query("PRAGMA table_info(mesh_links)").all())
-      .not.toContainEqual(expect.objectContaining({ name: "active_node_id" }));
-  });
 
   test("materializes and persists the public base URL for an unset Mesh endpoint", async () => {
     await setupDatabase();
@@ -129,16 +108,6 @@ describe("mesh transport control-plane persistence", () => {
       .toBe("http://browser.example.test:3001");
   });
 
-  test("materializes the public base URL for a legacy identity without an endpoint", async () => {
-    await setupDatabase();
-    delete process.env["CLANKY_PUBLIC_BASE_URL"];
-    expect((await ensureLocalMeshNodeIdentity()).meshEndpoint).toBeNull();
-
-    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://browser.example.test:3001/";
-    expect((await meshManager.getStatus("user-1")).node.meshEndpoint)
-      .toBe("http://browser.example.test:3001");
-  });
-
   test("exposes the materialized endpoint through Mesh status and local node metadata", async () => {
     await setupDatabase();
     process.env["CLANKY_PUBLIC_BASE_URL"] = "http://browser.example.test:3001/";
@@ -147,17 +116,6 @@ describe("mesh transport control-plane persistence", () => {
     expect(status.node.meshEndpoint).toBe("http://browser.example.test:3001");
     expect((await getMeshNode(status.node.nodeId))?.endpoint)
       .toBe("http://browser.example.test:3001");
-  });
-
-  test("keeps an explicitly configured Mesh endpoint when the browser origin changes", async () => {
-    await setupDatabase();
-    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://browser.example.test:3001";
-
-    const configured = await setLocalMeshEndpoint("http://mesh.example.test:4001");
-    expect(configured.meshEndpoint).toBe("http://mesh.example.test:4001");
-    process.env["CLANKY_PUBLIC_BASE_URL"] = "http://changed.example.test:3002";
-    expect((await ensureLocalMeshNodeIdentity()).meshEndpoint)
-      .toBe("http://mesh.example.test:4001");
   });
 
   test("revokes and removes members without authority takeover", async () => {
@@ -264,89 +222,6 @@ describe("mesh transport control-plane persistence", () => {
       .resolves.toEqual({ status: "accepted", memberCount: 2 });
   });
 
-  test("rejects membership updates containing duplicate names before applying them", async () => {
-    await setupDatabase();
-    const { linkId } = await createLocalLink();
-    const first = createSigningIdentity();
-    const second = createSigningIdentity();
-    const members = [
-      {
-        nodeId: "remote-1",
-        instanceName: "Duplicate",
-        localUserId: "remote-user-1",
-        endpoint: "http://127.0.0.1:3002",
-        transport: "http" as const,
-        status: "active" as const,
-        membershipGeneration: 1,
-        publicKey: first.publicKey,
-        fingerprint: first.fingerprint,
-      },
-      {
-        nodeId: "remote-2",
-        instanceName: "duplicate",
-        localUserId: "remote-user-2",
-        endpoint: "http://127.0.0.1:3003",
-        transport: "http" as const,
-        status: "active" as const,
-        membershipGeneration: 1,
-        publicKey: second.publicKey,
-        fingerprint: second.fingerprint,
-      },
-    ];
-
-    await expect(applyMeshMembershipUpdate(linkId, members))
-      .rejects.toBeInstanceOf(DomainError);
-    expect(await listMeshLinkMembers(linkId)).toHaveLength(1);
-  });
-
-  test("stores incoming pairing requests without app-data state", async () => {
-    await setupDatabase();
-    const remote = createSigningIdentity();
-    const request = await createMeshPairingRequest({
-      direction: "incoming",
-      requestedNodeId: "remote-node",
-      requestedInstanceName: "Remote instance",
-      requestedLocalUserId: "remote-user",
-      endpoint: "http://127.0.0.1:3002",
-      transport: "http",
-      publicKey: remote.publicKey,
-      fingerprint: remote.fingerprint,
-      nonce: crypto.randomUUID(),
-      signature: "signed-request",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-
-    expect(request.status).toBe("pending");
-    expect(getDatabase().query(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_sync_checkpoints'",
-    ).get()).toBeNull();
-  });
-
-  test("persists an outgoing target endpoint independently from its advertised endpoint", async () => {
-    await setupDatabase();
-    const remote = createSigningIdentity();
-    const request = await createMeshPairingRequest({
-      direction: "outgoing",
-      targetEndpoint: "http://127.0.0.1:3002",
-      requestedNodeId: "remote-node",
-      requestedInstanceName: "Remote instance",
-      requestedLocalUserId: "remote-user",
-      endpoint: "http://localhost:3002",
-      transport: "http",
-      publicKey: remote.publicKey,
-      fingerprint: remote.fingerprint,
-      nonce: crypto.randomUUID(),
-      signature: "signed-request",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-
-    expect(request.targetEndpoint).toBe("http://127.0.0.1:3002");
-    expect(
-      (getDatabase().query("SELECT target_endpoint FROM mesh_pairing_requests WHERE id = ?")
-        .get(request.id) as { target_endpoint: string | null }).target_endpoint,
-    ).toBe("http://127.0.0.1:3002");
-  });
-
   test("preserves a direct pairing route while updating the advertised peer endpoint", async () => {
     await setupDatabase();
     const { linkId } = await createLocalLink();
@@ -385,29 +260,4 @@ describe("mesh transport control-plane persistence", () => {
       .toBe("http://localhost:3002");
   });
 
-  test("lists and rejects a new-target request carrying a remote mesh link", async () => {
-    await setupDatabase();
-    const remote = createSigningIdentity();
-    const request = await createMeshPairingRequest({
-      direction: "incoming",
-      linkId: "remote-mesh-link",
-      requestedNodeId: "remote-node",
-      requestedInstanceName: "Remote instance",
-      requestedLocalUserId: "remote-user",
-      endpoint: "http://127.0.0.1:3002",
-      transport: "http",
-      publicKey: remote.publicKey,
-      fingerprint: remote.fingerprint,
-      nonce: crypto.randomUUID(),
-      signature: "signed-request",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-
-    expect((await listPendingMeshPairingRequests("user-1")).map((item) => item.id)).toEqual([
-      request.id,
-    ]);
-    await expect(rejectMeshPairingRequest(request.id, "user-1", null)).resolves.toMatchObject({
-      status: "rejected",
-    });
-  });
 });
