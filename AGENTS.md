@@ -12,8 +12,8 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - After checking the document, update what the next steps to work on are, and what's important to know about it to be able to continue working on it later.
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
 - When you need to fix a bug, first make sure you can reproduce it locally unless the user is explicit that reproduction is not needed. Trying to fix a bug before reproducing it can make things worse.
-- When you need to see how something works or looks in the UI, use Playwright for manual browser validation during development.
-- Do not add Playwright tests to this repository; prefer lower-level automated tests and keep Playwright as a development tool rather than a committed test layer.
+- When you need to see how something works or looks in the UI, use `Bun.WebView` from Bun 1.4+ for manual browser validation during development.
+- Do not add browser automation tests to this repository; prefer lower-level automated tests and keep `Bun.WebView` as a development tool rather than a committed test layer.
 - Tasks that involve UI changes or adjustments must finish, whenever possible, with one desktop screenshot and one mobile screenshot for each UI change made. If screenshots cannot be captured, document why.
 - Don't say something is done until you have verified that all the goals are met.
 - The general task then is:
@@ -430,7 +430,7 @@ test("hello world", () => {
 - A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
 - **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.
 - **Do not add frontend component/hook tests.** They have historically produced brittle coverage around labels, buttons, copy, DOM structure, CSS classes, mocked fetch wrappers, and implementation details. Test the behavior through API/integration/e2e boundaries instead.
-- **For transcript and file-link UI, do not test DOM attributes, punctuation, endpoint construction, fetch or click plumbing, or browser-standard interactions.** Cover file/path safety, metadata, containment, and file-versus-directory behavior through API/integration boundaries, and validate presentation manually with Playwright when needed.
+- **For transcript and file-link UI, do not test DOM attributes, punctuation, endpoint construction, fetch or click plumbing, or browser-standard interactions.** Cover file/path safety, metadata, containment, and file-versus-directory behavior through API/integration boundaries, and validate presentation manually with `Bun.WebView` when needed.
 - **Remove frontend test helpers, mocks, and factories when their last meaningful test is removed.** Do not retain speculative frontend harnesses or build broad mock systems for implementation-detail tests; prefer no test over low-signal infrastructure.
 - **Do not add unit tests by default.** Unit tests are allowed only for small, stable, pure domain contracts that are hard or impossible to cover through public boundaries. Get explicit justification before adding them.
 - **Do not test mocks.** Avoid tests where the main assertion is that a mocked function was called, a mocked adapter returned a value, or a fake implementation behaves like itself.
