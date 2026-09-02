@@ -15,12 +15,95 @@ type TerminalHelpers = {
   sendTerminalAuthError: typeof sendTerminalAuthError;
 };
 
+interface PendingTerminalResize {
+  cols: number;
+  rows: number;
+}
+
+interface TerminalResizeState {
+  pending?: PendingTerminalResize;
+  running: boolean;
+}
+
+type TerminalResizeStates = WeakMap<
+  ServerWebSocket<WebSocketData>,
+  TerminalResizeState
+>;
+
+function logTerminalResizeError(
+  ws: ServerWebSocket<WebSocketData>,
+  error: unknown,
+): void {
+  log.warn("Ignoring terminal resize error", {
+    terminalSessionId: ws.data.workspaceTerminalSessionId,
+    sshServerSessionId: ws.data.sshServerSessionId,
+    error: String(error),
+  });
+}
+
+async function drainLatestTerminalResize(
+  ws: ServerWebSocket<WebSocketData>,
+  states: TerminalResizeStates,
+  state: TerminalResizeState,
+): Promise<void> {
+  try {
+    while (state.pending) {
+      const request = state.pending;
+      state.pending = undefined;
+      const bridge = ws.data.terminalBridge;
+      const user = ws.data.user;
+      if (!bridge || !user) {
+        return;
+      }
+      try {
+        await runWithCurrentUser(
+          user,
+          () => bridge.resize(request.cols, request.rows),
+        );
+      } catch (error) {
+        logTerminalResizeError(ws, error);
+      }
+    }
+  } finally {
+    state.running = false;
+    if (!state.pending) {
+      states.delete(ws);
+    }
+  }
+}
+
+function enqueueLatestTerminalResize(
+  ws: ServerWebSocket<WebSocketData>,
+  states: TerminalResizeStates,
+  request: PendingTerminalResize,
+): void {
+  let state = states.get(ws);
+  if (!state) {
+    state = { running: false };
+    states.set(ws, state);
+  }
+  state.pending = request;
+  if (state.running) {
+    return;
+  }
+  state.running = true;
+  void drainLatestTerminalResize(ws, states, state).catch((error: unknown) => {
+    log.warn("Terminal resize queue failed", {
+      terminalSessionId: ws.data.workspaceTerminalSessionId,
+      sshServerSessionId: ws.data.sshServerSessionId,
+      error: String(error),
+    });
+  });
+}
+
 /**
  * Creates the WebSocket message handler bound to the given terminal helpers.
  * Accepting helpers by reference (not closure) allows tests to spy on the
  * handler object's methods and have the spy intercepted correctly.
  */
 export function createMessageHandler(helpers: TerminalHelpers) {
+  const resizeStates: TerminalResizeStates = new WeakMap();
+
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
     if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
       void meshAcpGateway.message(ws.data.meshAcpSessionId, msg).catch((error: Error) => {
@@ -139,14 +222,9 @@ export function createMessageHandler(helpers: TerminalHelpers) {
             );
             return;
           }
-          const resize = () => ws.data.terminalBridge!.resize(data.cols, data.rows);
-          const resizePromise = runWithCurrentUser(ws.data.user, resize);
-          void resizePromise.catch((resizeError: Error) => {
-            log.warn("Ignoring terminal resize error", {
-              terminalSessionId: ws.data.workspaceTerminalSessionId,
-              sshServerSessionId: ws.data.sshServerSessionId,
-              error: String(resizeError),
-            });
+          enqueueLatestTerminalResize(ws, resizeStates, {
+            cols: data.cols,
+            rows: data.rows,
           });
           return;
         }
