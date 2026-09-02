@@ -33,7 +33,7 @@
     "reflect-metadata": "0.2.2",
     "remark-gfm": "4.0.1",
     "tailwindcss": "4.3.3",
-    "zod": "4.4.3"
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/bun": "1.4.0",
