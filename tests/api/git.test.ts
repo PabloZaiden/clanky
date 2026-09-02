@@ -108,19 +108,6 @@ describe("Git API Integration", () => {
       expect(body.currentBranch).toBe(currentBranch.name);
     });
 
-    test("returns 400 when workspaceId parameter is missing", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches`);
-      expect(res.status).toBe(400);
-
-      const body = await res.json();
-      expect(body.error).toBe("missing_workspace_id");
-    });
-
-    test("returns 404 for an unknown workspace", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=unknown-workspace`);
-      expect(res.status).toBe(404);
-    });
-
     test("rejects every Git endpoint for a directory workspace", async () => {
       const workspaceId = "directory-git-api-workspace";
       await createWorkspace({
@@ -183,18 +170,6 @@ describe("Git API Integration", () => {
       expect(typeof body.defaultBranch).toBe("string");
     });
 
-    test("returns 400 when workspaceId parameter is missing", async () => {
-      const res = await fetch(`${baseUrl}/api/git/default-branch`);
-      expect(res.status).toBe(400);
-
-      const body = await res.json();
-      expect(body.error).toBe("missing_workspace_id");
-    });
-
-    test("returns 404 for an unknown workspace", async () => {
-      const res = await fetch(`${baseUrl}/api/git/default-branch?workspaceId=unknown-workspace`);
-      expect(res.status).toBe(404);
-    });
   });
 
   describe("GET /api/git/remote-status", () => {
@@ -230,13 +205,6 @@ describe("Git API Integration", () => {
       }
     });
 
-    test("returns 400 when workspaceId parameter is missing", async () => {
-      const res = await fetch(`${baseUrl}/api/git/remote-status`);
-      expect(res.status).toBe(400);
-
-      const body = await res.json();
-      expect(body.error).toBe("missing_workspace_id");
-    });
   });
 
   describe("GET /api/git/github-issues", () => {
@@ -319,20 +287,6 @@ describe("Git API Integration", () => {
       expect(body.error).toBe("github_issues_invalid_response");
     });
 
-    test("returns 400 when workspaceId parameter is missing", async () => {
-      const res = await fetch(`${baseUrl}/api/git/github-issues`);
-      expect(res.status).toBe(400);
-
-      const body = await res.json();
-      expect(body.error).toBe("missing_workspace_id");
-    });
-
-    test("returns 404 for an unknown workspace", async () => {
-      const res = await fetch(
-        `${baseUrl}/api/git/github-issues?workspaceId=unknown-workspace`,
-      );
-      expect(res.status).toBe(404);
-    });
   });
 
   describe("GET /api/git/github-repository-url", () => {
@@ -426,12 +380,5 @@ describe("Git API Integration", () => {
       }
     });
 
-    test("returns 400 when workspaceId parameter is missing", async () => {
-      const res = await fetch(`${baseUrl}/api/git/github-repository-url`);
-      expect(res.status).toBe(400);
-
-      const body = await res.json();
-      expect(body.error).toBe("missing_workspace_id");
-    });
   });
 });

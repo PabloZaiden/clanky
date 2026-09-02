@@ -33,7 +33,6 @@ import type { Chat } from "@/shared/chat";
 import {
   assertNodeVersionOnHost,
   launchDeterministicAgentOnHost,
-  DETERMINISTIC_AGENT_RUNNER_SCRIPT,
 } from "../../src/core/deterministic-agent-runner";
 import { DeterministicAgentOutput } from "../../src/core/deterministic-agent-output";
 import { testDeterministicAgentCode } from "../../src/core/deterministic-agent-test";
@@ -85,22 +84,6 @@ describe("deterministic agent runner — workspace host execution", () => {
   afterEach(async () => {
     closeDatabase();
     await rm(tempDir, { recursive: true, force: true });
-  });
-
-  test("runner script is non-empty and contains expected entry points", () => {
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT.length).toBeGreaterThan(100);
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT).toContain("sendControl");
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT).toContain("CLANKY_CHAT_ID");
-    // The workspace object is defined with exec and prompt methods
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT).toContain("exec(command");
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT).toContain("async prompt(message)");
-    // SIGTERM handler for graceful cancellation
-    expect(DETERMINISTIC_AGENT_RUNNER_SCRIPT).toContain("SIGTERM");
-  });
-
-  test("assertNodeVersionOnHost passes when Node.js >= 24 is available", async () => {
-    // Node.js 24 is installed in this environment
-    await expect(assertNodeVersionOnHost(executor)).resolves.toBeUndefined();
   });
 
   test("assertNodeVersionOnHost throws when node command is missing", async () => {

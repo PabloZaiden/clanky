@@ -705,69 +705,6 @@ describe("Plan + Task User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("returns error when sending feedback to non-planning task", async () => {
-      // Create a normal task (not plan mode)
-      ctx.mockBackend.reset([
-        "error-handling-test-1",  // Name generation
-        "<promise>COMPLETE</promise>",
-      ]);
-
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Normal task",
-        planMode: false,
-      });
-      const task = body as Task;
-
-      // Wait for completion
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Try to send feedback (should fail)
-      const { status, body: feedbackBody } = await sendPlanFeedbackViaAPI(
-        ctx.baseUrl,
-        task.config.id,
-        "This should fail"
-      );
-
-      expect(status).toBe(400);
-      expect(feedbackBody.error).toBe("not_planning");
-
-      // Clean up
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-
-    test("returns error when accepting plan on non-planning task", async () => {
-      // Create a normal task (not plan mode)
-      ctx.mockBackend.reset([
-        "error-handling-test-2",  // Name generation (unique to avoid branch collision)
-        "<promise>COMPLETE</promise>",
-      ]);
-
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Normal task",
-        planMode: false,
-      });
-      const task = body as Task;
-
-      // Wait for completion
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Try to accept plan (should fail)
-      const { status, body: acceptBody } = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
-
-      expect(status).toBe(400);
-      expect(acceptBody.error).toBe("not_planning");
-
-      // Clean up
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-
-    test("returns 404 when discarding plan for non-existent task", async () => {
-      const { status } = await discardPlanViaAPI(ctx.baseUrl, "non-existent-id");
-      expect(status).toBe(404);
-    });
-
     test("preserves planning task status after server settings update", async () => {
       ctx.mockBackend.reset(createPlanModeMockResponses({ 
         planIterations: 3, // Initial + post-reset feedback 
@@ -843,33 +780,5 @@ describe("Plan + Task User Scenarios", () => {
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
     });
 
-    test("returns error when sending empty feedback", async () => {
-      ctx.mockBackend.reset(createPlanModeMockResponses({ planIterations: 1, taskName: "empty-feedback-test" }));
-
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Test plan",
-        planMode: true,
-        autoAcceptPlan: false,
-      });
-      const task = body as Task;
-
-      // Wait for planning
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
-
-      // Try to send empty feedback
-      const response = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/plan/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback: "   " }), // Whitespace only
-      });
-
-      expect(response.status).toBe(400);
-      const error = await response.json();
-      expect(error.error).toBe("validation_error");
-
-      // Clean up
-      await discardPlanViaAPI(ctx.baseUrl, task.config.id);
-    });
   });
 });

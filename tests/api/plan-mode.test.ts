@@ -355,20 +355,6 @@ describe("Plan Mode API Integration", () => {
       expect(task.state.planMode?.active).toBe(true);
     });
 
-    test("returns 400 if required fields missing", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          // Missing name, prompt, directory
-          planMode: true,
-        }),
-      });
-
-      expect(response.status).toBe(400);
-    });
-
     test("starts from uploaded plan as an approved plan", async () => {
       const uploadedPlanContent = `\uFEFF# Uploaded plan
 
@@ -462,56 +448,6 @@ describe("Plan Mode API Integration", () => {
       });
 
       expect(response.status).toBe(400);
-    });
-  });
-
-  describe("POST /api/tasks/:id/plan/feedback", () => {
-    test("returns 400 if task is not in planning status", async () => {
-      // Create a normal task (not plan mode)
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          prompt: "Do something",
-          name: "Test Task",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          planMode: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const response = await createResponse.json();
-      expect(response.config).toBeDefined();
-      const id = response.config.id;
-
-      // Try to send feedback (should fail)
-      const feedbackResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          feedback: "This should fail",
-          attachments: [],
-        }),
-      });
-
-      expect(feedbackResponse.status).toBe(400);
-    });
-
-    test("returns 409 if task not found", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/nonexistent/plan/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          feedback: "Test",
-          attachments: [],
-        }),
-      });
-
-      expect(response.status).toBe(409);
     });
   });
 

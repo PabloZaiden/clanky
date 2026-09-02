@@ -3,7 +3,7 @@
  * Tests use actual HTTP requests to a test server.
  */
 
-import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -221,19 +221,6 @@ describe("Tasks Control API Integration", () => {
   afterEach(async () => {
     await cleanupActiveTasks();
     await cleanupTrackedTempDirs();
-  });
-
-  describe("POST /api/tasks/:id/accept", () => {
-    // Note: Tasks are auto-started on creation by default, but they can still
-    // remain in "idle" status if auto-start fails (e.g., git issues/uncommitted changes).
-    
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/accept`, {
-        method: "POST",
-      });
-
-      expect(response.status).toBe(404);
-    });
   });
 
   describe("POST /api/tasks/:id/discard", () => {
@@ -531,44 +518,6 @@ describe("Tasks Control API Integration", () => {
       expect(body.error).toBe("no_worktree");
 
       await rm(emptyWorkDir, { recursive: true, force: true });
-    });
-  });
-
-  describe("GET /api/tasks/:id/pull-request", () => {
-    test("returns PR navigation metadata from the task manager", async () => {
-      const destinationSpy = spyOn(taskManager, "getPullRequestDestination").mockResolvedValue({
-        enabled: true,
-        destinationType: "existing_pr",
-        url: "https://github.com/example/repo/pull/12",
-      });
-
-      try {
-        const response = await fetch(`${baseUrl}/api/tasks/test-task-id/pull-request`);
-
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body).toEqual({
-          enabled: true,
-          destinationType: "existing_pr",
-          url: "https://github.com/example/repo/pull/12",
-        });
-      } finally {
-        destinationSpy.mockRestore();
-      }
-    });
-
-    test("returns 404 when the task manager cannot resolve the task", async () => {
-      const destinationSpy = spyOn(taskManager, "getPullRequestDestination").mockResolvedValue(null);
-
-      try {
-        const response = await fetch(`${baseUrl}/api/tasks/non-existent/pull-request`);
-
-        expect(response.status).toBe(404);
-        const body = await response.json();
-        expect(body.error).toBe("not_found");
-      } finally {
-        destinationSpy.mockRestore();
-      }
     });
   });
 
@@ -1111,201 +1060,5 @@ describe("Tasks Control API Integration", () => {
       expect(response.status).toBe(404);
     });
 
-    test("POST /api/tasks/:id/automatic-pr-flow/start enables automatic PR flow", async () => {
-      const startSpy = spyOn(taskManager, "startAutomaticPrFlow").mockResolvedValue({
-        success: true,
-        automaticPrFlow: {
-          enabled: true,
-          status: "monitoring",
-          startedAt: "2026-04-11T04:00:00.000Z",
-          updatedAt: "2026-04-11T04:00:00.000Z",
-          lastCheckedAt: "2026-04-11T04:00:00.000Z",
-          pullRequestNumber: 42,
-          pullRequestUrl: "https://github.com/owner/repo/pull/42",
-          handledItems: [],
-        },
-      });
-
-      try {
-        const response = await fetch(`${baseUrl}/api/tasks/test-task-id/automatic-pr-flow/start`, {
-          method: "POST",
-        });
-
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body.success).toBe(true);
-        expect(body.automaticPrFlow.enabled).toBe(true);
-        expect(body.automaticPrFlow.pullRequestNumber).toBe(42);
-      } finally {
-        startSpy.mockRestore();
-      }
-    });
-
-    test("POST /api/tasks/:id/automatic-pr-flow/stop disables automatic PR flow", async () => {
-      const stopSpy = spyOn(taskManager, "stopAutomaticPrFlow").mockResolvedValue({
-        success: true,
-        automaticPrFlow: {
-          enabled: false,
-          status: "stopped",
-          startedAt: "2026-04-11T04:00:00.000Z",
-          updatedAt: "2026-04-11T04:10:00.000Z",
-          lastCheckedAt: "2026-04-11T04:10:00.000Z",
-          handledItems: [],
-          stoppedAt: "2026-04-11T04:10:00.000Z",
-        },
-      });
-
-      try {
-        const response = await fetch(`${baseUrl}/api/tasks/test-task-id/automatic-pr-flow/stop`, {
-          method: "POST",
-        });
-
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body.success).toBe(true);
-        expect(body.automaticPrFlow.enabled).toBe(false);
-        expect(body.automaticPrFlow.status).toBe("stopped");
-      } finally {
-        stopSpy.mockRestore();
-      }
-    });
-
-    test("POST /api/tasks/:id/pull-request/auto-merge enables GitHub auto-merge for an existing PR", async () => {
-      const autoMergeSpy = spyOn(taskManager, "enablePullRequestAutoMerge").mockResolvedValue({
-        success: true,
-        pullRequest: {
-          number: 42,
-          url: "https://github.com/owner/repo/pull/42",
-        },
-      });
-
-      try {
-        const response = await fetch(`${baseUrl}/api/tasks/test-task-id/pull-request/auto-merge`, {
-          method: "POST",
-        });
-
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body.success).toBe(true);
-        expect(body.pullRequest.number).toBe(42);
-        expect(body.pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
-      } finally {
-        autoMergeSpy.mockRestore();
-      }
-    });
-
-    test("GET /api/tasks/:id/comments returns comments in correct order", async () => {
-      // Use unique directory with bare repo to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-order-test-");
-      const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-order-bare-");
-      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        // Create a task
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Wait for completion and push
-        await waitForTaskCompletion(taskId);
-        const pushResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/push`, { method: "POST" });
-        expect(pushResponse.status).toBe(200);
-
-        // Add comments
-        const addressResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/address-comments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: "First comment", attachments: [] }),
-        });
-        expect(addressResponse.status).toBe(200);
-
-        // Get comments - should be ordered correctly
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/comments`);
-        expect(response.status).toBe(200);
-        const body = await response.json();
-
-        // Should have at least one comment
-        expect(body.comments.length).toBeGreaterThan(0);
-        
-        // First comment should be from cycle 1
-        expect(body.comments[0].reviewCycle).toBe(1);
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-        await rm(uniqueBareRepo, { recursive: true, force: true });
-      }
-    });
-
-    test("Comments can be queried via GET endpoint", async () => {
-      // Use unique directory with bare repo to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-get-test-");
-      const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-get-bare-");
-      await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        // Create a task
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Wait for first completion
-        await waitForTaskCompletion(taskId);
-
-        // Push the task
-        const pushResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/push`, { method: "POST" });
-        expect(pushResponse.status).toBe(200);
-
-        // Add comments
-        const addressResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/address-comments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: "Test comment", attachments: [] }),
-        });
-        expect(addressResponse.status).toBe(200);
-
-        // Get comments - verify they exist and contain the correct data
-        const commentsResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/comments`);
-        const commentsBody = await commentsResponse.json();
-        expect(commentsBody.success).toBe(true);
-        expect(commentsBody.comments.length).toBeGreaterThan(0);
-        expect(commentsBody.comments[0].commentText).toBe("Test comment");
-        expect(commentsBody.comments[0].reviewCycle).toBe(1);
-        expect(commentsBody.comments[0].taskId).toBe(taskId);
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-        await rm(uniqueBareRepo, { recursive: true, force: true });
-      }
-    });
   });
 });

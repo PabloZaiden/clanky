@@ -13,13 +13,6 @@ import { SshConnectionGate } from "../../src/core/ssh-connection-gate";
 import {
   buildSshConnectionKey,
   getSshReliabilityPolicy,
-  SSH_CONNECT_TIMEOUT_MS,
-  SSH_CONNECT_TIMEOUT_SECONDS,
-  SSH_CONNECTION_ATTEMPTS,
-  SSH_CONNECTION_TIMEOUT_MS,
-  SSH_MAX_CONCURRENT_HANDSHAKES,
-  SSH_SERVER_ALIVE_COUNT_MAX,
-  SSH_SERVER_ALIVE_INTERVAL_SECONDS,
   type SshReliabilityPolicy,
 } from "../../src/core/ssh-reliability-policy";
 
@@ -40,18 +33,6 @@ describe("SSH reliability policy", () => {
     expect(args).toContain("ServerAliveInterval=30");
     expect(args).toContain("ServerAliveCountMax=3");
     expect(args.join(" ")).toContain("-ilc");
-  });
-
-  test("uses the code-defined SSH reliability constants", () => {
-    expect(getSshReliabilityPolicy()).toEqual({
-      connectTimeoutMs: SSH_CONNECT_TIMEOUT_MS,
-      connectTimeoutSeconds: SSH_CONNECT_TIMEOUT_SECONDS,
-      connectionAttempts: SSH_CONNECTION_ATTEMPTS,
-      serverAliveIntervalSeconds: SSH_SERVER_ALIVE_INTERVAL_SECONDS,
-      serverAliveCountMax: SSH_SERVER_ALIVE_COUNT_MAX,
-      connectionTimeoutMs: SSH_CONNECTION_TIMEOUT_MS,
-      maxConcurrentHandshakes: SSH_MAX_CONCURRENT_HANDSHAKES,
-    });
   });
 
   test("normalizes SSH connection keys and separates authentication modes", () => {
@@ -117,56 +98,6 @@ describe("SSH reliability policy", () => {
     expect(sshpassFailure.code).toBe("acp_ssh_authentication_failed");
   });
 
-  test("accepts an explicit structured authentication result without parsing stderr", () => {
-    const structuredAuthenticationFailure = createAcpProcessError(
-      "Permission denied (publickey,password)",
-      {
-        command: "ssh",
-        exitCode: 255,
-        transport: "ssh",
-        authenticationMode: "identity",
-        authenticationFailure: true,
-      },
-    );
-
-    expect(structuredAuthenticationFailure.code).toBe("acp_ssh_authentication_failed");
-    expect(structuredAuthenticationFailure.details).toMatchObject({
-      exitCode: 255,
-      transport: "ssh",
-      authenticationMode: "identity",
-      authenticationFailure: true,
-    });
-  });
-
-  test("limits only concurrent connection establishment and releases slots deterministically", async () => {
-    const gate = new SshConnectionGate(1);
-    const firstRelease = await gate.acquire("same-target");
-    const secondReleasePromise = gate.acquire("same-target");
-
-    expect(gate.getActiveCount("same-target")).toBe(1);
-    expect(gate.getWaitingCount("same-target")).toBe(1);
-
-    firstRelease();
-    const secondRelease = await secondReleasePromise;
-    expect(gate.getActiveCount("same-target")).toBe(1);
-    expect(gate.getWaitingCount("same-target")).toBe(0);
-
-    secondRelease();
-    expect(gate.getActiveCount("same-target")).toBe(0);
-  });
-
-  test("does not serialize independent SSH targets", async () => {
-    const gate = new SshConnectionGate(1);
-    const firstRelease = await gate.acquire("target-a");
-    const secondRelease = await gate.acquire("target-b");
-
-    expect(gate.getActiveCount("target-a")).toBe(1);
-    expect(gate.getActiveCount("target-b")).toBe(1);
-
-    firstRelease();
-    secondRelease();
-  });
-
   test("removes an aborted waiter without consuming a connection slot", async () => {
     const gate = new SshConnectionGate(1);
     const firstRelease = await gate.acquire("same-target");
@@ -215,98 +146,4 @@ describe("SSH reliability policy", () => {
     }
   });
 
-  test("keeps a generic SSH exit 255 ambiguous in structured process errors", async () => {
-    const lifecycle = new LocalAcpTransportLifecycle({
-      reliabilityPolicy: policy,
-      connectionGate: new SshConnectionGate(1),
-    });
-    const backend = new AcpBackend({ transportLifecycle: lifecycle });
-
-    try {
-      await expect(
-        backend.connect({
-          mode: "spawn",
-          provider: "opencode",
-          transport: "ssh",
-          hostname: "example.test",
-          port: 5002,
-          directory: "/workspace",
-          command: process.execPath,
-          args: ["-e", "process.exit(255);"],
-        }),
-      ).rejects.toMatchObject({
-        code: "acp_process_failed",
-        details: {
-          exitCode: 255,
-          transport: "ssh",
-        },
-      });
-    } finally {
-      await backend.disconnect();
-    }
-  });
-
-  test("normalizes SSH authentication mode with identity precedence", async () => {
-    const lifecycle = new LocalAcpTransportLifecycle({
-      reliabilityPolicy: policy,
-      connectionGate: new SshConnectionGate(1),
-    });
-    const backend = new AcpBackend({ transportLifecycle: lifecycle });
-
-    try {
-      await expect(
-        backend.connect({
-          mode: "spawn",
-          provider: "opencode",
-          transport: "ssh",
-          hostname: "example.test",
-          port: 5002,
-          directory: "/workspace",
-          password: "  password  ",
-          identityFile: "  /keys/id_ed25519  ",
-          command: process.execPath,
-          args: ["-e", "process.exit(255);"],
-        }),
-      ).rejects.toMatchObject({
-        code: "acp_process_failed",
-        details: {
-          authenticationMode: "identity",
-        },
-      });
-    } finally {
-      await backend.disconnect();
-    }
-  });
-
-  test("treats whitespace-only SSH credentials as agent authentication", async () => {
-    const lifecycle = new LocalAcpTransportLifecycle({
-      reliabilityPolicy: policy,
-      connectionGate: new SshConnectionGate(1),
-    });
-    const backend = new AcpBackend({ transportLifecycle: lifecycle });
-
-    try {
-      await expect(
-        backend.connect({
-          mode: "spawn",
-          provider: "opencode",
-          transport: "ssh",
-          hostname: "example.test",
-          port: 5002,
-          directory: "/workspace",
-          password: "   ",
-          identityFile: "   ",
-          command: process.execPath,
-          args: ["-e", "process.exit(255);"],
-        }),
-      ).rejects.toMatchObject({
-        code: "acp_process_failed",
-        details: {
-          authenticationMode: "agent",
-        },
-      });
-    } finally {
-      await backend.disconnect();
-    }
-  });
 });

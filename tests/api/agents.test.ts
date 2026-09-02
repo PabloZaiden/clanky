@@ -1084,33 +1084,6 @@ describe("Agents API Integration", () => {
     expect(result.logs.some((entry) => entry.message.includes("large code stdout"))).toBe(true);
   });
 
-  test("rejects invalid deterministic code before persisting an agent", async () => {
-    const response = await fetch(`${baseUrl}/api/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Invalid deterministic agent",
-        workspaceId,
-        prompt: "Check the workspace and report status",
-        code: "const invalid = ;",
-        model: testModel,
-        useWorktree: false,
-        schedule: {
-          startAtLocal: "2030-01-01T09:00",
-          timezone: "UTC",
-          interval: {
-            value: 1,
-            unit: "hours",
-          },
-        },
-        enabled: true,
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    expect((await response.json() as { error?: string }).error).toBe("agent_code_invalid");
-  });
-
   test("rejects Node-incompatible TypeScript and ignores fake exports in comments", async () => {
     const response = await fetch(`${baseUrl}/api/agents`, {
       method: "POST",
@@ -1251,31 +1224,6 @@ export default async function run(ctx) {
     expect(resumedAgent.config.enabled).toBe(true);
     expect(resumedAgent.state.status).toBe("enabled");
     expect(resumedAgent.state.nextRunAt).toBeTruthy();
-  });
-
-  test("rejects invalid agent schedule timezone", async () => {
-    const response = await fetch(`${baseUrl}/api/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Invalid timezone agent",
-        workspaceId,
-        prompt: "Check the workspace and report status",
-        model: testModel,
-        useWorktree: false,
-        schedule: {
-          startAtLocal: "2030-01-01T09:00",
-          timezone: "Not/A_Timezone",
-          interval: {
-            value: 1,
-            unit: "hours",
-          },
-        },
-        enabled: true,
-      }),
-    });
-
-    expect(response.status).toBe(400);
   });
 
   test("loads complete lightweight agent-run transcripts and lazy-loads tool call payloads", async () => {

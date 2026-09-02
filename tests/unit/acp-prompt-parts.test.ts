@@ -8,6 +8,13 @@ import type { RpcRequester } from "../../src/backends/acp/contracts";
 import type { JsonRpcMessage } from "../../src/backends/acp/types";
 import type { MessageAttachment } from "@/shared/message-attachments";
 
+/**
+ * The resource-part shape and the successful embedded-resource path are covered at the
+ * API boundary by `tests/api/chats.test.ts` ("accepts text and PDF attachments and sends
+ * ACP resource parts"). Only the capability gate below is kept here: it lives inside the
+ * ACP `SessionService`, underneath the `Backend` interface the chat API talks to, so no
+ * public boundary can reach a provider that omits `embeddedContext`.
+ */
 function createRequester(): {
   requester: RpcRequester;
   calls: Array<{ method: string; params: Record<string, unknown> }>;
@@ -34,42 +41,7 @@ function textAttachment(): MessageAttachment {
   };
 }
 
-function pdfAttachment(): MessageAttachment {
-  const data = Buffer.from("%PDF-test", "utf8").toString("base64");
-  return {
-    id: "pdf-1",
-    filename: "report.pdf",
-    mimeType: "application/pdf",
-    data,
-    size: Buffer.byteLength("%PDF-test", "utf8"),
-  };
-}
-
 describe("ACP prompt attachments", () => {
-  test("maps text and PDF attachments to embedded ACP resources", () => {
-    const parts = buildPromptParts("Inspect these files", [textAttachment(), pdfAttachment()]);
-
-    expect(parts).toEqual([
-      { type: "text", text: "Inspect these files" },
-      {
-        type: "resource",
-        resource: {
-          uri: "attachment://text-1/readme.md",
-          mimeType: "text/markdown",
-          text: "# Read me\n\nThis is embedded text.",
-        },
-      },
-      {
-        type: "resource",
-        resource: {
-          uri: "attachment://pdf-1/report.pdf",
-          mimeType: "application/pdf",
-          blob: Buffer.from("%PDF-test", "utf8").toString("base64"),
-        },
-      },
-    ]);
-  });
-
   test("rejects embedded resources before session configuration when capability is absent", async () => {
     const { requester, calls } = createRequester();
     const capability = new CapabilityService(requester);
@@ -110,41 +82,4 @@ describe("ACP prompt attachments", () => {
     expect(state.getCachedSession("session-1")?.configOptions?.[0]?.currentValue).toBe("model-a");
   });
 
-  test("serializes embedded resources after initialize advertises embeddedContext", async () => {
-    const { requester, calls } = createRequester();
-    const capability = new CapabilityService(requester);
-    capability.setInitializeResult({
-      agentCapabilities: {
-        promptCapabilities: {
-          embeddedContext: true,
-        },
-      },
-    });
-    const sessions = new SessionService(
-      requester,
-      new SessionStateStore(),
-      capability,
-      () => {},
-    );
-
-    await sessions.sendPromptAsync("session-1", { parts: buildPromptParts("", [pdfAttachment()]) });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual({
-      method: "session/prompt",
-      params: {
-        sessionId: "session-1",
-        prompt: [
-          {
-            type: "resource",
-            resource: {
-              uri: "attachment://pdf-1/report.pdf",
-              mimeType: "application/pdf",
-              blob: Buffer.from("%PDF-test", "utf8").toString("base64"),
-            },
-          },
-        ],
-      },
-    });
-  });
 });

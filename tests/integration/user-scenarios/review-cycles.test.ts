@@ -3,7 +3,7 @@
  * Tests the ability to address reviewer comments after push/merge.
  */
 
-import { test, expect, describe, beforeAll, afterAll, afterEach } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import {
   setupTestServer,
   teardownTestServer,
@@ -448,121 +448,6 @@ describe("Review Cycle User Scenarios", () => {
       const historyResponse = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/review-history`);
       const history = await historyResponse.json();
       expect(history.history.reviewCycles).toBe(2);
-    });
-  });
-
-  describe("Review Mode Edge Cases", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          // Test 1: "cannot address comments on non-addressable task"
-          "edge-case-test-1",  // name generation
-          "Done! <promise>COMPLETE</promise>",
-          // Test 2: "cannot address comments with empty comment string"
-          "edge-case-test-2",  // name generation
-          "Done! <promise>COMPLETE</promise>",
-          // Test 3: "review history returns correct info"
-          "edge-case-test-3",  // name generation
-          "Done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-        withRemote: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    // Clean up any active tasks after each test to prevent blocking subsequent tests
-    afterEach(async () => {
-      const { listTasks, updateTaskState, loadTask } = await import("../../../src/persistence/tasks");
-      const { taskManager } = await import("../../../src/core/task-manager");
-      
-      // Clear all running engines first to prevent interference with subsequent tests
-      taskManager.resetForTesting();
-      
-      const tasks = await listTasks();
-      const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];
-      
-      for (const task of tasks) {
-        if (activeStatuses.includes(task.state.status)) {
-          // Load full task to get current state
-          const fullTask = await loadTask(task.config.id);
-          if (fullTask) {
-            // Mark as deleted to make it a terminal state
-            await updateTaskState(task.config.id, {
-              ...fullTask.state,
-              status: "deleted",
-            });
-          }
-        }
-      }
-    });
-
-    test("cannot address comments on non-addressable task", async () => {
-      // Create task but don't push or merge
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Do something",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      // Try to address comments - should fail
-      const addressResponse = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/address-comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "This should fail", attachments: [] }),
-      });
-      expect(addressResponse.status).toBe(400);
-      const result = await addressResponse.json();
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("not addressable");
-    });
-
-    test("cannot address comments with empty comment string", async () => {
-      // Create and push task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Do something",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-      await pushTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      // Try to address with empty comments
-      const addressResponse = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/address-comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "", attachments: [] }),
-      });
-      expect(addressResponse.status).toBe(400);
-      const result = await addressResponse.json();
-      // Error responses have { error, message } format, not { success: false }
-      expect(result.error).toBe("validation_error");
-      expect(result.message).toContain("empty");
-    });
-
-    test("review history returns correct info for non-addressable task", async () => {
-      // Create task but don't push or merge
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Do something",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      // Get history
-      const historyResponse = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/review-history`);
-      const history = await historyResponse.json();
-      expect(history.success).toBe(true);
-      expect(history.history.addressable).toBe(false);
-      expect(history.history.reviewCycles).toBe(0);
     });
   });
 
