@@ -27,7 +27,7 @@ const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
-interface StreamedProcess {
+export interface StreamedProcess {
   stdout: ReadableStream<Uint8Array> | null;
   stderr: ReadableStream<Uint8Array> | null;
   exited: Promise<number>;
@@ -42,7 +42,7 @@ function createErroredStream(error: Error): ReadableStream<Uint8Array> {
   });
 }
 
-function createProcessStdoutStream(
+export function createProcessStdoutStream(
   proc: StreamedProcess,
   label: string,
   signal?: AbortSignal,
@@ -138,6 +138,7 @@ function createProcessStdoutStream(
         const { done, value } = await reader.read();
         if (done) {
           if (cancelled) {
+            controller.close();
             finish();
             return;
           }
@@ -146,6 +147,7 @@ function createProcessStdoutStream(
             cancelledPromise,
           ]);
           if (processResult === "cancelled" || cancelled) {
+            controller.close();
             finish();
             return;
           }
