@@ -21,6 +21,7 @@ describe("Clanky webapp CLI composition", () => {
       "ws",
       "mesh",
       "preview",
+      "workspace",
     ]));
   });
 
@@ -42,5 +43,6 @@ describe("Clanky webapp CLI composition", () => {
     const apiResult = await cli.execute(["api"]);
     expect(apiResult.exitCode).toBe(0);
     expect(apiResult.output).toContain("tasks");
+    expect(apiResult.output).toContain("workspaces/:id/exec");
   });
 });

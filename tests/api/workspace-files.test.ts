@@ -432,6 +432,18 @@ describe("workspace files API integration", () => {
     }
   });
 
+  test("downloads an absolute path from anywhere on the workspace host", async () => {
+    const workspace = await createWorkspace();
+    const outsidePath = join(alternateRootDir, "notes", "todo.txt");
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(outsidePath)}`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"todo.txt\"");
+    expect(await response.text()).toBe("alternate root note\n");
+  });
+
   test("starts streaming files larger than the previous file explorer download limit without base64 buffering", async () => {
     const largeDownloadExecutor = new LargeDownloadExecutor();
     backendManager.setExecutorFactoryForTesting(() => largeDownloadExecutor);
@@ -911,6 +923,72 @@ describe("workspace files API integration", () => {
       expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
       expect(uploadExecutor.writeFileCalled).toBe(false);
       expect(uploadExecutor.streamWriteCalls).toBe(2);
+    });
+
+    test("rejects upload chunks that exceed the declared size", async () => {
+      const workspace = await createWorkspace();
+      const createResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          directory: "src",
+          fileName: "oversized.txt",
+          size: 5,
+          overwrite: false,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const session = await createResponse.json() as { uploadId: string };
+
+      const chunkResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=0`,
+        {
+          method: "POST",
+          body: new Blob(["sixteen"]),
+        },
+      );
+
+      expect(chunkResponse.status).toBe(413);
+      expect(await chunkResponse.json()).toMatchObject({
+        error: "upload_size_exceeded",
+      });
+      expect(await Bun.file(join(workDir, ".clanky-upload-tmp", `${session.uploadId}-oversized.txt`)).size)
+        .toBe(0);
+
+      const cancelResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: session.uploadId }),
+      });
+      expect(cancelResponse.ok).toBe(true);
+      expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
+      expect(await Bun.file(join(workDir, "src", "oversized.txt")).exists()).toBe(false);
+    });
+
+    test("completes zero-byte uploads atomically", async () => {
+      const workspace = await createWorkspace();
+      const createResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          directory: "src",
+          fileName: "empty.txt",
+          size: 0,
+          overwrite: false,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const session = await createResponse.json() as { uploadId: string };
+
+      const completeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: session.uploadId }),
+      });
+
+      expect(completeResponse.status).toBe(200);
+      expect(await Bun.file(join(workDir, "src", "empty.txt")).size).toBe(0);
+      expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
     });
 
     test("rejects overwrite requests when destination kinds are incompatible", async () => {

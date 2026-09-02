@@ -28,10 +28,28 @@ export interface CommandOptions {
   env?: Record<string, string>;
   /** Abort signal for cancelling the running process */
   signal?: AbortSignal;
+  /** Maximum number of bytes to retain from each output stream */
+  maxOutputBytes?: number;
   /** Optional callback for incremental stdout chunks */
   onStdoutChunk?: (chunk: string) => void;
   /** Optional callback for incremental stderr chunks */
   onStderrChunk?: (chunk: string) => void;
+}
+
+export class CommandOutputLimitError extends Error {
+  readonly stream: "stdout" | "stderr";
+  readonly maxBytes: number;
+
+  constructor(stream: "stdout" | "stderr", maxBytes: number) {
+    super(`${stream} exceeded the ${String(maxBytes)} byte output limit`);
+    this.name = "CommandOutputLimitError";
+    this.stream = stream;
+    this.maxBytes = maxBytes;
+  }
+}
+
+export function isCommandOutputLimitError(error: unknown): error is CommandOutputLimitError {
+  return error instanceof CommandOutputLimitError;
 }
 
 export interface FileStreamOptions {
@@ -46,12 +64,15 @@ export interface FileWriteStreamOptions {
   append?: boolean;
   /** Expected file size before writing; rejects when the current size differs */
   expectedOffset?: number;
+  /** Maximum number of bytes accepted from this stream */
+  maxBytes?: number;
 }
 
 export interface FileWriteStreamResult {
   success: boolean;
   bytesWritten: number;
   error?: string;
+  errorCode?: "size_limit";
 }
 
 /**

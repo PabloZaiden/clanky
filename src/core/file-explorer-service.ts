@@ -68,6 +68,7 @@ export interface FileExplorerTarget {
   id: string;
   rootDirectory: string;
   pathScopeLabel: string;
+  allowOutsideRoot?: boolean;
   executor: CommandExecutor;
 }
 
@@ -264,13 +265,23 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
   if (!trimmedPath || trimmedPath === ".") {
     return root;
   }
+  if (trimmedPath.includes("\0")) {
+    throw new FileExplorerError(
+      "path_outside_root",
+      "Requested path contains an invalid NUL byte",
+    );
+  }
 
   const normalizedPath = trimmedPath.startsWith("/")
     ? pathPosix.normalize(trimmedPath)
     : pathPosix.normalize(pathPosix.join(root, trimmedPath));
   const relativePath = pathPosix.relative(root, normalizedPath);
 
-  if (relativePath && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))) {
+  if (
+    !target.allowOutsideRoot
+    && relativePath
+    && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))
+  ) {
     throw new FileExplorerError(
       "path_outside_root",
       `Requested path must stay within the ${target.pathScopeLabel} directory`,
@@ -1188,9 +1199,16 @@ export class FileExplorerService {
     const result = await target.executor.writeFileStream(session.tempAbsolutePath, stream, {
       append: true,
       expectedOffset: offset,
+      maxBytes: session.size - session.bytesWritten,
       signal: options?.signal,
     });
     if (!result.success) {
+      if (result.errorCode === "size_limit") {
+        throw new FileExplorerError(
+          "upload_size_exceeded",
+          "Upload chunk exceeds the remaining declared file size",
+        );
+      }
       throw new FileExplorerError(
         "invalid_upload_state",
         result.error ?? "Failed to write upload chunk",
@@ -1228,6 +1246,13 @@ export class FileExplorerService {
     }
     if (session.overwrite) {
       assertOverwriteKindCompatible(existingFinalEntry, "file");
+    }
+
+    if (session.size === 0) {
+      const initialized = await target.executor.writeFile(session.tempAbsolutePath, "");
+      if (!initialized) {
+        throw fileExplorerOperationError("Failed to initialize empty upload");
+      }
     }
 
     const result = await target.executor.exec("bash", [

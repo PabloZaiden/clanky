@@ -7,8 +7,9 @@ import type {
   CommandOptions,
   CommandResult,
   FileStreamOptions,
+  FileWriteStreamOptions,
+  FileWriteStreamResult,
 } from "./command-executor";
-import { DomainError } from "./domain-error";
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
 import type { AgentProvider } from "@/shared/settings";
 
@@ -46,10 +47,7 @@ export class MeshCommandExecutor implements CommandExecutor {
   }
 
   async streamFile(_path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
-    throw new DomainError(
-      "mesh_execution_stream_unsupported",
-      "Streaming files is not supported by the mesh CommandExecutor protocol.",
-    );
+    return await this.client.streamFile(_path, _options?.signal);
   }
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
@@ -58,6 +56,18 @@ export class MeshCommandExecutor implements CommandExecutor {
 
   async writeFile(path: string, content: string): Promise<boolean> {
     return await this.client.writeFile(path, content);
+  }
+
+  async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    return await this.client.writeFileStream(path, stream, options);
+  }
+
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    return await this.client.copyFile(sourcePath, destinationPath);
   }
 
   close(): void {

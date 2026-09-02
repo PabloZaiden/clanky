@@ -5,6 +5,7 @@ export * from "./chat-transcript";
 export * from "./commit-scope";
 export * from "./context-api-key";
 export * from "./events";
+export * from "./file-upload";
 export * from "./task";
 export * from "./message-attachments";
 export * from "./mesh";

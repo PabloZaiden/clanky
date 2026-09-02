@@ -16,6 +16,7 @@ import {
 } from "@/contracts/schemas/mesh";
 import {
   MeshExecutionRpcRequestSchema,
+  MeshExecutionFileWriteQuerySchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
 import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
@@ -24,7 +25,7 @@ import { meshExecutionGateway } from "../core/mesh-execution-gateway";
 import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
 import { errorResponse } from "./helpers";
-import { parseAndValidate } from "./validation";
+import { parseAndValidate, validateRequest } from "./validation";
 import { isDomainError } from "../core/domain-error";
 
 function internalMeshErrorResponse(error: unknown): Response {
@@ -53,6 +54,10 @@ function internalMeshErrorResponse(error: unknown): Response {
           : error.code === "mesh_execution_session_invalid"
             || error.code === "mesh_execution_session_expired"
             ? 401
+          : error.code === "mesh_execution_result_too_large"
+            ? 413
+          : error.code === "mesh_execution_operation_unsupported"
+            ? 501
           : error.code === "mesh_terminal_session_invalid"
             || error.code === "mesh_terminal_session_expired"
             ? 401
@@ -221,6 +226,76 @@ export const meshInternalRoutes = defineRoutes({
           requestId: parsed.data.requestId,
           encryptedPayload: encryptMeshPayload(result, encryptionPublicKey),
         });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/execution/file": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Stream a file from an authenticated Mesh CommandExecutor session.",
+    tags: ["mesh", "internal", "execution"],
+    async GET(req): Promise<Response> {
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      const requestedPath = new URL(req.url).searchParams.get("path");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_execution_session_invalid", "Mesh execution session headers are required.", 401);
+      }
+      if (!requestedPath) {
+        return errorResponse("mesh_execution_request_invalid", "A file path is required.", 400);
+      }
+      try {
+        const stream = await meshExecutionGateway.streamFile(
+          sessionId,
+          sessionToken,
+          requestedPath,
+          req.signal,
+        );
+        if (!stream) {
+          return errorResponse("file_not_found", "Requested file does not exist", 404);
+        }
+        return new Response(stream, {
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "application/octet-stream",
+          },
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+    async POST(req): Promise<Response> {
+      const validation = validateRequest(
+        MeshExecutionFileWriteQuerySchema,
+        Object.fromEntries(new URL(req.url).searchParams.entries()),
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_execution_session_invalid", "Mesh execution session headers are required.", 401);
+      }
+      if (!req.body) {
+        return errorResponse("mesh_execution_request_invalid", "A file write body is required.", 400);
+      }
+      try {
+        const result = await meshExecutionGateway.writeFileStream(
+          sessionId,
+          sessionToken,
+          validation.data.path,
+          req.body,
+          {
+            append: validation.data.append,
+            expectedOffset: validation.data.expectedOffset,
+            maxBytes: validation.data.maxBytes,
+          },
+          req.signal,
+        );
+        return Response.json(result);
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

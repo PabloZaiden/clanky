@@ -2,6 +2,8 @@
  * Internal utility helpers for command execution.
  */
 
+import { CommandOutputLimitError } from "../command-executor";
+
 export function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
@@ -29,6 +31,11 @@ export function buildExportAssignments(env?: Record<string, string>): string[] {
 export async function readProcessStream(
   stream: ReadableStream<Uint8Array> | null | undefined,
   onChunk?: (chunk: string) => void,
+  options?: {
+    maxBytes?: number;
+    streamName?: "stdout" | "stderr";
+    onLimit?: () => void;
+  },
 ): Promise<string> {
   if (!stream) {
     return "";
@@ -37,6 +44,7 @@ export async function readProcessStream(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  let bytesRead = 0;
 
   try {
     while (true) {
@@ -45,6 +53,20 @@ export async function readProcessStream(
         break;
       }
 
+      bytesRead += value.byteLength;
+      if (options?.maxBytes !== undefined && bytesRead > options.maxBytes) {
+        options.onLimit?.();
+        const error = new CommandOutputLimitError(
+          options.streamName ?? "stdout",
+          options.maxBytes,
+        );
+        try {
+          await reader.cancel(error);
+        } catch {
+          // Preserve the typed output-limit error when stream cancellation races process exit.
+        }
+        throw error;
+      }
       const chunk = decoder.decode(value, { stream: true });
       text += chunk;
       onChunk?.(chunk);

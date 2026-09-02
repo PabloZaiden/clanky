@@ -13,6 +13,7 @@ import { archivedTasksRoutes } from "./archived-tasks";
 import { serverSettingsRoutes } from "./server-settings";
 import { workspaceFilesRoutes } from "./files";
 import { workspaceMaintenanceRoutes } from "./maintenance";
+import { workspaceExecRoutes } from "./exec";
 
 export const workspacesRoutes = defineRoutes({
   ...workspaceFilesRoutes,
@@ -20,4 +21,5 @@ export const workspacesRoutes = defineRoutes({
   ...serverSettingsRoutes,
   ...archivedTasksRoutes,
   ...crudRoutes,
+  ...workspaceExecRoutes,
 });

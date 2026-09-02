@@ -193,6 +193,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
+| POST | `/api/mesh/internal/execution/file` | Receive a streamed file chunk in an authenticated mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/pairing-approvals` | Receive a signed mesh pairing approval from another node. |
 | POST | `/api/mesh/internal/pairing-requests` | Receive a signed mesh pairing request from another node. |
 | POST | `/api/mesh/members/revoke` | Revoke a trusted mesh member. |
@@ -290,10 +291,11 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/workspaces/:id/agents-md/optimize` | Apply `AGENTS.md` optimization changes to a workspace. |
 | POST | `/api/workspaces/:id/agents-md/preview` | Preview `AGENTS.md` optimization changes for a workspace. |
 | POST | `/api/workspaces/:id/archived-tasks/purge` | Purge archived tasks for a workspace. |
+| POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
 | GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
 | GET | `/api/workspaces/:id/files/content` | Read a workspace file. |
 | POST | `/api/workspaces/:id/files/delete` | Delete a workspace file or directory in the active explorer root. |
-| GET | `/api/workspaces/:id/files/download` | Download a workspace file from the active explorer root. |
+| GET, HEAD | `/api/workspaces/:id/files/download` | Stream a workspace file from the selected execution host. |
 | GET | `/api/workspaces/:id/files/metadata` | Read workspace file metadata. |
 | GET | `/api/workspaces/:id/files/preview` | Preview a browser-renderable workspace image file. |
 | POST | `/api/workspaces/:id/files/rename` | Rename a workspace file or directory in the active explorer root. |
@@ -1736,7 +1738,7 @@ Check if a workspace has a `.clanky-planning` folder with files.
 
 ### Workspaces
 
-Workspaces represent projects managed by Clanky. Each workspace is identified by its ID, has its own server connection settings, and can have multiple tasks. The configured directory is used only as the workspace execution location.
+Workspaces represent projects managed by Clanky. Each workspace is identified by its ID, has its own server connection settings, and can have multiple tasks. The workspace selects an execution host; its configured directory is the default execution location, not a filesystem sandbox.
 
 #### GET /api/workspaces
 
@@ -1842,6 +1844,169 @@ Delete a workspace.
 |--------|-------|-------------|
 | 404 | `workspace_not_found` | Workspace not found |
 | 400 | `delete_failed` | Cannot delete workspace |
+
+#### POST /api/workspaces/:id/exec
+
+Execute one non-interactive command on the host selected by the workspace.
+The workspace selects the execution host; it is not a filesystem sandbox.
+Commands are invoked with an executable and a separate argument array, without
+an implicit shell or environment override.
+
+**Request Body**
+
+```json
+{
+  "command": "git",
+  "args": ["status", "--short"],
+  "cwd": "packages/api",
+  "timeoutMs": 120000
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Executable name or path. It is never concatenated into a shell command. |
+| `args` | string[] | No | Arguments passed as-is, defaulting to an empty array. |
+| `cwd` | string | No | Relative to `workspace.directory`, or an absolute path on the selected host. |
+| `timeoutMs` | integer | No | Positive timeout in milliseconds, up to 30 minutes. |
+
+Use an explicit shell command such as `sh -c` when shell syntax is required.
+An omitted `cwd` uses the workspace directory. The selected host validates
+that the resolved working directory exists.
+
+**Response**
+
+Commands that complete, including commands with a non-zero exit code, return
+HTTP `200` with their captured output:
+
+```json
+{
+  "workspaceId": "ws-abc123",
+  "success": false,
+  "stdout": "",
+  "stderr": "working tree has changes\n",
+  "exitCode": 1
+}
+```
+
+`success` is true only when the process exits with code `0`. `stdout` and
+`stderr` are captured independently. Each stream is limited to 8 MiB; the
+command is terminated when either limit is exceeded. To handle output larger
+than 8 MiB, redirect it to a file on the execution host and use the download
+operation below.
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `validation_error` | Request body is invalid. |
+| 400 | `workspace_exec_cwd_invalid` | The working directory is empty or invalid. |
+| 400 | `workspace_exec_cwd_not_found` | The working directory does not exist on the selected host. |
+| 401 | — | Authentication is required. |
+| 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
+| 413 | `workspace_exec_output_limit_exceeded` | stdout or stderr exceeded 8 MiB. |
+| 499 | `mesh_execution_aborted` | The request or remote execution was cancelled. |
+| 502 | `mesh_execution_unreachable` | The selected execution host is unavailable. |
+| 500 | `workspace_exec_failed` | Unexpected command execution failure. |
+
+#### GET, HEAD /api/workspaces/:id/files/download
+
+Stream a regular file from the host selected by the workspace. The route
+accepts a URL-encoded `path` query parameter:
+
+```text
+GET /api/workspaces/ws-abc123/files/download?path=%2Ftmp%2Fapp.tar.gz
+```
+
+Relative paths resolve from `workspace.directory`; absolute paths are used
+directly on the selected host. There is no application-level file-size limit,
+so this route can retrieve files larger than the 8 MiB command-output limit.
+The response is binary and streamed through `CommandExecutor`; it is not a
+JSON API response. Directories return `invalid_path_type`. `HEAD` returns the
+same file metadata without transferring bytes.
+
+The response includes `Content-Disposition`, `Content-Type`,
+`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and the
+authoritative `X-Clanky-Download-Size` metadata header. `HEAD` responses also
+include `Content-Length`. A streamed `GET` may use chunked transfer without a
+`Content-Length` header when the selected host is reached through Mesh or
+another remote stream; clients that need the size should use
+`X-Clanky-Download-Size`. Request cancellation aborts an in-progress remote
+stream. The other file-explorer operations (listing, reading, writing,
+renaming, and deleting) retain their active-root containment rules.
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `invalid_workspace_path` | The requested path is invalid for the file operation. |
+| 400 | `invalid_path_type` | The requested path is a directory rather than a regular file. |
+| 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
+| 404 | `file_not_found` | The requested file does not exist on the selected host. |
+| 500 | `workspace_file_error` | File download failed. |
+
+#### POST /api/workspaces/:id/files/upload
+
+Create a streamed upload session for a regular file on the host selected by the
+workspace. The upload is finalized atomically only after all declared bytes
+have been received. The selected host may be local, SSH, or a Mesh execution
+peer.
+
+**Request Body**
+
+```json
+{
+  "directory": "dist",
+  "fileName": "app.tar.gz",
+  "size": 12582912,
+  "overwrite": false,
+  "startDirectory": null
+}
+```
+
+`directory` is relative to `startDirectory` (or `workspace.directory` when it
+is omitted), and `fileName` must be a single file name. As with downloads and
+execution, an absolute `startDirectory` is used directly on the selected host;
+the workspace directory is not a filesystem sandbox. The destination directory
+must already exist.
+
+The response is `201` with an `uploadId`. Send the file body in one or more
+raw binary requests:
+
+```text
+POST /api/workspaces/ws-abc123/files/upload/chunk?uploadId=<UPLOAD_ID>&offset=0
+Content-Type: application/octet-stream
+```
+
+`offset` must equal the number of bytes already accepted. The server enforces
+the declared `size` against the bytes actually consumed from the request body;
+it does not rely on `Content-Length`. A chunk that exceeds the remaining size
+returns `413 upload_size_exceeded` and does not write beyond the declared
+file size. Clients may retry a failed chunk from its original offset.
+
+Complete the upload after the response's `nextOffset` reaches `size`:
+
+```json
+POST /api/workspaces/ws-abc123/files/upload/complete
+
+{ "uploadId": "<UPLOAD_ID>" }
+```
+
+Use `POST /api/workspaces/:id/files/upload/cancel` with the upload ID to remove
+an abandoned temporary upload. The browser and CLI clients use replayable
+8 MiB chunks with up to three attempts; 8 MiB is a chunking default, not a
+total file-size limit. Mesh forwards each chunk as a binary stream, so uploads
+larger than the mesh JSON result limit are supported.
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `validation_error` | Upload metadata or chunk parameters are invalid. |
+| 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
+| 409 | `file_conflict` | The destination exists and overwrite was not requested. |
+| 413 | `upload_size_exceeded` | The request body exceeds the remaining declared upload size. |
+| 500 | `workspace_file_error` | Upload, completion, or cancellation failed. |
 
 #### POST /api/workspaces/:id/archived-tasks/purge
 

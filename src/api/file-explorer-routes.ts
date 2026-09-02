@@ -43,11 +43,16 @@ export interface FileExplorerRouteConfig {
   responseIdField: "workspaceId" | "serverId";
   invalidPathError: "invalid_workspace_path" | "invalid_server_path";
   internalError: "workspace_file_error" | "ssh_server_file_error";
+  downloadDescription?: string;
+  allowOutsideRootForDownload?: boolean;
   resolveTarget: (
     req: Request,
     resourceId: string,
     startDirectory?: string,
-    options?: { allowCredentialTokenQuery?: boolean },
+    options?: {
+      allowCredentialTokenQuery?: boolean;
+      allowOutsideRoot?: boolean;
+    },
   ) => Promise<FileExplorerTarget>;
 }
 
@@ -117,6 +122,8 @@ function mapFileExplorerError(
       case "upload_session_target_mismatch":
       case "invalid_upload_state":
         return errorResponse("invalid_upload_state", error.message, 400);
+      case "upload_size_exceeded":
+        return errorResponse("upload_size_exceeded", error.message, 413);
       case "invalid_preview_type":
         return errorResponse("invalid_preview_type", error.message, 400);
       case "invalid_credential_token":
@@ -244,7 +251,8 @@ export function createFileExplorerRoutes(
     [`${basePath}/download`]: {
       auth: "user",
       sameOrigin: "mutations",
-      description: `Download a ${resourceDescription} file from the active explorer root.`,
+      description: config.downloadDescription
+        ?? `Download a ${resourceDescription} file from the active explorer root.`,
       querySchema: GetFileExplorerFileRequestSchema,
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
@@ -258,7 +266,10 @@ export function createFileExplorerRoutes(
             req,
             resourceId,
             getStartDirectory(validation.data.startDirectory),
-            { allowCredentialTokenQuery: true },
+            {
+              allowCredentialTokenQuery: true,
+              allowOutsideRoot: config.allowOutsideRootForDownload,
+            },
           );
           if (req.method === "HEAD") {
             const metadata = await fileExplorerService.getDownloadMetadata(target, validation.data.path);

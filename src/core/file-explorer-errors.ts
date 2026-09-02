@@ -20,6 +20,7 @@ export type FileExplorerErrorCode =
   | "invalid_file_name"
   | "upload_session_not_found"
   | "upload_session_target_mismatch"
+  | "upload_size_exceeded"
   | "invalid_upload_state"
   | "invalid_preview_type";
 

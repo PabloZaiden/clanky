@@ -39,11 +39,22 @@ export const MeshExecutionRpcRequestSchema = z.object({
   args: z.array(z.string().max(16_384)).max(256).optional(),
   cwd: MeshExecutionPathSchema.optional(),
   timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
+  maxOutputBytes: z.number().int().min(1).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
   path: MeshExecutionPathSchema.optional(),
+  sourcePath: MeshExecutionPathSchema.optional(),
+  destinationPath: MeshExecutionPathSchema.optional(),
   content: z.string().max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   includeHidden: z.boolean().optional(),
 });
 
+export const MeshExecutionFileWriteQuerySchema = z.object({
+  path: MeshExecutionPathSchema,
+  append: z.enum(["0", "1"]).optional().default("0").transform((value) => value === "1"),
+  expectedOffset: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  maxBytes: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+});
+
 export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;
+export type MeshExecutionFileWriteQuery = z.infer<typeof MeshExecutionFileWriteQuerySchema>;

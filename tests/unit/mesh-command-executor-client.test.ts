@@ -102,6 +102,154 @@ afterEach(async () => {
 });
 
 describe("mesh command executor client", () => {
+  test("streams arbitrary host files and propagates cancellation", async () => {
+    const {
+      localIdentity,
+      localUserId,
+      remoteNodeId,
+    } = await setupClientMesh();
+    const encryptionPublicKey = localIdentity.encryptionPublicKey;
+    if (!encryptionPublicKey) {
+      throw new Error("The local Mesh identity has no encryption public key.");
+    }
+
+    let streamCancelled = false;
+    const fetchImpl: typeof globalThis.fetch = Object.assign(
+      async (
+        url: Parameters<typeof globalThis.fetch>[0],
+        init?: Parameters<typeof globalThis.fetch>[1],
+      ): Promise<Response> => {
+        if (init?.method === "GET") {
+          const stream = new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new TextEncoder().encode("mesh file payload"));
+            },
+            cancel() {
+              streamCancelled = true;
+            },
+          });
+          return new Response(stream, { status: 200 });
+        }
+        const parsedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(new URL(String(url)).pathname).toContain("/api/mesh/internal/execution/session");
+        return Response.json({
+          protocolVersion: 1,
+          sessionId: "session-file-1",
+          expiresAt: parsedBody["expiresAt"],
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: "s".repeat(32) },
+            encryptionPublicKey,
+          ),
+        });
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    );
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace/repo",
+      executionNodeId: remoteNodeId,
+      provider: "copilot",
+      localUserId,
+      fetch: fetchImpl,
+    });
+
+    const stream = await client.streamFile("/tmp/report.bin");
+    expect(stream).toBeDefined();
+    const reader = stream!.getReader();
+    const firstChunk = await reader.read();
+    expect(new TextDecoder().decode(firstChunk.value)).toBe("mesh file payload");
+    await reader.cancel();
+    expect(streamCancelled).toBe(true);
+    client.closeSession();
+  });
+
+  test("streams binary writes and copies files through the execution peer", async () => {
+    const {
+      localIdentity,
+      localUserId,
+      remoteNodeId,
+    } = await setupClientMesh();
+    const encryptionPublicKey = localIdentity.encryptionPublicKey;
+    if (!encryptionPublicKey) {
+      throw new Error("The local Mesh identity has no encryption public key.");
+    }
+
+    const payload = new TextEncoder().encode("mesh upload payload");
+    let uploadedPayload: Uint8Array | undefined;
+    const rpcOperations: Record<string, unknown>[] = [];
+    const fetchImpl: typeof globalThis.fetch = Object.assign(
+      async (
+        url: Parameters<typeof globalThis.fetch>[0],
+        init?: Parameters<typeof globalThis.fetch>[1],
+      ): Promise<Response> => {
+        const requestUrl = new URL(String(url));
+        if (requestUrl.pathname.endsWith("/session")) {
+          const parsedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-write-1",
+            expiresAt: parsedBody["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              encryptionPublicKey,
+            ),
+          });
+        }
+        if (requestUrl.pathname.endsWith("/file") && init?.method === "POST") {
+          uploadedPayload = new Uint8Array(await new Response(init.body as BodyInit).arrayBuffer());
+          expect(requestUrl.searchParams.get("path")).toBe("/tmp/upload.bin");
+          expect(requestUrl.searchParams.get("append")).toBe("1");
+          expect(requestUrl.searchParams.get("expectedOffset")).toBe("4");
+          expect(requestUrl.searchParams.get("maxBytes")).toBe(String(payload.byteLength));
+          return Response.json({
+            success: true,
+            bytesWritten: payload.byteLength,
+          });
+        }
+        if (requestUrl.pathname.endsWith("/rpc")) {
+          const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          rpcOperations.push(request);
+          expect(request["operation"]).toBe("copyFile");
+          expect(request["sourcePath"]).toBe("/tmp/source.bin");
+          expect(request["destinationPath"]).toBe("/tmp/destination.bin");
+          return Response.json({
+            protocolVersion: 1,
+            requestId: request["requestId"],
+            encryptedPayload: encryptMeshPayload(true, encryptionPublicKey),
+          });
+        }
+        throw new Error(`Unexpected Mesh request: ${requestUrl.pathname}`);
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    );
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace/repo",
+      executionNodeId: remoteNodeId,
+      provider: "copilot",
+      localUserId,
+      fetch: fetchImpl,
+    });
+
+    const writeResult = await client.writeFileStream(
+      "/tmp/upload.bin",
+      new Blob([payload]).stream(),
+      {
+        append: true,
+        expectedOffset: 4,
+        maxBytes: payload.byteLength,
+      },
+    );
+    expect(writeResult).toEqual({
+      success: true,
+      bytesWritten: payload.byteLength,
+    });
+    expect(uploadedPayload).toEqual(payload);
+    expect(await client.copyFile("/tmp/source.bin", "/tmp/destination.bin")).toBe(true);
+    expect(rpcOperations).toHaveLength(1);
+    client.closeSession();
+  });
+
   test("requests ACP sessions below the gateway lifetime limit", async () => {
     const {
       localIdentity,

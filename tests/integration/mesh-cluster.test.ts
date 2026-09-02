@@ -523,6 +523,48 @@ describe("three-process mesh cluster", () => {
     expect(remoteWrite.status).toBe(200);
     expect(await Bun.file(join(repository, "remote.txt")).text()).toBe("written through owner\n");
 
+    const uploadBytes = Uint8Array.from(
+      { length: 8 * 1024 * 1024 + 3 },
+      (_, index) => index % 251,
+    );
+    const uploadCreate = await postJson(
+      nodeA,
+      `/api/workspaces/${workspace.id}/files/upload`,
+      {
+        directory: ".",
+        fileName: "mesh-upload.bin",
+        size: uploadBytes.byteLength,
+        overwrite: false,
+      },
+    );
+    expect(uploadCreate.status).toBe(201);
+    const uploadId = (uploadCreate.body as { uploadId: string }).uploadId;
+    const uploadChunk = await fetch(
+      `${nodeA.baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&offset=0`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          origin: nodeA.baseUrl,
+        },
+        body: new Blob([uploadBytes]),
+      },
+    );
+    expect(uploadChunk.status).toBe(200);
+    expect(await uploadChunk.json()).toMatchObject({
+      success: true,
+      nextOffset: uploadBytes.byteLength,
+    });
+    const uploadComplete = await postJson(
+      nodeA,
+      `/api/workspaces/${workspace.id}/files/upload/complete`,
+      { uploadId },
+    );
+    expect(uploadComplete.status).toBe(200);
+    expect(await Bun.file(join(repository, "mesh-upload.bin")).size).toBe(uploadBytes.byteLength);
+    expect(new Uint8Array(await Bun.file(join(repository, "mesh-upload.bin")).arrayBuffer()))
+      .toEqual(uploadBytes);
+
     await stopMeshNode(nodeB);
     await waitForCondition(
       async () => {

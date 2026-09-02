@@ -58,6 +58,67 @@ Clanky evolves over time, so prefer discovery over memorized command details. Tr
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
 
+## Running commands and downloading files
+
+Discover workspaces first and use the dedicated workspace commands for
+operations on their execution host:
+
+```bash
+clanky api workspaces --method GET | jq .
+
+clanky workspace exec <WORKSPACE_ID_OR_EXACT_NAME> -- git status --short
+clanky workspace exec <WORKSPACE_ID_OR_EXACT_NAME> --cwd /tmp -- sh -lc 'printf "hello\n"'
+
+clanky workspace download <WORKSPACE_ID_OR_EXACT_NAME> /tmp/report.bin
+clanky workspace download <WORKSPACE_ID_OR_EXACT_NAME> packages/app/dist/app.tar.gz \
+  --output ./app.tar.gz
+
+clanky workspace upload <WORKSPACE_ID_OR_EXACT_NAME> ./app.tar.gz \
+  --remote-path packages/app/dist/app.tar.gz --force
+```
+
+`workspace exec` is the preferred path for one-shot, non-interactive commands.
+It invokes the executable with a separate argument array, waits for completion,
+prints remote stdout to stdout and stderr to stderr, and returns the remote
+process exit code. Put `--` before the remote command so its options are not
+parsed as Clanky options. Use `--cwd PATH` to select the working directory and
+`--timeout MS` to override the default timeout. The command is not run through
+an implicit shell; invoke `sh -lc` or another shell explicitly when shell
+syntax is intentional. A non-zero remote exit is a normal command result, not
+an authentication or transport failure.
+
+`workspace download` is the preferred path for binary files and streams the
+response directly to a local file. If `--output` is omitted, the remote
+basename is used in the current directory. Use `--output -` to write bytes to
+stdout, and `--force` to allow replacing an existing local file. Do not use
+`clanky api` for downloads because that command parses responses as JSON/text.
+
+`workspace upload` is the preferred path for sending one regular local file to
+the execution host. It uses the existing streamed upload session with
+replayable 8 MiB chunks, up to three attempts per chunk, progress-independent
+offsets, and atomic completion. Pass `--remote-path PATH` to choose the
+destination; without it, the local basename is placed in the workspace
+directory. Relative remote paths start at the workspace directory, while
+absolute paths are used directly on the selected host. The destination
+directory must already exist, and `--force` is required to replace an existing
+file. Uploads are not recursive and do not read stdin.
+
+The workspace is an execution-host selector, not a filesystem sandbox.
+Relative `--cwd` and download paths start at the configured workspace directory;
+absolute paths refer directly to the selected host and may be outside that
+directory. `workspace exec` buffers stdout and stderr with an 8 MiB limit per
+stream. For larger output, redirect it to a file on the host and download that
+file; downloads have no application-level 8 MiB limit and are streamed.
+Uploads likewise have no total 8 MiB limit; 8 MiB is only the default chunk
+size. Local, SSH, and Mesh-selected workspaces use the same commands and
+transfer semantics.
+
+Both commands resolve an exact workspace ID first, then an exact
+case-sensitive workspace name. Names must be unique. They use the selected
+profile's credentials, or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment
+pair. `clanky ws` remains the realtime event bridge and is not a command
+execution or file-transfer transport.
+
 ## Querying Clanky state
 
 Start broad, then narrow down by ID:
