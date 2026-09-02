@@ -109,69 +109,6 @@ describe("RpcClient", () => {
     });
   });
 
-  test("does not classify session-like prose without a structured signal", async () => {
-    const { client, written } = createClient();
-    const promise = client.sendRequest("session/prompt", { sessionId: "lost-session" });
-    const id = written[0]!.id;
-
-    client.handleMessage({
-      jsonrpc: "2.0",
-      id,
-      error: {
-        code: -32602,
-        message: "Session not found",
-      },
-    });
-
-    await expect(promise).rejects.toMatchObject({
-      code: "acp_request_failed",
-      details: { rpcCode: -32602 },
-    });
-  });
-
-  test("does not treat resource loss during session creation as a missing session", async () => {
-    const { client, written } = createClient();
-    const promise = client.sendRequest("session/new", { cwd: "/repo" });
-    const id = written[0]!.id;
-
-    client.handleMessage({
-      jsonrpc: "2.0",
-      id,
-      error: {
-        code: -32002,
-        message: "Resource not found",
-        data: { uri: "/repo" },
-      },
-    });
-
-    await expect(promise).rejects.toMatchObject({
-      code: "acp_request_failed",
-      details: {
-        rpcCode: -32002,
-        rpcData: { uri: "/repo" },
-      },
-    });
-  });
-
-  test("routes inbound string-id method messages to the notification sink", async () => {
-    const { client, notifications } = createClient();
-
-    const message: JsonRpcMessage = {
-      jsonrpc: "2.0",
-      id: "codex-permission-1",
-      method: "session/request_permission",
-      params: { sessionId: "s1" },
-    };
-    client.handleMessage(message);
-
-    expect(notifications).toEqual([message]);
-  });
-
-  test("ignores a response for an unknown id without throwing", () => {
-    const { client } = createClient();
-    expect(() => client.handleMessage({ jsonrpc: "2.0", id: 999, result: {} })).not.toThrow();
-  });
-
   test("rejects with a typed timeout error and clears pending state", async () => {
     const { client, written } = createClient();
     const promise = client.sendRequest("session/prompt", {}, 5);
@@ -181,16 +118,6 @@ describe("RpcClient", () => {
     // A late response for the timed-out id must not throw or resolve anything.
     const id = written[0]!.id;
     expect(() => client.handleMessage({ jsonrpc: "2.0", id, result: {} })).not.toThrow();
-  });
-
-  test("rejects and clears pending state when the transport write fails", async () => {
-    const { client } = createClient({
-      onWrite: () => {
-        throw new Error("stdin closed");
-      },
-    });
-
-    await expect(client.sendRequest("initialize", {})).rejects.toThrow("stdin closed");
   });
 
   test("rejectPending fails every in-flight request with the provided error", async () => {

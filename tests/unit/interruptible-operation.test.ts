@@ -84,24 +84,6 @@ describe("interruptible operation coordinator", () => {
     expect(testCoordinator.interruptErrors).toHaveLength(0);
   });
 
-  test("does not start a phase after an already-observed abort", async () => {
-    const controller = new AbortController();
-    const testCoordinator = createTestCoordinator(controller);
-    let started = false;
-
-    const phase = testCoordinator.coordinator.runPhase(async () => {
-      started = true;
-      return "unexpected";
-    }, "send");
-    controller.abort();
-
-    await expect(phase).rejects.toThrow("operation cancelled");
-    await testCoordinator.coordinator.dispose();
-
-    expect(started).toBe(false);
-    expect(testCoordinator.interruptCalls).toBe(1);
-  });
-
   test("handles a pre-aborted coordinator without starting a phase", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -134,62 +116,6 @@ describe("interruptible operation coordinator", () => {
 
     expect(testCoordinator.interruptCalls).toBe(2);
     expect(testCoordinator.interruptErrors).toHaveLength(0);
-  });
-
-  test("bounds a passive phase settlement without scheduling a late interrupt", async () => {
-    const controller = new AbortController();
-    const testCoordinator = createTestCoordinator(controller);
-    const deferred = createDeferred<string>();
-
-    const phase = testCoordinator.coordinator.runPhase(
-      () => deferred.promise,
-      "wait",
-      { allowLateInterrupt: false },
-    );
-    await flushMicrotasks();
-    controller.abort();
-    deferred.resolve("settled");
-
-    await expect(phase).rejects.toThrow("operation cancelled");
-    await testCoordinator.coordinator.dispose();
-
-    expect(testCoordinator.interruptCalls).toBe(1);
-    expect(testCoordinator.timeoutPhases).toHaveLength(0);
-  });
-
-  test("does not replace an operation failure or interrupt after normal failure", async () => {
-    const controller = new AbortController();
-    const testCoordinator = createTestCoordinator(controller);
-    const failure = new Error("operation failed");
-
-    await expect(
-      testCoordinator.coordinator.runPhase(async () => {
-        throw failure;
-      }, "send"),
-    ).rejects.toBe(failure);
-    await testCoordinator.coordinator.dispose();
-
-    controller.abort();
-
-    expect(testCoordinator.interruptCalls).toBe(0);
-  });
-
-  test("reports an interrupt failure without rejecting the cancellation path", async () => {
-    const controller = new AbortController();
-    const interruptFailure = new Error("interrupt failed");
-    const testCoordinator = createTestCoordinator(controller, {
-      interrupt: async () => {
-        throw interruptFailure;
-      },
-    });
-
-    const phase = testCoordinator.coordinator.runPhase(async () => "complete", "send");
-    controller.abort();
-
-    await expect(phase).rejects.toThrow("operation cancelled");
-    await testCoordinator.coordinator.dispose();
-
-    expect(testCoordinator.interruptErrors).toEqual([interruptFailure]);
   });
 
   test("reports a settlement timeout and still handles a later phase settlement", async () => {

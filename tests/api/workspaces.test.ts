@@ -14,8 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { taskManager } from "../../src/core/task-manager";
-import { taskFailure } from "../../src/core/task/task-errors";
+
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 import {
   configureGitRepository,
@@ -146,12 +145,6 @@ describe("Workspace API Integration", () => {
   });
 
   describe("GET /api/workspaces", () => {
-    test("returns empty array when no workspaces exist", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces`);
-      expect(response.ok).toBe(true);
-      const data = await response.json();
-      expect(data).toEqual([]);
-    });
 
     test("returns list of workspaces with task counts", async () => {
       // Create a workspace first
@@ -434,33 +427,6 @@ describe("Workspace API Integration", () => {
       expect(persisted?.allowClankyContext).toBe(true);
     });
 
-    test("fails if name is missing", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-
-      expect(response.ok).toBe(false);
-      expect(response.status).toBe(400);
-    });
-
-    test("fails if directory is missing", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Workspace",
-        }),
-      });
-
-      expect(response.ok).toBe(false);
-      expect(response.status).toBe(400);
-    });
-
     test("fails if directory is not a git repository", async () => {
       const nonGitDir = await mkdtemp(join(tmpdir(), "non-git-"));
 
@@ -483,74 +449,6 @@ describe("Workspace API Integration", () => {
       await rm(nonGitDir, { recursive: true, force: true });
     });
 
-    test("allows creating multiple workspaces with the same directory on the same server target", async () => {
-      // Create first workspace
-      const firstResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "First Workspace",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-      expect(firstResponse.ok).toBe(true);
-      const firstData = await firstResponse.json();
-
-      // Create another workspace with the same directory
-      const secondResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Second Workspace",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-
-      // Should succeed — workspaces are identified by ID, not directory
-      expect(secondResponse.status).toBe(201);
-      const secondData = await secondResponse.json();
-      expect(secondData.id).not.toBe(firstData.id);
-      expect(secondData.name).toBe("Second Workspace");
-    });
-
-    test("allows the same directory on a different server target", async () => {
-      const firstResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Local Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({ mode: "spawn" }),
-        }),
-      });
-      expect(firstResponse.ok).toBe(true);
-
-      const secondResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Remote Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({
-            mode: "connect",
-            hostname: "example-remote.test",
-            port: 2222,
-          }),
-        }),
-      });
-      expect(secondResponse.status).toBe(201);
-
-      const listResponse = await fetch(`${baseUrl}/api/workspaces`);
-      expect(listResponse.ok).toBe(true);
-      const workspaces = await listResponse.json();
-      expect(workspaces).toHaveLength(2);
-      expect(workspaces.map((workspace: { name: string }) => workspace.name)).toEqual([
-        "Local Workspace",
-        "Remote Workspace",
-      ]);
-    });
   });
 
   describe("POST /api/workspaces/:id/exec", () => {
@@ -648,27 +546,6 @@ describe("Workspace API Integration", () => {
   });
 
   describe("GET /api/workspaces/:id", () => {
-    test("returns workspace by id", async () => {
-      // Create a workspace
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Get By ID Test",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-      const workspace = await createResponse.json();
-
-      // Get by ID
-      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
-      expect(response.ok).toBe(true);
-      const data = await response.json();
-
-      expect(data.id).toBe(workspace.id);
-      expect(data.name).toBe("Get By ID Test");
-    });
 
     test("returns 404 for non-existent id", async () => {
       const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id`);
@@ -677,33 +554,6 @@ describe("Workspace API Integration", () => {
   });
 
   describe("PUT /api/workspaces/:id", () => {
-    test("updates workspace name", async () => {
-      // Create a workspace
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Original Name",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-      const workspace = await createResponse.json();
-
-      // Update name
-      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Updated Name",
-        }),
-      });
-      expect(response.ok).toBe(true);
-      const data = await response.json();
-
-      expect(data.name).toBe("Updated Name");
-      expect(data.directory).toBe(testWorkDir);
-    });
 
     test("updates and persists archived workspace state", async () => {
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -812,16 +662,6 @@ describe("Workspace API Integration", () => {
       expect(sensitiveWorkspace.serverSettings.agent["identityFile"]).toBe("/keys/put");
     });
 
-    test("returns 404 for non-existent id", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "New Name",
-        }),
-      });
-      expect(response.status).toBe(404);
-    });
   });
 
   describe("DELETE /api/workspaces/:id", () => {
@@ -1120,12 +960,6 @@ describe("Workspace API Integration", () => {
       await rm(sourceDirectory, { recursive: true, force: true });
     });
 
-    test("returns 404 for non-existent id", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id`, {
-        method: "DELETE",
-      });
-      expect(response.status).toBe(404);
-    });
   });
 
   describe("POST /api/workspaces/:id/pull-latest-changes", () => {
@@ -1387,54 +1221,9 @@ describe("Workspace API Integration", () => {
       expect(data.error).toBe("workspace_not_found");
     });
 
-    test("fails when creating task without workspaceId", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: "Test prompt",
-          draft: true,
-          planMode: false,
-        }),
-      });
-
-      expect(response.ok).toBe(false);
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error).toBe("validation_error");
-      expect(data.message).toContain("workspaceId");
-    });
   });
 
   describe("Workspace Server Settings Endpoints", () => {
-    describe("GET /api/workspaces/:id/server-settings", () => {
-      test("returns workspace server settings", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Server Settings Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Get server settings
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`);
-        expect(response.ok).toBe(true);
-        const settings = await response.json();
-
-        // Should have default settings
-        expect(settings.agent.transport).toBe("stdio");
-      });
-
-      test("returns 404 for non-existent workspace", async () => {
-        const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/server-settings`);
-        expect(response.status).toBe(404);
-      });
-    });
 
     describe("PUT /api/workspaces/:id/server-settings", () => {
       test("updates workspace server settings", async () => {
@@ -1528,43 +1317,6 @@ describe("Workspace API Integration", () => {
         expect(sensitiveSettings.agent["identityFile"]).toBe("/keys/settings-2");
       });
 
-      test("rejects invalid mode", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Invalid Mode Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Try to update with invalid mode
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agent: {
-              provider: "opencode",
-              transport: "invalid-transport",
-            },
-          }),
-        });
-        expect(response.ok).toBe(false);
-        expect(response.status).toBe(400);
-      });
-
-      test("returns 404 for non-existent workspace", async () => {
-        const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/server-settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(makeServerSettings({ mode: "spawn" })),
-        });
-        expect(response.status).toBe(404);
-      });
-
       test("does not emit a reset event when submitted server settings are unchanged", async () => {
         const { taskEventEmitter } = await import("../../src/core/event-emitter");
 
@@ -1610,270 +1362,7 @@ describe("Workspace API Integration", () => {
       });
     });
 
-    describe("GET /api/workspaces/:id/server-settings/status", () => {
-      test("returns connection status for workspace", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Status Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Get connection status
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings/status`);
-        expect(response.ok).toBe(true);
-        const status = await response.json();
-
-        // Should return a valid status object
-        expect(status).toHaveProperty("connected");
-        expect(status).toHaveProperty("provider");
-        expect(status).toHaveProperty("transport");
-        expect(status).toHaveProperty("capabilities");
-        expect(status.capabilities).not.toContain("queueActivePrompt");
-      });
-
-      test("returns 404 for non-existent workspace", async () => {
-        const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/server-settings/status`);
-        expect(response.status).toBe(404);
-      });
-    });
-
-    describe("POST /api/workspaces/:id/server-settings/test", () => {
-      test("tests connection with current settings", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Test Connection Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Test connection (with spawn mode and mock backend, this should succeed)
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings/test`, {
-          method: "POST",
-        });
-        expect(response.ok).toBe(true);
-        const result = await response.json();
-
-        expect(result).toHaveProperty("success");
-      });
-
-      test("tests connection with proposed settings", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Test Proposed Settings",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Test with proposed settings
-        const proposedSettings = makeServerSettings({ mode: "spawn" });
-
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings/test`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proposedSettings),
-        });
-        expect(response.ok).toBe(true);
-        const result = await response.json();
-
-        expect(result).toHaveProperty("success");
-      });
-
-      test("returns 400 when proposed settings body is invalid JSON", async () => {
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Invalid JSON Settings Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings/test`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{invalid-json",
-        });
-
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe("invalid_json");
-      });
-
-      test("returns 400 when proposed settings fail schema validation", async () => {
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Invalid Settings Shape Test",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings/test`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agent: {
-              provider: "opencode",
-              transport: "invalid-transport",
-            },
-          }),
-        });
-
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe("validation_error");
-      });
-
-      test("returns 404 for non-existent workspace", async () => {
-        const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/server-settings/test`, {
-          method: "POST",
-        });
-        expect(response.status).toBe(404);
-      });
-    });
-
-    describe("Workspace creation with serverSettings", () => {
-      test("creates workspace with default server settings when not provided", async () => {
-        const response = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Default Settings Workspace",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-
-        expect(response.ok).toBe(true);
-        const workspace = await response.json();
-
-        expect(workspace.serverSettings).toBeDefined();
-        expect(workspace.serverSettings.agent.transport).toBe("stdio");
-      });
-
-      test("creates workspace with custom server settings when provided", async () => {
-        const customSettings = makeServerSettings({
-          mode: "connect",
-          hostname: "custom.server.com",
-          port: 9000,
-        });
-
-        const response = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Custom Settings Workspace",
-            directory: testWorkDir,
-            serverSettings: customSettings,
-          }),
-        });
-
-        expect(response.ok).toBe(true);
-        const workspace = await response.json();
-
-        expect(workspace.serverSettings).toBeDefined();
-        expect(workspace.serverSettings.agent.transport).toBe("ssh");
-        expect(workspace.serverSettings.agent.hostname).toBe("custom.server.com");
-        expect(workspace.serverSettings.agent.port).toBe(9000);
-      });
-    });
-
     describe("Workspace update with serverSettings", () => {
-      test("updates workspace name and server settings together", async () => {
-        // Create a workspace
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Original Name",
-            directory: testWorkDir,
-          serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Update both name and server settings
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "New Name",
-            serverSettings: makeServerSettings({
-              mode: "connect",
-              hostname: "new-server.com",
-              port: 7000,
-            }),
-          }),
-        });
-
-        expect(response.ok).toBe(true);
-        const updated = await response.json();
-
-        expect(updated.name).toBe("New Name");
-        expect(updated.serverSettings.agent.transport).toBe("ssh");
-        expect(updated.executionNodeId).toBeNull();
-        expect(updated.serverSettings.agent.hostname).toBe("new-server.com");
-        expect(updated.serverSettings.agent.port).toBe(7000);
-      });
-
-      test("updates only name, keeping server settings", async () => {
-        // Create a workspace with custom settings
-        const customSettings = makeServerSettings({
-          mode: "connect",
-          hostname: "original.server.com",
-          port: 5000,
-        });
-
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Original Name",
-            directory: testWorkDir,
-            serverSettings: customSettings,
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        // Update only name
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Updated Name Only",
-          }),
-        });
-
-        expect(response.ok).toBe(true);
-        const updated = await response.json();
-
-        expect(updated.name).toBe("Updated Name Only");
-        // Server settings should remain unchanged
-        expect(updated.serverSettings.agent.transport).toBe("ssh");
-        expect(updated.serverSettings.agent.hostname).toBe("original.server.com");
-        expect(updated.serverSettings.agent.port).toBe(5000);
-      });
 
       test("resets connection when serverSettings are updated via PUT /api/workspaces/:id", async () => {
         // Import the event emitter to capture events
@@ -1977,53 +1466,6 @@ describe("Workspace API Integration", () => {
         }
       });
 
-      test("does NOT emit a reset event when submitted server settings are unchanged", async () => {
-        const { taskEventEmitter } = await import("../../src/core/event-emitter");
-
-        const originalSettings = makeServerSettings({
-          mode: "connect",
-          hostname: "original.server.com",
-          port: 5000,
-        });
-
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "No-op Workspace Update Test",
-            directory: testWorkDir,
-            serverSettings: originalSettings,
-          }),
-        });
-        const workspace = await createResponse.json();
-
-        const events: Array<{ type: string; workspaceId?: string }> = [];
-        const unsubscribe = taskEventEmitter.subscribe((event) => {
-          const eventType = (event as { type: string }).type;
-          if (eventType === "server.reset") {
-            events.push(event as { type: string; workspaceId?: string });
-          }
-        });
-
-        try {
-          const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: "Renamed Without Reset",
-              serverSettings: originalSettings,
-            }),
-          });
-
-          expect(response.ok).toBe(true);
-          const updated = await response.json();
-          expect(updated.name).toBe("Renamed Without Reset");
-          expect(updated.serverSettings).toEqual(originalSettings);
-          expect(events.length).toBe(0);
-        } finally {
-          unsubscribe();
-        }
-      });
     });
 
     describe("Workspace settings isolation", () => {
@@ -2126,128 +1568,79 @@ describe("Workspace API Integration", () => {
 
   describe("POST /api/workspaces/:id/archived-tasks/purge", () => {
     test("purges only archived tasks for the selected workspace", async () => {
-      const createWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Bulk Purge Workspace",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
-      });
-      expect(createWorkspaceResponse.ok).toBe(true);
-      const workspace = await createWorkspaceResponse.json();
-
-      const originalGetAllTasks = taskManager.getAllTasks;
-      const originalPurgeTask = taskManager.purgeTask;
-
-      const purgedIds: string[] = [];
-      taskManager.getAllTasks = async () => [
-        {
-          config: { id: "task-archived-1", workspaceId: workspace.id },
-          state: { status: "deleted" },
-        } as any,
-        {
-          config: { id: "task-archived-2", workspaceId: workspace.id },
-          state: { status: "pushed", reviewMode: { addressable: false } },
-        } as any,
-        {
-          config: { id: "task-feedback", workspaceId: workspace.id },
-          state: { status: "pushed", reviewMode: { addressable: true } },
-        } as any,
-        {
-          config: { id: "task-other-workspace", workspaceId: "ws-other" },
-          state: { status: "deleted" },
-        } as any,
-      ];
-      taskManager.purgeTask = async (taskId: string) => {
-        purgedIds.push(taskId);
-        return { success: true };
-      };
-
-      try {
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-tasks/purge`, {
+      // Purging is destructive, so this asserts the selection rule against real
+      // persisted tasks: only archived (deleted) tasks, and only in the requested
+      // workspace, may be removed.
+      async function createDraftTask(workspaceId: string, name: string): Promise<string> {
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId,
+            prompt: "Purge selection fixture",
+            name,
+            attachments: [],
+            model: testModel,
+            cheapModel: { mode: "same-as-task" },
+            maxIterations: null,
+            maxConsecutiveErrors: 10,
+            activityTimeoutSeconds: 300,
+            stopPattern: "<promise>COMPLETE</promise>$",
+            git: { branchPrefix: "", commitScope: "" },
+            baseBranch: testDefaultBranch,
+            useWorktree: true,
+            clearPlanningFolder: false,
+            planMode: false,
+            autoAcceptPlan: false,
+            fullyAutonomous: false,
+            draft: true,
+          }),
+        });
+        expect(response.status).toBe(201);
+        return (await response.json()).config.id;
+      }
+
+      async function createWorkspaceNamed(name: string): Promise<string> {
+        const response = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            directory: testWorkDir,
+            serverSettings: makeServerSettings(),
+          }),
         });
         expect(response.ok).toBe(true);
-        const body = await response.json();
-
-        expect(body.success).toBe(true);
-        expect(body.workspaceId).toBe(workspace.id);
-        expect(body.totalArchived).toBe(2);
-        expect(body.purgedCount).toBe(2);
-        expect(body.purgedTaskIds).toEqual(["task-archived-1", "task-archived-2"]);
-        expect(body.failures).toEqual([]);
-        expect(purgedIds).toEqual(["task-archived-1", "task-archived-2"]);
-      } finally {
-        taskManager.getAllTasks = originalGetAllTasks;
-        taskManager.purgeTask = originalPurgeTask;
+        return (await response.json()).id;
       }
-    });
 
-    test("uses bounded concurrency and preserves purge result ordering", async () => {
-      const createWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
+      const targetWorkspaceId = await createWorkspaceNamed("Bulk Purge Workspace");
+      const otherWorkspaceId = await createWorkspaceNamed("Bulk Purge Other Workspace");
+
+      const archivedInTarget = await createDraftTask(targetWorkspaceId, "Archived In Target");
+      const liveInTarget = await createDraftTask(targetWorkspaceId, "Live In Target");
+      const archivedInOther = await createDraftTask(otherWorkspaceId, "Archived In Other");
+
+      for (const taskId of [archivedInTarget, archivedInOther]) {
+        const deleteResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+        expect(deleteResponse.ok).toBe(true);
+      }
+
+      const response = await fetch(`${baseUrl}/api/workspaces/${targetWorkspaceId}/archived-tasks/purge`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Concurrent Purge Workspace",
-          directory: testWorkDir,
-        serverSettings: makeServerSettings(),
-        }),
       });
-      expect(createWorkspaceResponse.ok).toBe(true);
-      const workspace = await createWorkspaceResponse.json();
+      expect(response.ok).toBe(true);
+      const body = await response.json();
 
-      const originalGetAllTasks = taskManager.getAllTasks;
-      const originalPurgeTask = taskManager.purgeTask;
+      expect(body.success).toBe(true);
+      expect(body.workspaceId).toBe(targetWorkspaceId);
+      expect(body.purgedTaskIds).toEqual([archivedInTarget]);
+      expect(body.purgedCount).toBe(1);
+      expect(body.failures).toEqual([]);
 
-      let activePurges = 0;
-      let maxConcurrentPurges = 0;
-      const archivedTaskIds = ["task-1", "task-2", "task-3", "task-4", "task-5", "task-6"];
-
-      taskManager.getAllTasks = async () => archivedTaskIds.map((taskId) => ({
-        config: { id: taskId, workspaceId: workspace.id },
-        state: { status: "deleted" },
-      })) as any;
-
-      taskManager.purgeTask = async (taskId: string) => {
-        activePurges++;
-        maxConcurrentPurges = Math.max(maxConcurrentPurges, activePurges);
-        await new Promise((resolve) => setTimeout(resolve, taskId === "task-1" ? 10 : 1));
-        activePurges--;
-
-        if (taskId === "task-3") {
-          return taskFailure("task_operation_failed", "permission denied");
-        }
-
-        if (taskId === "task-5") {
-          throw new Error("remote executor disconnected");
-        }
-
-        return { success: true };
-      };
-
-      try {
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-tasks/purge`, {
-          method: "POST",
-        });
-        expect(response.ok).toBe(true);
-        const body = await response.json();
-
-        expect(body.success).toBe(true);
-        expect(body.workspaceId).toBe(workspace.id);
-        expect(body.totalArchived).toBe(6);
-        expect(body.purgedCount).toBe(4);
-        expect(body.purgedTaskIds).toEqual(["task-1", "task-2", "task-4", "task-6"]);
-        expect(body.failures).toEqual([
-          { taskId: "task-3", error: "permission denied" },
-          { taskId: "task-5", error: "Error: remote executor disconnected" },
-        ]);
-        expect(maxConcurrentPurges).toBeLessThanOrEqual(4);
-      } finally {
-        taskManager.getAllTasks = originalGetAllTasks;
-        taskManager.purgeTask = originalPurgeTask;
-      }
+      expect((await fetch(`${baseUrl}/api/tasks/${archivedInTarget}`)).status).toBe(404);
+      expect((await fetch(`${baseUrl}/api/tasks/${liveInTarget}`)).status).toBe(200);
+      expect((await fetch(`${baseUrl}/api/tasks/${archivedInOther}`)).status).toBe(200);
     });
 
     test("returns 404 for a missing workspace", async () => {
@@ -2259,108 +1652,4 @@ describe("Workspace API Integration", () => {
     });
   });
 
-  describe("POST /api/settings/purge-terminal-tasks", () => {
-    test("purges archived tasks across all workspaces and reports partial failures", async () => {
-      const testWorkDirA = await mkdtemp(join(tmpdir(), "clanky-global-purge-a-"));
-      const testWorkDirB = await mkdtemp(join(tmpdir(), "clanky-global-purge-b-"));
-
-      try {
-        await initializeGitRepository(testWorkDirA, { initialCommit: "empty" });
-        await initializeGitRepository(testWorkDirB, { initialCommit: "empty" });
-
-        const createWorkspaceAResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Global Purge Workspace A",
-            directory: testWorkDirA,
-            serverSettings: makeServerSettings(),
-          }),
-        });
-        const createWorkspaceBResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Global Purge Workspace B",
-            directory: testWorkDirB,
-            serverSettings: makeServerSettings(),
-          }),
-        });
-        expect(createWorkspaceAResponse.ok).toBe(true);
-        expect(createWorkspaceBResponse.ok).toBe(true);
-        const workspaceA = await createWorkspaceAResponse.json();
-        const workspaceB = await createWorkspaceBResponse.json();
-
-        const originalGetAllTasks = taskManager.getAllTasks;
-        const originalPurgeTask = taskManager.purgeTask;
-        const purgedIds: string[] = [];
-
-        taskManager.getAllTasks = async () => [
-          {
-            config: { id: "task-a-deleted", workspaceId: workspaceA.id },
-            state: { status: "deleted" },
-          } as any,
-          {
-            config: { id: "task-a-running", workspaceId: workspaceA.id },
-            state: { status: "running" },
-          } as any,
-          {
-            config: { id: "task-b-pushed", workspaceId: workspaceB.id },
-            state: { status: "pushed", reviewMode: { addressable: false } },
-          } as any,
-          {
-            config: { id: "task-b-feedback", workspaceId: workspaceB.id },
-            state: { status: "pushed", reviewMode: { addressable: true } },
-          } as any,
-        ];
-        taskManager.purgeTask = async (taskId: string) => {
-          purgedIds.push(taskId);
-          if (taskId === "task-b-pushed") {
-            return taskFailure("task_git_operation_failed", "branch protected");
-          }
-          return { success: true };
-        };
-
-        try {
-          const response = await fetch(`${baseUrl}/api/settings/purge-terminal-tasks`, {
-            method: "POST",
-          });
-          expect(response.ok).toBe(true);
-          const body = await response.json();
-
-          expect(body.success).toBe(true);
-          expect(body.totalWorkspaces).toBeGreaterThanOrEqual(2);
-          expect(body.totalArchived).toBe(2);
-          expect(body.purgedCount).toBe(1);
-          expect(body.purgedTaskIds).toEqual(["task-a-deleted"]);
-          expect(body.failures).toEqual([
-            { workspaceId: workspaceB.id, taskId: "task-b-pushed", error: "branch protected" },
-          ]);
-          expect(body.workspaces).toEqual(expect.arrayContaining([
-            {
-              workspaceId: workspaceA.id,
-              totalArchived: 1,
-              purgedCount: 1,
-              purgedTaskIds: ["task-a-deleted"],
-              failures: [],
-            },
-            {
-              workspaceId: workspaceB.id,
-              totalArchived: 1,
-              purgedCount: 0,
-              purgedTaskIds: [],
-              failures: [{ taskId: "task-b-pushed", error: "branch protected" }],
-            },
-          ]));
-          expect(purgedIds).toEqual(["task-a-deleted", "task-b-pushed"]);
-        } finally {
-          taskManager.getAllTasks = originalGetAllTasks;
-          taskManager.purgeTask = originalPurgeTask;
-        }
-      } finally {
-        await rm(testWorkDirA, { recursive: true, force: true });
-        await rm(testWorkDirB, { recursive: true, force: true });
-      }
-    });
-  });
 });

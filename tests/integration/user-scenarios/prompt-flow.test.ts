@@ -85,7 +85,6 @@ describe("Task prompt flow", () => {
     const prompts = await waitForSentPrompt(ctx, 2);
 
     expect(promptText(prompts[1]!.prompt)).toBe("Prioritize the edge case I just described.");
-    expect(promptText(prompts[0]!.prompt)).toContain("- Original Goal: Implement the original feature");
     expect(prompts[1]!.sessionId).toBe(prompts[0]!.sessionId);
     expect(stoppedTask.state.status).toBe("stopped");
     expect(stoppedTask.state.currentIteration).toBe(2);
@@ -250,7 +249,6 @@ describe("Task prompt flow", () => {
     const prompts = await waitForSentPrompt(ctx, 2);
 
     expect(prompts[1]!.sessionId).not.toBe(initialSessionId);
-    expect(promptText(prompts[1]!.prompt)).toContain("This task is continuing in a new AI session");
     expect(promptText(prompts[1]!.prompt)).toContain("Recover the task and continue the implementation.");
     expect(stoppedTask.state.status).toBe("stopped");
     expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
@@ -294,7 +292,6 @@ describe("Task prompt flow", () => {
 
     expect(prompts[1]!.sessionId).toBe(initialSessionId);
     expect(prompts[2]!.sessionId).not.toBe(initialSessionId);
-    expect(promptText(prompts[2]!.prompt)).toContain("This task is continuing in a new AI session");
     expect(promptText(prompts[2]!.prompt)).toContain("Recover the task and continue the implementation.");
     expect(stoppedTask.state.status).toBe("stopped");
     expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");

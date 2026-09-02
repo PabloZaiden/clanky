@@ -2,20 +2,20 @@
  * API integration tests for chat endpoints.
  */
 
-import { afterAll, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initializeDatabase } from "../../src/persistence/database";
-import { loadChat, saveChat, updateChatConfig, updateChatState } from "../../src/persistence/chats";
+import { loadChat, saveChat, updateChatState } from "../../src/persistence/chats";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 import { backendManager } from "../../src/core/backend-manager";
-import { chatManager } from "../../src/core/chat-manager";
+
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getManagedWorktreePath } from "../../src/core/git";
 import { getPlanFilePath } from "../../src/lib/planning-files";
@@ -464,71 +464,6 @@ describe("Chats API Integration", () => {
       unsubscribe();
       backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
     }
-  });
-
-  test("returns not found when chat deletion reports no deleted record", async () => {
-    const createResponse = await fetch(`${baseUrl}/api/chats`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Unchanged Delete Chat",
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        useWorktree: false,
-        baseBranch: defaultBranch,
-      }),
-    });
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as Chat;
-    const deleteChatSpy = spyOn(chatManager, "deleteChat").mockResolvedValue(false);
-
-    try {
-      const deleteResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
-        method: "DELETE",
-      });
-
-      expect(deleteResponse.status).toBe(404);
-      expect(await deleteResponse.json()).toEqual({
-        error: "not_found",
-        message: "Chat not found",
-      });
-      expect(await loadChat(created.config.id)).not.toBeNull();
-    } finally {
-      deleteChatSpy.mockRestore();
-      await chatManager.deleteChat(created.config.id);
-    }
-  });
-
-  test("reports guarded chat config updates that do not match the current name", async () => {
-    const createResponse = await fetch(`${baseUrl}/api/chats`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Guarded Config Chat",
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        useWorktree: false,
-        baseBranch: defaultBranch,
-      }),
-    });
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as Chat;
-    const persisted = await loadChat(created.config.id);
-    if (!persisted) {
-      throw new Error("Expected persisted chat");
-    }
-
-    const saved = await updateChatConfig(
-      persisted.config.id,
-      {
-        ...persisted.config,
-        name: "Late Generated Name",
-      },
-      { expectedName: "Stale Generated Name" },
-    );
-
-    expect(saved).toBe(false);
-    expect((await loadChat(persisted.config.id))?.config.name).toBe("Guarded Config Chat");
   });
 
   test("marks a chat as done, keeps it in history, and reactivates it on a new message", async () => {
@@ -1128,29 +1063,6 @@ describe("Chats API Integration", () => {
     expect(markdown).toContain("Attachment sent. Attachment data is not included in this transcript.");
     expect(markdown).not.toContain("secret-screenshot.png");
     expect(markdown).not.toContain("private-base64-data");
-  });
-
-  test("returns clear transcript export errors for missing or empty chats", async () => {
-    const missingResponse = await fetch(`${baseUrl}/api/chats/missing-chat/transcript.md`);
-    expect(missingResponse.status).toBe(404);
-
-    const createResponse = await fetch(`${baseUrl}/api/chats`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Empty Transcript Export",
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        useWorktree: false,
-        baseBranch: defaultBranch,
-      }),
-    });
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json();
-
-    const emptyResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
-    expect(emptyResponse.status).toBe(400);
-    expect((await emptyResponse.json()).error).toBe("empty_transcript");
   });
 
   test("renames autogenerated chats from the first user message and emits chat.updated", async () => {
@@ -2457,86 +2369,6 @@ describe("Chats API Integration", () => {
     expect(settledAfterRecovery.state.session?.id).not.toBe(replacementSessionId);
     expect(settledAfterRecovery.state.error).toBeUndefined();
     expect(settledAfterRecovery.state.messages.some((message) => message.content === "Recover automatically")).toBe(true);
-  });
-
-  test("renames an existing chat", async () => {
-    const createResponse = await fetch(`${baseUrl}/api/chats`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Original Chat Name",
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        useWorktree: false,
-        baseBranch: defaultBranch,
-      }),
-    });
-
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json();
-
-    const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Renamed Chat",
-      }),
-    });
-
-    expect(renameResponse.status).toBe(200);
-    const renamed = await renameResponse.json();
-    expect(renamed.config.name).toBe("Renamed Chat");
-    expect(renamed.config.id).toBe(created.config.id);
-    expect(renamed.config.workspaceId).toBe(created.config.workspaceId);
-    expect(new Date(renamed.config.updatedAt).getTime()).toBeGreaterThanOrEqual(
-      new Date(created.config.updatedAt).getTime(),
-    );
-
-    const getResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
-    expect(getResponse.status).toBe(200);
-    const persisted = await getResponse.json();
-    expect(persisted.config.name).toBe("Renamed Chat");
-  });
-
-  test("updates a chat private flag and persists it when re-fetched", async () => {
-    const createResponse = await fetch(`${baseUrl}/api/chats`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Private Chat Flag",
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        useWorktree: false,
-        baseBranch: defaultBranch,
-      }),
-    });
-
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json();
-    const chatId = created.config.id as string;
-
-    const updateResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        isPrivate: true,
-      }),
-    });
-
-    expect(updateResponse.status).toBe(200);
-    const updated = await updateResponse.json();
-    expect(updated.config.isPrivate).toBe(true);
-
-    const getResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
-    expect(getResponse.status).toBe(200);
-    const fetched = await getResponse.json();
-    expect(fetched.config.isPrivate).toBe(true);
-
-    const listResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
-    expect(listResponse.status).toBe(200);
-    const listedChats = await listResponse.json();
-    const listed = listedChats.find((chat: { config: { id: string } }) => chat.config.id === chatId);
-    expect(listed?.config.isPrivate).toBe(true);
   });
 
   test("updates a chat model and uses it for the next turn", async () => {

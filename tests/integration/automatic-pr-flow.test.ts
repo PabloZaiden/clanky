@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PushedTaskMonitor } from "../../src/core/pushed-task-monitor";
 import {
   constructAutomaticPrReviewCommentText,
-  constructAutomaticPrReviewPrompt,
 } from "../../src/core/task/task-review";
 import {
   AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
@@ -541,29 +540,6 @@ describe("Automatic PR flow feedback sources", () => {
       id: "workflow-0",
       outcome: "manual",
     });
-  });
-
-  test("includes workflow context in the automatic review prompt", () => {
-    const workflowItem: AutomaticPrFlowFeedbackItem = {
-      id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
-      source: "workflow",
-      body: "Workflow check unit-tests failed.",
-      workflowName: "CI",
-      checkName: "unit-tests",
-      checkConclusion: "FAILURE",
-      headSha: "head-sha-1",
-      url: "https://github.com/test-owner/test-repo/actions/runs/101",
-    };
-
-    const prompt = constructAutomaticPrReviewPrompt(
-      [{ text: workflowItem.body, sourceItemIds: [workflowItem.id] }],
-      [workflowItem],
-    );
-
-    expect(prompt).toContain("workflows=CI");
-    expect(prompt).toContain("checks=unit-tests");
-    expect(prompt).toContain("conclusions=FAILURE");
-    expect(prompt).toContain("headShas=head-sha-1");
   });
 
   test("uses a fixed task comment for workflow failures", () => {

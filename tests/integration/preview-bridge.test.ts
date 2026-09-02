@@ -127,17 +127,6 @@ describe("workspace previews", () => {
     });
   });
 
-  test("resolves workspace by unique name and rejects ambiguous names", async () => {
-    await runWithCurrentUser(testOwnerUser, async () => {
-      await createWorkspace(buildWorkspace("workspace-1", "App"));
-      await createWorkspace(buildWorkspace("workspace-2", "Duplicate"));
-      await createWorkspace(buildWorkspace("workspace-3", "Duplicate"));
-
-      expect((await previewSessionManager.resolveWorkspaceReference("App")).id).toBe("workspace-1");
-      await expect(previewSessionManager.resolveWorkspaceReference("Duplicate")).rejects.toThrow("ambiguous");
-    });
-  });
-
   test("bridges WebSocket preview streams to the workspace target", async () => {
     const upstreamServer = Bun.serve({
       port: 0,

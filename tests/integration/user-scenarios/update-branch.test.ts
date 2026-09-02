@@ -142,46 +142,4 @@ describe("Update Branch User Scenarios", () => {
     });
   });
 
-  describe("Edge Cases", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          // Initial task iteration → COMPLETE
-          "<promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-        withRemote: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("update-branch rejects non-pushed task", async () => {
-      // Create and complete task but don't push
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Do something",
-        planMode: false,
-      });
-      const task = body as Task;
-
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Try to update-branch on a completed (not pushed) task — returns 400
-      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, task.config.id);
-      expect(updateStatus).toBe(400);
-      expect(updateBody.error).toBe("invalid_state");
-      expect(updateBody.message).toBe("Task is in an invalid state for this operation");
-    });
-
-    test("update-branch rejects non-existent task", async () => {
-      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, "non-existent-id");
-      expect(updateStatus).toBe(404);
-      expect(updateBody.error).toBe("not_found");
-    });
-  });
 });

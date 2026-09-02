@@ -410,7 +410,7 @@ async function runNativeTests(
   const files = await listTestFilesForMode(mode);
   if (files.length === 0) {
     log(`No ${mode} test files found.`);
-    return 0;
+    return 1;
   }
 
   const args = buildNativeTestArgs(files, workerCapacity, nativeArgs);
@@ -450,6 +450,10 @@ async function runCustomTestBuckets(
   const log = dependencies.log ?? ((message: string) => console.log(message));
   const configuredMaxWorkers = resolveMaxWorkers(env);
   const buckets = await buildBucketsImpl(mode, configuredMaxWorkers);
+  if (buckets.length === 0) {
+    log(`No ${mode} test files found.`);
+    return 1;
+  }
   const maxWorkers = Math.max(1, Math.min(configuredMaxWorkers, buckets.length));
 
   log(`Running ${buckets.length} test bucket(s) in parallel...`);

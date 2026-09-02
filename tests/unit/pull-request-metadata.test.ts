@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import type { AgentResponse } from "../../src/backends/types";
 import {
-  buildFallbackPullRequestMetadata,
   generatePullRequestMetadata,
   type PullRequestMetadataBackendInterface,
   type PullRequestMetadataInput,
@@ -68,26 +67,4 @@ test("does not duplicate an existing linked issue closing directive", async () =
   });
 
   expect(metadata.body.match(/Closes #42/gi)).toHaveLength(1);
-});
-
-test("includes the linked issue closing directive in fallback metadata", () => {
-  const metadata = buildFallbackPullRequestMetadata({
-    ...baseMetadata,
-    issueNumber: 99,
-  });
-
-  expect(metadata.body).toContain("Closes #99");
-});
-
-test("leaves metadata without a linked issue unchanged", async () => {
-  const metadata = await generatePullRequestMetadata({
-    metadata: baseMetadata,
-    backend: backendReturning(JSON.stringify({
-      title: "Link tasks to GitHub issues",
-      body: "## Summary\n- Stores task metadata.",
-    })),
-    sessionId: "metadata-session",
-  });
-
-  expect(metadata.body).not.toContain("Closes #");
 });

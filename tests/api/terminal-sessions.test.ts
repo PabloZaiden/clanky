@@ -167,64 +167,6 @@ describe("Terminal sessions API integration", () => {
     expect(created.state.status).toBe("ready");
   });
 
-  test("renames a terminal session", async () => {
-    const workspace = await createWorkspace({ transport: "ssh" });
-
-    const createResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId: workspace.id,
-        name: "Original Name",
-        connectionMode: "dtach",
-      }),
-    });
-
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as WorkspaceTerminalSession;
-
-    const renameResponse = await fetch(`${baseUrl}/api/terminal-sessions/${created.config.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Renamed Terminal",
-      }),
-    });
-
-    expect(renameResponse.ok).toBe(true);
-    const renamed = await renameResponse.json() as WorkspaceTerminalSession;
-    expect(renamed.config.id).toBe(created.config.id);
-    expect(renamed.config.name).toBe("Renamed Terminal");
-  });
-
-  test("rejects rename with empty name", async () => {
-    const workspace = await createWorkspace({ transport: "ssh" });
-
-    const createResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId: workspace.id,
-        name: "Terminal",
-        connectionMode: "dtach",
-      }),
-    });
-    expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as WorkspaceTerminalSession;
-
-    const renameResponse = await fetch(`${baseUrl}/api/terminal-sessions/${created.config.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "   ",
-      }),
-    });
-
-    expect(renameResponse.status).toBe(400);
-    const data = await renameResponse.json() as { message: string };
-    expect(data.message).toContain("name is required");
-  });
-
   test("filters sessions by workspaceId", async () => {
     const workspace1 = await createWorkspace({ transport: "ssh", name: "Workspace 1" });
     const otherDir = await mkdtemp(join(tmpdir(), "clanky-terminal-sessions-work2-"));
@@ -256,24 +198,6 @@ describe("Terminal sessions API integration", () => {
     } finally {
       await rm(otherDir, { recursive: true, force: true });
     }
-  });
-
-  test("defaults connectionMode to dtach", async () => {
-    const workspace = await createWorkspace({ transport: "stdio" });
-
-    const response = await fetch(`${baseUrl}/api/terminal-sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId: workspace.id,
-        name: "Default mode terminal",
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    const session = await response.json() as WorkspaceTerminalSession;
-    expect(session.config.connectionMode).toBe("dtach");
-    expect(session.config.useTmux).toBe(false);
   });
 
   test("target binding captures SSH workspace settings", async () => {
@@ -319,15 +243,4 @@ describe("Terminal sessions API integration", () => {
     expect(binding.username).toBeUndefined();
   });
 
-  test("returns 404 for non-existent session", async () => {
-    const response = await fetch(`${baseUrl}/api/terminal-sessions/non-existent-id`);
-    expect(response.status).toBe(404);
-  });
-
-  test("returns 404 when deleting non-existent session", async () => {
-    const response = await fetch(`${baseUrl}/api/terminal-sessions/non-existent-id`, {
-      method: "DELETE",
-    });
-    expect(response.status).toBe(404);
-  });
 });

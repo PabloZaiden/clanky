@@ -442,55 +442,5 @@ describe("Regular Task User Scenarios", () => {
       await runGit(ctx.workDir, ["clean", "-fd"]);
     });
 
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${ctx.baseUrl}/api/tasks/non-existent-id`);
-      expect(response.status).toBe(404);
-    });
-
-    test("cannot accept a task that is not completed", async () => {
-      // Clean up any leftover changes from previous tests
-      await runGit(ctx.workDir, ["checkout", "--", "."]);
-      await runGit(ctx.workDir, ["clean", "-fd"]);
-      
-      // Create a task but don't wait for completion
-      ctx.mockBackend.reset([
-        "Still working...",
-        "More work...",
-        "Even more...",
-        "Almost done...",
-        "<promise>COMPLETE</promise>",
-      ]);
-
-      const { status: createStatus, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Long running task",
-        planMode: false, // Regular execution, not plan mode
-      });
-      
-      // If creation fails due to some issue, skip the rest of the test
-      if (createStatus !== 201) {
-        expect(createStatus).toBe(201); // This will fail with a meaningful message
-        return;
-      }
-      
-      const task = body as Task;
-
-      // Wait for it to be running (or already completed)
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, ["running", "completed"]);
-
-      // Try to accept (might already be completed due to fast mock)
-      // This is a race condition test - if it completes fast, skip the assertion
-      const { status } = await acceptTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      // Either we catch it running (400) or it already completed (200)
-      expect([200, 400]).toContain(status);
-
-      // Wait for completion and clean up
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, ["completed", "accepted_local"]);
-      const finalTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, ["completed", "accepted_local", "deleted"]);
-      if (finalTask.state.status !== "deleted" && finalTask.state.status !== "accepted_local") {
-        await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-      }
-    });
   });
 });

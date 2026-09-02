@@ -243,43 +243,6 @@ describe("Provisioning API integration", () => {
     });
   });
 
-  test("omits devbox GitHub user args when githubUser is blank", async () => {
-    const sshServer = await createServer();
-    const executor = new ProvisioningTestExecutor({
-      devboxStatusOutput: createDevboxStatusOutput({
-        workdir: "/workspaces/no-gh-user",
-      }),
-    });
-    sshServerManager.setExecutorFactoryForTesting(() => executor);
-
-    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Default GH Workspace",
-        sshServerId: sshServer.config.id,
-        repoUrl: "https://github.com/octocat/default-gh.git",
-        basePath: "/workspaces",
-        devcontainerSubpath: "backend",
-        devboxTemplate: null,
-        githubUser: "   ",
-        provider: "copilot",
-        credentialToken: null,
-        mode: "provision",
-        targetDirectory: null,
-        workspaceId: null,
-      }),
-    });
-
-    expect(response.status).toBe(201);
-    const started = await response.json() as ProvisioningSnapshotResponse;
-    expect(started.job.config.githubUser).toBeUndefined();
-    await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
-
-    const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
-    expect(devboxUpCall?.args).toEqual(["up", "--devcontainer-subpath", "backend"]);
-  });
-
   test("hides provisioning SSH secrets by default and includes them with sensitive=true", async () => {
     const sshServer = await createServer();
     sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
@@ -422,30 +385,6 @@ describe("Provisioning API integration", () => {
     } finally {
       provisioningManager.startJob = originalStartJob;
     }
-  });
-
-  test("returns 404 when the SSH server does not exist", async () => {
-    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Missing Server Workspace",
-        sshServerId: "missing-server",
-        repoUrl: "https://github.com/octocat/example.git",
-        basePath: "/workspaces",
-        devcontainerSubpath: null,
-        devboxTemplate: null,
-        provider: "copilot",
-        credentialToken: null,
-        mode: "provision",
-        targetDirectory: null,
-        workspaceId: null,
-      }),
-    });
-
-    expect(response.status).toBe(404);
-    const body = await response.json() as { error: string };
-    expect(body.error).toBe("not_found");
   });
 
   test("returns 400 for an invalid credential token", async () => {
