@@ -87,7 +87,7 @@ function enqueueLatestTerminalResize(
     return;
   }
   state.running = true;
-  void drainLatestTerminalResize(ws, states, state).catch((error: Error) => {
+  void drainLatestTerminalResize(ws, states, state).catch((error: unknown) => {
     log.warn("Terminal resize queue failed", {
       terminalSessionId: ws.data.workspaceTerminalSessionId,
       sshServerSessionId: ws.data.sshServerSessionId,
