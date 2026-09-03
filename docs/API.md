@@ -374,7 +374,7 @@ Create a new task.
 | `planMode` | boolean | Yes | Start in plan creation mode |
 | `maxIterations` | number \| null | Yes | Maximum iterations; use `null` for unlimited |
 | `maxConsecutiveErrors` | number | Yes | Maximum consecutive errors before the failsafe stops the task |
-| `activityTimeoutSeconds` | number \| null | No | Seconds without events before treating as error. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
+| `activityTimeoutSeconds` | number \| null | No | Seconds without events before ending the current turn normally. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
 | `stopPattern` | string | Yes | Completion regex. A trailing `<promise>BLOCKED</promise>` always stops safely without completion or automatic push. |
 | `git` | object | Yes | Git configuration |
 | `git.branchPrefix` | string | Yes | Prefix prepended before the generated `title-hash` branch name; use `""` for no prefix |
@@ -510,7 +510,7 @@ state.
 | `cheapModel` | object | Update helper-model selection |
 | `maxIterations` | number \| null | Update max iterations; `null` means unlimited |
 | `maxConsecutiveErrors` | number | Update max consecutive errors |
-| `activityTimeoutSeconds` | number \| null | Update activity timeout (`null` clears it to unlimited) |
+| `activityTimeoutSeconds` | number \| null | Update activity timeout; inactivity ends the current turn normally (`null` clears it to unlimited) |
 | `stopPattern` | string | Update stop pattern |
 | `baseBranch` | string | Update base branch |
 | `useWorktree` | boolean | Update worktree usage before the task has started |

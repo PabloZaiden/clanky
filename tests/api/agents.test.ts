@@ -11,13 +11,14 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { agentScheduler } from "../../src/core/agent-scheduler";
 import { backendManager } from "../../src/core/backend-manager";
+import { chatManager } from "../../src/core/chat-manager";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { listAgentRuns, loadAgent, saveAgent, saveAgentRun } from "../../src/persistence/agents";
 import { listTasks } from "../../src/persistence/tasks";
 import type { AgentRun } from "@/shared/agent";
 import { agentEventEmitter } from "../../src/core/event-emitter";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
+import { MockAcpBackend, NeverCompletingMockBackend, defaultTestModel } from "../mocks/mock-backend";
 import { seedTestOwnerUser } from "../setup";
 import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
@@ -246,6 +247,38 @@ describe("Agents API Integration", () => {
     expect(chatsResponse.status).toBe(200);
     const chats = await chatsResponse.json() as unknown[];
     expect(chats).toHaveLength(0);
+  });
+
+  test("completes an agent run when its chat stream becomes inactive", async () => {
+    backendManager.setBackendForTesting(new NeverCompletingMockBackend({
+      models: [defaultTestModel],
+    }));
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    chatManager.setActivityTimeoutForTesting(10);
+
+    try {
+      const agent = await createAgent("Inactive agent");
+      const runResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(runResponse.status).toBe(202);
+      const startedRun = await runResponse.json() as AgentRun;
+      const completedRun = await waitForRunTerminal(startedRun.id);
+
+      expect(completedRun.status).toBe("completed");
+      expect(completedRun.error).toBeUndefined();
+      expect(completedRun.messages).toContainEqual(expect.objectContaining({
+        role: "assistant",
+        content: "Still working...",
+      }));
+    } finally {
+      chatManager.setActivityTimeoutForTesting(undefined);
+      backendManager.setBackendForTesting(mockBackend);
+      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    }
   });
 
   test("runs agents directly in directory workspaces and rejects Git options", async () => {

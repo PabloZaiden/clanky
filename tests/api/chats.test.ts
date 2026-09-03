@@ -15,6 +15,7 @@ import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
 import { backendManager } from "../../src/core/backend-manager";
+import { chatManager } from "../../src/core/chat-manager";
 
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getManagedWorktreePath } from "../../src/core/git";
@@ -740,6 +741,75 @@ describe("Chats API Integration", () => {
         output: "Cancelled by user.",
       }));
     } finally {
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("treats ACP inactivity as a normal chat completion", async () => {
+    backendManager.setBackendForTesting(new NeverCompletingMockBackend({
+      models: [defaultTestModel],
+      runningToolCall: {
+        id: "tool-inactivity",
+        name: "read_file",
+        input: { path: "README.md" },
+      },
+    }));
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    chatManager.setActivityTimeoutForTesting(10);
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Inactivity Completion Test",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Start an inactive response" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      const settled = await waitForChatIdle(created.config.id);
+      expect(settled.state.status).toBe("idle");
+      expect(settled.state.error).toBeUndefined();
+      expect(settled.state.activeMessageId).toBeUndefined();
+      expect(settled.state.messages).toContainEqual(expect.objectContaining({
+        role: "assistant",
+        content: "Still working...",
+      }));
+
+      const snapshotResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`);
+      expect(snapshotResponse.status).toBe(200);
+      const snapshot = await snapshotResponse.json() as {
+        transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;
+      };
+      expect(snapshot.transcript.toolCalls).toContainEqual(expect.objectContaining({
+        id: "tool-inactivity",
+        status: "failed",
+      }));
+      const toolResponse = await fetch(
+        `${baseUrl}/api/chats/${created.config.id}/tool-calls/tool-inactivity`,
+      );
+      expect(toolResponse.status).toBe(200);
+      await expect(toolResponse.json()).resolves.toMatchObject({
+        output: "AI response stream ended after inactivity.",
+      });
+      const persisted = await loadChat(created.config.id);
+      expect(persisted?.state.logs).toContainEqual(expect.objectContaining({
+        message: "AI response stream ended after inactivity; treating the turn as complete",
+      }));
+    } finally {
+      chatManager.setActivityTimeoutForTesting(undefined);
       installMockBackend(["Hello from chat API", "Second response"]);
     }
   });

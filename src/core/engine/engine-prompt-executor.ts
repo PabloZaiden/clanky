@@ -137,7 +137,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
         log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
         log.debug("[TaskEngine] runIteration: About to start event iteration task");
         let abortLogged = false;
-        await streamHandle.consume({
+        const streamResult = await streamHandle.consume({
           shouldStop: () => {
             if (!this.isAborted()) {
               return false;
@@ -176,6 +176,12 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
             }
           },
         });
+        if (streamResult.endedByInactivity) {
+          this.emitLog("info", "AI response stream ended after inactivity; treating the turn as complete", {
+            activityTimeoutSeconds,
+            sessionId: activeSessionId,
+          });
+        }
 
         completed = true;
       } catch (error) {
