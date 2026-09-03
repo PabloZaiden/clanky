@@ -193,6 +193,7 @@ export interface ChatConversationPort {
   waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat>;
   closeActiveStream(chatId: string): void;
   hasActiveStream(chatId: string): boolean;
+  setActivityTimeoutForTesting(timeoutMs: number | undefined): void;
   emitChatLog(
     chat: Chat,
     level: TaskLogEntry["level"],

@@ -2,7 +2,7 @@
  * Persistence ownership for TaskEngine transcript and operational state.
  */
 
-import type { TaskLogEntry, TaskState } from "@/shared/task";
+import type { PersistedToolCall, TaskLogEntry, TaskState } from "@/shared/task";
 import type { MessageData, ToolCallData } from "@/shared/events";
 import type {
   TaskEngineOptions,
@@ -80,6 +80,25 @@ export class TaskPersistenceCoordinator {
   persistToolCall(toolCall: ToolCallData): void {
     this.transcript.upsertToolCall(toolCall);
     this.state.toolCalls = this.transcript.toolCalls;
+  }
+
+  finalizeInFlightToolCalls(timestamp: string, output: string): PersistedToolCall[] {
+    const finalized: PersistedToolCall[] = [];
+    for (const toolCall of [...this.transcript.toolCalls]) {
+      if (toolCall.status !== "pending" && toolCall.status !== "running") {
+        continue;
+      }
+
+      const finalizedToolCall: PersistedToolCall = {
+        ...toolCall,
+        status: "failed",
+        output: toolCall.output ?? output,
+        timestamp,
+      };
+      this.persistToolCall(finalizedToolCall);
+      finalized.push(finalizedToolCall);
+    }
+    return finalized;
   }
 
   getLog(id: string): TaskLogEntry | undefined {

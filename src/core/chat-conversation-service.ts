@@ -125,6 +125,7 @@ export class ChatConversationService implements ChatConversationPort {
   private readonly emitter: SimpleEventEmitter<ChatEvent>;
   private readonly scheduleQueuedMessageDrain: (chatId: string) => void;
   private permissionHandler: ChatPermissionHandler | undefined;
+  private activityTimeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
 
   constructor(dependencies: ChatConversationServiceDependencies) {
     this.state = dependencies.state;
@@ -137,6 +138,10 @@ export class ChatConversationService implements ChatConversationPort {
 
   setPermissionHandler(handler: ChatPermissionHandler): void {
     this.permissionHandler = handler;
+  }
+
+  setActivityTimeoutForTesting(timeoutMs: number | undefined): void {
+    this.activityTimeoutMs = timeoutMs ?? DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
   }
 
   async dispatchMessage(
@@ -505,7 +510,7 @@ export class ChatConversationService implements ChatConversationPort {
     const handle = streamController.start({
       sessionId,
       prompt,
-      activityTimeoutMs: DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS,
+      activityTimeoutMs: this.activityTimeoutMs,
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     const activeStream: ActiveChatStream = {
@@ -577,7 +582,14 @@ export class ChatConversationService implements ChatConversationPort {
         onEvent: (event) =>
           this.handleChatStreamEvent(chatId, backend, generation, streamState, event),
       });
-      if (
+      if (streamResult.endedByInactivity) {
+        const blocks = streamState.interpreter.flushActiveBlocks();
+        await this.flushChatStreamBlocks(streamState, blocks);
+        if (blocks.length > 0) {
+          streamState.interpreter.acknowledgeCheckpoint();
+        }
+        await this.completeChatAfterInactivity(chatId, generation, streamState);
+      } else if (
         streamResult.lastEvent?.type !== "message.complete"
         && streamResult.lastEvent?.type !== "error"
       ) {
@@ -634,6 +646,81 @@ export class ChatConversationService implements ChatConversationPort {
       this.clearActiveStream(chatId, generation);
       this.scheduleQueuedMessageDrain(chatId);
     }
+  }
+
+  private async completeChatAfterInactivity(
+    chatId: string,
+    generation: number,
+    streamState: ChatStreamConsumptionState,
+  ): Promise<void> {
+    if (!this.isActiveStreamGeneration(chatId, generation)) {
+      return;
+    }
+    if (!await this.reloadChatStreamState(chatId, streamState, true)) {
+      return;
+    }
+
+    const chat = streamState.chat;
+    if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
+      streamState.chat = await this.completeInterruptedChat(
+        chat,
+        streamState.transcriptMemory,
+        streamState.interpreter,
+      );
+      this.clearActiveStream(chatId, generation);
+      return;
+    }
+    if (!isChatBusyStatus(chat.state.status)) {
+      return;
+    }
+
+    const inactivityMessage = "AI response stream ended after inactivity.";
+    streamState.chat = await this.emitChatLog(
+      chat,
+      "info",
+      "AI response stream ended after inactivity; treating the turn as complete",
+      { logKind: "system", reason: "activity_timeout" },
+      undefined,
+      undefined,
+      { memory: streamState.transcriptMemory },
+    );
+
+    const now = createTimestamp();
+    const closedToolCalls: PersistedToolCall[] = [];
+    streamState.interpreter.cancelRunningTools(now, inactivityMessage);
+    const toolCalls = this.cancelInFlightToolCallsWithMemory(
+      streamState.transcriptMemory,
+      now,
+      closedToolCalls,
+      inactivityMessage,
+    );
+    const nextState = {
+      ...streamState.chat.state,
+      status: "idle" as const,
+      startupStage: undefined,
+      error: undefined,
+      interruptRequested: false,
+      activeMessageId: undefined,
+      pendingPermissionRequests: this.resolvePendingPermissionRequests(
+        streamState.chat.state.pendingPermissionRequests ?? [],
+        {
+          status: "cancelled",
+          resolvedAt: now,
+          error: inactivityMessage,
+        },
+      ),
+      toolCalls,
+      lastActivityAt: now,
+    };
+    streamState.chat = await this.updateState(streamState.chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, closedToolCalls.map((toolCall) => ({
+        id: toolCall.id,
+        kind: "tool",
+        timestamp: toolCall.timestamp,
+        payload: toolCall,
+      }))),
+    });
+    this.clearActiveStream(chatId, generation);
   }
 
   private async reloadChatStreamState(
@@ -1506,7 +1593,11 @@ export class ChatConversationService implements ChatConversationPort {
     );
   }
 
-  private cancelInFlightToolCalls(toolCalls: PersistedToolCall[], timestamp: string): PersistedToolCall[] {
+  private cancelInFlightToolCalls(
+    toolCalls: PersistedToolCall[],
+    timestamp: string,
+    output = "Cancelled by user.",
+  ): PersistedToolCall[] {
     return toolCalls.map((toolCall) => {
       if (toolCall.status !== "pending" && toolCall.status !== "running") {
         return toolCall;
@@ -1515,7 +1606,7 @@ export class ChatConversationService implements ChatConversationPort {
       return {
         ...toolCall,
         status: "failed",
-        output: toolCall.output ?? "Cancelled by user.",
+        output: toolCall.output ?? output,
         timestamp,
       };
     });
@@ -1525,6 +1616,7 @@ export class ChatConversationService implements ChatConversationPort {
     memory: ChatTranscriptMemory,
     timestamp: string,
     cancelledToolCalls: PersistedToolCall[],
+    output = "Cancelled by user.",
   ): PersistedToolCall[] {
     for (const toolCall of memory.toolCalls.values) {
       if (toolCall.status !== "pending" && toolCall.status !== "running") {
@@ -1534,7 +1626,7 @@ export class ChatConversationService implements ChatConversationPort {
       const updatedTool: PersistedToolCall = {
         ...toolCall,
         status: "failed",
-        output: toolCall.output ?? "Cancelled by user.",
+        output: toolCall.output ?? output,
         timestamp,
       };
       memory.toolCalls.upsert(updatedTool);

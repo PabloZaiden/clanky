@@ -60,7 +60,7 @@ export interface TaskConfig {
   /** Maximum consecutive identical errors before failsafe exit */
   maxConsecutiveErrors: number;
 
-  /** Seconds without events before treating as error and retrying; null for unlimited */
+  /** Seconds without events before ending the current turn normally; null for unlimited */
   activityTimeoutSeconds: number | null;
 
   /** Regex pattern for completion detection */

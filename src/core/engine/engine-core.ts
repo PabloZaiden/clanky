@@ -138,6 +138,7 @@ export class TaskEngine {
       emitLog: this.emitLog.bind(this),
       updateState: this.updateState.bind(this),
       processAgentEvent: this.processAgentEvent.bind(this),
+      finalizeInFlightToolCalls: this.persistence.finalizeInFlightToolCalls.bind(this.persistence),
       triggerPersistence: this.triggerPersistence.bind(this),
       isAborted: () => this.aborted,
       isInjectionPending: () => this.injectionPending,

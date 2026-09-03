@@ -14,6 +14,16 @@ const agentStreamTextEncoder = new TextEncoder();
 export const AGENT_STREAM_TEXT_CHECKPOINT_INTERVAL_MS = 300_000;
 export const AGENT_STREAM_TEXT_CHECKPOINT_BYTES = 512 * 1024;
 
+class AgentStreamActivityTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`No activity for ${Math.round(timeoutMs / 1000)} seconds`);
+    this.name = "AgentStreamActivityTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 export function getAgentStreamTextByteLength(text: string): number {
   return agentStreamTextEncoder.encode(text).byteLength;
 }
@@ -79,6 +89,7 @@ export interface AgentStreamRunOptions {
 export interface AgentStreamResult {
   lastEvent: AgentEvent | null;
   stopped: boolean;
+  endedByInactivity: boolean;
 }
 
 export interface AgentStreamHandle {
@@ -114,7 +125,7 @@ export class AgentStreamController {
     const consume = (runOptions: AgentStreamRunOptions): Promise<AgentStreamResult> => {
       consumePromise ??= (async () => {
         if (!await startPrompt() || !stream) {
-          return { lastEvent: null, stopped: true };
+          return { lastEvent: null, stopped: true, endedByInactivity: false };
         }
         return this.consume(stream, options.activityTimeoutMs, runOptions, () => closed);
       })();
@@ -172,12 +183,25 @@ export class AgentStreamController {
       ? DEFAULT_AGENT_STREAM_ACTIVITY_TIMEOUT_MS
       : activityTimeoutMsOption;
     let lastEvent: AgentEvent | null = null;
+    let endedByInactivity = false;
 
     try {
-      let event = await this.nextEvent(stream, activityTimeoutMs);
+      const readNextEvent = async (): Promise<AgentEvent | null> => {
+        try {
+          return await this.nextEvent(stream, activityTimeoutMs);
+        } catch (error) {
+          if (!(error instanceof AgentStreamActivityTimeoutError)) {
+            throw error;
+          }
+          endedByInactivity = true;
+          return null;
+        }
+      };
+
+      let event = await readNextEvent();
       while (event !== null) {
         if (isClosed() || (options.shouldStop && await options.shouldStop())) {
-          return { lastEvent, stopped: true };
+          return { lastEvent, stopped: true, endedByInactivity: false };
         }
 
         lastEvent = event;
@@ -187,13 +211,13 @@ export class AgentStreamController {
           || event.type === "message.complete"
           || event.type === "error"
         ) {
-          return { lastEvent, stopped: true };
+          return { lastEvent, stopped: true, endedByInactivity: false };
         }
 
-        event = await this.nextEvent(stream, activityTimeoutMs);
+        event = await readNextEvent();
       }
 
-      return { lastEvent, stopped: true };
+      return { lastEvent, stopped: true, endedByInactivity };
     } finally {
       stream.close();
     }
@@ -221,7 +245,7 @@ export async function nextWithTimeout<T>(
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`No activity for ${Math.round(timeoutMs / 1000)} seconds`));
+      reject(new AgentStreamActivityTimeoutError(timeoutMs));
     }, timeoutMs);
   });
 
