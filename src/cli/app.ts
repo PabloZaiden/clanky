@@ -13,13 +13,6 @@ const CLANKY_UPDATER_CONFIG = {
   currentVersion: CLANKY_VERSION,
   productName: "Clanky CLI",
   checksum: { required: true },
-  companionBinaries: [
-    {
-      binaryName: "clanky",
-      assetPrefix: "clanky",
-      required: false,
-    },
-  ],
 };
 
 async function buildClankyFromSource(sourcePath: string): Promise<void> {
