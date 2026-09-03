@@ -9,22 +9,54 @@ import {
   deleteWorkspace,
   getWorkspace,
 } from "../../persistence/workspaces";
+import {
+  createProvisioningJob,
+  dismissProvisioningJob,
+  listProvisioningJobs,
+  loadProvisioningJob,
+  markProvisioningJobsInterrupted,
+  updateProvisioningJob,
+} from "../../persistence/provisioning-jobs";
 import { workspaceManager } from "../workspace-manager";
 import type { ProvisioningJob, ProvisioningJobSnapshot, ProvisioningLogEntry, ServerSettings } from "@/shared";
-import { DEFAULT_JOB_RETENTION_MS, DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
+import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { buildError, getPublishedPortFallback, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
-import { emitJobCancelled, emitJobCompleted, emitJobFailed, emitJobStarted } from "./job-events";
+import { emitJobCancelled, emitJobCompleted, emitJobDismissed, emitJobFailed, emitJobStarted } from "./job-events";
 import { appendSystemLog, setStep } from "./job-logger";
 import { runProvisioningCommand } from "./command-runner";
 import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
+import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 
 const log = createLogger("core:provisioning-manager");
 
 function normalizeOptionalValue(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function getProvisioningTargetKey(config: ProvisioningJob["config"]): string | null {
+  const hostId = config.sshServerId ?? config.executionNodeId;
+  if (!hostId) {
+    return null;
+  }
+  if (config.mode === "arise") {
+    return `arise:${hostId}`;
+  }
+  if (config.workspaceId) {
+    return `workspace:${config.workspaceId}`;
+  }
+  if (config.targetDirectory) {
+    return `directory:${hostId}:${config.targetDirectory}`;
+  }
+  if (config.basePath) {
+    const repositoryName = config.createNewRepository
+      ? config.name
+      : extractRepoName(config.repoUrl ?? "");
+    return `directory:${hostId}:${pathPosix.join(config.basePath, repositoryName)}`;
+  }
+  return null;
 }
 
 function validateNewRepositoryFolderName(name: string): void {
@@ -68,11 +100,11 @@ export class ProvisioningManager {
   private readonly jobs = new Map<string, ProvisioningJobRecord>();
 
   constructor(
-    private readonly jobRetentionMs: number = DEFAULT_JOB_RETENTION_MS,
     private readonly maxLogEntries: number = DEFAULT_MAX_LOG_ENTRIES,
   ) {}
 
   async startJob(options: StartProvisioningJobOptions): Promise<ProvisioningJobSnapshot> {
+    const owner = requireCurrentUser();
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
     const mode = options.mode ?? "provision";
@@ -102,41 +134,51 @@ export class ProvisioningManager {
       },
       logs: [],
       abortController: new AbortController(),
+      owner,
+      runnerActive: true,
+      secretValues: options.password?.trim() ? [options.password.trim()] : [],
     };
 
+    const targetKey = getProvisioningTargetKey(record.job.config);
+    if (targetKey && this.hasActiveTarget(owner.id, targetKey)) {
+      throw new ProvisioningFailedError(
+        "provisioning_target_busy",
+        "verify_devbox",
+        "Another provisioning job is already running for this target",
+      );
+    }
+
     this.jobs.set(jobId, record);
+    try {
+      createProvisioningJob(owner.id, record.job);
+    } catch (error) {
+      this.jobs.delete(jobId);
+      throw error;
+    }
     emitJobStarted(record.job);
 
-    if (mode === "arise") {
-      void this.runServerAriseJob(record, options.password).catch((error) => {
-        log.error("Provisioning server-level arise job crashed unexpectedly", {
-          provisioningJobId: record.job.config.id,
-          mode,
-          error: String(error),
-        });
-      });
-    } else if (mode === "rebuild" || mode === "restart") {
-      void this.runExistingWorkspaceJob(record, options.password, mode).catch((error) => {
-        log.error("Provisioning existing-workspace job crashed unexpectedly", {
-          provisioningJobId: record.job.config.id,
-          mode,
-          error: String(error),
-        });
-      });
-    } else {
-      void this.runJob(record, options.password).catch((error) => {
+    const run = mode === "arise"
+      ? () => this.runServerAriseJob(record, options.password)
+      : mode === "rebuild" || mode === "restart"
+        ? () => this.runExistingWorkspaceJob(record, options.password, mode)
+        : () => this.runJob(record, options.password);
+    void runWithCurrentUser(owner, run)
+      .catch((error) => {
         log.error("Provisioning job crashed unexpectedly", {
           provisioningJobId: record.job.config.id,
+          mode,
           error: String(error),
         });
+      })
+      .finally(() => {
+        record.runnerActive = false;
       });
-    }
 
     return await this.getSnapshotOrThrow(jobId);
   }
 
   async getJobSnapshot(jobId: string): Promise<ProvisioningJobSnapshot | null> {
-    const record = this.jobs.get(jobId);
+    const record = this.getOrLoadRecord(jobId);
     if (!record) {
       return null;
     }
@@ -144,30 +186,83 @@ export class ProvisioningManager {
   }
 
   getJobLogs(jobId: string): ProvisioningLogEntry[] | null {
-    const record = this.jobs.get(jobId);
+    const record = this.getOrLoadRecord(jobId);
     return record ? [...record.logs] : null;
   }
 
+  listJobs(): ProvisioningJob[] {
+    const ownerId = requireCurrentUserId();
+    const jobs = new Map(listProvisioningJobs(ownerId).map((job) => [job.config.id, job]));
+    for (const record of this.jobs.values()) {
+      if (record.owner.id === ownerId) {
+        jobs.set(record.job.config.id, structuredClone(record.job));
+      }
+    }
+    return [...jobs.values()].sort((left, right) =>
+      right.state.updatedAt.localeCompare(left.state.updatedAt)
+      || right.config.createdAt.localeCompare(left.config.createdAt));
+  }
+
   async cancelJob(jobId: string): Promise<ProvisioningJobSnapshot | null> {
-    const record = this.jobs.get(jobId);
+    const record = this.getOrLoadRecord(jobId);
     if (!record) {
       return null;
     }
 
     if (record.job.state.status === "running" || record.job.state.status === "pending") {
       record.abortController.abort();
-      appendSystemLog(record, this.maxLogEntries, "Cancellation requested", record.job.state.currentStep);
+      if (record.runnerActive) {
+        appendSystemLog(record, this.maxLogEntries, "Cancellation requested", record.job.state.currentStep);
+      } else {
+        const completedAt = new Date().toISOString();
+        const failure = buildError(
+          "cancelled",
+          record.job.state.currentStep ?? "verify_devbox",
+          "Provisioning job was cancelled",
+        );
+        this.updateState(record, {
+          status: "cancelled",
+          error: failure,
+          completedAt,
+        });
+        appendSystemLog(record, this.maxLogEntries, failure.message, failure.step);
+        emitJobCancelled(record.job);
+      }
     }
 
     return await this.buildSnapshot(record);
   }
 
+  async dismissJob(jobId: string): Promise<boolean | null> {
+    const record = this.getOrLoadRecord(jobId);
+    if (!record) {
+      return null;
+    }
+    const status = record.job.state.status;
+    if (record.runnerActive || status === "pending" || status === "running") {
+      throw new ProvisioningFailedError(
+        "job_not_terminal",
+        record.job.state.currentStep ?? "verify_devbox",
+        "Provisioning is still finalizing and cannot be dismissed yet",
+      );
+    }
+
+    const deleted = dismissProvisioningJob(record.owner.id, jobId);
+    if (!deleted) {
+      return false;
+    }
+    this.jobs.delete(jobId);
+    emitJobDismissed(jobId);
+    return true;
+  }
+
+  reconcileStartupState(): number {
+    return markProvisioningJobsInterrupted(requireCurrentUserId());
+  }
+
   resetForTesting(): void {
     for (const record of this.jobs.values()) {
       record.abortController.abort();
-      if (record.cleanupTimer) {
-        clearTimeout(record.cleanupTimer);
-      }
     }
     this.jobs.clear();
   }
@@ -386,6 +481,9 @@ export class ProvisioningManager {
           "Could not determine the devbox SSH password from devbox status or credential file",
         );
       }
+      if (resolvedPassword && !record.secretValues.includes(resolvedPassword)) {
+        record.secretValues.push(resolvedPassword);
+      }
 
       const serverSettings: ServerSettings = executionNodeId
         ? stdioSettings
@@ -456,12 +554,10 @@ export class ProvisioningManager {
 
       setStep(record, this.maxLogEntries, "workspace_ready");
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: "completed",
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(
         record,
         this.maxLogEntries,
@@ -471,7 +567,6 @@ export class ProvisioningManager {
         "workspace_ready",
       );
       emitJobCompleted(record.job);
-      this.scheduleCleanup(record);
     } catch (error) {
       const cancelled =
         error instanceof ProvisioningCancelledError || record.abortController.signal.aborted;
@@ -514,20 +609,17 @@ export class ProvisioningManager {
       }
 
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: cancelled ? "cancelled" : "failed",
         error: failure,
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(record, this.maxLogEntries, failure.message, failure.step);
       if (cancelled) {
         emitJobCancelled(record.job);
       } else {
         emitJobFailed(record.job, failure);
       }
-      this.scheduleCleanup(record);
     }
   }
 
@@ -590,6 +682,7 @@ export class ProvisioningManager {
         record.job.config.devcontainerSubpath ?? workspace.devcontainerSubpath;
       if (devcontainerSubpath && record.job.config.devcontainerSubpath !== devcontainerSubpath) {
         record.job.config.devcontainerSubpath = devcontainerSubpath;
+        updateProvisioningJob(record.owner.id, record.job);
       }
 
       const sshServerId = record.job.config.sshServerId;
@@ -716,6 +809,9 @@ export class ProvisioningManager {
           "Could not determine the devbox SSH password from devbox status or credential file",
         );
       }
+      if (!record.secretValues.includes(resolvedPassword)) {
+        record.secretValues.push(resolvedPassword);
+      }
 
       const serverSettings: ServerSettings = {
         agent: {
@@ -764,12 +860,10 @@ export class ProvisioningManager {
 
       setStep(record, this.maxLogEntries, "workspace_ready");
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: "completed",
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(
         record,
         this.maxLogEntries,
@@ -777,7 +871,6 @@ export class ProvisioningManager {
         "workspace_ready",
       );
       emitJobCompleted(record.job);
-      this.scheduleCleanup(record);
     } catch (error) {
       const cancelled =
         error instanceof ProvisioningCancelledError || record.abortController.signal.aborted;
@@ -796,20 +889,17 @@ export class ProvisioningManager {
             );
 
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: cancelled ? "cancelled" : "failed",
         error: failure,
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(record, this.maxLogEntries, failure.message, failure.step);
       if (cancelled) {
         emitJobCancelled(record.job);
       } else {
         emitJobFailed(record.job, failure);
       }
-      this.scheduleCleanup(record);
     }
   }
 
@@ -856,12 +946,10 @@ export class ProvisioningManager {
 
       setStep(record, this.maxLogEntries, "arise_complete");
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: "completed",
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(
         record,
         this.maxLogEntries,
@@ -869,7 +957,6 @@ export class ProvisioningManager {
         "arise_complete",
       );
       emitJobCompleted(record.job);
-      this.scheduleCleanup(record);
     } catch (error) {
       const cancelled =
         error instanceof ProvisioningCancelledError || record.abortController.signal.aborted;
@@ -888,20 +975,17 @@ export class ProvisioningManager {
             );
 
       const completedAt = new Date().toISOString();
-      record.job.state = {
-        ...record.job.state,
+      this.updateState(record, {
         status: cancelled ? "cancelled" : "failed",
         error: failure,
         completedAt,
-        updatedAt: completedAt,
-      };
+      });
       appendSystemLog(record, this.maxLogEntries, failure.message, failure.step);
       if (cancelled) {
         emitJobCancelled(record.job);
       } else {
         emitJobFailed(record.job, failure);
       }
-      this.scheduleCleanup(record);
     }
   }
 
@@ -924,6 +1008,46 @@ export class ProvisioningManager {
     return snapshot;
   }
 
+  private getOrLoadRecord(jobId: string): ProvisioningJobRecord | null {
+    const owner = requireCurrentUser();
+    const activeRecord = this.jobs.get(jobId);
+    if (activeRecord) {
+      return activeRecord.owner.id === owner.id ? activeRecord : null;
+    }
+
+    const persisted = loadProvisioningJob(owner.id, jobId);
+    if (!persisted) {
+      return null;
+    }
+
+    const record: ProvisioningJobRecord = {
+      job: persisted.job,
+      logs: persisted.logs,
+      abortController: new AbortController(),
+      owner,
+      runnerActive: false,
+      secretValues: [],
+    };
+    this.jobs.set(jobId, record);
+    return record;
+  }
+
+  private hasActiveTarget(ownerId: string, targetKey: string): boolean {
+    for (const record of this.jobs.values()) {
+      if (
+        record.owner.id === ownerId
+        && (record.job.state.status === "pending" || record.job.state.status === "running")
+        && getProvisioningTargetKey(record.job.config) === targetKey
+      ) {
+        return true;
+      }
+    }
+
+    return listProvisioningJobs(ownerId).some((job) =>
+      (job.state.status === "pending" || job.state.status === "running")
+      && getProvisioningTargetKey(job.config) === targetKey);
+  }
+
   private throwIfCancelled(record: ProvisioningJobRecord): void {
     if (record.abortController.signal.aborted) {
       throw new ProvisioningCancelledError("Provisioning job was cancelled");
@@ -939,15 +1063,7 @@ export class ProvisioningManager {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-  }
-
-  private scheduleCleanup(record: ProvisioningJobRecord): void {
-    if (record.cleanupTimer) {
-      clearTimeout(record.cleanupTimer);
-    }
-    record.cleanupTimer = setTimeout(() => {
-      this.jobs.delete(record.job.config.id);
-    }, this.jobRetentionMs);
+    updateProvisioningJob(record.owner.id, record.job);
   }
 
   // Thin wrapper so runJob can call runProvisioningCommand without threading maxLogEntries everywhere.

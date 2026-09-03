@@ -21,9 +21,7 @@ export function SshServerFields({
     <>
       {isEditing && relatedSessionCount > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          {relatedSessionCount} standalone session{relatedSessionCount === 1 ? "" : "s"} already using this
-          {" "}server. Changes to the address, username, or base path apply to future connections and
-          {" "}provisioning actions.
+          {relatedSessionCount} standalone session{relatedSessionCount === 1 ? "" : "s"} already using this server.
         </div>
       )}
       <FormGroup title="Server details">
@@ -61,7 +59,6 @@ export function SshServerFields({
           value={values.repositoriesBasePath}
           onChange={(event) => onChange("repositoriesBasePath", event.target.value)}
           placeholder="/workspaces"
-          hint="Default base path for cloning repositories during automatic provisioning."
           disabled={disabled}
         />
         <TextField
@@ -71,7 +68,6 @@ export function SshServerFields({
           onChange={(event) => onChange("password", event.target.value)}
           placeholder="Optional"
           type="password"
-          hint="Stored encrypted in this client to streamline persistent standalone sessions."
           {...PASSWORD_INPUT_PROPS}
           disabled={disabled}
         />

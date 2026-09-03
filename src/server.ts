@@ -23,6 +23,7 @@ import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
+import { provisioningManager } from "./core/provisioning-manager";
 import {
   agentEventEmitter,
   chatEventEmitter,
@@ -124,6 +125,7 @@ async function reconcileStartupState(): Promise<void> {
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
+    provisioningManager.reconcileStartupState();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);

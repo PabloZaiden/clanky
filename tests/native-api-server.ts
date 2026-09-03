@@ -2,10 +2,13 @@ import { matchRoute, type RouteContext } from "@pablozaiden/webapp/server";
 import type { Server } from "bun";
 import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 export interface NativeApiServerOptions {
   /** Bun.serve's idleTimeout value, expressed in seconds. */
   idleTimeout?: number;
+  /** User identity used by the native route harness. */
+  user?: CurrentUser;
 }
 
 export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Server<unknown> {
@@ -27,7 +30,7 @@ export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Serv
       const context: Partial<RouteContext> = {
         params: matched.params,
         server,
-        requireUser: () => testOwnerUser,
+        requireUser: () => options.user ?? testOwnerUser,
       };
       return await handler(req, context as RouteContext) ?? new Response(null, { status: 204 });
     },

@@ -107,7 +107,6 @@ export function WorkspaceSettingsView({
 
           {workspaceFromHook.sourceDirectory && workspaceFromHook.sshServerId && (
             <ProvisioningActionsSection
-              workspace={workspaceFromHook}
               onRestart={() => navigateWithinShell({ view: "restart-workspace", workspaceId: workspaceFromHook.id })}
               onRebuild={() => navigateWithinShell({ view: "rebuild-workspace", workspaceId: workspaceFromHook.id })}
             />

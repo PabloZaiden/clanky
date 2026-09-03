@@ -163,6 +163,7 @@ export function useShellResources(route: WebAppRoute) {
     terminalSessionsError,
     workspaceError,
     agents.error,
+    provisioning.jobsError,
   ].filter((error): error is string => Boolean(error));
   const routeSelection = getShellRouteSelection(route, {
     tasks,
