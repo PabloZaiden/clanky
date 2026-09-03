@@ -12,7 +12,10 @@ import {
   FileExplorerError,
   fileExplorerOperationError,
 } from "./file-explorer-errors";
-import { getBrowserImageMimeType } from "../utils/workspace-file-images";
+import {
+  detectBrowserImageMimeType,
+  getBrowserImageMimeType,
+} from "../utils/workspace-file-images";
 import { createLogger } from "@pablozaiden/webapp/server";
 
 export { FileExplorerConflictError } from "./file-explorer-errors";
@@ -879,10 +882,23 @@ export class FileExplorerService {
       );
     }
 
+    const data = await readFileBytes(target, absolutePath);
+    const detectedMimeType = detectBrowserImageMimeType(data);
+    if (!detectedMimeType) {
+      throw new FileExplorerError(
+        "invalid_preview_type",
+        "Requested file is not a browser-renderable image",
+      );
+    }
+
     return {
-      file,
-      contentType: file.mimeType,
-      data: await readFileBytes(target, absolutePath),
+      file: {
+        ...file,
+        isImage: true,
+        mimeType: detectedMimeType,
+      },
+      contentType: detectedMimeType,
+      data,
     };
   }
 

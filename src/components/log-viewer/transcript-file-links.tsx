@@ -1,5 +1,6 @@
 import { Children, cloneElement, isValidElement, useMemo, type MouseEvent as ReactMouseEvent, type ReactElement, type ReactNode } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
+import type { WorkspaceFileEntry } from "@/shared";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
 
@@ -133,7 +134,7 @@ function isSafePathCharacterString(value: string): boolean {
 
 function hasFileNameShape(value: string): boolean {
   const fileName = basename(value);
-  if (!fileName || fileName === "." || fileName === ".." || fileName.includes(" ")) {
+  if (!fileName || fileName === "." || fileName === "..") {
     return false;
   }
   if (fileName.startsWith(".") && fileName.length > 1) {
@@ -156,6 +157,7 @@ function hasAbsolutePathShape(value: string): boolean {
 
 export function looksLikeFileLinkCandidate(value: string): boolean {
   const trimmedValue = value.trim();
+  const normalizedSeparators = normalizeSeparators(trimmedValue);
   if (
     !trimmedValue
     || trimmedValue.length > 260
@@ -164,6 +166,11 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
     || trimmedValue.includes("\r")
     || trimmedValue.includes("`")
     || trimmedValue.startsWith("-")
+    || trimmedValue.startsWith("//")
+    || (
+      /^[A-Za-z][A-Za-z\d+.-]*:/.test(normalizedSeparators)
+      && !isWindowsAbsolutePath(normalizedSeparators)
+    )
     || !isSafePathCharacterString(trimmedValue)
   ) {
     return false;
@@ -183,6 +190,37 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
   }
 
   return hasFileNameShape(normalizedValue);
+}
+
+function getMarkdownPathCandidate(value: string): string | null {
+  const trimmedValue = value.trim();
+  const normalizedSeparators = normalizeSeparators(trimmedValue);
+  if (
+    !trimmedValue
+    || trimmedValue.startsWith("#")
+    || trimmedValue.startsWith("?")
+    || trimmedValue.startsWith("//")
+    || (
+      /^[A-Za-z][A-Za-z\d+.-]*:/.test(normalizedSeparators)
+      && !isWindowsAbsolutePath(normalizedSeparators)
+    )
+  ) {
+    return null;
+  }
+
+  const queryIndex = normalizedSeparators.search(/[?#]/);
+  const pathCandidate = queryIndex >= 0
+    ? normalizedSeparators.slice(0, queryIndex)
+    : normalizedSeparators;
+  if (!pathCandidate) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(pathCandidate);
+  } catch {
+    return null;
+  }
 }
 
 function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkContext): TranscriptFileLinkTarget | null {
@@ -248,10 +286,30 @@ function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkCo
   };
 }
 
+export function resolveTranscriptFileLinkTarget(
+  candidate: string,
+  context: TranscriptFileLinkContext,
+): TranscriptFileLinkTarget | null {
+  return resolveCandidateTarget(candidate, context);
+}
+
+export function resolveMarkdownFileLinkTarget(
+  href: string,
+  context: TranscriptFileLinkContext,
+): TranscriptFileLinkTarget | null {
+  const candidate = getMarkdownPathCandidate(href);
+  return candidate ? resolveTranscriptFileLinkTarget(candidate, context) : null;
+}
+
+interface ValidatedTranscriptFileLink {
+  target: TranscriptFileLinkTarget;
+  file: WorkspaceFileEntry;
+}
+
 async function validateFileLinkTarget(
   target: TranscriptFileLinkTarget,
   context: TranscriptFileLinkContext,
-): Promise<TranscriptFileLinkTarget> {
+): Promise<ValidatedTranscriptFileLink> {
   const response = await getFileExplorerFileMetadataApi(
     context.fileExplorerTarget,
     target.path,
@@ -259,15 +317,21 @@ async function validateFileLinkTarget(
   );
   if (response.file.kind === "directory") {
     return {
-      kind: "directory",
-      path: ".",
-      startDirectory: response.file.absolutePath,
+      target: {
+        kind: "directory",
+        path: ".",
+        startDirectory: response.file.absolutePath,
+      },
+      file: response.file,
     };
   }
   return {
-    kind: "file",
-    path: response.file.path,
-    startDirectory: target.startDirectory,
+    target: {
+      kind: "file",
+      path: response.file.path,
+      startDirectory: target.startDirectory,
+    },
+    file: response.file,
   };
 }
 
@@ -319,7 +383,7 @@ export function TranscriptInlineCode({
     if (!fileLinkContext) {
       return null;
     }
-    return resolveCandidateTarget(textContent, fileLinkContext);
+    return resolveTranscriptFileLinkTarget(textContent, fileLinkContext);
   }, [fileLinkContext, textContent]);
 
   if (!target || !fileLinkContext) {
@@ -339,7 +403,7 @@ function getTargetDisplayPath(target: TranscriptFileLinkTarget): string {
   return target.kind === "directory" ? target.startDirectory : target.path;
 }
 
-function TranscriptPathLink({
+export function TranscriptPathLink({
   children,
   target,
   fileLinkContext,
@@ -359,7 +423,13 @@ function TranscriptPathLink({
         }
         event.preventDefault();
         void validateFileLinkTarget(target, fileLinkContext)
-          .then((validatedTarget) => fileLinkContext.openFile(validatedTarget))
+          .then(({ target: validatedTarget, file }) => {
+            if (file.kind === "file" && file.isImage && fileLinkContext.openImagePreview) {
+              fileLinkContext.openImagePreview(validatedTarget, file);
+              return;
+            }
+            fileLinkContext.openFile(validatedTarget);
+          })
           .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
             const fallbackMessage = message || `Could not open "${getTargetDisplayPath(target)}".`;
@@ -418,7 +488,7 @@ function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFi
     const matchIndex = match.index ?? 0;
     const candidateStartIndex = matchIndex + prefix.length;
     const { candidate, trailing } = trimTrailingPathPunctuation(rawCandidate);
-    const target = resolveCandidateTarget(candidate, fileLinkContext);
+    const target = resolveTranscriptFileLinkTarget(candidate, fileLinkContext);
 
     if (!target) {
       continue;

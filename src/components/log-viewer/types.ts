@@ -3,6 +3,7 @@ import type {
   ToolCallData,
   ToolCallDisplayData,
   LogLevel,
+  WorkspaceFileEntry,
 } from "@/shared";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
@@ -59,6 +60,8 @@ export interface TranscriptFileLinkContext {
   getFileHref: (target: TranscriptFileLinkTarget) => string;
   /** Navigate to the resolved file in the code explorer. */
   openFile: (target: TranscriptFileLinkTarget) => void;
+  /** Load a validated image target into the shared transcript preview. */
+  openImagePreview?: (target: TranscriptFileLinkTarget, file: WorkspaceFileEntry) => void;
   /** Surface a click-time validation error to the user. */
   onFileOpenError?: (message: string) => void;
 }
