@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import type { Agent, SshServer, SshServerSession } from "@/shared";
+import type { Agent, PublicProvisioningJob, SshServer, SshServerSession } from "@/shared";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
+import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
@@ -94,6 +95,27 @@ function isChatHistoryPrivateHidden(item: SidebarChatHistoryItem, showPrivateIte
     : shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.server.config]), showPrivateItems);
 }
 
+function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
+  switch (job.config.mode) {
+    case "rebuild":
+      return "Rebuild";
+    case "restart":
+      return "Restart";
+    case "arise":
+      return "Arise";
+    case "provision":
+    default:
+      return "Provision";
+  }
+}
+
+function getProvisioningJobDescription(job: PublicProvisioningJob): string {
+  const target = job.state.workspaceId
+    ? "Workspace"
+    : job.state.targetDirectory ?? job.config.basePath;
+  return `${getProvisioningStatusLabel(job.state.status)} · ${target || "Waiting for target"}`;
+}
+
 export function OverviewView({
   servers,
   sessionsByServerId,
@@ -104,6 +126,7 @@ export function OverviewView({
   workspaceGroups,
   sidebarWorkspaceGroups,
   onNavigate,
+  provisioningJobs,
   showPrivateItems = false,
 }: {
   servers: SshServer[];
@@ -115,6 +138,7 @@ export function OverviewView({
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
+  provisioningJobs: PublicProvisioningJob[];
   showPrivateItems?: boolean;
 }) {
   const activeWorkItems = useMemo(
@@ -248,6 +272,30 @@ export function OverviewView({
           )}
         </div>
       </Panel>
+
+      {provisioningJobs.length > 0 ? (
+        <Panel title="Provisioning">
+          <div className="space-y-2">
+            {provisioningJobs.map((job) => (
+              <ClankyListRow
+                key={job.config.id}
+                title={`${getProvisioningJobModeLabel(job)} · ${job.config.name}`}
+                description={getProvisioningJobDescription(job)}
+                badge={(
+                  <StatusBadge variant={getProvisioningStatusBadgeVariant(job.state.status)}>
+                    {getProvisioningStatusLabel(job.state.status)}
+                  </StatusBadge>
+                )}
+                onClick={() => onNavigate({
+                  view: "provisioning-job",
+                  provisioningJobId: job.config.id,
+                  returnView: "home",
+                })}
+              />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
     </div>
   );
 }

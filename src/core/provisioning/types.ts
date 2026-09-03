@@ -1,4 +1,5 @@
 import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningLogEntry } from "@/shared";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 export interface StartProvisioningJobOptions {
   name: string;
@@ -23,5 +24,7 @@ export interface ProvisioningJobRecord {
   job: ProvisioningJob;
   logs: ProvisioningLogEntry[];
   abortController: AbortController;
-  cleanupTimer?: ReturnType<typeof setTimeout>;
+  owner: CurrentUser;
+  runnerActive: boolean;
+  secretValues: string[];
 }
