@@ -1,4 +1,5 @@
 import { useMemo, memo } from "react";
+import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -12,6 +13,7 @@ import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
+import { useTranscriptImagePreview } from "./use-transcript-image-preview";
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -35,6 +37,17 @@ export const ConversationViewer = memo(function ConversationViewer({
   transcriptClassName,
   onLoadToolDetails,
 }: ConversationViewerProps) {
+  const imagePreview = useTranscriptImagePreview(fileLinkContext);
+  const resolvedFileLinkContext = useMemo(() => {
+    if (!fileLinkContext) {
+      return undefined;
+    }
+    return {
+      ...fileLinkContext,
+      openImagePreview: imagePreview.openImagePreview,
+    };
+  }, [fileLinkContext, imagePreview.openImagePreview]);
+
   const groupedEntries = useMemo(() => {
     const result: EntryBase[] = [];
 
@@ -116,83 +129,93 @@ export const ConversationViewer = memo(function ConversationViewer({
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
   return (
-    <div
-      ref={containerRef}
-      id={id}
-      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
-      style={maxHeight ? { maxHeight } : undefined}
-    >
-      {isEmpty ? (
-        <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
-          {isActive ? (
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
-              <span>{activeStateMessage}</span>
-            </div>
-          ) : (
-            emptyStateMessage
-          )}
-        </div>
-      ) : (
-        <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          {visibleEntries.map((entry, index) => {
-            const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
-            if (entry.type === "message") {
-              return (
-                <MessageEntry
-                  key={`msg-${entry.data.id}`}
-                  data={entry.data}
-                  showTimestamp={entry.showTimestamp}
-                  spacingClass={spacingClass}
-                  markdownEnabled={markdownEnabled}
-                  showRoleLabel={showMessageRoles}
-                  fileLinkContext={fileLinkContext}
-                />
-              );
-            } else if (entry.type === "tool") {
-              return (
-                <ToolEntry
-                  key={`tool-${entry.data.id}`}
-                  data={entry.data}
-                  timestamp={entry.timestamp}
-                  showTimestamp={entry.showTimestamp}
-                  spacingClass={spacingClass}
-                  toolPathDisplayRoot={toolPathDisplayRoot}
-                  onLoadToolDetails={onLoadToolDetails}
-                />
-              );
-            } else if (entry.type === "tool-group") {
-              return (
-                <ToolGroupEntry
-                  key={`tool-group-${entry.id}`}
-                  entry={entry}
-                  spacingClass={spacingClass}
-                  toolPathDisplayRoot={toolPathDisplayRoot}
-                  onLoadToolDetails={onLoadToolDetails}
-                />
-              );
-            } else {
-              return (
-                <LogEntryItem
-                  key={`log-${entry.data.id}`}
-                  data={entry.data}
-                  showTimestamp={entry.showTimestamp}
-                  showGroupHeader={entry.showGroupHeader}
-                  spacingClass={spacingClass}
-                  markdownEnabled={markdownEnabled}
-                  fileLinkContext={fileLinkContext}
-                />
-              );
-            }
-          })}
-          {isActive && !isEmpty && (
-            <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
-              <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
-              <span>{activeStateMessage}</span>
-            </div>
-          )}
-        </div>
+    <>
+      <div
+        ref={containerRef}
+        id={id}
+        className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+        style={maxHeight ? { maxHeight } : undefined}
+      >
+        {isEmpty ? (
+          <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
+            {isActive ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
+                <span>{activeStateMessage}</span>
+              </div>
+            ) : (
+              emptyStateMessage
+            )}
+          </div>
+        ) : (
+          <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
+            {visibleEntries.map((entry, index) => {
+              const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
+              if (entry.type === "message") {
+                return (
+                  <MessageEntry
+                    key={`msg-${entry.data.id}`}
+                    data={entry.data}
+                    showTimestamp={entry.showTimestamp}
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    showRoleLabel={showMessageRoles}
+                    fileLinkContext={resolvedFileLinkContext}
+                  />
+                );
+              } else if (entry.type === "tool") {
+                return (
+                  <ToolEntry
+                    key={`tool-${entry.data.id}`}
+                    data={entry.data}
+                    timestamp={entry.timestamp}
+                    showTimestamp={entry.showTimestamp}
+                    spacingClass={spacingClass}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
+              } else if (entry.type === "tool-group") {
+                return (
+                  <ToolGroupEntry
+                    key={`tool-group-${entry.id}`}
+                    entry={entry}
+                    spacingClass={spacingClass}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
+              } else {
+                return (
+                  <LogEntryItem
+                    key={`log-${entry.data.id}`}
+                    data={entry.data}
+                    showTimestamp={entry.showTimestamp}
+                    showGroupHeader={entry.showGroupHeader}
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    fileLinkContext={resolvedFileLinkContext}
+                  />
+                );
+              }
+            })}
+            {isActive && !isEmpty && (
+              <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
+                <span>{activeStateMessage}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {fileLinkContext && (
+        <ImageViewerModal
+          image={imagePreview.image}
+          loading={imagePreview.loading}
+          title={imagePreview.title}
+          onClose={imagePreview.closeImagePreview}
+        />
       )}
-    </div>
+    </>
   );
 });
