@@ -3,7 +3,11 @@ import { basename } from "node:path";
 import { backendManager } from "./backend/backend-manager";
 import { quoteShell } from "./remote-executor/utils";
 import type { ToolCallExtra } from "@/shared/tool-call";
-import { MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES, type MessageImageAttachment } from "@/shared/message-attachments";
+import {
+  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
+  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
+  type MessageImageAttachment,
+} from "@/shared/message-attachments";
 import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
 
 const VIEW_ALLOWED_INPUT_KEYS = new Set(["path", "filePath", "view_range", "forceReadLargeFiles"]);
@@ -181,7 +185,10 @@ export async function resolveToolCallImagePreview(
   }
 
   const mimeType = detectBrowserImageMimeType(Buffer.from(data, "base64"));
-  if (!mimeType) {
+  if (
+    !mimeType
+    || !(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)
+  ) {
     return null;
   }
 
