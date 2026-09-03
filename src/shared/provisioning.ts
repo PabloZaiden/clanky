@@ -5,7 +5,13 @@
 import type { AgentProvider, ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 
-export type ProvisioningJobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type ProvisioningJobStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "interrupted";
 
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
 
@@ -159,10 +165,17 @@ export interface ProvisioningCancelledEvent {
   timestamp: string;
 }
 
+export interface ProvisioningDismissedEvent {
+  type: "provisioning.dismissed";
+  provisioningJobId: string;
+  timestamp: string;
+}
+
 export type ProvisioningEvent =
   | ProvisioningStartedEvent
   | ProvisioningStepEvent
   | ProvisioningOutputEvent
   | ProvisioningCompletedEvent
   | ProvisioningFailedEvent
-  | ProvisioningCancelledEvent;
+  | ProvisioningCancelledEvent
+  | ProvisioningDismissedEvent;

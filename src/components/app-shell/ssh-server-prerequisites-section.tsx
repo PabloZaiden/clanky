@@ -68,21 +68,12 @@ export function SshServerPrerequisitesSection({
   return (
     <Panel
       title="Server prerequisites"
-      description="Check whether this host exposes the tools Clanky expects for standalone SSH, persistent sessions, and automatic provisioning."
       actions={(
         <Button type="button" size="sm" variant="secondary" loading={checking} onClick={() => void onCheck()}>
           Check prerequisites
         </Button>
       )}
     >
-
-      {!report && !error && (
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          This check verifies SSH connectivity, <code>bash</code>, <code>dtach</code>, and the automatic provisioning
-          toolchain: <code>devbox</code>, <code>docker</code>, <code>devcontainer</code>, <code>git</code>, and{" "}
-          <code>gh</code>.
-        </p>
-      )}
 
       {error && (
         <ErrorState title="Unable to check prerequisites" description={error} />
@@ -122,9 +113,6 @@ export function SshServerPrerequisitesSection({
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-1">
                     <h3 className="text-sm font-medium text-gray-950 dark:text-gray-100">{check.label}</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Used for {check.requiredFor.join(", ")}.
-                    </p>
                   </div>
                   <StatusBadge variant={getCheckVariant(check.status)}>{getCheckLabel(check.status)}</StatusBadge>
                 </div>

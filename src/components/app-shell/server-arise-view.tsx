@@ -2,10 +2,8 @@ import { useState } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import type { SshServer } from "@/shared";
-import { ProvisioningJobView } from "../ProvisioningJobView";
-import { Badge, Button, PASSWORD_INPUT_PROPS, StatusBadge } from "../common";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ErrorState, FormGroup, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ServerAriseViewProps {
@@ -21,9 +19,6 @@ export function ServerAriseView({
 }: ServerAriseViewProps) {
   const [password, setPassword] = useState("");
   const formId = "server-arise-form";
-  const provisioningStatus = provisioning.snapshot?.job.state.status;
-  const canReturnToForm =
-    provisioningStatus === "failed" || provisioningStatus === "cancelled";
   const hasStoredCredential = getStoredSshServerCredential(server.config.id) !== null;
 
   async function handleStartArise(event: React.FormEvent<HTMLFormElement>) {
@@ -45,89 +40,40 @@ export function ServerAriseView({
 
     if (snapshot) {
       setPassword("");
+      navigateWithinShell({
+        view: "provisioning-job",
+        provisioningJobId: snapshot.job.config.id,
+        returnView: "ssh-server-settings",
+        returnId: server.config.id,
+      });
     }
-  }
-
-  function handleBackToForm() {
-    provisioning.clearActiveJob();
-    setPassword("");
   }
 
   const headerActions = (
     <>
-      <Badge variant="info" size="sm">Arise</Badge>
-      {provisioningStatus && (
-        <StatusBadge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-          {provisioningStatus}
-        </StatusBadge>
-      )}
-      {provisioning.activeJobId ? (
-        <>
-          {canReturnToForm && (
-            <Button type="button" size="sm" onClick={handleBackToForm}>
-              Back to Arise Form
-            </Button>
-          )}
-          {provisioningStatus === "completed" && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
-            >
-              Back to Settings
-            </Button>
-          )}
-          {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-            <Button
-              type="button"
-              size="sm"
-              variant="danger"
-              onClick={() => {
-                void provisioning.cancelJob();
-              }}
-            >
-              Cancel Arise
-            </Button>
-          )}
-        </>
-      ) : (
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form={formId}
-            size="sm"
-            loading={provisioning.starting}
-          >
-            Run devbox arise
-          </Button>
-        </>
-      )}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        form={formId}
+        size="sm"
+        loading={provisioning.starting}
+      >
+        Run devbox arise
+      </Button>
     </>
   );
   useShellHeaderActions(headerActions);
 
   return (
     <div className="space-y-6">
-      {provisioning.activeJobId ? (
-        <div className="space-y-6">
-          <ProvisioningJobView
-            snapshot={provisioning.snapshot}
-            logs={provisioning.logs}
-            websocketStatus={provisioning.websocketStatus}
-            loading={provisioning.loading}
-            error={provisioning.error}
-          />
-        </div>
-      ) : (
-        <form
+      <form
           id={formId}
           className="space-y-6"
           onSubmit={(event) => void handleStartArise(event)}
@@ -160,7 +106,6 @@ export function ServerAriseView({
               label="Repositories base path"
               value={server.config.repositoriesBasePath ?? ""}
               disabled
-              hint="This server already supports automatic workspace provisioning."
             />
 
             {!hasStoredCredential && (
@@ -171,7 +116,6 @@ export function ServerAriseView({
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Leave blank for key-based auth"
                 type="password"
-                hint="Required to connect to the SSH server when password auth is needed."
                 {...PASSWORD_INPUT_PROPS}
               />
             )}
@@ -181,8 +125,7 @@ export function ServerAriseView({
           {provisioning.error && (
             <ErrorState title="Unable to run devbox arise" description={provisioning.error} />
           )}
-        </form>
-      )}
+      </form>
     </div>
   );
 }

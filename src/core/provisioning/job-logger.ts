@@ -1,6 +1,14 @@
 import { provisioningEventEmitter } from "../event-emitter";
+import { appendProvisioningJobLog, updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import type { ProvisioningLogEntry, ProvisioningStep } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";
+
+function redactLogText(record: ProvisioningJobRecord, text: string): string {
+  return record.secretValues.reduce(
+    (current, secret) => secret.length > 0 ? current.split(secret).join("[REDACTED]") : current,
+    text,
+  );
+}
 
 export function appendLog(
   record: ProvisioningJobRecord,
@@ -16,7 +24,7 @@ export function appendLog(
   const entry: ProvisioningLogEntry = {
     id: crypto.randomUUID(),
     source,
-    text,
+    text: redactLogText(record, text),
     timestamp: new Date().toISOString(),
     ...(step ? { step } : {}),
   };
@@ -24,6 +32,7 @@ export function appendLog(
   if (record.logs.length > maxLogEntries) {
     record.logs.splice(0, record.logs.length - maxLogEntries);
   }
+  appendProvisioningJobLog(record.owner.id, record.job.config.id, entry);
   provisioningEventEmitter.emit({
     type: "provisioning.output",
     provisioningJobId: record.job.config.id,
@@ -55,6 +64,7 @@ export function setStep(
     startedAt: record.job.state.startedAt ?? now,
     updatedAt: now,
   };
+  updateProvisioningJob(record.owner.id, record.job);
   if (message) {
     appendSystemLog(record, maxLogEntries, message, step);
   }

@@ -1,4 +1,5 @@
-import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useEffect, useState } from "react";
+import { ConfirmModal, ErrorState, LoadingState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Chat, Task, Workspace } from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
@@ -20,8 +21,10 @@ import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
+import { ProvisioningJobView } from "../ProvisioningJobView";
+import { Button } from "../common";
 import type { CodeExplorerTarget, SidebarServerNode, SidebarWorkspaceGroupNode } from "./shell-types";
-import { getRouteString } from "./route-fields";
+import { getProvisioningReturnRoute, getRouteString } from "./route-fields";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -158,6 +161,147 @@ function missingRouteParameter(view: string, parameter: string) {
       title="Invalid route"
       description={`The ${view} route is missing its ${parameter}. Use the sidebar or home button to continue.`}
     />
+  );
+}
+
+function ProvisioningJobRouteView({
+  route,
+  provisioning,
+  navigateWithinShell,
+}: {
+  route: WebAppRoute;
+  provisioning: UseProvisioningJobResult;
+  navigateWithinShell: (route: WebAppRoute) => void;
+}) {
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+  const provisioningJobId = getRouteString(route, "provisioningJobId");
+
+  useEffect(() => {
+    if (provisioningJobId) {
+      provisioning.openJob(provisioningJobId);
+    }
+  }, [provisioning.openJob, provisioningJobId]);
+
+  if (!provisioningJobId) {
+    return missingRouteParameter(route.view, "provisioningJobId");
+  }
+
+  const snapshot = provisioning.snapshot;
+  const status = snapshot?.job.state.status;
+  const isTerminal = status === "completed"
+    || status === "failed"
+    || status === "cancelled"
+    || status === "interrupted";
+  const returnRoute = getProvisioningReturnRoute(route);
+
+  async function handleDismiss(): Promise<void> {
+    setDismissing(true);
+    try {
+      const dismissed = await provisioning.dismissJob(provisioningJobId);
+      if (dismissed) {
+        setDismissConfirmOpen(false);
+        navigateWithinShell(returnRoute);
+      }
+    } finally {
+      setDismissing(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        <Panel title="Provisioning">
+          <ProvisioningJobView
+            snapshot={snapshot}
+            logs={provisioning.logs}
+            websocketStatus={provisioning.websocketStatus}
+            loading={provisioning.loading}
+            error={provisioning.error}
+          />
+          {snapshot && (
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {(status === "pending" || status === "running") && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => void provisioning.cancelJob()}
+                  loading={provisioning.loading}
+                >
+                  Cancel
+                </Button>
+              )}
+              {status === "completed" && snapshot.job.state.workspaceId && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => navigateWithinShell({
+                    view: "workspace",
+                    workspaceId: snapshot.job.state.workspaceId!,
+                  })}
+                >
+                  Open workspace
+                </Button>
+              )}
+              {status === "completed" && snapshot.job.config.sshServerId && snapshot.job.config.mode === "arise" && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => navigateWithinShell({
+                    view: "ssh-server",
+                    serverId: snapshot.job.config.sshServerId!,
+                  })}
+                >
+                  Open server
+                </Button>
+              )}
+              {isTerminal
+                && snapshot.job.config.mode === "provision"
+                && (status === "failed" || status === "cancelled" || status === "interrupted") && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigateWithinShell({
+                      view: "compose",
+                      kind: "workspace",
+                      retryProvisioningJobId: provisioningJobId,
+                    })}
+                  >
+                    Retry with this configuration
+                  </Button>
+                )}
+              {isTerminal && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDismissConfirmOpen(true)}
+                  loading={dismissing}
+                >
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          )}
+        </Panel>
+      </div>
+      <ConfirmModal
+        isOpen={dismissConfirmOpen}
+        onClose={() => {
+          if (!dismissing) {
+            setDismissConfirmOpen(false);
+          }
+        }}
+        onConfirm={() => void handleDismiss()}
+        title="Dismiss provisioning job?"
+        message="This permanently removes the job, its logs, and its retry configuration."
+        confirmLabel="Dismiss"
+        loading={dismissing}
+        variant="danger"
+      />
+    </>
   );
 }
 
@@ -603,11 +747,22 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
+  if (route.view === "provisioning-job") {
+    return (
+      <ProvisioningJobRouteView
+        route={route}
+        provisioning={props.provisioning}
+        navigateWithinShell={navigateWithinShell}
+      />
+    );
+  }
+
   if (route.view === "server-arise") {
     const serverId = getRouteString(route, "serverId");
     if (!serverId) {
       return missingRouteParameter(route.view, "serverId");
     }
+
     if (!selectedServer) {
       return (
         <ErrorState
@@ -651,7 +806,6 @@ function renderMainContent(props: ShellMainContentProps) {
         servers={servers}
         provisioning={props.provisioning}
         navigateWithinShell={navigateWithinShell}
-        refreshWorkspaces={refreshWorkspaces}
       />
     );
   }
@@ -703,6 +857,7 @@ function renderMainContent(props: ShellMainContentProps) {
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       onNavigate={navigateWithinShell}
+      provisioningJobs={props.provisioning.jobs}
       showPrivateItems={showPrivateItems}
     />
   );

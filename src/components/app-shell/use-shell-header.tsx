@@ -11,7 +11,7 @@ import {
   getChatCodeExplorerRootDirectory,
   getTaskCodeExplorerRootDirectory,
 } from "./code-explorer-targets";
-import { getRouteString } from "./route-fields";
+import { getProvisioningReturnRoute, getRouteString } from "./route-fields";
 import {
   getHeaderOwnerRoute,
   sidebarNodeMatchesRoute,
@@ -447,6 +447,8 @@ export function useShellHeader({
           : { title: "Server files" };
       case "server-arise":
         return nodeModel ? { title: `Arise ${nodeModel.title}` } : { title: "Arise" };
+      case "provisioning-job":
+        return { title: "Provisioning" };
       case "agent": {
         const agentId = getRouteString(route, "agentId");
         if (agentId && !selectedAgent && !agents.loading) {
@@ -597,6 +599,19 @@ export function useShellHeader({
           variant="ghost"
           size="sm"
           onClick={() => navigateWithinShell(agentId ? { view: "agent", agentId } : HOME_ROUTE)}
+        >
+          Back
+        </Button>
+      );
+    }
+
+    if (route.view === "provisioning-job") {
+      return (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => navigateWithinShell(getProvisioningReturnRoute(route))}
         >
           Back
         </Button>

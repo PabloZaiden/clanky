@@ -6,7 +6,11 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { sanitizeProvisioningSnapshot, shouldIncludeSensitiveData } from "../lib/sensitive-data";
+import {
+  sanitizeProvisioningJob,
+  sanitizeProvisioningSnapshot,
+  shouldIncludeSensitiveData,
+} from "../lib/sensitive-data";
 import { SensitiveQuerySchema } from "./route-schemas";
 
 const log = createLogger("api:provisioning");
@@ -21,6 +25,12 @@ function mapProvisioningError(error: unknown): Response {
       },
       invalid_credential_token: {
         status: 400,
+      },
+      job_not_terminal: {
+        status: 409,
+      },
+      provisioning_target_busy: {
+        status: 409,
       },
       provisioning_cancelled: {
         status: 409,
@@ -41,6 +51,17 @@ export const provisioningRoutes = defineRoutes({
     description: "Start a remote provisioning job.",
     requestSchema: CreateProvisioningJobRequestSchema,
     querySchema: SensitiveQuerySchema,
+    async GET(req: Request): Promise<Response> {
+      try {
+        const jobs = provisioningManager.listJobs();
+        return Response.json({
+          jobs: shouldIncludeSensitiveData(req) ? jobs : jobs.map(sanitizeProvisioningJob),
+        });
+      } catch (error) {
+        log.error("Failed to list provisioning jobs", { error: String(error) });
+        return mapProvisioningError(error);
+      }
+    },
     async POST(req: Request, _ctx): Promise<Response> {
       const includeSensitive = shouldIncludeSensitiveData(req);
       const validation = await parseAndValidate(CreateProvisioningJobRequestSchema, req);
@@ -83,6 +104,27 @@ export const provisioningRoutes = defineRoutes({
         );
       } catch (error) {
         log.error("Failed to start provisioning job", { error: String(error) });
+        return mapProvisioningError(error);
+      }
+    },
+  },
+
+  "/api/provisioning-jobs/:id/dismiss": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Dismiss a completed, failed, cancelled, or interrupted provisioning job.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      try {
+        const dismissed = await provisioningManager.dismissJob(ctx.params["id"]!);
+        if (dismissed !== true) {
+          return errorResponse("not_found", "Provisioning job not found", 404);
+        }
+        return successResponse({ dismissed: true });
+      } catch (error) {
+        log.error("Failed to dismiss provisioning job", {
+          provisioningJobId: ctx.params["id"]!,
+          error: String(error),
+        });
         return mapProvisioningError(error);
       }
     },

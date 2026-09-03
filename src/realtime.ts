@@ -17,6 +17,7 @@ import type {
 } from "@/shared";
 import { createToolCallSummary } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
+import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
 import type {
   RealtimeBus,
   RealtimeAction,
@@ -410,7 +411,15 @@ export function publishClankyDomainEvent(
     case "provisioning.cancelled":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.provisioningJobs, event.provisioningJobId);
       return;
+    case "provisioning.dismissed":
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.provisioningJobs, event.provisioningJobId);
+      return;
     case "provisioning.step":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.provisioningJobs, event.provisioningJobId);
+      publishStream(publisher, owner, sanitizeProvisioningEvent(event), {
+        provisioningJobId: event.provisioningJobId,
+      });
+      return;
     case "provisioning.output":
       publishStream(publisher, owner, event, {
         provisioningJobId: event.provisioningJobId,

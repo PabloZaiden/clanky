@@ -76,6 +76,7 @@ export function getProvisioningStatusBadgeVariant(status: ProvisioningJobStatus)
     case "completed": return "completed";
     case "failed": return "failed";
     case "cancelled": return "warning";
+    case "interrupted": return "warning";
   }
 }
 
@@ -86,5 +87,6 @@ export function getProvisioningStatusLabel(status: ProvisioningJobStatus): strin
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "cancelled": return "Cancelled";
+    case "interrupted": return "Interrupted";
   }
 }

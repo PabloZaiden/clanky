@@ -1,6 +1,11 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
-import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "@/shared";
+import type {
+  ProvisioningJobMode,
+  ProvisioningLogEntry,
+  ProvisioningStep,
+  PublicProvisioningJobSnapshot,
+} from "@/shared";
 import type { RealtimeStreamStatus } from "../hooks";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {
@@ -63,7 +68,7 @@ function getStepsForMode(mode: ProvisioningJobMode | undefined): [ProvisioningSt
   return steps.map((step) => [step, STEP_LABELS[step]]);
 }
 
-function getPrimarySummary(mode: ProvisioningJobMode | undefined, snapshot: ProvisioningJobSnapshot): {
+function getPrimarySummary(mode: ProvisioningJobMode | undefined, snapshot: PublicProvisioningJobSnapshot): {
   label: string;
   value: string;
 } {
@@ -80,7 +85,7 @@ function getPrimarySummary(mode: ProvisioningJobMode | undefined, snapshot: Prov
   };
 }
 
-function getSecondarySummary(mode: ProvisioningJobMode | undefined, snapshot: ProvisioningJobSnapshot): {
+function getSecondarySummary(mode: ProvisioningJobMode | undefined, snapshot: PublicProvisioningJobSnapshot): {
   label: string;
   value: string;
 } {
@@ -111,8 +116,8 @@ function getWebSocketStatusLabel(status: RealtimeStreamStatus): string {
 }
 
 export interface ProvisioningJobViewProps {
-  snapshot: ProvisioningJobSnapshot | null;
-  logs: ProvisioningJobSnapshot["logs"];
+  snapshot: PublicProvisioningJobSnapshot | null;
+  logs: ProvisioningLogEntry[];
   websocketStatus: RealtimeStreamStatus;
   loading?: boolean;
   error?: string | null;

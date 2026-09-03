@@ -179,6 +179,7 @@ export function getProvisioningStatusBadgeVariant(status: string | undefined): B
     case "pending":
       return "warning";
     case "cancelled":
+    case "interrupted":
       return "default";
     default:
       return "default";

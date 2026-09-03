@@ -37,3 +37,11 @@ export function emitJobCancelled(job: ProvisioningJob): void {
     timestamp: job.state.updatedAt,
   });
 }
+
+export function emitJobDismissed(provisioningJobId: string): void {
+  provisioningEventEmitter.emit({
+    type: "provisioning.dismissed",
+    provisioningJobId,
+    timestamp: new Date().toISOString(),
+  });
+}
