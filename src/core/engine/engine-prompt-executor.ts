@@ -2,7 +2,7 @@
  * Prompt execution, stream ownership, and session-loss recovery for TaskEngine.
  */
 
-import type { TaskConfig, TaskState } from "@/shared/task";
+import type { PersistedToolCall, TaskConfig, TaskState } from "@/shared/task";
 import type { AgentEvent, PromptInput } from "../../backends/types";
 import type { AgentEventTranscriptResult } from "../agent-event-transcript-interpreter";
 import { createTimestamp, type LogLevel } from "@/shared/events";
@@ -42,6 +42,10 @@ export interface TaskPromptExecutorOptions {
     event: AgentEvent,
     ctx: IterationContext,
   ) => Promise<AgentEventTranscriptResult>;
+  finalizeInFlightToolCalls: (
+    timestamp: string,
+    output: string,
+  ) => PersistedToolCall[];
   triggerPersistence: () => Promise<void>;
   isAborted: () => boolean;
   isInjectionPending: () => boolean;
@@ -57,6 +61,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
   private readonly emitLog: TaskPromptExecutorOptions["emitLog"];
   private readonly updateState: TaskPromptExecutorOptions["updateState"];
   private readonly processAgentEvent: TaskPromptExecutorOptions["processAgentEvent"];
+  private readonly finalizeInFlightToolCalls: TaskPromptExecutorOptions["finalizeInFlightToolCalls"];
   private readonly triggerPersistence: TaskPromptExecutorOptions["triggerPersistence"];
   private readonly isAborted: TaskPromptExecutorOptions["isAborted"];
   private readonly isInjectionPending: TaskPromptExecutorOptions["isInjectionPending"];
@@ -72,6 +77,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
     this.emitLog = options.emitLog;
     this.updateState = options.updateState;
     this.processAgentEvent = options.processAgentEvent;
+    this.finalizeInFlightToolCalls = options.finalizeInFlightToolCalls;
     this.triggerPersistence = options.triggerPersistence;
     this.isAborted = options.isAborted;
     this.isInjectionPending = options.isInjectionPending;
@@ -177,10 +183,18 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
           },
         });
         if (streamResult.endedByInactivity) {
+          const inactivityMessage = "AI response stream ended after inactivity.";
+          const finalizedToolCalls = this.finalizeInFlightToolCalls(
+            createTimestamp(),
+            inactivityMessage,
+          );
           this.emitLog("info", "AI response stream ended after inactivity; treating the turn as complete", {
             activityTimeoutSeconds,
             sessionId: activeSessionId,
           });
+          if (finalizedToolCalls.length > 0) {
+            await this.triggerPersistence();
+          }
         }
 
         completed = true;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentEvent } from "../../src/backends/types";
 import { AgentEventTranscriptInterpreter } from "../../src/core/agent-event-transcript-interpreter";
+import { TaskPersistenceCoordinator } from "../../src/core/engine/engine-persistence";
 import { TaskPromptExecutorImpl } from "../../src/core/engine/engine-prompt-executor";
 import type {
   IterationContext,
@@ -31,13 +32,43 @@ function createTaskConfig(): TaskConfig {
 }
 
 function createTaskState(): TaskState {
+  const timestamp = new Date().toISOString();
   return {
     id: "inactivity-task",
     status: "running",
     currentIteration: 1,
     messages: [],
     logs: [],
-    toolCalls: [],
+    toolCalls: [
+      {
+        id: "pending-tool",
+        name: "Read",
+        input: { filePath: "pending.txt" },
+        status: "pending",
+        timestamp,
+      },
+      {
+        id: "running-tool",
+        name: "Write",
+        input: { filePath: "running.txt" },
+        status: "running",
+        timestamp,
+      },
+      {
+        id: "completed-tool",
+        name: "Read",
+        status: "completed",
+        output: "already complete",
+        timestamp,
+      },
+      {
+        id: "failed-tool",
+        name: "Write",
+        status: "failed",
+        output: "already failed",
+        timestamp,
+      },
+    ],
     recentIterations: [],
   };
 }
@@ -75,7 +106,14 @@ describe("TaskPromptExecutor inactivity", () => {
   test("treats an inactive ACP stream as a completed prompt turn", async () => {
     const state = createTaskState();
     const logs: string[] = [];
+    const persistedToolCallSnapshots: TaskState["toolCalls"][] = [];
     let retryResetCount = 0;
+    const persistence = new TaskPersistenceCoordinator({
+      state,
+      onPersistState: async (nextState) => {
+        persistedToolCallSnapshots.push(nextState.toolCalls.map((toolCall) => ({ ...toolCall })));
+      },
+    });
     const executor = new TaskPromptExecutorImpl({
       backend: new NeverCompletingMockBackend(),
       session: createSession(),
@@ -93,7 +131,8 @@ describe("TaskPromptExecutor inactivity", () => {
         flushedBlocks: [],
         checkpointRequested: false,
       }),
-      triggerPersistence: async () => {},
+      finalizeInFlightToolCalls: persistence.finalizeInFlightToolCalls.bind(persistence),
+      triggerPersistence: persistence.trigger.bind(persistence),
       isAborted: () => false,
       isInjectionPending: () => false,
       resetIterationContextForRetry: () => {
@@ -112,5 +151,39 @@ describe("TaskPromptExecutor inactivity", () => {
     expect(logs).toContain("AI response stream ended after inactivity; treating the turn as complete");
     expect(retryResetCount).toBe(0);
     expect(state.error).toBeUndefined();
+    expect([...state.toolCalls]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "pending-tool",
+        status: "failed",
+        output: "AI response stream ended after inactivity.",
+      }),
+      expect.objectContaining({
+        id: "running-tool",
+        status: "failed",
+        output: "AI response stream ended after inactivity.",
+      }),
+      expect.objectContaining({
+        id: "completed-tool",
+        status: "completed",
+        output: "already complete",
+      }),
+      expect.objectContaining({
+        id: "failed-tool",
+        status: "failed",
+        output: "already failed",
+      }),
+    ]));
+    expect(persistedToolCallSnapshots.at(-1)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "pending-tool",
+        status: "failed",
+        output: "AI response stream ended after inactivity.",
+      }),
+      expect.objectContaining({
+        id: "running-tool",
+        status: "failed",
+        output: "AI response stream ended after inactivity.",
+      }),
+    ]));
   });
 });
