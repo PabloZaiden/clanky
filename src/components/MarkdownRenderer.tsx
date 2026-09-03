@@ -6,7 +6,12 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
-import { renderTranscriptTextNodes, TranscriptInlineCode } from "./log-viewer/transcript-file-links";
+import {
+  renderTranscriptTextNodes,
+  resolveMarkdownFileLinkTarget,
+  TranscriptInlineCode,
+  TranscriptPathLink,
+} from "./log-viewer/transcript-file-links";
 
 export interface MarkdownRendererProps {
   /** Markdown content to render */
@@ -62,16 +67,32 @@ export function MarkdownRenderer({
         remarkPlugins={[remarkGfm]}
         components={{
           // Custom component overrides for consistent styling
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const target = href && fileLinkContext
+              ? resolveMarkdownFileLinkTarget(href, fileLinkContext)
+              : null;
+            if (target && fileLinkContext) {
+              return (
+                <TranscriptPathLink
+                  target={target}
+                  fileLinkContext={fileLinkContext}
+                  href={fileLinkContext.getFileHref(target)}
+                >
+                  {children}
+                </TranscriptPathLink>
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {children}
+              </a>
+            );
+          },
           p: ({ children, className, ...props }) => (
             <p {...props} className={className}>
               {renderTranscriptTextNodes(children, fileLinkContext)}
