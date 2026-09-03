@@ -149,7 +149,12 @@ export class ProvisioningManager {
     }
 
     this.jobs.set(jobId, record);
-    createProvisioningJob(owner.id, record.job);
+    try {
+      createProvisioningJob(owner.id, record.job);
+    } catch (error) {
+      this.jobs.delete(jobId);
+      throw error;
+    }
     emitJobStarted(record.job);
 
     const run = mode === "arise"

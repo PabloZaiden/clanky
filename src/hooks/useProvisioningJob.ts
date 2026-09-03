@@ -113,9 +113,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     const controller = new AbortController();
     jobsRequestControllerRef.current = controller;
     const showLoading = options.showLoading ?? true;
-    if (showLoading) {
-      setJobsLoading(true);
-    }
+    setJobsLoading(showLoading);
 
     try {
       const response = await apiRequest<{ jobs: PublicProvisioningJob[] }>(
@@ -146,9 +144,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     } finally {
       if (jobsRequestIdRef.current === requestId) {
         jobsRequestControllerRef.current = null;
-        if (showLoading) {
-          setJobsLoading(false);
-        }
+        setJobsLoading(false);
       }
     }
   }, []);
