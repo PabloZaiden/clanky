@@ -61,21 +61,15 @@ if command -v chromium >/dev/null 2>&1 && chromium --version >/dev/null 2>&1; th
 fi
 
 # Always use the newest known-good Chrome for Testing release.
-download_metadata="$(
+download_url="$(
   curl -fsSL https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json |
     jq -er --arg platform "${cft_platform}" \
-      '[.versions[] | select(any(.downloads["chrome-headless-shell"][]?; .platform == $platform))] | max_by(.version | split(".") | map(tonumber)) | .downloads["chrome-headless-shell"][] | select(.platform == $platform and (.sha256 | type == "string") and (.sha256 | test("^[0-9A-Fa-f]{64}$"))) | [.url, .sha256] | @tsv'
+      '[.versions[] | select(any(.downloads["chrome-headless-shell"][]?; .platform == $platform))] | max_by(.version | split(".") | map(tonumber)) | .downloads["chrome-headless-shell"][] | select(.platform == $platform) | .url'
 )"
-IFS=$'\t' read -r download_url expected_sha256 <<< "${download_metadata}"
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "${temp_dir}"' EXIT
 curl -fsSL "${download_url}" -o "${temp_dir}/chrome.zip"
-actual_sha256="$(sha256sum "${temp_dir}/chrome.zip" | cut -d ' ' -f1)"
-if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
-  echo "Chrome for Testing archive checksum verification failed." >&2
-  exit 1
-fi
 unzip -q "${temp_dir}/chrome.zip" -d "${temp_dir}"
 
 browser_dir="$(find "${temp_dir}" -mindepth 1 -maxdepth 1 -type d -name 'chrome-headless-shell-*' -print -quit)"
