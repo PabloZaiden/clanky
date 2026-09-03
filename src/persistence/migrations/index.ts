@@ -95,6 +95,8 @@ const KNOWN_TABLE_NAMES = new Set([
   "mesh_sync_cursors",
   "mesh_sync_conflicts",
   "mesh_link_claims",
+  "provisioning_jobs",
+  "provisioning_job_logs",
 ]);
 
 /**
@@ -1444,6 +1446,47 @@ export const migrations: Migration[] = [
         UPDATE clanky_context_api_keys
         SET context_type = 'terminal_session'
         WHERE context_type = 'ssh_session'
+      `);
+    },
+  },
+  {
+    version: 40,
+    name: "add_provisioning_jobs",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS provisioning_jobs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          state_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          workspace_id TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS provisioning_job_logs (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          source TEXT NOT NULL,
+          text TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          step TEXT,
+          FOREIGN KEY (job_id) REFERENCES provisioning_jobs(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_provisioning_jobs_user_updated
+        ON provisioning_jobs(user_id, updated_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_provisioning_jobs_user_status
+        ON provisioning_jobs(user_id, status)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_provisioning_job_logs_job_timestamp
+        ON provisioning_job_logs(job_id, timestamp ASC)
       `);
     },
   },

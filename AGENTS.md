@@ -47,6 +47,7 @@ For more project information, see the [README.md](README.md).
 - Consume framework-owned client log-level state and adapt it to Clanky's logger. Do not fetch webapp configuration from app-local initializer components or duplicate settings state.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
 - Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
+- Keep operational screens concise: use labels, values, actions, statuses, errors, and actionable warnings instead of explanatory paragraphs about workflow mechanics, navigation, persistence, or job retention. Add helper text only when it is needed to enter valid or safe data or to explain an irreversible consequence.
 - Use the webapp notification service for transient feedback. Do not add
   Clanky-owned toast providers or wrappers. Use inline `ErrorState`/validation
   for persistent page state and avoid reporting one failure twice.

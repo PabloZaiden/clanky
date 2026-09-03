@@ -11,6 +11,7 @@ import { getDatabase, initializeDatabase } from "../../src/persistence/database"
 import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { createMeshLink, mergeMeshLinkMember, saveMeshNode } from "../../src/persistence/mesh";
 import type { ProvisioningJobSnapshot } from "@/shared";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
   ProvisioningTestExecutor,
@@ -197,6 +198,65 @@ describe("Provisioning API integration", () => {
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
   });
 
+  test("keeps jobs independent across targets and rejects duplicate work", async () => {
+    const sshServer = await createServer();
+    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
+      devboxUpDelayMs: 250,
+    }));
+
+    const startJob = async (name: string, repoUrl: string) => await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        sshServerId: sshServer.config.id,
+        repoUrl,
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    const firstResponse = await startJob(
+      "Parallel Workspace A",
+      "https://github.com/octocat/parallel-a.git",
+    );
+    expect(firstResponse.status).toBe(201);
+    const first = await firstResponse.json() as ProvisioningSnapshotResponse;
+
+    const duplicateResponse = await startJob(
+      "Duplicate Workspace A",
+      "https://github.com/octocat/parallel-a.git",
+    );
+    expect(duplicateResponse.status).toBe(409);
+    expect((await duplicateResponse.json() as { error: string }).error).toBe("provisioning_target_busy");
+
+    const secondResponse = await startJob(
+      "Parallel Workspace B",
+      "https://github.com/octocat/parallel-b.git",
+    );
+    expect(secondResponse.status).toBe(201);
+    const second = await secondResponse.json() as ProvisioningSnapshotResponse;
+    expect(second.job.config.id).not.toBe(first.job.config.id);
+
+    const listResponse = await fetch(`${baseUrl}/api/provisioning-jobs`);
+    expect(listResponse.ok).toBe(true);
+    const listed = await listResponse.json() as {
+      jobs: Array<{ config: { id: string } }>;
+    };
+    expect(listed.jobs.map((job) => job.config.id)).toEqual(
+      expect.arrayContaining([first.job.config.id, second.job.config.id]),
+    );
+
+    await waitForJobStatus(baseUrl, first.job.config.id, ["completed"]);
+    await waitForJobStatus(baseUrl, second.job.config.id, ["completed"]);
+  });
+
   test("provisions through a stdio mesh execution node without an SSH server", async () => {
     await seedMeshExecutionTarget();
     const executor = new ProvisioningTestExecutor({
@@ -287,6 +347,14 @@ describe("Provisioning API integration", () => {
     const sensitive = await sensitiveResponse.json() as ProvisioningSnapshotResponse;
     expect(sensitive.job.state.serverSettings?.agent["password"]).toBe("runtime-secret");
     expect(sensitive.workspace?.serverSettings?.agent["password"]).toBe("runtime-secret");
+
+    provisioningManager.resetForTesting();
+    const reloadedSensitiveResponse = await fetch(
+      `${baseUrl}/api/provisioning-jobs/${started.job.config.id}?sensitive=true`,
+    );
+    expect(reloadedSensitiveResponse.ok).toBe(true);
+    const reloadedSensitive = await reloadedSensitiveResponse.json() as ProvisioningSnapshotResponse;
+    expect(reloadedSensitive.job.state.serverSettings?.agent["password"]).toBeUndefined();
   });
 
   test("redacts provisioning start snapshots by default and includes secrets with sensitive=true", async () => {
@@ -480,6 +548,142 @@ describe("Provisioning API integration", () => {
     expect(failed.job.state.status).toBe("failed");
     expect(failed.job.state.error?.code).toBe("devbox_not_found");
     expect(failed.job.state.error?.message).toContain("Devbox is not installed or not available on PATH");
+  });
+
+  test("keeps a failed job for retry and removes it with its logs on dismiss", async () => {
+    const sshServer = await createServer();
+    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
+      failDevboxVersion: true,
+    }));
+
+    const requestBody = {
+      name: "Retry Workspace",
+      sshServerId: sshServer.config.id,
+      repoUrl: "https://github.com/octocat/retry.git",
+      basePath: "/workspaces",
+      devcontainerSubpath: null,
+      devboxTemplate: null,
+      provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
+    };
+
+    const firstResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(firstResponse.status).toBe(201);
+    const first = await firstResponse.json() as ProvisioningSnapshotResponse;
+    const failed = await waitForJobStatus(baseUrl, first.job.config.id, ["failed"]);
+    expect(failed.job.state.error?.code).toBe("devbox_not_found");
+
+    const retryResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(retryResponse.status).toBe(201);
+    const retry = await retryResponse.json() as ProvisioningSnapshotResponse;
+    expect(retry.job.config.id).not.toBe(first.job.config.id);
+
+    const listResponse = await fetch(`${baseUrl}/api/provisioning-jobs`);
+    expect(listResponse.ok).toBe(true);
+    const listed = await listResponse.json() as {
+      jobs: Array<{ config: { id: string } }>;
+    };
+    expect(listed.jobs.map((job) => job.config.id)).toEqual(
+      expect.arrayContaining([first.job.config.id, retry.job.config.id]),
+    );
+
+    const dismiss = async (): Promise<Response> => {
+      const response = await fetch(`${baseUrl}/api/provisioning-jobs/${first.job.config.id}/dismiss`, {
+        method: "POST",
+      });
+      if (response.status === 409) {
+        await response.text();
+      }
+      return response;
+    };
+    const dismissResponse = await pollUntil(
+      dismiss,
+      (response) => response.status === 200,
+      {
+        description: "failed provisioning job to finish finalizing before dismiss",
+        timeoutMs: 5000,
+        formatLastObserved: (response) => `status=${response.status}`,
+      },
+    );
+    expect(dismissResponse.status).toBe(200);
+
+    const detailAfterDismiss = await fetch(`${baseUrl}/api/provisioning-jobs/${first.job.config.id}`);
+    expect(detailAfterDismiss.status).toBe(404);
+    const logsAfterDismiss = await fetch(`${baseUrl}/api/provisioning-jobs/${first.job.config.id}/logs`);
+    expect(logsAfterDismiss.status).toBe(404);
+    const remainingResponse = await fetch(`${baseUrl}/api/provisioning-jobs`);
+    const remaining = await remainingResponse.json() as {
+      jobs: Array<{ config: { id: string } }>;
+    };
+    expect(remaining.jobs.map((job) => job.config.id)).not.toContain(first.job.config.id);
+    expect(remaining.jobs.map((job) => job.config.id)).toContain(retry.job.config.id);
+  });
+
+  test("does not expose another user's provisioning jobs", async () => {
+    const sshServer = await createServer();
+    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
+      failDevboxVersion: true,
+    }));
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Owned Workspace",
+        sshServerId: sshServer.config.id,
+        repoUrl: "https://github.com/octocat/owned.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
+
+    const otherUser: CurrentUser = {
+      id: "other-user",
+      username: "other-user",
+      role: "user",
+      isOwner: false,
+      isAdmin: false,
+    };
+    const otherServer = serveNativeApiRoutes({ user: otherUser });
+    const otherBaseUrl = otherServer.url.toString().replace(/\/$/, "");
+    try {
+      const listResponse = await fetch(`${otherBaseUrl}/api/provisioning-jobs`);
+      expect(listResponse.ok).toBe(true);
+      expect((await listResponse.json() as { jobs: unknown[] }).jobs).toEqual([]);
+
+      const detailResponse = await fetch(
+        `${otherBaseUrl}/api/provisioning-jobs/${started.job.config.id}`,
+      );
+      expect(detailResponse.status).toBe(404);
+
+      const dismissResponse = await fetch(
+        `${otherBaseUrl}/api/provisioning-jobs/${started.job.config.id}/dismiss`,
+        { method: "POST" },
+      );
+      expect(dismissResponse.status).toBe(404);
+    } finally {
+      otherServer.stop();
+    }
   });
 
   test("creates and completes a server-level arise job without workspace fields", async () => {

@@ -103,30 +103,59 @@ export function useWorkspaceCreate({
   const [automaticPassword, setAutomaticPassword] = useState("");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
+  const prefilledRetryJobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const isOnComposeWorkspace = route.view === "compose" && getRouteString(route, "kind") === "workspace";
+    const retryJobId = isOnComposeWorkspace
+      ? getRouteString(route, "retryProvisioningJobId")
+      : undefined;
+    const requestedWorkspaceMode = getRouteString(route, "workspaceMode") === "automatic"
+      ? "automatic"
+      : "manual";
     const wasOnComposeWorkspace = wasOnComposeWorkspaceRef.current;
     wasOnComposeWorkspaceRef.current = isOnComposeWorkspace;
 
     if (!isOnComposeWorkspace) {
+      prefilledRetryJobIdRef.current = null;
       return;
     }
 
-    if (provisioning.activeJobId) {
-      // Auto-clear terminal jobs only on initial entry to compose/workspace,
-      // not while already viewing the provisioning result.
-      const jobStatus = provisioning.snapshot?.job.state.status;
-      const isTerminal = jobStatus === "completed" || jobStatus === "failed" || jobStatus === "cancelled";
-      if (isTerminal && !wasOnComposeWorkspace) {
+    if (retryJobId && prefilledRetryJobIdRef.current !== retryJobId) {
+      const retrySnapshot = provisioning.snapshot?.job.config.id === retryJobId
+        ? provisioning.snapshot
+        : null;
+      if (!retrySnapshot) {
+        provisioning.openJob(retryJobId);
+        return;
+      }
+      const retryStatus = retrySnapshot.job.state.status;
+      if (retryStatus === "failed" || retryStatus === "cancelled" || retryStatus === "interrupted") {
+        const config = retrySnapshot.job.config;
+        setWorkspaceCreateMode("automatic");
+        setWorkspaceName(config.name);
+        setAutomaticServerId(config.sshServerId ?? "");
+        setAutomaticExecutionNodeId(config.executionNodeId ?? null);
+        setAutomaticRepoUrl(config.repoUrl ?? "");
+        setAutomaticCreateNewRepository(config.createNewRepository ?? false);
+        setAutomaticBasePath(config.basePath);
+        setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
+        setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
+        setAutomaticGithubUser(config.githubUser ?? "");
+        setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
+        setAutomaticProvider(config.provider);
+        setAutomaticPassword("");
+        prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
         return;
       }
-      setWorkspaceCreateMode("automatic");
+    }
+
+    if (wasOnComposeWorkspace) {
       return;
     }
 
-    setWorkspaceCreateMode("manual");
+    setWorkspaceCreateMode(requestedWorkspaceMode);
     setWorkspaceName("");
     setWorkspaceDirectory("");
     setWorkspaceType("git");
@@ -147,7 +176,13 @@ export function useWorkspaceCreate({
     setAutomaticAdvancedOpen(false);
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
-  }, [provisioning.activeJobId, provisioning.snapshot?.job.state.status, route, servers]);
+  }, [
+    provisioning.clearActiveJob,
+    provisioning.openJob,
+    provisioning.snapshot,
+    route,
+    servers,
+  ]);
 
   useEffect(() => {
     if (route.view !== "compose" || getRouteString(route, "kind") !== "workspace" || automaticServerId || servers.length === 0) {
@@ -262,6 +297,11 @@ export function useWorkspaceCreate({
         if (snapshot) {
           setWorkspaceCreateMode("automatic");
           setAutomaticPassword("");
+          navigateWithinShell({
+            view: "provisioning-job",
+            provisioningJobId: snapshot.job.config.id,
+            returnView: "home",
+          });
         }
         return;
       }

@@ -26,6 +26,7 @@ const ROUTE_VIEWS = [
   "ssh-server-settings",
   "server-files",
   "server-arise",
+  "provisioning-job",
   "compose",
   "rebuild-workspace",
   "restart-workspace",

@@ -1,4 +1,15 @@
-import type { ProvisioningEvent, ProvisioningJob, ProvisioningJobSnapshot, PublicProvisioningJob, PublicProvisioningJobSnapshot, PublicServerSettings, PublicWorkspace, ServerSettings, Workspace } from "@/shared";
+import type {
+  ProvisioningEvent,
+  ProvisioningJob,
+  ProvisioningJobSnapshot,
+  ProvisioningStepEvent,
+  PublicProvisioningJob,
+  PublicProvisioningJobSnapshot,
+  PublicServerSettings,
+  PublicWorkspace,
+  ServerSettings,
+  Workspace,
+} from "@/shared";
 
 export function parseSensitiveFlag(value: string | null | undefined): boolean {
   return value === "true";
@@ -55,6 +66,8 @@ export function sanitizeProvisioningSnapshot(
   };
 }
 
+export function sanitizeProvisioningEvent(event: ProvisioningStepEvent): ProvisioningStepEvent;
+export function sanitizeProvisioningEvent(event: ProvisioningEvent): ProvisioningEvent;
 export function sanitizeProvisioningEvent(event: ProvisioningEvent): ProvisioningEvent {
   switch (event.type) {
     case "provisioning.started":
@@ -66,6 +79,8 @@ export function sanitizeProvisioningEvent(event: ProvisioningEvent): Provisionin
         ...event,
         job: sanitizeProvisioningJob(event.job),
       };
+    case "provisioning.dismissed":
+      return event;
     case "provisioning.output":
       return event;
   }

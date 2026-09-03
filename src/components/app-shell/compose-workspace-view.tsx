@@ -4,11 +4,10 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
-import { ProvisioningJobView } from "../ProvisioningJobView";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import type { AgentProvider } from "@/shared/settings";
-import { Button, PASSWORD_INPUT_PROPS, StatusBadge } from "../common";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
   ErrorState,
   FormGroup,
@@ -16,7 +15,6 @@ import {
   TextField,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { SshServer } from "@/shared/ssh-server";
 import {
@@ -39,7 +37,6 @@ const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advance
 
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
-    navigateWithinShell,
     servers,
     workspaceCreate,
     provisioning,
@@ -88,17 +85,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticPassword,
     handleCreateWorkspace,
     handleTestWorkspaceConnection,
-    handleBackToAutomaticWorkspaceForm,
   } = workspaceCreate;
   const { targets: executionTargets } = useWorkspaceExecutionTargets();
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
-  const provisioningStatus = provisioning.snapshot?.job.state.status;
-  const provisionedWorkspaceId =
-    provisioning.snapshot?.workspace?.id ?? provisioning.snapshot?.job.state.workspaceId;
-  const canReturnToAutomaticForm =
-    provisioningStatus === "failed" || provisioningStatus === "cancelled";
   const selectedServerHasStoredCredential = automaticServerId
     ? getStoredSshServerCredential(automaticServerId) !== null
     : false;
@@ -139,17 +130,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       : workspaceCreateSubmitting || workspacesSaving;
   const createActionDisabled =
     workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid;
-  const trimmedAutomaticDevboxTemplate = automaticDevboxTemplate.trim();
-  const trimmedAutomaticDevcontainerSubpath = automaticDevcontainerSubpath.trim();
-  const trimmedAutomaticGithubUser = automaticGithubUser.trim();
-  const advancedSummaryItems = [
-    trimmedAutomaticDevboxTemplate ? `Template: ${trimmedAutomaticDevboxTemplate}` : null,
-    !trimmedAutomaticDevboxTemplate && trimmedAutomaticDevcontainerSubpath ? "Devcontainer variant configured" : null,
-    trimmedAutomaticGithubUser ? `GitHub account: ${trimmedAutomaticGithubUser}` : null,
-  ].filter((item): item is string => item !== null);
-  const advancedSummary = advancedSummaryItems.length > 0
-    ? advancedSummaryItems.join(" · ")
-    : "Optional template, repo devcontainer, and GitHub account overrides";
 
   const createModeControls = (
     <>
@@ -173,82 +153,26 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   );
 
   const headerActions = useMemo(() => (
-    <>
-      {provisioningStatus ? (
-        <StatusBadge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-          {provisioningStatus}
-        </StatusBadge>
-      ) : null}
-      {provisioning.activeJobId ? (
-        <>
-          {canReturnToAutomaticForm && (
-            <Button type="button" size="sm" onClick={handleBackToAutomaticWorkspaceForm}>
-              Back to Automatic Form
-            </Button>
-          )}
-          {provisionedWorkspaceId && provisioningStatus === "completed" && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => navigateWithinShell({ view: "workspace", workspaceId: provisionedWorkspaceId })}
-            >
-              Open Workspace
-            </Button>
-          )}
-          {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-            <Button
-              type="button"
-              size="sm"
-              variant="danger"
-              onClick={() => {
-                void provisioning.cancelJob();
-              }}
-            >
-              Cancel Job
-            </Button>
-          )}
-        </>
-      ) : (
-        <Button
-          type="submit"
-          form={workspaceCreateFormId}
-          size="sm"
-          loading={createActionLoading}
-          disabled={createActionDisabled}
-        >
-          {createActionLabel}
-        </Button>
-      )}
-    </>
+    <Button
+      type="submit"
+      form={workspaceCreateFormId}
+      size="sm"
+      loading={createActionLoading}
+      disabled={createActionDisabled}
+    >
+      {createActionLabel}
+    </Button>
   ), [
-    canReturnToAutomaticForm,
     createActionDisabled,
     createActionLabel,
     createActionLoading,
-    handleBackToAutomaticWorkspaceForm,
-    navigateWithinShell,
-    provisionedWorkspaceId,
-    provisioning.activeJobId,
-    provisioning.cancelJob,
-    provisioningStatus,
     workspaceCreateFormId,
   ]);
   useShellHeaderActions(headerActions);
 
   return (
     <div className="space-y-6">
-      {provisioning.activeJobId ? (
-        <div className="space-y-6">
-          <ProvisioningJobView
-            snapshot={provisioning.snapshot}
-            logs={provisioning.logs}
-            websocketStatus={provisioning.websocketStatus}
-            loading={provisioning.loading}
-            error={provisioning.error}
-          />
-        </div>
-      ) : (
-        <form
+      <form
           id={workspaceCreateFormId}
           className="space-y-6"
           onSubmit={(event) => handleCreateWorkspace(event)}
@@ -276,7 +200,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 onChange={(event) => setWorkspaceDirectory(event.target.value)}
                 placeholder="/workspaces/project"
                 required
-                hint="Absolute path on the selected workspace host."
               />
               <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
                 <input
@@ -287,9 +210,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 />
                 <span className="flex-1">
                   <span className="block font-medium">Enable task features</span>
-                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                    Tasks, branches, worktrees, GitHub, and Git maintenance are available when enabled. Disable to run chats and agents directly at the selected path.
-                  </span>
                 </span>
               </label>
               <ServerSettingsForm
@@ -363,7 +283,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 placeholder="git@github.com:owner/repo.git"
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
-                hint={automaticCreateNewRepository ? "Disabled because this workspace will start from a new repository on the selected host." : "Repository to clone on the selected host."}
               />
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
@@ -393,7 +312,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 onChange={(event) => setAutomaticBasePath(event.target.value)}
                 placeholder="/workspaces"
                 required
-                hint="Parent directory where the repo should be cloned."
               />
 
               <SelectField
@@ -417,14 +335,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   onChange={(event) => setAutomaticPassword(event.target.value)}
                   placeholder="Leave blank for key-based auth"
                   type="password"
-                  hint="Stored encrypted in this client to start provisioning when password auth is required."
                   {...PASSWORD_INPUT_PROPS}
                 />
               )}
 
               <FormGroup
                 title="Advanced options"
-                description={advancedSummary}
                 actions={(
                   <Button
                     type="button"
@@ -473,11 +389,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                           </option>
                         ))}
                       </SelectField>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {automaticCreateNewRepository
-                          ? "Required because there is no repository devcontainer yet."
-                          : "Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run."}
-                      </p>
                       {templatesError && (
                         <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
                       )}
@@ -489,7 +400,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       value={automaticGithubUser}
                       onChange={(event) => setAutomaticGithubUser(event.target.value)}
                       placeholder="work-account"
-                      hint="Optional. When set, devbox runs with --gh-user for GH_TOKEN injection. Leave blank to use the current default gh account."
                     />
 
                     <TextField
@@ -499,9 +409,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       onChange={(event) => setAutomaticDevcontainerSubpath(event.target.value)}
                       placeholder="backend"
                       disabled={automaticDevboxTemplate.length > 0}
-                      hint={automaticDevboxTemplate
-                        ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
-                        : "Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."}
                     />
                   </div>
                 )}
@@ -513,8 +420,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           {provisioning.error && (
             <ErrorState title="Unable to provision workspace" description={provisioning.error} />
           )}
-        </form>
-      )}
+      </form>
     </div>
   );
 }
