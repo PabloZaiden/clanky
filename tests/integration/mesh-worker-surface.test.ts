@@ -36,11 +36,11 @@ test("Mesh worker exposes only its transport and authenticated control surface",
     CLANKY_DATA_DIR: dataDir,
     CLANKY_HOST: "127.0.0.1",
     CLANKY_LOG_LEVEL: "fatal",
-    CLANKY_MESH_WORKER: "true",
     CLANKY_PORT: String(port),
     CLANKY_PUBLIC_BASE_URL: baseUrl,
   };
   delete env["CLANKY_DISABLE_PASSKEY"];
+  delete env["CLANKY_MESH_WORKER"];
 
   const bootstrap = Bun.spawnSync(
     [process.execPath, "src/index.ts", "worker", "bootstrap"],
@@ -58,7 +58,13 @@ test("Mesh worker exposes only its transport and authenticated control surface",
   expect(credentials.meshWorker).toBe(true);
   expect(credentials.apiKey).toBeTruthy();
 
-  const worker = Bun.spawn([process.execPath, "src/index.ts", "serve"], {
+  const worker = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "serve",
+    "--mesh-worker",
+    "true",
+  ], {
     cwd: process.cwd(),
     env,
     stdin: "ignore",

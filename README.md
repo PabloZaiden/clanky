@@ -163,7 +163,7 @@ clanky ws
 | `CLANKY_DATA_DIR` | Complete override for Clanky state, including SQLite, config, detached-server metadata, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) browser origin without a path, query, or fragment; used to initialize the Mesh endpoint when none is saved | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
-| `CLANKY_MESH_WORKER` | Runs a restricted Mesh execution worker with no browser application or unrelated APIs | unset |
+| `CLANKY_MESH_WORKER` | Runs a restricted Mesh execution worker with no browser application or unrelated APIs; equivalent to `serve --mesh-worker` | `false` |
 | `CLANKY_MESH_ENROLLMENT_TOKEN` | Single-use token consumed by `clanky mesh enroll` when `--token` is omitted | unset |
 | `CLANKY_MESH_CONTROLLER_FINGERPRINT` | Expected controller identity for headless Mesh enrollment | unset |
 | `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
@@ -175,7 +175,9 @@ clanky ws
 Without `CLANKY_DATA_DIR`, local state is stored in `$HOME/.clanky`
 regardless of the directory from which Clanky is launched. The `serve config`
 commands persist host, port, and development source-path settings in that
-directory; environment variables and one-shot `serve` flags take precedence.
+directory. Application lifecycle options such as `mesh-worker` can also be
+persisted there; one-shot `serve` flags take precedence over environment
+variables, persisted configuration, and defaults.
 
 SSH retry, keepalive, timeout, and handshake-concurrency values are fixed
 application constants in `src/core/ssh-reliability-policy.ts`.
@@ -191,7 +193,7 @@ application constants in `src/core/ssh-reliability-policy.ts`.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
 - `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
-- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Start that installation with `CLANKY_MESH_WORKER=true`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
+- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Start that installation with `clanky serve up --mesh-worker true`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
 - Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
@@ -293,13 +295,26 @@ Bootstrap a dedicated worker installation before starting it:
 
 ```bash
 CLANKY_DATA_DIR=/app/data clanky worker bootstrap --username worker
-CLANKY_MESH_WORKER=true CLANKY_DATA_DIR=/app/data clanky serve
+CLANKY_DATA_DIR=/app/data clanky serve up --mesh-worker true
 ```
 
 The bootstrap command is idempotent: repeated runs report the existing key ID
 without printing its secret. Use `--rotate` to revoke that key and issue a new
 plaintext key once. Enrollment tokens are stored only as hashes, expire after
 15 minutes by default, and are consumed atomically.
+
+Mesh-worker mode can be selected equivalently with the `--mesh-worker` flag,
+`CLANKY_MESH_WORKER`, or persisted configuration:
+
+```bash
+clanky serve up --mesh-worker true
+CLANKY_MESH_WORKER=true clanky serve up
+clanky serve config set mesh-worker true
+clanky serve up
+```
+
+See the [Mesh worker guide](docs/mesh-worker.md) for node configuration,
+headless enrollment, verification, and common errors.
 
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
 public deployments. The image's trust-proxy defaults are intentionally unsafe
@@ -309,6 +324,7 @@ client-controlled.
 ## Documentation
 
 - [API reference](docs/API.md)
+- [Mesh worker guide](docs/mesh-worker.md)
 - [Project conventions and agent workflow](AGENTS.md)
 
 ## Development

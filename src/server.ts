@@ -327,16 +327,18 @@ export function isMeshWorkerRequestAllowed(request: Request): boolean {
   return methods?.some((method) => method === request.method) ?? false;
 }
 
-export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
+export async function getWebAppServer(
+  options: { meshWorker?: boolean } = {},
+): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) {
     return app;
   }
   await initializeDatabase();
   await ensureLocalMeshNodeIdentity();
   const dataDir = getDataDir();
-  const meshWorker = process.env["CLANKY_MESH_WORKER"] === "true";
+  const meshWorker = options.meshWorker ?? false;
   if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
-    throw new Error("CLANKY_MESH_WORKER cannot be combined with CLANKY_DISABLE_PASSKEY");
+    throw new Error("Mesh-worker mode cannot be combined with CLANKY_DISABLE_PASSKEY");
   }
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({
@@ -409,6 +411,8 @@ export function resetWebAppServerForTests(): void {
   app = undefined;
 }
 
-export async function startServer(): Promise<Server<WebAppWebSocketData>> {
-  return await (await getWebAppServer()).start();
+export async function startServer(
+  options: { meshWorker?: boolean } = {},
+): Promise<Server<WebAppWebSocketData>> {
+  return await (await getWebAppServer(options)).start();
 }
