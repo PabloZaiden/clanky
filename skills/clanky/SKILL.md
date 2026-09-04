@@ -1,12 +1,12 @@
 ---
 name: clanky
-description: Use the Clanky CLI to inspect and operate an existing authenticated Clanky instance. Activate when a user wants to query Clanky state, discover available Clanky API endpoints, create or monitor tasks, interact with chats or agents, stream events, or automate Clanky through the `clanky` command without starting or installing Clanky.
-compatibility: Requires `clanky` on PATH, existing CLI authentication, and network access to the target Clanky instance.
+description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, or to bootstrap and configure a Mesh execution worker when explicitly requested. Activate when a user wants to query Clanky state, discover available Clanky API endpoints, create or monitor tasks, interact with chats or agents, stream events, automate Clanky through the `clanky` command, or enroll a headless Mesh worker.
+compatibility: Requires `clanky` on PATH. Normal operations require existing CLI authentication and access to the target instance; worker bootstrap initializes its own API-key access.
 ---
 
 # Clanky CLI usage for agents
 
-Use this skill when you need to operate an existing Clanky instance from a terminal through the `clanky` CLI. Assume Clanky is already installed, configured, authenticated, and reachable. Do not install Clanky, start a server, or guide the user through authentication unless the user explicitly asks for that.
+Use this skill when you need to operate an existing Clanky instance from a terminal through the `clanky` CLI. Assume Clanky is already installed, configured, authenticated, and reachable unless the user explicitly asks to bootstrap or configure a Mesh worker. Do not install Clanky, start a server, or guide the user through authentication unless the user explicitly asks for that.
 
 Clanky evolves over time, so prefer discovery over memorized command details. Treat the running CLI and its API/schema output as the source of truth.
 
@@ -57,6 +57,81 @@ Clanky evolves over time, so prefer discovery over memorized command details. Tr
 - Use `--payload '<json>'` for request bodies.
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
+
+## Bootstrapping a Mesh worker
+
+Use this flow only when the user explicitly asks to configure an installation
+as a headless Mesh execution node. The canonical detailed guide is
+[`docs/mesh-worker.md`](../../docs/mesh-worker.md); prefer its current commands
+and troubleshooting information over memorized behavior.
+
+A Mesh worker uses the normal `clanky` binary but exposes only health, signed
+Mesh transport, and approved API-key-authenticated Mesh control operations. It
+does not expose the browser application, passkeys, device authorization,
+realtime UI, or unrelated APIs. Do not combine worker mode with
+`CLANKY_DISABLE_PASSKEY`.
+
+1. Bootstrap the worker identity and managed API key:
+
+   ```bash
+   CLANKY_DATA_DIR=/app/data \
+   clanky worker bootstrap --username worker
+   ```
+
+   Capture the `apiKey` from the JSON output. It is returned only when first
+   created or rotated; an idempotent repeat returns `apiKey: null`.
+
+2. Start the detached restricted server:
+
+   ```bash
+   CLANKY_DATA_DIR=/app/data \
+   clanky serve up --mesh-worker true
+   ```
+
+   Foreground `clanky serve --mesh-worker true` accepts the same option.
+   `mesh-worker` can equivalently come from
+   `CLANKY_MESH_WORKER=true` or
+   `clanky serve config set mesh-worker true`. Precedence is invocation flag,
+   environment, persisted config, then `false`. Use
+   `clanky serve config show` to inspect persisted and effective values.
+
+3. Point the CLI at the worker with `CLANKY_BASE_URL` and the bootstrapped
+   `CLANKY_API_KEY`. Run `clanky schema mesh/instance-name`,
+   `clanky schema mesh/endpoint`, and `clanky schema mesh/execution` before
+   setting the node name, advertised endpoint, repositories base path, and
+   `acceptRemoteExecution`.
+
+   ```bash
+   clanky api mesh/instance-name --method POST \
+     --payload '{"instanceName":"worker-1"}'
+   clanky api mesh/endpoint --method POST \
+     --payload '{"meshEndpoint":"https://worker.example.com"}'
+   clanky api mesh/execution --method POST \
+     --payload '{"acceptRemoteExecution":true,"repositoriesBasePath":"/workspaces"}'
+   ```
+
+4. On the controller, create a short-lived token:
+
+   ```bash
+   clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
+   ```
+
+5. On the worker, enroll using the returned token and
+   `enrollment.controllerFingerprint`:
+
+   ```bash
+   clanky mesh enroll https://controller.example.com \
+     --token <single-use-token> \
+     --fingerprint <controller-fingerprint>
+   ```
+
+6. Run `clanky mesh status` against both instances. The worker should be an
+   active member and is an execution target only when
+   `acceptRemoteExecution` is `true`.
+
+Mesh access intentionally grants unrestricted command and file access to the
+worker host. Do not invent path sandboxing or assume a workspace confines Mesh
+operations.
 
 ## Running commands and downloading files
 
@@ -229,6 +304,7 @@ clanky ws
 ## What not to do
 
 - Do not install Clanky.
-- Do not start or restart a Clanky server.
+- Do not start or restart a Clanky server unless the user explicitly asks for
+  lifecycle or Mesh-worker setup.
 - Do not assume server URLs, workspace IDs, task IDs, model IDs, or provider IDs; discover them from the instance.
 - Do not hardcode old CLI behavior when `clanky help`, `clanky api`, or `clanky schema` says otherwise.
