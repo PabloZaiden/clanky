@@ -1,0 +1,6 @@
+export const MESH_TCP_TUNNEL_PROTOCOL_VERSION = 1 as const;
+export const MESH_TCP_TUNNEL_CAPABILITY = "tcp-tunnel-v1" as const;
+export const MESH_TCP_TUNNEL_SESSION_TTL_MS = 5 * 60_000;
+export const MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS = 10_000;
+export const MESH_TCP_TUNNEL_OPEN_TIMEOUT_MS = 10_000;
+export const MESH_TCP_TUNNEL_MAX_FRAME_BYTES = 1024 * 1024;

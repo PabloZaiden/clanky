@@ -16,6 +16,8 @@ export type MeshOperation =
   | "pair-approve"
   | "pair-complete"
   | "pair-reject"
+  | "enroll"
+  | "enrollment-token-create"
   | "revoke"
   | "rejoin";
 
@@ -27,6 +29,9 @@ export interface MeshCommand {
   linkId?: string;
   fingerprint?: string;
   reason?: string;
+  token?: string;
+  name?: string;
+  ttlSeconds?: number;
 }
 
 function usageError(message: string): Error {
@@ -112,6 +117,49 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     };
   }
 
+  if (operation === "enroll") {
+    const { positionals, options } = parseOptions(operationArgs, ["--token", "--fingerprint"]);
+    const token = options["--token"] ?? process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
+    const fingerprint = options["--fingerprint"] ?? process.env["CLANKY_MESH_CONTROLLER_FINGERPRINT"];
+    if (!token) {
+      throw usageError("Mesh enroll requires --token or CLANKY_MESH_ENROLLMENT_TOKEN");
+    }
+    if (!fingerprint) {
+      throw usageError("Mesh enroll requires --fingerprint or CLANKY_MESH_CONTROLLER_FINGERPRINT");
+    }
+    return {
+      operation,
+      endpoint: requireSinglePositional(
+        positionals,
+        "Mesh enroll requires one target endpoint",
+      ),
+      token,
+      fingerprint,
+    };
+  }
+
+  if (operation === "enrollment-token") {
+    const [tokenOperation, ...tokenArgs] = operationArgs;
+    if (tokenOperation !== "create") {
+      throw usageError("Mesh enrollment-token command must be create");
+    }
+    const { positionals, options } = parseOptions(tokenArgs, ["--name", "--ttl-seconds"]);
+    if (positionals.length > 0) {
+      throw usageError(`Unexpected argument: ${positionals[0]}`);
+    }
+    const ttlSeconds = options["--ttl-seconds"]
+      ? Number.parseInt(options["--ttl-seconds"], 10)
+      : undefined;
+    if (ttlSeconds !== undefined && !Number.isInteger(ttlSeconds)) {
+      throw usageError("--ttl-seconds must be an integer");
+    }
+    return {
+      operation: "enrollment-token-create",
+      name: options["--name"],
+      ttlSeconds,
+    };
+  }
+
   if (operation !== "pair") {
     throw usageError(
       "Mesh command must be status, revoke, rejoin, or pair",
@@ -185,6 +233,25 @@ export function buildMeshRequest(command: MeshCommand): {
           ...(command.targetUserId ? { targetLocalUserId: command.targetUserId } : {}),
         }),
       };
+    case "enroll":
+      return {
+        endpoint: "/api/mesh/pairing-requests",
+        method: "POST",
+        payload: JSON.stringify({
+          targetEndpoint: command.endpoint,
+          enrollmentToken: command.token,
+          expectedFingerprint: command.fingerprint,
+        }),
+      };
+    case "enrollment-token-create":
+      return {
+        endpoint: "/api/mesh/enrollment-tokens",
+        method: "POST",
+        payload: JSON.stringify({
+          ...(command.name ? { name: command.name } : {}),
+          ...(command.ttlSeconds ? { ttlSeconds: command.ttlSeconds } : {}),
+        }),
+      };
     case "pair-approve":
       return {
         endpoint: `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/approve`,
@@ -244,7 +311,7 @@ export async function runMeshCommand(
 export function createMeshCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Inspect and manage linked mesh instances.",
-    usage: "mesh <status|revoke|rejoin|pair> [options]",
+    usage: "mesh <status|revoke|rejoin|enroll|enrollment-token|pair> [options]",
     handler: runMeshCommand,
   };
 }

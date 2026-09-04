@@ -13,6 +13,8 @@ import {
   DEFAULT_TERMINAL_USE_TMUX,
   type TerminalConnectionMode,
   type TerminalTargetBinding,
+  type ExecutionHostBinding,
+  type ExecutionHostRef,
   type WorkspaceTerminalSession,
   type TerminalSessionStatus,
   type Workspace,
@@ -43,6 +45,7 @@ import {
   blockAndCloseWorkspaceTerminalAttachment,
   unblockWorkspaceTerminalAttachment,
 } from "./workspace-terminal-attachment-registry";
+import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("core:terminal-session-manager");
 
@@ -64,27 +67,40 @@ function buildTaskTerminalSessionName(taskName: string): string {
 /**
  * Build a target binding from the workspace's current execution target settings.
  */
-async function buildTargetBinding(workspace: Workspace): Promise<TerminalTargetBinding> {
- const target = await resolveWorkspaceExecutionTarget(workspace);
- if (target.kind === "ssh") {
+async function buildTargetBindings(workspace: Workspace): Promise<{
+  legacy: TerminalTargetBinding;
+  canonical: ExecutionHostBinding | null;
+}> {
+  const target = await resolveWorkspaceExecutionTarget(workspace);
+  const canonical = workspace.executionHostBinding ?? (target.hostRef
+    ? {
+        host: target.hostRef,
+        targetKey: target.targetKey,
+        revision: workspace.executionTargetRevision ?? 1,
+      }
+    : null);
+  if (target.kind === "ssh") {
     return {
+      legacy: {
       transport: "ssh",
-     targetKey: target.targetKey,
-     workspaceRevision: workspace.executionTargetRevision ?? 1,
-     hostname: target.target.host,
-     port: target.target.port,
-     username: target.target.username,
-   };
- }
- const binding: TerminalTargetBinding = {
-   transport: "stdio",
-   targetKey: target.targetKey,
-   workspaceRevision: workspace.executionTargetRevision ?? 1,
- };
- if (target.kind === "mesh") {
-   binding.executionNodeId = target.nodeId;
- }
- return binding;
+        targetKey: target.targetKey,
+        workspaceRevision: workspace.executionTargetRevision ?? 1,
+        hostname: target.target.host,
+        port: target.target.port,
+        username: target.target.username,
+      },
+      canonical,
+    };
+  }
+  const legacy: TerminalTargetBinding = {
+    transport: "stdio",
+    targetKey: target.targetKey,
+    workspaceRevision: workspace.executionTargetRevision ?? 1,
+  };
+  if (target.kind === "mesh") {
+    legacy.executionNodeId = target.nodeId;
+  }
+  return { legacy, canonical };
 }
 
 async function requireWorkspace(workspaceId: string): Promise<Workspace> {
@@ -125,8 +141,24 @@ export class TerminalSessionManager {
   async createSession(
     request: CreateTerminalSessionRequest,
   ): Promise<WorkspaceTerminalSession> {
-    return await withWorkspaceExecutionLock(request.workspaceId, async () => {
-      const workspace = await requireWorkspace(request.workspaceId);
+    if (request.executionHost) {
+      return await this.createExecutionHostSession({
+        host: request.executionHost,
+        name: request.name,
+        directory: request.directory!,
+        connectionMode: request.connectionMode ?? DEFAULT_TERMINAL_CONNECTION_MODE,
+        useTmux: request.useTmux ?? DEFAULT_TERMINAL_USE_TMUX,
+      });
+    }
+    if (!request.workspaceId) {
+      throw new DomainError(
+        "terminal_session_source_required",
+        "A workspace or execution host is required.",
+      );
+    }
+    const workspaceId = request.workspaceId;
+    return await withWorkspaceExecutionLock(workspaceId, async () => {
+      const workspace = await requireWorkspace(workspaceId);
       const connectionMode = request.connectionMode ?? DEFAULT_TERMINAL_CONNECTION_MODE;
       const useTmux = request.useTmux ?? DEFAULT_TERMINAL_USE_TMUX;
       await touchWorkspace(workspace.id);
@@ -147,7 +179,7 @@ export class TerminalSessionManager {
 
   async updateSession(id: string, request: UpdateTerminalSessionRequest): Promise<WorkspaceTerminalSession> {
     const session = await this.requireSession(id);
-    return await withWorkspaceExecutionLock(session.config.workspaceId, async () => {
+    return await this.withSessionLock(session, async () => {
       const currentSession = await this.requireSession(id);
       const updatedSession: WorkspaceTerminalSession = {
         config: {
@@ -171,8 +203,8 @@ export class TerminalSessionManager {
 
   async deleteSession(id: string): Promise<boolean> {
     const session = await this.requireSession(id);
-    return await withWorkspaceExecutionLock(
-      session.config.workspaceId,
+    return await this.withSessionLock(
+      session,
       async () => {
         await blockAndCloseWorkspaceTerminalAttachment(id);
         try {
@@ -259,7 +291,7 @@ export class TerminalSessionManager {
 
   async markStatus(id: string, status: TerminalSessionStatus, error?: string): Promise<WorkspaceTerminalSession> {
     const session = await this.requireSession(id);
-    return await withWorkspaceExecutionLock(session.config.workspaceId, async () => {
+    return await this.withSessionLock(session, async () => {
       const currentSession = await this.requireSession(id);
       const updatedSession: WorkspaceTerminalSession = {
         config: {
@@ -292,7 +324,7 @@ export class TerminalSessionManager {
     options: { runtimeConnectionMode?: TerminalConnectionMode; notice?: string },
   ): Promise<WorkspaceTerminalSession> {
     const session = await this.requireSession(id);
-    return await withWorkspaceExecutionLock(session.config.workspaceId, async () => {
+    return await this.withSessionLock(session, async () => {
       const currentSession = await this.requireSession(id);
       const updatedSession: WorkspaceTerminalSession = {
         config: {
@@ -321,6 +353,58 @@ export class TerminalSessionManager {
     return buildDefaultTerminalSessionName(workspace.name, existingSessionCount);
   }
 
+  private async createExecutionHostSession(options: {
+    host: ExecutionHostRef;
+    name: string;
+    directory: string;
+    connectionMode: TerminalConnectionMode;
+    useTmux: boolean;
+  }): Promise<WorkspaceTerminalSession> {
+    const binding = executionHostService.getBinding(options.host);
+    const now = new Date().toISOString();
+    const sessionId = crypto.randomUUID();
+    const targetBinding: TerminalTargetBinding = {
+      transport: options.host.kind === "ssh" ? "ssh" : "stdio",
+      targetKey: binding.targetKey,
+      workspaceRevision: 1,
+      ...(options.host.kind === "mesh"
+        ? { executionNodeId: options.host.nodeId }
+        : {}),
+    };
+    const session: WorkspaceTerminalSession = {
+      config: {
+        id: sessionId,
+        name: options.name.trim(),
+        directory: options.directory.trim(),
+        connectionMode: options.connectionMode,
+        useTmux: options.useTmux,
+        remoteSessionName: buildRemoteSessionName(sessionId),
+        targetBinding,
+        executionHostBinding: binding,
+        createdAt: now,
+        updatedAt: now,
+      },
+      state: { status: "ready" },
+    };
+    await saveTerminalSession(session);
+    terminalSessionEventEmitter.emit({
+      type: "terminal_session.created",
+      terminalSessionId: sessionId,
+      session,
+      timestamp: now,
+    });
+    return session;
+  }
+
+  private async withSessionLock<T>(
+    session: WorkspaceTerminalSession,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return session.config.workspaceId
+      ? await withWorkspaceExecutionLock(session.config.workspaceId, operation)
+      : await operation();
+  }
+
   private async createAndSaveSession(options: {
     workspace: Workspace;
     name: string;
@@ -331,6 +415,7 @@ export class TerminalSessionManager {
   }): Promise<WorkspaceTerminalSession> {
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
+    const targetBindings = await buildTargetBindings(options.workspace);
     const session: WorkspaceTerminalSession = {
       config: {
         id: sessionId,
@@ -341,7 +426,8 @@ export class TerminalSessionManager {
         connectionMode: options.connectionMode,
         useTmux: options.useTmux,
         remoteSessionName: buildRemoteSessionName(sessionId),
-        targetBinding: await buildTargetBinding(options.workspace),
+        targetBinding: targetBindings.legacy,
+        executionHostBinding: targetBindings.canonical,
         createdAt: now,
         updatedAt: now,
       },
@@ -389,7 +475,7 @@ export class TerminalSessionManager {
     await this.deletePersistentSessionBestEffort(currentSession);
     const identity = await managedContextIdentityResolver.forTerminalSession(
       currentSession.config.id,
-      currentSession.config.workspaceId,
+      currentSession.config.workspaceId ?? currentSession.config.executionHostBinding!.targetKey,
     );
     await managedCredentialService.revokeContextIfConfigured(identity);
 
@@ -409,13 +495,20 @@ export class TerminalSessionManager {
       return;
     }
 
-    const workspace = await getWorkspace(session.config.workspaceId);
-    if (!workspace) {
-      return;
-    }
-
     try {
-      const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+      const workspace = session.config.workspaceId
+        ? await getWorkspace(session.config.workspaceId)
+        : null;
+      const executor = workspace
+        ? await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory)
+        : await executionHostService.getCommandExecutor(
+            session.config.executionHostBinding!,
+            {
+              operationId: `terminal-cleanup:${session.config.id}`,
+              directory: session.config.directory,
+              provider: "copilot",
+            },
+          );
       // Reuse the same persistent session delete command, passing a compatible object
       const killResult = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand({
         config: {
@@ -423,7 +516,7 @@ export class TerminalSessionManager {
           remoteSessionName: session.config.remoteSessionName,
         },
       })], {
-        cwd: workspace.directory,
+        cwd: session.config.directory,
       });
       if (!killResult.success) {
         throw new Error(killResult.stderr.trim() || killResult.stdout.trim() || "Failed to stop remote persistent session");
@@ -431,7 +524,7 @@ export class TerminalSessionManager {
     } catch (error) {
       log.warn("Failed to stop remote persistent session during deletion", {
         terminalSessionId: session.config.id,
-        workspaceId: session.config.workspaceId,
+        workspaceId: session.config.workspaceId ?? null,
         remoteSessionName: session.config.remoteSessionName,
         status: session.state.status,
         error: String(error),

@@ -8,6 +8,13 @@
 import type { ProvisioningJob, ProvisioningJobError, ProvisioningJobStatus, ProvisioningLogEntry } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
+import {
+  ensureExecutionHost,
+  executionHostBindingFromRow,
+  getExecutionHostByRef,
+  resolveExecutionHostBindingId,
+} from "./execution-hosts";
+import { buildMeshTargetKey } from "./workspace-target-key";
 
 const log = createLogger("persistence:provisioning-jobs");
 
@@ -25,6 +32,10 @@ interface ProvisioningJobRow {
   workspace_id: string | null;
   created_at: string;
   updated_at: string;
+  execution_host_revision: number | null;
+  execution_host_kind: "local" | "mesh" | "ssh" | null;
+  execution_host_source_id: string | null;
+  execution_host_target_key: string | null;
 }
 
 interface ProvisioningLogRow {
@@ -43,6 +54,15 @@ const PROVISIONING_STATUSES = new Set<ProvisioningJobStatus>([
   "cancelled",
   "interrupted",
 ]);
+
+const PROVISIONING_JOB_COLUMNS = `
+  job.id, job.user_id, job.config_json, job.state_json, job.status,
+  job.workspace_id, job.created_at, job.updated_at,
+  job.execution_host_revision,
+  execution_host.kind AS execution_host_kind,
+  execution_host.source_id AS execution_host_source_id,
+  execution_host.target_key AS execution_host_target_key
+`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -91,7 +111,12 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
     ...safeState
   } = storedState;
   return {
-    config: config as ProvisioningJob["config"],
+    config: {
+      ...(config as ProvisioningJob["config"]),
+      executionHostBinding: executionHostBindingFromRow(
+        row as unknown as Record<string, unknown>,
+      ),
+    },
     state: {
       ...safeState,
       status: row.status,
@@ -129,18 +154,54 @@ function getLogs(userId: string, jobId: string): ProvisioningLogEntry[] {
 
 function loadJobRow(userId: string, jobId: string): ProvisioningJobRow | null {
   return getDatabase().query(`
-    SELECT id, user_id, config_json, state_json, status, workspace_id, created_at, updated_at
-    FROM provisioning_jobs
-    WHERE id = ? AND user_id = ?
+    SELECT ${PROVISIONING_JOB_COLUMNS}
+    FROM provisioning_jobs job
+    LEFT JOIN execution_hosts execution_host
+      ON execution_host.id = job.execution_host_id
+      AND execution_host.user_id = job.user_id
+    WHERE job.id = ? AND job.user_id = ?
   `).get(jobId, userId) as ProvisioningJobRow | null;
+}
+
+function resolveProvisioningHost(
+  userId: string,
+  config: ProvisioningJob["config"],
+): { id: string | null; revision: number | null } {
+  if (config.executionHostBinding) {
+    return {
+      id: resolveExecutionHostBindingId(userId, config.executionHostBinding),
+      revision: config.executionHostBinding.revision,
+    };
+  }
+  if (config.sshServerId) {
+    const host = getExecutionHostByRef(userId, {
+      kind: "ssh",
+      serverId: config.sshServerId,
+    });
+    return {
+      id: host?.id ?? null,
+      revision: host?.revision ?? null,
+    };
+  }
+  if (config.executionNodeId) {
+    const host = ensureExecutionHost(
+      userId,
+      { kind: "mesh", nodeId: config.executionNodeId },
+      buildMeshTargetKey(config.executionNodeId),
+    );
+    return { id: host.id, revision: host.revision };
+  }
+  return { id: null, revision: null };
 }
 
 export function createProvisioningJob(userId: string, job: ProvisioningJob): void {
   const db = getDatabase();
+  const host = resolveProvisioningHost(userId, job.config);
   db.query(`
     INSERT INTO provisioning_jobs (
-      id, user_id, config_json, state_json, status, workspace_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, user_id, config_json, state_json, status, workspace_id,
+      created_at, updated_at, execution_host_id, execution_host_revision
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     job.config.id,
     userId,
@@ -150,13 +211,17 @@ export function createProvisioningJob(userId: string, job: ProvisioningJob): voi
     job.state.workspaceId ?? null,
     job.config.createdAt,
     job.state.updatedAt,
+    host.id,
+    host.revision,
   );
 }
 
 export function updateProvisioningJob(userId: string, job: ProvisioningJob): void {
+  const host = resolveProvisioningHost(userId, job.config);
   const result = getDatabase().query(`
     UPDATE provisioning_jobs
-    SET config_json = ?, state_json = ?, status = ?, workspace_id = ?, updated_at = ?
+    SET config_json = ?, state_json = ?, status = ?, workspace_id = ?,
+      updated_at = ?, execution_host_id = ?, execution_host_revision = ?
     WHERE id = ? AND user_id = ?
   `).run(
     JSON.stringify(job.config),
@@ -164,6 +229,8 @@ export function updateProvisioningJob(userId: string, job: ProvisioningJob): voi
     job.state.status,
     job.state.workspaceId ?? null,
     job.state.updatedAt,
+    host.id,
+    host.revision,
     job.config.id,
     userId,
   );
@@ -216,10 +283,13 @@ export function loadProvisioningJob(userId: string, jobId: string): PersistedPro
 
 export function listProvisioningJobs(userId: string): ProvisioningJob[] {
   const rows = getDatabase().query(`
-    SELECT id, user_id, config_json, state_json, status, workspace_id, created_at, updated_at
-    FROM provisioning_jobs
-    WHERE user_id = ?
-    ORDER BY updated_at DESC, created_at DESC
+    SELECT ${PROVISIONING_JOB_COLUMNS}
+    FROM provisioning_jobs job
+    LEFT JOIN execution_hosts execution_host
+      ON execution_host.id = job.execution_host_id
+      AND execution_host.user_id = job.user_id
+    WHERE job.user_id = ?
+    ORDER BY job.updated_at DESC, job.created_at DESC
   `).all(userId) as ProvisioningJobRow[];
   return rows.flatMap((row) => {
     const job = parseJobRow(row);
@@ -237,9 +307,12 @@ export function dismissProvisioningJob(userId: string, jobId: string): boolean {
 export function markProvisioningJobsInterrupted(userId: string): number {
   const db = getDatabase();
   const rows = db.query(`
-    SELECT id, user_id, config_json, state_json, status, workspace_id, created_at, updated_at
-    FROM provisioning_jobs
-    WHERE user_id = ? AND status IN ('pending', 'running')
+    SELECT ${PROVISIONING_JOB_COLUMNS}
+    FROM provisioning_jobs job
+    LEFT JOIN execution_hosts execution_host
+      ON execution_host.id = job.execution_host_id
+      AND execution_host.user_id = job.user_id
+    WHERE job.user_id = ? AND job.status IN ('pending', 'running')
   `).all(userId) as ProvisioningJobRow[];
   let updated = 0;
 

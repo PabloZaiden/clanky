@@ -4,6 +4,7 @@
 
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type {
+  ExecutionHostBinding,
   Workspace,
   WorkspaceTerminalSession,
 } from "@/shared";
@@ -32,6 +33,7 @@ import {
   isWorkspaceTerminalAttachmentBlocked,
   type WorkspaceTerminalAttachmentHandle,
 } from "./workspace-terminal-attachment-registry";
+import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("core:workspace-terminal-connection");
 
@@ -39,7 +41,8 @@ export type WorkspaceTerminalTransport = "ssh" | "local" | "mesh";
 
 export interface ResolvedWorkspaceTerminal {
   session: WorkspaceTerminalSession;
-  workspace: Workspace;
+  workspace?: Workspace;
+  executionHostBinding: ExecutionHostBinding;
   transport: WorkspaceTerminalTransport;
   executionNodeId?: string;
 }
@@ -62,6 +65,24 @@ export async function resolveWorkspaceTerminal(
       details: { terminalSessionId: sessionId },
     });
   }
+  if (!session.config.workspaceId) {
+    const binding = session.config.executionHostBinding;
+    if (!binding) {
+      throw new DomainError(
+        "terminal_execution_host_missing",
+        "The direct terminal has no execution-host binding.",
+      );
+    }
+    executionHostService.validateBinding(binding);
+    return {
+      session,
+      executionHostBinding: binding,
+      transport: binding.host.kind,
+      ...(binding.host.kind === "mesh"
+        ? { executionNodeId: binding.host.nodeId }
+        : {}),
+    };
+  }
   const workspace = await workspaceManager.requireWorkspace(session.config.workspaceId);
   const binding = session.config.targetBinding;
   const target = await resolveWorkspaceExecutionTarget(workspace);
@@ -80,6 +101,11 @@ export async function resolveWorkspaceTerminal(
   return {
     session,
     workspace,
+    executionHostBinding: session.config.executionHostBinding ?? {
+      host: target.hostRef!,
+      targetKey: target.targetKey,
+      revision: workspace.executionTargetRevision ?? 1,
+    },
     transport,
     ...(target.kind === "mesh" ? { executionNodeId: target.nodeId } : {}),
   };
@@ -248,6 +274,7 @@ function buildStatusCallbacks(
 export async function createWorkspaceTerminalConnection(
   sessionId: string,
   callbacks: InteractiveTerminalCallbacks,
+  credentialToken?: string,
 ): Promise<{
   connection: InteractiveTerminalConnection;
   attachment: WorkspaceTerminalAttachmentHandle;
@@ -256,7 +283,11 @@ export async function createWorkspaceTerminalConnection(
   const user = requireCurrentUser();
   const resolved = await resolveWorkspaceTerminal(sessionId);
   if (resolved.transport === "ssh") {
-    const connection = new SshInteractiveTerminalConnection(sessionId, callbacks);
+    const connection = new SshInteractiveTerminalConnection(
+      sessionId,
+      callbacks,
+      credentialToken,
+    );
     return {
       connection,
       attachment: await claimWorkspaceTerminalAttachment(sessionId, connection),
@@ -269,10 +300,20 @@ export async function createWorkspaceTerminalConnection(
   let environment: Record<string, string> | undefined;
   let allowPersistentSessionCreate = true;
   let executor: Awaited<ReturnType<typeof backendManager.getCommandExecutorAsync>> | undefined;
-  executor = await backendManager.getCommandExecutorAsync(
-    resolved.workspace.id,
-    resolved.session.config.directory,
-  );
+  executor = resolved.workspace
+    ? await backendManager.getCommandExecutorAsync(
+        resolved.workspace.id,
+        resolved.session.config.directory,
+      )
+    : await executionHostService.getCommandExecutor(
+        resolved.executionHostBinding,
+        {
+          operationId: `terminal:${sessionId}`,
+          directory: resolved.session.config.directory,
+          provider: "copilot",
+          localUserId: user.id,
+        },
+      );
   const runtimeMode = resolved.session.state.runtimeConnectionMode
     ?? resolved.session.config.connectionMode;
   const persistentRuntimeExists = runtimeMode === "dtach"
@@ -288,7 +329,7 @@ export async function createWorkspaceTerminalConnection(
       DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
     );
   allowPersistentSessionCreate = !persistentRuntimeExists;
-  if (allowPersistentSessionCreate) {
+  if (allowPersistentSessionCreate && resolved.workspace) {
     const identity = await managedContextIdentityResolver.forTerminalSession(
       sessionId,
       resolved.workspace.id,
@@ -321,6 +362,9 @@ export async function createWorkspaceTerminalConnection(
           );
         },
         onPersistentSessionAttachUnavailable: async () => {
+          if (!resolved.workspace) {
+            return {};
+          }
           const identity = await managedContextIdentityResolver.forTerminalSession(
             sessionId,
             resolved.workspace.id,
@@ -341,11 +385,11 @@ export async function createWorkspaceTerminalConnection(
         );
       }
       connection = new MeshInteractiveTerminalConnection({
-        workspaceId: resolved.workspace.id,
-        executionRoot: resolved.workspace.directory,
+        workspaceId: resolved.workspace?.id ?? `execution-host:${resolved.executionHostBinding.targetKey}`,
+        executionRoot: resolved.workspace?.directory ?? resolved.session.config.directory,
         directory: resolved.session.config.directory,
         executionNodeId: resolved.executionNodeId,
-        provider: resolved.workspace.serverSettings.agent.provider,
+        provider: resolved.workspace?.serverSettings.agent.provider ?? "copilot",
         terminalSessionId: sessionId,
         remoteSessionName: resolved.session.config.remoteSessionName,
         connectionMode: resolved.session.state.runtimeConnectionMode
@@ -356,6 +400,9 @@ export async function createWorkspaceTerminalConnection(
         callbacks: statusCallbacks,
         localUserId: user.id,
         onPersistentSessionAttachUnavailable: async () => {
+          if (!resolved.workspace) {
+            return {};
+          }
           const identity = await managedContextIdentityResolver.forTerminalSession(
             sessionId,
             resolved.workspace.id,

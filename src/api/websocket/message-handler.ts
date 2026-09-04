@@ -2,16 +2,22 @@ import type { ServerWebSocket } from "bun";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
-import type { startSshServerTerminalBridge, sendTerminalAuthError } from "./terminal";
+import type {
+  startSshServerTerminalBridge,
+  startWorkspaceTerminalBridge,
+  sendTerminalAuthError,
+} from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
+import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 
 const log = createLogger("api:websocket");
 
 type TerminalHelpers = {
   startSshServerTerminalBridge: typeof startSshServerTerminalBridge;
+  startWorkspaceTerminalBridge: typeof startWorkspaceTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
 };
 
@@ -105,6 +111,24 @@ export function createMessageHandler(helpers: TerminalHelpers) {
   const resizeStates: TerminalResizeStates = new WeakMap();
 
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
+    if (
+      ws.data.meshTcpTunnelMode
+      && ws.data.meshTcpTunnelSessionId
+      && ws.data.meshTcpTunnelSessionToken
+    ) {
+      void meshTcpTunnelGateway.message(
+        ws.data.meshTcpTunnelSessionId,
+        ws.data.meshTcpTunnelSessionToken,
+        msg,
+      ).catch((error: Error) => {
+        log.warn("Mesh TCP tunnel relay message failed", {
+          sessionId: ws.data.meshTcpTunnelSessionId,
+          error: String(error),
+        });
+        ws.close(1003, "Invalid Mesh TCP tunnel message");
+      });
+      return;
+    }
     if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
       void meshAcpGateway.message(ws.data.meshAcpSessionId, msg).catch((error: Error) => {
         log.warn("Mesh ACP relay message failed", {
@@ -188,6 +212,23 @@ export function createMessageHandler(helpers: TerminalHelpers) {
               "credentialToken is required for standalone SSH terminals",
             );
             return;
+          }
+
+          if (ws.data.terminalMode && ws.data.workspaceTerminalSessionId && !ws.data.terminalBridge) {
+            if (data.type === "terminal.auth") {
+              const credentialToken = typeof data.credentialToken === "string"
+                ? data.credentialToken.trim()
+                : "";
+              if (!credentialToken) {
+                helpers.sendTerminalAuthError(
+                  ws,
+                  "credentialToken is required for direct SSH terminals",
+                );
+                return;
+              }
+              void helpers.startWorkspaceTerminalBridge(ws, credentialToken);
+              return;
+            }
           }
           void helpers.startSshServerTerminalBridge(ws, credentialToken);
           return;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ConfirmModal, ErrorState, LoadingState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, Task, Workspace } from "@/shared";
+import type { Chat, ExecutionHostDescriptor, Task, Workspace } from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -17,6 +17,8 @@ import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { VncSessionView } from "./vnc-session-view";
+import { ExecutionHostView } from "./execution-host-view";
+import { ExecutionHostFilesView } from "./execution-host-files-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
@@ -43,6 +45,7 @@ export interface ShellMainContentProps {
   chats: Chat[];
   workspaces: Workspace[];
   terminalSessions: import("@/shared").WorkspaceTerminalSession[];
+  executionHosts: ExecutionHostDescriptor[];
   servers: SshServer[];
   sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
   serverNodes: SidebarServerNode[];
@@ -145,6 +148,13 @@ function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefin
     case "server": {
       const serverId = getRouteString(route, "serverId");
       return serverId ? { contentType, serverId, startDirectory, filePath } : undefined;
+    }
+    case "execution-host": {
+      const hostKind = getRouteString(route, "hostKind");
+      const hostId = getRouteString(route, "hostId");
+      return (hostKind === "local" || hostKind === "mesh") && hostId
+        ? { contentType, hostKind, hostId, startDirectory, filePath }
+        : undefined;
     }
     case "chat": {
       const chatId = getRouteString(route, "chatId");
@@ -314,6 +324,7 @@ function renderMainContent(props: ShellMainContentProps) {
     chats,
     workspaces,
     terminalSessions,
+    executionHosts,
     servers,
     sessionsByServerId,
     serverNodes,
@@ -634,6 +645,7 @@ function renderMainContent(props: ShellMainContentProps) {
     if (!serverId) {
       return missingRouteParameter(route.view, "serverId");
     }
+
     if (!selectedServer) {
       return (
         <ErrorState
@@ -642,6 +654,7 @@ function renderMainContent(props: ShellMainContentProps) {
         />
       );
     }
+
     const selectedServerNode = serverNodes.find((node) => node.server.config.id === selectedServer.config.id);
     const relatedServerChats = [
       ...(selectedServerNode?.chats ?? []),
@@ -654,6 +667,32 @@ function renderMainContent(props: ShellMainContentProps) {
         chats={relatedServerChats}
         onNavigate={navigateWithinShell}
         showPrivateItems={showPrivateItems}
+      />
+    );
+  }
+
+  if (route.view === "execution-host") {
+    const hostKind = getRouteString(route, "hostKind");
+    const hostId = getRouteString(route, "hostId");
+    if (!hostKind || !hostId) {
+      return missingRouteParameter(route.view, !hostKind ? "hostKind" : "hostId");
+    }
+    const host = executionHosts.find((candidate) => {
+      const id = candidate.ref.kind === "ssh"
+        ? candidate.ref.serverId
+        : candidate.ref.nodeId;
+      return candidate.ref.kind === hostKind && id === hostId;
+    });
+    if (!host) {
+      return shellLoading
+        ? <LoadingState title="Loading server" />
+        : <ErrorState title="Server not found" description="The selected execution server is unavailable." />;
+    }
+    return (
+      <ExecutionHostView
+        host={host}
+        provisioning={props.provisioning}
+        onNavigate={navigateWithinShell}
       />
     );
   }
@@ -736,12 +775,36 @@ function renderMainContent(props: ShellMainContentProps) {
         routeTarget={getCodeExplorerTarget(route)}
         tasks={tasks}
         chats={chats}
+        executionHosts={executionHosts}
         workspaces={workspaces}
         terminalSessions={terminalSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
         createTerminalSession={createTerminalSession}
         createStandaloneSession={createStandaloneSession}
+        onNavigate={navigateWithinShell}
+      />
+    );
+  }
+
+  if (route.view === "execution-host-files") {
+    const hostKind = getRouteString(route, "hostKind");
+    const hostId = getRouteString(route, "hostId");
+    const host = executionHosts.find((candidate) => {
+      const id = candidate.ref.kind === "ssh"
+        ? candidate.ref.serverId
+        : candidate.ref.nodeId;
+      return candidate.ref.kind === hostKind && id === hostId;
+    });
+    if (!host) {
+      return <ErrorState title="Server not found" description="The selected execution server is unavailable." />;
+    }
+    return (
+      <ExecutionHostFilesView
+        host={host}
+        startDirectory={getRouteString(route, "startDirectory")}
+        terminalSessions={terminalSessions}
+        createTerminalSession={createTerminalSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -876,7 +939,8 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
     || props.route.view === "task-files"
     || props.route.view === "vnc-session"
     || props.route.view === "workspace-files"
-    || props.route.view === "server-files";
+    || props.route.view === "server-files"
+    || props.route.view === "execution-host-files";
 }
 
 export function AppRouteContent(props: ShellMainContentProps) {

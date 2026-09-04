@@ -35,10 +35,16 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateSshServerChatOptions,
+  CreateExecutionHostChatOptions,
   ImportExistingSessionOptions,
 } from "./chat-service-contracts";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
+import {
+  getExecutionHostByRef,
+  toExecutionHostBinding,
+} from "../persistence/execution-hosts";
+import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -127,6 +133,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           kind: "workspace",
           workspaceId: options.workspaceId,
         },
+        executionHostBinding: workspace.executionHostBinding ?? null,
         scope,
         taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
@@ -214,6 +221,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       credentialToken: null,
       connectionMode: "dtach",
     });
+    const executionHost = getExecutionHostByRef(
+      requireCurrentUser().id,
+      { kind: "ssh", serverId: options.sshServerId },
+    );
     const chat: Chat = {
       config: {
         id,
@@ -225,6 +236,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           sshServerSessionId: session.config.id,
           directory: options.directory,
         },
+        executionHostBinding: executionHost
+          ? toExecutionHostBinding(executionHost)
+          : null,
         scope: "workspace",
         directory: options.directory,
         model: {
@@ -252,6 +266,47 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         credentialToken: options.credentialToken,
       });
     }
+    return chat;
+  }
+
+  async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
+    executionHostService.validateBinding(options.executionHost);
+    const id = crypto.randomUUID();
+    const now = createTimestamp();
+    const chat: Chat = {
+      config: {
+        id,
+        name: options.name?.trim() || `${options.executionHost.targetKey} chat`,
+        workspaceId: "",
+        source: {
+          kind: "execution_host",
+          executionHost: options.executionHost,
+          directory: options.directory,
+        },
+        executionHostBinding: options.executionHost,
+        scope: "workspace",
+        directory: options.directory,
+        model: {
+          providerID: options.modelProviderID,
+          modelID: options.modelID,
+          variant: options.modelVariant ?? "",
+        },
+        useWorktree: false,
+        autoApprovePermissions: options.autoApprovePermissions
+          ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        createdAt: now,
+        updatedAt: now,
+        mode: DEFAULT_CHAT_CONFIG.mode,
+      },
+      state: {
+        ...createInitialChatState(id),
+        connectionStatus: options.executionHost.host.kind === "ssh"
+          ? "needs_credentials"
+          : "disconnected",
+      },
+    };
+    await this.state.saveNewChat(chat);
+    this.state.emitChatCreated(chat, now);
     return chat;
   }
 

@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, Task, TerminalConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type {
+  Chat,
+  ExecutionHostDescriptor,
+  Task,
+  TerminalConnectionMode,
+  Workspace,
+  WorkspaceTerminalSession,
+} from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import { FileExplorerView } from "./file-explorer-view";
@@ -15,6 +22,7 @@ interface CodeExplorerViewProps {
   routeTarget?: CodeExplorerTarget;
   tasks: Task[];
   chats: Chat[];
+  executionHosts?: ExecutionHostDescriptor[];
   workspaces: Workspace[];
   terminalSessions: WorkspaceTerminalSession[];
   servers: SshServer[];
@@ -31,6 +39,7 @@ export function CodeExplorerView({
   routeTarget,
   tasks,
   chats,
+  executionHosts = [],
   workspaces,
   terminalSessions,
   servers,
@@ -42,14 +51,16 @@ export function CodeExplorerView({
   const options = useMemo(() => getCodeExplorerOptions({
     tasks,
     chats,
+    executionHosts,
     workspaces,
     servers,
-  }), [chats, tasks, servers, workspaces]);
+  }), [chats, executionHosts, tasks, servers, workspaces]);
   const groupedOptions = useMemo(() => getCodeExplorerOptionGroups(options), [options]);
   const resolvedTarget = resolveCodeExplorerTarget({
     target: routeTarget,
     tasks,
     chats,
+    executionHosts,
     workspaces,
     terminalSessions,
     servers,
@@ -63,7 +74,7 @@ export function CodeExplorerView({
       <div className="h-full overflow-auto p-6">
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Open a workspace, task, SSH server, or chat path in the unified code explorer.
+            Open a workspace, task, server, or chat path in the unified code explorer.
           </p>
           <div className="space-y-5">
             {groupedOptions.map((group) => (
@@ -85,6 +96,11 @@ export function CodeExplorerView({
                             ? { taskId: option.target.taskId }
                             : option.target.contentType === "server"
                               ? { serverId: option.target.serverId }
+                              : option.target.contentType === "execution-host"
+                                ? {
+                                    hostKind: option.target.hostKind,
+                                    hostId: option.target.hostId,
+                                  }
                               : { chatId: option.target.chatId }),
                       })}
                       className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"

@@ -95,6 +95,12 @@ export class ManagedContextIdentityResolver {
     if (!session) {
       throw missingContext("terminal_session", sessionId);
     }
+    if (!session.config.workspaceId) {
+      throw new DomainError(
+        "managed_context_workspace_required",
+        "Direct execution-host terminal sessions do not have a workspace context.",
+      );
+    }
     return this.createIdentity(
       "terminal_session",
       sessionId,

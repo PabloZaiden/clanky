@@ -6,16 +6,24 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import {
   ApproveMeshPairingRequestSchema,
   CompleteMeshPairingRequestSchema,
+  CreateMeshEnrollmentTokenRequestSchema,
   RevokeMeshMemberRequestSchema,
   RejectMeshPairingRequestSchema,
   StartMeshPairingRequestSchema,
   UpdateMeshEndpointSchema,
+  UpdateMeshExecutionConfigurationSchema,
   UpdateMeshInstanceNameSchema,
 } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";
 import { isDomainError } from "../core/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import {
+  createMeshEnrollmentToken,
+  listMeshEnrollmentTokens,
+} from "../persistence/mesh-enrollment-tokens";
+import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
+import { getMeshLinkForLocalUser } from "../persistence/mesh";
 
 export function meshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
@@ -61,6 +69,14 @@ export function meshErrorResponse(error: unknown): Response {
         mesh_pairing_fingerprint_mismatch: {
           status: 409,
           message: "The confirmed fingerprint does not match the peer approval",
+        },
+        mesh_enrollment_not_approved: {
+          status: 409,
+          message: "The enrollment token did not produce a pairing approval",
+        },
+        mesh_enrollment_controller_mismatch: {
+          status: 409,
+          message: "The enrollment approval does not match the expected controller fingerprint",
         },
         mesh_instance_name_required: {
           status: 409,
@@ -143,8 +159,41 @@ export function meshErrorResponse(error: unknown): Response {
 }
 
 export const meshRoutes = defineRoutes({
+  "/api/mesh/enrollment-tokens": {
+    auth: "owner",
+    sameOrigin: "mutations",
+    description: "List or create single-use Mesh enrollment tokens.",
+    tags: ["mesh", "membership"],
+    async GET(_req, ctx): Promise<Response> {
+      return Response.json(listMeshEnrollmentTokens(ctx.requireOwner().id));
+    },
+    async POST(req, ctx): Promise<Response> {
+      const parsed = await parseAndValidate(CreateMeshEnrollmentTokenRequestSchema, req);
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      const owner = ctx.requireOwner();
+      const [identity, link] = await Promise.all([
+        ensureLocalMeshNodeIdentity(),
+        getMeshLinkForLocalUser(owner.id),
+      ]);
+      return Response.json(
+        createMeshEnrollmentToken(
+          owner.id,
+          parsed.data.name,
+          parsed.data.ttlSeconds,
+          {
+            linkId: link?.linkId ?? null,
+            nodeId: identity.nodeId,
+            fingerprint: identity.fingerprint,
+          },
+        ),
+        { status: 201 },
+      );
+    },
+  },
   "/api/mesh/members/revoke": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Revoke a mesh member and stop trusting its transport identity.",
     tags: ["mesh", "membership"],
@@ -154,7 +203,7 @@ export const meshRoutes = defineRoutes({
         return parsed.response;
       }
       try {
-        const status = await meshManager.revokeMember(ctx.requireUser().id, parsed.data.nodeId);
+        const status = await meshManager.revokeMember(ctx.requireOwner().id, parsed.data.nodeId);
         return successResponse({ status });
       } catch (error) {
         return meshErrorResponse(error);
@@ -163,7 +212,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/members/:nodeId": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Delete a revoked mesh member record so the node can be invited again.",
     tags: ["mesh", "membership"],
@@ -173,7 +222,7 @@ export const meshRoutes = defineRoutes({
         return meshErrorResponse(new Error("Mesh node ID is required."));
       }
       try {
-        const status = await meshManager.removeRevokedMember(ctx.requireUser().id, nodeId);
+        const status = await meshManager.removeRevokedMember(ctx.requireOwner().id, nodeId);
         return successResponse({ status });
       } catch (error) {
         return meshErrorResponse(error);
@@ -182,7 +231,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/rejoin": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Rotate this revoked node identity and start a new mesh pairing flow.",
     tags: ["mesh", "membership"],
@@ -192,7 +241,7 @@ export const meshRoutes = defineRoutes({
         return parsed.response;
       }
       try {
-        const user = ctx.requireUser();
+        const user = ctx.requireOwner();
         const status = await meshManager.rejoin(
           user.id,
           user.username,
@@ -235,7 +284,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/instance-name": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Set the persistent display name for this mesh instance.",
     tags: ["mesh", "identity"],
@@ -246,7 +295,7 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const status = await meshManager.setInstanceName(
-          ctx.requireUser().id,
+          ctx.requireOwner().id,
           parsed.data.instanceName,
         );
         return successResponse({ status });
@@ -257,7 +306,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/endpoint": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Set the endpoint this instance advertises for Mesh traffic.",
     tags: ["mesh", "identity"],
@@ -268,7 +317,7 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const status = await meshManager.setMeshEndpoint(
-          ctx.requireUser().id,
+          ctx.requireOwner().id,
           parsed.data.meshEndpoint,
         );
         return successResponse({ status });
@@ -278,14 +327,39 @@ export const meshRoutes = defineRoutes({
     },
   },
 
+  "/api/mesh/execution": {
+    auth: "owner",
+    sameOrigin: "mutations",
+    description: "Configure whether this node accepts Mesh execution.",
+    tags: ["mesh", "execution"],
+    async POST(req, ctx): Promise<Response> {
+      const parsed = await parseAndValidate(
+        UpdateMeshExecutionConfigurationSchema,
+        req,
+      );
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      try {
+        const status = await meshManager.setExecutionConfiguration(
+          ctx.requireOwner().id,
+          parsed.data,
+        );
+        return successResponse({ status });
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+
   "/api/mesh/pairing-requests": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "List pending mesh pairing requests for the current local user.",
     tags: ["mesh", "pairing"],
     async GET(_req, ctx): Promise<Response> {
       try {
-        const status = await meshManager.getStatus(ctx.requireUser().id);
+        const status = await meshManager.getStatus(ctx.requireOwner().id);
         return successResponse({
           requests: status.pendingPairingRequests,
         });
@@ -299,7 +373,7 @@ export const meshRoutes = defineRoutes({
         return parsed.response;
       }
       try {
-        const user = ctx.requireUser();
+        const user = ctx.requireOwner();
         const status = await meshManager.startPairing(
           user.id,
           user.username,
@@ -313,7 +387,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/pairing-requests/:requestId/approve": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Approve a pending mesh pairing request.",
     tags: ["mesh", "pairing"],
@@ -331,7 +405,7 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const status = await meshManager.approvePairingRequest(
-          ctx.requireUser().id,
+          ctx.requireOwner().id,
           requestId,
           parsed.data,
         );
@@ -343,7 +417,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/pairing-requests/:requestId/complete": {
-      auth: "user",
+      auth: "owner",
       sameOrigin: "mutations",
       description: "Confirm the peer fingerprint and complete an outgoing mesh pairing request.",
       tags: ["mesh", "pairing"],
@@ -358,7 +432,7 @@ export const meshRoutes = defineRoutes({
         }
         try {
           const status = await meshManager.completePairing(
-            ctx.requireUser().id,
+            ctx.requireOwner().id,
             requestId,
             parsed.data,
           );
@@ -370,7 +444,7 @@ export const meshRoutes = defineRoutes({
   },
 
   "/api/mesh/pairing-requests/:requestId/reject": {
-    auth: "user",
+    auth: "owner",
     sameOrigin: "mutations",
     description: "Reject a pending mesh pairing request.",
     tags: ["mesh", "pairing"],
@@ -388,7 +462,7 @@ export const meshRoutes = defineRoutes({
       }
       try {
         const status = await meshManager.rejectPairingRequest(
-          ctx.requireUser().id,
+          ctx.requireOwner().id,
           requestId,
           parsed.data,
         );

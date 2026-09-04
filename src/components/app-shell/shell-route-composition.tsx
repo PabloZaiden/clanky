@@ -22,6 +22,8 @@ const ROUTE_VIEWS = [
   "workspace-previews",
   "workspace-settings",
   "ssh-server",
+  "execution-host",
+  "execution-host-files",
   "vnc-session",
   "ssh-server-settings",
   "server-files",

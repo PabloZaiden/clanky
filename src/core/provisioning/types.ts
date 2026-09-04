@@ -1,10 +1,17 @@
-import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningLogEntry } from "@/shared";
+import type {
+  AgentProvider,
+  ExecutionHostRef,
+  ProvisioningJob,
+  ProvisioningJobMode,
+  ProvisioningLogEntry,
+} from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 export interface StartProvisioningJobOptions {
   name: string;
   sshServerId?: string;
   executionNodeId?: string;
+  executionHost?: ExecutionHostRef;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

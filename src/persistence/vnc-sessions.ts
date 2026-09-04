@@ -1,6 +1,12 @@
 import type { VncSession } from "@/shared";
 import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";
+import {
+  EXECUTION_HOST_JOIN_COLUMNS,
+  executionHostBindingFromRow,
+  getExecutionHostByRef,
+  resolveExecutionHostBindingId,
+} from "./execution-hosts";
 
 const RESUMABLE_STATUSES = ["starting", "active"];
 
@@ -17,7 +23,17 @@ const ALLOWED_VNC_SESSION_COLUMNS = new Set([
   "pid",
   "connected_at",
   "error_message",
+  "execution_host_id",
+  "execution_host_revision",
 ]);
+
+const VNC_SESSION_SELECT = `
+  SELECT vnc_session.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+  FROM vnc_sessions vnc_session
+  LEFT JOIN execution_hosts execution_host
+    ON execution_host.id = vnc_session.execution_host_id
+    AND execution_host.user_id = vnc_session.user_id
+`;
 
 function validateColumnNames(columns: string[]): void {
   for (const column of columns) {
@@ -31,7 +47,8 @@ function rowToVncSession(row: Record<string, unknown>): VncSession {
   return {
     config: {
       id: row["id"] as string,
-      sshServerId: row["ssh_server_id"] as string,
+      sshServerId: (row["ssh_server_id"] as string | null) ?? undefined,
+      executionHostBinding: executionHostBindingFromRow(row),
       remoteHost: "127.0.0.1",
       remotePort: row["remote_port"] as number,
       localPort: row["local_port"] as number,
@@ -48,10 +65,17 @@ function rowToVncSession(row: Record<string, unknown>): VncSession {
 }
 
 function vncSessionToRow(session: VncSession): Record<string, string | number | null> {
+  const userId = requirePersistenceUserId();
+  const fallbackHost = session.config.sshServerId
+    ? getExecutionHostByRef(userId, {
+        kind: "ssh",
+        serverId: session.config.sshServerId,
+      })
+    : null;
   return {
     id: session.config.id,
-    user_id: requirePersistenceUserId(),
-    ssh_server_id: session.config.sshServerId,
+    user_id: userId,
+    ssh_server_id: session.config.sshServerId ?? null,
     remote_host: session.config.remoteHost,
     remote_port: session.config.remotePort,
     local_port: session.config.localPort,
@@ -61,6 +85,12 @@ function vncSessionToRow(session: VncSession): Record<string, string | number | 
     pid: session.state.pid ?? null,
     connected_at: session.state.connectedAt ?? null,
     error_message: session.state.error ?? null,
+    execution_host_id: session.config.executionHostBinding
+      ? resolveExecutionHostBindingId(userId, session.config.executionHostBinding)
+      : fallbackHost?.id ?? null,
+    execution_host_revision: session.config.executionHostBinding?.revision
+      ?? fallbackHost?.revision
+      ?? null,
   };
 }
 
@@ -82,24 +112,61 @@ export async function saveVncSession(session: VncSession): Promise<void> {
 }
 
 export async function getVncSession(id: string): Promise<VncSession | null> {
-  const row = getDatabase().query("SELECT * FROM vnc_sessions WHERE id = ? AND user_id = ?").get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
+  const row = getDatabase().query(
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.id = ? AND vnc_session.user_id = ?`,
+  ).get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToVncSession(row) : null;
 }
 
 export async function listVncSessionsBySshServerId(sshServerId: string): Promise<VncSession[]> {
   const rows = getDatabase().query(
-    "SELECT * FROM vnc_sessions WHERE ssh_server_id = ? AND user_id = ? ORDER BY created_at DESC",
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.ssh_server_id = ? AND vnc_session.user_id = ?
+     ORDER BY vnc_session.created_at DESC`,
   ).all(sshServerId, requirePersistenceUserId()) as Record<string, unknown>[];
+  return rows.map(rowToVncSession);
+}
+
+export async function listVncSessionsByExecutionHostId(
+  executionHostId: string,
+): Promise<VncSession[]> {
+  const rows = getDatabase().query(
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.execution_host_id = ? AND vnc_session.user_id = ?
+     ORDER BY vnc_session.created_at DESC`,
+  ).all(executionHostId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToVncSession);
 }
 
 export async function findActiveVncSession(sshServerId: string, remotePort: number): Promise<VncSession | null> {
   const rows = getDatabase().query(
-    `SELECT * FROM vnc_sessions
-     WHERE ssh_server_id = ? AND remote_port = ? AND user_id = ? AND status IN (${RESUMABLE_STATUSES.map(() => "?").join(", ")})
-     ORDER BY created_at DESC LIMIT 1`,
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.ssh_server_id = ? AND vnc_session.remote_port = ?
+       AND vnc_session.user_id = ?
+       AND vnc_session.status IN (${RESUMABLE_STATUSES.map(() => "?").join(", ")})
+     ORDER BY vnc_session.created_at DESC LIMIT 1`,
   ).all(sshServerId, remotePort, requirePersistenceUserId(), ...RESUMABLE_STATUSES) as Record<string, unknown>[];
   return rows[0] ? rowToVncSession(rows[0]) : null;
+}
+
+export async function findActiveVncSessionByExecutionHost(
+  executionHostId: string,
+  remotePort: number,
+): Promise<VncSession | null> {
+  const row = getDatabase().query(
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.execution_host_id = ? AND vnc_session.remote_port = ?
+       AND vnc_session.user_id = ?
+       AND vnc_session.status IN (${RESUMABLE_STATUSES.map(() => "?").join(", ")})
+     ORDER BY vnc_session.created_at DESC LIMIT 1`,
+  ).get(
+    executionHostId,
+    remotePort,
+    requirePersistenceUserId(),
+    ...RESUMABLE_STATUSES,
+  ) as Record<string, unknown> | null;
+  return row ? rowToVncSession(row) : null;
 }
 
 export async function listVncSessionsByStatuses(statuses: VncSession["state"]["status"][]): Promise<VncSession[]> {
@@ -108,7 +175,9 @@ export async function listVncSessionsByStatuses(statuses: VncSession["state"]["s
   }
   const userId = requirePersistenceUserId();
   const rows = getDatabase().query(
-    `SELECT * FROM vnc_sessions WHERE user_id = ? AND status IN (${statuses.map(() => "?").join(", ")})`,
+    `${VNC_SESSION_SELECT}
+     WHERE vnc_session.user_id = ?
+       AND vnc_session.status IN (${statuses.map(() => "?").join(", ")})`,
   ).all(userId, ...statuses) as Record<string, unknown>[];
   return rows.map(rowToVncSession);
 }

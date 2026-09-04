@@ -75,6 +75,7 @@ export class SshServerManager {
       id: crypto.randomUUID(),
       name: request.name.trim(),
       address: request.address.trim(),
+      port: request.port ?? 22,
       username: request.username.trim(),
       repositoriesBasePath: request.repositoriesBasePath?.trim() || null,
       createdAt: now,
@@ -99,6 +100,7 @@ export class SshServerManager {
       ...existing,
       ...(request.name !== undefined ? { name: request.name.trim() } : {}),
       ...(request.address !== undefined ? { address: request.address.trim() } : {}),
+      ...(request.port !== undefined ? { port: request.port } : {}),
       ...(request.username !== undefined ? { username: request.username.trim() } : {}),
       ...(request.repositoriesBasePath !== undefined
         ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || null }
@@ -275,12 +277,33 @@ export class SshServerManager {
         "SSH credential token is required for standalone terminal connections",
       );
     }
+
     const password = sshCredentialManager.getPasswordForToken(server.id, trimmedToken);
     const target = getSshConnectionTargetFromServer(server, password);
     return {
       session,
       server,
       target,
+      executor: this.buildExecutor(server, password),
+    };
+  }
+
+  async getExecutionHostTerminalConnection(
+    serverId: string,
+    credentialToken: string,
+  ): Promise<{ server: SshServerConfig; target: SshConnectionTarget; executor: CommandExecutor }> {
+    const server = await this.requireServerConfig(serverId);
+    const trimmedToken = credentialToken.trim();
+    if (!trimmedToken) {
+      throw new DomainError(
+        "invalid_credential_token",
+        "SSH credential token is required for direct terminal connections",
+      );
+    }
+    const password = sshCredentialManager.getPasswordForToken(server.id, trimmedToken);
+    return {
+      server,
+      target: getSshConnectionTargetFromServer(server, password),
       executor: this.buildExecutor(server, password),
     };
   }

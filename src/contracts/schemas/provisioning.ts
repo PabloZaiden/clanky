@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AgentProviderSchema } from "./workspace";
 import { SshCredentialTokenSchema } from "./ssh-server";
+import { ExecutionHostRefSchema } from "./execution-host";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
@@ -10,6 +11,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
   sshServerId: RequiredTrimmedStringSchema.nullish(),
   executionNodeId: RequiredTrimmedStringSchema.nullish(),
+  executionHost: ExecutionHostRefSchema.nullish(),
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),
@@ -24,8 +26,13 @@ export const CreateProvisioningJobRequestSchema = z.object({
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
 }).refine((data) => {
+  const targetCount = [
+    Boolean(data.executionHost),
+    Boolean(data.sshServerId),
+    Boolean(data.executionNodeId),
+  ].filter(Boolean).length;
   if (data.mode === "provision") {
-    if ((!data.sshServerId && !data.executionNodeId) || (data.sshServerId && data.executionNodeId)) {
+    if (targetCount !== 1) {
       return false;
     }
     if (data.createNewRepository) {
@@ -34,14 +41,13 @@ export const CreateProvisioningJobRequestSchema = z.object({
     return data.repoUrl.length > 0 && data.basePath.length > 0;
   }
   if (data.mode === "arise") {
-    return Boolean(data.sshServerId) && !data.executionNodeId;
+    return targetCount === 1;
   }
-  return Boolean(data.sshServerId)
-    && !data.executionNodeId
+  return targetCount === 1
     && (data.targetDirectory ?? "").length > 0
     && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "provision mode requires an SSH server or stdio execution node plus repoUrl and basePath, or basePath and devboxTemplate when createNewRepository is true; rebuild/restart mode requires targetDirectory and workspaceId; arise mode only requires the server context",
+  message: "provision mode requires one execution host plus repoUrl and basePath, or basePath and devboxTemplate when createNewRepository is true; rebuild/restart mode requires one execution host, targetDirectory, and workspaceId; arise mode requires one execution host",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

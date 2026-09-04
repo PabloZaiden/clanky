@@ -37,12 +37,21 @@ import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { resolveWorkspaceExecutionTarget } from "../workspace-execution-target";
+import { executionHostService } from "../execution-host-service";
+import type {
+  ExecutionHostBinding,
+  ExecutionHostRef,
+} from "@/shared/execution-host";
+import type { AgentProvider } from "@/shared/settings";
+import { getSshServerConfig } from "../../persistence/ssh-servers";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
   localNodeId: string | null;
   executionNodeId: string | null;
   executionTargetKind: "local" | "mesh" | "ssh";
+  executionHostRef: ExecutionHostRef | null;
+  executionHostBinding: ExecutionHostBinding | null;
   executionTargetKey: string;
 }
 
@@ -108,6 +117,7 @@ class BackendManager {
     workspaceId: string,
     settings: ServerSettings,
     executionNodeId?: string | null,
+    executionHostBinding?: ExecutionHostBinding | null,
   ): Promise<WorkspaceBackendOptions> {
     const localNodeId = settings.agent.transport === "stdio"
       ? await this.getLocalMeshNodeId()
@@ -126,6 +136,8 @@ class BackendManager {
       localNodeId,
       executionNodeId: resolvedExecutionNodeId,
       executionTargetKind: target.kind,
+      executionHostRef: target.hostRef,
+      executionHostBinding: executionHostBinding ?? null,
       executionTargetKey: target.targetKey,
     };
   }
@@ -178,6 +190,7 @@ class BackendManager {
       workspaceId,
       settings,
       workspace.executionNodeId,
+      workspace.executionHostBinding,
     );
     let state = this.connections.get(workspaceId);
     if (!state) {
@@ -190,6 +203,8 @@ class BackendManager {
         executionNodeId: workspaceOptions.executionNodeId,
         localNodeId: workspaceOptions.localNodeId,
         executionTargetKind: workspaceOptions.executionTargetKind,
+        executionHostRef: workspaceOptions.executionHostRef,
+        executionHostBinding: workspaceOptions.executionHostBinding,
         executionTargetKey: workspaceOptions.executionTargetKey,
       };
       this.connections.set(workspaceId, state);
@@ -219,6 +234,8 @@ class BackendManager {
     state.executionNodeId = workspaceOptions.executionNodeId;
     state.localNodeId = workspaceOptions.localNodeId;
     state.executionTargetKind = workspaceOptions.executionTargetKind;
+    state.executionHostRef = workspaceOptions.executionHostRef;
+    state.executionHostBinding = workspaceOptions.executionHostBinding;
     state.executionTargetKey = workspaceOptions.executionTargetKey;
     return state;
   }
@@ -542,6 +559,8 @@ class BackendManager {
             localNodeId,
             executionNodeId: resolvedExecutionNodeId,
             executionTargetKind: target.kind,
+            executionHostRef: target.hostRef,
+            executionHostBinding: null,
             executionTargetKey: target.targetKey,
           }
         : undefined);
@@ -866,6 +885,8 @@ class BackendManager {
       executionNodeId: workspaceState.executionNodeId ?? null,
       executionTargetKind: workspaceState.executionTargetKind
         ?? (workspaceState.settings.agent.transport === "ssh" ? "ssh" : "local"),
+      executionHostRef: workspaceState.executionHostRef ?? null,
+      executionHostBinding: workspaceState.executionHostBinding ?? null,
       executionTargetKey: workspaceState.executionTargetKey ?? "",
     });
     this.taskConnections.set(taskId, {
@@ -882,6 +903,10 @@ class BackendManager {
    */
   getChatBackend(chatId: string, workspaceId: string): Backend {
     return this.getTaskBackend(chatId, workspaceId);
+  }
+
+  getInitializedChatBackend(chatId: string): Backend | null {
+    return this.taskConnections.get(chatId)?.backend ?? null;
   }
 
   /**
@@ -932,7 +957,7 @@ class BackendManager {
   /**
    * Get a CommandExecutor for running deterministic commands/files via execution settings.
    */
-  getCommandExecutor(workspaceId: string, directory?: string): CommandExecutor {
+  async getCommandExecutor(workspaceId: string, directory?: string): Promise<CommandExecutor> {
     // Use test factory if set (for testing)
     if (this.testExecutorFactory) {
       return this.testExecutorFactory(directory ?? ".");
@@ -959,25 +984,31 @@ class BackendManager {
       ...(execution.sshTarget?.username ? { user: execution.sshTarget.username } : {}),
     };
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
-    const executionNodeId = state.executionNodeId;
-    const executor = state.executionTargetKind === "mesh"
-      && executionNodeId
-      ? new MeshCommandExecutor({
-        workspaceId,
-        directory: dir,
-        executionNodeId,
-        provider: state.settings.agent.provider,
-        localUserId: requireCurrentUserId(),
-      })
+    const hostRef = state.executionHostRef;
+    const commandContext = {
+          operationId: workspaceId,
+          directory: dir,
+          provider: state.settings.agent.provider,
+          localUserId: requireCurrentUserId(),
+          sshTargetOverride: execution.sshTarget,
+        };
+    const executor = state.executionHostBinding
+      ? await executionHostService.getCommandExecutor(
+          state.executionHostBinding,
+          commandContext,
+        )
+      : hostRef
+        ? await executionHostService.getCommandExecutorForRef(hostRef, commandContext)
       : new CommandExecutorImpl({
-        provider: execution.provider,
-        directory: dir,
-        host: execution.sshTarget?.host,
-        port: execution.sshTarget?.port,
-        user: execution.sshTarget?.username,
-        password: execution.sshTarget?.password,
-        identityFile: execution.sshTarget?.identityFile,
-      });
+          // Compatibility for legacy, unregistered SSH workspace targets.
+          provider: execution.provider,
+          directory: dir,
+          host: execution.sshTarget?.host,
+          port: execution.sshTarget?.port,
+          user: execution.sshTarget?.username,
+          password: execution.sshTarget?.password,
+          identityFile: execution.sshTarget?.identityFile,
+        });
     this.commandExecutors.set(cacheKey, executor);
     return executor;
   }
@@ -993,7 +1024,7 @@ class BackendManager {
 
     await this.ensureWorkspaceState(workspaceId);
 
-    return this.getCommandExecutor(workspaceId, directory);
+    return await this.getCommandExecutor(workspaceId, directory);
   }
 
   /**
@@ -1036,8 +1067,66 @@ class BackendManager {
       workspace.id,
       settings,
       workspace.executionNodeId,
+      workspace.executionHostBinding,
     );
     return this.createBackendForSettings(settings, workspaceOptions);
+  }
+
+  async createBackendForExecutionHost(
+    connectionId: string,
+    binding: ExecutionHostBinding,
+    provider: AgentProvider,
+    sshPassword?: string,
+  ): Promise<{ backend: Backend; settings: ServerSettings }> {
+    executionHostService.validateBinding(binding);
+    const defaults = getDefaultServerSettings();
+    let settings: ServerSettings;
+    if (binding.host.kind === "ssh") {
+      const server = await getSshServerConfig(binding.host.serverId);
+      if (!server) {
+        throw new Error(`SSH server not found: ${binding.host.serverId}`);
+      }
+      settings = {
+        ...defaults,
+        agent: {
+          ...defaults.agent,
+          provider,
+          transport: "ssh",
+          hostname: server.address,
+          port: server.port ?? 22,
+          username: server.username,
+          password: sshPassword,
+        },
+      };
+    } else {
+      settings = {
+        ...defaults,
+        agent: {
+          ...defaults.agent,
+          provider,
+          transport: "stdio",
+        },
+      };
+    }
+
+    const localNodeId = await this.getLocalMeshNodeId();
+    const options: WorkspaceBackendOptions = {
+      workspaceId: connectionId,
+      localNodeId,
+      executionNodeId: binding.host.kind === "ssh"
+        ? null
+        : binding.host.nodeId,
+      executionTargetKind: binding.host.kind,
+      executionHostRef: binding.host,
+      executionHostBinding: binding,
+      executionTargetKey: binding.targetKey,
+    };
+    const backend = this.createBackendForSettings(settings, options);
+    this.taskConnections.set(connectionId, {
+      backend,
+      workspaceId: "",
+    });
+    return { backend, settings };
   }
 
   /**
@@ -1081,6 +1170,7 @@ class BackendManager {
    */
   setExecutorFactoryForTesting(factory: CommandExecutorFactory): void {
     this.testExecutorFactory = factory;
+    executionHostService.setExecutorFactoryForTesting(factory);
     this.commandExecutors.clear();
   }
 
@@ -1102,6 +1192,7 @@ class BackendManager {
     this.commandExecutors.clear();
     this.initialized = false;
     this.testExecutorFactory = null;
+    executionHostService.setExecutorFactoryForTesting(null);
     this.isTestBackend = false;
     this.testBackend = null;
     this.testSettings = getDefaultServerSettings();

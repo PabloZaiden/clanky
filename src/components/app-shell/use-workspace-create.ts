@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Workspace, WorkspaceType } from "@/shared";
+import type { ExecutionHostKind, Workspace, WorkspaceType } from "@/shared";
 import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
@@ -34,6 +34,10 @@ export interface UseWorkspaceCreateResult {
   setAutomaticServerId: (id: string) => void;
   automaticExecutionNodeId: string | null;
   setAutomaticExecutionNodeId: (nodeId: string | null) => void;
+  automaticExecutionHostKind: Extract<ExecutionHostKind, "local" | "mesh"> | null;
+  setAutomaticExecutionHostKind: (
+    kind: Extract<ExecutionHostKind, "local" | "mesh"> | null,
+  ) => void;
   automaticRepoUrl: string;
   setAutomaticRepoUrl: (url: string) => void;
   automaticCreateNewRepository: boolean;
@@ -92,6 +96,9 @@ export function useWorkspaceCreate({
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticExecutionNodeId, setAutomaticExecutionNodeId] = useState<string | null>(null);
+  const [automaticExecutionHostKind, setAutomaticExecutionHostKind] = useState<
+    Extract<ExecutionHostKind, "local" | "mesh"> | null
+  >(null);
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
@@ -132,10 +139,24 @@ export function useWorkspaceCreate({
       const retryStatus = retrySnapshot.job.state.status;
       if (retryStatus === "failed" || retryStatus === "cancelled" || retryStatus === "interrupted") {
         const config = retrySnapshot.job.config;
+        const executionHost = config.executionHost;
         setWorkspaceCreateMode("automatic");
         setWorkspaceName(config.name);
-        setAutomaticServerId(config.sshServerId ?? "");
-        setAutomaticExecutionNodeId(config.executionNodeId ?? null);
+        setAutomaticServerId(
+          executionHost?.kind === "ssh"
+            ? executionHost.serverId
+            : config.sshServerId ?? "",
+        );
+        setAutomaticExecutionNodeId(
+          executionHost?.kind === "local" || executionHost?.kind === "mesh"
+            ? executionHost.nodeId
+            : config.executionNodeId ?? null,
+        );
+        setAutomaticExecutionHostKind(
+          executionHost?.kind === "local" || executionHost?.kind === "mesh"
+            ? executionHost.kind
+            : null,
+        );
         setAutomaticRepoUrl(config.repoUrl ?? "");
         setAutomaticCreateNewRepository(config.createNewRepository ?? false);
         setAutomaticBasePath(config.basePath);
@@ -165,11 +186,37 @@ export function useWorkspaceCreate({
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
-    setAutomaticServerId(defaultAutomaticServer?.config.id ?? "");
-    setAutomaticExecutionNodeId(null);
+    const requestedExecutionHostKind = getRouteString(route, "executionHostKind");
+    const requestedExecutionHostId = getRouteString(route, "executionHostId");
+    let requestedDirectHost: {
+      kind: Extract<ExecutionHostKind, "local" | "mesh">;
+      nodeId: string;
+    } | null = null;
+    if (
+      (requestedExecutionHostKind === "local" || requestedExecutionHostKind === "mesh")
+      && requestedExecutionHostId
+    ) {
+      requestedDirectHost = {
+        kind: requestedExecutionHostKind,
+        nodeId: requestedExecutionHostId,
+      };
+    }
+    const requestedSshServerId = requestedExecutionHostKind === "ssh"
+      ? requestedExecutionHostId
+      : undefined;
+    setAutomaticServerId(requestedSshServerId ?? defaultAutomaticServer?.config.id ?? "");
+    setAutomaticExecutionNodeId(requestedDirectHost?.nodeId ?? null);
+    setAutomaticExecutionHostKind(requestedDirectHost?.kind ?? null);
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
-    setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
+    setAutomaticBasePath(
+      getRouteString(route, "basePath")
+        ?? getAutomaticWorkspaceBasePath(
+          requestedSshServerId
+            ? servers.find((server) => server.config.id === requestedSshServerId) ?? null
+            : defaultAutomaticServer,
+        ),
+    );
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
     setAutomaticGithubUser("");
@@ -239,8 +286,21 @@ export function useWorkspaceCreate({
 
     setWorkspaceCreateMode("automatic");
     setWorkspaceName(config.name);
-    setAutomaticServerId(config.sshServerId ?? "");
-    setAutomaticExecutionNodeId(config.executionNodeId ?? null);
+    setAutomaticServerId(
+      config.executionHost?.kind === "ssh"
+        ? config.executionHost.serverId
+        : config.sshServerId ?? "",
+    );
+    setAutomaticExecutionNodeId(
+      config.executionHost?.kind === "local" || config.executionHost?.kind === "mesh"
+        ? config.executionHost.nodeId
+        : config.executionNodeId ?? null,
+    );
+    setAutomaticExecutionHostKind(
+      config.executionHost?.kind === "local" || config.executionHost?.kind === "mesh"
+        ? config.executionHost.kind
+        : null,
+    );
     setAutomaticRepoUrl(config.repoUrl ?? "");
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
@@ -278,6 +338,11 @@ export function useWorkspaceCreate({
 
         const snapshot = await provisioning.startJob({
           name,
+          executionHost: automaticExecutionNodeId && automaticExecutionHostKind
+            ? { kind: automaticExecutionHostKind, nodeId: automaticExecutionNodeId }
+            : automaticServerId
+              ? { kind: "ssh", serverId: automaticServerId }
+              : undefined,
           sshServerId: automaticExecutionNodeId ? undefined : automaticServerId,
           executionNodeId: automaticExecutionNodeId ?? undefined,
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
@@ -356,6 +421,8 @@ export function useWorkspaceCreate({
     setAutomaticServerId,
     automaticExecutionNodeId,
     setAutomaticExecutionNodeId,
+    automaticExecutionHostKind,
+    setAutomaticExecutionHostKind,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,

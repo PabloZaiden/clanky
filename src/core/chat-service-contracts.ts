@@ -20,6 +20,7 @@ import type {
   ChatStatus,
   ChatStartupStage,
   ChatWorktreeState,
+  ExecutionHostBinding,
   SessionInfo,
   Task,
   TaskLogEntry,
@@ -59,6 +60,16 @@ export interface CreateSshServerChatOptions {
   modelVariant?: string;
   autoApprovePermissions?: boolean;
   credentialToken?: string | null;
+}
+
+export interface CreateExecutionHostChatOptions {
+  name?: string;
+  executionHost: ExecutionHostBinding;
+  directory: string;
+  modelProviderID: string;
+  modelID: string;
+  modelVariant?: string;
+  autoApprovePermissions?: boolean;
 }
 
 export interface ImportExistingSessionOptions {
@@ -217,6 +228,7 @@ export interface ChatLifecyclePort {
   createChat(options: CreateChatOptions): Promise<Chat>;
   createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat>;
   createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat>;
+  createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat>;
   listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
   importExistingSession(options: ImportExistingSessionOptions): Promise<Chat>;
   updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null>;

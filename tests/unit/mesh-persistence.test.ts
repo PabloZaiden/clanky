@@ -15,11 +15,16 @@ import {
 import {
   ensureLocalMeshNodeIdentity,
   getMeshNodeFingerprint,
+  setLocalMeshExecutionConfiguration,
   setLocalMeshInstanceName,
 } from "../../src/persistence/mesh-node-identity";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { meshManager } from "../../src/core/mesh-manager";
 import { buildMeshMembershipUpdateSigningPayload } from "../../src/core/mesh-protocol";
+import {
+  consumeMeshEnrollmentToken,
+  createMeshEnrollmentToken,
+} from "../../src/persistence/mesh-enrollment-tokens";
 
 const createdDataDirs: string[] = [];
 const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
@@ -90,6 +95,42 @@ afterEach(async () => {
 });
 
 describe("mesh transport control-plane persistence", () => {
+  test("consumes enrollment tokens exactly once", async () => {
+    await setupDatabase();
+    const created = createMeshEnrollmentToken("owner-1", "Worker", 300, {
+      linkId: "link-1",
+      nodeId: "controller-1",
+      fingerprint: "sha256:controller",
+    });
+
+    expect(consumeMeshEnrollmentToken(created.token)).toEqual({
+      userId: "owner-1",
+      linkId: "link-1",
+      controllerNodeId: "controller-1",
+      controllerFingerprint: "sha256:controller",
+    });
+    expect(consumeMeshEnrollmentToken(created.token)).toBeNull();
+  });
+
+  test("persists node-owned execution policy with explicit capabilities", async () => {
+    await setupDatabase();
+    const initial = await ensureLocalMeshNodeIdentity();
+    expect(initial.execution?.acceptRemoteExecution).toBe(true);
+    expect(initial.execution?.capabilities.commandExecution).toBe(1);
+    expect(initial.execution?.capabilities.interactiveTerminal).toBe(1);
+
+    const updated = await setLocalMeshExecutionConfiguration({
+      acceptRemoteExecution: false,
+      repositoriesBasePath: "/srv/workspaces",
+    });
+    expect(updated.execution?.acceptRemoteExecution).toBe(false);
+    expect(updated.execution?.repositoriesBasePath).toBe("/srv/workspaces");
+    expect(updated.execution?.revision).toBe((initial.execution?.revision ?? 0) + 1);
+
+    const reloaded = await ensureLocalMeshNodeIdentity();
+    expect(reloaded.execution).toEqual(updated.execution);
+    expect((await getMeshNode(updated.nodeId))?.execution).toEqual(updated.execution);
+  });
 
   test("materializes and persists the public base URL for an unset Mesh endpoint", async () => {
     await setupDatabase();

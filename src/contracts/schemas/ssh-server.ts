@@ -12,6 +12,7 @@ export const SshKeyAlgorithmSchema = z.literal("RSA-OAEP-256");
 export const CreateSshServerRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
   address: RequiredTrimmedStringSchema,
+  port: z.number().int().min(1).max(65535).optional(),
   username: RequiredTrimmedStringSchema,
   repositoriesBasePath: z.string().trim().nullable(),
 });
@@ -19,12 +20,14 @@ export const CreateSshServerRequestSchema = z.object({
 export const UpdateSshServerRequestSchema = z.object({
   name: RequiredTrimmedStringSchema.optional(),
   address: RequiredTrimmedStringSchema.optional(),
+  port: z.number().int().min(1).max(65535).optional(),
   username: RequiredTrimmedStringSchema.optional(),
   repositoriesBasePath: z.string().trim().nullish(),
   isPrivate: z.boolean().optional(),
 }).refine((value) => {
   return value.name !== undefined
     || value.address !== undefined
+    || value.port !== undefined
     || value.username !== undefined
     || value.repositoriesBasePath !== undefined
     || value.isPrivate !== undefined;

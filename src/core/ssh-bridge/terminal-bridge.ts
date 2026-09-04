@@ -36,6 +36,7 @@ import {
 import {
   buildWorkspaceSshSpawnConfig,
   buildStandaloneSshSpawnConfig,
+  buildExecutionHostSshSpawnConfig,
   buildDirectReadyCommand,
   buildDirectResizeCommand,
 } from "./command-builders";
@@ -134,6 +135,35 @@ export class SshTerminalBridge {
         throw new Error(`Terminal session not found: ${this.sessionId}`);
       }
 
+      if (!this.session.config.workspaceId) {
+        const host = this.session.config.executionHostBinding?.host;
+        if (!host || host.kind !== "ssh") {
+          throw new DomainError(
+            "terminal_execution_host_invalid",
+            "The terminal session is not bound to an SSH execution host.",
+          );
+        }
+        const connection = await sshServerManager.getExecutionHostTerminalConnection(
+          host.serverId,
+          this.connectOptions.credentialToken ?? "",
+        );
+        this.workspace = null;
+        this.standaloneSession = null;
+        this.standaloneExecutor = connection.executor;
+        this.commandCwd = this.session.config.directory;
+        this.session = await this.resolvePersistentBackendMode(
+          this.session,
+          connection.executor,
+          async (options) => await terminalSessionManager.updateRuntimeConnectionState(
+            this.sessionId,
+            options,
+          ),
+        );
+        await this.markStatus("connecting");
+        spawnConfig = buildExecutionHostSshSpawnConfig(connection.target, this.session);
+        await this.launchSshProcess(spawnConfig, false);
+        return;
+      }
       this.workspace = await getWorkspace(this.session.config.workspaceId);
       this.assertNotDisposed();
       if (!this.workspace) {
@@ -533,6 +563,9 @@ export class SshTerminalBridge {
     if (this.connectOptions.sessionKind === "standalone") {
       if (!this.standaloneExecutor) {
         throw new Error("SSH terminal is not connected");
+      }
+      if (this.standaloneExecutor) {
+        return this.standaloneExecutor;
       }
       return this.standaloneExecutor;
     }

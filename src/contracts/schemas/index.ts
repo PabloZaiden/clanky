@@ -13,6 +13,22 @@ export {
   type CheapModelSelection,
 } from "./model";
 
+export {
+  ExecutionHostKindSchema,
+  ExecutionHostRefSchema,
+  ExecutionHostCapabilityIdSchema,
+  ExecutionHostCapabilitiesSchema,
+  ExecutionNodeConfigurationSchema,
+  ExecutionHostAvailabilitySchema,
+  ExecutionHostAccessRequirementSchema,
+  ExecutionHostBindingSchema,
+  ExecutionHostDescriptorSchema,
+  type ExecutionHostRefInput,
+  type ExecutionNodeConfigurationInput,
+  type ExecutionHostBindingInput,
+  type ExecutionHostDescriptorInput,
+} from "./execution-host";
+
 // Task schemas
 export {
   GitConfigSchema,
@@ -38,9 +54,12 @@ export {
 export {
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
+  CreateExecutionHostChatRequestSchema,
   ImportExistingChatRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
   DiscoverSshServerChatModelsRequestSchema,
+  DiscoverExecutionHostModelsRequestSchema,
+  DiscoverExecutionHostProvidersRequestSchema,
   UpdateChatRequestSchema,
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,
@@ -213,3 +232,8 @@ export {
   type MeshTerminalClientFrame,
   type MeshTerminalServerFrame,
 } from "./mesh-terminal";
+
+export {
+  MeshTcpTunnelSessionRequestSchema,
+  type MeshTcpTunnelSessionRequest,
+} from "./mesh-tcp-tunnel";

@@ -5,6 +5,10 @@
  */
 
 import type { Backend } from "../../backends/types";
+import type {
+  ExecutionHostBinding,
+  ExecutionHostRef,
+} from "@/shared/execution-host";
 import type { TaskEvent } from "@/shared/events";
 import type { ConnectionStatus, ServerSettings } from "@/shared/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
@@ -35,6 +39,8 @@ export interface WorkspaceConnectionState {
   executionNodeId?: string | null;
   localNodeId?: string | null;
   executionTargetKind?: "local" | "mesh" | "ssh";
+  executionHostRef?: ExecutionHostRef | null;
+  executionHostBinding?: ExecutionHostBinding | null;
   executionTargetKey?: string;
 }
 

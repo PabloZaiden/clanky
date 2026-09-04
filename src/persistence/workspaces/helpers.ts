@@ -6,11 +6,19 @@ import { DEFAULT_WORKSPACE_TYPE, type Workspace } from "@/shared/workspace";
 import type { AgentProvider } from "@/shared/settings";
 import { getServerFingerprint, parseServerSettings } from "@/shared/settings";
 import { requirePersistenceUserId } from "../ownership";
+import {
+  executionHostBindingFromRow,
+  resolveExecutionHostBindingId,
+} from "../execution-hosts";
 
 export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
+  const userId = requirePersistenceUserId();
+  const executionHostId = workspace.executionHostBinding
+    ? resolveExecutionHostBindingId(userId, workspace.executionHostBinding)
+    : null;
   return {
     id: workspace.id,
-    user_id: requirePersistenceUserId(),
+    user_id: userId,
     name: workspace.name,
     directory: workspace.directory,
     workspace_type: workspace.workspaceType,
@@ -31,6 +39,8 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     base_path: workspace.basePath ?? null,
     devcontainer_subpath: workspace.devcontainerSubpath ?? null,
     provider: workspace.provider ?? null,
+    execution_host_id: executionHostId,
+    execution_host_revision: workspace.executionHostBinding?.revision ?? null,
   };
 }
 
@@ -46,6 +56,7 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     executionTargetRevision: typeof row["execution_target_revision"] === "number"
       ? Math.max(1, Math.floor(row["execution_target_revision"] as number))
       : 1,
+    executionHostBinding: executionHostBindingFromRow(row),
     serverSettings: parseServerSettings(row["server_settings"] as string | null),
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,

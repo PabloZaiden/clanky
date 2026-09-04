@@ -6,8 +6,10 @@ import type { VncSession } from "@/shared";
 import {
   deleteVncSession,
   findActiveVncSession,
+  findActiveVncSessionByExecutionHost,
   getVncSession,
   listVncSessionsBySshServerId,
+  listVncSessionsByExecutionHostId,
   listVncSessionsByStatuses,
   listReservedVncLocalPortsForMaintenance,
   saveVncSession,
@@ -20,6 +22,13 @@ import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./pro
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 import { DomainError, isDomainError } from "./domain-error";
+import type { ExecutionHostRef } from "@/shared";
+import { executionHostService } from "./execution-host-service";
+import {
+  openForwardedTcpTunnel,
+  openTcpTunnel,
+  type TcpTunnel,
+} from "./tcp-tunnel";
 
 const log = createLogger("core:vnc-session-manager");
 const VNC_REMOTE_HOST = "127.0.0.1";
@@ -64,42 +73,69 @@ export class VncSessionManager {
     return await listVncSessionsBySshServerId(sshServerId);
   }
 
+  async listHostSessions(host: ExecutionHostRef): Promise<VncSession[]> {
+    await this.initialize();
+    await executionHostService.listHosts();
+    const persisted = executionHostService.validateBinding(
+      executionHostService.getBinding(host),
+    );
+    return await listVncSessionsByExecutionHostId(persisted.id);
+  }
+
   async getSession(id: string): Promise<VncSession | null> {
     await this.initialize();
     return await getVncSession(id);
   }
 
   async createOrResumeSession(options: {
-    sshServerId: string;
+    sshServerId?: string;
+    executionHost?: ExecutionHostRef;
     remotePort: number;
     credentialToken: string | null;
   }): Promise<VncSession> {
     await this.initialize();
-    const existing = await findActiveVncSession(options.sshServerId, options.remotePort);
+    const ref = options.executionHost
+      ?? (options.sshServerId
+        ? { kind: "ssh" as const, serverId: options.sshServerId }
+        : null);
+    if (!ref) {
+      throw new DomainError("execution_host_required", "An execution host is required.");
+    }
+    await executionHostService.listHosts();
+    const executionHostBinding = executionHostService.getBinding(ref);
+    const executionHost = executionHostService.validateBinding(executionHostBinding);
+    const existing = options.sshServerId
+      ? await findActiveVncSession(options.sshServerId, options.remotePort)
+      : await findActiveVncSessionByExecutionHost(executionHost.id, options.remotePort);
     if (existing) {
       return existing;
     }
 
-    const server = await getSshServerConfig(options.sshServerId);
-    if (!server) {
+    const server = ref.kind === "ssh"
+      ? await getSshServerConfig(ref.serverId)
+      : null;
+    if (ref.kind === "ssh" && !server) {
       throw new DomainError("ssh_server_not_found", "SSH server not found", {
-        details: { serverId: options.sshServerId },
+        details: { serverId: ref.serverId },
       });
     }
     const credentialToken = options.credentialToken?.trim();
-    if (!credentialToken) {
+    if (ref.kind === "ssh" && !credentialToken) {
       throw new DomainError(
         "invalid_credential_token",
         "SSH credential token is required to start a VNC session",
       );
     }
-    const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
+    const password = ref.kind === "ssh"
+      ? sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken!)
+      : "";
     const localPort = await ensureLocalPortAvailable(await this.getReservedLocalPorts());
     const now = new Date().toISOString();
     const session: VncSession = {
       config: {
         id: crypto.randomUUID(),
-        sshServerId: options.sshServerId,
+        sshServerId: ref.kind === "ssh" ? ref.serverId : undefined,
+        executionHostBinding,
         remoteHost: VNC_REMOTE_HOST,
         remotePort: options.remotePort,
         localPort,
@@ -111,6 +147,17 @@ export class VncSessionManager {
     await saveVncSession(session);
 
     try {
+      if (!server) {
+        const activeSession: VncSession = {
+          config: { ...session.config, updatedAt: new Date().toISOString() },
+          state: {
+            status: "active",
+            connectedAt: new Date().toISOString(),
+          },
+        };
+        await saveVncSession(activeSession);
+        return activeSession;
+      }
       const spawnConfig = this.buildSpawnConfig(server, password, session);
       const child = spawn(spawnConfig.command, spawnConfig.args, {
         env: spawnConfig.env,
@@ -160,7 +207,7 @@ export class VncSessionManager {
     return await deleteVncSession(id);
   }
 
-  async openTcpSocket(id: string): Promise<{ session: VncSession; socket: net.Socket }> {
+  async openTcpSocket(id: string): Promise<{ session: VncSession; socket: TcpTunnel }> {
     await this.initialize();
     const session = await getVncSession(id);
     if (!session) {
@@ -173,9 +220,23 @@ export class VncSessionManager {
         details: { sessionId: id, status: session.state.status },
       });
     }
+    const binding = session.config.executionHostBinding;
+    if (!binding) {
+      throw new DomainError("execution_host_unavailable", "The VNC execution host is unavailable.");
+    }
+    if (binding.host.kind !== "ssh") {
+      return {
+        session,
+        socket: await openTcpTunnel({
+          binding,
+          remoteHost: session.config.remoteHost,
+          remotePort: session.config.remotePort,
+        }),
+      };
+    }
     return {
       session,
-      socket: net.createConnection({ host: "127.0.0.1", port: session.config.localPort }),
+      socket: openForwardedTcpTunnel(session.config.localPort),
     };
   }
 

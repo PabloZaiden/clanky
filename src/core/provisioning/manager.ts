@@ -18,7 +18,13 @@ import {
   updateProvisioningJob,
 } from "../../persistence/provisioning-jobs";
 import { workspaceManager } from "../workspace-manager";
-import type { ProvisioningJob, ProvisioningJobSnapshot, ProvisioningLogEntry, ServerSettings } from "@/shared";
+import type {
+  ExecutionHostBinding,
+  ProvisioningJob,
+  ProvisioningJobSnapshot,
+  ProvisioningLogEntry,
+  ServerSettings,
+} from "@/shared";
 import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { buildError, getPublishedPortFallback, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
@@ -28,6 +34,10 @@ import { runProvisioningCommand } from "./command-runner";
 import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
+import { ensureExecutionHost, toExecutionHostBinding } from "../../persistence/execution-hosts";
+import { buildSshTargetKey } from "../../persistence/workspace-target-key";
+import { resolveWorkspaceExecutionTarget } from "../workspace-execution-target";
+import { executionHostService } from "../execution-host-service";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -36,25 +46,72 @@ function normalizeOptionalValue(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+async function resolveProvisioningExecutionHostBinding(
+  userId: string,
+  options: StartProvisioningJobOptions,
+): Promise<ExecutionHostBinding | null> {
+  if (options.executionHost) {
+    await executionHostService.listHosts(userId);
+    return executionHostService.getBinding(options.executionHost, userId);
+  }
+  if (options.sshServerId) {
+    const server = await sshServerManager.getServer(options.sshServerId);
+    if (!server) {
+      return null;
+    }
+    return toExecutionHostBinding(ensureExecutionHost(
+      userId,
+      { kind: "ssh", serverId: server.config.id },
+      buildSshTargetKey(
+        server.config.address,
+        server.config.port ?? 22,
+        server.config.username,
+      ),
+    ));
+  }
+  if (!options.executionNodeId) {
+    return null;
+  }
+  const target = await resolveWorkspaceExecutionTarget({
+    serverSettings: {
+      agent: {
+        provider: options.provider,
+        transport: "stdio",
+      },
+    },
+    executionNodeId: options.executionNodeId,
+  });
+  if (!target.hostRef) {
+    return null;
+  }
+  return toExecutionHostBinding(ensureExecutionHost(
+    userId,
+    target.hostRef,
+    target.targetKey,
+  ));
+}
+
 function getProvisioningTargetKey(config: ProvisioningJob["config"]): string | null {
-  const hostId = config.sshServerId ?? config.executionNodeId;
-  if (!hostId) {
+  const hostKey = config.executionHostBinding?.targetKey
+    ?? config.sshServerId
+    ?? config.executionNodeId;
+  if (!hostKey) {
     return null;
   }
   if (config.mode === "arise") {
-    return `arise:${hostId}`;
+    return `arise:${hostKey}`;
   }
   if (config.workspaceId) {
     return `workspace:${config.workspaceId}`;
   }
   if (config.targetDirectory) {
-    return `directory:${hostId}:${config.targetDirectory}`;
+    return `directory:${hostKey}:${config.targetDirectory}`;
   }
   if (config.basePath) {
     const repositoryName = config.createNewRepository
       ? config.name
       : extractRepoName(config.repoUrl ?? "");
-    return `directory:${hostId}:${pathPosix.join(config.basePath, repositoryName)}`;
+    return `directory:${hostKey}:${pathPosix.join(config.basePath, repositoryName)}`;
   }
   return null;
 }
@@ -105,6 +162,10 @@ export class ProvisioningManager {
 
   async startJob(options: StartProvisioningJobOptions): Promise<ProvisioningJobSnapshot> {
     const owner = requireCurrentUser();
+    const executionHostBinding = await resolveProvisioningExecutionHostBinding(
+      owner.id,
+      options,
+    );
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
     const mode = options.mode ?? "provision";
@@ -115,6 +176,8 @@ export class ProvisioningManager {
           name: options.name.trim(),
           sshServerId: normalizeOptionalValue(options.sshServerId),
           executionNodeId: normalizeOptionalValue(options.executionNodeId),
+          executionHost: options.executionHost ?? executionHostBinding?.host,
+          executionHostBinding,
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -271,19 +334,34 @@ export class ProvisioningManager {
     let createdWorkspaceId: string | undefined;
 
     try {
-      const executionNodeId = record.job.config.executionNodeId;
+      const binding = record.job.config.executionHostBinding;
+      if (!binding) {
+        throw new ProvisioningFailedError(
+          "missing_execution_host",
+          "verify_devbox",
+          "Provisioning requires an execution host",
+        );
+      }
+      const executionNodeId = binding.host.kind === "mesh"
+        ? binding.host.nodeId
+        : undefined;
+      const directHost = binding.host.kind !== "ssh";
       const stdioSettings: ServerSettings = {
         agent: {
           provider: record.job.config.provider,
           transport: "stdio",
         },
       };
-      const sshTarget = record.job.config.sshServerId
-        ? await sshServerManager.getCommandExecutor(record.job.config.sshServerId, password)
+      const server = binding.host.kind === "ssh"
+        ? (await sshServerManager.getServer(binding.host.serverId))?.config ?? null
         : null;
-      const server = sshTarget?.server ?? null;
-      const executor = sshTarget?.executor
-        ?? await backendManager.createCommandExecutorForSettings(stdioSettings, "/", executionNodeId);
+      const executor = await executionHostService.getCommandExecutor(binding, {
+        operationId: `provisioning:${record.job.config.id}`,
+        directory: "/",
+        provider: record.job.config.provider,
+        localUserId: record.owner.id,
+        sshPassword: password,
+      });
       const git = GitService.withExecutor(executor);
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
@@ -439,7 +517,7 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = executionNodeId
+      const resolvedDirectory = directHost
         ? targetDirectory
         : status.workdir?.trim();
       if (!resolvedDirectory) {
@@ -451,7 +529,7 @@ export class ProvisioningManager {
       }
 
       const resolvedPort = status.sshPort ?? status.port ?? getPublishedPortFallback(status);
-      if (!executionNodeId && !resolvedPort) {
+      if (!directHost && !resolvedPort) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -465,7 +543,7 @@ export class ProvisioningManager {
         status.remoteUser?.trim() ||
         server?.username.trim()
         || "";
-      if (!executionNodeId && !resolvedUsername) {
+      if (!directHost && !resolvedUsername) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -474,7 +552,7 @@ export class ProvisioningManager {
       }
 
       const resolvedPassword = status.password?.trim() || devboxCredential.password?.trim();
-      if (!executionNodeId && !resolvedPassword) {
+      if (!directHost && !resolvedPassword) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -485,7 +563,7 @@ export class ProvisioningManager {
         record.secretValues.push(resolvedPassword);
       }
 
-      const serverSettings: ServerSettings = executionNodeId
+      const serverSettings: ServerSettings = directHost
         ? stdioSettings
         : {
             agent: {
@@ -502,8 +580,8 @@ export class ProvisioningManager {
       appendSystemLog(
         record,
         this.maxLogEntries,
-        executionNodeId
-          ? `Configured stdio execution on mesh node ${executionNodeId}`
+        directHost
+          ? `Configured direct execution on ${binding.targetKey}`
           : `Resolved devbox SSH endpoint ${resolvedUsername}@${server!.address}:${resolvedPort}`,
         "devbox_status",
       );
@@ -524,7 +602,8 @@ export class ProvisioningManager {
         createdAt: now,
         updatedAt: now,
         sourceDirectory: record.job.state.targetDirectory,
-        sshServerId: record.job.config.sshServerId,
+        sshServerId: binding.host.kind === "ssh" ? binding.host.serverId : undefined,
+        executionHostBinding: record.job.config.executionHostBinding,
         repoUrl: record.job.config.repoUrl,
         basePath: record.job.config.basePath,
         devcontainerSubpath: record.job.config.devcontainerSubpath,
@@ -685,18 +764,26 @@ export class ProvisioningManager {
         updateProvisioningJob(record.owner.id, record.job);
       }
 
-      const sshServerId = record.job.config.sshServerId;
-      if (!sshServerId) {
+      const binding = record.job.config.executionHostBinding
+        ?? workspace.executionHostBinding;
+      if (!binding) {
         throw new ProvisioningFailedError(
-          "missing_ssh_server",
+          "missing_execution_host",
           "verify_devbox",
-          `${mode === "restart" ? "Restart" : "Rebuild"} mode requires an SSH server`,
+          `${mode === "restart" ? "Restart" : "Rebuild"} mode requires an execution host`,
         );
       }
-      const { server, executor } = await sshServerManager.getCommandExecutor(
-        sshServerId,
-        password,
-      );
+      const directHost = binding.host.kind !== "ssh";
+      const server = binding.host.kind === "ssh"
+        ? (await sshServerManager.getServer(binding.host.serverId))?.config ?? null
+        : null;
+      const executor = await executionHostService.getCommandExecutor(binding, {
+        operationId: `provisioning:${record.job.config.id}`,
+        directory: targetDirectory,
+        provider: record.job.config.provider,
+        localUserId: record.owner.id,
+        sshPassword: password,
+      });
 
       this.updateState(record, {
         targetDirectory,
@@ -770,7 +857,9 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = status.workdir?.trim();
+      const resolvedDirectory = directHost
+        ? targetDirectory
+        : status.workdir?.trim();
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -780,7 +869,7 @@ export class ProvisioningManager {
       }
 
       const resolvedPort = status.sshPort ?? status.port ?? getPublishedPortFallback(status);
-      if (!resolvedPort) {
+      if (!directHost && !resolvedPort) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -792,8 +881,9 @@ export class ProvisioningManager {
         status.sshUser?.trim() ||
         devboxCredential.username?.trim() ||
         status.remoteUser?.trim() ||
-        server.username.trim();
-      if (!resolvedUsername) {
+        server?.username.trim()
+        || "";
+      if (!directHost && !resolvedUsername) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
@@ -802,39 +892,49 @@ export class ProvisioningManager {
       }
 
       const resolvedPassword = status.password?.trim() || devboxCredential.password?.trim();
-      if (!resolvedPassword) {
+      if (!directHost && !resolvedPassword) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
           "Could not determine the devbox SSH password from devbox status or credential file",
         );
       }
-      if (!record.secretValues.includes(resolvedPassword)) {
+      if (resolvedPassword && !record.secretValues.includes(resolvedPassword)) {
         record.secretValues.push(resolvedPassword);
       }
 
-      const serverSettings: ServerSettings = {
-        agent: {
-          provider: record.job.config.provider,
-          transport: "ssh",
-          hostname: server.address,
-          port: resolvedPort,
-          username: resolvedUsername,
-          password: resolvedPassword,
-        },
-      };
+      const serverSettings: ServerSettings = directHost
+        ? {
+            agent: {
+              provider: record.job.config.provider,
+              transport: "stdio",
+            },
+          }
+        : {
+            agent: {
+              provider: record.job.config.provider,
+              transport: "ssh",
+              hostname: server!.address,
+              port: resolvedPort!,
+              username: resolvedUsername,
+              password: resolvedPassword,
+            },
+          };
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Resolved devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
+        directHost
+          ? `Resolved direct execution on ${binding.targetKey}`
+          : `Resolved devbox SSH endpoint ${resolvedUsername}@${server!.address}:${resolvedPort}`,
         "devbox_status",
       );
 
       // Update the existing workspace's server settings (port/password may change after rebuild)
       const updatedWorkspace = await workspaceManager.updateWorkspace(workspaceId, {
         serverSettings,
+        executionNodeId: binding.host.kind === "mesh" ? binding.host.nodeId : null,
         ...(devcontainerSubpath !== workspace.devcontainerSubpath
           ? { devcontainerSubpath }
           : {}),
@@ -908,18 +1008,21 @@ export class ProvisioningManager {
     password: string | undefined,
   ): Promise<void> {
     try {
-      const sshServerId = record.job.config.sshServerId;
-      if (!sshServerId) {
+      const binding = record.job.config.executionHostBinding;
+      if (!binding) {
         throw new ProvisioningFailedError(
-          "missing_ssh_server",
+          "missing_execution_host",
           "verify_devbox",
-          "Server arise mode requires an SSH server",
+          "Server arise mode requires an execution host",
         );
       }
-      const { executor } = await sshServerManager.getCommandExecutor(
-        sshServerId,
-        password,
-      );
+      const executor = await executionHostService.getCommandExecutor(binding, {
+        operationId: `provisioning:${record.job.config.id}`,
+        directory: record.job.config.targetDirectory ?? "/",
+        provider: record.job.config.provider,
+        localUserId: record.owner.id,
+        sshPassword: password,
+      });
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
       await this.runCmd(record, executor, {

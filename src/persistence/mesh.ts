@@ -20,6 +20,13 @@ import type {
   MeshPairingStatus,
   MeshTransport,
 } from "@/shared/mesh";
+import type { ExecutionNodeConfiguration } from "@/shared/execution-host";
+import {
+  ensureExecutionHost,
+  getExecutionHostByRef,
+  revokeExecutionHost,
+} from "./execution-hosts";
+import { buildMeshTargetKey } from "./workspace-target-key";
 import { DomainError } from "../domain/domain-error";
 import {
   decideApproveMeshPairing,
@@ -81,6 +88,7 @@ interface MeshNodeRow {
   public_key: string;
   fingerprint: string;
   encryption_public_key: string | null;
+  execution_config_json: string | null;
   endpoint: string | null;
   transport: MeshTransport;
   status: MeshMemberStatus;
@@ -163,6 +171,7 @@ export interface SaveMeshNodeInput {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
+  execution?: ExecutionNodeConfiguration;
   endpoint: string | null;
   transport: MeshTransport;
   status?: MeshMemberStatus;
@@ -185,6 +194,7 @@ export interface CreateMeshPairingRequestInput {
   targetEndpoint?: string | null;
   requestedNodeId: string;
   requestedInstanceName?: string | null;
+  requestedExecution?: ExecutionNodeConfiguration;
   requestedLocalUserId: string;
   requestedUsername?: string | null;
   endpoint: string;
@@ -228,6 +238,7 @@ export interface SaveMeshPairingApprovalInput {
   linkId: string;
   approvedByNodeId: string;
   approvedByInstanceName?: string | null;
+  approvedByExecution?: ExecutionNodeConfiguration;
   approvedByLocalUserId: string;
   endpoint: string;
   transport: MeshTransport;
@@ -336,6 +347,17 @@ export function assertMeshLinkInstanceNameAvailable(
 }
 
 function nodeFromRow(row: MeshNodeRow): MeshNodeRecord {
+  let execution: ExecutionNodeConfiguration | undefined;
+  if (row.execution_config_json) {
+    try {
+      execution = JSON.parse(row.execution_config_json) as ExecutionNodeConfiguration;
+    } catch (error) {
+      log.warn("Ignoring corrupt Mesh execution configuration", {
+        nodeId: row.node_id,
+        error: String(error),
+      });
+    }
+  }
   return {
     nodeId: row.node_id,
     instanceName: row.instance_name ?? null,
@@ -343,6 +365,7 @@ function nodeFromRow(row: MeshNodeRow): MeshNodeRecord {
     publicKey: row.public_key,
     fingerprint: row.fingerprint,
     encryptionPublicKey: row.encryption_public_key ?? undefined,
+    execution,
     endpoint: row.endpoint,
     transport: row.transport,
     status: row.status,
@@ -453,14 +476,16 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
   const now = new Date().toISOString();
   db.run(`
     INSERT INTO mesh_nodes (
-      node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+      node_id, instance_name, public_key, fingerprint, encryption_public_key,
+      execution_config_json, endpoint, transport, status,
       last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
     ON CONFLICT(node_id) DO UPDATE SET
       instance_name = COALESCE(excluded.instance_name, mesh_nodes.instance_name),
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = COALESCE(excluded.encryption_public_key, mesh_nodes.encryption_public_key),
+      execution_config_json = COALESCE(excluded.execution_config_json, mesh_nodes.execution_config_json),
       endpoint = COALESCE(excluded.endpoint, mesh_nodes.endpoint),
       transport = excluded.transport,
       status = CASE
@@ -475,6 +500,7 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
     input.publicKey,
     input.fingerprint,
     input.encryptionPublicKey ?? null,
+    input.execution ? JSON.stringify(input.execution) : null,
     input.endpoint,
     input.transport,
     input.status ?? "pending",
@@ -490,7 +516,8 @@ export async function saveMeshNode(input: SaveMeshNodeInput): Promise<MeshNodeRe
 
 export async function getMeshNode(nodeId: string): Promise<MeshNodeRecord | null> {
   const row = getDatabase().query(`
-    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key,
+      execution_config_json, endpoint, transport, status,
       last_seen_at, created_at, updated_at
     FROM mesh_nodes
     WHERE node_id = ?
@@ -500,7 +527,8 @@ export async function getMeshNode(nodeId: string): Promise<MeshNodeRecord | null
 
 export async function listMeshNodes(): Promise<MeshNodeRecord[]> {
   const rows = getDatabase().query(`
-    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+    SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key,
+      execution_config_json, endpoint, transport, status,
       last_seen_at, created_at, updated_at
     FROM mesh_nodes
     ORDER BY created_at ASC, node_id ASC
@@ -640,6 +668,7 @@ export async function listMeshMembershipEntries(
       publicKey: node.publicKey,
       fingerprint: node.fingerprint,
       encryptionPublicKey: node.encryptionPublicKey,
+      execution: node.execution,
     });
   }
   return entries;
@@ -691,6 +720,7 @@ export async function applyMeshMembershipUpdate(
       publicKey: member.publicKey,
       fingerprint: member.fingerprint,
       encryptionPublicKey: member.encryptionPublicKey,
+      execution: member.execution,
     });
   }
 }
@@ -740,6 +770,13 @@ export async function revokeMeshLinkMember(input: {
     };
   });
   transaction();
+  const executionHost = getExecutionHostByRef(input.localUserId, {
+    kind: "mesh",
+    nodeId: input.nodeId,
+  });
+  if (executionHost) {
+    revokeExecutionHost(input.localUserId, executionHost.id);
+  }
   if (!revoked) {
     throw new Error(`Mesh member was not revoked: ${input.nodeId}`);
   }
@@ -867,6 +904,7 @@ export async function mergeMeshLinkMember(input: {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
+  execution?: ExecutionNodeConfiguration;
   endpointSource?: MeshEndpointSource;
 }): Promise<MeshLinkMemberRecord> {
   const link = await getMeshLinkById(input.linkId);
@@ -892,10 +930,20 @@ export async function mergeMeshLinkMember(input: {
     publicKey: input.publicKey,
     fingerprint: input.fingerprint,
     encryptionPublicKey: input.encryptionPublicKey,
+    execution: input.execution,
     endpoint: input.endpoint,
     transport: input.transport,
     status: input.status,
   });
+  if (input.nodeId !== (getDatabase().query(`
+    SELECT node_id FROM mesh_node_identity WHERE singleton = 1
+  `).get() as { node_id: string } | null)?.node_id) {
+    ensureExecutionHost(
+      link.localUserId,
+      { kind: "mesh", nodeId: input.nodeId },
+      buildMeshTargetKey(input.nodeId),
+    );
+  }
   const requestedEndpointSource = input.endpointSource ?? "advertised";
   const preserveLocalRoute = existingMemberRow?.endpoint_source === "paired"
     && requestedEndpointSource !== "paired";
@@ -954,6 +1002,7 @@ export async function createMeshPairingRequest(
     publicKey: input.publicKey,
     fingerprint: input.fingerprint,
     encryptionPublicKey: input.encryptionPublicKey,
+    execution: input.requestedExecution,
     endpoint: input.endpoint,
     transport: input.transport,
     status: input.nodeStatus ?? (direction === "outgoing" ? "active" : "pending"),
@@ -1222,7 +1271,7 @@ export async function approveMeshPairingRequest(input: {
     `).get(linkId, requestRow!.requested_node_id) as MeshLinkMemberRow | null;
     const previousNodeRow = db.query(`
       SELECT node_id, instance_name, public_key, fingerprint, encryption_public_key,
-        endpoint, transport, status, last_seen_at, created_at, updated_at
+        execution_config_json, endpoint, transport, status, last_seen_at, created_at, updated_at
       FROM mesh_nodes
       WHERE node_id = ?
     `).get(requestRow!.requested_node_id) as MeshNodeRow | null;
@@ -1408,13 +1457,14 @@ export async function rollbackMeshPairingApproval(
       db.run(`
         INSERT INTO mesh_nodes (
           node_id, instance_name, public_key, fingerprint, encryption_public_key,
-          endpoint, transport, status, last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          execution_config_json, endpoint, transport, status, last_seen_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           instance_name = excluded.instance_name,
           public_key = excluded.public_key,
           fingerprint = excluded.fingerprint,
           encryption_public_key = excluded.encryption_public_key,
+          execution_config_json = excluded.execution_config_json,
           endpoint = excluded.endpoint,
           transport = excluded.transport,
           status = excluded.status,
@@ -1427,6 +1477,7 @@ export async function rollbackMeshPairingApproval(
         node.publicKey,
         node.fingerprint,
         node.encryptionPublicKey ?? null,
+        node.execution ? JSON.stringify(node.execution) : null,
         node.endpoint,
         node.transport,
         node.status,
@@ -1478,6 +1529,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
   remotePublicKey: string;
   remoteFingerprint: string;
   remoteEncryptionPublicKey?: string;
+  remoteExecution?: ExecutionNodeConfiguration;
   linkId: string;
 }): Promise<MeshLinkRecord> {
   const db = getDatabase();
@@ -1514,15 +1566,17 @@ export async function completeOutgoingMeshPairingRequest(input: {
 
     db.run(`
       INSERT INTO mesh_nodes (
-          node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+          node_id, instance_name, public_key, fingerprint, encryption_public_key,
+          execution_config_json, endpoint, transport, status,
         last_seen_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
       ON CONFLICT(node_id) DO UPDATE SET
           instance_name = COALESCE(excluded.instance_name, mesh_nodes.instance_name),
           public_key = excluded.public_key,
         fingerprint = excluded.fingerprint,
         endpoint = excluded.endpoint,
         encryption_public_key = COALESCE(excluded.encryption_public_key, mesh_nodes.encryption_public_key),
+        execution_config_json = COALESCE(excluded.execution_config_json, mesh_nodes.execution_config_json),
         transport = excluded.transport,
         status = CASE
           WHEN mesh_nodes.status = 'revoked' THEN 'revoked'
@@ -1536,6 +1590,7 @@ export async function completeOutgoingMeshPairingRequest(input: {
       input.remotePublicKey,
       input.remoteFingerprint,
       input.remoteEncryptionPublicKey ?? null,
+      input.remoteExecution ? JSON.stringify(input.remoteExecution) : null,
       input.remoteAdvertisedEndpoint,
       input.remoteAdvertisedTransport,
       now,
@@ -1607,6 +1662,11 @@ export async function completeOutgoingMeshPairingRequest(input: {
     `, [input.linkId, now, now, input.requestId]);
     resolvedLinkId = input.linkId;
   });
+  ensureExecutionHost(
+    input.localUserId,
+    { kind: "mesh", nodeId: input.remoteNodeId },
+    buildMeshTargetKey(input.remoteNodeId),
+  );
   if (!resolvedLinkId) {
     throw new Error(`Outgoing mesh pairing request did not resolve to a link: ${input.requestId}`);
   }

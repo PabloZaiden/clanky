@@ -12,6 +12,11 @@ export interface EventContext {
   readonly userId?: string;
 }
 
+export interface MeshStateEvent {
+  type: "mesh.changed";
+  executionHostsChanged: boolean;
+}
+
 type EventHandler<T> = (event: T, context: EventContext) => void;
 type Unsubscribe = () => void;
 
@@ -105,3 +110,5 @@ export const provisioningEventEmitter = new SimpleEventEmitter<ProvisioningEvent
  * Global event emitter instance for workspace live preview events.
  */
 export const previewEventEmitter = new SimpleEventEmitter<PreviewEvent>();
+
+export const meshStateEventEmitter = new SimpleEventEmitter<MeshStateEvent>();

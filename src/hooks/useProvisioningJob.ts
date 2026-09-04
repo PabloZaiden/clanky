@@ -11,6 +11,7 @@ import type {
   ProvisioningLogEntry,
   PublicProvisioningJob,
   PublicProvisioningJobSnapshot,
+  ExecutionHostRef,
 } from "@/shared";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream, type RealtimeStreamStatus } from "./useRealtimeStream";
@@ -22,6 +23,7 @@ type ProvisioningStreamEvent = Extract<
 
 export interface StartProvisioningJobRequest {
   name: string;
+  executionHost?: ExecutionHostRef;
   sshServerId?: string;
   executionNodeId?: string;
   repoUrl: string;
@@ -328,6 +330,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: request.name.trim(),
+          executionHost: request.executionHost ?? null,
           sshServerId: request.sshServerId ?? null,
           executionNodeId: request.executionNodeId ?? null,
           repoUrl: request.repoUrl.trim(),

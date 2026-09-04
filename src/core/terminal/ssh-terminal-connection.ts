@@ -16,6 +16,7 @@ export class SshInteractiveTerminalConnection implements InteractiveTerminalConn
   constructor(
     private readonly sessionId: string,
     callbacks: InteractiveTerminalCallbacks,
+    credentialToken?: string,
   ) {
     this.bridge = new SshTerminalBridge(sessionId, {
       onOutput: callbacks.onOutput,
@@ -24,6 +25,7 @@ export class SshInteractiveTerminalConnection implements InteractiveTerminalConn
       onError: callbacks.onError,
     }, {
       sessionKind: "terminal",
+      credentialToken,
     });
   }
 

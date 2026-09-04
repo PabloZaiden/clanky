@@ -136,6 +136,25 @@ export function buildStandaloneSshSpawnConfig(target: SshConnectionTarget, sessi
   });
 }
 
+export function buildExecutionHostSshSpawnConfig(
+  target: SshConnectionTarget,
+  session: WorkspaceTerminalSession,
+): {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+} {
+  const remoteCommand = buildSshRemoteShellCommand(buildSessionStartupCommand(session));
+  return buildSshProcessConfig({
+    target,
+    remoteCommand,
+    connectionScope: session.config.directory,
+    extraArgs: ["-tt"],
+    passwordHandling: "environment",
+    baseEnv: buildSpawnEnv(),
+  });
+}
+
 export function buildDirectReadyCommand(sessionId: string): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(sessionId));
   return [

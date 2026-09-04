@@ -5,6 +5,7 @@
  * use this resolver so local stdio, Mesh stdio, and SSH cannot drift apart.
  */
 
+import type { ExecutionHostRef } from "@/shared/execution-host";
 import type { ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import { ensureLocalInstallationId } from "../persistence/installation-identity";
@@ -29,21 +30,26 @@ import {
 export interface WorkspaceExecutionTargetInput {
   serverSettings: ServerSettings;
   executionNodeId?: string | null;
+  sshServerId?: string | null;
 }
 
 export type ResolvedWorkspaceExecutionTarget =
   | {
       kind: "local";
+      hostRef: ExecutionHostRef;
       targetKey: string;
       executionNodeId: string;
     }
   | {
       kind: "mesh";
+      hostRef: ExecutionHostRef;
       targetKey: string;
       nodeId: string;
     }
   | {
       kind: "ssh";
+      /** Null only for a legacy unregistered SSH target. */
+      hostRef: ExecutionHostRef | null;
       targetKey: string;
       target: SshConnectionTarget;
     };
@@ -91,7 +97,10 @@ async function assertTrustedMeshTarget(targetNodeId: string): Promise<void> {
  * Resolve a workspace-like execution configuration to one stable target.
  */
 export async function resolveWorkspaceExecutionTarget(
-  input: WorkspaceExecutionTargetInput | Pick<Workspace, "serverSettings" | "executionNodeId">,
+  input: WorkspaceExecutionTargetInput | Pick<
+    Workspace,
+    "serverSettings" | "executionNodeId" | "sshServerId"
+  >,
   options: ResolveWorkspaceExecutionTargetOptions = {},
 ): Promise<ResolvedWorkspaceExecutionTarget> {
   const { serverSettings, executionNodeId } = input;
@@ -99,6 +108,9 @@ export async function resolveWorkspaceExecutionTarget(
   if (sshTarget) {
     return {
       kind: "ssh",
+      hostRef: input.sshServerId
+        ? { kind: "ssh", serverId: input.sshServerId }
+        : null,
       targetKey: sshTargetKey(sshTarget),
       target: sshTarget,
     };
@@ -115,6 +127,7 @@ export async function resolveWorkspaceExecutionTarget(
     const installationId = await ensureLocalInstallationId();
     return {
       kind: "local",
+      hostRef: { kind: "local", nodeId: targetNodeId },
       targetKey: buildLocalTargetKey(installationId),
       executionNodeId: targetNodeId,
     };
@@ -122,6 +135,7 @@ export async function resolveWorkspaceExecutionTarget(
 
   return {
     kind: "mesh",
+    hostRef: { kind: "mesh", nodeId: targetNodeId },
     targetKey: buildMeshTargetKey(targetNodeId),
     nodeId: targetNodeId,
   };

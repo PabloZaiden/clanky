@@ -65,6 +65,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticServerId,
     automaticExecutionNodeId,
     setAutomaticExecutionNodeId,
+    automaticExecutionHostKind,
+    setAutomaticExecutionHostKind,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -93,6 +95,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const selectedServerHasStoredCredential = automaticServerId
     ? getStoredSshServerCredential(automaticServerId) !== null
     : false;
+  const automaticExecutionHost = useMemo(() => (
+    automaticExecutionNodeId && automaticExecutionHostKind
+      ? { kind: automaticExecutionHostKind, nodeId: automaticExecutionNodeId }
+      : undefined
+  ), [automaticExecutionHostKind, automaticExecutionNodeId]);
   const {
     templates,
     templatesLoading,
@@ -101,6 +108,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   } = useDevboxTemplates({
     serverId: automaticServerId,
     password: automaticPassword,
+    executionHost: automaticExecutionHost,
   });
   useEffect(() => {
     if (!automaticCreateNewRepository || automaticDevboxTemplate || templatesLoading) {
@@ -233,15 +241,31 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               <SelectField
                 id="automatic-execution-kind"
                 label="Provisioning and execution host"
-                value={automaticExecutionNodeId ?? ""}
-                onChange={(event) => setAutomaticExecutionNodeId(event.target.value || null)}
+                value={
+                  automaticExecutionNodeId && automaticExecutionHostKind
+                    ? `${automaticExecutionHostKind}:${automaticExecutionNodeId}`
+                    : ""
+                }
+                onChange={(event) => {
+                  const [kind, nodeId] = event.target.value.split(":", 2);
+                  if ((kind === "local" || kind === "mesh") && nodeId) {
+                    setAutomaticExecutionHostKind(kind);
+                    setAutomaticExecutionNodeId(nodeId);
+                    setAutomaticServerId("");
+                    setAutomaticDevboxTemplate("");
+                    setAutomaticBasePath("/workspaces");
+                    return;
+                  }
+                  setAutomaticExecutionHostKind(null);
+                  setAutomaticExecutionNodeId(null);
+                }}
               >
                 <option value="">Saved SSH server (devbox SSH)</option>
                 {executionTargets
                   .filter((target) => !dashboardData.remoteOnly || target.kind === "mesh")
                   .map((target) => (
-                    <option key={target.nodeId} value={target.nodeId}>
-                      {target.name} via stdio
+                    <option key={`${target.kind}:${target.nodeId}`} value={`${target.kind}:${target.nodeId}`}>
+                      {target.name} via {target.kind === "local" ? "stdio" : "Mesh"}
                       {target.availability === "offline" ? " (offline)" : ""}
                     </option>
                   ))}

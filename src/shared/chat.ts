@@ -16,6 +16,7 @@ import type {
   SessionInfo,
 } from "./task";
 import type { MessageAttachment } from "./message-attachments";
+import type { ExecutionHostBinding } from "./execution-host";
 
 export type { ModelConfig };
 
@@ -40,6 +41,11 @@ export type ChatSource =
       sshServerId: string;
       sshServerSessionId: string;
       directory: string;
+    }
+  | {
+      kind: "execution_host";
+      executionHost: ExecutionHostBinding;
+      directory: string;
     };
 
 export interface ChatConfig {
@@ -47,6 +53,8 @@ export interface ChatConfig {
   name: string;
   workspaceId: string;
   source?: ChatSource;
+  /** Canonical execution host snapshot retained alongside the legacy source. */
+  executionHostBinding?: ExecutionHostBinding | null;
   scope: ChatScope;
   taskId?: string;
   directory: string;
@@ -198,9 +206,14 @@ export function isSshServerChat(chat: Pick<Chat, "config"> | ChatConfig): boolea
   return config.source?.kind === "ssh_server";
 }
 
+export function isExecutionHostChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {
+  const config = "config" in chat ? chat.config : chat;
+  return config.source?.kind === "execution_host";
+}
+
 export function getChatWorkspaceId(chat: Pick<Chat, "config"> | ChatConfig): string {
   const config = "config" in chat ? chat.config : chat;
-  if (config.source?.kind === "ssh_server") {
+  if (config.source?.kind === "ssh_server" || config.source?.kind === "execution_host") {
     throw new Error(`Chat is not workspace-backed: ${config.id}`);
   }
   return config.source?.workspaceId ?? config.workspaceId;

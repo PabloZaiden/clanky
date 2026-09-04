@@ -6,6 +6,7 @@ import {
   useChats,
   useDashboardData,
   useFileExplorerFullTreePreference,
+  useExecutionHosts,
   useMarkdownPreference,
   useMesh,
   usePrivateItemsPreference,
@@ -69,6 +70,7 @@ export function useShellResources(route: WebAppRoute) {
     updateSession: updateTerminalSession,
     deleteSession: deleteTerminalSession,
   } = useTerminalSessions({ realtime: false });
+  const executionHosts = useExecutionHosts();
 
   const refreshSshSessionsAndServers = useCallback(async (): Promise<void> => {
     await Promise.all([
@@ -154,6 +156,7 @@ export function useShellResources(route: WebAppRoute) {
     || tasksLoading
     || sshServersLoading
     || terminalSessionsLoading
+    || executionHosts.loading
     || workspacesLoading
     || agents.loading;
   const shellErrors = [
@@ -164,6 +167,7 @@ export function useShellResources(route: WebAppRoute) {
     workspaceError,
     agents.error,
     provisioning.jobsError,
+    executionHosts.error,
   ].filter((error): error is string => Boolean(error));
   const routeSelection = getShellRouteSelection(route, {
     tasks,
@@ -208,6 +212,9 @@ export function useShellResources(route: WebAppRoute) {
     updateStandaloneSession,
     deleteStandaloneSession,
     terminalSessions,
+    executionHosts: executionHosts.hosts,
+    executionHostsLoading: executionHosts.loading,
+    refreshExecutionHosts: executionHosts.refresh,
     terminalSessionsLoading,
     terminalSessionsError,
     refreshTerminalSessions,

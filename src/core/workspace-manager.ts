@@ -14,7 +14,13 @@ import {
   updateWorkspace as updateWorkspaceRecord,
 } from "../persistence/workspaces";
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
-import { DEFAULT_WORKSPACE_TYPE, type Workspace, type WorkspaceExecutionTarget, type WorkspaceType } from "@/shared/workspace";
+import {
+  supportsExecutionHostCapability,
+  type Workspace,
+  type WorkspaceExecutionTarget,
+  type WorkspaceType,
+} from "@/shared";
+import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { DomainError } from "./domain-error";
 import {
@@ -33,8 +39,24 @@ import {
 } from "../persistence/mesh";
 import { requireCurrentUserId } from "./user-context";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import {
+  ensureExecutionHost,
+  toExecutionHostBinding,
+} from "../persistence/execution-hosts";
 
 const log = createLogger("core:workspace-manager");
+
+function createExecutionHostBinding(
+  userId: string,
+  target: Awaited<ReturnType<typeof resolveWorkspaceExecutionTarget>>,
+) {
+  if (!target.hostRef) {
+    return null;
+  }
+  return toExecutionHostBinding(
+    ensureExecutionHost(userId, target.hostRef, target.targetKey),
+  );
+}
 
 export interface CreateWorkspaceInput {
   name: string;
@@ -48,7 +70,7 @@ export interface CreateWorkspaceInput {
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
+  Pick<Workspace, "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
 >;
 
 export type WorkspaceDirectoryValidation = Awaited<
@@ -163,12 +185,14 @@ export class WorkspaceManager {
 
   async listExecutionTargets(): Promise<WorkspaceExecutionTarget[]> {
     const identity = await ensureLocalMeshNodeIdentity();
-    const targets: WorkspaceExecutionTarget[] = [{
-      nodeId: identity.nodeId,
-      name: identity.instanceName?.trim() || "This Clanky instance",
-      kind: "local",
-      availability: "local",
-    }];
+    const targets: WorkspaceExecutionTarget[] = identity.execution?.acceptRemoteExecution
+      ? [{
+          nodeId: identity.nodeId,
+          name: identity.execution.name,
+          kind: "local",
+          availability: "local",
+        }]
+      : [];
     const link = await getMeshLinkForLocalUser(requireCurrentUserId());
     if (!link || link.status !== "active") {
       return targets;
@@ -183,9 +207,18 @@ export class WorkspaceManager {
         continue;
       }
       const node = await getMeshNode(member.nodeId);
+      if (
+        !node?.execution?.acceptRemoteExecution
+        || !supportsExecutionHostCapability(
+          node.execution.capabilities,
+          "commandExecution",
+        )
+      ) {
+        continue;
+      }
       targets.push({
         nodeId: member.nodeId,
-        name: node?.instanceName?.trim() || member.instanceName?.trim() || `Mesh peer ${member.nodeId.slice(0, 8)}`,
+        name: node.execution.name,
         kind: "mesh",
         availability: member.status === "active" && node?.status === "active"
           ? "online"
@@ -223,8 +256,16 @@ export class WorkspaceManager {
       });
     }
 
+    const target = await resolveWorkspaceExecutionTarget({
+      serverSettings: normalized.serverSettings,
+      executionNodeId,
+    });
     const workspace = createWorkspaceRecordFromInput(normalized);
     workspace.executionNodeId = executionNodeId;
+    workspace.executionHostBinding = createExecutionHostBinding(
+      requireCurrentUserId(),
+      target,
+    );
     await createWorkspaceRecord(workspace);
     log.info("Workspace created", {
       workspaceId: workspace.id,
@@ -319,6 +360,17 @@ export class WorkspaceManager {
     }
     if (executionTargetChanged) {
       normalizedUpdates.executionTargetRevision = (current.executionTargetRevision ?? 1) + 1;
+    }
+    if (
+      executionTargetChanged
+      || !current.executionHostBinding
+      || serverSettingsChanged
+      || updates.executionNodeId !== undefined
+    ) {
+      normalizedUpdates.executionHostBinding = createExecutionHostBinding(
+        requireCurrentUserId(),
+        resolvedNextTarget,
+      );
     }
     if (privateChanged) {
       normalizedUpdates.isPrivate = updates.isPrivate;

@@ -16,6 +16,10 @@ import {
   workspaceToRow,
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import {
+  EXECUTION_HOST_JOIN_COLUMNS,
+  resolveExecutionHostBindingId,
+} from "../execution-hosts";
 
 const log = createLogger("persistence:workspaces");
 
@@ -44,7 +48,14 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
   log.debug("Getting workspace", { id });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const stmt = db.prepare("SELECT * FROM workspaces WHERE id = ? AND user_id = ?");
+  const stmt = db.prepare(`
+    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+    FROM workspaces workspace
+    LEFT JOIN execution_hosts execution_host
+      ON execution_host.id = workspace.execution_host_id
+      AND execution_host.user_id = workspace.user_id
+    WHERE workspace.id = ? AND workspace.user_id = ?
+  `);
   const row = stmt.get(id, userId) as Record<string, unknown> | null;
   if (!row) {
     log.debug("Workspace not found", { id });
@@ -62,7 +73,7 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+    "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "executionHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
@@ -111,6 +122,15 @@ export async function updateWorkspace(
   if (updates.executionTargetRevision !== undefined) {
     setClauses.push("execution_target_revision = ?");
     values.push(Math.max(1, Math.floor(updates.executionTargetRevision)));
+  }
+
+  if (updates.executionHostBinding !== undefined) {
+    setClauses.push("execution_host_id = ?");
+    values.push(updates.executionHostBinding
+      ? resolveExecutionHostBindingId(userId, updates.executionHostBinding)
+      : null);
+    setClauses.push("execution_host_revision = ?");
+    values.push(updates.executionHostBinding?.revision ?? null);
   }
 
   if (updates.devcontainerSubpath !== undefined) {

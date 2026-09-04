@@ -26,6 +26,7 @@ import {
 } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
+  requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
@@ -36,6 +37,7 @@ import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
 import { LocalTerminalConnection } from "./terminal";
 import type { InteractiveTerminalConnection } from "./terminal";
+import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 
 const MAX_TERMINAL_SESSIONS = 64;
 const MAX_USED_NONCES = 512;
@@ -127,6 +129,7 @@ export class MeshTerminalGateway {
 
   async createSession(request: MeshTerminalSessionRequest): Promise<MeshTerminalSessionResponse> {
     this.pruneExpired();
+    await requireLocalMeshExecutionCapability("interactiveTerminal");
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_TERMINAL_MAX_HANDSHAKE_BYTES) {
       throw new DomainError("mesh_terminal_handshake_too_large", "The Mesh terminal handshake exceeds the size limit.");
     }
@@ -459,6 +462,7 @@ export class MeshTerminalGateway {
     sessionId: string,
     sessionToken: string,
   ): Promise<MeshTerminalLease> {
+    await requireLocalMeshExecutionCapability("interactiveTerminal");
     this.pruneExpired();
     const lease = this.leases.get(sessionId);
     if (!lease || lease.sessionToken !== sessionToken) {
@@ -560,3 +564,9 @@ export class MeshTerminalGateway {
 }
 
 export const meshTerminalGateway = new MeshTerminalGateway();
+
+meshInboundResourceRegistry.register({
+  id: "terminal",
+  capabilities: ["interactiveTerminal"],
+  close: async () => await meshTerminalGateway.closeAll(),
+});

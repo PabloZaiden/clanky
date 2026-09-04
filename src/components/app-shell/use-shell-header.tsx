@@ -142,6 +142,9 @@ function getChatScopeSubtitle(
   if (source?.kind === "ssh_server") {
     return getServerName(source.sshServerId, servers);
   }
+  if (source?.kind === "execution_host") {
+    return source.executionHost.targetKey;
+  }
   return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
 }
 
@@ -418,6 +421,12 @@ export function useShellHeader({
           badgeVariant: "default",
           badgeIsStatus: false,
         };
+      case "execution-host":
+        return nodeModel ?? { title: "Execution server" };
+      case "execution-host-files":
+        return nodeModel
+          ? { title: nodeModel.title, detailSubtitle: "Files" }
+          : { title: "Server files" };
       case "vnc-session":
         return nodeModel
           ? {
@@ -627,7 +636,7 @@ export function useShellHeader({
         ? "Back to task"
         : contentType === "chat"
           ? "Back to chat"
-          : contentType === "server"
+          : contentType === "server" || contentType === "execution-host"
             ? "Back to server"
             : "Back to workspace";
       return (

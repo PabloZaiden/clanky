@@ -21,6 +21,7 @@ export {
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
+export { useExecutionHosts } from "./useExecutionHosts";
 export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWorkspacePreviews";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";

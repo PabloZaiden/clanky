@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeshStatusRecord } from "@/shared/mesh";
 import { apiRequest } from "../lib/api-client";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 interface MeshResponse {
   status?: MeshStatusRecord;
@@ -12,7 +13,7 @@ export interface UseMeshResult {
   saving: boolean;
   error: string | null;
   mutationError: string | null;
-  refresh: () => Promise<MeshStatusRecord | null>;
+  refresh: (options?: { showLoading?: boolean }) => Promise<MeshStatusRecord | null>;
   updateInstanceName: (instanceName: string) => Promise<MeshStatusRecord | null>;
   updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshStatusRecord | null>;
   startPairing: (targetEndpoint: string, targetLocalUserId?: string) => Promise<MeshStatusRecord | null>;
@@ -32,11 +33,15 @@ export function useMesh(): UseMeshResult {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async (): Promise<MeshStatusRecord | null> => {
+  const refresh = useCallback(async (
+    options: { showLoading?: boolean } = {},
+  ): Promise<MeshStatusRecord | null> => {
     refreshAbortRef.current?.abort();
     const controller = new AbortController();
     refreshAbortRef.current = controller;
-    setLoading(true);
+    if (options.showLoading !== false) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const body = await apiRequest<MeshResponse>("/api/mesh/status", {
@@ -62,6 +67,17 @@ export function useMesh(): UseMeshResult {
       }
     }
   }, []);
+
+  useRealtimeRefreshWithRecovery({
+    resources: ["mesh"],
+    filters: { resource: "mesh" },
+    refresh: async () => {
+      await refresh({ showLoading: false });
+    },
+    onReconnect: async () => {
+      await refresh({ showLoading: false });
+    },
+  });
 
   const mutationStatus = useCallback(async (
     path: string,

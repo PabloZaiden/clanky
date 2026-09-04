@@ -158,6 +158,13 @@ export type CodeExplorerTarget =
       filePath?: string;
     }
   | {
+      contentType: "execution-host";
+      hostKind: "local" | "mesh";
+      hostId: string;
+      startDirectory?: string;
+      filePath?: string;
+    }
+  | {
       contentType: "chat";
       chatId: string;
       startDirectory?: string;
@@ -244,6 +251,9 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const terminal of terminalSessions) {
+    if (!terminal.config.workspaceId) {
+      continue;
+    }
     const workspaceTerminals = terminalsByWorkspaceId.get(terminal.config.workspaceId) ?? [];
     workspaceTerminals.push(terminal);
     terminalsByWorkspaceId.set(terminal.config.workspaceId, workspaceTerminals);

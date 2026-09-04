@@ -22,6 +22,12 @@ import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   type MeshNodeIdentity,
 } from "@/shared/mesh";
+import {
+  EXECUTION_HOST_CAPABILITY_IDS,
+  createDefaultExecutionNodeConfiguration,
+  type ExecutionHostCapabilities,
+  type ExecutionNodeConfiguration,
+} from "@/shared/execution-host";
 import { getDataDir, getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh-node-identity");
@@ -38,6 +44,7 @@ interface StoredMeshNodeIdentity {
   fingerprint: string;
   encryptionPublicKey?: string;
   encryptionPrivateKey?: string;
+  execution: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,8 +56,76 @@ interface MeshNodeIdentityRow {
   public_key: string;
   fingerprint: string;
   encryption_public_key: string | null;
+  execution_config_json: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parseExecutionCapabilities(value: unknown): ExecutionHostCapabilities {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new DomainError(
+      "mesh_node_identity_invalid",
+      "The stored execution capabilities are invalid.",
+    );
+  }
+  const record = value as Record<string, unknown>;
+  const capabilities: ExecutionHostCapabilities = {};
+  for (const capability of EXECUTION_HOST_CAPABILITY_IDS) {
+    const version = record[capability];
+    if (version === undefined) {
+      continue;
+    }
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+      throw new DomainError(
+        "mesh_node_identity_invalid",
+        `The stored ${capability} capability version is invalid.`,
+      );
+    }
+    capabilities[capability] = version;
+  }
+  return capabilities;
+}
+
+function parseExecutionConfiguration(
+  value: unknown,
+  fallbackName: string,
+  fallbackEndpoint: string | null,
+): ExecutionNodeConfiguration {
+  if (value === undefined || value === null) {
+    return createDefaultExecutionNodeConfiguration(fallbackName, fallbackEndpoint);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new DomainError(
+      "mesh_node_identity_invalid",
+      "The stored execution configuration is invalid.",
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record["name"] !== "string"
+    || (record["endpoint"] !== null && typeof record["endpoint"] !== "string")
+    || (
+      record["repositoriesBasePath"] !== null
+      && typeof record["repositoriesBasePath"] !== "string"
+    )
+    || typeof record["acceptRemoteExecution"] !== "boolean"
+    || typeof record["revision"] !== "number"
+    || !Number.isInteger(record["revision"])
+    || record["revision"] < 1
+  ) {
+    throw new DomainError(
+      "mesh_node_identity_invalid",
+      "The stored execution configuration has an invalid shape.",
+    );
+  }
+  return {
+    name: record["name"],
+    endpoint: record["endpoint"],
+    repositoriesBasePath: record["repositoriesBasePath"],
+    acceptRemoteExecution: record["acceptRemoteExecution"],
+    capabilities: parseExecutionCapabilities(record["capabilities"]),
+    revision: record["revision"],
+  };
 }
 
 function identityFilePath(): string {
@@ -144,6 +219,14 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
     publicKey: record["publicKey"],
     privateKey: record["privateKey"],
     fingerprint: record["fingerprint"],
+    execution: createDefaultExecutionNodeConfiguration(
+      typeof record["instanceName"] === "string"
+        ? record["instanceName"]
+        : "This Clanky instance",
+      typeof record["meshEndpoint"] === "string"
+        ? record["meshEndpoint"]
+        : null,
+    ),
     createdAt: record["createdAt"],
     updatedAt: record["updatedAt"],
   };
@@ -168,6 +251,11 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
   if (typeof record["meshEndpoint"] === "string") {
     identity.meshEndpoint = record["meshEndpoint"].trim() || null;
   }
+  identity.execution = parseExecutionConfiguration(
+    record["execution"],
+    identity.instanceName ?? "This Clanky instance",
+    identity.meshEndpoint,
+  );
 
   if (identity.version !== IDENTITY_FILE_VERSION) {
     throw new DomainError("mesh_node_identity_version_unsupported", "The stored mesh node identity version is unsupported.", {
@@ -244,6 +332,7 @@ async function writeStoredIdentity(identity: StoredMeshNodeIdentity): Promise<vo
 function createStoredIdentity(
   instanceName: string | null = null,
   meshEndpoint: string | null = null,
+  execution?: ExecutionNodeConfiguration,
 ): StoredMeshNodeIdentity {
   const signingKeys = generateKeyPairSync("ed25519");
   const encryptionKeys = generateKeyPairSync("rsa", {
@@ -266,6 +355,10 @@ function createStoredIdentity(
     fingerprint: getMeshNodeFingerprint(publicKeyPem),
     encryptionPublicKey: encryptionPublicKeyPem,
     encryptionPrivateKey: encryptionPrivateKeyPem,
+    execution: execution ?? createDefaultExecutionNodeConfiguration(
+      instanceName ?? "This Clanky instance",
+      meshEndpoint,
+    ),
     createdAt: now,
     updatedAt: now,
   };
@@ -279,6 +372,7 @@ function publicIdentity(identity: StoredMeshNodeIdentity): MeshNodeIdentity {
     publicKey: identity.publicKey,
     fingerprint: identity.fingerprint,
     encryptionPublicKey: identity.encryptionPublicKey,
+    execution: identity.execution,
     createdAt: identity.createdAt,
     updatedAt: identity.updatedAt,
   };
@@ -289,8 +383,9 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
   const now = new Date().toISOString();
   db.run(`
     INSERT INTO mesh_node_identity (
-      singleton, node_id, instance_name, mesh_endpoint, public_key, fingerprint, encryption_public_key, created_at, updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+      singleton, node_id, instance_name, mesh_endpoint, public_key, fingerprint,
+      encryption_public_key, execution_config_json, created_at, updated_at
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(singleton) DO UPDATE SET
       node_id = excluded.node_id,
       instance_name = excluded.instance_name,
@@ -298,6 +393,7 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = excluded.encryption_public_key,
+      execution_config_json = excluded.execution_config_json,
       updated_at = excluded.updated_at
   `, [
     identity.nodeId,
@@ -306,19 +402,22 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
     identity.publicKey,
     identity.fingerprint,
     identity.encryptionPublicKey ?? null,
+    JSON.stringify(identity.execution),
     identity.createdAt,
     now,
   ]);
   db.run(`
     INSERT INTO mesh_nodes (
-      node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+      node_id, instance_name, public_key, fingerprint, encryption_public_key,
+      execution_config_json, endpoint, transport, status,
       last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, NULL, 'https', 'active', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'https', 'active', ?, ?, ?)
     ON CONFLICT(node_id) DO UPDATE SET
       instance_name = excluded.instance_name,
       public_key = excluded.public_key,
       fingerprint = excluded.fingerprint,
       encryption_public_key = excluded.encryption_public_key,
+      execution_config_json = excluded.execution_config_json,
       updated_at = excluded.updated_at
   `, [
     identity.nodeId,
@@ -326,6 +425,7 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
     identity.publicKey,
     identity.fingerprint,
     identity.encryptionPublicKey ?? null,
+    JSON.stringify(identity.execution),
     now,
     identity.createdAt,
     now,
@@ -431,7 +531,8 @@ function remapLocalWorkspaceExecutionNode(previousNodeId: string, replacementNod
 export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   const db = getDatabase();
   const row = db.query(`
-    SELECT node_id, instance_name, mesh_endpoint, public_key, fingerprint, encryption_public_key, created_at, updated_at
+    SELECT node_id, instance_name, mesh_endpoint, public_key, fingerprint,
+      encryption_public_key, execution_config_json, created_at, updated_at
     FROM mesh_node_identity
     WHERE singleton = 1
   `).get() as MeshNodeIdentityRow | null;
@@ -511,7 +612,11 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
     );
   }
 
-  const replacement = createStoredIdentity(current.instanceName, current.meshEndpoint);
+  const replacement = createStoredIdentity(
+    current.instanceName,
+    current.meshEndpoint,
+    current.execution,
+  );
   try {
     await writeStoredIdentity(replacement);
     const now = new Date().toISOString();
@@ -523,7 +628,8 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
       `, [now, current.nodeId]);
       db.run(`
         UPDATE mesh_node_identity
-        SET node_id = ?, instance_name = ?, mesh_endpoint = ?, public_key = ?, fingerprint = ?, encryption_public_key = ?,
+        SET node_id = ?, instance_name = ?, mesh_endpoint = ?, public_key = ?, fingerprint = ?,
+          encryption_public_key = ?, execution_config_json = ?,
           created_at = ?, updated_at = ?
         WHERE singleton = 1
       `, [
@@ -533,21 +639,24 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
         replacement.publicKey,
         replacement.fingerprint,
         replacement.encryptionPublicKey ?? null,
+        JSON.stringify(replacement.execution),
         replacement.createdAt,
         replacement.updatedAt,
       ]);
       remapLocalWorkspaceExecutionNode(current.nodeId, replacement.nodeId);
       db.run(`
         INSERT INTO mesh_nodes (
-        node_id, instance_name, public_key, fingerprint, encryption_public_key, endpoint, transport, status,
+        node_id, instance_name, public_key, fingerprint, encryption_public_key,
+          execution_config_json, endpoint, transport, status,
           last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, NULL, 'https', 'rejoining', NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'https', 'rejoining', NULL, ?, ?)
       `, [
         replacement.nodeId,
         replacement.instanceName,
         replacement.publicKey,
         replacement.fingerprint,
         replacement.encryptionPublicKey ?? null,
+        JSON.stringify(replacement.execution),
         replacement.createdAt,
         now,
       ]);
@@ -583,6 +692,11 @@ export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeI
   const updated: StoredMeshNodeIdentity = {
     ...identity,
     instanceName,
+    execution: {
+      ...identity.execution,
+      name: instanceName,
+      revision: identity.execution.revision + 1,
+    },
     updatedAt: new Date().toISOString(),
   };
   await writeStoredIdentity(updated);
@@ -609,11 +723,73 @@ export async function setLocalMeshEndpoint(value: string): Promise<MeshNodeIdent
   const updated: StoredMeshNodeIdentity = {
     ...identity,
     meshEndpoint,
+    execution: {
+      ...identity.execution,
+      endpoint: meshEndpoint,
+      revision: identity.execution.revision + 1,
+    },
     updatedAt: new Date().toISOString(),
   };
   await writeStoredIdentity(updated);
   upsertIdentityRows(updated);
   return publicIdentity(updated);
+}
+
+export async function setLocalMeshExecutionConfiguration(
+  updates: Pick<ExecutionNodeConfiguration, "acceptRemoteExecution" | "repositoriesBasePath">,
+): Promise<MeshNodeIdentity> {
+  let identity = await readStoredIdentity();
+  if (!identity) {
+    await ensureLocalMeshNodeIdentity();
+    identity = await readStoredIdentity();
+  }
+  if (!identity) {
+    throw new DomainError(
+      "mesh_node_identity_missing",
+      "The mesh node identity is unavailable.",
+    );
+  }
+  const repositoriesBasePath = updates.repositoriesBasePath?.trim() || null;
+  if (
+    identity.execution.acceptRemoteExecution === updates.acceptRemoteExecution
+    && identity.execution.repositoriesBasePath === repositoriesBasePath
+  ) {
+    return publicIdentity(identity);
+  }
+  const updated: StoredMeshNodeIdentity = {
+    ...identity,
+    execution: {
+      ...identity.execution,
+      acceptRemoteExecution: updates.acceptRemoteExecution,
+      repositoriesBasePath,
+      revision: identity.execution.revision + 1,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  await writeStoredIdentity(updated);
+  upsertIdentityRows(updated);
+  return publicIdentity(updated);
+}
+
+export async function requireLocalMeshExecutionCapability(
+  capability: keyof ExecutionHostCapabilities,
+): Promise<ExecutionNodeConfiguration> {
+  const identity = await ensureLocalMeshNodeIdentity();
+  const execution = identity.execution;
+  if (!execution?.acceptRemoteExecution) {
+    throw new DomainError(
+      "mesh_remote_execution_disabled",
+      "This Mesh node does not accept remote execution.",
+    );
+  }
+  if ((execution.capabilities[capability] ?? 0) < 1) {
+    throw new DomainError(
+      "mesh_execution_capability_unavailable",
+      `This Mesh node does not provide the ${capability} capability.`,
+      { details: { capability } },
+    );
+  }
+  return execution;
 }
 
 /**
