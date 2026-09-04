@@ -79,6 +79,43 @@ Clanky is typically deployed behind a reverse proxy that enforces authentication
 - Destructive endpoints (server kill, database reset) should still be protected by the reverse proxy or by the application auth layer
 - WebSocket connections can be protected either at the proxy layer or by the application auth layer
 
+### Mesh worker lifecycle
+
+- A Mesh worker is the same `clanky` binary running the restricted execution
+  server surface. The complete bootstrap, configuration, enrollment, and
+  verification flow is documented in
+  [`docs/mesh-worker.md`](docs/mesh-worker.md); keep that guide current when
+  changing worker behavior.
+- Define application-specific lifecycle options through
+  `createWebAppCli({ serve: { options: [...] } })`. Do not add an app-local
+  parser, read a lifecycle environment variable as an independent source of
+  truth, or bypass webapp's `serve` lifecycle.
+- `mesh-worker` is a typed boolean lifecycle option. These are equivalent
+  configuration surfaces:
+  `clanky serve --mesh-worker true`,
+  `clanky serve up --mesh-worker true`,
+  `CLANKY_MESH_WORKER=true clanky serve up`, and
+  `clanky serve config set mesh-worker true`.
+- Lifecycle precedence is invocation flag, environment variable, persisted
+  config, then the declared default. Flags are one-shot and must not rewrite
+  persisted configuration. `serve up` must forward the resolved value to the
+  detached child.
+- Pass the resolved Mesh-worker value explicitly from the CLI lifecycle
+  callback into server construction. Do not make `src/server.ts` resolve
+  `CLANKY_MESH_WORKER` again.
+- Mesh-worker mode must remain deny-by-default: no browser app, passkeys,
+  device authorization, realtime UI, schedulers, startup reconciliation, or
+  unrelated APIs. It exposes health, signed Mesh transport, and the approved
+  API-key-authenticated Mesh control operations only.
+- Bootstrap workers with `clanky worker bootstrap`; enroll them with a
+  controller-issued, expiring, single-use token and the controller
+  fingerprint. Do not require browser confirmation or a passkey, and do not
+  combine worker mode with `CLANKY_DISABLE_PASSKEY`.
+- A Mesh execution node intentionally grants unrestricted command and file
+  access to its host. `acceptRemoteExecution` determines whether the node may
+  serve as a target; it defaults to enabled and is enforced by the receiving
+  node.
+
 The production Docker image assumes a reverse proxy and enables
 `CLANKY_TRUST_PROXY=true` with `proto,host,prefix` forwarding headers and the
 `first` chain policy. Public deployments must sanitize those headers at the
