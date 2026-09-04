@@ -114,6 +114,47 @@ export function ServerIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
+ * Connected-node icon for Mesh execution servers.
+ */
+export function MeshIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5 5.5 17h13L12 5Z" />
+      <circle cx="12" cy="5" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="5.5" cy="17" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="17" r="2.25" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/**
+ * Cloud icon for SSH execution servers.
+ */
+export function CloudIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.5 18.5h9.75a4.25 4.25 0 0 0 .57-8.46A6 6 0 0 0 6.34 8.7 4.75 4.75 0 0 0 7.5 18.5Z"
+      />
+    </svg>
+  );
+}
+
+/**
  * Edit/Pencil icon for rename and edit actions.
  */
 export function EditIcon({ className = "", size = "h-4 w-4" }: IconProps) {

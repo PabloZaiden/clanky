@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DevboxTemplateSummary } from "@/shared";
+import type { DevboxTemplateSummary, ExecutionHostRef } from "@/shared";
 import { listDevboxTemplatesApi } from "./sshServerActions";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseDevboxTemplatesOptions {
   serverId: string;
   password?: string;
+  executionHost?: ExecutionHostRef;
 }
 
 export interface UseDevboxTemplatesResult {
@@ -21,6 +23,7 @@ function isAbortError(error: unknown): boolean {
 export function useDevboxTemplates({
   serverId,
   password,
+  executionHost,
 }: UseDevboxTemplatesOptions): UseDevboxTemplatesResult {
   const [templates, setTemplates] = useState<DevboxTemplateSummary[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -47,7 +50,7 @@ export function useDevboxTemplates({
     const trimmedServerId = serverId.trim();
     activeControllerRef.current?.abort();
 
-    if (!trimmedServerId) {
+    if (!executionHost && !trimmedServerId) {
       latestRequestIdRef.current += 1;
       activeControllerRef.current = null;
       if (mountedRef.current) {
@@ -69,11 +72,25 @@ export function useDevboxTemplates({
     }
 
     try {
-      const nextTemplates = await listDevboxTemplatesApi({
-        serverId: trimmedServerId,
-        password: passwordOverride ?? latestPasswordRef.current,
-        signal: controller.signal,
-      });
+      const nextTemplates = executionHost
+        ? await apiRequest<DevboxTemplateSummary[]>(
+            `/api/execution-hosts/${executionHost.kind}/${encodeURIComponent(
+              executionHost.kind === "ssh" ? executionHost.serverId : executionHost.nodeId,
+            )}/devbox-templates`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ credentialToken: null }),
+              signal: controller.signal,
+              action: "Load Devbox templates",
+              fallbackMessage: "Failed to load Devbox templates",
+            },
+          )
+        : await listDevboxTemplatesApi({
+            serverId: trimmedServerId,
+            password: passwordOverride ?? latestPasswordRef.current,
+            signal: controller.signal,
+          });
       if (
         !mountedRef.current
         || requestId !== latestRequestIdRef.current
@@ -104,10 +121,10 @@ export function useDevboxTemplates({
         setTemplatesLoading(false);
       }
     }
-  }, [serverId]);
+  }, [executionHost, serverId]);
 
   useEffect(() => {
-    if (!serverId.trim()) {
+    if (!executionHost && !serverId.trim()) {
       setTemplates([]);
       setTemplatesError(null);
       setTemplatesLoading(false);
@@ -115,7 +132,7 @@ export function useDevboxTemplates({
     }
 
     void refreshTemplates();
-  }, [serverId, refreshTemplates]);
+  }, [executionHost, serverId, refreshTemplates]);
 
   return {
     templates,

@@ -6,6 +6,7 @@ import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
 import { createWorkspaceCommand } from "./workspace";
+import { createWorkerCommand } from "./worker";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -74,6 +75,7 @@ export function createClankyCli() {
         },
       },
       workspace: createWorkspaceCommand(),
+      worker: createWorkerCommand(),
     },
   });
 }

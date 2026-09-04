@@ -3,6 +3,7 @@
  */
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
+import { getChatWorkspaceId } from "@/shared/chat";
 import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
@@ -74,7 +75,7 @@ export class ManagedContextIdentityResolver {
     return this.createIdentity(
       "chat",
       chatId,
-      ensureWorkspace("chat", chatId, chat.config.workspaceId, expectedWorkspaceId),
+      ensureWorkspace("chat", chatId, getChatWorkspaceId(chat), expectedWorkspaceId),
     );
   }
 
@@ -94,6 +95,12 @@ export class ManagedContextIdentityResolver {
     const session = await getTerminalSession(sessionId);
     if (!session) {
       throw missingContext("terminal_session", sessionId);
+    }
+    if (!session.config.workspaceId) {
+      throw new DomainError(
+        "managed_context_workspace_required",
+        "Direct execution-host terminal sessions do not have a workspace context.",
+      );
     }
     return this.createIdentity(
       "terminal_session",

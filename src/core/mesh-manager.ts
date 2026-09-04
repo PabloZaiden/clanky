@@ -15,6 +15,7 @@ import type {
   MeshPeerPairingApproval,
   RejectMeshPairingRequest,
   StartMeshPairingRequest,
+  UpdateMeshExecutionConfigurationRequest,
 } from "@/contracts/schemas/mesh";
 import type {
   MeshLinkStatusRecord,
@@ -53,6 +54,7 @@ import {
   requireMeshInstanceName,
   rotateLocalMeshNodeIdentity,
   setLocalMeshEndpoint,
+  setLocalMeshExecutionConfiguration,
   setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
@@ -80,6 +82,8 @@ import {
   decideCompleteMeshPairing,
   decideReceiveMeshPairingApproval,
 } from "../domain/mesh-transitions";
+import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
+import { meshStateEventEmitter } from "./event-emitter";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
 const log = createLogger("core:mesh-manager");
@@ -98,6 +102,7 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
     publicKey: updatedIdentity.publicKey,
     fingerprint: updatedIdentity.fingerprint,
     encryptionPublicKey: updatedIdentity.encryptionPublicKey,
+    execution: updatedIdentity.execution,
     endpoint,
     transport: getMeshTransport(endpoint),
     status: existingNode?.status ?? "active",
@@ -150,13 +155,17 @@ export class MeshManager {
           });
         }
       }));
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
   ): Promise<{ status: "ok"; nodeId: string }> {
-    await requireTrustedMeshPeer({
+    const trusted = await requireTrustedMeshPeer({
       linkId: envelope.linkId,
       nodeId: envelope.senderNodeId,
       publicKey: envelope.senderPublicKey,
@@ -173,6 +182,10 @@ export class MeshManager {
       throw new DomainError("mesh_peer_signature_invalid", "The health check signature is invalid.");
     }
     await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: trusted.link.localUserId },
+    );
     return {
       status: "ok",
       nodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
@@ -280,6 +293,10 @@ export class MeshManager {
     await applyMeshMembershipUpdate(envelope.linkId, envelope.members);
     await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
     await backendManager.invalidateMeshExecutionConnections();
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: trusted.link.localUserId },
+    );
     return { status: "accepted", memberCount: envelope.members.length };
   }
 
@@ -319,6 +336,10 @@ export class MeshManager {
     if (await getMeshLinkForLocalUser(localUserId)) {
       await this.propagateMembershipUpdate(localUserId);
     }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -338,6 +359,7 @@ export class MeshManager {
       publicKey: updatedIdentity.publicKey,
       fingerprint: updatedIdentity.fingerprint,
       encryptionPublicKey: updatedIdentity.encryptionPublicKey,
+      execution: updatedIdentity.execution,
       endpoint,
       transport,
       status: existingNode?.status ?? "active",
@@ -345,6 +367,41 @@ export class MeshManager {
     if (await getMeshLinkForLocalUser(localUserId)) {
       await this.propagateMembershipUpdate(localUserId);
     }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
+    return await this.getStatus(localUserId);
+  }
+
+  async setExecutionConfiguration(
+    localUserId: string,
+    input: UpdateMeshExecutionConfigurationRequest,
+  ): Promise<MeshStatusRecord> {
+    const previousIdentity = await ensureLocalMeshIdentityWithEndpoint();
+    const previous = previousIdentity.execution;
+    if (!previous) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The local Mesh execution configuration is unavailable.",
+      );
+    }
+    const updatedIdentity = await setLocalMeshExecutionConfiguration(input);
+    const next = updatedIdentity.execution;
+    if (!next) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The updated Mesh execution configuration is unavailable.",
+      );
+    }
+    await meshInboundResourceRegistry.applyPolicy(previous, next);
+    if (await getMeshLinkForLocalUser(localUserId)) {
+      await this.propagateMembershipUpdate(localUserId);
+    }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -404,6 +461,7 @@ export class MeshManager {
       publicKey: envelope.publicKey,
       fingerprint: envelope.fingerprint,
       encryptionPublicKey: envelope.encryptionPublicKey,
+      execution: envelope.requestedExecution,
       endpoint: envelope.endpoint,
       transport: envelope.transport,
       status: "pending",
@@ -415,6 +473,7 @@ export class MeshManager {
       targetLocalUserId: envelope.targetLocalUserId ?? null,
       requestedNodeId: envelope.requestedNodeId,
       requestedInstanceName: envelope.requestedInstanceName,
+      requestedExecution: envelope.requestedExecution,
       requestedLocalUserId: envelope.requestedLocalUserId,
       requestedUsername: envelope.requestedUsername ?? null,
       endpoint: envelope.endpoint,
@@ -426,6 +485,12 @@ export class MeshManager {
       signature: envelope.signature,
       expiresAt: envelope.expiresAt,
     });
+    if (envelope.targetLocalUserId) {
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", executionHostsChanged: false },
+        { userId: envelope.targetLocalUserId },
+      );
+    }
     return {
       requestId: request.id,
       status: request.status,
@@ -454,6 +519,7 @@ export class MeshManager {
       targetLocalUserId: input.targetLocalUserId ?? null,
       requestedNodeId: identity.nodeId,
       requestedInstanceName: instanceName,
+      requestedExecution: identity.execution,
       requestedLocalUserId: localUserId,
       requestedUsername: localUsername,
       endpoint: localEndpoint,
@@ -474,6 +540,7 @@ export class MeshManager {
       targetEndpoint: input.targetEndpoint,
       requestedNodeId: identity.nodeId,
       requestedInstanceName: instanceName,
+      requestedExecution: identity.execution,
       requestedLocalUserId: localUserId,
       requestedUsername: localUsername,
       endpoint: localEndpoint,
@@ -491,6 +558,9 @@ export class MeshManager {
         resolveMeshRoute(input.targetEndpoint, "api/mesh/internal/pairing-requests"),
         { ...unsigned, signature },
         requestId,
+        input.enrollmentToken
+          ? { "x-clanky-mesh-enrollment-token": input.enrollmentToken }
+          : undefined,
       );
     } catch (error) {
       log.error("Mesh pairing request delivery failed", {
@@ -500,6 +570,28 @@ export class MeshManager {
       });
       throw error;
     }
+    if (input.enrollmentToken) {
+      const approval = await getMeshPairingApproval(requestId);
+      if (!approval) {
+        throw new DomainError(
+          "mesh_enrollment_not_approved",
+          "The enrollment token did not produce a pairing approval.",
+        );
+      }
+      if (approval.fingerprint !== input.expectedFingerprint) {
+        throw new DomainError(
+          "mesh_enrollment_controller_mismatch",
+          "The enrollment approval does not match the expected controller fingerprint.",
+        );
+      }
+      return await this.completePairing(localUserId, requestId, {
+        fingerprint: approval.fingerprint,
+      });
+    }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: false },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -550,6 +642,10 @@ export class MeshManager {
     });
     await backendManager.invalidateMeshExecutionConnections();
     await this.propagateMembershipUpdate(localUserId, { includeRevokedPeers: true });
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -568,6 +664,10 @@ export class MeshManager {
     });
     await backendManager.invalidateMeshExecutionConnections();
     await this.propagateMembershipUpdate(localUserId);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -629,6 +729,7 @@ export class MeshManager {
       publicKey: envelope.publicKey,
       fingerprint: envelope.fingerprint,
       encryptionPublicKey: envelope.encryptionPublicKey,
+      execution: envelope.approvedByExecution,
       endpoint: envelope.endpoint,
       transport: envelope.transport,
       status: "pending",
@@ -638,6 +739,7 @@ export class MeshManager {
       linkId: envelope.linkId,
       approvedByNodeId: envelope.approvedByNodeId,
       approvedByInstanceName: envelope.approvedByInstanceName,
+      approvedByExecution: envelope.approvedByExecution,
       approvedByLocalUserId: envelope.approvedByLocalUserId,
       endpoint: envelope.endpoint,
       transport: envelope.transport,
@@ -647,6 +749,12 @@ export class MeshManager {
       signature: envelope.signature,
       members,
     });
+    if (request?.requestedLocalUserId) {
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", executionHostsChanged: false },
+        { userId: request.requestedLocalUserId },
+      );
+    }
     return {
       requestId: approval.requestId,
       status: approval.status,
@@ -680,6 +788,7 @@ export class MeshManager {
       instanceName: identity.instanceName,
       publicKey: identity.publicKey,
       fingerprint: identity.fingerprint,
+      execution: identity.execution,
       endpoint: localEndpoint,
       transport: localTransport,
       status: "active",
@@ -701,6 +810,7 @@ export class MeshManager {
       remotePublicKey: approval.publicKey,
       remoteFingerprint: approval.fingerprint,
       remoteEncryptionPublicKey: approval.encryptionPublicKey,
+      remoteExecution: (await getMeshNode(approval.approvedByNodeId))?.execution,
       linkId: approval.linkId,
     });
     if (!request?.targetEndpoint) {
@@ -723,11 +833,16 @@ export class MeshManager {
         publicKey: member.publicKey,
         fingerprint: member.fingerprint,
         encryptionPublicKey: member.encryptionPublicKey,
+        execution: member.execution,
       });
     }
     await setMeshPairingApprovalStatus(requestId, "accepted");
     await backendManager.invalidateMeshExecutionConnections();
     await this.propagateMembershipUpdate(localUserId);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -755,6 +870,7 @@ export class MeshManager {
       instanceName,
       publicKey: identity.publicKey,
       fingerprint: identity.fingerprint,
+      execution: identity.execution,
       endpoint: localEndpoint,
       transport: localTransport,
       status: "active",
@@ -775,6 +891,7 @@ export class MeshManager {
         linkId: approval.link.linkId,
         approvedByNodeId: identity.nodeId,
         approvedByInstanceName: instanceName,
+        approvedByExecution: identity.execution,
         approvedByLocalUserId: localUserId,
         endpoint: localEndpoint,
         transport: localTransport,
@@ -820,6 +937,10 @@ export class MeshManager {
       throw error;
     }
     await this.propagateMembershipUpdate(localUserId);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 
@@ -836,6 +957,10 @@ export class MeshManager {
         await setMeshPairingApprovalStatus(requestId, "rejected");
       }
     }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: false },
+      { userId: localUserId },
+    );
     return await this.getStatus(localUserId);
   }
 

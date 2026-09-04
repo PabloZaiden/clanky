@@ -30,6 +30,7 @@ import {
 } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
+  requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -44,6 +45,7 @@ import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
 import { requireTrustedMeshPeer } from "./mesh-peer-auth";
+import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 
 const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
@@ -196,6 +198,9 @@ export class MeshExecutionGateway {
     options: SessionValidationOptions,
   ): Promise<ValidatedExecutionSession> {
     const session = this.requireSessionRecord(sessionId, sessionToken);
+    await requireLocalMeshExecutionCapability(
+      session.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
+    );
     const link = await getMeshLinkById(session.linkId);
     if (
       !link
@@ -231,6 +236,9 @@ export class MeshExecutionGateway {
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
+    await requireLocalMeshExecutionCapability(
+      request.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
+    );
     if (
       typeof request.callerEncryptionPublicKey !== "string"
       || request.callerEncryptionPublicKey.trim().length === 0
@@ -335,6 +343,9 @@ export class MeshExecutionGateway {
       {
         memberErrorCode: "mesh_peer_not_trusted",
       },
+    );
+    await requireLocalMeshExecutionCapability(
+      request.operation === "exec" ? "commandExecution" : "fileOperations",
     );
 
     if (session.requestIds.has(request.requestId)) {
@@ -443,6 +454,7 @@ export class MeshExecutionGateway {
     requestedPath: string,
     signal?: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
+    await requireLocalMeshExecutionCapability("fileOperations");
     const { session } = await this.requireValidatedSession(
       sessionId,
       sessionToken,
@@ -484,6 +496,7 @@ export class MeshExecutionGateway {
     options?: FileWriteStreamOptions,
     signal?: AbortSignal,
   ): Promise<FileWriteStreamResult> {
+    await requireLocalMeshExecutionCapability("fileOperations");
     const { session } = await this.requireValidatedSession(
       sessionId,
       sessionToken,
@@ -627,3 +640,9 @@ export class MeshExecutionGateway {
 }
 
 export const meshExecutionGateway = new MeshExecutionGateway();
+
+meshInboundResourceRegistry.register({
+  id: "execution",
+  capabilities: ["commandExecution", "fileOperations", "acpRuntime"],
+  close: () => meshExecutionGateway.closeAll(),
+});

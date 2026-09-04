@@ -11,6 +11,7 @@ import { runWithCurrentUser } from "../../core/user-context";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
+import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 
 const log = createLogger("api:websocket");
 
@@ -63,6 +64,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     meshTerminalMode,
     meshTerminalSessionId,
     meshTerminalSessionToken,
+    meshTcpTunnelMode,
+    meshTcpTunnelSessionId,
+    meshTcpTunnelSessionToken,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -118,6 +122,21 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         error: String(error),
       });
       ws.close(1011, "Mesh terminal relay unavailable");
+    });
+    return;
+  }
+
+  if (meshTcpTunnelMode && meshTcpTunnelSessionId && meshTcpTunnelSessionToken) {
+    void meshTcpTunnelGateway.open(
+      ws,
+      meshTcpTunnelSessionId,
+      meshTcpTunnelSessionToken,
+    ).catch((error: Error) => {
+      log.warn("Failed to open Mesh TCP tunnel relay", {
+        sessionId: meshTcpTunnelSessionId,
+        error: String(error),
+      });
+      ws.close(1011, "Mesh TCP tunnel relay unavailable");
     });
     return;
   }
@@ -207,6 +226,9 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
   }
+  if (ws.data.meshTcpTunnelMode && ws.data.meshTcpTunnelSessionId) {
+    void meshTcpTunnelGateway.close(ws.data.meshTcpTunnelSessionId);
+  }
   clearPreviewBridgeKeepalive(ws);
 }
 
@@ -246,6 +268,9 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
+  }
+  if (ws.data.meshTcpTunnelMode && ws.data.meshTcpTunnelSessionId) {
+    void meshTcpTunnelGateway.close(ws.data.meshTcpTunnelSessionId, 1011, "Mesh TCP tunnel failed");
   }
   clearPreviewBridgeKeepalive(ws);
 }

@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { ExecutionNodeConfigurationSchema } from "./execution-host";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_PAIRING_DIRECTIONS,
@@ -32,6 +33,21 @@ export const MeshEndpointSchema = z.string().trim().url().superRefine((value, co
 export const StartMeshPairingRequestSchema = z.object({
   targetEndpoint: MeshEndpointSchema,
   targetLocalUserId: z.string().trim().min(1).optional(),
+  enrollmentToken: z.string().trim().min(1).optional(),
+  expectedFingerprint: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.enrollmentToken && !value.expectedFingerprint) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["expectedFingerprint"],
+      message: "Expected controller fingerprint is required for token enrollment.",
+    });
+  }
+});
+
+export const CreateMeshEnrollmentTokenRequestSchema = z.object({
+  name: z.string().trim().min(1).max(120).default("Mesh enrollment"),
+  ttlSeconds: z.number().int().min(60).max(86_400).default(900),
 });
 
 export const UpdateMeshInstanceNameSchema = z.object({
@@ -40,6 +56,11 @@ export const UpdateMeshInstanceNameSchema = z.object({
 
 export const UpdateMeshEndpointSchema = z.object({
   meshEndpoint: MeshEndpointSchema,
+});
+
+export const UpdateMeshExecutionConfigurationSchema = z.object({
+  acceptRemoteExecution: z.boolean(),
+  repositoriesBasePath: z.string().trim().nullable(),
 });
 
 export const ApproveMeshPairingRequestSchema = z.object({
@@ -65,6 +86,7 @@ const MeshPairingEnvelopeBaseSchema = z.object({
   targetLocalUserId: z.string().trim().min(1).nullable().optional(),
   requestedNodeId: z.string().trim().min(1),
   requestedInstanceName: MeshInstanceNameSchema.nullable().optional(),
+  requestedExecution: ExecutionNodeConfigurationSchema.optional(),
   requestedLocalUserId: z.string().trim().min(1),
   requestedUsername: z.string().trim().min(1).nullable().optional(),
   endpoint: MeshEndpointSchema,
@@ -86,6 +108,7 @@ export const MeshPeerPairingApprovalSchema = z.object({
   linkId: z.string().trim().min(1),
   approvedByNodeId: z.string().trim().min(1),
   approvedByInstanceName: MeshInstanceNameSchema.nullable().optional(),
+  approvedByExecution: ExecutionNodeConfigurationSchema.optional(),
   approvedByLocalUserId: z.string().trim().min(1),
   endpoint: MeshEndpointSchema,
   transport: MeshTransportSchema,
@@ -103,6 +126,7 @@ export const MeshPeerPairingApprovalSchema = z.object({
     publicKey: z.string().min(1),
     fingerprint: z.string().trim().min(1),
     encryptionPublicKey: z.string().min(1).optional(),
+    execution: ExecutionNodeConfigurationSchema.optional(),
   })).max(100).optional(),
   signature: z.string().trim().min(1),
 });
@@ -118,6 +142,7 @@ const MeshMemberSchema = z.object({
   publicKey: z.string().min(1),
   fingerprint: z.string().trim().min(1),
   encryptionPublicKey: z.string().min(1).optional(),
+  execution: ExecutionNodeConfigurationSchema.optional(),
 });
 
 export const MeshMembershipUpdateSchema = z.object({
@@ -146,6 +171,9 @@ export const MeshHealthCheckSchema = z.object({
 export type StartMeshPairingRequest = z.infer<typeof StartMeshPairingRequestSchema>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
+export type UpdateMeshExecutionConfigurationRequest = z.infer<
+  typeof UpdateMeshExecutionConfigurationSchema
+>;
 export type ApproveMeshPairingRequest = z.infer<typeof ApproveMeshPairingRequestSchema>;
 export type RejectMeshPairingRequest = z.infer<typeof RejectMeshPairingRequestSchema>;
 export type CompleteMeshPairingRequest = z.infer<typeof CompleteMeshPairingRequestSchema>;

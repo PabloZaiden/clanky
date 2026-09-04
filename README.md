@@ -150,7 +150,7 @@ clanky ws
 - **Plan mode:** review and refine a generated plan before code changes begin.
 - **Review cycles:** continue completed, pushed, or locally accepted work with follow-up prompts; pushed and locally accepted work can also receive review comments.
 - **Live observability:** stream logs, inspect diffs, and track task state.
-- **Workspace flexibility:** configure provider and transport per workspace, including remote SSH-backed execution.
+- **Execution servers:** use local, Mesh, or SSH hosts for workspaces, chats, terminals, files, provisioning, and VNC.
 
 ## Configuration and deployment
 
@@ -163,6 +163,9 @@ clanky ws
 | `CLANKY_DATA_DIR` | Complete override for Clanky state, including SQLite, config, detached-server metadata, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) browser origin without a path, query, or fragment; used to initialize the Mesh endpoint when none is saved | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
+| `CLANKY_MESH_WORKER` | Runs a restricted Mesh execution worker with no browser application or unrelated APIs | unset |
+| `CLANKY_MESH_ENROLLMENT_TOKEN` | Single-use token consumed by `clanky mesh enroll` when `--token` is omitted | unset |
+| `CLANKY_MESH_CONTROLLER_FINGERPRINT` | Expected controller identity for headless Mesh enrollment | unset |
 | `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
@@ -188,6 +191,8 @@ application constants in `src/core/ssh-reliability-policy.ts`.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
 - `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
+- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Start that installation with `CLANKY_MESH_WORKER=true`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
+- Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
@@ -251,6 +256,11 @@ independent Clanky instances. A workspace may use local `stdio`, `stdio via
 <mesh instance>`, or SSH; with remote `stdio`, ACP processes and
 file/command operations run on the selected peer while the workspace record
 and all application data remain local to the instance where it was created.
+The **Servers** view lists enabled local and Mesh hosts alongside registered
+SSH servers. From a host, users can start an automatic workspace with that
+target preselected, browse files, open a chat or terminal, run Arise, and
+connect through VNC when the advertised capabilities permit it. Automatic
+workspace template discovery runs on the selected host.
 An active paired peer is a host-level trust boundary: it may request a remote
 execution session rooted at any absolute path on the receiving host, so Mesh
 does not provide per-workspace sandboxing or a host-side root allowlist. Pair
@@ -258,6 +268,38 @@ only instances that are trusted with command and file access to that host.
 Keep mesh peers on a trusted network and use HTTPS (including WebSocket
 upgrades) when prompts, environment values, or file contents could cross an
 untrusted network. SSH-backed workspaces keep their existing routing.
+
+Each node can disable **Accept remote execution** in Mesh settings. Disabled
+nodes remain visible members but cannot be selected as execution targets.
+Execution policy and membership changes update connected browsers through
+realtime resource invalidation.
+
+For unattended enrollment, create a short-lived single-use token on an
+existing owner instance and consume it from the new node:
+
+```bash
+# Existing owner instance
+clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
+
+# New instance, after setting its instance name and advertised endpoint
+CLANKY_BASE_URL=http://localhost:3000 \
+CLANKY_API_KEY=<worker-api-key> \
+CLANKY_MESH_ENROLLMENT_TOKEN=<single-use-token> \
+CLANKY_MESH_CONTROLLER_FINGERPRINT=<controller-fingerprint> \
+clanky mesh enroll https://coordinator.example.com
+```
+
+Bootstrap a dedicated worker installation before starting it:
+
+```bash
+CLANKY_DATA_DIR=/app/data clanky worker bootstrap --username worker
+CLANKY_MESH_WORKER=true CLANKY_DATA_DIR=/app/data clanky serve
+```
+
+The bootstrap command is idempotent: repeated runs report the existing key ID
+without printing its secret. Use `--rotate` to revoke that key and issue a new
+plaintext key once. Enrollment tokens are stored only as hashes, expire after
+15 minutes by default, and are consumed atomically.
 
 Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
 public deployments. The image's trust-proxy defaults are intentionally unsafe

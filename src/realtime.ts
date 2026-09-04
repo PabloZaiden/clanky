@@ -15,6 +15,7 @@ import type {
   TerminalSessionEvent,
   TaskEvent,
 } from "@/shared";
+import type { MeshStateEvent } from "./core/event-emitter";
 import { createToolCallSummary } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
@@ -34,6 +35,8 @@ export const CLANKY_REALTIME_RESOURCES = {
   terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   previews: "previews",
+  mesh: "mesh",
+  executionHosts: "execution-hosts",
 } as const;
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];
@@ -93,7 +96,8 @@ export type ClankyDomainEvent =
   | SshServerSessionEvent
   | TerminalSessionEvent
   | ProvisioningEvent
-  | PreviewEvent;
+  | PreviewEvent
+  | MeshStateEvent;
 
 export type ClankyStreamEvent =
   | RetainedTaskEvent
@@ -219,6 +223,12 @@ export function publishClankyDomainEvent(
   owner: RealtimeOwner,
 ): void {
   switch (event.type) {
+    case "mesh.changed":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);
+      if (event.executionHostsChanged) {
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.executionHosts);
+      }
+      return;
     case "task.created":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;

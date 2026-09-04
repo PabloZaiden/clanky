@@ -600,6 +600,8 @@ expect(task.state.status).toBe("completed");
 
 - Git operations are allowed. The system manages git branches, commits, and merges for Clanky Tasks.
 - Always prefer simplicity, usability and top level type safety over cleverness.
+- Do not add deprecated aliases or backward-compatibility shims unless the user
+  explicitly approves that compatibility requirement.
 - Before doing something, check the patterns used in the rest of the codebase.
 - Keep the `.clanky-planning/status.md` file updated with progress.
 - **Never use time estimates** in plans, documentation, or task descriptions. Time estimates are inherently inaccurate and create false expectations. Use complexity levels (Low, Medium, High) instead.

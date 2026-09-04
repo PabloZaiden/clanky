@@ -20,9 +20,13 @@ import {
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
 import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
+import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshManager } from "../core/mesh-manager";
+import { consumeMeshEnrollmentToken } from "../persistence/mesh-enrollment-tokens";
+import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
 import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
+import { meshTcpTunnelGateway } from "../core/mesh-tcp-tunnel-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
@@ -66,6 +70,8 @@ function internalMeshErrorResponse(error: unknown): Response {
             ? 403
           : error.code.startsWith("mesh_terminal_")
             ? 400
+          : error.code.startsWith("mesh_tunnel_")
+            ? 400
           : error.code.startsWith("mesh_execution_")
             ? 400
           : error.code.startsWith("mesh_peer_") || error.code.startsWith("mesh_endpoint_")
@@ -93,7 +99,28 @@ export const meshInternalRoutes = defineRoutes({
         return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed request.", 400);
       }
       try {
-        return Response.json(await meshManager.receivePairingRequest(parsed.data));
+        const received = await meshManager.receivePairingRequest(parsed.data);
+        const enrollmentToken = req.headers.get("x-clanky-mesh-enrollment-token")?.trim();
+        if (enrollmentToken) {
+          const identity = await ensureLocalMeshNodeIdentity();
+          const enrollment = consumeMeshEnrollmentToken(enrollmentToken, {
+            nodeId: identity.nodeId,
+            fingerprint: identity.fingerprint,
+          });
+          if (!enrollment) {
+            return errorResponse(
+              "mesh_enrollment_token_invalid",
+              "The mesh enrollment token is invalid, expired, or already used.",
+              401,
+            );
+          }
+          await meshManager.approvePairingRequest(
+            enrollment.userId,
+            received.requestId,
+            enrollment.linkId ? { linkId: enrollment.linkId } : {},
+          );
+        }
+        return Response.json(received);
       } catch (error) {
         return internalMeshErrorResponse(error);
       }
@@ -380,6 +407,63 @@ export const meshInternalRoutes = defineRoutes({
           },
         });
         return upgraded ? undefined : errorResponse("mesh_terminal_upgrade_failed", "Mesh terminal WebSocket upgrade failed.", 400);
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/tcp-tunnel/session": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Establish a signed Mesh TCP tunnel session.",
+    tags: ["mesh", "internal", "tcp-tunnel"],
+    async POST(req): Promise<Response> {
+      const parsed = await parseAndValidate(MeshTcpTunnelSessionRequestSchema, req);
+      if (!parsed.success) return parsed.response;
+      const nodeId = req.headers.get("x-clanky-mesh-node-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (nodeId !== parsed.data.callerNodeId || requestId !== parsed.data.requestId) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the TCP tunnel session.", 400);
+      }
+      try {
+        const session = await meshTcpTunnelGateway.createSession(parsed.data);
+        return Response.json({
+          protocolVersion: session.protocolVersion,
+          capability: session.capability,
+          sessionId: session.sessionId,
+          expiresAt: session.expiresAt,
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: session.sessionToken },
+            parsed.data.callerEncryptionPublicKey,
+          ),
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/tcp-tunnel": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Open an authenticated Mesh TCP tunnel stream.",
+    tags: ["mesh", "internal", "tcp-tunnel"],
+    async GET(req, ctx): Promise<Response | undefined> {
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_tunnel_session_invalid", "Mesh TCP tunnel headers are required.", 401);
+      }
+      try {
+        await meshTcpTunnelGateway.authorize(sessionId, sessionToken);
+        const upgraded = ctx.server?.upgrade(req, {
+          data: {
+            webappSocketHandler: "clanky",
+            meshTcpTunnelMode: true,
+            meshTcpTunnelSessionId: sessionId,
+            meshTcpTunnelSessionToken: sessionToken,
+          },
+        });
+        return upgraded ? undefined : errorResponse("mesh_tunnel_upgrade_failed", "Mesh TCP tunnel upgrade failed.", 400);
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

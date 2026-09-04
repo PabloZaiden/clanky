@@ -12,6 +12,7 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToWorkspace } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { EXECUTION_HOST_JOIN_COLUMNS } from "../execution-hosts";
 
 const log = createLogger("persistence:workspaces");
 
@@ -23,9 +24,13 @@ export async function listWorkspaces(): Promise<Workspace[]> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const stmt = db.prepare(`
-    SELECT * FROM workspaces
-    WHERE user_id = ?
-    ORDER BY name COLLATE NOCASE ASC
+    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+    FROM workspaces workspace
+    LEFT JOIN execution_hosts execution_host
+      ON execution_host.id = workspace.execution_host_id
+      AND execution_host.user_id = workspace.user_id
+    WHERE workspace.user_id = ?
+    ORDER BY workspace.name COLLATE NOCASE ASC
   `);
   const rows = stmt.all(userId) as Array<Record<string, unknown>>;
   const workspaces = rows.map(rowToWorkspace);

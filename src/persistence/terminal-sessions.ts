@@ -13,6 +13,11 @@ import { getDatabase } from "./database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "./errors";
+import {
+  EXECUTION_HOST_JOIN_COLUMNS,
+  executionHostBindingFromRow,
+  resolveExecutionHostBindingId,
+} from "./execution-hosts";
 
 const log = createLogger("persistence:terminal-sessions");
 
@@ -41,7 +46,17 @@ const ALLOWED_TERMINAL_SESSION_COLUMNS = new Set([
   "error_message",
   "runtime_connection_mode",
   "notice_message",
+  "execution_host_id",
+  "execution_host_revision",
 ]);
+
+const TERMINAL_SESSION_SELECT = `
+  SELECT terminal_session.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+  FROM terminal_sessions terminal_session
+  LEFT JOIN execution_hosts execution_host
+    ON execution_host.id = terminal_session.execution_host_id
+    AND execution_host.user_id = terminal_session.user_id
+`;
 
 function validateColumnNames(columns: string[]): void {
   for (const column of columns) {
@@ -89,11 +104,12 @@ function deserializeTargetBinding(row: Record<string, unknown>): TerminalTargetB
 }
 
 function terminalSessionToRow(session: WorkspaceTerminalSession): Record<string, unknown> {
+  const userId = requirePersistenceUserId();
   return {
     id: session.config.id,
-    user_id: requirePersistenceUserId(),
+    user_id: userId,
     name: session.config.name,
-    workspace_id: session.config.workspaceId,
+    workspace_id: session.config.workspaceId ?? null,
     task_id: session.config.taskId ?? null,
     directory: session.config.directory,
     connection_mode: session.config.connectionMode,
@@ -108,6 +124,10 @@ function terminalSessionToRow(session: WorkspaceTerminalSession): Record<string,
     error_message: session.state.error ?? null,
     runtime_connection_mode: session.state.runtimeConnectionMode ?? null,
     notice_message: session.state.notice ?? null,
+    execution_host_id: session.config.executionHostBinding
+      ? resolveExecutionHostBindingId(userId, session.config.executionHostBinding)
+      : null,
+    execution_host_revision: session.config.executionHostBinding?.revision ?? null,
   };
 }
 
@@ -116,7 +136,7 @@ function rowToTerminalSession(row: Record<string, unknown>): WorkspaceTerminalSe
     config: {
       id: row["id"] as string,
       name: row["name"] as string,
-      workspaceId: row["workspace_id"] as string,
+      workspaceId: (row["workspace_id"] as string | null) ?? undefined,
       taskId: (row["task_id"] as string | null) ?? undefined,
       directory: row["directory"] as string,
       connectionMode: normalizeTerminalConnectionMode(
@@ -125,6 +145,7 @@ function rowToTerminalSession(row: Record<string, unknown>): WorkspaceTerminalSe
       useTmux: normalizeTerminalUseTmux(row["use_tmux"]),
       remoteSessionName: row["remote_session_name"] as string,
       targetBinding: deserializeTargetBinding(row),
+      executionHostBinding: executionHostBindingFromRow(row),
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
       isPrivate: row["is_private"] === 1,
@@ -181,7 +202,8 @@ export async function saveTerminalSession(session: WorkspaceTerminalSession): Pr
 export async function getTerminalSession(id: string): Promise<WorkspaceTerminalSession | null> {
   const db = getDatabase();
   const row = db.query(
-    "SELECT * FROM terminal_sessions WHERE id = ? AND user_id = ?",
+    `${TERMINAL_SESSION_SELECT}
+     WHERE terminal_session.id = ? AND terminal_session.user_id = ?`,
   ).get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToTerminalSession(row) : null;
 }
@@ -189,7 +211,9 @@ export async function getTerminalSession(id: string): Promise<WorkspaceTerminalS
 export async function listTerminalSessions(): Promise<WorkspaceTerminalSession[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM terminal_sessions WHERE user_id = ? ORDER BY created_at DESC",
+    `${TERMINAL_SESSION_SELECT}
+     WHERE terminal_session.user_id = ?
+     ORDER BY terminal_session.created_at DESC`,
   ).all(requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToTerminalSession);
 }
@@ -197,7 +221,9 @@ export async function listTerminalSessions(): Promise<WorkspaceTerminalSession[]
 export async function listTerminalSessionsByWorkspace(workspaceId: string): Promise<WorkspaceTerminalSession[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM terminal_sessions WHERE workspace_id = ? AND user_id = ? ORDER BY created_at DESC",
+    `${TERMINAL_SESSION_SELECT}
+     WHERE terminal_session.workspace_id = ? AND terminal_session.user_id = ?
+     ORDER BY terminal_session.created_at DESC`,
   ).all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToTerminalSession);
 }
@@ -205,7 +231,9 @@ export async function listTerminalSessionsByWorkspace(workspaceId: string): Prom
 export async function getTerminalSessionByTaskId(taskId: string): Promise<WorkspaceTerminalSession | null> {
   const db = getDatabase();
   const row = db.query(
-    "SELECT * FROM terminal_sessions WHERE task_id = ? AND user_id = ? LIMIT 1",
+    `${TERMINAL_SESSION_SELECT}
+     WHERE terminal_session.task_id = ? AND terminal_session.user_id = ?
+     LIMIT 1`,
   ).get(taskId, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToTerminalSession(row) : null;
 }

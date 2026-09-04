@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { AGENT_PROVIDER_IDS } from "@/shared";
+import { ExecutionHostBindingSchema } from "./execution-host";
 
 /**
  * Agent provider options.
@@ -72,6 +73,7 @@ export const CreateWorkspaceRequestSchema = z.object({
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
   executionNodeId: z.string().trim().min(1).nullable().optional(),
+  executionHostBinding: ExecutionHostBindingSchema.nullable().optional(),
   allowClankyContext: z.boolean().optional(),
   workspaceType: WorkspaceTypeSchema.default("git"),
 });
@@ -86,6 +88,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
   executionNodeId: z.string().trim().min(1).nullable().optional(),
+  executionHostBinding: ExecutionHostBindingSchema.nullable().optional(),
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),

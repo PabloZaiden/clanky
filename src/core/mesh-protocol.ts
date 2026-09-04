@@ -19,7 +19,7 @@ type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 export function buildMeshPairingRequestSigningPayload(
   envelope: UnsignedPairingRequest,
 ): string {
-  return JSON.stringify([
+  const payload: unknown[] = [
     "clanky-mesh-pairing-request-v1",
     envelope.protocolVersion,
     envelope.requestId,
@@ -36,13 +36,17 @@ export function buildMeshPairingRequestSigningPayload(
     envelope.encryptionPublicKey ?? null,
     envelope.nonce,
     envelope.expiresAt,
-  ]);
+  ];
+  if (envelope.requestedExecution !== undefined) {
+    payload.push(envelope.requestedExecution);
+  }
+  return JSON.stringify(payload);
 }
 
 export function buildMeshPairingApprovalSigningPayload(
   envelope: UnsignedPairingApproval,
 ): string {
-  return JSON.stringify([
+  const payload: unknown[] = [
     "clanky-mesh-pairing-approval-v1",
     envelope.protocolVersion,
     envelope.requestId,
@@ -56,7 +60,11 @@ export function buildMeshPairingApprovalSigningPayload(
     envelope.fingerprint,
     envelope.encryptionPublicKey ?? null,
     envelope.members ?? [],
-  ]);
+  ];
+  if (envelope.approvedByExecution !== undefined) {
+    payload.push(envelope.approvedByExecution);
+  }
+  return JSON.stringify(payload);
 }
 
 export function buildMeshMembershipUpdateSigningPayload(

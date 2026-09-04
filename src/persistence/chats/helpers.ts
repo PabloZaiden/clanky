@@ -7,6 +7,10 @@ import type { PersistedMessage } from "@/shared/task";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
+import {
+  executionHostBindingFromRow,
+  resolveExecutionHostBindingId,
+} from "../execution-hosts";
 
 const log = createLogger("persistence:chats");
 
@@ -50,6 +54,8 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "interrupt_requested",
   "connection_status",
   "startup_stage",
+  "execution_host_id",
+  "execution_host_revision",
 ]);
 
 export function validateChatColumnNames(columns: string[]): void {
@@ -108,18 +114,30 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
       directory: requireChatString(row, "directory", rowId),
     };
   }
+  if (sourceKind === "execution_host") {
+    const executionHost = executionHostBindingFromRow(row);
+    if (!executionHost) {
+      throw new Error(`Invalid chat row ${String(rowId)}: execution host binding is required`);
+    }
+    return {
+      kind: "execution_host",
+      executionHost,
+      directory: requireChatString(row, "directory", rowId),
+    };
+  }
   throw new Error(`Invalid chat row ${String(rowId)}: unsupported source_kind "${sourceKind}"`);
 }
 
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
+  const userId = requirePersistenceUserId();
   const source = config.source ?? {
     kind: "workspace" as const,
     workspaceId: config.workspaceId,
   };
   return {
     id: config.id,
-    user_id: requirePersistenceUserId(),
+    user_id: userId,
     name: config.name,
     source_kind: source.kind,
     workspace_id: source.kind === "workspace" ? source.workspaceId : null,
@@ -157,6 +175,10 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     interrupt_requested: state.interruptRequested ? 1 : 0,
     connection_status: state.connectionStatus ?? "disconnected",
     startup_stage: state.startupStage ?? null,
+    execution_host_id: config.executionHostBinding
+      ? resolveExecutionHostBindingId(userId, config.executionHostBinding)
+      : null,
+    execution_host_revision: config.executionHostBinding?.revision ?? null,
   };
 }
 
@@ -164,12 +186,12 @@ export function rowToChat(row: Record<string, unknown>): Chat {
   const rowId = row["id"];
 
   const source = rowToChatSource(row, rowId);
-  const workspaceId = source.kind === "workspace" ? source.workspaceId : "";
   const config: ChatConfig = {
     id: requireChatString(row, "id", rowId),
     name: requireChatString(row, "name", rowId),
-    workspaceId,
+    ...(source.kind === "workspace" ? { workspaceId: source.workspaceId } : {}),
     source,
+    executionHostBinding: executionHostBindingFromRow(row),
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),
     taskId: (row["task_id"] as string | null) ?? undefined,
     directory: requireChatString(row, "directory", rowId),

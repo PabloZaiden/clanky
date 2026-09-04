@@ -735,6 +735,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS mesh_sync_checkpoints");
     db!.run("DROP TABLE IF EXISTS mesh_pairing_approvals");
     db!.run("DROP TABLE IF EXISTS mesh_pairing_requests");
+    db!.run("DROP TABLE IF EXISTS mesh_enrollment_tokens");
     db!.run("DROP TABLE IF EXISTS mesh_link_members");
     db!.run("DROP TABLE IF EXISTS mesh_links");
     db!.run("DROP TABLE IF EXISTS mesh_nodes");
@@ -758,6 +759,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS vnc_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
+    db!.run("DROP TABLE IF EXISTS execution_hosts");
     db!.run("DROP TABLE IF EXISTS sessions");
     db!.run("DROP TABLE IF EXISTS preferences");
     db!.run("DROP TABLE IF EXISTS webapp_refresh_sessions");

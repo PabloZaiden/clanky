@@ -79,7 +79,9 @@ export function useChatComposer({
     typeof window === "undefined" ? 0 : window.innerHeight,
   );
   const { models, modelsLoading } = useAvailableModels({
-    workspaceId: isEmbedded || chat.config.source?.kind === "ssh_server"
+    workspaceId: isEmbedded
+      || chat.config.source?.kind === "ssh_server"
+      || chat.config.source?.kind === "execution_host"
       ? undefined
       : chat.config.workspaceId,
   });

@@ -1,14 +1,12 @@
 /**
- * Workspace terminal session domain types.
+ * Execution-host terminal session domain types.
  *
- * Terminal sessions represent saved workspace terminal connections that work
- * across all workspace transports (local stdio, SSH, and Mesh). Sessions can
- * use a persistent dtach-backed shell or open a direct shell.
- *
- * Standalone SSH-server sessions remain SSH-specific and are not covered here.
+ * Sessions may belong to a workspace or directly to a canonical execution
+ * host. Both forms can use a persistent dtach-backed shell or a direct shell.
  */
 
 import type { AgentTransport } from "./settings";
+import type { ExecutionHostBinding } from "./execution-host";
 
 /**
  * Terminal connection mode — how the terminal shell is managed.
@@ -73,8 +71,8 @@ export interface TerminalSessionConfig {
   id: string;
   /** Human-readable display name */
   name: string;
-  /** Workspace that owns this session */
-  workspaceId: string;
+  /** Workspace that owns this session, absent for direct host sessions */
+  workspaceId?: string;
   /** Optional task associated with this session */
   taskId?: string;
   /** Working directory for the terminal shell */
@@ -87,6 +85,8 @@ export interface TerminalSessionConfig {
   remoteSessionName: string;
   /** Snapshot of the workspace execution target at session creation */
   targetBinding: TerminalTargetBinding;
+  /** Canonical execution host snapshot retained alongside legacy target fields. */
+  executionHostBinding?: ExecutionHostBinding | null;
   /** ISO 8601 timestamp of when the session was created */
   createdAt: string;
   /** ISO 8601 timestamp of the last configuration update */

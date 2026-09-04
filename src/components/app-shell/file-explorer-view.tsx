@@ -26,6 +26,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import {
   getFileExplorerDownloadUrl,
 } from "../../hooks/workspaceFileActions";
+import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 
 function TerminalIcon() {
   return (
@@ -91,7 +92,7 @@ interface FileExplorerViewProps {
   defaultRootDirectory: string;
   backRoute: WebAppRoute;
   onNavigate: (route: WebAppRoute) => void;
-  target: { type: "workspace" | "server"; id: string; startDirectory?: string };
+  target: FileExplorerTarget;
   sessions: ExplorerSession[];
   hasTerminal: boolean;
   emptyTerminalMessage: string;

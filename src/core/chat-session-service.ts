@@ -17,6 +17,8 @@ import type {
 import type { Chat } from "@/shared";
 import {
   SshCredentialsRequiredError,
+  getChatWorkspaceId,
+  isExecutionHostChat,
   isSshServerChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
@@ -46,7 +48,7 @@ export interface ChatSessionServiceDependencies {
   worktree: ChatWorktreePort;
   backendManager?: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat"
+    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost"
   >;
   sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   sshServerManager?: Pick<typeof sshServerManager, "getCommandExecutor">;
@@ -58,7 +60,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly worktree: ChatWorktreePort;
   private readonly backendManager: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat"
+    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost"
   >;
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly sshServerManager: Pick<typeof sshServerManager, "getCommandExecutor">;
@@ -74,7 +76,14 @@ export class ChatSessionService implements ChatSessionPort {
     this.hasActiveStream = dependencies.hasActiveStream ?? (() => false);
   }
 
-  getChatBackend(chatId: string, workspaceId: string): Backend {
+  getChatBackend(chatId: string, workspaceId?: string): Backend {
+    const directBackend = this.sshChatBackends.get(chatId);
+    if (directBackend) {
+      return directBackend;
+    }
+    if (!workspaceId) {
+      throw new Error(`Workspace-backed chat is missing workspaceId: ${chatId}`);
+    }
     return this.backendManager.getChatBackend(chatId, workspaceId);
   }
 
@@ -108,12 +117,17 @@ export class ChatSessionService implements ChatSessionPort {
     options: ReconnectChatOptions = {},
     workingDirectory?: ChatDirectoryResolution,
   ): Promise<Backend> {
+    if (isExecutionHostChat(chat)) {
+      await this.state.updateStartupStage(chat, "connecting_provider");
+      return await this.ensureExecutionHostBackendConnected(chat, options);
+    }
     if (isSshServerChat(chat)) {
       await this.state.updateStartupStage(chat, "connecting_provider");
       return this.ensureSshServerBackendConnected(chat, options);
     }
 
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspace = await this.state.getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
@@ -127,15 +141,15 @@ export class ChatSessionService implements ChatSessionPort {
           ...working,
           chat: await this.state.updateStartupStage(working.chat, "connecting_provider"),
         };
-    await this.backendManager.getBackendAsync(chat.config.workspaceId);
-    const backend = this.getChatBackend(stagedWorking.chat.config.id, stagedWorking.chat.config.workspaceId);
+    await this.backendManager.getBackendAsync(workspaceId);
+    const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
     if (!backend.isConnected() || backend.getDirectory() !== stagedWorking.directory) {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
       const identity = await managedContextIdentityResolver.forChat(
         stagedWorking.chat.config.id,
-        stagedWorking.chat.config.workspaceId,
+        workspaceId,
       );
       const credential = await managedCredentialService.ensureCredentialForRuntime(
         identity,
@@ -345,6 +359,54 @@ export class ChatSessionService implements ChatSessionPort {
     return backend;
   }
 
+  private async ensureExecutionHostBackendConnected(
+    chat: Chat,
+    options: ReconnectChatOptions,
+  ): Promise<Backend> {
+    const source = chat.config.source;
+    if (source?.kind !== "execution_host") {
+      throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
+    }
+    const directory = source.directory || chat.config.directory;
+    const existing = this.sshChatBackends.get(chat.config.id);
+    if (existing?.isConnected() && existing.getDirectory() === directory) {
+      return existing;
+    }
+    if (existing?.isConnected()) {
+      await existing.disconnect();
+    }
+
+    let password: string | undefined;
+    if (source.executionHost.host.kind === "ssh") {
+      const credentialToken = options.credentialToken?.trim();
+      if (!credentialToken) {
+        await this.markSshCredentialsRequired(chat);
+        throw new SshCredentialsRequiredError();
+      }
+      password = this.sshCredentialManager.getPasswordForToken(
+        source.executionHost.host.serverId,
+        credentialToken,
+      );
+    }
+
+    try {
+      const { backend, settings } = await this.backendManager.createBackendForExecutionHost(
+        chat.config.id,
+        source.executionHost,
+        chat.config.model.providerID as AgentProvider,
+        password,
+      );
+      this.sshChatBackends.set(chat.config.id, backend);
+      await backend.connect(buildConnectionConfig(settings, directory));
+      return backend;
+    } catch (error) {
+      if (source.executionHost.host.kind === "ssh") {
+        await this.markSshConnectionFailed(chat, error);
+      }
+      throw error;
+    }
+  }
+
   private async ensureSshServerBackendConnected(chat: Chat, options: ReconnectChatOptions): Promise<Backend> {
     const source = chat.config.source;
     if (source?.kind !== "ssh_server") {
@@ -502,7 +564,9 @@ export class ChatSessionService implements ChatSessionPort {
       ...chat.state,
       status,
       error: undefined,
-      connectionStatus: isSshServerChat(chat) ? "connected" : chat.state.connectionStatus,
+      connectionStatus: isSshServerChat(chat) || isExecutionHostChat(chat)
+        ? "connected"
+        : chat.state.connectionStatus,
       startupStage: undefined,
       lastActivityAt: createTimestamp(),
     };

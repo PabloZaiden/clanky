@@ -2,6 +2,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { InteractiveTerminalConnection } from "../../core/terminal";
 import type { WorkspaceTerminalTransport } from "../../core/workspace-terminal-connection";
 import type { WorkspaceTerminalAttachmentHandle } from "../../core/workspace-terminal-attachment-registry";
+import type { TcpTunnel } from "../../core/tcp-tunnel";
 
 /**
  * WebSocket client data attached to each connection.
@@ -29,7 +30,7 @@ export interface WebSocketData {
   /** Authenticated framework user for websocket operations that need persistence ownership */
   user?: CurrentUser;
   /** Active TCP socket for VNC bridge traffic */
-  vncSocket?: import("node:net").Socket;
+  vncSocket?: TcpTunnel;
   /** RFB payloads received before the VNC TCP socket is ready */
   pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
@@ -48,4 +49,9 @@ export interface WebSocketData {
   meshTerminalSessionId?: string;
   /** Mesh terminal session bearer token */
   meshTerminalSessionToken?: string;
+  /** Whether this socket relays a Mesh TCP tunnel on the execution peer */
+  meshTcpTunnelMode?: boolean;
+  meshTcpTunnelSessionId?: string;
+  meshTcpTunnelSessionToken?: string;
+  meshTcpTunnelMessageQueue?: Promise<void>;
 }

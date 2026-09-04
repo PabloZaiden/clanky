@@ -4,6 +4,7 @@
 
 import { DomainError } from "../core/domain-error";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
+import { executionHostService } from "../core/execution-host-service";
 import {
   resolveFileExplorerRootDirectory,
   type FileExplorerTarget,
@@ -40,9 +41,17 @@ async function resolveSshServerFileTarget(
   }
 
   const password = sshCredentialManager.getPasswordForToken(server.config.id, credentialToken);
-  const connection = await sshServerManager.getCommandExecutor(server.config.id, password);
+  const executor = await executionHostService.getCommandExecutorForRef(
+    { kind: "ssh", serverId: server.config.id },
+    {
+      operationId: `file-explorer:${server.config.id}`,
+      directory: server.config.repositoriesBasePath?.trim() || "/",
+      provider: "copilot",
+      sshPassword: password,
+    },
+  );
   const rootDirectory = await resolveFileExplorerRootDirectory(
-    connection.executor,
+    executor,
     server.config.repositoriesBasePath?.trim() || "/",
     startDirectory,
   );
@@ -51,7 +60,7 @@ async function resolveSshServerFileTarget(
     id: server.config.id,
     rootDirectory,
     pathScopeLabel: "active server explorer root",
-    executor: connection.executor,
+    executor,
   };
 }
 

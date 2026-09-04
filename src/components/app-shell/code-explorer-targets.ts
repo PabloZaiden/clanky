@@ -1,4 +1,10 @@
-import type { Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type {
+  Chat,
+  ExecutionHostDescriptor,
+  Task,
+  Workspace,
+  WorkspaceTerminalSession,
+} from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
@@ -6,6 +12,10 @@ import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/term
 import type { CodeExplorerTarget } from "./shell-types";
 
 type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
+type CodeExplorerOptionKind = "workspace" | "task" | "server" | "chat";
+type DirectExecutionHostDescriptor = ExecutionHostDescriptor & {
+  ref: Extract<ExecutionHostDescriptor["ref"], { kind: "local" | "mesh" }>;
+};
 
 export interface CodeExplorerTerminalOptions {
   useTmux?: boolean;
@@ -13,29 +23,29 @@ export interface CodeExplorerTerminalOptions {
 
 export interface CodeExplorerOption {
   id: string;
-  kind: CodeExplorerTarget["contentType"];
+  kind: CodeExplorerOptionKind;
   label: string;
   description: string;
   target: CodeExplorerTarget;
 }
 
 export interface CodeExplorerOptionGroup {
-  kind: CodeExplorerTarget["contentType"];
+  kind: CodeExplorerOptionKind;
   label: string;
   options: CodeExplorerOption[];
 }
 
-const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerTarget["contentType"][] = [
+const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerOptionKind[] = [
   "workspace",
   "task",
   "server",
   "chat",
 ];
 
-const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerTarget["contentType"], string> = {
+const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerOptionKind, string> = {
   workspace: "Workspaces",
   task: "Tasks",
-  server: "SSH servers",
+  server: "Servers",
   chat: "Chats",
 };
 
@@ -46,7 +56,9 @@ export interface ResolvedCodeExplorerTarget {
   defaultRootDirectory: string;
   backLabel: string;
   backRoute: WebAppRoute;
-  target: { type: "workspace" | "server"; id: string; startDirectory?: string };
+  target:
+    | { type: "workspace" | "server"; id: string; startDirectory?: string }
+    | { type: "executionHost"; kind: "local" | "mesh"; id: string; startDirectory?: string };
   buildRoute: (startDirectory?: string) => WebAppRoute;
   sessions: ExplorerSession[];
   hasTerminal: boolean;
@@ -64,6 +76,7 @@ interface ResolveCodeExplorerTargetArgs {
   workspaces: Workspace[];
   tasks: Task[];
   chats: Chat[];
+  executionHosts: ExecutionHostDescriptor[];
   servers: SshServer[];
   terminalSessions: WorkspaceTerminalSession[];
   sessionsByServerId: Record<string, SshServerSession[]>;
@@ -74,8 +87,12 @@ interface ResolveCodeExplorerTargetArgs {
   ) => Promise<SshServerSession>;
 }
 
-function trimDirectory(directory: string | undefined): string {
+function trimDirectory(directory: string | null | undefined): string {
   return directory?.trim() || "/";
+}
+
+function isDirectExecutionHost(host: ExecutionHostDescriptor): host is DirectExecutionHostDescriptor {
+  return host.ref.kind === "local" || host.ref.kind === "mesh";
 }
 
 export function getTaskCodeExplorerRootDirectory(task: Task): string {
@@ -94,6 +111,8 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
       return target.taskId;
     case "server":
       return target.serverId;
+    case "execution-host":
+      return `${target.hostKind}:${target.hostId}`;
     case "chat":
       return target.chatId;
   }
@@ -111,8 +130,12 @@ export function getCodeExplorerOptions({
   workspaces,
   tasks,
   chats,
+  executionHosts,
   servers,
-}: Pick<ResolveCodeExplorerTargetArgs, "workspaces" | "tasks" | "chats" | "servers">): CodeExplorerOption[] {
+}: Pick<
+  ResolveCodeExplorerTargetArgs,
+  "workspaces" | "tasks" | "chats" | "executionHosts" | "servers"
+>): CodeExplorerOption[] {
   return [
     ...workspaces.map((workspace) => ({
       id: `workspace:${workspace.id}`,
@@ -135,6 +158,19 @@ export function getCodeExplorerOptions({
       description: trimDirectory(server.config.repositoriesBasePath ?? undefined),
       target: { contentType: "server" as const, serverId: server.config.id },
     })),
+    ...executionHosts
+      .filter(isDirectExecutionHost)
+      .map((host) => ({
+        id: `execution-host:${host.ref.kind}:${host.ref.nodeId}`,
+        kind: "server" as const,
+        label: host.name,
+        description: host.repositoriesBasePath?.trim() || host.endpoint || "/",
+        target: {
+          contentType: "execution-host" as const,
+          hostKind: host.ref.kind,
+          hostId: host.ref.nodeId,
+        },
+      })),
     ...chats.map((chat) => ({
       id: `chat:${chat.config.id}`,
       kind: "chat" as const,
@@ -158,6 +194,7 @@ export function resolveCodeExplorerTarget({
   workspaces,
   tasks,
   chats,
+  executionHosts,
   servers,
   terminalSessions,
   sessionsByServerId,
@@ -294,6 +331,66 @@ export function resolveCodeExplorerTarget({
         canChooseTerminalTmux: true,
         testIdPrefix: "server",
         credentialPromptName: server.config.name,
+        initialFilePath: target.filePath,
+      };
+    }
+    case "execution-host": {
+      const host = executionHosts.find((candidate) => (
+        candidate.ref.kind !== "ssh"
+        && candidate.ref.kind === target.hostKind
+        && candidate.ref.nodeId === target.hostId
+      )) as DirectExecutionHostDescriptor | undefined;
+      if (!host) {
+        return null;
+      }
+
+      const defaultRootDirectory = trimDirectory(host.repositoriesBasePath);
+      const hostTerminals = terminalSessions.filter((terminal) => {
+        const ref = terminal.config.executionHostBinding?.host;
+        return ref?.kind === target.hostKind
+          && ref.nodeId === target.hostId;
+      });
+      const hasTerminal = host.capabilities.interactiveTerminal !== undefined;
+
+      return {
+        routeTarget: target,
+        title: `${host.name} code explorer`,
+        description: defaultRootDirectory,
+        defaultRootDirectory,
+        backLabel: "Back to server",
+        backRoute: {
+          view: "execution-host",
+          hostKind: target.hostKind,
+          hostId: target.hostId,
+        },
+        target: {
+          type: "executionHost",
+          kind: target.hostKind,
+          id: target.hostId,
+          startDirectory: target.startDirectory,
+        },
+        buildRoute: (startDirectory?: string) => ({
+          view: "code-explorer",
+          contentType: "execution-host",
+          hostKind: target.hostKind,
+          hostId: target.hostId,
+          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
+            ? startDirectory.trim()
+            : undefined,
+        }),
+        sessions: hostTerminals,
+        hasTerminal,
+        emptyTerminalMessage: "Create a terminal on this server to open it beside the files.",
+        terminalSelectLabel: "Server terminal",
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
+          executionHost: host.ref,
+          name: `${host.name} terminal`,
+          directory: target.startDirectory ?? defaultRootDirectory,
+          connectionMode: "direct",
+          useTmux: options?.useTmux,
+        }),
+        canChooseTerminalTmux: true,
+        testIdPrefix: "server",
         initialFilePath: target.filePath,
       };
     }

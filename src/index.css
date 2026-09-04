@@ -124,11 +124,11 @@
   cursor: default;
 }
 
-.clanky-active-work-sidebar-item-type {
+.clanky-sidebar-item-type {
   text-align: right;
 }
 
-.wapp-sidebar-item-subtitle-above-title > span:first-child > .clanky-active-work-sidebar-item-type {
+.wapp-sidebar-item-subtitle-above-title > span:first-child > .clanky-sidebar-item-type {
   grid-column: 1 / -1;
   grid-row: 3;
   margin-top: 0;

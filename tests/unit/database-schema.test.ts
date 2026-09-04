@@ -111,10 +111,28 @@ describe("database schema", () => {
       expect(columnNames("tasks")).toContain("issue_number");
       expect(tableNames()).toContain("clanky_context_api_keys");
       expect(tableNames()).toContain("terminal_sessions");
+      expect(tableNames()).toContain("execution_hosts");
       const terminalCols = (getDatabase().query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
       expect(terminalCols).toContain("target_transport");
       expect(terminalCols).toContain("target_key");
       expect(terminalCols).toContain("target_revision");
+      expect(terminalCols).toContain("execution_host_id");
+      for (const tableName of [
+        "workspaces",
+        "chats",
+        "provisioning_jobs",
+        "vnc_sessions",
+      ]) {
+        const columns = (
+          getDatabase().query(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>
+        ).map((row) => row.name);
+        expect(columns).toContain("execution_host_id");
+        expect(columns).toContain("execution_host_revision");
+      }
+      const sshServerColumns = (
+        getDatabase().query("PRAGMA table_info(ssh_servers)").all() as Array<{ name: string }>
+      ).map((row) => row.name);
+      expect(sshServerColumns).toContain("port");
       expect(tableNames()).not.toContain("ssh_sessions");
 
       const users = getDatabase()

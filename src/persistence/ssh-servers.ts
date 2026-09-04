@@ -18,6 +18,12 @@ import {
   loadSshServerKeyPair,
 } from "./ssh-server-keys";
 import { requirePersistenceUserId } from "./ownership";
+import {
+  ensureExecutionHost,
+  getExecutionHostByRef,
+  revokeExecutionHost,
+} from "./execution-hosts";
+import { buildSshTargetKey } from "./workspace-target-key";
 
 const log = createLogger("persistence:ssh-servers");
 
@@ -26,6 +32,7 @@ const ALLOWED_SSH_SERVER_COLUMNS = new Set([
   "user_id",
   "name",
   "address",
+  "port",
   "username",
   "repositories_base_path",
   "created_at",
@@ -65,6 +72,7 @@ function sshServerConfigToRow(config: SshServerConfig): Record<string, unknown> 
     user_id: requirePersistenceUserId(),
     name: config.name,
     address: config.address,
+    port: config.port ?? 22,
     username: config.username,
     repositories_base_path: config.repositoriesBasePath ?? null,
     created_at: config.createdAt,
@@ -78,6 +86,7 @@ function rowToSshServerConfig(row: Record<string, unknown>): SshServerConfig {
     id: row["id"] as string,
     name: row["name"] as string,
     address: row["address"] as string,
+    port: typeof row["port"] === "number" ? row["port"] : 22,
     username: row["username"] as string,
     repositoriesBasePath: (row["repositories_base_path"] as string | null) ?? null,
     createdAt: row["created_at"] as string,
@@ -175,6 +184,12 @@ function persistSshServerConfig(config: SshServerConfig): void {
 export async function saveSshServerConfig(config: SshServerConfig): Promise<void> {
   await ensureSshServerKeyPair(config.id);
   persistSshServerConfig(config);
+  const userId = requirePersistenceUserId();
+  ensureExecutionHost(
+    userId,
+    { kind: "ssh", serverId: config.id },
+    buildSshTargetKey(config.address, config.port ?? 22, config.username),
+  );
 }
 
 export async function getSshServerConfig(id: string): Promise<SshServerConfig | null> {
@@ -210,6 +225,10 @@ export async function deleteSshServer(id: string): Promise<boolean> {
   const result = db.run("DELETE FROM ssh_servers WHERE id = ? AND user_id = ?", [id, userId]);
   const deleted = result.changes > 0;
   if (deleted) {
+    const host = getExecutionHostByRef(userId, { kind: "ssh", serverId: id });
+    if (host) {
+      revokeExecutionHost(userId, host.id);
+    }
     await deleteSshServerKeyPair(id);
     log.debug("Deleted SSH server", { id });
   }

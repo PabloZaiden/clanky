@@ -178,8 +178,25 @@ export async function checkSshServerPrerequisites(
   server: SshServerConfig,
   executor: CommandExecutor,
 ): Promise<SshServerPrerequisiteReport> {
+  return await checkExecutionHostPrerequisites({
+    targetId: server.id,
+    connectionLabel: "SSH",
+    repositoriesBasePath: server.repositoriesBasePath,
+  }, executor);
+}
+
+export interface ExecutionHostPrerequisiteTarget {
+  targetId: string;
+  connectionLabel: string;
+  repositoriesBasePath: string | null;
+}
+
+export async function checkExecutionHostPrerequisites(
+  target: ExecutionHostPrerequisiteTarget,
+  executor: CommandExecutor,
+): Promise<SshServerPrerequisiteReport> {
   const checkedAt = new Date().toISOString();
-  const connectionUses = ["Connecting to this SSH server"];
+  const connectionUses = [`Connecting to this ${target.connectionLabel} host`];
   const connectionProbe = await executor.exec("true", [], { cwd: "/" });
 
   if (!connectionProbe.success) {
@@ -189,9 +206,9 @@ export async function checkSshServerPrerequisites(
     const checks: SshServerPrerequisiteCheck[] = [
       createCheck(
         "ssh_connection",
-        "SSH connectivity",
+        `${target.connectionLabel} connectivity`,
         "missing",
-        `Failed to connect to the remote host: ${detail}`,
+        `Failed to connect to the execution host: ${detail}`,
         connectionUses,
       ),
       createCheck(
@@ -209,7 +226,7 @@ export async function checkSshServerPrerequisites(
         ["Persistent SSH sessions"],
       ),
     ];
-    const provisioningChecks = server.repositoriesBasePath?.trim()
+    const provisioningChecks = target.repositoriesBasePath?.trim()
       ? createAutomaticProvisioningUnknownChecks()
       : createAutomaticProvisioningNotApplicableChecks();
     const checksWithProvisioning: SshServerPrerequisiteCheck[] = [
@@ -218,7 +235,7 @@ export async function checkSshServerPrerequisites(
     ];
 
     return {
-      serverId: server.id,
+      serverId: target.targetId,
       checkedAt,
       summary: buildSummary(checksWithProvisioning),
       checks: checksWithProvisioning,
@@ -248,14 +265,17 @@ export async function checkSshServerPrerequisites(
     ["Persistent SSH sessions"],
     dtachResult.success ? undefined : buildPersistentSessionBackendInstallHint(),
   );
-  const provisioningChecks = await runAutomaticProvisioningChecks(executor, server.repositoriesBasePath ?? undefined);
+  const provisioningChecks = await runAutomaticProvisioningChecks(
+    executor,
+    target.repositoriesBasePath ?? undefined,
+  );
 
   const checks: SshServerPrerequisiteCheck[] = [
     createCheck(
       "ssh_connection",
-      "SSH connectivity",
+      `${target.connectionLabel} connectivity`,
       "available",
-      "Clanky can connect to this host and execute remote commands.",
+      "Clanky can connect to this host and execute commands.",
       connectionUses,
     ),
     bashCheck,
@@ -264,7 +284,7 @@ export async function checkSshServerPrerequisites(
   ];
 
   return {
-    serverId: server.id,
+    serverId: target.targetId,
     checkedAt,
     summary: buildSummary(checks),
     checks,

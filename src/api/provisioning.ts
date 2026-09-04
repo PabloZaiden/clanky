@@ -70,10 +70,13 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const server = validation.data.sshServerId
-          ? await sshServerManager.getServer(validation.data.sshServerId)
+        const sshServerId = validation.data.executionHost?.kind === "ssh"
+          ? validation.data.executionHost.serverId
+          : validation.data.sshServerId;
+        const server = sshServerId
+          ? await sshServerManager.getServer(sshServerId)
           : null;
-        if (validation.data.sshServerId && !server) {
+        if (sshServerId && !server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
 
@@ -86,6 +89,7 @@ export const provisioningRoutes = defineRoutes({
           name: validation.data.name,
           sshServerId: validation.data.sshServerId ?? undefined,
           executionNodeId: validation.data.executionNodeId ?? undefined,
+          executionHost: validation.data.executionHost ?? undefined,
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,

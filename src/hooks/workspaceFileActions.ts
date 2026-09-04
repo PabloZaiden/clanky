@@ -59,7 +59,13 @@ export interface UploadFileExplorerFileOptions extends WorkspaceFileRequestOptio
 
 export type FileExplorerTarget =
   | { type: "workspace"; id: string; startDirectory?: string }
-  | { type: "server"; id: string; startDirectory?: string };
+  | { type: "server"; id: string; startDirectory?: string }
+  | {
+      type: "executionHost";
+      id: string;
+      kind: "local" | "mesh" | "ssh";
+      startDirectory?: string;
+    };
 
 export class WorkspaceFileConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
@@ -193,9 +199,13 @@ async function buildFileExplorerRequestInit(
 }
 
 function getFileExplorerBasePath(target: FileExplorerTarget): string {
-  return target.type === "workspace"
-    ? `/api/workspaces/${target.id}/files`
-    : `/api/ssh-servers/${target.id}/files`;
+  if (target.type === "workspace") {
+    return `/api/workspaces/${target.id}/files`;
+  }
+  if (target.type === "server") {
+    return `/api/ssh-servers/${target.id}/files`;
+  }
+  return `/api/execution-hosts/${target.kind}/${encodeURIComponent(target.id)}/files`;
 }
 
 function createAbortError(signal: AbortSignal): unknown {

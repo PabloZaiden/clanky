@@ -3,7 +3,7 @@ import {
   getTaskStatusPill,
   isFinalState,
 } from "../../utils";
-import { isStandaloneChat } from "@/shared/chat";
+import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import type { Agent, Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import {
@@ -158,6 +158,13 @@ export type CodeExplorerTarget =
       filePath?: string;
     }
   | {
+      contentType: "execution-host";
+      hostKind: "local" | "mesh";
+      hostId: string;
+      startDirectory?: string;
+      filePath?: string;
+    }
+  | {
       contentType: "chat";
       chatId: string;
       startDirectory?: string;
@@ -235,15 +242,19 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const chat of chats) {
-    if (!isStandaloneChat(chat)) {
+    if (!isStandaloneChat(chat) || !isWorkspaceChat(chat)) {
       continue;
     }
-    const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspaceChats = chatsByWorkspaceId.get(workspaceId) ?? [];
     workspaceChats.push(chat);
-    chatsByWorkspaceId.set(chat.config.workspaceId, workspaceChats);
+    chatsByWorkspaceId.set(workspaceId, workspaceChats);
   }
 
   for (const terminal of terminalSessions) {
+    if (!terminal.config.workspaceId) {
+      continue;
+    }
     const workspaceTerminals = terminalsByWorkspaceId.get(terminal.config.workspaceId) ?? [];
     workspaceTerminals.push(terminal);
     terminalsByWorkspaceId.set(terminal.config.workspaceId, workspaceTerminals);

@@ -25,12 +25,25 @@ const PUBLIC_ROUTE_ALLOWLIST = [
   "/api/mesh/internal/membership",
   "/api/mesh/internal/pairing-approvals",
   "/api/mesh/internal/pairing-requests",
+  "/api/mesh/internal/tcp-tunnel",
+  "/api/mesh/internal/tcp-tunnel/session",
   "/api/mesh/internal/terminal",
   "/api/mesh/internal/terminal/session",
 ] as const;
 
 /** Owner-only routes are destructive; downgrading one to `user` must fail the build. */
 const OWNER_ROUTE_ALLOWLIST = [
+  "/api/mesh/enrollment-tokens",
+  "/api/mesh/endpoint",
+  "/api/mesh/execution",
+  "/api/mesh/instance-name",
+  "/api/mesh/members/:nodeId",
+  "/api/mesh/members/revoke",
+  "/api/mesh/pairing-requests",
+  "/api/mesh/pairing-requests/:requestId/approve",
+  "/api/mesh/pairing-requests/:requestId/complete",
+  "/api/mesh/pairing-requests/:requestId/reject",
+  "/api/mesh/rejoin",
   "/api/settings/purge-terminal-tasks",
   "/api/settings/reset-all",
 ] as const;

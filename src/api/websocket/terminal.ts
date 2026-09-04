@@ -4,7 +4,10 @@ import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
-import { createWorkspaceTerminalConnection } from "../../core/workspace-terminal-connection";
+import {
+  createWorkspaceTerminalConnection,
+  resolveWorkspaceTerminal,
+} from "../../core/workspace-terminal-connection";
 
 const log = createLogger("api:websocket");
 const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
@@ -71,6 +74,7 @@ export interface TerminalErrorPayload {
 
 export async function startWorkspaceTerminalBridge(
   ws: ServerWebSocket<WebSocketData>,
+  credentialToken?: string,
 ): Promise<void> {
   const terminalSessionId = ws.data.workspaceTerminalSessionId;
   if (!terminalSessionId || ws.data.terminalBridge) {
@@ -79,6 +83,16 @@ export async function startWorkspaceTerminalBridge(
   if (!ws.data.user) {
     sendTerminalAuthError(ws, "Authenticated user context is required for terminal connections");
     return;
+  }
+
+  if (!credentialToken) {
+    const resolved = await runWithCurrentUser(
+      ws.data.user,
+      async () => await resolveWorkspaceTerminal(terminalSessionId),
+    );
+    if (resolved.transport === "ssh" && !resolved.workspace) {
+      return;
+    }
   }
 
   claimWorkspaceTerminalSocket(terminalSessionId, ws);
@@ -127,7 +141,7 @@ export async function startWorkspaceTerminalBridge(
             });
           }
         },
-      }),
+      }, credentialToken),
     );
     if (!isWorkspaceTerminalSocketActive(terminalSessionId, ws)) {
       await connection.dispose();

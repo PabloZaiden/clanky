@@ -5,6 +5,8 @@
  * types intentionally contain no private keys or browser authentication data.
  */
 
+import type { ExecutionNodeConfiguration } from "./execution-host";
+
 export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = typeof MESH_TRANSPORTS[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
@@ -43,6 +45,7 @@ export interface MeshNodeIdentity {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
+  execution?: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +87,7 @@ export interface MeshPairingRequestRecord {
   targetEndpoint: string | null;
   requestedNodeId: string;
   requestedInstanceName?: string | null;
+  requestedExecution?: ExecutionNodeConfiguration;
   requestedLocalUserId: string;
   requestedUsername: string | null;
   endpoint: string;
@@ -108,6 +112,7 @@ export interface MeshPairingApprovalRecord {
   linkId: string;
   approvedByNodeId: string;
   approvedByInstanceName?: string | null;
+  approvedByExecution?: ExecutionNodeConfiguration;
   approvedByLocalUserId: string;
   endpoint: string;
   transport: MeshTransport;
@@ -132,6 +137,7 @@ export interface MeshPairingMemberRecord {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
+  execution?: ExecutionNodeConfiguration;
 }
 
 export interface MeshLinkStatusRecord extends MeshLinkRecord {

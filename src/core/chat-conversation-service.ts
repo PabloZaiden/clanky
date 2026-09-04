@@ -31,9 +31,12 @@ import type {
 import { createTranscriptChangeSet } from "@/shared";
 import {
   ChatBusyError,
+  getChatWorkspaceId,
   isChatBusyStatus,
+  isExecutionHostChat,
   isSshServerChat,
   isStandaloneChat,
+  isWorkspaceChat,
 } from "@/shared/chat";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
@@ -162,6 +165,7 @@ export class ChatConversationService implements ChatConversationPort {
 
     try {
       const startupStage = isSshServerChat(chat)
+        || isExecutionHostChat(chat)
         || this.worktree.hasEstablishedWorkspaceContext(chat)
         ? "connecting_provider" as const
         : "preparing_workspace" as const;
@@ -1483,7 +1487,7 @@ export class ChatConversationService implements ChatConversationPort {
 
   private scheduleToolImagePreview(chat: Chat, tool: PersistedToolCall): void {
     const path = getImageViewToolPath(tool.name, tool.input);
-    if (!path) {
+    if (!path || !isWorkspaceChat(chat)) {
       return;
     }
 
@@ -1492,7 +1496,7 @@ export class ChatConversationService implements ChatConversationPort {
       try {
         const directory = chat.state.worktree?.worktreePath ?? chat.config.directory;
         const extra = await resolveToolCallImagePreview({
-          workspaceId: chat.config.workspaceId,
+          workspaceId: getChatWorkspaceId(chat),
           directory,
           path,
           toolCallId: tool.id,
@@ -1690,7 +1694,7 @@ export class ChatConversationService implements ChatConversationPort {
       return;
     }
 
-    if (!isStandaloneChat(chat) || isSshServerChat(chat)) {
+    if (!isStandaloneChat(chat) || !isWorkspaceChat(chat)) {
       return;
     }
 
@@ -1711,7 +1715,8 @@ export class ChatConversationService implements ChatConversationPort {
       ?? chat.config.directory;
 
     try {
-      const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+      const workspaceId = getChatWorkspaceId(chat);
+      const workspace = await this.state.getWorkspace(workspaceId);
       if (!workspace) {
         throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
       }
@@ -1727,7 +1732,7 @@ export class ChatConversationService implements ChatConversationPort {
       });
       const nameSession = tempSession;
       const helperModel = await resolveEffectiveCheapModel({
-        workspaceId: chat.config.workspaceId,
+        workspaceId,
         directory,
         model: chat.config.model,
         operation: "chat_name_generation",
@@ -1744,7 +1749,9 @@ export class ChatConversationService implements ChatConversationPort {
         return;
       }
       const latestUserMessages = latest.state.messages.filter((existingMessage) => existingMessage.role === "user");
-      const latestWorkspace = await this.state.getWorkspace(latest.config.workspaceId);
+      const latestWorkspace = isWorkspaceChat(latest)
+        ? await this.state.getWorkspace(getChatWorkspaceId(latest))
+        : null;
       if (
         !latestWorkspace
         || latestUserMessages.length !== 1

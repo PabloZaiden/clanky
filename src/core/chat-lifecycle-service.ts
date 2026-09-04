@@ -12,6 +12,8 @@ import {
   isChatBusyStatus,
   isStandaloneChat,
   isTaskChat,
+  getChatWorkspaceId,
+  isWorkspaceChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { getTaskWorkingDirectory } from "./task/task-types";
@@ -35,10 +37,16 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateSshServerChatOptions,
+  CreateExecutionHostChatOptions,
   ImportExistingSessionOptions,
 } from "./chat-service-contracts";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
+import {
+  getExecutionHostByRef,
+  toExecutionHostBinding,
+} from "../persistence/execution-hosts";
+import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -127,6 +135,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           kind: "workspace",
           workspaceId: options.workspaceId,
         },
+        executionHostBinding: workspace.executionHostBinding ?? null,
         scope,
         taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
@@ -214,17 +223,23 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       credentialToken: null,
       connectionMode: "dtach",
     });
+    const executionHost = getExecutionHostByRef(
+      requireCurrentUser().id,
+      { kind: "ssh", serverId: options.sshServerId },
+    );
     const chat: Chat = {
       config: {
         id,
         name,
-        workspaceId: "",
         source: {
           kind: "ssh_server",
           sshServerId: options.sshServerId,
           sshServerSessionId: session.config.id,
           directory: options.directory,
         },
+        executionHostBinding: executionHost
+          ? toExecutionHostBinding(executionHost)
+          : null,
         scope: "workspace",
         directory: options.directory,
         model: {
@@ -252,6 +267,46 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         credentialToken: options.credentialToken,
       });
     }
+    return chat;
+  }
+
+  async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
+    executionHostService.validateBinding(options.executionHost);
+    const id = crypto.randomUUID();
+    const now = createTimestamp();
+    const chat: Chat = {
+      config: {
+        id,
+        name: options.name?.trim() || `${options.executionHost.targetKey} chat`,
+        source: {
+          kind: "execution_host",
+          executionHost: options.executionHost,
+          directory: options.directory,
+        },
+        executionHostBinding: options.executionHost,
+        scope: "workspace",
+        directory: options.directory,
+        model: {
+          providerID: options.modelProviderID,
+          modelID: options.modelID,
+          variant: options.modelVariant ?? "",
+        },
+        useWorktree: false,
+        autoApprovePermissions: options.autoApprovePermissions
+          ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        createdAt: now,
+        updatedAt: now,
+        mode: DEFAULT_CHAT_CONFIG.mode,
+      },
+      state: {
+        ...createInitialChatState(id),
+        connectionStatus: options.executionHost.host.kind === "ssh"
+          ? "needs_credentials"
+          : "disconnected",
+      },
+    };
+    await this.state.saveNewChat(chat);
+    this.state.emitChatCreated(chat, now);
     return chat;
   }
 
@@ -435,18 +490,22 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!chat) {
       return null;
     }
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
-    }
-    if (
-      !isGitBackedWorkspace(workspace)
-      && (updates.useWorktree === true || updates.baseBranch !== undefined)
-    ) {
-      assertGitBackedWorkspace(
-        workspace,
-        "Directory workspaces do not support branches or worktrees.",
-      );
+    if (isWorkspaceChat(chat)) {
+      const workspace = await this.state.getWorkspace(getChatWorkspaceId(chat));
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${getChatWorkspaceId(chat)}`);
+      }
+      if (
+        !isGitBackedWorkspace(workspace)
+        && (updates.useWorktree === true || updates.baseBranch !== undefined)
+      ) {
+        assertGitBackedWorkspace(
+          workspace,
+          "Directory workspaces do not support branches or worktrees.",
+        );
+      }
+    } else if (updates.useWorktree === true || updates.baseBranch !== undefined) {
+      throw new Error("Direct execution-host chats do not support branches or worktrees");
     }
 
     const config: ChatConfig = {
@@ -515,13 +574,13 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     options: { continueOnError?: boolean; closeStream?: () => void } = {},
   ): Promise<void> {
     const cleanupSteps: Array<{ label: string; run: () => Promise<void> }> = [];
-    if (chat.config.scope !== "task" && chat.config.source?.kind !== "ssh_server") {
+    if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
         run: async () => {
           const identity = await managedContextIdentityResolver.forChat(
             chat.config.id,
-            chat.config.workspaceId,
+            getChatWorkspaceId(chat),
           );
           await managedCredentialService.revokeContextIfConfigured(identity);
         },

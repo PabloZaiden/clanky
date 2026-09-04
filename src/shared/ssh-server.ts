@@ -6,6 +6,7 @@ import type {
   TerminalConnectionMode,
   TerminalSessionState,
 } from "./terminal-session";
+import type { ExecutionHostBinding } from "./execution-host";
 
 export type SshKeyAlgorithm = "RSA-OAEP-256";
 
@@ -19,6 +20,8 @@ export interface SshServerConfig {
   id: string;
   name: string;
   address: string;
+  /** SSH port. Older persisted records default to 22. */
+  port?: number;
   username: string;
   /** Default base path for cloning repositories on the remote host. */
   repositoriesBasePath: string | null;
@@ -110,7 +113,9 @@ export type VncSessionStatus =
 
 export interface VncSessionConfig {
   id: string;
-  sshServerId: string;
+  sshServerId?: string;
+  /** Canonical execution host snapshot retained alongside the legacy SSH ID. */
+  executionHostBinding?: ExecutionHostBinding | null;
   remoteHost: "127.0.0.1";
   remotePort: number;
   localPort: number;

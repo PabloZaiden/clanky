@@ -27,6 +27,7 @@ import type {
   ChatServiceBundle,
   CreateAgentRunChatOptions,
   CreateChatOptions,
+  CreateExecutionHostChatOptions,
   CreateSshServerChatOptions,
   ImportExistingSessionOptions,
   ReconnectChatOptions,
@@ -39,6 +40,7 @@ export type {
   DeleteChatOptions,
   CreateAgentRunChatOptions,
   CreateChatOptions,
+  CreateExecutionHostChatOptions,
   CreateSshServerChatOptions,
   ImportExistingSessionOptions,
   ReconnectChatOptions,
@@ -130,6 +132,10 @@ export class ChatManager {
 
   async createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat> {
     return this.services.lifecycle.createSshServerChat(options);
+  }
+
+  async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
+    return this.services.lifecycle.createExecutionHostChat(options);
   }
 
   async listImportableSessions(workspaceId: string): Promise<ImportableSession[]> {
@@ -257,7 +263,7 @@ export class ChatManager {
     return this.services.taskConversion.spawnTaskFromCurrentPlan(chatId, planFilePath);
   }
 
-  getChatBackend(chatId: string, workspaceId: string): Backend {
+  getChatBackend(chatId: string, workspaceId?: string): Backend {
     return this.services.session.getChatBackend(chatId, workspaceId);
   }
 

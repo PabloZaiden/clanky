@@ -12,6 +12,7 @@ import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";
 import type { ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
+import type { ExecutionHostBinding } from "@/shared/execution-host";
 
 const log = createLogger("core:model-discovery");
 const MODEL_DISCOVERY_CACHE_TTL_MS = 12 * 60 * 60 * 1_000;
@@ -199,6 +200,36 @@ export async function getModelsForWorkspace(
     workspace.serverSettings,
     workspace,
   );
+}
+
+export async function getModelsForExecutionHost(
+  binding: ExecutionHostBinding,
+  directory: string,
+  provider: ServerSettings["agent"]["provider"],
+  sshPassword?: string,
+): Promise<ModelInfo[]> {
+  const connectionId = `execution-host:${binding.targetKey}:${provider}`;
+  const cacheKey = getModelListCacheKey(connectionId, provider, directory);
+  const cached = getCacheValue(modelListCache, cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const { backend, settings } = await backendManager.createBackendForExecutionHost(
+    connectionId,
+    binding,
+    provider,
+    sshPassword,
+  );
+  try {
+    await backend.connect(buildConnectionConfig(settings, directory));
+    const models = normalizeDiscoveredModels(settings, await backend.getModels(directory));
+    if (models.length > 0) {
+      setCacheValue(modelListCache, cacheKey, models);
+    }
+    return models;
+  } finally {
+    await backendManager.disconnectChat(connectionId);
+  }
 }
 
 export async function getModelsForSettings(

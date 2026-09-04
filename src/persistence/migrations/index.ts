@@ -41,6 +41,10 @@
 import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { AGENT_PROVIDER_IDS, getDefaultServerSettings, parseServerSettings } from "../../shared/settings";
+import { migrateExecutionHostRegistry } from "./execution-hosts";
+import { migrateDirectExecutionHostTerminalSessions } from "./direct-terminal-sessions";
+import { migrateExecutionHostVncSessions } from "./execution-host-vnc";
+import { migrateMeshEnrollmentTokens } from "./mesh-enrollment-tokens";
 
 const log = createLogger("persistence:migrations");
 
@@ -97,6 +101,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "mesh_link_claims",
   "provisioning_jobs",
   "provisioning_job_logs",
+  "execution_hosts",
 ]);
 
 /**
@@ -1489,6 +1494,29 @@ export const migrations: Migration[] = [
         ON provisioning_job_logs(job_id, timestamp ASC)
       `);
     },
+  },
+  {
+    version: 41,
+    name: "add_execution_host_registry",
+    up: migrateExecutionHostRegistry,
+    transactional: false,
+  },
+  {
+    version: 42,
+    name: "add_direct_execution_host_terminal_sessions",
+    up: migrateDirectExecutionHostTerminalSessions,
+    transactional: false,
+  },
+  {
+    version: 43,
+    name: "make_vnc_sessions_execution_host_backed",
+    up: migrateExecutionHostVncSessions,
+    transactional: false,
+  },
+  {
+    version: 44,
+    name: "add_mesh_enrollment_tokens",
+    up: migrateMeshEnrollmentTokens,
   },
 ];
 

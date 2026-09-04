@@ -12,6 +12,7 @@
  */
 
 import type { AgentProvider, ServerSettings } from "./settings";
+import type { ExecutionHostBinding } from "./execution-host";
 
 /**
  * A workspace represents a user-selected execution context for Clanky Tasks.
@@ -33,6 +34,11 @@ export interface Workspace {
   executionNodeId?: string | null;
   /** Monotonic revision of the workspace execution target */
   executionTargetRevision?: number;
+  /**
+   * Canonical execution-host binding. Legacy records may omit this while
+   * their transport-specific fields are normalized during migration.
+   */
+  executionHostBinding?: ExecutionHostBinding | null;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */

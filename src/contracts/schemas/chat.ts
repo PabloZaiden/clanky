@@ -28,6 +28,8 @@ export const CreateSshServerChatRequestSchema = z.object({
   credentialToken: z.string().trim().min(1).nullable().optional(),
 });
 
+export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSchema;
+
 export const ImportExistingChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
   workspaceId: z.string().min(1, "workspaceId is required"),
@@ -79,6 +81,16 @@ export const DiscoverSshServerChatProvidersRequestSchema = z.object({
 
 export const DiscoverSshServerChatModelsRequestSchema = z.object({
   credentialToken: z.string().trim().min(1, "credentialToken is required"),
+  providerID: AgentProviderSchema,
+  directory: z.string().trim().min(1, "directory is required"),
+});
+
+export const DiscoverExecutionHostProvidersRequestSchema = z.object({
+  credentialToken: z.string().trim().min(1).nullable().optional(),
+});
+
+export const DiscoverExecutionHostModelsRequestSchema = z.object({
+  credentialToken: z.string().trim().min(1).nullable().optional(),
   providerID: AgentProviderSchema,
   directory: z.string().trim().min(1, "directory is required"),
 });

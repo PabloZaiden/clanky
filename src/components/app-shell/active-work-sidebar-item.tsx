@@ -21,7 +21,7 @@ export function ActiveWorkSidebarItem({
       <span>
         <strong>{node.title}</strong>
         {node.subtitle ? <small>{node.subtitle}</small> : null}
-        <small className="clanky-active-work-sidebar-item-type">{itemType}</small>
+        <small className="clanky-sidebar-item-type">{itemType}</small>
       </span>
       {node.badge ? (
         <Badge

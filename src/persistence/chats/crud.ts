@@ -53,6 +53,10 @@ export const CHAT_METADATA_COLUMNS = [
   "interrupt_requested",
   "connection_status",
   "startup_stage",
+  "execution_host_revision",
+  "(SELECT execution_host.kind FROM execution_hosts execution_host WHERE execution_host.id = chats.execution_host_id AND execution_host.user_id = chats.user_id) AS execution_host_kind",
+  "(SELECT execution_host.source_id FROM execution_hosts execution_host WHERE execution_host.id = chats.execution_host_id AND execution_host.user_id = chats.user_id) AS execution_host_source_id",
+  "(SELECT execution_host.target_key FROM execution_hosts execution_host WHERE execution_host.id = chats.execution_host_id AND execution_host.user_id = chats.user_id) AS execution_host_target_key",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id AND entry.kind = 'message') THEN 1 ELSE 0 END AS has_messages",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id) THEN 1 ELSE 0 END AS has_transcript",
 ].join(", ");

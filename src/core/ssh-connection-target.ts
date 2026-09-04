@@ -77,7 +77,7 @@ export function getSshConnectionTargetFromServer(
   }
   return {
     host,
-    port: 22,
+    port: server.port ?? 22,
     username: server.username.trim() || undefined,
     password: password?.trim() || undefined,
   };

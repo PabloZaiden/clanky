@@ -32,6 +32,7 @@ import {
   terminalSessionEventEmitter,
   taskEventEmitter,
   previewEventEmitter,
+  meshStateEventEmitter,
 } from "./core/event-emitter";
 import type { EventContext } from "./core/event-emitter";
 import {
@@ -45,10 +46,19 @@ import { CLANKY_VERSION } from "./version";
 import { resolveWorkspaceTerminal } from "./core/workspace-terminal-connection";
 import { isDomainError } from "./core/domain-error";
 import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
+import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
 import { runWithCurrentUser } from "./core/user-context";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
+const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+const MESH_WORKER_CONTROL_ROUTE_METHODS = {
+  "/api/mesh/status": ["GET"],
+  "/api/mesh/instance-name": ["POST"],
+  "/api/mesh/endpoint": ["POST"],
+  "/api/mesh/execution": ["POST"],
+  "/api/mesh/pairing-requests": ["POST"],
+} as const satisfies Record<string, readonly string[]>;
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
@@ -107,6 +117,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     terminalSessionEventEmitter.subscribe(publishEvent),
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
+    meshStateEventEmitter.subscribe(publishEvent),
   ];
 }
 
@@ -135,7 +146,14 @@ async function reconcileStartupState(): Promise<void> {
   }
 }
 
-async function completeStartup(server: Server<WebAppWebSocketData>): Promise<void> {
+async function initializeMeshWorkerRuntime(): Promise<void> {
+  await backendManager.initialize();
+}
+
+async function completeStartup(
+  server: Server<WebAppWebSocketData>,
+  options: { startBackgroundWorkers?: boolean } = {},
+): Promise<void> {
   const appServer = app;
   if (!appServer) {
     throw new Error("Clanky web app server is unavailable during startup");
@@ -150,8 +168,10 @@ async function completeStartup(server: Server<WebAppWebSocketData>): Promise<voi
       localBaseUrl: localManagedCredentialBaseUrl,
     });
   }
-  pushedTaskMonitor.start();
-  agentScheduler.start();
+  if (options.startBackgroundWorkers !== false) {
+    pushedTaskMonitor.start();
+    agentScheduler.start();
+  }
 
   for (const message of getServerStartupMessages({
     host: appServer.config.host,
@@ -282,22 +302,48 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
   ...meshInternalRoutes,
 });
 
+export const meshWorkerRoutes = defineRoutes<ClankyRealtimeEvent>({
+  ...meshInternalRoutes,
+  "/api/mesh/status": apiRoutes["/api/mesh/status"]!,
+  "/api/mesh/instance-name": apiRoutes["/api/mesh/instance-name"]!,
+  "/api/mesh/endpoint": apiRoutes["/api/mesh/endpoint"]!,
+  "/api/mesh/execution": apiRoutes["/api/mesh/execution"]!,
+  "/api/mesh/pairing-requests": apiRoutes["/api/mesh/pairing-requests"]!,
+});
+
+export function isMeshWorkerRequestAllowed(request: Request): boolean {
+  const path = new URL(request.url).pathname;
+  if (path === "/api/health") {
+    return request.method === "GET";
+  }
+  if (path.startsWith("/api/mesh/internal/")) {
+    const route = meshInternalRoutes[path];
+    const method = ROUTE_METHODS.find((candidate) => candidate === request.method);
+    return method !== undefined && Boolean(route?.[method]);
+  }
+  const methods = MESH_WORKER_CONTROL_ROUTE_METHODS[
+    path as keyof typeof MESH_WORKER_CONTROL_ROUTE_METHODS
+  ];
+  return methods?.some((method) => method === request.method) ?? false;
+}
+
 export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
   if (app) {
-    if (!realtimeHeartbeatCleanup) {
-      realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
-    }
     return app;
   }
   await initializeDatabase();
   await ensureLocalMeshNodeIdentity();
   const dataDir = getDataDir();
+  const meshWorker = process.env["CLANKY_MESH_WORKER"] === "true";
+  if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
+    throw new Error("CLANKY_MESH_WORKER cannot be combined with CLANKY_DISABLE_PASSKEY");
+  }
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",
     appDirectoryName: ".clanky",
-    web: {
+    web: meshWorker ? false : {
       entry: "./frontend.tsx",
       icons: {
         favicon: { src: faviconPath, sizes: "any", type: "image/svg+xml" },
@@ -308,22 +354,30 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
         ],
       },
     },
+    ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
     version: CLANKY_VERSION,
     store,
-    auth: { passkeys: true, apiKeys: true, deviceAuth: true },
-    realtime: { path: "/api/ws" },
-    routes,
+    auth: meshWorker
+      ? { passkeys: false, apiKeys: true, deviceAuth: false }
+      : { passkeys: true, apiKeys: true, deviceAuth: true },
+    ...(meshWorker ? {} : { realtime: { path: "/api/ws" } }),
+    routes: meshWorker ? meshWorkerRoutes : routes,
     websockets: {
       clanky: websocketHandlers as never,
     },
     lifecycle: {
-      beforeStart: reconcileStartupState,
-      afterStart: completeStartup,
+      beforeStart: meshWorker
+        ? initializeMeshWorkerRuntime
+        : reconcileStartupState,
+      afterStart: async (server) => await completeStartup(server, {
+        startBackgroundWorkers: !meshWorker,
+      }),
       beforeStop: async () => {
         realtimeHeartbeatCleanup?.();
         realtimeHeartbeatCleanup = undefined;
         stopBackgroundWorkers();
         await meshTerminalGateway.closeAll();
+        await meshTcpTunnelGateway.closeAll();
         await closeAllMeshTerminalConnections();
       },
     },
@@ -339,8 +393,10 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
   });
-  registerClankyRealtimeBridge(app);
-  realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
+  if (!meshWorker) {
+    registerClankyRealtimeBridge(app);
+    realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
+  }
   return app;
 }
 
