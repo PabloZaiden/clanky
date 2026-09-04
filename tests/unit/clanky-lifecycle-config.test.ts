@@ -3,6 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClankyCli } from "../../src/cli";
+import { closeDatabase } from "../../src/persistence/database";
+import {
+  getWebAppServer,
+  resetWebAppServerForTests,
+} from "../../src/server";
 
 const originalHome = process.env["HOME"];
 const originalDataDir = process.env["CLANKY_DATA_DIR"];
@@ -10,6 +15,8 @@ const originalMeshWorker = process.env["CLANKY_MESH_WORKER"];
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
+  resetWebAppServerForTests();
+  closeDatabase();
   if (originalHome === undefined) {
     delete process.env["HOME"];
   } else {
@@ -113,5 +120,22 @@ describe("Clanky lifecycle state configuration", () => {
     const overridden = await readServeConfig();
     expect(overridden.config.serve?.options?.["mesh-worker"]).toBe(true);
     expect(overridden.effective.application["mesh-worker"]).toBe(false);
+  });
+
+  test("rejects changing the mode of an initialized server singleton", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clanky-server-mode-test-"));
+    temporaryRoots.push(dataDir);
+    process.env["CLANKY_DATA_DIR"] = dataDir;
+
+    const server = await getWebAppServer({ meshWorker: false });
+    expect(await getWebAppServer({ meshWorker: false })).toBe(server);
+    await expect(getWebAppServer({ meshWorker: true })).rejects.toThrow(
+      "Clanky server is already initialized with meshWorker=false and cannot be reused with meshWorker=true",
+    );
+
+    resetWebAppServerForTests();
+    closeDatabase();
+    const workerServer = await getWebAppServer({ meshWorker: true });
+    expect(await getWebAppServer({ meshWorker: true })).toBe(workerServer);
   });
 });
