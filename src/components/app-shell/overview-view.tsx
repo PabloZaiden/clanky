@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import type { Agent, PublicProvisioningJob, SshServer, SshServerSession } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  type Agent,
+  type ExecutionHostDescriptor,
+  type PublicProvisioningJob,
+  type SshServerSession,
+} from "@/shared";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
@@ -15,6 +21,18 @@ import {
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
+import { ServerTransportIcon } from "./server-sidebar-item";
+
+function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
+  if (host.ref.kind === "ssh") {
+    return { view: "ssh-server", serverId: host.ref.serverId };
+  }
+  return {
+    view: "execution-host",
+    hostKind: host.ref.kind,
+    hostId: host.ref.nodeId,
+  };
+}
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
   if (item.kind === "task") {
@@ -117,7 +135,7 @@ function getProvisioningJobDescription(job: PublicProvisioningJob): string {
 }
 
 export function OverviewView({
-  servers,
+  executionHosts,
   sessionsByServerId,
   agents,
   agentsLoading,
@@ -129,7 +147,7 @@ export function OverviewView({
   provisioningJobs,
   showPrivateItems = false,
 }: {
-  servers: SshServer[];
+  executionHosts: ExecutionHostDescriptor[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   agents: Agent[];
   agentsLoading: boolean;
@@ -150,11 +168,16 @@ export function OverviewView({
     [serverNodes, sidebarWorkspaceGroups],
   );
   const serverMapItems = useMemo(() => {
-    return servers.map((server) => ({
-      server,
-      sessionCount: sessionsByServerId[server.config.id]?.length ?? 0,
-    }));
-  }, [servers, sessionsByServerId]);
+    return executionHosts
+      .filter((host) => host.ref.kind !== "local")
+      .map((host) => ({
+        host,
+        sessionCount: host.ref.kind === "ssh"
+          ? sessionsByServerId[host.ref.serverId]?.length ?? 0
+          : null,
+      }))
+      .sort((left, right) => left.host.name.localeCompare(right.host.name));
+  }, [executionHosts, sessionsByServerId]);
   const workspaceNamesById = useMemo(() => {
     return Object.fromEntries(
       workspaceGroups.map((group) => [group.workspace.id, group.workspace.name]),
@@ -252,18 +275,33 @@ export function OverviewView({
       <Panel title="Servers">
         <div>
           {serverMapItems.length === 0 ? (
-            <EmptyState title="No SSH servers yet" description="Register one to see it here." />
+            <EmptyState title="No servers yet" description="Add an SSH server or connect a Mesh node." />
           ) : (
             <div className="space-y-2">
-              {serverMapItems.map(({ server, sessionCount }) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(server.config), showPrivateItems);
+              {serverMapItems.map(({ host, sessionCount }) => {
+                const privateHidden = shouldObscurePrivateItem(
+                  isEffectivelyPrivate({ isPrivate: host.isPrivate }),
+                  showPrivateItems,
+                );
                 return (
                   <ClankyListRow
-                    key={server.config.id}
-                    title={server.config.name}
-                    description={`${server.config.username}@${server.config.address}`}
-                    meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
-                    onClick={!privateHidden ? () => onNavigate({ view: "ssh-server", serverId: server.config.id }) : undefined}
+                    key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
+                    title={host.name}
+                    description={host.endpoint ?? "Endpoint unavailable"}
+                    meta={sessionCount === null
+                      ? undefined
+                      : `${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+                    badge={(
+                      <span className="flex items-center gap-2">
+                        <ServerTransportIcon transport={host.ref.kind} />
+                        <StatusBadge
+                          variant={host.availability === "online" ? "success" : "disabled"}
+                        >
+                          {host.availability}
+                        </StatusBadge>
+                      </span>
+                    )}
+                    onClick={!privateHidden ? () => onNavigate(getExecutionHostRoute(host)) : undefined}
                     privateHidden={privateHidden}
                   />
                 );

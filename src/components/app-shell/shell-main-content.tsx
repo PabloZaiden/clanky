@@ -911,7 +911,7 @@ function renderMainContent(props: ShellMainContentProps) {
 
   return (
     <OverviewView
-      servers={servers}
+      executionHosts={executionHosts}
       sessionsByServerId={sessionsByServerId}
       agents={agents.agents}
       agentsLoading={agents.loading}

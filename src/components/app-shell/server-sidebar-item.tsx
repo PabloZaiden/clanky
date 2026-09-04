@@ -7,24 +7,40 @@ import { CloudIcon, MeshIcon, ServerIcon } from "../common";
 
 export type ServerTransportKind = "local" | "mesh" | "ssh";
 
-function transportPresentation(transport: ServerTransportKind) {
+function getTransportLabel(transport: ServerTransportKind): string {
   switch (transport) {
     case "local":
-      return {
-        label: "Local transport",
-        icon: <ServerIcon size="h-4 w-4" />,
-      };
+      return "Local transport";
     case "mesh":
-      return {
-        label: "Mesh transport",
-        icon: <MeshIcon size="h-4 w-4" />,
-      };
+      return "Mesh transport";
     case "ssh":
-      return {
-        label: "SSH transport",
-        icon: <CloudIcon size="h-4 w-4" />,
-      };
+      return "SSH transport";
   }
+}
+
+export function ServerTransportIcon({
+  transport,
+  size = "h-4 w-4",
+}: {
+  transport: ServerTransportKind;
+  size?: string;
+}) {
+  const label = getTransportLabel(transport);
+  const icon = transport === "local"
+    ? <ServerIcon size={size} />
+    : transport === "mesh"
+      ? <MeshIcon size={size} />
+      : <CloudIcon size={size} />;
+
+  return (
+    <span
+      className="inline-flex text-gray-500 dark:text-gray-400"
+      title={label}
+      aria-label={label}
+    >
+      {icon}
+    </span>
+  );
 }
 
 export function ServerSidebarItem({
@@ -35,7 +51,6 @@ export function ServerSidebarItem({
   transport: ServerTransportKind;
 }) {
   const badgeLabel = node.badge ? formatStatusLabel(node.badge) : "";
-  const presentation = transportPresentation(transport);
 
   return (
     <>
@@ -44,13 +59,7 @@ export function ServerSidebarItem({
         {node.subtitle ? <small>{node.subtitle}</small> : null}
       </span>
       <span className="flex shrink-0 items-center gap-2">
-        <span
-          className="inline-flex text-gray-500 dark:text-gray-400"
-          title={presentation.label}
-          aria-label={presentation.label}
-        >
-          {presentation.icon}
-        </span>
+        <ServerTransportIcon transport={transport} />
         {node.badge ? (
           <Badge
             variant={node.badgeVariant}
