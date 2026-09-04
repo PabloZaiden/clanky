@@ -53,4 +53,5 @@ export interface WebSocketData {
   meshTcpTunnelMode?: boolean;
   meshTcpTunnelSessionId?: string;
   meshTcpTunnelSessionToken?: string;
+  meshTcpTunnelMessageQueue?: Promise<void>;
 }

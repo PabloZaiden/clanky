@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeshStatusRecord } from "@/shared/mesh";
 import { apiRequest } from "../lib/api-client";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 interface MeshResponse {
@@ -32,41 +33,54 @@ export function useMesh(): UseMeshResult {
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(false);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<MeshStatusRecord | null>());
 
-  const refresh = useCallback(async (
+  const refresh = useCallback((
     options: { showLoading?: boolean } = {},
-  ): Promise<MeshStatusRecord | null> => {
-    refreshAbortRef.current?.abort();
-    const controller = new AbortController();
-    refreshAbortRef.current = controller;
-    if (options.showLoading !== false) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const body = await apiRequest<MeshResponse>("/api/mesh/status", {
-        signal: controller.signal,
-        action: "Load mesh status",
-        fallbackMessage: "Failed to load mesh status",
-      });
-      if (controller.signal.aborted) {
+  ): Promise<MeshStatusRecord | null> => (
+    refreshCoordinatorRef.current.run(async () => {
+      const controller = new AbortController();
+      refreshAbortRef.current = controller;
+      if (options.showLoading !== false && isMountedRef.current) {
+        setLoading(true);
+      }
+      if (isMountedRef.current) {
+        setError(null);
+      }
+      try {
+        const body = await apiRequest<MeshResponse>("/api/mesh/status", {
+          signal: controller.signal,
+          action: "Load mesh status",
+          fallbackMessage: "Failed to load mesh status",
+        });
+        if (controller.signal.aborted || !isMountedRef.current) {
+          return null;
+        }
+        const nextStatus = (body.status ?? body) as MeshStatusRecord;
+        setStatus(nextStatus);
+        return nextStatus;
+      } catch (refreshError) {
+        if (
+          controller.signal.aborted
+          || refreshError instanceof DOMException && refreshError.name === "AbortError"
+        ) {
+          return null;
+        }
+        if (isMountedRef.current) {
+          setError(String(refreshError));
+        }
         return null;
+      } finally {
+        if (refreshAbortRef.current === controller) {
+          refreshAbortRef.current = null;
+        }
+        if (!controller.signal.aborted && isMountedRef.current) {
+          setLoading(false);
+        }
       }
-      const nextStatus = (body.status ?? body) as MeshStatusRecord;
-      setStatus(nextStatus);
-      return nextStatus;
-    } catch (refreshError) {
-      if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
-        return null;
-      }
-      setError(String(refreshError));
-      return null;
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    })
+  ), []);
 
   useRealtimeRefreshWithRecovery({
     resources: ["mesh"],
@@ -195,8 +209,14 @@ export function useMesh(): UseMeshResult {
   );
 
   useEffect(() => {
+    isMountedRef.current = true;
     void refresh();
-    return () => refreshAbortRef.current?.abort();
+    return () => {
+      isMountedRef.current = false;
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+      refreshCoordinatorRef.current.reset();
+    };
   }, [refresh]);
 
   return {

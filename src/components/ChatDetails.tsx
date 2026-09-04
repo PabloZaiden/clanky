@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { type TranscriptFileLinkTarget } from "./LogViewer";
+import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { Button } from "./common";
 import { appAbsoluteUrl } from "../lib/public-path";
 import { replaceWebAppRoute, routeToHash, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
@@ -71,13 +72,28 @@ export function ChatDetails({
             filePath: kind === "directory" ? undefined : path,
           }
     );
+    const source = chat.config.source;
+    const fileExplorerTarget = source?.kind === "execution_host"
+      ? {
+          type: "executionHost" as const,
+          id: getExecutionHostSourceId(source.executionHost.host),
+          kind: source.executionHost.host.kind,
+          startDirectory: chatWorkingDirectory,
+        }
+      : source?.kind === "ssh_server"
+        ? {
+            type: "server" as const,
+            id: source.sshServerId,
+            startDirectory: chatWorkingDirectory,
+          }
+        : {
+            type: "workspace" as const,
+            id: getChatWorkspaceId(chat),
+            startDirectory: chatWorkingDirectory,
+          };
 
     return {
-      fileExplorerTarget: {
-        type: "workspace" as const,
-        id: chat.config.workspaceId,
-        startDirectory: chatWorkingDirectory,
-      },
+      fileExplorerTarget,
       rootDirectory: chatWorkingDirectory,
       getFileHref: (target: TranscriptFileLinkTarget) => (
         appAbsoluteUrl(routeToHash(getCodeExplorerRoute(target)))

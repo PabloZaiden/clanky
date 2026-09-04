@@ -116,11 +116,13 @@ export function createMessageHandler(helpers: TerminalHelpers) {
       && ws.data.meshTcpTunnelSessionId
       && ws.data.meshTcpTunnelSessionToken
     ) {
-      void meshTcpTunnelGateway.message(
-        ws.data.meshTcpTunnelSessionId,
-        ws.data.meshTcpTunnelSessionToken,
+      const previous = ws.data.meshTcpTunnelMessageQueue ?? Promise.resolve();
+      const next = previous.then(() => meshTcpTunnelGateway.message(
+        ws.data.meshTcpTunnelSessionId!,
+        ws.data.meshTcpTunnelSessionToken!,
         msg,
-      ).catch((error: Error) => {
+      ));
+      ws.data.meshTcpTunnelMessageQueue = next.catch((error: Error) => {
         log.warn("Mesh TCP tunnel relay message failed", {
           sessionId: ws.data.meshTcpTunnelSessionId,
           error: String(error),
@@ -201,6 +203,26 @@ export function createMessageHandler(helpers: TerminalHelpers) {
     try {
       const data = JSON.parse(typeof msg === "string" ? msg : msg.toString());
 
+      if (
+        ws.data.terminalMode
+        && ws.data.workspaceTerminalSessionId
+        && !ws.data.terminalBridge
+        && data.type === "terminal.auth"
+      ) {
+        const credentialToken = typeof data.credentialToken === "string"
+          ? data.credentialToken.trim()
+          : "";
+        if (!credentialToken) {
+          helpers.sendTerminalAuthError(
+            ws,
+            "credentialToken is required for direct SSH terminals",
+          );
+          return;
+        }
+        void helpers.startWorkspaceTerminalBridge(ws, credentialToken);
+        return;
+      }
+
       if (ws.data.terminalMode && ws.data.sshServerSessionId && !ws.data.terminalBridge) {
         if (data.type === "terminal.auth") {
           const credentialToken = typeof data.credentialToken === "string"
@@ -212,23 +234,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
               "credentialToken is required for standalone SSH terminals",
             );
             return;
-          }
-
-          if (ws.data.terminalMode && ws.data.workspaceTerminalSessionId && !ws.data.terminalBridge) {
-            if (data.type === "terminal.auth") {
-              const credentialToken = typeof data.credentialToken === "string"
-                ? data.credentialToken.trim()
-                : "";
-              if (!credentialToken) {
-                helpers.sendTerminalAuthError(
-                  ws,
-                  "credentialToken is required for direct SSH terminals",
-                );
-                return;
-              }
-              void helpers.startWorkspaceTerminalBridge(ws, credentialToken);
-              return;
-            }
           }
           void helpers.startSshServerTerminalBridge(ws, credentialToken);
           return;

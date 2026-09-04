@@ -186,11 +186,10 @@ export function rowToChat(row: Record<string, unknown>): Chat {
   const rowId = row["id"];
 
   const source = rowToChatSource(row, rowId);
-  const workspaceId = source.kind === "workspace" ? source.workspaceId : "";
   const config: ChatConfig = {
     id: requireChatString(row, "id", rowId),
     name: requireChatString(row, "name", rowId),
-    workspaceId,
+    ...(source.kind === "workspace" ? { workspaceId: source.workspaceId } : {}),
     source,
     executionHostBinding: executionHostBindingFromRow(row),
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),

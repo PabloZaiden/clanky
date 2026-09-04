@@ -10,22 +10,37 @@ export function useExecutionHosts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const coordinator = useRef(createRefreshCoordinator<void>());
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(false);
 
   const refresh = useCallback((options: ResourceRefreshOptions = {}) => (
     coordinator.current.run(async () => {
-      if (options.showLoading ?? true) {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      if ((options.showLoading ?? true) && isMountedRef.current) {
         setLoading(true);
       }
       try {
-        setError(null);
-        setHosts(await apiRequest<ExecutionHostDescriptor[]>("/api/execution-hosts", {
+        if (isMountedRef.current) {
+          setError(null);
+        }
+        const nextHosts = await apiRequest<ExecutionHostDescriptor[]>("/api/execution-hosts", {
+          signal: controller.signal,
           action: "Load execution hosts",
           fallbackMessage: "Failed to load execution hosts",
-        }));
+        });
+        if (!controller.signal.aborted && isMountedRef.current) {
+          setHosts(nextHosts);
+        }
       } catch (refreshError) {
-        setError(String(refreshError));
+        if (!controller.signal.aborted && isMountedRef.current) {
+          setError(String(refreshError));
+        }
       } finally {
-        if (options.showLoading ?? true) {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        if ((options.showLoading ?? true) && !controller.signal.aborted && isMountedRef.current) {
           setLoading(false);
         }
       }
@@ -33,7 +48,14 @@ export function useExecutionHosts() {
   ), []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void refresh();
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      coordinator.current.reset();
+    };
   }, [refresh]);
 
   useRealtimeRefreshWithRecovery({

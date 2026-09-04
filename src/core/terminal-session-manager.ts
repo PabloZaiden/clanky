@@ -473,11 +473,13 @@ export class TerminalSessionManager {
       return false;
     }
     await this.deletePersistentSessionBestEffort(currentSession);
-    const identity = await managedContextIdentityResolver.forTerminalSession(
-      currentSession.config.id,
-      currentSession.config.workspaceId ?? currentSession.config.executionHostBinding!.targetKey,
-    );
-    await managedCredentialService.revokeContextIfConfigured(identity);
+    if (currentSession.config.workspaceId) {
+      const identity = await managedContextIdentityResolver.forTerminalSession(
+        currentSession.config.id,
+        currentSession.config.workspaceId,
+      );
+      await managedCredentialService.revokeContextIfConfigured(identity);
+    }
 
     const deleted = await deleteTerminalSession(id);
     if (deleted) {

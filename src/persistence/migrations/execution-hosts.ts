@@ -6,17 +6,27 @@ import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { parseServerSettings } from "../../shared/settings";
 import {
+  buildLocalTargetKey,
   buildMeshTargetKey,
   buildSshTargetKey,
 } from "../workspace-target-key";
 
 const log = createLogger("persistence:migrations:execution-hosts");
 
-type ExecutionHostKind = "mesh" | "ssh";
+type ExecutionHostKind = "local" | "mesh" | "ssh";
 
 interface ExecutionHostRow {
   id: string;
   revision: number;
+}
+
+function isLocalExecutionNode(db: Database, nodeId: string): boolean {
+  const row = db.query(`
+    SELECT 1 AS matches
+    FROM mesh_node_identity
+    WHERE singleton = 1 AND node_id = ?
+  `).get(nodeId) as { matches: number } | null;
+  return row?.matches === 1;
 }
 
 function getColumns(db: Database, tableName: string): string[] {
@@ -268,11 +278,16 @@ function backfillWorkspaceHosts(db: Database): void {
       if (!row.execution_node_id) {
         continue;
       }
+      const kind: ExecutionHostKind = isLocalExecutionNode(db, row.execution_node_id)
+        ? "local"
+        : "mesh";
       const host = ensureExecutionHost(db, {
         userId: row.user_id,
-        kind: "mesh",
+        kind,
         sourceId: row.execution_node_id,
-        targetKey: buildMeshTargetKey(row.execution_node_id),
+        targetKey: kind === "local"
+          ? buildLocalTargetKey(row.execution_node_id)
+          : buildMeshTargetKey(row.execution_node_id),
         revision: row.execution_target_revision,
         createdAt: row.created_at,
       });
@@ -413,17 +428,25 @@ function backfillDependentResources(db: Database): void {
     const kind: ExecutionHostKind | null = sshServerId
       ? "ssh"
       : executionNodeId
-        ? "mesh"
+        ? (isLocalExecutionNode(db, executionNodeId) ? "local" : "mesh")
         : null;
     const sourceId = sshServerId ?? executionNodeId;
     if (!kind || !sourceId) {
       continue;
     }
-    const host = db.query(`
+    let host = db.query(`
       SELECT id, revision
       FROM execution_hosts
       WHERE user_id = ? AND kind = ? AND source_id = ?
     `).get(job.user_id, kind, sourceId) as ExecutionHostRow | null;
+    if (!host && kind === "local") {
+      host = ensureExecutionHost(db, {
+        userId: job.user_id,
+        kind,
+        sourceId,
+        targetKey: buildLocalTargetKey(sourceId),
+      });
+    }
     if (host) {
       db.run(`
         UPDATE provisioning_jobs

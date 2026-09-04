@@ -3,7 +3,7 @@
  */
 
 import type { Chat, Task } from "@/shared";
-import { ChatBusyError, isAgentChat, isChatBusyStatus } from "@/shared/chat";
+import { ChatBusyError, getChatWorkspaceId, isAgentChat, isChatBusyStatus } from "@/shared/chat";
 import { backendManager } from "./backend";
 import { GitService } from "./git";
 import { taskManager, type TaskManager } from "./task-manager";
@@ -55,13 +55,14 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
     if (isAgentChat(chat)) {
       throw new Error("Agent run chats cannot be spawned into tasks");
     }
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspace = await this.state.getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
     assertGitBackedWorkspace(workspace, "Tasks require a Git-backed workspace.");
 
-    const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const executor = await this.executorProvider.getCommandExecutorAsync(workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
     const baseBranch = chat.state.worktree?.originalBranch
       ?? chat.config.baseBranch
@@ -69,13 +70,13 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
 
     const prompt = buildSpawnTaskPrompt(chat.config.name, chat.state.messages);
 
-    await this.state.touchWorkspace(chat.config.workspaceId);
+    await this.state.touchWorkspace(workspaceId);
 
     const task = await this.taskManager.createTask({
       name: buildSpawnTaskNameFromChat(chat.config.name, chat.state.messages),
       directory: chat.config.directory,
       prompt,
-      workspaceId: chat.config.workspaceId,
+      workspaceId,
       modelProviderID: chat.config.model.providerID,
       modelID: chat.config.model.modelID,
       modelVariant: chat.config.model.variant,
@@ -114,7 +115,8 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
     if (isAgentChat(chat)) {
       throw new Error("Agent run chats cannot be spawned into tasks");
     }
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspace = await this.state.getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
@@ -124,12 +126,12 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),
     });
     const workingExecutor = await this.executorProvider.getCommandExecutorAsync(
-      working.chat.config.workspaceId,
+      getChatWorkspaceId(working.chat),
       working.directory,
     );
     const currentPlan = await readValidatedPlanningFiles(workingExecutor, working.directory, planFilePath);
 
-    const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const executor = await this.executorProvider.getCommandExecutorAsync(workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
     const baseBranch = working.chat.state.worktree?.originalBranch
       ?? working.chat.config.baseBranch
@@ -137,7 +139,8 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
 
     const prompt = buildSpawnCurrentPlanPrompt();
 
-    await this.state.touchWorkspace(working.chat.config.workspaceId);
+    const workingWorkspaceId = getChatWorkspaceId(working.chat);
+    await this.state.touchWorkspace(workingWorkspaceId);
 
     const task = await this.taskManager.createTask({
       name: buildSpawnTaskNameFromCurrentPlan(
@@ -147,7 +150,7 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
       ),
       directory: working.chat.config.directory,
       prompt,
-      workspaceId: working.chat.config.workspaceId,
+      workspaceId: workingWorkspaceId,
       modelProviderID: working.chat.config.model.providerID,
       modelID: working.chat.config.model.modelID,
       modelVariant: working.chat.config.model.variant,

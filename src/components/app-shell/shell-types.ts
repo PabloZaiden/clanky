@@ -3,7 +3,7 @@ import {
   getTaskStatusPill,
   isFinalState,
 } from "../../utils";
-import { isStandaloneChat } from "@/shared/chat";
+import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import type { Agent, Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import {
@@ -242,12 +242,13 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const chat of chats) {
-    if (!isStandaloneChat(chat)) {
+    if (!isStandaloneChat(chat) || !isWorkspaceChat(chat)) {
       continue;
     }
-    const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspaceChats = chatsByWorkspaceId.get(workspaceId) ?? [];
     workspaceChats.push(chat);
-    chatsByWorkspaceId.set(chat.config.workspaceId, workspaceChats);
+    chatsByWorkspaceId.set(workspaceId, workspaceChats);
   }
 
   for (const terminal of terminalSessions) {

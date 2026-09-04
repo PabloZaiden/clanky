@@ -100,7 +100,13 @@ export function listMeshEnrollmentTokens(userId: string): MeshEnrollmentTokenSum
     .map(summarize);
 }
 
-export function consumeMeshEnrollmentToken(token: string): {
+export function consumeMeshEnrollmentToken(
+  token: string,
+  expectedController: {
+    nodeId: string;
+    fingerprint: string;
+  },
+): {
   userId: string;
   linkId: string | null;
   controllerNodeId: string;
@@ -113,12 +119,22 @@ export function consumeMeshEnrollmentToken(token: string): {
     link_id: string | null;
     controller_node_id: string;
     controller_fingerprint: string;
-  }, [string, string, string]>(
+  }, [string, string, string, string, string]>(
     `UPDATE mesh_enrollment_tokens
      SET consumed_at = ?
-     WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
+     WHERE token_hash = ?
+       AND consumed_at IS NULL
+       AND controller_node_id = ?
+       AND controller_fingerprint = ?
+       AND expires_at > ?
      RETURNING user_id, link_id, controller_node_id, controller_fingerprint`,
-  ).get(consumedAt, hashToken(token), consumedAt);
+  ).get(
+    consumedAt,
+    hashToken(token),
+    expectedController.nodeId,
+    expectedController.fingerprint,
+    consumedAt,
+  );
   return row
     ? {
         userId: row.user_id,

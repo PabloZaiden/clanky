@@ -163,7 +163,7 @@ export interface ChatWorktreePort {
 }
 
 export interface ChatSessionPort {
-  getChatBackend(chatId: string, workspaceId: string): Backend;
+  getChatBackend(chatId: string, workspaceId?: string): Backend;
   getWorkspaceBackend(workspaceId: string, directory: string): Promise<Backend>;
   listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
   ensureBackendConnected(

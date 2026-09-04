@@ -146,7 +146,13 @@ export function resolveExecutionHostBindingId(
   userId: string,
   binding: ExecutionHostBinding,
 ): string {
-  return ensureExecutionHost(userId, binding.host, binding.targetKey).id;
+  const host = getExecutionHostByRef(userId, binding.host);
+  if (!host) {
+    throw new Error(
+      `Execution host is not registered: ${binding.host.kind}:${getExecutionHostSourceId(binding.host)}`,
+    );
+  }
+  return host.id;
 }
 
 export function toExecutionHostBinding(

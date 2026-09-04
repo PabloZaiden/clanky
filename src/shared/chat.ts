@@ -51,7 +51,7 @@ export type ChatSource =
 export interface ChatConfig {
   id: string;
   name: string;
-  workspaceId: string;
+  workspaceId?: string;
   source?: ChatSource;
   /** Canonical execution host snapshot retained alongside the legacy source. */
   executionHostBinding?: ExecutionHostBinding | null;
@@ -216,7 +216,11 @@ export function getChatWorkspaceId(chat: Pick<Chat, "config"> | ChatConfig): str
   if (config.source?.kind === "ssh_server" || config.source?.kind === "execution_host") {
     throw new Error(`Chat is not workspace-backed: ${config.id}`);
   }
-  return config.source?.workspaceId ?? config.workspaceId;
+  const workspaceId = config.source?.workspaceId ?? config.workspaceId;
+  if (!workspaceId) {
+    throw new Error(`Workspace-backed chat is missing workspaceId: ${config.id}`);
+  }
+  return workspaceId;
 }
 
 export class ChatBusyError extends Error {

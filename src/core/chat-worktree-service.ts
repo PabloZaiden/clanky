@@ -3,7 +3,7 @@
  */
 
 import type { Chat, ChatWorktreeState } from "@/shared";
-import { ChatBranchCheckoutError, InvalidChatBaseBranchError, isTaskChat } from "@/shared/chat";
+import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError, isTaskChat } from "@/shared/chat";
 import { getTaskWorkingDirectory } from "./task/task-types";
 import { taskManager, type TaskManager } from "./task-manager";
 import { backendManager } from "./backend";
@@ -96,7 +96,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
           `Chat ${chat.config.id} is configured to use a worktree but no established worktree path was recorded`,
         );
       }
-      const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+      const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
       const git = GitService.withExecutor(executor);
       return {
         chat,
@@ -120,7 +120,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     chat: Chat,
     options: { syncBaseBranch?: boolean } = {},
   ): Promise<ChatWorktreeState> {
-    const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     const git = GitService.withExecutor(executor);
     const originalBranch = chat.state.worktree?.originalBranch
       ?? chat.config.baseBranch
@@ -201,7 +201,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
       return;
     }
 
-    const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     const git = GitService.withExecutor(executor);
     const managedWorktreePath = git.assertCanonicalManagedWorktreePath(
       chat.config.directory,
@@ -282,7 +282,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
       return;
     }
 
-    const executor = await this.executorProvider.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     const git = GitService.withExecutor(executor);
     const isGitRepo = await git.isGitRepo(chat.config.directory);
     if (!isGitRepo) {

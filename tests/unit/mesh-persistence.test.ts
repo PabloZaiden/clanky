@@ -25,6 +25,11 @@ import {
   consumeMeshEnrollmentToken,
   createMeshEnrollmentToken,
 } from "../../src/persistence/mesh-enrollment-tokens";
+import {
+  ensureExecutionHost,
+  getExecutionHostById,
+  resolveExecutionHostBindingId,
+} from "../../src/persistence/execution-hosts";
 
 const createdDataDirs: string[] = [];
 const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
@@ -103,13 +108,23 @@ describe("mesh transport control-plane persistence", () => {
       fingerprint: "sha256:controller",
     });
 
-    expect(consumeMeshEnrollmentToken(created.token)).toEqual({
+    expect(consumeMeshEnrollmentToken(created.token, {
+      nodeId: "wrong-controller",
+      fingerprint: "sha256:controller",
+    })).toBeNull();
+    expect(consumeMeshEnrollmentToken(created.token, {
+      nodeId: "controller-1",
+      fingerprint: "sha256:controller",
+    })).toEqual({
       userId: "owner-1",
       linkId: "link-1",
       controllerNodeId: "controller-1",
       controllerFingerprint: "sha256:controller",
     });
-    expect(consumeMeshEnrollmentToken(created.token)).toBeNull();
+    expect(consumeMeshEnrollmentToken(created.token, {
+      nodeId: "controller-1",
+      fingerprint: "sha256:controller",
+    })).toBeNull();
   });
 
   test("persists node-owned execution policy with explicit capabilities", async () => {
@@ -123,6 +138,7 @@ describe("mesh transport control-plane persistence", () => {
       acceptRemoteExecution: false,
       repositoriesBasePath: "/srv/workspaces",
     });
+
     expect(updated.execution?.acceptRemoteExecution).toBe(false);
     expect(updated.execution?.repositoriesBasePath).toBe("/srv/workspaces");
     expect(updated.execution?.revision).toBe((initial.execution?.revision ?? 0) + 1);
@@ -130,6 +146,25 @@ describe("mesh transport control-plane persistence", () => {
     const reloaded = await ensureLocalMeshNodeIdentity();
     expect(reloaded.execution).toEqual(updated.execution);
     expect((await getMeshNode(updated.nodeId))?.execution).toEqual(updated.execution);
+  });
+
+  test("resolving a persisted binding does not overwrite current host metadata", async () => {
+    await setupDatabase();
+    const host = ensureExecutionHost(
+      "owner-1",
+      { kind: "mesh", nodeId: "node-1" },
+      "current-target",
+    );
+
+    expect(resolveExecutionHostBindingId("owner-1", {
+      host: host.ref,
+      targetKey: "stale-target",
+      revision: host.revision - 1,
+    })).toBe(host.id);
+    expect(getExecutionHostById("owner-1", host.id)).toMatchObject({
+      targetKey: "current-target",
+      revision: host.revision,
+    });
   });
 
   test("materializes and persists the public base URL for an unset Mesh endpoint", async () => {

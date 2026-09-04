@@ -12,6 +12,8 @@ import {
   isChatBusyStatus,
   isStandaloneChat,
   isTaskChat,
+  getChatWorkspaceId,
+  isWorkspaceChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { getTaskWorkingDirectory } from "./task/task-types";
@@ -229,7 +231,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       config: {
         id,
         name,
-        workspaceId: "",
         source: {
           kind: "ssh_server",
           sshServerId: options.sshServerId,
@@ -277,7 +278,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       config: {
         id,
         name: options.name?.trim() || `${options.executionHost.targetKey} chat`,
-        workspaceId: "",
         source: {
           kind: "execution_host",
           executionHost: options.executionHost,
@@ -490,18 +490,22 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!chat) {
       return null;
     }
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
-    }
-    if (
-      !isGitBackedWorkspace(workspace)
-      && (updates.useWorktree === true || updates.baseBranch !== undefined)
-    ) {
-      assertGitBackedWorkspace(
-        workspace,
-        "Directory workspaces do not support branches or worktrees.",
-      );
+    if (isWorkspaceChat(chat)) {
+      const workspace = await this.state.getWorkspace(getChatWorkspaceId(chat));
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${getChatWorkspaceId(chat)}`);
+      }
+      if (
+        !isGitBackedWorkspace(workspace)
+        && (updates.useWorktree === true || updates.baseBranch !== undefined)
+      ) {
+        assertGitBackedWorkspace(
+          workspace,
+          "Directory workspaces do not support branches or worktrees.",
+        );
+      }
+    } else if (updates.useWorktree === true || updates.baseBranch !== undefined) {
+      throw new Error("Direct execution-host chats do not support branches or worktrees");
     }
 
     const config: ChatConfig = {
@@ -570,13 +574,13 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     options: { continueOnError?: boolean; closeStream?: () => void } = {},
   ): Promise<void> {
     const cleanupSteps: Array<{ label: string; run: () => Promise<void> }> = [];
-    if (chat.config.scope !== "task" && chat.config.source?.kind !== "ssh_server") {
+    if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
         run: async () => {
           const identity = await managedContextIdentityResolver.forChat(
             chat.config.id,
-            chat.config.workspaceId,
+            getChatWorkspaceId(chat),
           );
           await managedCredentialService.revokeContextIfConfigured(identity);
         },

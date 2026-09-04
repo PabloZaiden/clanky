@@ -564,9 +564,6 @@ export class SshTerminalBridge {
       if (!this.standaloneExecutor) {
         throw new Error("SSH terminal is not connected");
       }
-      if (this.standaloneExecutor) {
-        return this.standaloneExecutor;
-      }
       return this.standaloneExecutor;
     }
     if (!this.workspace) {

@@ -249,7 +249,7 @@ export function buildMeshRequest(command: MeshCommand): {
         method: "POST",
         payload: JSON.stringify({
           ...(command.name ? { name: command.name } : {}),
-          ...(command.ttlSeconds ? { ttlSeconds: command.ttlSeconds } : {}),
+          ...(command.ttlSeconds !== undefined ? { ttlSeconds: command.ttlSeconds } : {}),
         }),
       };
     case "pair-approve":

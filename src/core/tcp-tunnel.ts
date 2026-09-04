@@ -154,7 +154,9 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       this.emit("close");
     });
     socket.addEventListener("error", () => {
-      this.emit("error", new Error("Mesh TCP tunnel failed."));
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", new Error("Mesh TCP tunnel failed."));
+      }
     });
     try {
       await this.waitForOpen(socket);

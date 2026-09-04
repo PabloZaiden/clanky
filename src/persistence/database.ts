@@ -735,6 +735,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS mesh_sync_checkpoints");
     db!.run("DROP TABLE IF EXISTS mesh_pairing_approvals");
     db!.run("DROP TABLE IF EXISTS mesh_pairing_requests");
+    db!.run("DROP TABLE IF EXISTS mesh_enrollment_tokens");
     db!.run("DROP TABLE IF EXISTS mesh_link_members");
     db!.run("DROP TABLE IF EXISTS mesh_links");
     db!.run("DROP TABLE IF EXISTS mesh_nodes");

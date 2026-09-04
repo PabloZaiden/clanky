@@ -3,6 +3,7 @@
  */
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
+import { getChatWorkspaceId } from "@/shared/chat";
 import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
@@ -74,7 +75,7 @@ export class ManagedContextIdentityResolver {
     return this.createIdentity(
       "chat",
       chatId,
-      ensureWorkspace("chat", chatId, chat.config.workspaceId, expectedWorkspaceId),
+      ensureWorkspace("chat", chatId, getChatWorkspaceId(chat), expectedWorkspaceId),
     );
   }
 

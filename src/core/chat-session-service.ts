@@ -17,6 +17,7 @@ import type {
 import type { Chat } from "@/shared";
 import {
   SshCredentialsRequiredError,
+  getChatWorkspaceId,
   isExecutionHostChat,
   isSshServerChat,
 } from "@/shared/chat";
@@ -75,7 +76,14 @@ export class ChatSessionService implements ChatSessionPort {
     this.hasActiveStream = dependencies.hasActiveStream ?? (() => false);
   }
 
-  getChatBackend(chatId: string, workspaceId: string): Backend {
+  getChatBackend(chatId: string, workspaceId?: string): Backend {
+    const directBackend = this.sshChatBackends.get(chatId);
+    if (directBackend) {
+      return directBackend;
+    }
+    if (!workspaceId) {
+      throw new Error(`Workspace-backed chat is missing workspaceId: ${chatId}`);
+    }
     return this.backendManager.getChatBackend(chatId, workspaceId);
   }
 
@@ -118,7 +126,8 @@ export class ChatSessionService implements ChatSessionPort {
       return this.ensureSshServerBackendConnected(chat, options);
     }
 
-    const workspace = await this.state.getWorkspace(chat.config.workspaceId);
+    const workspaceId = getChatWorkspaceId(chat);
+    const workspace = await this.state.getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
@@ -132,15 +141,15 @@ export class ChatSessionService implements ChatSessionPort {
           ...working,
           chat: await this.state.updateStartupStage(working.chat, "connecting_provider"),
         };
-    await this.backendManager.getBackendAsync(chat.config.workspaceId);
-    const backend = this.getChatBackend(stagedWorking.chat.config.id, stagedWorking.chat.config.workspaceId);
+    await this.backendManager.getBackendAsync(workspaceId);
+    const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
     if (!backend.isConnected() || backend.getDirectory() !== stagedWorking.directory) {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
       const identity = await managedContextIdentityResolver.forChat(
         stagedWorking.chat.config.id,
-        stagedWorking.chat.config.workspaceId,
+        workspaceId,
       );
       const credential = await managedCredentialService.ensureCredentialForRuntime(
         identity,

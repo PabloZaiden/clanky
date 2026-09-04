@@ -263,7 +263,7 @@ export class ChatManager {
     return this.services.taskConversion.spawnTaskFromCurrentPlan(chatId, planFilePath);
   }
 
-  getChatBackend(chatId: string, workspaceId: string): Backend {
+  getChatBackend(chatId: string, workspaceId?: string): Backend {
     return this.services.session.getChatBackend(chatId, workspaceId);
   }
 

@@ -454,7 +454,7 @@ describe("Standalone SSH servers API integration", () => {
       };
       state: { connectionStatus: string };
     };
-    expect(chat.config.workspaceId).toBe("");
+    expect(chat.config.workspaceId).toBeUndefined();
     expect(chat.config.source).toMatchObject({
       kind: "ssh_server",
       sshServerId: createdServer.config.id,

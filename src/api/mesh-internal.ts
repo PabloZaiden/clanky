@@ -23,6 +23,7 @@ import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-termi
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshManager } from "../core/mesh-manager";
 import { consumeMeshEnrollmentToken } from "../persistence/mesh-enrollment-tokens";
+import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
 import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../core/mesh-tcp-tunnel-gateway";
@@ -101,7 +102,11 @@ export const meshInternalRoutes = defineRoutes({
         const received = await meshManager.receivePairingRequest(parsed.data);
         const enrollmentToken = req.headers.get("x-clanky-mesh-enrollment-token")?.trim();
         if (enrollmentToken) {
-          const enrollment = consumeMeshEnrollmentToken(enrollmentToken);
+          const identity = await ensureLocalMeshNodeIdentity();
+          const enrollment = consumeMeshEnrollmentToken(enrollmentToken, {
+            nodeId: identity.nodeId,
+            fingerprint: identity.fingerprint,
+          });
           if (!enrollment) {
             return errorResponse(
               "mesh_enrollment_token_invalid",

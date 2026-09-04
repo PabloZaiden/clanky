@@ -151,7 +151,9 @@ export function ChatComposer(props: ChatComposerProps) {
                     disabled={secondaryActionsDisabled || isActive}
                     showDisconnected
                     currentModelKey={currentModelKey}
-                    variantDiscovery={{ workspaceId: chat.config.workspaceId }}
+                    variantDiscovery={chat.config.workspaceId
+                      ? { workspaceId: chat.config.workspaceId }
+                      : undefined}
                     placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
                     loadingText="Loading..."
                     emptyText="No models available"

@@ -9,7 +9,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../core/chat-manager";
 import { taskManager } from "../core/task-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, isStandaloneChat, isTaskChat, type Chat } from "@/shared/chat";
+import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, getChatWorkspaceId, isStandaloneChat, isTaskChat, isWorkspaceChat, type Chat } from "@/shared/chat";
 import type { ChatConfig } from "@/shared/chat";
 import type { Task } from "@/shared/task";
 import { CreateChatRequestSchema, ImportExistingChatRequestSchema, InterruptChatRequestSchema, ReconnectChatRequestSchema, ReplyToChatPermissionRequestSchema, SendChatMessageRequestSchema, SpawnCurrentPlanTaskRequestSchema, UpdateChatRequestSchema } from "@/contracts/schemas";
@@ -354,9 +354,9 @@ export const chatsRoutes = defineRoutes({
         return validation.response;
       }
 
-      if (validation.data.model) {
+      if (validation.data.model && isWorkspaceChat(existing)) {
         const modelValidation = await isModelEnabled(
-          existing.config.workspaceId,
+          getChatWorkspaceId(existing),
           validation.data.model.providerID,
           validation.data.model.modelID,
         );
@@ -755,7 +755,10 @@ export const chatsRoutes = defineRoutes({
         return errorResponse("not_found", "Chat not found", 404);
       }
 
-      const workspace = await requireWorkspace(chat.config.workspaceId);
+      if (!isWorkspaceChat(chat)) {
+        return errorResponse("chat_not_workspace_backed", "Only workspace chats can create tasks", 409);
+      }
+      const workspace = await requireWorkspace(getChatWorkspaceId(chat));
       if (workspace instanceof Response) {
         return workspace;
       }
@@ -808,7 +811,10 @@ export const chatsRoutes = defineRoutes({
         return errorResponse("not_found", "Chat not found", 404);
       }
 
-      const workspace = await requireWorkspace(chat.config.workspaceId);
+      if (!isWorkspaceChat(chat)) {
+        return errorResponse("chat_not_workspace_backed", "Only workspace chats can create tasks", 409);
+      }
+      const workspace = await requireWorkspace(getChatWorkspaceId(chat));
       if (workspace instanceof Response) {
         return workspace;
       }

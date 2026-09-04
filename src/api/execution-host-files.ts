@@ -2,7 +2,7 @@
  * File explorer routes for local, Mesh, and SSH execution hosts.
  */
 
-import type { ExecutionHostRef } from "@/shared";
+import { executionHostRefsEqual, type ExecutionHostRef } from "@/shared";
 import { executionHostService } from "../core/execution-host-service";
 import {
   resolveFileExplorerRootDirectory,
@@ -37,7 +37,7 @@ async function resolveExecutionHostFileTarget(
 ): Promise<FileExplorerTarget> {
   const ref = parseRef(req, id);
   const descriptor = (await executionHostService.listHosts())
-    .find((host) => JSON.stringify(host.ref) === JSON.stringify(ref));
+    .find((host) => executionHostRefsEqual(host.ref, ref));
   if (!descriptor) {
     throw new DomainError("execution_host_unavailable", "Execution host not found or unavailable.");
   }

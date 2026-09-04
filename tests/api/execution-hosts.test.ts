@@ -67,6 +67,7 @@ describe("Execution hosts API", () => {
     expect(getResponse.status).toBe(200);
     const persisted = await getResponse.json() as Chat;
     expect(persisted.config.source).toEqual(chat.config.source);
+    expect(persisted.config.workspaceId).toBeUndefined();
 
     const createTerminalResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
       method: "POST",
@@ -96,6 +97,12 @@ describe("Execution hosts API", () => {
       terminal.config.executionHostBinding,
     );
 
+    const deleteTerminalResponse = await fetch(
+      `${baseUrl}/api/terminal-sessions/${terminal.config.id}`,
+      { method: "DELETE" },
+    );
+    expect(deleteTerminalResponse.status).toBe(200);
+
     const createVncResponse = await fetch(
       `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/vnc-sessions`,
       {
@@ -117,6 +124,12 @@ describe("Execution hosts API", () => {
     );
     expect(vncSession.config.sshServerId).toBeUndefined();
     expect(vncSession.state.status).toBe("active");
+
+    const deleteChatResponse = await fetch(
+      `${baseUrl}/api/chats/${chat.config.id}`,
+      { method: "DELETE" },
+    );
+    expect(deleteChatResponse.status).toBe(200);
   });
 
 });
