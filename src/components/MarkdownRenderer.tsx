@@ -5,6 +5,7 @@
 
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { createContext, useContext, type ReactNode } from "react";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
 import {
   renderTranscriptTextNodes,
@@ -12,6 +13,36 @@ import {
   TranscriptInlineCode,
   TranscriptPathLink,
 } from "./log-viewer/transcript-file-links";
+
+// react-markdown 10 no longer passes the legacy `inline` renderer prop, so
+// block code is marked at its <pre> boundary instead.
+const MarkdownCodeBlockContext = createContext(false);
+
+function MarkdownCode({
+  children,
+  className,
+  fileLinkContext,
+}: {
+  children: ReactNode;
+  className?: string;
+  fileLinkContext?: TranscriptFileLinkContext;
+}) {
+  const isCodeBlock = useContext(MarkdownCodeBlockContext);
+
+  if (!isCodeBlock) {
+    return (
+      <TranscriptInlineCode className={className} fileLinkContext={fileLinkContext}>
+        {children}
+      </TranscriptInlineCode>
+    );
+  }
+
+  return (
+    <code className={className}>
+      {renderTranscriptTextNodes(children, fileLinkContext)}
+    </code>
+  );
+}
 
 export interface MarkdownRendererProps {
   /** Markdown content to render */
@@ -103,22 +134,20 @@ export function MarkdownRenderer({
               {renderTranscriptTextNodes(children, fileLinkContext)}
             </li>
           ),
-          code: ({ children, className }) => {
-            // Check if this is inline code or a code block
-            const isInline = !className;
-            if (isInline) {
-              return <TranscriptInlineCode className={className} fileLinkContext={fileLinkContext}>{children}</TranscriptInlineCode>;
-            }
-            return (
-              <code className={className}>
-                {renderTranscriptTextNodes(children, fileLinkContext)}
-              </code>
-            );
-          },
-          pre: ({ children }) => (
-            <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
+          code: ({ children, className }) => (
+            <MarkdownCode
+              className={className}
+              fileLinkContext={fileLinkContext}
+            >
               {children}
-            </pre>
+            </MarkdownCode>
+          ),
+          pre: ({ children }) => (
+            <MarkdownCodeBlockContext.Provider value={true}>
+              <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
+                {children}
+              </pre>
+            </MarkdownCodeBlockContext.Provider>
           ),
           table: ({ children, className, ...props }) => (
             <div className="min-w-0 max-w-full overflow-x-auto">
