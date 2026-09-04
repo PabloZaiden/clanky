@@ -109,7 +109,11 @@ export function MarkdownRenderer({
             if (isInline) {
               return <TranscriptInlineCode className={className} fileLinkContext={fileLinkContext}>{children}</TranscriptInlineCode>;
             }
-            return <code className={className}>{children}</code>;
+            return (
+              <code className={className}>
+                {renderTranscriptTextNodes(children, fileLinkContext)}
+              </code>
+            );
           },
           pre: ({ children }) => (
             <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
