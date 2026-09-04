@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import type { Agent, ExecutionHostDescriptor, PublicProvisioningJob, SshServerSession } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  type Agent,
+  type ExecutionHostDescriptor,
+  type PublicProvisioningJob,
+  type SshServerSession,
+} from "@/shared";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
@@ -16,10 +22,6 @@ import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
-
-function getExecutionHostId(host: ExecutionHostDescriptor): string {
-  return host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
-}
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   if (host.ref.kind === "ssh") {
@@ -283,7 +285,7 @@ export function OverviewView({
                 );
                 return (
                   <ClankyListRow
-                    key={`${host.ref.kind}:${getExecutionHostId(host)}`}
+                    key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
                     title={host.name}
                     description={host.endpoint ?? "Endpoint unavailable"}
                     meta={sessionCount === null
