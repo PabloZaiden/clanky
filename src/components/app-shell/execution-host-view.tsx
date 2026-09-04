@@ -113,15 +113,6 @@ export function ExecutionHostView({ host, provisioning, onNavigate }: ExecutionH
             <CodeValue value={host.targetKey} />
           </div>
         </div>
-        <div className="grid gap-2 p-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-start">
-          <span className="text-sm font-medium">Capabilities</span>
-          <span className="break-words text-sm text-gray-600 dark:text-gray-400 sm:text-right">
-            {Object.entries(host.capabilities)
-              .filter(([, version]) => version !== undefined)
-              .map(([capability]) => capability)
-              .join(", ")}
-          </span>
-        </div>
       </Panel>
 
       <Panel>

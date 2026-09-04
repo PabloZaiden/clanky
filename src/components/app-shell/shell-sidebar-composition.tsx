@@ -1215,7 +1215,7 @@ function buildSidebarNodes(
     }, serverPrivateHidden);
   });
   const directExecutionHostNodes = executionHosts
-    .filter((host) => host.ref.kind !== "ssh")
+    .filter((host) => host.ref.kind === "mesh")
     .map((host): SidebarNode => {
       const hostId = executionHostId(host);
       const belongsToHost = (ref: import("@/shared").ExecutionHostRef | undefined) => {
