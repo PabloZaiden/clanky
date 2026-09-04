@@ -473,6 +473,7 @@ function createBindingIndexes(db: Database): void {
 }
 
 function rebuildChatsForExecutionHostSources(db: Database): void {
+  db.run("DROP TABLE IF EXISTS chats_execution_host");
   db.run(`
     CREATE TABLE chats_execution_host (
       id TEXT PRIMARY KEY,
@@ -543,8 +544,92 @@ function rebuildChatsForExecutionHostSources(db: Database): void {
     )
   `);
   db.run(`
-    INSERT INTO chats_execution_host
-    SELECT * FROM chats
+    INSERT INTO chats_execution_host (
+      id,
+      user_id,
+      name,
+      source_kind,
+      workspace_id,
+      ssh_server_id,
+      ssh_server_session_id,
+      scope,
+      task_id,
+      directory,
+      created_at,
+      updated_at,
+      model_provider_id,
+      model_model_id,
+      model_variant,
+      use_worktree,
+      auto_approve_permissions,
+      skip_base_branch_sync,
+      base_branch,
+      mode,
+      status,
+      started_at,
+      completed_at,
+      last_activity_at,
+      session_id,
+      session_server_url,
+      error_message,
+      error_timestamp,
+      error_code,
+      worktree_original_branch,
+      worktree_working_branch,
+      worktree_path,
+      pending_permission_requests,
+      queued_messages,
+      active_message_id,
+      interrupt_requested,
+      connection_status,
+      is_private,
+      startup_stage,
+      execution_host_id,
+      execution_host_revision
+    )
+    SELECT
+      id,
+      user_id,
+      name,
+      source_kind,
+      workspace_id,
+      ssh_server_id,
+      ssh_server_session_id,
+      COALESCE(scope, 'workspace'),
+      task_id,
+      directory,
+      created_at,
+      updated_at,
+      model_provider_id,
+      model_model_id,
+      model_variant,
+      use_worktree,
+      auto_approve_permissions,
+      skip_base_branch_sync,
+      base_branch,
+      mode,
+      status,
+      started_at,
+      completed_at,
+      last_activity_at,
+      session_id,
+      session_server_url,
+      error_message,
+      error_timestamp,
+      error_code,
+      worktree_original_branch,
+      worktree_working_branch,
+      worktree_path,
+      pending_permission_requests,
+      queued_messages,
+      active_message_id,
+      interrupt_requested,
+      connection_status,
+      is_private,
+      startup_stage,
+      execution_host_id,
+      execution_host_revision
+    FROM chats
   `);
   db.run("DROP TABLE chats");
   db.run("ALTER TABLE chats_execution_host RENAME TO chats");
