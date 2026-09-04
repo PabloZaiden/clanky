@@ -46,13 +46,23 @@ export function createClankyCli() {
     routeCatalog: appContext.routeCatalog,
     update: CLANKY_UPDATER_CONFIG,
     serve: {
+      options: [
+        {
+          name: "mesh-worker",
+          type: "boolean",
+          description: "Run the restricted Mesh execution worker surface.",
+          defaultValue: false,
+        },
+      ],
       development: {
         build: async ({ sourcePath }) => await buildClankyFromSource(sourcePath),
         command: ({ sourcePath }) => [resolve(sourcePath, "dist", "clanky"), "serve"],
       },
     },
-    start: async () => {
-      await (await getWebAppServer()).start();
+    start: async ({ options }) => {
+      await (await getWebAppServer({
+        meshWorker: options["mesh-worker"] === true,
+      })).start();
     },
     appContext,
     commands: {

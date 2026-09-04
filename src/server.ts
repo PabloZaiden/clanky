@@ -61,6 +61,7 @@ const MESH_WORKER_CONTROL_ROUTE_METHODS = {
 } as const satisfies Record<string, readonly string[]>;
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
+let appMeshWorkerMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 let realtimeHeartbeatCleanup: (() => void) | undefined;
 
@@ -327,16 +328,23 @@ export function isMeshWorkerRequestAllowed(request: Request): boolean {
   return methods?.some((method) => method === request.method) ?? false;
 }
 
-export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
+export async function getWebAppServer(
+  options: { meshWorker?: boolean } = {},
+): Promise<WebAppServer<ClankyRealtimeEvent>> {
+  const meshWorker = options.meshWorker ?? false;
   if (app) {
+    if (appMeshWorkerMode !== meshWorker) {
+      throw new Error(
+        `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)} and cannot be reused with meshWorker=${String(meshWorker)}`,
+      );
+    }
     return app;
   }
   await initializeDatabase();
   await ensureLocalMeshNodeIdentity();
   const dataDir = getDataDir();
-  const meshWorker = process.env["CLANKY_MESH_WORKER"] === "true";
   if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
-    throw new Error("CLANKY_MESH_WORKER cannot be combined with CLANKY_DISABLE_PASSKEY");
+    throw new Error("Mesh-worker mode cannot be combined with CLANKY_DISABLE_PASSKEY");
   }
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({
@@ -389,6 +397,7 @@ export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEven
       };
     },
   });
+  appMeshWorkerMode = meshWorker;
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
@@ -407,8 +416,11 @@ export function resetWebAppServerForTests(): void {
   unregisterClankyRealtimeBridge();
   managedCredentialService.resetForTests();
   app = undefined;
+  appMeshWorkerMode = undefined;
 }
 
-export async function startServer(): Promise<Server<WebAppWebSocketData>> {
-  return await (await getWebAppServer()).start();
+export async function startServer(
+  options: { meshWorker?: boolean } = {},
+): Promise<Server<WebAppWebSocketData>> {
+  return await (await getWebAppServer(options)).start();
 }
