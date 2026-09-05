@@ -17,7 +17,6 @@ function buildRequest(): Omit<MeshTerminalSessionRequest, "signature"> {
     protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
     capability: MESH_TERMINAL_CAPABILITY,
     requestId: "request-1",
-    linkId: "link-1",
     callerNodeId: "caller-1",
     callerPublicKey: "public-key",
     callerFingerprint: "fingerprint",

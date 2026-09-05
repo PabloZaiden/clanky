@@ -295,7 +295,7 @@ export function OverviewView({
                       <span className="flex items-center gap-2">
                         <ServerTransportIcon transport={host.ref.kind} />
                         <StatusBadge
-                          variant={host.availability === "online" ? "success" : "disabled"}
+                          variant={host.availability === "online" || host.availability === "available" ? "success" : "disabled"}
                         >
                           {host.availability}
                         </StatusBadge>

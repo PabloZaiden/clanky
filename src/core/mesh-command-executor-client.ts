@@ -15,11 +15,7 @@ import {
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-execution";
-import {
-  getMeshNode,
-  getMeshLinkForLocalUser,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { getWorkerRegistration } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -140,34 +136,12 @@ export class MeshCommandExecutorClient {
       );
     }
     const localUserId = this.localUserId ?? requireCurrentUserId();
-    const link = await getMeshLinkForLocalUser(localUserId);
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The local mesh link was not found.");
-    }
-
-    if (link.status !== "active") {
-      throw new DomainError(
-        "mesh_execution_link_unavailable",
-        "The local mesh link is unavailable.",
-      );
-    }
-
-    const member = (await listMeshLinkMembers(link.linkId))
-      .find((candidate) => candidate.nodeId === this.executionNodeId);
-    const node = await getMeshNode(this.executionNodeId);
-    const endpoint = member?.endpoint ?? node?.endpoint;
-    if (
-      !member
-      || !node
-      || member.status === "pending"
-      || member.status === "revoked"
-      || node.status === "pending"
-      || node.status === "revoked"
-      || !endpoint
-    ) {
+    const registration = await getWorkerRegistration(this.executionNodeId, localUserId);
+    const endpoint = registration?.workerEndpoint;
+    if (!registration || registration.grantStatus !== "active" || !endpoint) {
       throw new DomainError(
         "mesh_execution_endpoint_unavailable",
-        "The selected workspace execution peer has no usable mesh endpoint.",
+        "The selected worker has no active registration or usable Mesh endpoint.",
       );
     }
 
@@ -176,7 +150,6 @@ export class MeshCommandExecutorClient {
     const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
       protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
-      linkId: link.linkId,
       callerNodeId: identity.nodeId,
       callerPublicKey: identity.publicKey,
       callerFingerprint: identity.fingerprint,

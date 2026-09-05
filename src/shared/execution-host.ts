@@ -79,6 +79,7 @@ export function createDefaultExecutionNodeConfiguration(
 
 export const EXECUTION_HOST_AVAILABILITIES = [
   "local",
+  "available",
   "online",
   "offline",
   "unavailable",

@@ -1,32 +1,25 @@
-import type {
-  MeshLinkMemberRecord,
-  MeshLinkRecord,
-  MeshNodeRecord,
-} from "@/shared/mesh";
+/**
+ * Grant-based peer authentication for the controller-worker mesh.
+ *
+ * On a worker: incoming requests are authenticated against active controller
+ * grants. On a controller: outbound connections verify against stored worker
+ * registrations. No links, no members, no roster.
+ */
+
+import type { MeshControllerGrant, MeshWorkerRegistration } from "@/shared/mesh";
 import {
-  getMeshLinkById,
-  getMeshNode,
-  listMeshLinkMembers,
+  getControllerGrant,
+  getWorkerRegistration,
 } from "../persistence/mesh";
 import { getMeshNodeFingerprint } from "../persistence/mesh-node-identity";
 import { DomainError } from "./domain-error";
 
-export interface TrustedMeshPeer {
-  node: MeshNodeRecord;
-  link: MeshLinkRecord;
-  member: MeshLinkMemberRecord;
+export interface TrustedController {
+  grant: MeshControllerGrant;
 }
 
-export interface TrustedMeshPeerOptions {
-  linkId: string;
-  nodeId: string;
-  publicKey: string;
-  fingerprint: string;
-  encryptionPublicKey?: string;
-  requireEncryptionKey?: boolean;
-  requireActiveNode?: boolean;
-  requireActiveMember?: boolean;
-  context?: string;
+export interface TrustedWorker {
+  registration: MeshWorkerRegistration;
 }
 
 export function assertMeshPeerIdentity(
@@ -50,59 +43,72 @@ export function assertMeshPeerIdentity(
   }
 }
 
-export async function requireTrustedMeshNode(
-  nodeId: string,
-  publicKey: string,
-  fingerprint: string,
-  options: {
-    requireActive?: boolean;
-    context?: string;
-  } = {},
-): Promise<MeshNodeRecord> {
-  const context = options.context ?? "mesh peer";
-  assertMeshPeerIdentity(publicKey, fingerprint, context);
-  const node = await getMeshNode(nodeId);
-  if (!node || node.status === "revoked" || (options.requireActive && node.status !== "active")) {
-    throw new DomainError("mesh_peer_not_trusted", `The ${context} is not a trusted mesh node.`);
+/**
+ * Verify an inbound request from a controller (worker side).
+ * Checks that the caller has an active controller grant with matching identity.
+ */
+export async function requireTrustedController(options: {
+  controllerNodeId: string;
+  publicKey: string;
+  fingerprint: string;
+  encryptionPublicKey?: string;
+  requireEncryptionKey?: boolean;
+  context?: string;
+}): Promise<TrustedController> {
+  const context = options.context ?? "controller";
+  assertMeshPeerIdentity(options.publicKey, options.fingerprint, context);
+
+  const grant = await getControllerGrant(options.controllerNodeId);
+  if (!grant || grant.grantStatus !== "active") {
+    throw new DomainError(
+      "mesh_peer_not_trusted",
+      `The ${context} does not have an active grant on this worker.`,
+    );
   }
-  if (node.fingerprint !== fingerprint || node.publicKey !== publicKey) {
-    throw new DomainError("mesh_peer_not_trusted", `The ${context} identity does not match the trusted mesh node.`);
+  if (
+    grant.controllerPublicKey !== options.publicKey
+    || grant.controllerFingerprint !== options.fingerprint
+  ) {
+    throw new DomainError(
+      "mesh_peer_not_trusted",
+      `The ${context} identity does not match the stored grant.`,
+    );
   }
-  return node;
+  if (
+    grant.controllerEncryptionPublicKey
+    && options.requireEncryptionKey !== false
+    && (!options.encryptionPublicKey || grant.controllerEncryptionPublicKey !== options.encryptionPublicKey)
+  ) {
+    throw new DomainError(
+      "mesh_peer_not_trusted",
+      `The ${context} encryption identity does not match the stored grant.`,
+    );
+  }
+
+  return { grant };
 }
 
-export async function requireTrustedMeshPeer(
-  options: TrustedMeshPeerOptions,
-): Promise<TrustedMeshPeer> {
-  const context = options.context ?? "mesh peer";
-  const node = await requireTrustedMeshNode(
-    options.nodeId,
-    options.publicKey,
-    options.fingerprint,
-    {
-      requireActive: options.requireActiveNode,
-      context,
-    },
+/**
+ * Verify a target worker registration (controller side).
+ * Used before initiating outbound connections.
+ */
+export async function requireTrustedWorker(options: {
+  workerNodeId: string;
+  localUserId: string;
+  context?: string;
+}): Promise<TrustedWorker> {
+  const context = options.context ?? "worker";
+
+  const registration = await getWorkerRegistration(
+    options.workerNodeId,
+    options.localUserId,
   );
-  if (
-    node.encryptionPublicKey
-    && (
-      options.requireEncryptionKey !== false
-        ? !options.encryptionPublicKey || node.encryptionPublicKey !== options.encryptionPublicKey
-        : options.encryptionPublicKey !== undefined && node.encryptionPublicKey !== options.encryptionPublicKey
-    )
-  ) {
-    throw new DomainError("mesh_peer_not_trusted", `The ${context} encryption identity does not match the trusted mesh node.`);
+  if (!registration || registration.grantStatus !== "active") {
+    throw new DomainError(
+      "mesh_peer_not_trusted",
+      `The ${context} does not have an active registration.`,
+    );
   }
 
-  const link = await getMeshLinkById(options.linkId);
-  if (!link) {
-    throw new DomainError("mesh_link_not_found", "The mesh link was not found.");
-  }
-  const member = (await listMeshLinkMembers(options.linkId))
-    .find((candidate) => candidate.nodeId === options.nodeId);
-  if (!member || member.status === "revoked" || (options.requireActiveMember && member.status !== "active")) {
-    throw new DomainError("mesh_peer_not_trusted", `The ${context} is not an active member of this mesh link.`);
-  }
-  return { node, link, member };
+  return { registration };
 }

@@ -21,11 +21,7 @@ import {
   type PersistedExecutionHost,
 } from "../persistence/execution-hosts";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import {
-  getMeshLinkForLocalUser,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { listActiveWorkerRegistrations } from "../persistence/mesh";
 import {
   listSshServerConfigs,
 } from "../persistence/ssh-servers";
@@ -121,38 +117,29 @@ export class ExecutionHostService {
       });
     }
 
-    const link = await getMeshLinkForLocalUser(userId);
-    if (link?.status === "active") {
-      for (const member of await listMeshLinkMembers(link.linkId)) {
-        if (member.nodeId === identity.nodeId || member.status === "revoked") {
-          continue;
-        }
-        const node = await getMeshNode(member.nodeId);
-        if (!node?.execution?.acceptRemoteExecution) {
-          continue;
-        }
+    for (const worker of await listActiveWorkerRegistrations(userId)) {
+      if (worker.workerNodeId === identity.nodeId || !worker.workerAcceptRemoteExecution) {
+        continue;
+      }
         const host = ensureExecutionHost(
           userId,
-          { kind: "mesh", nodeId: member.nodeId },
-          buildMeshTargetKey(member.nodeId),
+          { kind: "mesh", nodeId: worker.workerNodeId },
+          buildMeshTargetKey(worker.workerNodeId),
         );
         descriptors.push({
           ref: host.ref,
           targetKey: host.targetKey,
-          name: node.execution.name || node.instanceName || member.nodeId,
-          endpoint: member.endpoint ?? node.endpoint,
-          repositoriesBasePath: node.execution.repositoriesBasePath,
-          preferredModel: node.execution.preferredModel ?? null,
-          configurationRevision: node.execution.revision,
-          availability: member.status === "active" && Boolean(member.endpoint ?? node.endpoint)
-            ? "online"
-            : "offline",
+          name: worker.workerInstanceName || worker.workerNodeId,
+          endpoint: worker.workerEndpoint,
+          repositoriesBasePath: worker.workerDirectory,
+          preferredModel: null,
+          configurationRevision: worker.workerConfigRevision,
+          availability: "available",
           accessRequirement: { kind: "none" },
           acceptRemoteExecution: true,
-          capabilities: node.execution.capabilities,
+          capabilities: worker.workerCapabilities ?? DEFAULT_EXECUTION_HOST_CAPABILITIES,
           revision: host.revision,
         });
-      }
     }
 
     for (const server of await listSshServerConfigs()) {

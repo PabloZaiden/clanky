@@ -9,7 +9,10 @@ import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "f
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
-import { meshInternalRoutes } from "./api/mesh-internal";
+import {
+  meshControllerInternalRoutes,
+  meshWorkerInternalRoutes,
+} from "./api/mesh-internal";
 import { authorizedRawWebSocketUpgrade } from "./api/raw-websocket-upgrade";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
@@ -49,6 +52,9 @@ import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
 import { runWithCurrentUser } from "./core/user-context";
+import { configureMeshRuntime } from "./core/mesh-runtime";
+import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
+import { configureMeshWorkerShutdown } from "./core/mesh-worker-update";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -56,8 +62,7 @@ const MESH_WORKER_CONTROL_ROUTE_METHODS = {
   "/api/mesh/status": ["GET"],
   "/api/mesh/instance-name": ["POST"],
   "/api/mesh/endpoint": ["POST"],
-  "/api/mesh/execution": ["POST"],
-  "/api/mesh/pairing-requests": ["POST"],
+  "/api/mesh/enroll": ["POST"],
 } as const satisfies Record<string, readonly string[]>;
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
@@ -300,16 +305,15 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     },
   },
   ...apiRoutes,
-  ...meshInternalRoutes,
+  ...meshControllerInternalRoutes,
 });
 
 export const meshWorkerRoutes = defineRoutes<ClankyRealtimeEvent>({
-  ...meshInternalRoutes,
+  ...meshWorkerInternalRoutes,
   "/api/mesh/status": apiRoutes["/api/mesh/status"]!,
   "/api/mesh/instance-name": apiRoutes["/api/mesh/instance-name"]!,
   "/api/mesh/endpoint": apiRoutes["/api/mesh/endpoint"]!,
-  "/api/mesh/execution": apiRoutes["/api/mesh/execution"]!,
-  "/api/mesh/pairing-requests": apiRoutes["/api/mesh/pairing-requests"]!,
+  "/api/mesh/enroll": apiRoutes["/api/mesh/enroll"]!,
 });
 
 export function isMeshWorkerRequestAllowed(request: Request): boolean {
@@ -318,7 +322,7 @@ export function isMeshWorkerRequestAllowed(request: Request): boolean {
     return request.method === "GET";
   }
   if (path.startsWith("/api/mesh/internal/")) {
-    const route = meshInternalRoutes[path];
+    const route = meshWorkerInternalRoutes[path];
     const method = ROUTE_METHODS.find((candidate) => candidate === request.method);
     return method !== undefined && Boolean(route?.[method]);
   }
@@ -329,7 +333,11 @@ export function isMeshWorkerRequestAllowed(request: Request): boolean {
 }
 
 export async function getWebAppServer(
-  options: { meshWorker?: boolean } = {},
+  options: {
+    meshWorker?: boolean;
+    workerDirectory?: string;
+    workerExecutionEnabled?: boolean;
+  } = {},
 ): Promise<WebAppServer<ClankyRealtimeEvent>> {
   const meshWorker = options.meshWorker ?? false;
   if (app) {
@@ -340,8 +348,20 @@ export async function getWebAppServer(
     }
     return app;
   }
+  await configureMeshRuntime({
+    meshWorker,
+    workerDirectory: options.workerDirectory,
+    workerExecutionEnabled: options.workerExecutionEnabled,
+  });
   await initializeDatabase();
   await ensureLocalMeshNodeIdentity();
+  if (meshWorker) {
+    await setLocalMeshExecutionConfiguration({
+      acceptRemoteExecution: options.workerExecutionEnabled ?? true,
+      repositoriesBasePath: options.workerDirectory?.trim() || process.cwd(),
+      preferredModel: null,
+    });
+  }
   const dataDir = getDataDir();
   if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
     throw new Error("Mesh-worker mode cannot be combined with CLANKY_DISABLE_PASSKEY");
@@ -398,6 +418,11 @@ export async function getWebAppServer(
     },
   });
   appMeshWorkerMode = meshWorker;
+  if (meshWorker) {
+    configureMeshWorkerShutdown(async () => {
+      await app?.stop(true);
+    });
+  }
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),

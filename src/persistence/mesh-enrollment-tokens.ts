@@ -4,7 +4,6 @@ interface EnrollmentTokenRow {
   id: string;
   user_id: string;
   name: string;
-  link_id: string | null;
   controller_node_id: string;
   controller_fingerprint: string;
   created_at: string;
@@ -18,7 +17,6 @@ export interface MeshEnrollmentTokenSummary {
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
-  linkId: string | null;
   controllerNodeId: string;
   controllerFingerprint: string;
 }
@@ -34,7 +32,6 @@ function summarize(row: EnrollmentTokenRow): MeshEnrollmentTokenSummary {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     consumedAt: row.consumed_at,
-    linkId: row.link_id,
     controllerNodeId: row.controller_node_id,
     controllerFingerprint: row.controller_fingerprint,
   };
@@ -45,7 +42,6 @@ export function createMeshEnrollmentToken(
   name: string,
   ttlSeconds: number,
   controller: {
-    linkId: string | null;
     nodeId: string;
     fingerprint: string;
   },
@@ -57,15 +53,14 @@ export function createMeshEnrollmentToken(
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
   db.run(
     `INSERT INTO mesh_enrollment_tokens
-      (id, user_id, token_hash, name, link_id, controller_node_id,
+      (id, user_id, token_hash, name, controller_node_id,
        controller_fingerprint, created_at, expires_at, consumed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     [
       id,
       userId,
       hashToken(token),
       name,
-      controller.linkId,
       controller.nodeId,
       controller.fingerprint,
       createdAt,
@@ -77,7 +72,6 @@ export function createMeshEnrollmentToken(
     enrollment: {
       id,
       name,
-      linkId: controller.linkId,
       controllerNodeId: controller.nodeId,
       controllerFingerprint: controller.fingerprint,
       createdAt,
@@ -90,7 +84,7 @@ export function createMeshEnrollmentToken(
 export function listMeshEnrollmentTokens(userId: string): MeshEnrollmentTokenSummary[] {
   return getDatabase()
     .query<EnrollmentTokenRow, [string]>(
-      `SELECT id, user_id, name, link_id, controller_node_id,
+      `SELECT id, user_id, name, controller_node_id,
               controller_fingerprint, created_at, expires_at, consumed_at
        FROM mesh_enrollment_tokens
        WHERE user_id = ?
@@ -108,7 +102,6 @@ export function consumeMeshEnrollmentToken(
   },
 ): {
   userId: string;
-  linkId: string | null;
   controllerNodeId: string;
   controllerFingerprint: string;
 } | null {
@@ -116,7 +109,6 @@ export function consumeMeshEnrollmentToken(
   const consumedAt = new Date().toISOString();
   const row = db.query<{
     user_id: string;
-    link_id: string | null;
     controller_node_id: string;
     controller_fingerprint: string;
   }, [string, string, string, string, string]>(
@@ -127,7 +119,7 @@ export function consumeMeshEnrollmentToken(
        AND controller_node_id = ?
        AND controller_fingerprint = ?
        AND expires_at > ?
-     RETURNING user_id, link_id, controller_node_id, controller_fingerprint`,
+     RETURNING user_id, controller_node_id, controller_fingerprint`,
   ).get(
     consumedAt,
     hashToken(token),
@@ -138,7 +130,6 @@ export function consumeMeshEnrollmentToken(
   return row
     ? {
         userId: row.user_id,
-        linkId: row.link_id,
         controllerNodeId: row.controller_node_id,
         controllerFingerprint: row.controller_fingerprint,
       }

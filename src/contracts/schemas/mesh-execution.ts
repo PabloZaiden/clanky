@@ -14,7 +14,6 @@ const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 export const MeshExecutionSessionRequestSchema = z.object({
   protocolVersion: z.literal(MESH_EXECUTION_PROTOCOL_VERSION),
   requestId: z.string().trim().min(1).max(200),
-  linkId: z.string().trim().min(1).max(200),
   callerNodeId: z.string().trim().min(1).max(200),
   callerPublicKey: z.string().min(1).max(16_384),
   callerFingerprint: z.string().trim().min(1).max(200),

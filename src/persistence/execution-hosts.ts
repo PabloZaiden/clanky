@@ -119,13 +119,13 @@ export function ensureExecutionHost(
   const sourceId = getExecutionHostSourceId(ref);
   const existing = getExecutionHostByRef(userId, ref);
   if (existing) {
-    if (existing.targetKey === targetKey) {
+    if (existing.targetKey === targetKey && existing.revokedAt === null) {
       return existing;
     }
     const updatedAt = new Date().toISOString();
     db.query(`
       UPDATE execution_hosts
-      SET target_key = ?, revision = revision + 1, updated_at = ?
+      SET target_key = ?, revoked_at = NULL, revision = revision + 1, updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(targetKey, updatedAt, existing.id, userId);
     return getExecutionHostById(userId, existing.id)!;

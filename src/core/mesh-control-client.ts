@@ -26,6 +26,12 @@ function getSenderNodeId(payload: unknown): string {
   if ("senderNodeId" in record) {
     return String(record["senderNodeId"]);
   }
+  if ("workerNodeId" in record) {
+    return String(record["workerNodeId"]);
+  }
+  if ("controllerNodeId" in record) {
+    return String(record["controllerNodeId"]);
+  }
   return "";
 }
 

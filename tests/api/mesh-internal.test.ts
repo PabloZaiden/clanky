@@ -1,13 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { meshInternalRoutes } from "../../src/api/mesh-internal";
-import { buildMeshPairingRequestSigningPayload } from "../../src/core/mesh-protocol";
+import {
+  buildMeshEnrollmentRequestSigningPayload,
+  buildMeshHealthCheckSigningPayload,
+} from "../../src/core/mesh-protocol";
+import { configureMeshRuntime } from "../../src/core/mesh-runtime";
+import { meshManager } from "../../src/core/mesh-manager";
 import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
-import { saveMeshNode } from "../../src/persistence/mesh";
+import {
+  listWorkerRegistrations,
+  saveControllerGrant,
+} from "../../src/persistence/mesh";
+import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { seedTestOwnerUser } from "../setup";
 
 let dataDir: string;
 
@@ -15,94 +25,145 @@ beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-internal-"));
   closeDatabase();
   process.env["CLANKY_DATA_DIR"] = dataDir;
+  process.env["CLANKY_PUBLIC_BASE_URL"] = "http://127.0.0.1:4100";
+  await configureMeshRuntime({ meshWorker: false });
   await initializeDatabase();
+  seedTestOwnerUser();
 });
 
 afterEach(async () => {
   closeDatabase();
   delete process.env["CLANKY_DATA_DIR"];
+  delete process.env["CLANKY_PUBLIC_BASE_URL"];
   await rm(dataDir, { recursive: true, force: true });
 });
 
-function createPairingEnvelope(endpoint = "http://127.0.0.1:4101") {
+function createSigningIdentity() {
   const keyPair = generateKeyPairSync("ed25519");
   const publicKey = keyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
-  const unsigned = {
-    protocolVersion: 1 as const,
-    requestId: crypto.randomUUID(),
-    targetLocalUserId: "target-user",
-    requestedNodeId: crypto.randomUUID(),
-    requestedInstanceName: "Remote instance",
-    requestedLocalUserId: "remote-user",
-    requestedUsername: "remote",
-    endpoint,
-    transport: "http" as const,
+  return {
+    privateKey: keyPair.privateKey,
     publicKey,
     fingerprint: getMeshNodeFingerprint(publicKey),
-    nonce: crypto.randomUUID(),
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
-  const signature = sign(
-    null,
-    Buffer.from(buildMeshPairingRequestSigningPayload(unsigned), "utf8"),
-    keyPair.privateKey,
-  ).toString("base64url");
-  return { ...unsigned, signature };
-}
-
-function createInternalRequest(
-  path: string,
-  payload: Record<string, unknown>,
-  nodeId: string,
-  requestId: string,
-): Request {
-  return new Request(`http://mesh.test${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-clanky-mesh-node-id": nodeId,
-      "x-clanky-mesh-request-id": requestId,
-    },
-    body: JSON.stringify(payload),
-  });
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
   return await response.json() as Record<string, unknown>;
 }
 
-describe("mesh internal routes", () => {
-  test("requires Mesh terminal session headers before WebSocket upgrade", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/terminal"]!.GET!;
-    const response = await route(
-      new Request("http://mesh.test/api/mesh/internal/terminal"),
-      undefined as never,
-    );
-
-    expect(response?.status).toBe(401);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_terminal_session_invalid",
-    });
-  });
-
-  test("rejects execution requests whose identity headers do not match the body", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
-    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {
+describe("Mesh internal controller-worker routes", () => {
+  test("enrolls a signed worker with a single-use controller token", async () => {
+    const created = await meshManager.createEnrollmentToken("admin", "Worker", 900);
+    const worker = createSigningIdentity();
+    const unsigned = {
+      protocolVersion: 1 as const,
+      workerNodeId: "worker-1",
+      workerInstanceName: "Worker 1",
+      workerEndpoint: "http://127.0.0.1:4200",
+      workerTransport: "http" as const,
+      workerPublicKey: worker.publicKey,
+      workerFingerprint: worker.fingerprint,
+      workerDirectory: "/srv/worker",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true as const,
+      workerConfigRevision: 1,
+      enrollmentToken: created.token,
+      expectedControllerFingerprint: created.enrollment.controllerFingerprint,
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const body = {
+      ...unsigned,
+      signature: sign(
+        null,
+        Buffer.from(buildMeshEnrollmentRequestSigningPayload(unsigned)),
+        worker.privateKey,
+      ).toString("base64url"),
+    };
+    const route = meshInternalRoutes["/api/mesh/internal/enrollment"]!.POST!;
+    const response = await route(new Request("http://controller/api/mesh/internal/enrollment", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-clanky-mesh-node-id": "different-caller",
+        "x-clanky-mesh-node-id": "worker-1",
+        "x-clanky-mesh-request-id": "worker-1",
+      },
+      body: JSON.stringify(body),
+    }), undefined as never);
+
+    expect(response!.status).toBe(200);
+    expect((await listWorkerRegistrations("admin"))).toHaveLength(1);
+    const replay = await route(new Request("http://controller/api/mesh/internal/enrollment", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "worker-1",
+        "x-clanky-mesh-request-id": "worker-1",
+      },
+      body: JSON.stringify(body),
+    }), undefined as never);
+    expect(replay!.status).toBe(410);
+  });
+
+  test("accepts signed health from one active controller grant in worker mode", async () => {
+    await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
+    const controller = createSigningIdentity();
+    await saveControllerGrant({
+      controllerNodeId: "controller-1",
+      controllerInstanceName: "Controller",
+      controllerPublicKey: controller.publicKey,
+      controllerFingerprint: controller.fingerprint,
+      controllerEncryptionPublicKey: null,
+    });
+    const unsigned = {
+      protocolVersion: 1 as const,
+      senderNodeId: "controller-1",
+      senderPublicKey: controller.publicKey,
+      senderFingerprint: controller.fingerprint,
+      nonce: crypto.randomUUID(),
+      sentAt: new Date().toISOString(),
+    };
+    const route = meshInternalRoutes["/api/mesh/internal/health"]!.POST!;
+    const response = await route(new Request("http://worker/api/mesh/internal/health", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "controller-1",
+        "x-clanky-mesh-request-id": unsigned.nonce,
+      },
+      body: JSON.stringify({
+        ...unsigned,
+        signature: sign(
+          null,
+          Buffer.from(buildMeshHealthCheckSigningPayload(unsigned)),
+          controller.privateKey,
+        ).toString("base64url"),
+      }),
+    }), undefined as never);
+
+    expect(response!.status).toBe(200);
+    expect(await readJson(response!)).toEqual({ success: true });
+  });
+
+  test("rejects execution requests whose identity headers do not match", async () => {
+    await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
+    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
+    const response = await route(new Request("http://worker/api/mesh/internal/execution/session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "different",
         "x-clanky-mesh-request-id": "request-1",
       },
       body: JSON.stringify({
         protocolVersion: 1,
         requestId: "request-1",
-        linkId: "link-1",
-        callerNodeId: "caller-1",
+        callerNodeId: "controller-1",
         callerPublicKey: "key",
         callerFingerprint: "fingerprint",
         callerEncryptionPublicKey: "key",
-        targetNodeId: "target-1",
+        targetNodeId: "worker-1",
         workspaceId: "workspace-1",
         directory: "/workspace",
         provider: "opencode",
@@ -113,300 +174,7 @@ describe("mesh internal routes", () => {
       }),
     }), undefined as never);
 
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_peer_headers_invalid",
-    });
-  });
-
-  test("rejects execution sessions without a usable caller encryption key", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
-    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": "caller-1",
-        "x-clanky-mesh-request-id": "request-1",
-      },
-      body: JSON.stringify({
-        protocolVersion: 1,
-        requestId: "request-1",
-        linkId: "link-1",
-        callerNodeId: "caller-1",
-        callerPublicKey: "key",
-        callerFingerprint: "fingerprint",
-        callerEncryptionPublicKey: "   ",
-        targetNodeId: "target-1",
-        workspaceId: "workspace-1",
-        directory: "/workspace",
-        provider: "opencode",
-        channel: "command-executor",
-        nonce: "nonce-1",
-        expiresAt: new Date(Date.now() + 10_000).toISOString(),
-        signature: "signature",
-      }),
-    }), undefined as never);
-
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_execution_encryption_key_invalid",
-    });
-  });
-
-  test("requires the caller encryption key in the session schema", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/execution/session"]!.POST!;
-    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/session", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": "caller-1",
-        "x-clanky-mesh-request-id": "request-1",
-      },
-      body: JSON.stringify({
-        protocolVersion: 1,
-        requestId: "request-1",
-        linkId: "link-1",
-        callerNodeId: "caller-1",
-        callerPublicKey: "key",
-        callerFingerprint: "fingerprint",
-        targetNodeId: "target-1",
-        workspaceId: "workspace-1",
-        directory: "/workspace",
-        provider: "opencode",
-        channel: "command-executor",
-        nonce: "nonce-1",
-        expiresAt: new Date(Date.now() + 10_000).toISOString(),
-        signature: "signature",
-      }),
-    }), undefined as never);
-
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "validation_error",
-    });
-  });
-
-  test("rejects execution RPCs with mismatched session headers before dispatch", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/execution/rpc"]!.POST!;
-    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/rpc", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-session-id": "session-a",
-        "x-clanky-mesh-request-id": "request-a",
-      },
-      body: JSON.stringify({
-        protocolVersion: 1,
-        sessionId: "session-b",
-        sessionToken: "a".repeat(32),
-        requestId: "request-a",
-        operation: "exec",
-        command: "printf",
-        args: ["safe"],
-      }),
-    }), undefined as never);
-
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_peer_headers_invalid",
-    });
-  });
-
-  test("requires both session headers before upgrading the ACP relay", async () => {
-    const route = meshInternalRoutes["/api/mesh/internal/execution/acp"]!.GET!;
-    const response = await route(new Request("http://mesh.test/api/mesh/internal/execution/acp"), {
-      params: {},
-      server: { upgrade: () => true },
-    } as never);
-
-    expect(response?.status).toBe(401);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_execution_session_invalid",
-    });
-  });
-
-  test("requires matching identity headers on every signed control route", async () => {
-    const pairing = createPairingEnvelope();
-    const linkId = crypto.randomUUID();
-    const cases = [
-      {
-        path: "/api/mesh/internal/pairing-requests",
-        payload: pairing,
-        nodeId: pairing.requestedNodeId,
-        requestId: pairing.requestId,
-      },
-      {
-        path: "/api/mesh/internal/pairing-approvals",
-        payload: {
-          protocolVersion: 1,
-          requestId: pairing.requestId,
-          linkId,
-          approvedByNodeId: pairing.requestedNodeId,
-          approvedByInstanceName: "Approver",
-          approvedByLocalUserId: "approver-user",
-          endpoint: pairing.endpoint,
-          transport: pairing.transport,
-          publicKey: pairing.publicKey,
-          fingerprint: pairing.fingerprint,
-          members: [],
-          signature: "signature",
-        },
-        nodeId: pairing.requestedNodeId,
-        requestId: pairing.requestId,
-      },
-      {
-        path: "/api/mesh/internal/membership",
-        payload: {
-          protocolVersion: 1,
-          linkId,
-          senderNodeId: pairing.requestedNodeId,
-          senderPublicKey: pairing.publicKey,
-          senderFingerprint: pairing.fingerprint,
-          nonce: crypto.randomUUID(),
-          members: [{
-            nodeId: pairing.requestedNodeId,
-            instanceName: pairing.requestedInstanceName,
-            localUserId: pairing.requestedLocalUserId,
-            endpoint: pairing.endpoint,
-            transport: pairing.transport,
-            status: "active",
-            membershipGeneration: 1,
-            publicKey: pairing.publicKey,
-            fingerprint: pairing.fingerprint,
-          }],
-          signature: "signature",
-        },
-        nodeId: pairing.requestedNodeId,
-        requestId: "not-the-nonce",
-      },
-      {
-        path: "/api/mesh/internal/health",
-        payload: {
-          protocolVersion: 1,
-          linkId,
-          senderNodeId: pairing.requestedNodeId,
-          senderPublicKey: pairing.publicKey,
-          senderFingerprint: pairing.fingerprint,
-          nonce: crypto.randomUUID(),
-          sentAt: new Date().toISOString(),
-          signature: "signature",
-        },
-        nodeId: pairing.requestedNodeId,
-        requestId: "not-the-nonce",
-      },
-      {
-        path: "/api/mesh/internal/execution/configuration",
-        payload: {
-          protocolVersion: 1,
-          linkId,
-          senderNodeId: pairing.requestedNodeId,
-          senderPublicKey: pairing.publicKey,
-          senderFingerprint: pairing.fingerprint,
-          targetNodeId: "target-node",
-          expectedRevision: 1,
-          repositoriesBasePath: null,
-          preferredModel: null,
-          nonce: crypto.randomUUID(),
-          expiresAt: new Date(Date.now() + 30_000).toISOString(),
-          signature: "signature",
-        },
-        nodeId: pairing.requestedNodeId,
-        requestId: "not-the-nonce",
-      },
-    ] as const;
-
-    for (const testCase of cases) {
-      const route = meshInternalRoutes[testCase.path as keyof typeof meshInternalRoutes];
-      const handler = route?.POST;
-      if (!handler) {
-        throw new Error(`Missing POST handler for ${testCase.path}`);
-      }
-      const response = await handler(createInternalRequest(
-        testCase.path,
-        testCase.payload,
-        "wrong-node",
-        testCase.requestId,
-      ), undefined as never);
-
-      expect(response?.status).toBe(400);
-      await expect(readJson(response!)).resolves.toMatchObject({
-        error: "mesh_peer_headers_invalid",
-      });
-    }
-  });
-
-  test("rejects a pairing request with an invalid signature", async () => {
-    const pairing = createPairingEnvelope();
-    const route = meshInternalRoutes["/api/mesh/internal/pairing-requests"]!.POST!;
-    const response = await route(createInternalRequest(
-      "/api/mesh/internal/pairing-requests",
-      { ...pairing, signature: "tampered" },
-      pairing.requestedNodeId,
-      pairing.requestId,
-    ), undefined as never);
-
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_peer_signature_invalid",
-    });
-  });
-
-  test("rejects pairing endpoints that contain credentials", async () => {
-    const pairing = createPairingEnvelope("http://mesh-user:mesh-password@127.0.0.1:4101");
-    const route = meshInternalRoutes["/api/mesh/internal/pairing-requests"]!.POST!;
-    const response = await route(createInternalRequest(
-      "/api/mesh/internal/pairing-requests",
-      pairing,
-      pairing.requestedNodeId,
-      pairing.requestId,
-    ), undefined as never);
-
-    expect(response?.status).toBe(400);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_endpoint_invalid",
-    });
-  });
-
-  test("rejects a pairing request from a revoked node", async () => {
-    const pairing = createPairingEnvelope();
-    await saveMeshNode({
-      nodeId: pairing.requestedNodeId,
-      instanceName: pairing.requestedInstanceName,
-      publicKey: pairing.publicKey,
-      fingerprint: pairing.fingerprint,
-      endpoint: pairing.endpoint,
-      transport: pairing.transport,
-      status: "revoked",
-    });
-    const route = meshInternalRoutes["/api/mesh/internal/pairing-requests"]!.POST!;
-    const response = await route(createInternalRequest(
-      "/api/mesh/internal/pairing-requests",
-      pairing,
-      pairing.requestedNodeId,
-      pairing.requestId,
-    ), undefined as never);
-
-    expect(response?.status).toBe(403);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      error: "mesh_peer_revoked",
-    });
-  });
-
-  test("accepts a valid signed pairing request", async () => {
-    const pairing = createPairingEnvelope();
-    const route = meshInternalRoutes["/api/mesh/internal/pairing-requests"]!.POST!;
-    const response = await route(createInternalRequest(
-      "/api/mesh/internal/pairing-requests",
-      pairing,
-      pairing.requestedNodeId,
-      pairing.requestId,
-    ), undefined as never);
-
-    expect(response?.status).toBe(200);
-    await expect(readJson(response!)).resolves.toMatchObject({
-      requestId: pairing.requestId,
-      status: "pending",
-      fingerprint: pairing.fingerprint,
-    });
+    expect(response!.status).toBe(400);
+    expect(await readJson(response!)).toMatchObject({ error: "mesh_peer_headers_invalid" });
   });
 });

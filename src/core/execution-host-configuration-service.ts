@@ -8,9 +8,9 @@ import type {
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import { executionHostRefsEqual } from "@/shared/execution-host";
+import { setLocalMeshExecutionConfiguration } from "../persistence/mesh-node-identity";
 import { DomainError } from "./domain-error";
 import { executionHostService } from "./execution-host-service";
-import { meshManager } from "./mesh-manager";
 import { requireCurrentUserId } from "./user-context";
 
 export class ExecutionHostConfigurationService {
@@ -23,10 +23,12 @@ export class ExecutionHostConfigurationService {
     },
     userId: string = requireCurrentUserId(),
   ): Promise<ExecutionHostDescriptor> {
-    if (ref.kind === "ssh") {
+    if (ref.kind !== "local") {
       throw new DomainError(
         "execution_host_configuration_unsupported",
-        "SSH server defaults must be changed through SSH server settings.",
+        ref.kind === "mesh"
+          ? "Mesh worker defaults are owned by the worker and cannot be changed remotely."
+          : "SSH server defaults must be changed through SSH server settings.",
       );
     }
 
@@ -45,11 +47,11 @@ export class ExecutionHostConfigurationService {
       });
     }
 
-    await meshManager.updateExecutionNodeDefaults(userId, ref.nodeId, {
-      expectedRevision: input.expectedRevision,
+    await setLocalMeshExecutionConfiguration({
+      acceptRemoteExecution: true,
       repositoriesBasePath,
       preferredModel: input.preferredModel,
-    });
+    }, input.expectedRevision);
     const updated = (await executionHostService.listHosts(userId))
       .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
     if (!updated) {

@@ -1,90 +1,62 @@
 /**
  * Canonical payloads for signed mesh control messages.
+ *
+ * No membership update or configuration update payloads - the controller-worker
+ * model does not have gossip.
  */
 
 import type {
-  MeshPeerPairingApproval,
-  MeshPeerPairingRequest,
+  MeshEnrollmentRequest,
+  MeshEnrollmentResponse,
   MeshHealthCheck,
-  MeshMembershipUpdate,
-  MeshExecutionConfigurationUpdate,
+  MeshRevocationNotice,
+  MeshWorkerUpdateRequest,
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
-type UnsignedPairingRequest = Omit<MeshPeerPairingRequest, "signature">;
-type UnsignedPairingApproval = Omit<MeshPeerPairingApproval, "signature">;
-type UnsignedMembershipUpdate = Omit<MeshMembershipUpdate, "signature">;
+type UnsignedEnrollmentRequest = Omit<MeshEnrollmentRequest, "signature">;
+type UnsignedEnrollmentResponse = Omit<MeshEnrollmentResponse, "signature">;
 type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
+type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
-type UnsignedExecutionConfigurationUpdate = Omit<
-  MeshExecutionConfigurationUpdate,
-  "signature"
->;
+type UnsignedWorkerUpdateRequest = Omit<MeshWorkerUpdateRequest, "signature">;
 
-export function buildMeshPairingRequestSigningPayload(
-  envelope: UnsignedPairingRequest,
-): string {
-  const payload: unknown[] = [
-    "clanky-mesh-pairing-request-v1",
-    envelope.protocolVersion,
-    envelope.requestId,
-    envelope.linkId ?? null,
-    envelope.targetLocalUserId ?? null,
-    envelope.requestedNodeId,
-    envelope.requestedInstanceName ?? null,
-    envelope.requestedLocalUserId,
-    envelope.requestedUsername ?? null,
-    envelope.endpoint,
-    envelope.transport,
-    envelope.publicKey,
-    envelope.fingerprint,
-    envelope.encryptionPublicKey ?? null,
-    envelope.nonce,
-    envelope.expiresAt,
-  ];
-  if (envelope.requestedExecution !== undefined) {
-    payload.push(envelope.requestedExecution);
-  }
-  return JSON.stringify(payload);
-}
-
-export function buildMeshPairingApprovalSigningPayload(
-  envelope: UnsignedPairingApproval,
-): string {
-  const payload: unknown[] = [
-    "clanky-mesh-pairing-approval-v1",
-    envelope.protocolVersion,
-    envelope.requestId,
-    envelope.linkId,
-    envelope.approvedByNodeId,
-    envelope.approvedByInstanceName ?? null,
-    envelope.approvedByLocalUserId,
-    envelope.endpoint,
-    envelope.transport,
-    envelope.publicKey,
-    envelope.fingerprint,
-    envelope.encryptionPublicKey ?? null,
-    envelope.members ?? [],
-  ];
-  if (envelope.approvedByExecution !== undefined) {
-    payload.push(envelope.approvedByExecution);
-  }
-  return JSON.stringify(payload);
-}
-
-export function buildMeshMembershipUpdateSigningPayload(
-  envelope: UnsignedMembershipUpdate,
+export function buildMeshEnrollmentRequestSigningPayload(
+  envelope: UnsignedEnrollmentRequest,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-membership-update-v1",
+    "clanky-mesh-enrollment-request-v1",
     envelope.protocolVersion,
-    envelope.linkId,
-    envelope.senderNodeId,
-    envelope.senderPublicKey,
-    envelope.senderFingerprint,
-    envelope.senderEncryptionPublicKey ?? null,
+    envelope.workerNodeId,
+    envelope.workerInstanceName ?? null,
+    envelope.workerEndpoint,
+    envelope.workerTransport,
+    envelope.workerPublicKey,
+    envelope.workerFingerprint,
+    envelope.workerEncryptionPublicKey ?? null,
+    envelope.workerDirectory,
+    envelope.workerCapabilities,
+    envelope.workerAcceptRemoteExecution,
+    envelope.workerConfigRevision,
+    envelope.enrollmentToken,
+    envelope.expectedControllerFingerprint,
     envelope.nonce,
-    envelope.members,
+    envelope.expiresAt,
+  ]);
+}
+
+export function buildMeshEnrollmentResponseSigningPayload(
+  envelope: UnsignedEnrollmentResponse,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-enrollment-response-v1",
+    envelope.protocolVersion,
+    envelope.workerNodeId,
+    envelope.controllerNodeId,
+    envelope.controllerInstanceName,
+    envelope.controllerPublicKey,
+    envelope.controllerFingerprint,
+    envelope.controllerEncryptionPublicKey ?? null,
   ]);
 }
 
@@ -94,7 +66,6 @@ export function buildMeshHealthCheckSigningPayload(
   return JSON.stringify([
     "clanky-mesh-health-check-v1",
     envelope.protocolVersion,
-    envelope.linkId,
     envelope.senderNodeId,
     envelope.senderPublicKey,
     envelope.senderFingerprint,
@@ -103,20 +74,15 @@ export function buildMeshHealthCheckSigningPayload(
   ]);
 }
 
-export function buildMeshExecutionConfigurationUpdateSigningPayload(
-  envelope: UnsignedExecutionConfigurationUpdate,
+export function buildMeshRevocationNoticeSigningPayload(
+  envelope: UnsignedRevocationNotice,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-execution-configuration-update-v1",
+    "clanky-mesh-revocation-notice-v1",
     envelope.protocolVersion,
-    envelope.linkId,
-    envelope.senderNodeId,
-    envelope.senderPublicKey,
-    envelope.senderFingerprint,
-    envelope.targetNodeId,
-    envelope.expectedRevision,
-    envelope.repositoriesBasePath,
-    envelope.preferredModel,
+    envelope.controllerNodeId,
+    envelope.controllerPublicKey,
+    envelope.controllerFingerprint,
     envelope.nonce,
     envelope.expiresAt,
   ]);
@@ -129,7 +95,6 @@ export function buildMeshExecutionSessionSigningPayload(
     "clanky-mesh-execution-session-v1",
     envelope.protocolVersion,
     envelope.requestId,
-    envelope.linkId,
     envelope.callerNodeId,
     envelope.callerPublicKey,
     envelope.callerFingerprint,
@@ -139,6 +104,22 @@ export function buildMeshExecutionSessionSigningPayload(
     envelope.directory,
     envelope.provider,
     envelope.channel,
+    envelope.nonce,
+    envelope.expiresAt,
+  ]);
+}
+
+export function buildMeshWorkerUpdateSigningPayload(
+  envelope: UnsignedWorkerUpdateRequest,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-worker-update-v1",
+    envelope.protocolVersion,
+    envelope.action,
+    envelope.operationId,
+    envelope.controllerNodeId,
+    envelope.controllerPublicKey,
+    envelope.controllerFingerprint,
     envelope.nonce,
     envelope.expiresAt,
   ]);

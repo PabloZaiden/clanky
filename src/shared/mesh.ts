@@ -1,43 +1,29 @@
 /**
- * Shared contracts for the linked-instance mesh.
+ * Shared contracts for the controller-worker mesh.
  *
- * A local user, a linked mesh, and a node are separate identities. These
- * types intentionally contain no private keys or browser authentication data.
+ * Controllers are full UI-capable Clanky installations that enroll and
+ * manage workers. Workers are headless execution channels that accept
+ * signed operations from their enrolled controllers. A worker may hold
+ * independent grants from multiple controllers; controllers never learn
+ * about each other and never join as peers.
+ *
+ * These types intentionally contain no private keys or browser
+ * authentication data.
  */
 
-import type { ExecutionNodeConfiguration } from "./execution-host";
+import type {
+  ExecutionHostCapabilities,
+  ExecutionNodeConfiguration,
+} from "./execution-host";
 
 export const MESH_TRANSPORTS = ["https", "http"] as const;
-export type MeshTransport = typeof MESH_TRANSPORTS[number];
+export type MeshTransport = (typeof MESH_TRANSPORTS)[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 
-export const MESH_LINK_STATUSES = ["active", "revoked"] as const;
-export type MeshLinkStatus = typeof MESH_LINK_STATUSES[number];
+export const MESH_GRANT_STATUSES = ["active", "revoked"] as const;
+export type MeshGrantStatus = (typeof MESH_GRANT_STATUSES)[number];
 
-export const MESH_MEMBER_STATUSES = [
-  "pending",
-  "active",
-  "offline",
-  "revoked",
-  "rejoining",
-] as const;
-export type MeshMemberStatus = typeof MESH_MEMBER_STATUSES[number];
-
-export const MESH_PAIRING_STATUSES = [
-  "pending",
-  "approved",
-  "rejected",
-  "expired",
-  "cancelled",
-] as const;
-export type MeshPairingStatus = typeof MESH_PAIRING_STATUSES[number];
-
-export const MESH_PAIRING_DIRECTIONS = ["incoming", "outgoing"] as const;
-export type MeshPairingDirection = typeof MESH_PAIRING_DIRECTIONS[number];
-
-export const MESH_PAIRING_APPROVAL_STATUSES = ["pending", "accepted", "rejected"] as const;
-export type MeshPairingApprovalStatus = typeof MESH_PAIRING_APPROVAL_STATUSES[number];
-
+/** Public identity of a mesh node (controller or worker). */
 export interface MeshNodeIdentity {
   nodeId: string;
   instanceName: string | null;
@@ -45,108 +31,97 @@ export interface MeshNodeIdentity {
   publicKey: string;
   fingerprint: string;
   encryptionPublicKey?: string;
-  execution?: ExecutionNodeConfiguration;
+  execution: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface MeshNodeRecord extends MeshNodeIdentity {
-  endpoint: string | null;
-  transport: MeshTransport;
-  status: MeshMemberStatus;
+/**
+ * Worker execution configuration. This is worker-owned and not remotely
+ * configurable by any controller.
+ */
+export interface MeshWorkerExecutionConfig {
+  directory: string;
+  acceptRemoteExecution: boolean;
+  capabilities: ExecutionHostCapabilities;
+  revision: number;
+}
+
+/**
+ * A controller's registration of an enrolled worker.
+ * Stored on the controller side.
+ */
+export interface MeshWorkerRegistration {
+  workerNodeId: string;
+  workerInstanceName: string | null;
+  workerEndpoint: string;
+  workerTransport: MeshTransport;
+  workerPublicKey: string;
+  workerFingerprint: string;
+  workerEncryptionPublicKey: string | null;
+  workerDirectory: string | null;
+  workerCapabilities: ExecutionHostCapabilities | null;
+  workerAcceptRemoteExecution: boolean;
+  workerConfigRevision: number;
+  grantStatus: MeshGrantStatus;
+  localUserId: string;
   lastSeenAt: string | null;
-}
-
-export interface MeshLinkRecord {
-  linkId: string;
-  localUserId: string;
-  status: MeshLinkStatus;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface MeshLinkMemberRecord {
-  linkId: string;
-  nodeId: string;
-  instanceName?: string | null;
-  localUserId: string;
-  endpoint: string | null;
-  transport: MeshTransport;
-  status: MeshMemberStatus;
-  membershipGeneration: number;
-  lastSeenAt: string | null;
+/**
+ * A worker's independent grant from a single controller.
+ * Stored on the worker side. Multiple controllers may independently
+ * enroll the same worker; each grant is isolated.
+ */
+export interface MeshControllerGrant {
+  controllerNodeId: string;
+  controllerInstanceName: string | null;
+  controllerPublicKey: string;
+  controllerFingerprint: string;
+  controllerEncryptionPublicKey: string | null;
+  grantStatus: MeshGrantStatus;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface MeshPairingRequestRecord {
-  id: string;
-  direction: MeshPairingDirection;
-  linkId: string | null;
-  targetLocalUserId: string | null;
-  targetEndpoint: string | null;
-  requestedNodeId: string;
-  requestedInstanceName?: string | null;
-  requestedExecution?: ExecutionNodeConfiguration;
-  requestedLocalUserId: string;
-  requestedUsername: string | null;
-  endpoint: string;
-  transport: MeshTransport;
-  publicKey: string;
-  fingerprint: string;
-  encryptionPublicKey?: string;
-  nonce: string;
-  signature: string;
-  status: MeshPairingStatus;
-  expiresAt: string;
-  approvedAt: string | null;
-  approvedByUserId: string | null;
-  rejectionReason: string | null;
-  createdAt: string;
-  updatedAt: string;
-  remoteApproval?: MeshPairingApprovalRecord;
-}
-
-export interface MeshPairingApprovalRecord {
-  requestId: string;
-  linkId: string;
-  approvedByNodeId: string;
-  approvedByInstanceName?: string | null;
-  approvedByExecution?: ExecutionNodeConfiguration;
-  approvedByLocalUserId: string;
-  endpoint: string;
-  transport: MeshTransport;
-  publicKey: string;
-  fingerprint: string;
-  encryptionPublicKey?: string;
-  signature: string;
-  status: MeshPairingApprovalStatus;
-  members: MeshPairingMemberRecord[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MeshPairingMemberRecord {
-  nodeId: string;
-  instanceName?: string | null;
-  localUserId: string;
-  endpoint: string | null;
-  transport: MeshTransport;
-  status: MeshMemberStatus;
-  membershipGeneration: number;
-  publicKey: string;
-  fingerprint: string;
-  encryptionPublicKey?: string;
-  execution?: ExecutionNodeConfiguration;
-}
-
-export interface MeshLinkStatusRecord extends MeshLinkRecord {
-  members: MeshLinkMemberRecord[];
-  pendingPairingRequests: MeshPairingRequestRecord[];
-}
-
-export interface MeshStatusRecord {
+/** Aggregated mesh status for controllers. */
+export interface MeshControllerStatus {
   node: MeshNodeIdentity;
-  links: MeshLinkStatusRecord[];
-  pendingPairingRequests: MeshPairingRequestRecord[];
+  workers: MeshWorkerRegistration[];
+}
+
+/** Aggregated mesh status for workers. */
+export interface MeshWorkerStatus {
+  node: MeshNodeIdentity;
+  execution: MeshWorkerExecutionConfig;
+  controllerCount: number;
+}
+
+export const MESH_WORKER_UPDATE_STATES = [
+  "idle",
+  "updating",
+  "handoff",
+  "succeeded",
+  "failed",
+] as const;
+export type MeshWorkerUpdateState = (typeof MESH_WORKER_UPDATE_STATES)[number];
+
+export interface MeshWorkerUpdateStatus {
+  operationId: string | null;
+  state: MeshWorkerUpdateState;
+  fromVersion: string;
+  targetVersion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  error: string | null;
+}
+
+export type MeshStatusRecord = MeshControllerStatus | MeshWorkerStatus;
+
+export function isMeshWorkerStatus(
+  status: MeshStatusRecord,
+): status is MeshWorkerStatus {
+  return "controllerCount" in status;
 }

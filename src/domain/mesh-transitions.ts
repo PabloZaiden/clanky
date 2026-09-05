@@ -1,274 +1,92 @@
 /**
- * Pure transition decisions for mesh membership and pairing.
+ * Pure transition decisions for controller-worker mesh enrollment.
  *
- * Persistence adapters may evaluate these decisions inside a transaction, but
- * this module never reads or writes storage and never performs transport work.
+ * This module never reads or writes storage and never performs transport work.
+ * The enrollment model is simpler than the old pairing model: there is no
+ * multi-step approve/complete flow. A token-based enrollment either succeeds
+ * atomically or fails.
  */
 
-import type {
-  MeshLinkRecord,
-  MeshPairingApprovalRecord,
-  MeshPairingRequestRecord,
-} from "@/shared/mesh";
+import type { MeshControllerGrant, MeshWorkerRegistration } from "@/shared/mesh";
 import { DomainError } from "./domain-error";
 
-export interface ApproveMeshPairingTransitionInput {
-  request: MeshPairingRequestRecord | null;
-  approvingUserId: string;
-  requestedLinkId?: string;
-  existingUserLink: MeshLinkRecord | null;
-  selectedLink: MeshLinkRecord | null;
-  generatedLinkId: string;
-  nowMs: number;
-}
-
-export type ApproveMeshPairingDecision =
-  | {
-    kind: "idempotent";
-    linkId: string;
-  }
-  | {
-    kind: "apply";
-    linkId: string;
-    createLink: boolean;
-  };
-
-export function decideApproveMeshPairing(
-  input: ApproveMeshPairingTransitionInput,
-): ApproveMeshPairingDecision {
-  const request = requirePairingRequest(input.request);
-  if (request.status === "approved" && request.linkId) {
-    if (!input.selectedLink || input.selectedLink.localUserId !== input.approvingUserId) {
-      throw new DomainError("mesh_pairing_request_not_owned", "The approved mesh request is not owned by this user.");
-    }
-    return {
-      kind: "idempotent",
-      linkId: input.selectedLink.linkId,
-    };
-  }
-  if (request.status !== "pending") {
-    throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-  }
-  if (request.direction !== "incoming") {
-    throw new DomainError("mesh_pairing_request_not_incoming", "Only incoming mesh pairing requests can be approved here.");
-  }
-  if (Date.parse(request.expiresAt) <= input.nowMs) {
-    throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-  }
-  if (request.targetLocalUserId && request.targetLocalUserId !== input.approvingUserId) {
-    throw new DomainError("mesh_pairing_request_not_targeted", "The mesh pairing request targets another local user.");
-  }
-
-  const linkId = input.requestedLinkId
-    ?? request.linkId
-    ?? input.existingUserLink?.linkId
-    ?? input.generatedLinkId;
-  if (input.selectedLink && input.selectedLink.localUserId !== input.approvingUserId) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The selected mesh link is not owned by this user.");
-  }
-  if (input.existingUserLink && input.existingUserLink.linkId !== linkId) {
-    throw new DomainError("mesh_pairing_link_conflict", "This user already belongs to another mesh link.");
-  }
-  return {
-    kind: "apply",
-    linkId,
-    createLink: !input.selectedLink,
-  };
-}
-
-export interface CompleteOutgoingMeshPairingTransitionInput {
-  request: MeshPairingRequestRecord | null;
-  localUserId: string;
+export interface EnrollWorkerTransitionInput {
+  existingRegistration: MeshWorkerRegistration | null;
+  workerNodeId: string;
   localNodeId: string;
-  remoteNodeId: string;
-  link: MeshLinkRecord | null;
-  nowMs: number;
-  linkId: string;
 }
 
-export type CompleteOutgoingMeshPairingDecision =
-  | {
-    kind: "idempotent";
-    linkId: string;
-  }
-  | {
-    kind: "apply";
-    linkId: string;
-    createLink: boolean;
-  };
+export type EnrollWorkerDecision =
+  | { kind: "apply" }
+  | { kind: "idempotent" };
 
-export function decideCompleteOutgoingMeshPairing(
-  input: CompleteOutgoingMeshPairingTransitionInput,
-): CompleteOutgoingMeshPairingDecision {
-  const request = requirePairingRequest(input.request);
-  if (request.status === "approved" && request.linkId) {
-    if (!input.link || input.link.localUserId !== input.localUserId) {
-      throw new DomainError("mesh_pairing_request_not_owned", "The approved mesh request is not owned by this user.");
+export function decideEnrollWorker(
+  input: EnrollWorkerTransitionInput,
+): EnrollWorkerDecision {
+  if (input.workerNodeId === input.localNodeId) {
+    throw new DomainError(
+      "mesh_enrollment_self",
+      "A node cannot enroll itself as a worker.",
+    );
+  }
+  if (input.existingRegistration) {
+    if (input.existingRegistration.grantStatus === "active") {
+      return { kind: "idempotent" };
     }
-    return {
-      kind: "idempotent",
-      linkId: input.link.linkId,
-    };
-  }
-  if (request.status !== "pending") {
-    throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-  }
-  if (input.link && input.link.localUserId !== input.localUserId) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The selected mesh link is not owned by this user.");
-  }
-  if (request.direction !== "outgoing") {
-    throw new DomainError("mesh_pairing_request_not_outgoing", "Only outgoing mesh pairing requests can be completed here.");
-  }
-  if (
-    request.requestedNodeId !== input.localNodeId
-    || request.requestedLocalUserId !== input.localUserId
-  ) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request belongs to another local identity.");
-  }
-  if (Date.parse(request.expiresAt) <= input.nowMs) {
-    throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-  }
-  if (request.requestedNodeId === input.remoteNodeId) {
-    throw new DomainError("mesh_pairing_request_invalid_peer", "The pairing approval identifies the requesting node as the peer.");
-  }
-  return {
-    kind: "apply",
-    linkId: input.linkId,
-    createLink: !input.link,
-  };
-}
-
-export interface RejectMeshPairingTransitionInput {
-  request: MeshPairingRequestRecord | null;
-  rejectingUserId: string;
-  ownedLink: MeshLinkRecord | null;
-  localLinkExists: boolean;
-  nowMs: number;
-}
-
-export interface RejectMeshPairingDecision {
-  kind: "apply";
-}
-
-export function decideRejectMeshPairing(
-  input: RejectMeshPairingTransitionInput,
-): RejectMeshPairingDecision {
-  const request = requirePairingRequest(input.request);
-  if (request.status !== "pending") {
-    throw new DomainError("mesh_pairing_request_not_pending", "The mesh pairing request is no longer pending.");
-  }
-  if (Date.parse(request.expiresAt) <= input.nowMs) {
-    throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-  }
-  const ownsIncomingRequest = request.direction === "incoming"
-    && (!request.targetLocalUserId || request.targetLocalUserId === input.rejectingUserId)
-    && (!input.localLinkExists || input.ownedLink !== null);
-  const ownsOutgoingRequest = request.direction === "outgoing"
-    && request.requestedLocalUserId === input.rejectingUserId;
-  if (!ownsIncomingRequest && !ownsOutgoingRequest) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The mesh pairing request is not owned by this user.");
+    // Re-enroll a revoked worker
+    return { kind: "apply" };
   }
   return { kind: "apply" };
 }
 
-export interface ReceiveMeshPairingApprovalTransitionInput {
-  request: MeshPairingRequestRecord | null;
-  existingApproval: MeshPairingApprovalRecord | null;
-  approvedByNodeId: string;
-  signature: string;
-  nowMs: number;
+export interface RevokeWorkerTransitionInput {
+  registration: MeshWorkerRegistration | null;
 }
 
-export type ReceiveMeshPairingApprovalDecision =
-  | {
-    kind: "idempotent";
-    approval: MeshPairingApprovalRecord;
-  }
-  | {
-    kind: "apply";
-  };
+export type RevokeWorkerDecision =
+  | { kind: "apply" }
+  | { kind: "idempotent" };
 
-export function decideReceiveMeshPairingApproval(
-  input: ReceiveMeshPairingApprovalTransitionInput,
-): ReceiveMeshPairingApprovalDecision {
-  const request = input.request;
-  if (!request || request.direction !== "outgoing") {
-    throw new DomainError("mesh_pairing_request_not_found", "The outgoing mesh pairing request was not found.");
+export function decideRevokeWorker(
+  input: RevokeWorkerTransitionInput,
+): RevokeWorkerDecision {
+  if (!input.registration) {
+    throw new DomainError(
+      "mesh_worker_not_found",
+      "The worker registration was not found.",
+    );
   }
-  if (request.status === "approved" && input.existingApproval) {
-    if (
-      input.existingApproval.approvedByNodeId !== input.approvedByNodeId
-      || input.existingApproval.signature !== input.signature
-    ) {
-      throw new DomainError("mesh_pairing_approval_conflict", "The pairing approval does not match the completed request.");
-    }
-    return {
-      kind: "idempotent",
-      approval: input.existingApproval,
-    };
-  }
-  if (request.status !== "pending") {
-    throw new DomainError("mesh_pairing_request_not_pending", "The outgoing mesh pairing request is no longer pending.");
-  }
-  if (Date.parse(request.expiresAt) <= input.nowMs) {
-    throw new DomainError("mesh_pairing_request_expired", "The outgoing mesh pairing request has expired.");
-  }
-  if (request.requestedNodeId === input.approvedByNodeId) {
-    throw new DomainError("mesh_pairing_request_invalid_peer", "The pairing approval identifies the local node as the peer.");
-  }
-  return { kind: "apply" };
-}
-
-export interface CompleteMeshPairingTransitionInput {
-  request: MeshPairingRequestRecord | null;
-  approval: MeshPairingApprovalRecord | null;
-  localUserId: string;
-  confirmedFingerprint: string;
-}
-
-export type CompleteMeshPairingDecision =
-  | {
-    kind: "idempotent";
-  }
-  | {
-    kind: "apply";
-    approval: MeshPairingApprovalRecord;
-  };
-
-export function decideCompleteMeshPairing(
-  input: CompleteMeshPairingTransitionInput,
-): CompleteMeshPairingDecision {
-  const request = input.request;
-  if (
-    !request
-    || request.direction !== "outgoing"
-    || request.requestedLocalUserId !== input.localUserId
-  ) {
-    throw new DomainError("mesh_pairing_request_not_owned", "The outgoing mesh pairing request is not owned by this user.");
-  }
-  if (!input.approval) {
-    throw new DomainError("mesh_pairing_approval_not_found", "The peer has not approved this pairing request yet.");
-  }
-  if (input.approval.status === "accepted" && request.status === "approved" && request.linkId) {
+  if (input.registration.grantStatus === "revoked") {
     return { kind: "idempotent" };
   }
-  if (input.approval.status !== "pending") {
-    throw new DomainError("mesh_pairing_approval_not_pending", "The peer pairing approval is no longer pending.");
-  }
-  if (input.approval.fingerprint !== input.confirmedFingerprint) {
-    throw new DomainError("mesh_pairing_fingerprint_mismatch", "The confirmed fingerprint does not match the peer approval.");
-  }
-  return {
-    kind: "apply",
-    approval: input.approval,
-  };
+  return { kind: "apply" };
 }
 
-function requirePairingRequest(
-  request: MeshPairingRequestRecord | null,
-): MeshPairingRequestRecord {
-  if (!request) {
-    throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
+export interface AcceptEnrollmentTransitionInput {
+  existingGrant: MeshControllerGrant | null;
+  controllerNodeId: string;
+  localNodeId: string;
+}
+
+export type AcceptEnrollmentDecision =
+  | { kind: "apply" }
+  | { kind: "idempotent" };
+
+export function decideAcceptEnrollment(
+  input: AcceptEnrollmentTransitionInput,
+): AcceptEnrollmentDecision {
+  if (input.controllerNodeId === input.localNodeId) {
+    throw new DomainError(
+      "mesh_enrollment_self",
+      "A node cannot enroll with itself as a controller.",
+    );
   }
-  return request;
+  if (input.existingGrant) {
+    if (input.existingGrant.grantStatus === "active") {
+      return { kind: "idempotent" };
+    }
+    // Re-accept from a previously revoked controller
+    return { kind: "apply" };
+  }
+  return { kind: "apply" };
 }

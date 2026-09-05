@@ -1,20 +1,19 @@
 /**
- * Request schemas for linked-instance mesh management.
+ * Request schemas for controller-worker mesh management.
+ *
+ * Controllers enroll workers via single-use tokens. Workers store independent
+ * grants. No membership gossip, no roster propagation, no peer-to-peer
+ * relationships.
  */
 
 import { z } from "zod";
 import {
-  ExecutionHostPreferredModelSchema,
-  ExecutionNodeConfigurationSchema,
-} from "./execution-host";
-import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
-  MESH_PAIRING_DIRECTIONS,
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
+import { ExecutionHostCapabilitiesSchema } from "./execution-host";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
-export const MeshPairingDirectionSchema = z.enum(MESH_PAIRING_DIRECTIONS);
 export const MeshInstanceNameSchema = z.string()
   .trim()
   .min(1)
@@ -33,25 +32,14 @@ export const MeshEndpointSchema = z.string().trim().url().superRefine((value, co
   }
 });
 
-export const StartMeshPairingRequestSchema = z.object({
-  targetEndpoint: MeshEndpointSchema,
-  targetLocalUserId: z.string().trim().min(1).optional(),
-  enrollmentToken: z.string().trim().min(1).optional(),
-  expectedFingerprint: z.string().trim().min(1).optional(),
-}).superRefine((value, ctx) => {
-  if (value.enrollmentToken && !value.expectedFingerprint) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["expectedFingerprint"],
-      message: "Expected controller fingerprint is required for token enrollment.",
-    });
-  }
-});
+// --- Controller-side enrollment token ---
 
 export const CreateMeshEnrollmentTokenRequestSchema = z.object({
   name: z.string().trim().min(1).max(120).default("Mesh enrollment"),
   ttlSeconds: z.number().int().min(60).max(86_400).default(900),
 });
+
+// --- Controller-side identity and configuration ---
 
 export const UpdateMeshInstanceNameSchema = z.object({
   instanceName: MeshInstanceNameSchema,
@@ -61,109 +49,55 @@ export const UpdateMeshEndpointSchema = z.object({
   meshEndpoint: MeshEndpointSchema,
 });
 
-export const UpdateMeshExecutionConfigurationSchema = z.object({
-  acceptRemoteExecution: z.boolean(),
-  repositoriesBasePath: z.string().trim().nullable(),
-  preferredModel: ExecutionHostPreferredModelSchema.nullable().optional(),
+// --- Controller-side worker revocation ---
+
+export const RevokeMeshWorkerRequestSchema = z.object({
+  workerNodeId: z.string().trim().min(1),
 });
 
-export const ApproveMeshPairingRequestSchema = z.object({
-  linkId: z.string().trim().min(1).optional(),
+export const EnrollMeshWorkerRequestSchema = z.object({
+  controllerEndpoint: MeshEndpointSchema,
+  enrollmentToken: z.string().trim().min(1),
+  expectedControllerFingerprint: z.string().trim().min(1),
 });
 
-export const RejectMeshPairingRequestSchema = z.object({
-  reason: z.string().trim().min(1).max(500).optional(),
-});
+// --- Worker enrollment request (worker → controller) ---
 
-export const CompleteMeshPairingRequestSchema = z.object({
-  fingerprint: z.string().trim().min(1),
-});
-
-export const RevokeMeshMemberRequestSchema = z.object({
-  nodeId: z.string().trim().min(1),
-});
-
-const MeshPairingEnvelopeBaseSchema = z.object({
+export const MeshEnrollmentRequestSchema = z.object({
   protocolVersion: z.literal(1),
-  requestId: z.string().trim().min(1),
-  linkId: z.string().trim().min(1).nullable().optional(),
-  targetLocalUserId: z.string().trim().min(1).nullable().optional(),
-  requestedNodeId: z.string().trim().min(1),
-  requestedInstanceName: MeshInstanceNameSchema.nullable().optional(),
-  requestedExecution: ExecutionNodeConfigurationSchema.optional(),
-  requestedLocalUserId: z.string().trim().min(1),
-  requestedUsername: z.string().trim().min(1).nullable().optional(),
-  endpoint: MeshEndpointSchema,
-  transport: MeshTransportSchema,
-  publicKey: z.string().min(1),
-  fingerprint: z.string().trim().min(1),
-  encryptionPublicKey: z.string().min(1).optional(),
+  workerNodeId: z.string().trim().min(1),
+  workerInstanceName: MeshInstanceNameSchema.nullable().optional(),
+  workerEndpoint: MeshEndpointSchema,
+  workerTransport: MeshTransportSchema,
+  workerPublicKey: z.string().min(1),
+  workerFingerprint: z.string().trim().min(1),
+  workerEncryptionPublicKey: z.string().min(1).optional(),
+  workerDirectory: z.string().trim().min(1).max(16_384),
+  workerCapabilities: ExecutionHostCapabilitiesSchema,
+  workerAcceptRemoteExecution: z.boolean(),
+  workerConfigRevision: z.number().int().min(1),
+  enrollmentToken: z.string().trim().min(1),
+  expectedControllerFingerprint: z.string().trim().min(1),
   nonce: z.string().trim().min(1),
   expiresAt: z.string().datetime(),
-});
-
-export const MeshPeerPairingRequestSchema = MeshPairingEnvelopeBaseSchema.extend({
   signature: z.string().trim().min(1),
 });
 
-export const MeshPeerPairingApprovalSchema = z.object({
+export const MeshEnrollmentResponseSchema = z.object({
   protocolVersion: z.literal(1),
-  requestId: z.string().trim().min(1),
-  linkId: z.string().trim().min(1),
-  approvedByNodeId: z.string().trim().min(1),
-  approvedByInstanceName: MeshInstanceNameSchema.nullable().optional(),
-  approvedByExecution: ExecutionNodeConfigurationSchema.optional(),
-  approvedByLocalUserId: z.string().trim().min(1),
-  endpoint: MeshEndpointSchema,
-  transport: MeshTransportSchema,
-  publicKey: z.string().min(1),
-  fingerprint: z.string().trim().min(1),
-  encryptionPublicKey: z.string().min(1).optional(),
-  members: z.array(z.object({
-    nodeId: z.string().trim().min(1),
-    instanceName: MeshInstanceNameSchema.nullable().optional(),
-    localUserId: z.string().trim().min(1),
-    endpoint: MeshEndpointSchema.nullable(),
-    transport: MeshTransportSchema,
-    status: z.enum(["pending", "active", "offline", "revoked", "rejoining"]),
-    membershipGeneration: z.number().int().positive(),
-    publicKey: z.string().min(1),
-    fingerprint: z.string().trim().min(1),
-    encryptionPublicKey: z.string().min(1).optional(),
-    execution: ExecutionNodeConfigurationSchema.optional(),
-  })).max(100).optional(),
+  workerNodeId: z.string().trim().min(1),
+  controllerNodeId: z.string().trim().min(1),
+  controllerInstanceName: MeshInstanceNameSchema.nullable(),
+  controllerPublicKey: z.string().min(1),
+  controllerFingerprint: z.string().trim().min(1),
+  controllerEncryptionPublicKey: z.string().min(1).optional(),
   signature: z.string().trim().min(1),
 });
 
-const MeshMemberSchema = z.object({
-  nodeId: z.string().trim().min(1),
-  instanceName: MeshInstanceNameSchema.nullable().optional(),
-  localUserId: z.string().trim().min(1),
-  endpoint: MeshEndpointSchema.nullable(),
-  transport: MeshTransportSchema,
-  status: z.enum(["pending", "active", "offline", "revoked", "rejoining"]),
-  membershipGeneration: z.number().int().positive(),
-  publicKey: z.string().min(1),
-  fingerprint: z.string().trim().min(1),
-  encryptionPublicKey: z.string().min(1).optional(),
-  execution: ExecutionNodeConfigurationSchema.optional(),
-});
-
-export const MeshMembershipUpdateSchema = z.object({
-  protocolVersion: z.literal(1),
-  linkId: z.string().trim().min(1),
-  senderNodeId: z.string().trim().min(1),
-  senderPublicKey: z.string().min(1),
-  senderFingerprint: z.string().trim().min(1),
-  senderEncryptionPublicKey: z.string().min(1).optional(),
-  nonce: z.string().trim().min(1),
-  members: z.array(MeshMemberSchema).min(1).max(100),
-  signature: z.string().trim().min(1),
-});
+// --- Signed health check (controller → worker) ---
 
 export const MeshHealthCheckSchema = z.object({
   protocolVersion: z.literal(1),
-  linkId: z.string().trim().min(1),
   senderNodeId: z.string().trim().min(1),
   senderPublicKey: z.string().min(1),
   senderFingerprint: z.string().trim().min(1),
@@ -172,35 +106,37 @@ export const MeshHealthCheckSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshExecutionConfigurationUpdateSchema = z.object({
+// --- Signed revocation notice (controller → worker) ---
+
+export const MeshRevocationNoticeSchema = z.object({
   protocolVersion: z.literal(1),
-  linkId: z.string().trim().min(1),
-  senderNodeId: z.string().trim().min(1),
-  senderPublicKey: z.string().min(1),
-  senderFingerprint: z.string().trim().min(1),
-  targetNodeId: z.string().trim().min(1),
-  expectedRevision: z.number().int().min(1),
-  repositoriesBasePath: z.string().trim().min(1).nullable(),
-  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
+  controllerNodeId: z.string().trim().min(1),
+  controllerPublicKey: z.string().min(1),
+  controllerFingerprint: z.string().trim().min(1),
   nonce: z.string().trim().min(1),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1),
-}).strict();
+});
 
-export type StartMeshPairingRequest = z.infer<typeof StartMeshPairingRequestSchema>;
+export const MeshWorkerUpdateRequestSchema = z.object({
+  protocolVersion: z.literal(1),
+  action: z.enum(["start", "status"]),
+  operationId: z.string().uuid(),
+  controllerNodeId: z.string().trim().min(1),
+  controllerPublicKey: z.string().min(1),
+  controllerFingerprint: z.string().trim().min(1),
+  nonce: z.string().uuid(),
+  expiresAt: z.string().datetime(),
+  signature: z.string().trim().min(1),
+});
+
+export type CreateMeshEnrollmentTokenRequest = z.infer<typeof CreateMeshEnrollmentTokenRequestSchema>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
-export type UpdateMeshExecutionConfigurationRequest = z.infer<
-  typeof UpdateMeshExecutionConfigurationSchema
->;
-export type ApproveMeshPairingRequest = z.infer<typeof ApproveMeshPairingRequestSchema>;
-export type RejectMeshPairingRequest = z.infer<typeof RejectMeshPairingRequestSchema>;
-export type CompleteMeshPairingRequest = z.infer<typeof CompleteMeshPairingRequestSchema>;
-export type RevokeMeshMemberRequest = z.infer<typeof RevokeMeshMemberRequestSchema>;
-export type MeshPeerPairingRequest = z.infer<typeof MeshPeerPairingRequestSchema>;
-export type MeshPeerPairingApproval = z.infer<typeof MeshPeerPairingApprovalSchema>;
-export type MeshMembershipUpdate = z.infer<typeof MeshMembershipUpdateSchema>;
+export type RevokeMeshWorkerRequest = z.infer<typeof RevokeMeshWorkerRequestSchema>;
+export type EnrollMeshWorkerRequest = z.infer<typeof EnrollMeshWorkerRequestSchema>;
+export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestSchema>;
+export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema>;
 export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
-export type MeshExecutionConfigurationUpdate = z.infer<
-  typeof MeshExecutionConfigurationUpdateSchema
->;
+export type MeshRevocationNotice = z.infer<typeof MeshRevocationNoticeSchema>;
+export type MeshWorkerUpdateRequest = z.infer<typeof MeshWorkerUpdateRequestSchema>;

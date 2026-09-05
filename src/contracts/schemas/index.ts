@@ -188,30 +188,28 @@ export {
   type CreateProvisioningJobRequest,
 } from "./provisioning";
 
-// Linked-instance mesh schemas
+// Controller-worker mesh schemas
 export {
   MeshTransportSchema,
-  MeshPairingDirectionSchema,
   MeshEndpointSchema,
   UpdateMeshEndpointSchema,
-  StartMeshPairingRequestSchema,
-  ApproveMeshPairingRequestSchema,
-  RejectMeshPairingRequestSchema,
-  CompleteMeshPairingRequestSchema,
-  RevokeMeshMemberRequestSchema,
-  MeshPeerPairingRequestSchema,
-  MeshPeerPairingApprovalSchema,
-  MeshMembershipUpdateSchema,
+  UpdateMeshInstanceNameSchema,
+  CreateMeshEnrollmentTokenRequestSchema,
+  EnrollMeshWorkerRequestSchema,
+  RevokeMeshWorkerRequestSchema,
+  MeshEnrollmentRequestSchema,
+  MeshEnrollmentResponseSchema,
   MeshHealthCheckSchema,
-  type StartMeshPairingRequest,
-  type ApproveMeshPairingRequest,
-  type RejectMeshPairingRequest,
-  type CompleteMeshPairingRequest,
-  type MeshPeerPairingRequest,
-  type MeshPeerPairingApproval,
-  type MeshMembershipUpdate,
+  MeshRevocationNoticeSchema,
+  type CreateMeshEnrollmentTokenRequest,
+  type EnrollMeshWorkerRequest,
+  type RevokeMeshWorkerRequest,
+  type MeshEnrollmentRequest,
+  type MeshEnrollmentResponse,
   type MeshHealthCheck,
+  type MeshRevocationNotice,
   type UpdateMeshEndpointRequest,
+  type UpdateMeshInstanceNameRequest,
 } from "./mesh";
 
 export {

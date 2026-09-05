@@ -2,8 +2,8 @@
  * Authenticated gateway for direct CommandExecutor operations on this host.
  *
  * This module is deliberately independent from BackendManager. The signed
- * caller supplies the absolute execution root, provider, and channel. Pairing
- * is the host-level trust boundary: the receiving host deliberately does not
+ * caller supplies the absolute execution root, provider, and channel. The
+ * controller grant is the host-level trust boundary: the receiving host does not
  * load replicated workspace or user data or apply a per-workspace filesystem
  * sandbox.
  */
@@ -23,11 +23,7 @@ import {
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "@/shared/mesh-execution";
-import {
-  getMeshLinkById,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { getControllerGrant } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   requireLocalMeshExecutionCapability,
@@ -44,7 +40,7 @@ import {
 import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
-import { requireTrustedMeshPeer } from "./mesh-peer-auth";
+import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 
 const MAX_SESSIONS = 256;
@@ -54,7 +50,6 @@ const MAX_REQUEST_IDS = 512;
 interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
-  linkId: string;
   callerNodeId: string;
   executionRoot: string;
   directory: string;
@@ -137,20 +132,14 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
     throw new DomainError("mesh_execution_target_invalid", "The execution request targets another mesh node.");
   }
 
-  const { link } = await requireTrustedMeshPeer({
-    linkId: request.linkId,
-    nodeId: request.callerNodeId,
+  await requireTrustedController({
+    controllerNodeId: request.callerNodeId,
     publicKey: request.callerPublicKey,
     fingerprint: request.callerFingerprint,
     encryptionPublicKey: request.callerEncryptionPublicKey,
     requireEncryptionKey: false,
-    requireActiveNode: true,
-    requireActiveMember: true,
     context: "execution caller",
   });
-  if (link.status === "revoked") {
-    throw new DomainError("mesh_link_revoked", "The mesh execution link has been revoked.");
-  }
   assertMeshExecutionCwd(request.directory, request.directory);
 }
 
@@ -204,26 +193,10 @@ export class MeshExecutionGateway {
     await requireLocalMeshExecutionCapability(
       session.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
     );
-    const link = await getMeshLinkById(session.linkId);
-    if (
-      !link
-      || link.status !== "active"
-    ) {
+    const grant = await getControllerGrant(session.callerNodeId);
+    if (!grant || grant.grantStatus !== "active") {
       this.closeSession(session.sessionId);
-      throw new DomainError("mesh_execution_context_changed", "The mesh execution link is no longer active.");
-    }
-
-    const member = (await listMeshLinkMembers(session.linkId))
-      .find((candidate) => candidate.nodeId === session.callerNodeId);
-    const node = await getMeshNode(session.callerNodeId);
-    if (
-      !member
-      || member.status !== "active"
-      || !node
-      || node.status !== "active"
-    ) {
-      this.closeSession(session.sessionId);
-      throw new DomainError(options.memberErrorCode, "The execution caller is no longer an active member.");
+      throw new DomainError(options.memberErrorCode, "The execution controller grant is no longer active.");
     }
 
     if (
@@ -283,7 +256,6 @@ export class MeshExecutionGateway {
     const sessionRecord: MeshExecutionSession = {
       sessionId,
       sessionToken,
-      linkId: request.linkId,
       callerNodeId: request.callerNodeId,
       executionRoot: request.directory,
       directory: assertMeshExecutionCwd(request.directory, request.directory),

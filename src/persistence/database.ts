@@ -739,6 +739,8 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS mesh_link_members");
     db!.run("DROP TABLE IF EXISTS mesh_links");
     db!.run("DROP TABLE IF EXISTS mesh_nodes");
+    db!.run("DROP TABLE IF EXISTS mesh_worker_registrations");
+    db!.run("DROP TABLE IF EXISTS mesh_controller_grants");
     db!.run("DROP TABLE IF EXISTS mesh_node_identity");
     db!.run("DROP TABLE IF EXISTS preview_sessions");
     db!.run("DROP TABLE IF EXISTS agent_run_transcript_meta");
