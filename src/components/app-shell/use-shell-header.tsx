@@ -125,10 +125,10 @@ function getChatScopeSubtitle(
     return undefined;
   }
   const source = chat.config.source;
-  if (source?.kind === "execution_host") {
-    return undefined;
-  }
-  return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
+  const sourceWorkspaceId = source && "workspaceId" in source
+    ? source.workspaceId
+    : undefined;
+  return getWorkspaceScopeSubtitle(sourceWorkspaceId ?? chat.config.workspaceId, workspaces);
 }
 
 function getTerminalSessionScopeSubtitle(
@@ -314,15 +314,7 @@ export function useShellHeader({
       case "terminal":
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "Terminal" };
       case "workspace":
-        if (!nodeModel) {
-          return {
-            title: selectedWorkspace?.name ?? "Workspace",
-          };
-        }
-        if (!selectedWorkspace) {
-          return { ...nodeModel };
-        }
-        return nodeModel;
+        return nodeModel ?? { title: selectedWorkspace?.name ?? "Workspace" };
       case "workspace-files":
         return nodeModel
           ? { title: nodeModel.title, detailSubtitle: "Files" }
