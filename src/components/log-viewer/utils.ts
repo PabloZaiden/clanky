@@ -197,14 +197,18 @@ export function groupConsecutiveEntries(
 }
 
 /**
- * Format a completed reasoning duration using whole seconds below one minute
- * and whole minutes from one minute onward.
+ * Format a completed reasoning duration using a short label below ten seconds,
+ * whole seconds below one minute, and whole minutes from one minute onward.
  */
 export function formatThoughtDuration(startTimestamp: string, endTimestamp: string): string {
   const elapsedMilliseconds = Date.parse(endTimestamp) - Date.parse(startTimestamp);
   const elapsedSeconds = Number.isFinite(elapsedMilliseconds)
     ? Math.max(0, Math.floor(elapsedMilliseconds / 1000))
     : 0;
+
+  if (elapsedSeconds < 10) {
+    return "a bit";
+  }
 
   if (elapsedSeconds < 60) {
     return `${elapsedSeconds} second${elapsedSeconds === 1 ? "" : "s"}`;
