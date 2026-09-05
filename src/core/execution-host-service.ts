@@ -11,6 +11,7 @@ import type {
 import {
   DEFAULT_EXECUTION_HOST_CAPABILITIES,
   executionHostRefsEqual,
+  getExecutionHostAgentProvider,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import {
@@ -44,7 +45,7 @@ import { requireCurrentUserId } from "./user-context";
 
 export interface ExecutionHostCommandContext {
   directory: string;
-  provider: AgentProvider;
+  provider?: AgentProvider;
   operationId: string;
   localUserId?: string;
   sshPassword?: string;
@@ -215,7 +216,6 @@ export class ExecutionHostService {
     const executor = await this.getCommandExecutorForRef(ref, {
       operationId: `working-directory:${descriptor.targetKey}`,
       directory: ".",
-      provider: "copilot",
       localUserId: userId,
       sshPassword: options.sshPassword,
     });
@@ -247,7 +247,6 @@ export class ExecutionHostService {
     const executor = await this.getCommandExecutor(binding, {
       operationId: `validate-directory:${binding.targetKey}`,
       directory: ".",
-      provider: "copilot",
       localUserId: userId,
       sshPassword: options.sshPassword,
     });
@@ -262,6 +261,21 @@ export class ExecutionHostService {
         "The selected directory does not exist on the execution host.",
       );
     }
+  }
+
+  async resolveAgentProvider(
+    ref: ExecutionHostRef,
+    userId: string = requireCurrentUserId(),
+  ): Promise<AgentProvider> {
+    const descriptor = (await this.listHosts(userId))
+      .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
+    if (!descriptor) {
+      throw new DomainError(
+        "execution_host_unavailable",
+        "The selected execution host is unavailable.",
+      );
+    }
+    return getExecutionHostAgentProvider(descriptor);
   }
 
   getBinding(
@@ -321,7 +335,7 @@ export class ExecutionHostService {
         workspaceId: context.operationId,
         directory: context.directory,
         executionNodeId: host.nodeId,
-        provider: context.provider,
+        provider: context.provider ?? await this.resolveAgentProvider(host, userId),
         localUserId: userId,
       });
     }

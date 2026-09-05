@@ -19,8 +19,10 @@ import type {
   UpdateMeshExecutionConfigurationRequest,
 } from "@/contracts/schemas/mesh";
 import { ExecutionNodeConfigurationSchema } from "@/contracts/schemas/execution-host";
-import type { ModelConfig } from "@/shared/model";
-import type { ExecutionNodeConfiguration } from "@/shared/execution-host";
+import type {
+  ExecutionHostModelConfig,
+  ExecutionNodeConfiguration,
+} from "@/shared/execution-host";
 import type {
   MeshLinkStatusRecord,
   MeshNodeIdentity,
@@ -127,7 +129,7 @@ export class MeshManager {
     input: {
       expectedRevision: number;
       repositoriesBasePath: string | null;
-      preferredModel: ModelConfig | null;
+      preferredModel: ExecutionHostModelConfig | null;
     },
   ): Promise<ExecutionNodeConfiguration> {
     const identity = await ensureLocalMeshIdentityWithEndpoint();

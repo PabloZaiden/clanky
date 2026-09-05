@@ -266,7 +266,6 @@ export const executionHostRoutes = defineRoutes({
         const report = await executionHostDiscoveryService.checkPrerequisites(ref, {
           operationId: `prerequisites:${ctx.params["id"]!}`,
           directory: "/",
-          provider: "copilot",
           repositoriesBasePath: descriptor.repositoriesBasePath,
           responseId: ctx.params["id"]!,
           sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
@@ -306,7 +305,6 @@ export const executionHostRoutes = defineRoutes({
         const templates = await executionHostDiscoveryService.listDevboxTemplates(ref, {
           operationId: `devbox-templates:${ctx.params["id"]!}`,
           directory: "/",
-          provider: "copilot",
           sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
         });
         return Response.json(templates);
@@ -344,7 +342,6 @@ export const executionHostRoutes = defineRoutes({
                 const executor = await executionHostService.getCommandExecutorForRef(ref, {
                   operationId: `provider-discovery:${ctx.params["id"]!}`,
                   directory: "/",
-                  provider: "copilot",
                   sshPassword: resolveSshPassword(ref, validation.data.credentialToken ?? null),
                 });
                 const results = await Promise.all(AGENT_PROVIDER_IDS.map(async (providerID) => ({

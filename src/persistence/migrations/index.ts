@@ -40,7 +40,12 @@
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { AGENT_PROVIDER_IDS, getDefaultServerSettings, parseServerSettings } from "../../shared/settings";
+import {
+  DEFAULT_SERVER_AGENT_PROVIDER,
+  getDefaultServerSettings,
+  isAgentProvider,
+  parseServerSettings,
+} from "../../shared/settings";
 import { migrateExecutionHostRegistry } from "./execution-hosts";
 import { migrateDirectExecutionHostTerminalSessions } from "./direct-terminal-sessions";
 import { migrateExecutionHostVncSessions } from "./execution-host-vnc";
@@ -1520,15 +1525,10 @@ export const migrations: Migration[] = [
   },
 ];
 
-const AGENT_PROVIDERS = new Set<string>(AGENT_PROVIDER_IDS);
 const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isAgentProvider(value: unknown): value is string {
-  return typeof value === "string" && AGENT_PROVIDERS.has(value);
 }
 
 function migrateWorkspaceSettings(db: Database): void {
@@ -1577,20 +1577,22 @@ function migrateWorkspaceSettings(db: Database): void {
       migrated = {
         agent: transport === "ssh"
           ? {
-              provider: "opencode",
+              provider: DEFAULT_SERVER_AGENT_PROVIDER,
               transport,
               hostname: typeof parsed["hostname"] === "string" ? parsed["hostname"] : "127.0.0.1",
               ...(typeof parsed["port"] === "number" ? { port: parsed["port"] } : {}),
               ...(typeof parsed["password"] === "string" ? { password: parsed["password"] } : {}),
             }
           : {
-              provider: "opencode",
+              provider: DEFAULT_SERVER_AGENT_PROVIDER,
               transport,
             },
       };
     } else if (execution) {
       const transport = agentRecord["transport"] === "ssh" ? "ssh" : "stdio";
-      const provider = isAgentProvider(agentRecord["provider"]) ? agentRecord["provider"] : "opencode";
+      const provider = isAgentProvider(agentRecord["provider"])
+        ? agentRecord["provider"]
+        : DEFAULT_SERVER_AGENT_PROVIDER;
       if (transport === "ssh") {
         migrated = {
           agent: {

@@ -462,7 +462,7 @@ describe("three-process mesh cluster", () => {
     expect(host).toBeDefined();
 
     const preferredModel = {
-      providerID: "copilot",
+      providerID: "opencode",
       modelID: "auto",
       variant: "",
     };
@@ -504,6 +504,7 @@ describe("three-process mesh cluster", () => {
         candidate.ref.kind === "mesh" && candidate.ref.nodeId === nodeBId);
       return targetStatus.node.execution?.repositoriesBasePath === nodeB.dataDir
         && targetStatus.node.execution.preferredModel?.modelID === "auto"
+        && targetStatus.node.execution.preferredModel.providerID === "opencode"
         && targetStatus.node.execution.acceptRemoteExecution
         && controllerHost?.repositoriesBasePath === nodeB.dataDir
         && JSON.stringify(controllerHost.preferredModel) === JSON.stringify(preferredModel);

@@ -63,7 +63,6 @@ async function resolveExecutionHostFileTarget(
   const executor = await executionHostService.getCommandExecutorForRef(ref, {
     operationId: `file-explorer:${id}`,
     directory: defaultRoot,
-    provider: "copilot",
     sshPassword,
   });
   return {

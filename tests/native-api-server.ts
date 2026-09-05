@@ -12,6 +12,7 @@ export interface NativeApiServerOptions {
 }
 
 export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Server<unknown> {
+  const currentUser = options.user ?? testOwnerUser;
   return Bun.serve({
     port: 0,
     ...(options.idleTimeout === undefined ? {} : { idleTimeout: options.idleTimeout }),
@@ -30,8 +31,13 @@ export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Serv
       const context: Partial<RouteContext> = {
         params: matched.params,
         server,
-        requireUser: () => options.user ?? testOwnerUser,
-        requireOwner: () => options.user ?? testOwnerUser,
+        requireUser: () => currentUser,
+        requireOwner: () => {
+          if (!currentUser.isOwner) {
+            throw new Error("Owner permissions are required");
+          }
+          return currentUser;
+        },
       };
       return await handler(req, context as RouteContext) ?? new Response(null, { status: 204 });
     },

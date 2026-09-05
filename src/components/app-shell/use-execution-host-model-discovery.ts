@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor } from "@/shared";
-import type { AgentProvider } from "@/shared/settings";
+import {
+  DEFAULT_EXECUTION_AGENT_PROVIDER,
+  isAgentProvider,
+  type AgentProvider,
+} from "@/shared/settings";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { apiRequest } from "../../lib/api-client";
 
@@ -15,10 +19,6 @@ function executionHostApiPath(host: ExecutionHostDescriptor): string {
   return `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(id)}`;
 }
 
-function isAgentProvider(value: string): value is AgentProvider {
-  return AGENT_PROVIDER_OPTIONS.some((option) => option.id === value);
-}
-
 export function useExecutionHostModelDiscovery(
   host: ExecutionHostDescriptor,
   directory: string,
@@ -30,7 +30,7 @@ export function useExecutionHostModelDiscovery(
       ? preferredProvider
       : secondaryPreferredProvider && isAgentProvider(secondaryPreferredProvider)
         ? secondaryPreferredProvider
-      : "copilot",
+      : DEFAULT_EXECUTION_AGENT_PROVIDER,
   );
   const [availableProviders, setAvailableProviders] = useState<AgentProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
@@ -89,7 +89,7 @@ export function useExecutionHostModelDiscovery(
           if (nextProviders.includes(current)) {
             return current;
           }
-          return nextProviders[0] ?? "copilot";
+          return nextProviders[0] ?? DEFAULT_EXECUTION_AGENT_PROVIDER;
         });
       } catch (discoveryError) {
         if (discoveryError instanceof DOMException && discoveryError.name === "AbortError") {

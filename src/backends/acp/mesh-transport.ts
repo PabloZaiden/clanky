@@ -5,7 +5,10 @@
  * relays ACP JSON-RPC over the owner's bounded WebSocket gateway.
  */
 
-import type { AgentProvider } from "@/shared/settings";
+import {
+  DEFAULT_SERVER_AGENT_PROVIDER,
+  type AgentProvider,
+} from "@/shared/settings";
 import {
   MESH_ACP_WEBSOCKET_OPEN_TIMEOUT_MS,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
@@ -97,7 +100,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       );
     }
     this.directory = config.directory;
-    this.provider = config.provider ?? "opencode";
+    this.provider = config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
     this.requester = requester;
     this.closing = false;
     const sessionClient = new MeshCommandExecutorClient({

@@ -14,7 +14,10 @@ import type {
   ExecutionHostDescriptor,
   VncSession,
 } from "@/shared";
-import { getExecutionHostDefaultDirectory } from "@/shared";
+import {
+  getExecutionHostAgentProvider,
+  getExecutionHostDefaultDirectory,
+} from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
@@ -197,7 +200,7 @@ export function ExecutionHostView({
       basePath: getExecutionHostDefaultDirectory(host),
       devcontainerSubpath: null,
       devboxTemplate: null,
-      provider: "copilot",
+      provider: getExecutionHostAgentProvider(host),
       mode: "arise",
       targetDirectory: null,
       workspaceId: null,

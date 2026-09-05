@@ -8,10 +8,14 @@ import {
   EXECUTION_HOST_CAPABILITY_IDS,
   EXECUTION_HOST_KINDS,
 } from "@/shared/execution-host";
+import { AGENT_PROVIDER_IDS } from "@/shared/settings";
 import { ModelConfigSchema } from "./model";
 
 const RequiredIdSchema = z.string().trim().min(1);
 const CapabilityVersionSchema = z.number().int().min(1);
+export const ExecutionHostPreferredModelSchema = ModelConfigSchema.extend({
+  providerID: z.enum(AGENT_PROVIDER_IDS),
+});
 
 export const ExecutionHostKindSchema = z.enum(EXECUTION_HOST_KINDS);
 
@@ -50,7 +54,7 @@ export const ExecutionNodeConfigurationSchema = z.object({
   name: RequiredIdSchema,
   endpoint: z.string().nullable(),
   repositoriesBasePath: z.string().nullable(),
-  preferredModel: ModelConfigSchema.nullable().default(null),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable().default(null),
   acceptRemoteExecution: z.boolean(),
   capabilities: ExecutionHostCapabilitiesSchema,
   revision: z.number().int().min(1),
@@ -84,7 +88,7 @@ export const ExecutionHostDescriptorSchema = z.object({
   name: RequiredIdSchema,
   endpoint: z.string().nullable(),
   repositoriesBasePath: z.string().nullable(),
-  preferredModel: ModelConfigSchema.nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
   configurationRevision: z.number().int().min(1),
   availability: ExecutionHostAvailabilitySchema,
   accessRequirement: ExecutionHostAccessRequirementSchema,
@@ -96,7 +100,7 @@ export const ExecutionHostDescriptorSchema = z.object({
 
 export const UpdateExecutionHostConfigurationSchema = z.object({
   repositoriesBasePath: z.string().trim().min(1).nullable(),
-  preferredModel: ModelConfigSchema.nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
   expectedRevision: z.number().int().min(1),
 }).strict();
 

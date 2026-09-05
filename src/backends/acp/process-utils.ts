@@ -4,6 +4,7 @@
 
 import { SSHPASS_INVALID_PASSWORD_EXIT_CODE } from "./types";
 import { isAcpErrorCode } from "./errors";
+import { DEFAULT_EXECUTION_AGENT_PROVIDER } from "@/shared/settings";
 
 /**
  * Sanitize process args before logging.
@@ -58,5 +59,5 @@ export function inferProviderID(modelID: string): string {
   if (modelID.startsWith("gemini")) {
     return "google";
   }
-  return "copilot";
+  return DEFAULT_EXECUTION_AGENT_PROVIDER;
 }

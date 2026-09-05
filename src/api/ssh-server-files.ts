@@ -46,7 +46,6 @@ async function resolveSshServerFileTarget(
     {
       operationId: `file-explorer:${server.config.id}`,
       directory: server.config.repositoriesBasePath?.trim() || "/",
-      provider: "copilot",
       sshPassword: password,
     },
   );

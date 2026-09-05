@@ -4,10 +4,10 @@
 
 import type {
   ExecutionHostDescriptor,
+  ExecutionHostModelConfig,
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import { executionHostRefsEqual } from "@/shared/execution-host";
-import type { ModelConfig } from "@/shared/model";
 import { DomainError } from "./domain-error";
 import { executionHostService } from "./execution-host-service";
 import { meshManager } from "./mesh-manager";
@@ -18,7 +18,7 @@ export class ExecutionHostConfigurationService {
     ref: ExecutionHostRef,
     input: {
       repositoriesBasePath: string | null;
-      preferredModel: ModelConfig | null;
+      preferredModel: ExecutionHostModelConfig | null;
       expectedRevision: number;
     },
     userId: string = requireCurrentUserId(),

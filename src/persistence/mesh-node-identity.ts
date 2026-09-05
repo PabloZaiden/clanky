@@ -25,10 +25,11 @@ import {
 import {
   EXECUTION_HOST_CAPABILITY_IDS,
   createDefaultExecutionNodeConfiguration,
+  type ExecutionHostModelConfig,
   type ExecutionHostCapabilities,
   type ExecutionNodeConfiguration,
 } from "@/shared/execution-host";
-import type { ModelConfig } from "@/shared/model";
+import { isAgentProvider } from "@/shared/settings";
 import { getDataDir, getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh-node-identity");
@@ -118,7 +119,7 @@ function parseExecutionConfiguration(
   }
   const record = value as Record<string, unknown>;
   const preferredModelValue = record["preferredModel"];
-  let preferredModel: ModelConfig | null = null;
+  let preferredModel: ExecutionHostModelConfig | null = null;
   if (preferredModelValue !== undefined && preferredModelValue !== null) {
     const preferredModelRecord = typeof preferredModelValue === "object"
       && !Array.isArray(preferredModelValue)
@@ -128,7 +129,7 @@ function parseExecutionConfiguration(
     const modelID = preferredModelRecord?.["modelID"];
     const variant = preferredModelRecord?.["variant"];
     if (
-      typeof providerID !== "string"
+      !isAgentProvider(providerID)
       || typeof modelID !== "string"
       || typeof variant !== "string"
       || !providerID.trim()

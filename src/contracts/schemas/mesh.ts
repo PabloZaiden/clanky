@@ -3,8 +3,10 @@
  */
 
 import { z } from "zod";
-import { ExecutionNodeConfigurationSchema } from "./execution-host";
-import { ModelConfigSchema } from "./model";
+import {
+  ExecutionHostPreferredModelSchema,
+  ExecutionNodeConfigurationSchema,
+} from "./execution-host";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_PAIRING_DIRECTIONS,
@@ -62,7 +64,7 @@ export const UpdateMeshEndpointSchema = z.object({
 export const UpdateMeshExecutionConfigurationSchema = z.object({
   acceptRemoteExecution: z.boolean(),
   repositoriesBasePath: z.string().trim().nullable(),
-  preferredModel: ModelConfigSchema.nullable().optional(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable().optional(),
 });
 
 export const ApproveMeshPairingRequestSchema = z.object({
@@ -179,7 +181,7 @@ export const MeshExecutionConfigurationUpdateSchema = z.object({
   targetNodeId: z.string().trim().min(1),
   expectedRevision: z.number().int().min(1),
   repositoriesBasePath: z.string().trim().min(1).nullable(),
-  preferredModel: ModelConfigSchema.nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
   nonce: z.string().trim().min(1),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1),

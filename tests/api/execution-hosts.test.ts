@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,7 +76,7 @@ describe("Execution hosts API", () => {
         body: JSON.stringify({
           repositoriesBasePath: testDataDir,
           preferredModel: {
-            providerID: "copilot",
+            providerID: "opencode",
             modelID: "default",
             variant: "",
           },
@@ -87,7 +88,7 @@ describe("Execution hosts API", () => {
     const updatedHost = await updateConfigurationResponse.json() as ExecutionHostDescriptor;
     expect(updatedHost.repositoriesBasePath).toBe(testDataDir);
     expect(updatedHost.preferredModel).toEqual({
-      providerID: "copilot",
+      providerID: "opencode",
       modelID: "default",
       variant: "",
     });
@@ -224,4 +225,43 @@ describe("Execution hosts API", () => {
     expect(deleteChatResponse.status).toBe(200);
   });
 
+  test("does not let the native route harness supply a non-owner to owner handlers", async () => {
+    const hosts = await fetch(`${baseUrl}/api/execution-hosts`)
+      .then(async (response) => await response.json() as ExecutionHostDescriptor[]);
+    const localHost = hosts.find((host) => host.ref.kind === "local");
+    expect(localHost).toBeDefined();
+
+    const nonOwner: CurrentUser = {
+      id: "non-owner",
+      username: "non-owner",
+      role: "user",
+      isOwner: false,
+      isAdmin: false,
+    };
+    const nonOwnerServer = serveNativeApiRoutes({ user: nonOwner });
+    try {
+      const response = await fetch(
+        `${nonOwnerServer.url}api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/configuration`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repositoriesBasePath: ".",
+            preferredModel: null,
+            expectedRevision: localHost!.configurationRevision,
+          }),
+        },
+      );
+      expect(response.status).toBe(500);
+    } finally {
+      nonOwnerServer.stop();
+    }
+
+    const unchangedHosts = await fetch(`${baseUrl}/api/execution-hosts`)
+      .then(async (response) => await response.json() as ExecutionHostDescriptor[]);
+    const unchangedLocalHost = unchangedHosts.find((host) => host.ref.kind === "local");
+    expect(unchangedLocalHost?.configurationRevision).toBe(
+      localHost!.configurationRevision,
+    );
+  });
 });
