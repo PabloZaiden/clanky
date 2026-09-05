@@ -521,13 +521,22 @@ export async function getOrCreateWorkspace(
   directory: string,
   name?: string
 ): Promise<string> {
+  const hostsResponse = await fetch(`${baseUrl}/api/execution-hosts`);
+  const hosts = await hostsResponse.json() as Array<{
+    ref: { kind: string; nodeId?: string };
+  }>;
+  const localHost = hosts.find((host) => host.ref.kind === "local");
+  if (!localHost) {
+    throw new Error("Local execution host is unavailable");
+  }
   const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: name || directory.split("/").pop() || "Test",
       directory,
-      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      executionHost: localHost.ref,
+      serverSettings: { agent: { provider: "opencode" } },
     }),
   });
   const data = await createResponse.json();

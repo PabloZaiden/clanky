@@ -18,7 +18,6 @@ import {
 import { createTimestamp } from "@/shared/events";
 import { getTaskWorkingDirectory } from "./task/task-types";
 import { taskManager, type TaskManager } from "./task-manager";
-import { sshServerManager, type SshServerManager } from "./ssh-server-manager";
 import { isUniqueConstraint } from "../persistence/errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { buildGeneratedChatName } from "./chat-name";
@@ -36,16 +35,11 @@ import type {
   ChatWorktreePort,
   CreateAgentRunChatOptions,
   CreateChatOptions,
-  CreateSshServerChatOptions,
   CreateExecutionHostChatOptions,
   ImportExistingSessionOptions,
 } from "./chat-service-contracts";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
-import {
-  getExecutionHostByRef,
-  toExecutionHostBinding,
-} from "../persistence/execution-hosts";
 import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("chat-lifecycle-service");
@@ -56,10 +50,6 @@ export interface ChatLifecycleServiceDependencies {
   session: ChatSessionPort;
   conversation: ChatConversationPort;
   taskManager: Pick<TaskManager, "getTask">;
-  sshServerManager: Pick<
-    SshServerManager,
-    "getServer" | "createSession" | "getSession" | "deleteInternalSessionRecord"
-  >;
 }
 
 export class ChatLifecycleService implements ChatLifecyclePort {
@@ -68,10 +58,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   private readonly session: ChatSessionPort;
   private readonly conversation: ChatConversationPort;
   private readonly taskManager: Pick<TaskManager, "getTask">;
-  private readonly sshServerManager: Pick<
-    SshServerManager,
-    "getServer" | "createSession" | "getSession" | "deleteInternalSessionRecord"
-  >;
 
   constructor(dependencies: Partial<ChatLifecycleServiceDependencies> & Pick<
     ChatLifecycleServiceDependencies,
@@ -82,7 +68,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     this.session = dependencies.session;
     this.conversation = dependencies.conversation;
     this.taskManager = dependencies.taskManager ?? taskManager;
-    this.sshServerManager = dependencies.sshServerManager ?? sshServerManager;
   }
 
   async createChat(options: CreateChatOptions): Promise<Chat> {
@@ -135,7 +120,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           kind: "workspace",
           workspaceId: options.workspaceId,
         },
-        executionHostBinding: workspace.executionHostBinding ?? null,
+        executionHostBinding: workspace.executionHostBinding,
         scope,
         taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
@@ -206,68 +191,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       autoApprovePermissions: true,
       prepareWorktreeOnCreate: options.prepareWorktreeOnCreate ?? true,
     });
-  }
-
-  async createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat> {
-    const server = await this.sshServerManager.getServer(options.sshServerId);
-    if (!server) {
-      throw new Error(`SSH server not found: ${options.sshServerId}`);
-    }
-
-    const id = crypto.randomUUID();
-    const now = createTimestamp();
-    const explicitName = options.name?.trim() ?? "";
-    const name = explicitName || `${server.config.name} chat`;
-    const session = await this.sshServerManager.createSession(options.sshServerId, {
-      name: `Chat transport: ${name}`.slice(0, 100),
-      credentialToken: null,
-      connectionMode: "dtach",
-    });
-    const executionHost = getExecutionHostByRef(
-      requireCurrentUser().id,
-      { kind: "ssh", serverId: options.sshServerId },
-    );
-    const chat: Chat = {
-      config: {
-        id,
-        name,
-        source: {
-          kind: "ssh_server",
-          sshServerId: options.sshServerId,
-          sshServerSessionId: session.config.id,
-          directory: options.directory,
-        },
-        executionHostBinding: executionHost
-          ? toExecutionHostBinding(executionHost)
-          : null,
-        scope: "workspace",
-        directory: options.directory,
-        model: {
-          providerID: options.modelProviderID,
-          modelID: options.modelID,
-          variant: options.modelVariant ?? "",
-        },
-        useWorktree: false,
-        autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
-        createdAt: now,
-        updatedAt: now,
-        mode: DEFAULT_CHAT_CONFIG.mode,
-      },
-      state: {
-        ...createInitialChatState(id),
-        connectionStatus: "needs_credentials",
-      },
-    };
-
-    await this.state.saveNewChat(chat);
-    this.state.emitChatCreated(chat, now);
-
-    if (options.credentialToken?.trim()) {
-      return this.session.reconnectSession(chat, {
-        credentialToken: options.credentialToken,
-      });
-    }
-    return chat;
   }
 
   async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
@@ -563,7 +486,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
     const deleted = await this.state.deletePersistedChat(chatId);
     if (deleted) {
-      await this.cleanupInternalSshSession(chat);
       this.state.emitChatDeleted(chat, createTimestamp());
     }
     return deleted;
@@ -623,38 +545,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
   }
 
-  private async cleanupInternalSshSession(chat: Chat): Promise<void> {
-    const internalSshServerSessionId = chat.config.source?.kind === "ssh_server"
-      ? chat.config.source.sshServerSessionId
-      : null;
-    if (!internalSshServerSessionId) {
-      return;
-    }
-
-    const internalSession = await this.sshServerManager.getSession(internalSshServerSessionId);
-    if (internalSession) {
-      await this.sshServerManager.deleteInternalSessionRecord(internalSshServerSessionId);
-      return;
-    }
-
-    log.warn("SSH-server chat transport session was already missing during chat deletion", {
-      chatId: chat.config.id,
-      sshServerSessionId: internalSshServerSessionId,
-    });
-  }
-
   private scheduleDeferredChatCleanup(chat: Chat, user: CurrentUser): void {
     // The persisted chat is already deleted; remote cleanup must not delay the HTTP response.
     void runWithCurrentUser(user, async () => {
       await this.cleanupChatRuntime(chat, { continueOnError: true });
-      try {
-        await this.cleanupInternalSshSession(chat);
-      } catch (error) {
-        log.error("Deferred SSH-server chat cleanup failed", {
-          chatId: chat.config.id,
-          error: String(error),
-        });
-      }
     }).catch((error) => {
       log.error("Deferred chat cleanup failed", {
         chatId: chat.config.id,

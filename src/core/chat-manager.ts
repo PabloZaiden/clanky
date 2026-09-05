@@ -28,7 +28,6 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  CreateSshServerChatOptions,
   ImportExistingSessionOptions,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
@@ -41,7 +40,6 @@ export type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  CreateSshServerChatOptions,
   ImportExistingSessionOptions,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
@@ -130,10 +128,6 @@ export class ChatManager {
     return this.services.lifecycle.createAgentRunChat(options);
   }
 
-  async createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat> {
-    return this.services.lifecycle.createSshServerChat(options);
-  }
-
   async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
     return this.services.lifecycle.createExecutionHostChat(options);
   }
@@ -168,10 +162,6 @@ export class ChatManager {
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
     return this.services.state.getChatSummariesByWorkspace(workspaceId);
-  }
-
-  async getChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
-    return this.services.state.getChatSummariesBySshServer(sshServerId);
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {

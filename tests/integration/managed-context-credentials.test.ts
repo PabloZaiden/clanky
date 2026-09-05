@@ -15,8 +15,9 @@ import {
 } from "../../src/persistence/context-api-keys";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import { testOwnerUser } from "../setup";
+import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
 import type { Workspace } from "@/shared";
+import { ensureExecutionHost } from "../../src/persistence/execution-hosts";
 
 describe("managed execution context credentials", () => {
   let tempDir: string;
@@ -47,16 +48,21 @@ describe("managed execution context credentials", () => {
       publicBaseUrl: "https://clanky.example",
     });
 
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      getTestLocalExecutionHostBinding,
+    );
     workspace = {
       id: crypto.randomUUID(),
       name: "Managed Context Workspace",
       directory: join(tempDir, "workspace"),
       workspaceType: "git",
+      executionTargetRevision: 1,
+      executionHostBinding,
       allowClankyContext: true,
       serverSettings: {
         agent: {
           provider: "opencode",
-          transport: "stdio",
         },
       },
       createdAt: new Date().toISOString(),
@@ -170,15 +176,21 @@ describe("managed execution context credentials", () => {
     managedCredentialService.configure(store, {
       localBaseUrl: "http://127.0.0.1:3000",
     });
-    await runWithCurrentUser(testOwnerUser, () => updateWorkspace(workspace.id, {
-      serverSettings: {
-        agent: {
-          provider: "opencode",
-          transport: "ssh",
-          hostname: "remote-workspace",
+    await runWithCurrentUser(testOwnerUser, async () => {
+      const host = ensureExecutionHost(
+        testOwnerUser.id,
+        { kind: "ssh", serverId: "remote-workspace" },
+        "ssh:remote-workspace",
+      );
+      await updateWorkspace(workspace.id, {
+        executionTargetRevision: 2,
+        executionHostBinding: {
+          host: host.ref,
+          targetKey: host.targetKey,
+          revision: host.revision,
         },
-      },
-    }));
+      });
+    });
 
     const identity = {
       userId: testOwnerUser.id,
@@ -233,6 +245,7 @@ describe("managed execution context credentials", () => {
             kind: "workspace",
             workspaceId: workspace.id,
           },
+          executionHostBinding: workspace.executionHostBinding,
           scope: "workspace",
           directory: workspace.directory,
           model: {

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { type Server } from "bun";
@@ -9,7 +10,7 @@ import { join } from "path";
 import { initializeGitRepository } from "../helpers/git-fixtures";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
-import type { WorkspaceTerminalSession } from "../../src/shared";
+import type { TerminalSession } from "../../src/shared";
 
 class TerminalSessionTestExecutor extends TestCommandExecutor {
   override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
@@ -67,6 +68,7 @@ describe("Terminal sessions API integration", () => {
     db.run("DELETE FROM terminal_sessions");
     db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
+    db.run("DELETE FROM ssh_servers");
     backendManager.setExecutorFactoryForTesting(() => new TerminalSessionTestExecutor());
   });
 
@@ -76,27 +78,31 @@ describe("Terminal sessions API integration", () => {
     directory?: string;
   } = {}) {
     const transport = options.transport ?? "ssh";
+    const executionHost = transport === "ssh"
+      ? {
+          kind: "ssh" as const,
+          serverId: (await sshServerManager.createServer({
+            name: options.name ?? "Test SSH server",
+            address: "localhost",
+            username: "tester",
+            repositoriesBasePath: null,
+          })).config.id,
+        }
+      : (await (await fetch(`${baseUrl}/api/execution-hosts`)).json() as Array<{
+          ref: { kind: string; nodeId?: string };
+        }>).find((host) => host.ref.kind === "local")!.ref;
     const response = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: options.name ?? "Test Workspace",
         directory: options.directory ?? workDir,
-        serverSettings: transport === "ssh"
-          ? {
-              agent: {
-                provider: "opencode",
-                transport: "ssh",
-                hostname: "localhost",
-                username: "tester",
-              },
-            }
-          : {
-              agent: {
-                provider: "opencode",
-                transport: "stdio",
-              },
-            },
+        executionHost,
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+          },
+        },
       }),
     });
     expect(response.ok).toBe(true);
@@ -118,22 +124,20 @@ describe("Terminal sessions API integration", () => {
     });
 
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as WorkspaceTerminalSession;
+    const created = await createResponse.json() as TerminalSession;
     expect(created.config.name).toBe("My Terminal");
     expect(created.config.useTmux).toBe(false);
-    expect(created.config.targetBinding.transport).toBe("ssh");
-    expect(created.config.targetBinding.hostname).toBe("localhost");
-    expect(created.config.targetBinding.username).toBe("tester");
+    expect(created.config.executionHostBinding.host.kind).toBe("ssh");
 
     const listResponse = await fetch(`${baseUrl}/api/terminal-sessions`);
     expect(listResponse.ok).toBe(true);
-    const sessions = await listResponse.json() as WorkspaceTerminalSession[];
+    const sessions = await listResponse.json() as TerminalSession[];
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.config.id).toBe(created.config.id);
 
     const getResponse = await fetch(`${baseUrl}/api/terminal-sessions/${created.config.id}`);
     expect(getResponse.ok).toBe(true);
-    const fetched = await getResponse.json() as WorkspaceTerminalSession;
+    const fetched = await getResponse.json() as TerminalSession;
     expect(fetched.config.remoteSessionName).toContain("clanky-");
 
     const deleteResponse = await fetch(`${baseUrl}/api/terminal-sessions/${created.config.id}`, {
@@ -159,10 +163,9 @@ describe("Terminal sessions API integration", () => {
     });
 
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as WorkspaceTerminalSession;
+    const created = await createResponse.json() as TerminalSession;
     expect(created.config.name).toBe("Local Terminal");
-    expect(created.config.targetBinding.transport).toBe("stdio");
-    expect(created.config.targetBinding.hostname).toBeUndefined();
+    expect(created.config.executionHostBinding.host.kind).toBe("local");
     expect(created.config.connectionMode).toBe("dtach");
     expect(created.state.status).toBe("ready");
   });
@@ -187,20 +190,20 @@ describe("Terminal sessions API integration", () => {
 
       const filtered = await fetch(`${baseUrl}/api/terminal-sessions?workspaceId=${workspace1.id}`);
       expect(filtered.ok).toBe(true);
-      const sessions = await filtered.json() as WorkspaceTerminalSession[];
+      const sessions = await filtered.json() as TerminalSession[];
       expect(sessions).toHaveLength(1);
       expect(sessions[0]?.config.name).toBe("T1");
 
       const all = await fetch(`${baseUrl}/api/terminal-sessions`);
       expect(all.ok).toBe(true);
-      const allSessions = await all.json() as WorkspaceTerminalSession[];
+      const allSessions = await all.json() as TerminalSession[];
       expect(allSessions).toHaveLength(2);
     } finally {
       await rm(otherDir, { recursive: true, force: true });
     }
   });
 
-  test("target binding captures SSH workspace settings", async () => {
+  test("execution host binding captures the SSH workspace host", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
 
     const response = await fetch(`${baseUrl}/api/terminal-sessions`, {
@@ -214,15 +217,14 @@ describe("Terminal sessions API integration", () => {
     });
 
     expect(response.status).toBe(201);
-    const session = await response.json() as WorkspaceTerminalSession;
-    const binding = session.config.targetBinding;
-    expect(binding.transport).toBe("ssh");
-    expect(binding.hostname).toBe("localhost");
-    expect(binding.username).toBe("tester");
-    expect(binding.executionNodeId).toBeUndefined();
+    const session = await response.json() as TerminalSession;
+    const binding = session.config.executionHostBinding;
+    expect(binding.host.kind).toBe("ssh");
+    expect(binding.targetKey).toStartWith("sha256:");
+    expect(binding.revision).toBe(1);
   });
 
-  test("target binding captures stdio workspace settings", async () => {
+  test("execution host binding captures the local workspace host", async () => {
     const workspace = await createWorkspace({ transport: "stdio" });
 
     const response = await fetch(`${baseUrl}/api/terminal-sessions`, {
@@ -235,12 +237,11 @@ describe("Terminal sessions API integration", () => {
     });
 
     expect(response.status).toBe(201);
-    const session = await response.json() as WorkspaceTerminalSession;
-    const binding = session.config.targetBinding;
-    expect(binding.transport).toBe("stdio");
-    expect(binding.hostname).toBeUndefined();
-    expect(binding.port).toBeUndefined();
-    expect(binding.username).toBeUndefined();
+    const session = await response.json() as TerminalSession;
+    const binding = session.config.executionHostBinding;
+    expect(binding.host.kind).toBe("local");
+    expect(binding.targetKey).toStartWith("sha256:");
+    expect(binding.revision).toBe(1);
   });
 
 });

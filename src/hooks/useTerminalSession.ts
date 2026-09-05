@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import type { UpdateTerminalSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
@@ -11,17 +11,17 @@ import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 
 export interface UseTerminalSessionResult {
-  session: WorkspaceTerminalSession | null;
+  session: TerminalSession | null;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  updateSession: (request: UpdateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
+  updateSession: (request: UpdateTerminalSessionRequest) => Promise<TerminalSession>;
   deleteSession: () => Promise<boolean>;
 }
 
 export function useTerminalSession(sessionId: string): UseTerminalSessionResult {
   const log = createLogger("useTerminalSession");
-  const [session, setSession] = useState<WorkspaceTerminalSession | null>(null);
+  const [session, setSession] = useState<TerminalSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initialLoadDoneRef = useRef(false);
@@ -29,8 +29,8 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   sessionIdRef.current = sessionId;
 
-  const fetchSession = useCallback(async (): Promise<WorkspaceTerminalSession> => {
-    return await apiRequest<WorkspaceTerminalSession>(`/api/terminal-sessions/${sessionId}`, {
+  const fetchSession = useCallback(async (): Promise<TerminalSession> => {
+    return await apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
       action: "Fetch terminal session",
       fallbackMessage: "Failed to fetch terminal session",
     });
@@ -83,10 +83,10 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
     onReconnect: () => refreshInternal(false),
   });
 
-  const updateSession = useCallback(async (request: UpdateTerminalSessionRequest): Promise<WorkspaceTerminalSession> => {
+  const updateSession = useCallback(async (request: UpdateTerminalSessionRequest): Promise<TerminalSession> => {
     try {
       setError(null);
-      const updated = await apiRequest<WorkspaceTerminalSession>(`/api/terminal-sessions/${sessionId}`, {
+      const updated = await apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),

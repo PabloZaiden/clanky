@@ -6,6 +6,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { StatusBadge } from "../common";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
+import type { ExecutionHostRef } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
@@ -37,7 +38,7 @@ export function WorkspaceSettingsForm({
   const [archived, setArchived] = useState(false);
   const [allowClankyContext, setAllowClankyContext] = useState(false);
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
-  const [executionNodeId, setExecutionNodeId] = useState<string | null>(null);
+  const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(null);
   const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
 
   // Initialize form from workspace when the selected workspace changes
@@ -47,7 +48,7 @@ export function WorkspaceSettingsForm({
       setArchived(workspace.archived === true);
       setAllowClankyContext(workspace.allowClankyContext === true);
       setServerSettings(workspace.serverSettings);
-      setExecutionNodeId(workspace.executionNodeId ?? null);
+      setExecutionHost(workspace.executionHostBinding.host);
       setIsServerSettingsValid(true);
       return;
     }
@@ -56,20 +57,20 @@ export function WorkspaceSettingsForm({
     setArchived(false);
     setAllowClankyContext(false);
     setServerSettings(null);
-    setExecutionNodeId(null);
+    setExecutionHost(null);
     setIsServerSettingsValid(true);
   }, [workspace]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (!serverSettings) return;
+    if (!serverSettings || !executionHost) return;
 
     log.debug("Saving workspace settings", { workspaceName: name.trim() });
     const success = await onSave(
       name.trim(),
       serverSettings,
-      executionNodeId,
+      executionHost,
       archived,
       allowClankyContext,
     );
@@ -84,15 +85,15 @@ export function WorkspaceSettingsForm({
   function handleServerSettingsChange(
     settings: ServerSettings,
     isValid: boolean,
-    selectedExecutionNodeId: string | null,
+    selectedExecutionHost: ExecutionHostRef | null,
   ) {
     log.debug("Server settings changed", {
       provider: settings.agent.provider,
-      transport: settings.agent.transport,
+      transport: selectedExecutionHost?.kind,
       isValid,
     });
     setServerSettings(settings);
-    setExecutionNodeId(selectedExecutionNodeId);
+    setExecutionHost(selectedExecutionHost);
     setIsServerSettingsValid(isValid);
   }
 
@@ -199,7 +200,7 @@ export function WorkspaceSettingsForm({
         {serverSettings && workspace && (
           <ServerSettingsForm
             initialSettings={workspace.serverSettings}
-            initialExecutionNodeId={workspace.executionNodeId ?? null}
+            initialExecutionHost={workspace.executionHostBinding.host}
             onChange={handleServerSettingsChange}
             onTest={onTest}
             testing={testing}

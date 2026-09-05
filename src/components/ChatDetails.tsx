@@ -80,13 +80,7 @@ export function ChatDetails({
           kind: source.executionHost.host.kind,
           startDirectory: chatWorkingDirectory,
         }
-      : source?.kind === "ssh_server"
-        ? {
-            type: "server" as const,
-            id: source.sshServerId,
-            startDirectory: chatWorkingDirectory,
-          }
-        : {
+      : {
             type: "workspace" as const,
             id: getChatWorkspaceId(chat),
             startDirectory: chatWorkingDirectory,

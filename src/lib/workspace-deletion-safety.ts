@@ -40,7 +40,6 @@ export function isAutoProvisionedWorkspace(workspace: Workspace): boolean {
   const basePath = workspace.basePath?.trim();
   return Boolean(
     sourceDirectory
-      && workspace.sshServerId?.trim()
       && basePath
       && isSafeProvisionedDirectory(sourceDirectory, basePath),
   );

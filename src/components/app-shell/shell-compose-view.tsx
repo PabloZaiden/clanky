@@ -1,17 +1,16 @@
 import type {
   ExecutionHostDescriptor,
-  TerminalConnectionMode,
   Workspace,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
-import type { SshServer, SshServerSession } from "@/shared/ssh-server";
+import type { SshServer } from "@/shared/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
-import { SshSessionComposer, SshServerComposer } from "./shell-composers";
+import { SshServerComposer } from "./shell-composers";
 import { TerminalSessionComposer } from "./terminal-session-composer";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
@@ -21,7 +20,7 @@ import { AgentComposer } from "./agents-view";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "terminal-session" | "ssh-server" | "ssh-server-chat" | "execution-host-chat";
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "ssh-server" | "execution-host-chat";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
@@ -29,10 +28,8 @@ export function isComposeKind(value: string): value is ComposeKind {
     "chat",
     "agent",
     "workspace",
-    "ssh-session",
     "terminal-session",
     "ssh-server",
-    "ssh-server-chat",
     "execution-host-chat",
   ].includes(value);
 }
@@ -48,10 +45,6 @@ interface ComposeViewProps {
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
   importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
-  createSshServerChat: (
-    serverId: string,
-    request: import("@/contracts").CreateSshServerChatRequest,
-  ) => Promise<import("@/shared").Chat | null>;
   dashboardData: UseDashboardDataResult;
   agents: UseAgentsResult;
   schedulerTimezone: string;
@@ -60,18 +53,13 @@ interface ComposeViewProps {
   workspaceError: string | null;
   servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
-  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
-  createStandaloneSession: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
-  ) => Promise<SshServerSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (
     id: string,
     request?: import("@/contracts").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
-  composeServerSessionCount: number;
   provisioning: UseProvisioningJobResult;
   workspacesSaving: boolean;
 }
@@ -87,7 +75,6 @@ export function ComposeView(props: ComposeViewProps) {
     handleTaskSubmit,
     createChat,
     importExistingChat,
-    createSshServerChat,
     dashboardData,
     agents,
     schedulerTimezone,
@@ -97,10 +84,8 @@ export function ComposeView(props: ComposeViewProps) {
     servers,
     workspaceCreate,
     createTerminalSession,
-    createStandaloneSession,
     createServer,
     updateServer,
-    composeServerSessionCount,
     provisioning,
     workspacesSaving,
   } = props;
@@ -160,11 +145,10 @@ export function ComposeView(props: ComposeViewProps) {
     );
   }
 
-  if (kind === "chat" || kind === "ssh-server-chat") {
+  if (kind === "chat") {
     return (
       <ComposeChatView
         composeWorkspace={composeWorkspace}
-        composeServer={kind === "ssh-server-chat" ? composeServer : null}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
@@ -172,7 +156,6 @@ export function ComposeView(props: ComposeViewProps) {
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
         importExistingChat={importExistingChat}
-        createSshServerChat={createSshServerChat}
       />
     );
   }
@@ -204,32 +187,17 @@ export function ComposeView(props: ComposeViewProps) {
     );
   }
 
-  if (kind === "ssh-session") {
-    return (
-      <SshSessionComposer
-        servers={servers}
-        initialServerId={composeServer?.config.id}
-        onCancel={() =>
-          navigateWithinShell(
-            composeServer
-                ? { view: "ssh-server", serverId: composeServer.config.id }
-                : { view: "home" },
-          )
-        }
-        onNavigate={navigateWithinShell}
-        onCreateStandaloneSession={createStandaloneSession}
-      />
-    );
-  }
-
   return (
     <SshServerComposer
       initialServer={composeServer}
-      relatedSessionCount={composeServerSessionCount}
       onCancel={() =>
         navigateWithinShell(
           composeServer
-            ? { view: "ssh-server", serverId: composeServer.config.id }
+            ? {
+                view: "execution-host",
+                hostKind: "ssh",
+                hostId: composeServer.config.id,
+              }
             : { view: "home" },
         )
       }

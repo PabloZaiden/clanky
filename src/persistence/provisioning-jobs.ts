@@ -9,12 +9,9 @@ import type { ProvisioningJob, ProvisioningJobError, ProvisioningJobStatus, Prov
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
 import {
-  ensureExecutionHost,
   executionHostBindingFromRow,
-  getExecutionHostByRef,
   resolveExecutionHostBindingId,
 } from "./execution-hosts";
-import { buildMeshTargetKey } from "./workspace-target-key";
 
 const log = createLogger("persistence:provisioning-jobs");
 
@@ -110,12 +107,19 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
     serverSettings: _serverSettings,
     ...safeState
   } = storedState;
+  const executionHostBinding = executionHostBindingFromRow(
+    row as unknown as Record<string, unknown>,
+  );
+  if (!executionHostBinding) {
+    log.warn("Ignoring provisioning row without an execution-host binding", {
+      jobId: row.id,
+    });
+    return null;
+  }
   return {
     config: {
       ...(config as ProvisioningJob["config"]),
-      executionHostBinding: executionHostBindingFromRow(
-        row as unknown as Record<string, unknown>,
-      ),
+      executionHostBinding,
     },
     state: {
       ...safeState,
@@ -166,32 +170,11 @@ function loadJobRow(userId: string, jobId: string): ProvisioningJobRow | null {
 function resolveProvisioningHost(
   userId: string,
   config: ProvisioningJob["config"],
-): { id: string | null; revision: number | null } {
-  if (config.executionHostBinding) {
-    return {
-      id: resolveExecutionHostBindingId(userId, config.executionHostBinding),
-      revision: config.executionHostBinding.revision,
-    };
-  }
-  if (config.sshServerId) {
-    const host = getExecutionHostByRef(userId, {
-      kind: "ssh",
-      serverId: config.sshServerId,
-    });
-    return {
-      id: host?.id ?? null,
-      revision: host?.revision ?? null,
-    };
-  }
-  if (config.executionNodeId) {
-    const host = ensureExecutionHost(
-      userId,
-      { kind: "mesh", nodeId: config.executionNodeId },
-      buildMeshTargetKey(config.executionNodeId),
-    );
-    return { id: host.id, revision: host.revision };
-  }
-  return { id: null, revision: null };
+): { id: string; revision: number } {
+  return {
+    id: resolveExecutionHostBindingId(userId, config.executionHostBinding),
+    revision: config.executionHostBinding.revision,
+  };
 }
 
 export function createProvisioningJob(userId: string, job: ProvisioningJob): void {

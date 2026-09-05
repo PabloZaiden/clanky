@@ -7,7 +7,6 @@
 
 import type {
   Backend,
-  BackendConnectionConfig,
   ImportableSession,
   SessionReplayEvent,
 } from "../backends/types";
@@ -50,17 +49,6 @@ export interface CreateChatOptions {
 }
 
 export interface CreateAgentRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId" | "autoApprovePermissions"> {}
-
-export interface CreateSshServerChatOptions {
-  name?: string;
-  sshServerId: string;
-  directory: string;
-  modelProviderID: string;
-  modelID: string;
-  modelVariant?: string;
-  autoApprovePermissions?: boolean;
-  credentialToken?: string | null;
-}
 
 export interface CreateExecutionHostChatOptions {
   name?: string;
@@ -124,7 +112,6 @@ export interface ChatStatePort {
   getChatSummaries(): Promise<Chat[]>;
   getChatsByWorkspace(workspaceId: string): Promise<Chat[]>;
   getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]>;
-  getChatSummariesBySshServer(sshServerId: string): Promise<Chat[]>;
   getWorkspace(workspaceId: string): Promise<Workspace | null>;
   touchWorkspace(workspaceId: string): Promise<void>;
   getWorkspaceChatNameStats(workspaceId: string, namePrefix: string): Promise<{
@@ -190,7 +177,6 @@ export interface ChatSessionPort {
   configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void>;
   reconnectSession(chat: Chat, options?: ReconnectChatOptions): Promise<Chat>;
   disconnectChat(chatId: string): Promise<void>;
-  buildSshChatConnectionConfig(chat: Chat, password: string): Promise<BackendConnectionConfig>;
 }
 
 export interface ChatConversationPort {
@@ -227,7 +213,6 @@ export interface ChatInteractionPort {
 export interface ChatLifecyclePort {
   createChat(options: CreateChatOptions): Promise<Chat>;
   createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat>;
-  createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat>;
   createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat>;
   listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
   importExistingSession(options: ImportExistingSessionOptions): Promise<Chat>;

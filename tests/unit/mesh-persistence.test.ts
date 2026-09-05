@@ -107,6 +107,11 @@ describe("controller-worker Mesh persistence", () => {
   test("clean break deletes the complete legacy Mesh dependency graph", () => {
     const db = getDatabase();
     const now = new Date().toISOString();
+    db.run("ALTER TABLE workspaces ADD COLUMN execution_node_id TEXT");
+    db.run("ALTER TABLE workspaces ADD COLUMN server_fingerprint TEXT");
+    db.run("ALTER TABLE terminal_sessions ADD COLUMN target_transport TEXT");
+    db.run("ALTER TABLE terminal_sessions ADD COLUMN target_key TEXT");
+    db.run("ALTER TABLE terminal_sessions ADD COLUMN target_execution_node_id TEXT");
     db.run(
       `INSERT INTO mesh_node_identity (
         singleton, node_id, public_key, fingerprint, created_at, updated_at
@@ -133,7 +138,7 @@ describe("controller-worker Mesh persistence", () => {
     for (const [id, executionNodeId, executionHostId] of [
       ["local-workspace", "legacy-local", localHost.id],
       ["mesh-workspace", "legacy-worker", meshHost.id],
-      ["orphan-mesh-workspace", "legacy-worker", null],
+      ["orphan-mesh-workspace", "legacy-worker", meshHost.id],
       ["ssh-workspace", null, sshHost.id],
     ] as const) {
       db.run(
@@ -227,12 +232,12 @@ describe("controller-worker Mesh persistence", () => {
     db.run(
       `INSERT INTO provisioning_jobs (
         id, user_id, workspace_id, config_json, state_json, status,
-        created_at, updated_at
+        created_at, updated_at, execution_host_id, execution_host_revision
       ) VALUES (
         'mesh-workspace-provisioning', 'admin', 'orphan-mesh-workspace',
-        '{}', '{}', 'failed', ?, ?
+        '{}', '{}', 'failed', ?, ?, ?, 1
       )`,
-      [now, now],
+      [now, now, meshHost.id],
     );
     db.run(
       `INSERT INTO provisioning_jobs (

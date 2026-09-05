@@ -3,10 +3,9 @@
  */
 
 import type {
-  SshServerSession,
   TerminalConnectionMode,
   Workspace,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import {
@@ -17,8 +16,8 @@ import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
 import {
   buildSshProcessConfig,
   type SshConnectionTarget,
-  getSshConnectionTargetFromWorkspace,
 } from "../ssh-connection-target";
+import { resolveWorkspaceExecutionTarget } from "../workspace-execution-target";
 import { getEffectiveTerminalConnectionMode } from "../../utils";
 import {
   buildManagedContextShellBootstrap,
@@ -93,18 +92,22 @@ function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
   };
 }
 
-export function buildWorkspaceSshSpawnConfig(
+export async function buildWorkspaceSshSpawnConfig(
   workspace: Workspace,
-  session: WorkspaceTerminalSession,
+  session: TerminalSession,
   runtimeEnvironment?: Record<string, string>,
   allowPersistentSessionCreate = true,
-): {
+): Promise<{
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
   startupStdin?: string;
-} {
-  const target = getSshConnectionTargetFromWorkspace(workspace);
+}> {
+  const resolvedTarget = await resolveWorkspaceExecutionTarget(workspace);
+  if (resolvedTarget.kind !== "ssh") {
+    throw new Error("Workspace is not bound to an SSH execution host");
+  }
+  const target = resolvedTarget.target;
   const remoteCommand = buildSshRemoteShellCommand(
     buildSessionStartupCommand(session, runtimeEnvironment, allowPersistentSessionCreate),
   );
@@ -121,24 +124,9 @@ export function buildWorkspaceSshSpawnConfig(
   };
 }
 
-export function buildStandaloneSshSpawnConfig(target: SshConnectionTarget, session: SshServerSession): {
-  command: string;
-  args: string[];
-  env: NodeJS.ProcessEnv;
-} {
-  const remoteCommand = buildSshRemoteShellCommand(buildSessionStartupCommand(session));
-  return buildSshProcessConfig({
-    target,
-    remoteCommand,
-    extraArgs: ["-tt"],
-    passwordHandling: "environment",
-    baseEnv: buildSpawnEnv(),
-  });
-}
-
 export function buildExecutionHostSshSpawnConfig(
   target: SshConnectionTarget,
-  session: WorkspaceTerminalSession,
+  session: TerminalSession,
 ): {
   command: string;
   args: string[];

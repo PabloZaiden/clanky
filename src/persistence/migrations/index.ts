@@ -51,6 +51,7 @@ import { migrateDirectExecutionHostTerminalSessions } from "./direct-terminal-se
 import { migrateExecutionHostVncSessions } from "./execution-host-vnc";
 import { migrateMeshEnrollmentTokens } from "./mesh-enrollment-tokens";
 import { migrateMeshControllerWorker } from "./mesh-controller-worker";
+import { migrateCanonicalExecutionHosts } from "./canonical-execution-hosts";
 
 const log = createLogger("persistence:migrations");
 
@@ -1528,6 +1529,12 @@ export const migrations: Migration[] = [
     version: 45,
     name: "mesh_controller_worker_clean_break",
     up: migrateMeshControllerWorker,
+  },
+  {
+    version: 46,
+    name: "canonical_execution_host_bindings",
+    up: migrateCanonicalExecutionHosts,
+    transactional: false,
   },
 ];
 

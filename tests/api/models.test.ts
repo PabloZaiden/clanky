@@ -12,7 +12,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import type { AgentProvider } from "@/shared/settings";
-import type { Workspace } from "@/shared/workspace";
+import type { ExecutionHostBinding, Workspace } from "@/shared";
 import { setupTestContext, teardownTestContext, testOwnerUser, type TestContext } from "../setup";
 import { MockAcpBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -31,6 +31,7 @@ function makeWorkspace(
   id: string,
   directory: string,
   provider: AgentProvider,
+  executionHostBinding: ExecutionHostBinding,
 ): Workspace {
   const now = new Date().toISOString();
   return {
@@ -38,12 +39,13 @@ function makeWorkspace(
     name: id,
     directory,
     workspaceType: "git",
+    executionTargetRevision: 1,
+    executionHostBinding,
     createdAt: now,
     updatedAt: now,
     serverSettings: {
       agent: {
         provider,
-        transport: "stdio",
       },
     },
   };
@@ -99,7 +101,7 @@ describe("Models API", () => {
 
   test("keeps variant cache entries isolated by workspace provider and directory", async () => {
     await runWithCurrentUser(testOwnerUser, () => createWorkspace(
-      makeWorkspace("copilot-workspace-id", extraWorkDir, "copilot"),
+      makeWorkspace("copilot-workspace-id", extraWorkDir, "copilot", ctx.executionHostBinding),
     ));
 
     const first = await fetch(
@@ -115,7 +117,7 @@ describe("Models API", () => {
     );
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({
-      variants: [`copilot:${extraWorkDir}:test-model`],
+      variants: [`opencode:${extraWorkDir}:test-model`],
     });
 
     const repeatedFirst = await fetch(
@@ -127,7 +129,7 @@ describe("Models API", () => {
     });
     expect(backend.variantRequests).toEqual([
       { directory: ctx.workDir, modelID: "test-model", provider: "opencode" },
-      { directory: extraWorkDir, modelID: "test-model", provider: "copilot" },
+      { directory: extraWorkDir, modelID: "test-model", provider: "opencode" },
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createServer } from "node:net";
@@ -13,6 +13,9 @@ import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import { testOwnerUser } from "../setup";
+import { sshServerManager } from "../../src/core/ssh-server-manager";
+import { loadSshServerKeyPair } from "../../src/persistence/ssh-server-keys";
+import { executionHostService } from "../../src/core/execution-host-service";
 
 interface CommandRunResult {
   exitCode: number;
@@ -150,14 +153,30 @@ describe("SshTerminalBridge integration", () => {
 
     await initializeGitRepository(workspaceDir, { initialCommit: "readme" });
 
-    await runQuiet(["ssh-keygen", "-q", "-t", "rsa", "-N", "", "-f", join(sshDir, "id_rsa")]);
-    const publicKey = await readFile(join(sshDir, "id_rsa.pub"), "utf8");
-    await writeFile(join(sshDir, "authorized_keys"), publicKey, { mode: 0o600 });
     await runQuiet(["ssh-keygen", "-q", "-t", "rsa", "-N", "", "-f", join(serverDir, "ssh_host_rsa_key")]);
 
     const usernameResult = await Bun.$`whoami`.text();
     const username = usernameResult.trim();
     const port = await getAvailablePort();
+    const sshServer = await runWithCurrentUser(testOwnerUser, async () => {
+      const server = await sshServerManager.createServer({
+        name: "SSH bridge test server",
+        address: "127.0.0.1",
+        port,
+        username,
+        repositoriesBasePath: tempDir,
+      });
+      const keyPair = await loadSshServerKeyPair(server.config.id);
+      if (!keyPair) {
+        throw new Error("SSH server key pair was not created");
+      }
+      const privateKeyPath = join(sshDir, "id_rsa");
+      await writeFile(privateKeyPath, keyPair.privateKey, { mode: 0o600 });
+      const publicKey = (await runCommand(["ssh-keygen", "-y", "-f", privateKeyPath])).stdout;
+      await writeFile(join(sshDir, "authorized_keys"), publicKey, { mode: 0o600 });
+      await executionHostService.listHosts();
+      return server;
+    });
     const pidFile = join(serverDir, "sshd.pid");
     const configPath = join(serverDir, "sshd_config");
     await writeFile(configPath, [
@@ -223,14 +242,13 @@ describe("SshTerminalBridge integration", () => {
         name: "SSH Test Workspace",
         directory: workspaceDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: await runWithCurrentUser(testOwnerUser, async () => (
+          executionHostService.getBinding({ kind: "ssh", serverId: sshServer.config.id })
+        )),
         serverSettings: {
           agent: {
             provider: "opencode",
-            transport: "ssh",
-            hostname: "127.0.0.1",
-            port,
-            username,
-            identityFile: join(sshDir, "id_rsa"),
           },
         },
         createdAt: new Date().toISOString(),
@@ -251,9 +269,7 @@ describe("SshTerminalBridge integration", () => {
             output += chunk;
           },
           readyTimeoutMs: 30_000,
-        }, {
-          sessionKind: "terminal",
-        });
+        }, {});
 
         await bridge.connect();
         await bridge.resize(120, 32);

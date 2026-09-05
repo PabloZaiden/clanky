@@ -24,6 +24,7 @@ import {
   runGit,
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
+import { fetchTestLocalExecutionHost } from "../setup";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -77,6 +78,7 @@ describe("Tasks Control API Integration", () => {
 
   // Helper to create or get a workspace for a directory
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     // Try to create a workspace for this directory
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
@@ -84,7 +86,8 @@ describe("Tasks Control API Integration", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost,
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();

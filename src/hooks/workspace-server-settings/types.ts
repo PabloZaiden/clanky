@@ -1,6 +1,7 @@
 import type { ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ConnectionStatus } from "@/shared/settings";
+import type { ExecutionHostRef } from "@/shared";
 
 export interface UseWorkspaceServerSettingsResult {
   /** Full workspace data (name, directory, serverSettings) - fetched fresh from API */
@@ -27,13 +28,13 @@ export interface UseWorkspaceServerSettingsResult {
   updateWorkspace: (
     name: string,
     settings: ServerSettings,
-    executionNodeId: string | null,
+    executionHost: ExecutionHostRef,
     archived: boolean,
     allowClankyContext: boolean,
   ) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
   testConnection: (
-    settings?: ServerSettings,
-    executionNodeId?: string | null,
+    settings: ServerSettings,
+    executionHost: ExecutionHostRef,
   ) => Promise<{ success: boolean; error?: string }>;
 }

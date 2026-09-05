@@ -1,125 +1,76 @@
 /**
- * Single authority for resolving a workspace's execution host.
- *
- * Backend, executor, terminal, capability, and workspace mutation code all
- * use this resolver so local stdio, Mesh stdio, and SSH cannot drift apart.
+ * Single authority for resolving a workspace's canonical execution host.
  */
 
-import type { ExecutionHostRef } from "@/shared/execution-host";
-import type { ServerSettings } from "@/shared/settings";
-import type { Workspace } from "@/shared/workspace";
-import { ensureLocalInstallationId } from "../persistence/installation-identity";
-import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import {
-  buildLocalTargetKey,
-  buildMeshTargetKey,
-  buildSshTargetKey,
-} from "../persistence/workspace-target-key";
-import { getWorkerRegistration } from "../persistence/mesh";
+import type { ExecutionHostBinding, ExecutionHostRef, Workspace } from "@/shared";
 import { DomainError } from "../domain/domain-error";
-import { requireCurrentUserId } from "./user-context";
-import {
-  getSshConnectionTargetFromSettings,
-  type SshConnectionTarget,
-} from "./ssh-connection-target";
-
-export interface WorkspaceExecutionTargetInput {
-  serverSettings: ServerSettings;
-  executionNodeId?: string | null;
-  sshServerId?: string | null;
-}
+import { getSshServerConfig } from "../persistence/ssh-servers";
+import type { SshConnectionTarget } from "./ssh-connection-target";
 
 export type ResolvedWorkspaceExecutionTarget =
   | {
       kind: "local";
-      hostRef: ExecutionHostRef;
+      hostRef: Extract<ExecutionHostRef, { kind: "local" }>;
+      binding: ExecutionHostBinding;
       targetKey: string;
-      executionNodeId: string;
+      nodeId: string;
     }
   | {
       kind: "mesh";
-      hostRef: ExecutionHostRef;
+      hostRef: Extract<ExecutionHostRef, { kind: "mesh" }>;
+      binding: ExecutionHostBinding;
       targetKey: string;
       nodeId: string;
     }
   | {
       kind: "ssh";
-      /** Null only for a legacy unregistered SSH target. */
-      hostRef: ExecutionHostRef | null;
+      hostRef: Extract<ExecutionHostRef, { kind: "ssh" }>;
+      binding: ExecutionHostBinding;
       targetKey: string;
       target: SshConnectionTarget;
     };
 
-export interface ResolveWorkspaceExecutionTargetOptions {
-  /**
-   * Skip Mesh membership checks when comparing already-persisted targets.
-   * The caller must still use the validating form before starting work on a
-   * newly selected peer.
-   */
-  validateMeshTarget?: boolean;
-  /** Cached local Mesh node ID supplied by backend state when available. */
-  localNodeId?: string | null;
-}
-
-function sshTargetKey(target: SshConnectionTarget): string {
-  return buildSshTargetKey(target.host, target.port, target.username);
-}
-
-async function assertTrustedMeshTarget(targetNodeId: string): Promise<void> {
-  const registration = await getWorkerRegistration(targetNodeId, requireCurrentUserId());
-  if (!registration || registration.grantStatus !== "active") {
-    throw new DomainError(
-      "workspace_execution_target_not_trusted",
-      "The selected stdio execution target is not an enrolled Mesh worker.",
-      { details: { executionNodeId: targetNodeId } },
-    );
-  }
-}
-
-/**
- * Resolve a workspace-like execution configuration to one stable target.
- */
 export async function resolveWorkspaceExecutionTarget(
-  input: WorkspaceExecutionTargetInput | Pick<
-    Workspace,
-    "serverSettings" | "executionNodeId" | "sshServerId"
-  >,
-  options: ResolveWorkspaceExecutionTargetOptions = {},
+  workspace: Pick<Workspace, "executionHostBinding">,
 ): Promise<ResolvedWorkspaceExecutionTarget> {
-  const { serverSettings, executionNodeId } = input;
-  const sshTarget = getSshConnectionTargetFromSettings(serverSettings);
-  if (sshTarget) {
-    return {
-      kind: "ssh",
-      hostRef: input.sshServerId
-        ? { kind: "ssh", serverId: input.sshServerId }
-        : null,
-      targetKey: sshTargetKey(sshTarget),
-      target: sshTarget,
-    };
-  }
-
-  const localNodeId = options.localNodeId?.trim()
-    || (await ensureLocalMeshNodeIdentity()).nodeId;
-  const targetNodeId = executionNodeId?.trim() || localNodeId;
-  if (targetNodeId !== localNodeId && options.validateMeshTarget !== false) {
-    await assertTrustedMeshTarget(targetNodeId);
-  }
-
-  if (targetNodeId === localNodeId) {
-    const installationId = await ensureLocalInstallationId();
+  const binding = workspace.executionHostBinding;
+  const host = binding.host;
+  if (host.kind === "local") {
     return {
       kind: "local",
-      hostRef: { kind: "local", nodeId: targetNodeId },
-      targetKey: buildLocalTargetKey(installationId),
-      executionNodeId: targetNodeId,
+      hostRef: host,
+      binding,
+      targetKey: binding.targetKey,
+      nodeId: host.nodeId,
+    };
+  }
+  if (host.kind === "mesh") {
+    return {
+      kind: "mesh",
+      hostRef: host,
+      binding,
+      targetKey: binding.targetKey,
+      nodeId: host.nodeId,
     };
   }
 
+  const server = await getSshServerConfig(host.serverId);
+  if (!server) {
+    throw new DomainError(
+      "ssh_server_not_found",
+      "The workspace SSH server is no longer registered.",
+      { details: { serverId: host.serverId } },
+    );
+  }
   return {
-    kind: "mesh",
-    hostRef: { kind: "mesh", nodeId: targetNodeId },
-    targetKey: buildMeshTargetKey(targetNodeId),
-    nodeId: targetNodeId,
+    kind: "ssh",
+    hostRef: host,
+    binding,
+    targetKey: binding.targetKey,
+    target: {
+      host: server.address,
+      port: server.port ?? 22,
+      username: server.username.trim() || undefined,
+    },
   };
 }

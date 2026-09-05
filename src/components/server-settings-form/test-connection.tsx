@@ -6,10 +6,11 @@ import { CheckIcon, XIcon } from "./icons";
 interface TestConnectionProps {
   onTest: () => Promise<void>;
   testing: boolean;
+  disabled?: boolean;
   testResult: { success: boolean; error?: string } | null;
 }
 
-export function TestConnection({ onTest, testing, testResult }: TestConnectionProps) {
+export function TestConnection({ onTest, testing, disabled = false, testResult }: TestConnectionProps) {
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
       <Button
@@ -18,6 +19,7 @@ export function TestConnection({ onTest, testing, testResult }: TestConnectionPr
         size="sm"
         onClick={onTest}
         loading={testing}
+        disabled={disabled}
       >
         Test Connection
       </Button>

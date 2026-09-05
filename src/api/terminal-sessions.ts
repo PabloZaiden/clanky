@@ -1,8 +1,8 @@
 /**
- * API endpoints for workspace terminal sessions.
+ * API endpoints for terminal sessions.
  *
- * These routes are transport-neutral — they work with local stdio, SSH, and
- * Mesh workspace terminals. Standalone SSH-server sessions remain SSH-specific.
+ * These routes are transport-neutral and support workspace-bound or direct
+ * local, SSH, and Mesh terminals.
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";

@@ -16,7 +16,7 @@ import {
   type AutomaticPrFlowResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
@@ -32,7 +32,7 @@ export interface UseTaskFollowUpActionsResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
+  connectTerminal: () => Promise<TerminalSession | null>;
 }
 
 export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFollowUpActionsResult {
@@ -203,7 +203,7 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     }
   }, [ignoreStaleTaskAction, ignoreStaleTaskError, isActiveTask, taskId, refresh, setError]);
 
-  const connectTerminal = useCallback(async (): Promise<WorkspaceTerminalSession | null> => {
+  const connectTerminal = useCallback(async (): Promise<TerminalSession | null> => {
     const actionTaskId = taskId;
     if (!isActiveTask(actionTaskId)) {
       log.debug("Ignoring stale task action", {

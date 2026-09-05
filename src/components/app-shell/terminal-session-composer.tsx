@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import type { Workspace, WorkspaceTerminalSession, TerminalConnectionMode } from "@/shared";
+import type { Workspace, TerminalSession, TerminalConnectionMode } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
@@ -33,7 +33,7 @@ export function TerminalSessionComposer({
   initialWorkspaceId?: string;
   onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
-  onCreateTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
+  onCreateTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
 }) {
   const toast = useToast();
   const formId = useId();

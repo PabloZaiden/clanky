@@ -5,7 +5,7 @@
 
 import type { TaskPromptIntent, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "@/shared";
 import { DEFAULT_TASK_CONFIG, normalizeTaskPromptIntent } from "@/shared/task";
-import { normalizeCommitScope } from "../../utils/commit-scope";
+import { normalizeCommitScope } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
 import { requirePersistenceUserId } from "../ownership";

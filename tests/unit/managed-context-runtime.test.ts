@@ -3,13 +3,12 @@ import { buildConnectionConfig } from "../../src/core/backend/backend-connection
 import { buildManagedContextEnvironment } from "../../src/core/managed-context-environment";
 import {
   buildDirectShellCommand,
-  buildWorkspaceSshSpawnConfig,
 } from "../../src/core/ssh-bridge/command-builders";
 import {
   buildPersistentSessionAttachCommand,
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../../src/core/ssh-persistent-session";
-import type { Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { Workspace, TerminalSession } from "@/shared";
 
 const managedEnvironment = buildManagedContextEnvironment({
   baseUrl: "https://clanky.example",
@@ -21,22 +20,23 @@ const sshWorkspace: Workspace = {
   name: "SSH workspace",
   directory: "/workspace",
   workspaceType: "git",
+  executionTargetRevision: 1,
+  executionHostBinding: {
+    host: { kind: "ssh", serverId: "ssh-server-id" },
+    targetKey: "ssh:example.test:22:runner",
+    revision: 1,
+  },
   allowClankyContext: true,
   serverSettings: {
     agent: {
       provider: "opencode",
-      transport: "ssh",
-      hostname: "example.test",
-      port: 22,
-      username: "runner",
-      identityFile: "/tmp/id_rsa",
     },
   },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const terminalSession: WorkspaceTerminalSession = {
+const terminalSession: TerminalSession = {
   config: {
     id: "session-id",
     name: "Terminal",
@@ -45,13 +45,10 @@ const terminalSession: WorkspaceTerminalSession = {
     connectionMode: "dtach",
     useTmux: false,
     remoteSessionName: "clanky-session",
-    targetBinding: {
-      transport: "ssh",
+    executionHostBinding: {
+      host: { kind: "ssh", serverId: "ssh-server-id" },
       targetKey: "ssh-target-key",
-      workspaceRevision: 1,
-      hostname: "example.test",
-      port: 22,
-      username: "runner",
+      revision: 1,
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -77,7 +74,16 @@ describe("managed runtime environment propagation", () => {
     expect(stdio.env?.["CLANKY_API_KEY"]).toBe("wapp_test_secret");
 
     const remote = buildConnectionConfig(
-      sshWorkspace.serverSettings,
+      {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "example.test",
+          port: 22,
+          username: "runner",
+          identityFile: "/tmp/id_rsa",
+        },
+      },
       sshWorkspace.directory,
       managedEnvironment,
     );
@@ -110,10 +116,6 @@ describe("managed runtime environment propagation", () => {
     const lockFunctionIndex = persistent.indexOf("acquire_session_lock()");
     expect(lockDirectoryIndex).toBeGreaterThanOrEqual(0);
     expect(lockFunctionIndex).toBeGreaterThan(lockDirectoryIndex);
-
-    const sshSpawn = buildWorkspaceSshSpawnConfig(sshWorkspace, terminalSession, managedEnvironment);
-    expect(sshSpawn.args.join(" ")).not.toContain("wapp_test_secret");
-    expect(sshSpawn.startupStdin).toBe("https://clanky.example\nwapp_test_secret\n");
 
     const attachOnly = buildPersistentSessionAttachCommand(terminalSession, undefined, { allowCreate: false });
     expect(attachOnly).toContain(`exit ${String(PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE)};`);

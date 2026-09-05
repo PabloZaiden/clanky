@@ -8,15 +8,11 @@ import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
-import { SshServerSessionDetails } from "../SshServerSessionDetails";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
-import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
+import { OverviewView, WorkspaceView } from "./shell-views";
 import { DraftTaskComposer } from "./shell-composers";
 import { ComposeView, isComposeKind } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
-import { ServerAriseView } from "./server-arise-view";
-import { SshServerSettingsView } from "./ssh-server-settings-view";
-import { VncSessionView } from "./vnc-session-view";
 import { ExecutionHostView } from "./execution-host-view";
 import { ExecutionHostFilesView } from "./execution-host-files-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
@@ -25,7 +21,11 @@ import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { Button } from "../common";
-import type { CodeExplorerTarget, SidebarServerNode, SidebarWorkspaceGroupNode } from "./shell-types";
+import type {
+  CodeExplorerTarget,
+  SidebarExecutionHostNode,
+  SidebarWorkspaceGroupNode,
+} from "./shell-types";
 import { getProvisioningReturnRoute, getRouteString } from "./route-fields";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -44,11 +44,10 @@ export interface ShellMainContentProps {
   tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
-  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
+  terminalSessions: import("@/shared").TerminalSession[];
   executionHosts: ExecutionHostDescriptor[];
   servers: SshServer[];
-  sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
-  serverNodes: SidebarServerNode[];
+  executionHostNodes: SidebarExecutionHostNode[];
   workspaceGroups: WorkspaceGroup[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   workspacesLoading: boolean;
@@ -62,8 +61,6 @@ export interface ShellMainContentProps {
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  composeServerSessionCount: number;
-  selectedServer: SshServer | null;
 
   // Task actions
   refreshTasks: () => Promise<void>;
@@ -71,14 +68,9 @@ export interface ShellMainContentProps {
   clearOptimisticTaskStart: (taskId: string) => void;
   refreshChats: () => Promise<void>;
   purgeTask: (taskId: string) => Promise<boolean>;
-  refreshSshServers: () => Promise<void>;
   refreshExecutionHosts: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
-  createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").WorkspaceTerminalSession>;
-  createStandaloneSession: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: import("@/shared").TerminalConnectionMode; useTmux?: boolean },
-  ) => Promise<import("@/shared/ssh-server").SshServerSession>;
+  createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").TerminalSession>;
   createServer: (
     request: import("@/contracts").CreateSshServerRequest,
     password?: string,
@@ -105,10 +97,6 @@ export interface ShellMainContentProps {
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
   importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
-  createSshServerChat: (
-    serverId: string,
-    request: import("@/contracts").CreateSshServerChatRequest,
-  ) => Promise<import("@/shared").Chat | null>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -147,14 +135,10 @@ function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefin
       const taskId = getRouteString(route, "taskId");
       return taskId ? { contentType, taskId, startDirectory, filePath } : undefined;
     }
-    case "server": {
-      const serverId = getRouteString(route, "serverId");
-      return serverId ? { contentType, serverId, startDirectory, filePath } : undefined;
-    }
     case "execution-host": {
       const hostKind = getRouteString(route, "hostKind");
       const hostId = getRouteString(route, "hostId");
-      return (hostKind === "local" || hostKind === "mesh") && hostId
+      return (hostKind === "local" || hostKind === "mesh" || hostKind === "ssh") && hostId
         ? { contentType, hostKind, hostId, startDirectory, filePath }
         : undefined;
     }
@@ -256,13 +240,18 @@ function ProvisioningJobRouteView({
                   Open workspace
                 </Button>
               )}
-              {status === "completed" && snapshot.job.config.sshServerId && snapshot.job.config.mode === "arise" && (
+              {status === "completed"
+                && snapshot.job.config.executionHostBinding.host.kind === "ssh"
+                && snapshot.job.config.mode === "arise" && (
                 <Button
                   type="button"
                   size="sm"
                   onClick={() => navigateWithinShell({
-                    view: "ssh-server",
-                    serverId: snapshot.job.config.sshServerId!,
+                    view: "execution-host",
+                    hostKind: "ssh",
+                    hostId: "serverId" in snapshot.job.config.executionHostBinding.host
+                      ? snapshot.job.config.executionHostBinding.host.serverId
+                      : "",
                   })}
                 >
                   Open server
@@ -328,8 +317,7 @@ function renderMainContent(props: ShellMainContentProps) {
     terminalSessions,
     executionHosts,
     servers,
-    sessionsByServerId,
-    serverNodes,
+    executionHostNodes,
     workspaceGroups,
     sidebarWorkspaceGroups,
     workspacesLoading,
@@ -337,16 +325,12 @@ function renderMainContent(props: ShellMainContentProps) {
     selectedTask,
     selectedChat,
     selectedWorkspace,
-    selectedServer,
     refreshTasks,
     refreshChats,
-    refreshSshServers,
     refreshWorkspaces,
     purgeTask,
-    deleteServer,
     deleteWorkspace,
     createTerminalSession,
-    createStandaloneSession,
     dashboardData,
     schedulerTimezone,
     createChat,
@@ -475,10 +459,7 @@ function renderMainContent(props: ShellMainContentProps) {
         chats={chats}
         workspaces={workspaces}
         terminalSessions={terminalSessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
         createTerminalSession={createTerminalSession}
-        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -524,23 +505,6 @@ function renderMainContent(props: ShellMainContentProps) {
         terminalSessionId={terminalSessionId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
-        }}
-        showBackButton={false}
-      />
-    );
-  }
-
-  if (route.view === "ssh") {
-    const sshServerSessionId = getRouteString(route, "sshServerSessionId");
-    if (!sshServerSessionId) {
-      return missingRouteParameter(route.view, "sshServerSessionId");
-    }
-    return (
-      <SshServerSessionDetails
-        sshServerSessionId={sshServerSessionId}
-        onBack={() => {
-          navigateWithinShell({ view: "home" });
-          void refreshSshServers();
         }}
         showBackButton={false}
       />
@@ -593,10 +557,7 @@ function renderMainContent(props: ShellMainContentProps) {
         chats={chats}
         workspaces={workspaces}
         terminalSessions={terminalSessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
         createTerminalSession={createTerminalSession}
-        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -642,37 +603,6 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
-  if (route.view === "ssh-server") {
-    const serverId = getRouteString(route, "serverId");
-    if (!serverId) {
-      return missingRouteParameter(route.view, "serverId");
-    }
-
-    if (!selectedServer) {
-      return (
-        <ErrorState
-          title="Server not found"
-          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
-        />
-      );
-    }
-
-    const selectedServerNode = serverNodes.find((node) => node.server.config.id === selectedServer.config.id);
-    const relatedServerChats = [
-      ...(selectedServerNode?.chats ?? []),
-      ...(selectedServerNode?.historyChats ?? []),
-    ].map((chatNode) => chatNode.chat);
-    return (
-      <SshServerView
-        server={selectedServer}
-        sessions={sessionsByServerId[selectedServer.config.id] ?? []}
-        chats={relatedServerChats}
-        onNavigate={navigateWithinShell}
-        showPrivateItems={showPrivateItems}
-      />
-    );
-  }
-
   if (route.view === "execution-host") {
     const hostKind = getRouteString(route, "hostKind");
     const hostId = getRouteString(route, "hostId");
@@ -690,84 +620,32 @@ function renderMainContent(props: ShellMainContentProps) {
         ? <LoadingState title="Loading server" />
         : <ErrorState title="Server not found" description="The selected execution server is unavailable." />;
     }
+    const hostSessions = terminalSessions.filter((session) => (
+      !session.config.workspaceId
+      && session.config.executionHostBinding.targetKey === host.targetKey
+    ));
+    const hostChats = chats.filter((chat) => (
+      chat.config.source?.kind === "execution_host"
+      && chat.config.source.executionHost.targetKey === host.targetKey
+    ));
+    const hostWorkspaces = workspaces.filter((workspace) => (
+      workspace.executionHostBinding.targetKey === host.targetKey
+    ));
+    const sshServer = host.ref.kind === "ssh"
+      ? servers.find((server) => server.config.id === hostId)
+      : undefined;
     return (
       <ExecutionHostView
         host={host}
+        workspaces={hostWorkspaces}
+        sessions={hostSessions}
+        chats={hostChats}
+        sshServer={sshServer}
         provisioning={props.provisioning}
         onNavigate={navigateWithinShell}
         onRefresh={props.refreshExecutionHosts}
-      />
-    );
-  }
-
-  if (route.view === "ssh-server-settings") {
-    const serverId = getRouteString(route, "serverId");
-    if (!serverId) {
-      return missingRouteParameter(route.view, "serverId");
-    }
-    if (!selectedServer) {
-      return (
-        <ErrorState
-          title="Server not found"
-          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
-        />
-      );
-    }
-
-    return (
-      <SshServerSettingsView
-        server={selectedServer}
-        relatedSessionCount={sessionsByServerId[selectedServer.config.id]?.length ?? 0}
-        updateServer={props.updateServer}
-        deleteServer={async () => await deleteServer(selectedServer.config.id)}
-        navigateWithinShell={navigateWithinShell}
-      />
-    );
-  }
-
-  if (route.view === "vnc-session") {
-    const serverId = getRouteString(route, "serverId");
-    if (!serverId) {
-      return missingRouteParameter(route.view, "serverId");
-    }
-    if (!selectedServer) {
-      return (
-        <ErrorState
-          title="Server not found"
-          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
-        />
-      );
-    }
-
-    return (
-      <VncSessionView
-        server={selectedServer}
-        onNavigate={navigateWithinShell}
-      />
-    );
-  }
-
-  if (route.view === "server-files") {
-    const serverId = getRouteString(route, "serverId");
-    if (!serverId) {
-      return missingRouteParameter(route.view, "serverId");
-    }
-    return (
-      <CodeExplorerView
-        routeTarget={{
-          contentType: "server",
-          serverId,
-          startDirectory: getRouteString(route, "startDirectory"),
-        }}
-        tasks={tasks}
-        chats={chats}
-        workspaces={workspaces}
-        terminalSessions={terminalSessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
-        createTerminalSession={createTerminalSession}
-        createStandaloneSession={createStandaloneSession}
-        onNavigate={navigateWithinShell}
+        onUpdateSshServer={props.updateServer}
+        onDeleteSshServer={props.deleteServer}
       />
     );
   }
@@ -781,10 +659,7 @@ function renderMainContent(props: ShellMainContentProps) {
         executionHosts={executionHosts}
         workspaces={workspaces}
         terminalSessions={terminalSessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
         createTerminalSession={createTerminalSession}
-        createStandaloneSession={createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -817,39 +692,6 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <ProvisioningJobRouteView
         route={route}
-        provisioning={props.provisioning}
-        navigateWithinShell={navigateWithinShell}
-      />
-    );
-  }
-
-  if (route.view === "server-arise") {
-    const serverId = getRouteString(route, "serverId");
-    if (!serverId) {
-      return missingRouteParameter(route.view, "serverId");
-    }
-
-    if (!selectedServer) {
-      return (
-        <ErrorState
-          title="Server not found"
-          description="The selected SSH server no longer exists. Use the sidebar or home button to continue."
-        />
-      );
-    }
-
-    if (!selectedServer.config.repositoriesBasePath) {
-      return (
-        <ErrorState
-          title="Automatic provisioning unavailable"
-          description="This server is not configured for automatic workspace provisioning. Add a repositories base path to enable provisioning-related actions like Arise."
-        />
-      );
-    }
-
-    return (
-      <ServerAriseView
-        server={selectedServer}
         provisioning={props.provisioning}
         navigateWithinShell={navigateWithinShell}
       />
@@ -893,7 +735,6 @@ function renderMainContent(props: ShellMainContentProps) {
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
         importExistingChat={importExistingChat}
-        createSshServerChat={props.createSshServerChat}
         dashboardData={dashboardData}
         agents={agents}
         schedulerTimezone={schedulerTimezone}
@@ -903,10 +744,8 @@ function renderMainContent(props: ShellMainContentProps) {
         servers={servers}
         workspaceCreate={props.workspaceCreate}
         createTerminalSession={createTerminalSession}
-        createStandaloneSession={createStandaloneSession}
         createServer={props.createServer}
         updateServer={props.updateServer}
-        composeServerSessionCount={props.composeServerSessionCount}
         provisioning={props.provisioning}
         workspacesSaving={workspacesSaving}
       />
@@ -916,11 +755,10 @@ function renderMainContent(props: ShellMainContentProps) {
   return (
     <OverviewView
       executionHosts={executionHosts}
-      sessionsByServerId={sessionsByServerId}
+      executionHostNodes={executionHostNodes}
       agents={agents.agents}
       agentsLoading={agents.loading}
       agentsError={agents.error}
-      serverNodes={serverNodes}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       onNavigate={navigateWithinShell}
@@ -939,11 +777,8 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
     || props.route.view === "chat"
     || props.route.view === "code-explorer"
     || props.route.view === "terminal"
-    || props.route.view === "ssh"
     || props.route.view === "task-files"
-    || props.route.view === "vnc-session"
     || props.route.view === "workspace-files"
-    || props.route.view === "server-files"
     || props.route.view === "execution-host-files";
 }
 

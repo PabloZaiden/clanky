@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, WorkspaceTerminalSession } from "@/shared";
+import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, TerminalSession } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { LogEntry } from "../../components/LogViewer";
@@ -116,7 +116,7 @@ export interface UseTaskResult {
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
   /** Get or create the task's linked terminal session */
-  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
+  connectTerminal: () => Promise<TerminalSession | null>;
 }
 
 /**

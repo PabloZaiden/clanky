@@ -9,9 +9,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 export interface StartProvisioningJobOptions {
   name: string;
-  sshServerId?: string;
-  executionNodeId?: string;
-  executionHost?: ExecutionHostRef;
+  executionHost: ExecutionHostRef;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

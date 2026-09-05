@@ -1,4 +1,4 @@
-import type { Task, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type { Task, Workspace, TerminalSession } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { CodeExplorerView } from "./code-explorer-view";
@@ -6,9 +6,9 @@ import { CodeExplorerView } from "./code-explorer-view";
 interface TaskFilesViewProps {
   task: Task;
   workspace: Workspace | null;
-  sessions: WorkspaceTerminalSession[];
+  sessions: TerminalSession[];
   startDirectory?: string;
-  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
 }
 
@@ -27,8 +27,6 @@ export function TaskFilesView({
       chats={[]}
       workspaces={workspace ? [workspace] : []}
       terminalSessions={sessions}
-      servers={[]}
-      sessionsByServerId={{}}
       createTerminalSession={createTerminalSession}
       onNavigate={onNavigate}
     />

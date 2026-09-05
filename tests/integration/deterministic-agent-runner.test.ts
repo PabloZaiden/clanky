@@ -16,7 +16,12 @@ import { join } from "path";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import { testOwnerUser, seedTestOwnerUser, testModel } from "../setup";
+import {
+  getTestLocalExecutionHostBinding,
+  testOwnerUser,
+  seedTestOwnerUser,
+  testModel,
+} from "../setup";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { backendManager } from "../../src/core/backend-manager";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
@@ -335,13 +340,19 @@ describe("deterministic agent runner — API key lifecycle", () => {
 
     managedCredentialService.configure(store, { publicBaseUrl: "https://clanky.test" });
 
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      getTestLocalExecutionHostBinding,
+    );
     workspace = {
       id: crypto.randomUUID(),
       name: "Runner key test workspace",
       directory: tempWorkDir,
       workspaceType: "git",
+      executionTargetRevision: 1,
+      executionHostBinding,
       allowClankyContext: true,
-      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      serverSettings: { agent: { provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -566,13 +577,19 @@ describe("deterministic agent runner — prompt bridge route", () => {
   });
 
   async function createPromptBridgeChat(): Promise<string> {
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      getTestLocalExecutionHostBinding,
+    );
     const workspace: Workspace = {
       id: crypto.randomUUID(),
       name: "Prompt bridge workspace",
       directory: tempWorkDir,
       workspaceType: "git",
+      executionTargetRevision: 1,
+      executionHostBinding,
       allowClankyContext: true,
-      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      serverSettings: { agent: { provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

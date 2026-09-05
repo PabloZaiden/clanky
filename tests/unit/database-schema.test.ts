@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { getSchemaVersion, migrations, runMigrations } from "../../src/persistence/migrations";
+import { migrateCanonicalExecutionHosts } from "../../src/persistence/migrations/canonical-execution-hosts";
 
 const PRIVATE_FLAG_TABLE_NAMES = [
   "workspaces",
@@ -12,7 +13,6 @@ const PRIVATE_FLAG_TABLE_NAMES = [
   "chats",
   "agents",
   "ssh_servers",
-  "ssh_server_sessions",
   "terminal_sessions",
 ] as const;
 
@@ -25,7 +25,9 @@ const HISTORICAL_PRIVATE_FLAG_TABLE_NAMES = [
   "agents",
   "ssh_servers",
   "ssh_server_sessions",
-] as const satisfies readonly PrivateFlagTableName[];
+] as const;
+
+type HistoricalPrivateFlagTableName = typeof HISTORICAL_PRIVATE_FLAG_TABLE_NAMES[number];
 
 async function withTempDataDir(run: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-schema-"));
@@ -63,12 +65,14 @@ function columnNames(tableName: PrivateFlagTableName): string[] {
   ).map((row) => row.name);
 }
 
-function privateFlagColumnInfo(db: Database, tableName: PrivateFlagTableName): Array<{
+function privateFlagColumnInfo(db: Database, tableName: HistoricalPrivateFlagTableName): Array<{
   name: string;
   notnull: number;
   dflt_value: string | null;
 }> {
-  assertPrivateFlagTableName(tableName);
+  if (!(HISTORICAL_PRIVATE_FLAG_TABLE_NAMES as readonly string[]).includes(tableName)) {
+    throw new Error(`Unexpected historical schema table name: ${tableName}`);
+  }
   return db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
     name: string;
     notnull: number;
@@ -88,6 +92,195 @@ function workspaceColumnInfo(db: Database): Array<{
   }>;
 }
 
+function createCanonicalMigrationFixture(db: Database): void {
+  db.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE execution_hosts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      target_key TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      revoked_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE ssh_servers (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      username TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 22,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      repositories_base_path TEXT
+    );
+    CREATE TABLE workspaces (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      workspace_type TEXT NOT NULL DEFAULT 'git',
+      execution_node_id TEXT,
+      execution_target_revision INTEGER NOT NULL DEFAULT 1,
+      server_fingerprint TEXT NOT NULL,
+      execution_host_id TEXT,
+      execution_host_revision INTEGER,
+      server_settings TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_private INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      allow_clanky_context INTEGER NOT NULL DEFAULT 0,
+      source_directory TEXT,
+      ssh_server_id TEXT,
+      repo_url TEXT,
+      base_path TEXT,
+      devcontainer_subpath TEXT,
+      provider TEXT
+    );
+    CREATE TABLE terminal_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      workspace_id TEXT,
+      task_id TEXT,
+      directory TEXT NOT NULL,
+      remote_session_name TEXT NOT NULL,
+      connection_mode TEXT NOT NULL DEFAULT 'dtach',
+      use_tmux INTEGER NOT NULL DEFAULT 0,
+      target_revision INTEGER NOT NULL DEFAULT 1,
+      execution_host_id TEXT,
+      execution_host_revision INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_private INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'ready',
+      last_connected_at TEXT,
+      error_message TEXT,
+      runtime_connection_mode TEXT,
+      notice_message TEXT,
+      target_transport TEXT NOT NULL DEFAULT 'stdio',
+      target_key TEXT NOT NULL DEFAULT '',
+      target_hostname TEXT,
+      target_port INTEGER,
+      target_username TEXT,
+      target_execution_node_id TEXT
+    );
+    CREATE TABLE ssh_server_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ssh_server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      remote_session_name TEXT NOT NULL,
+      connection_mode TEXT NOT NULL DEFAULT 'dtach',
+      use_tmux INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_private INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'ready',
+      last_connected_at TEXT,
+      error_message TEXT,
+      runtime_connection_mode TEXT,
+      notice_message TEXT
+    );
+    CREATE TABLE chats (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      source_kind TEXT NOT NULL,
+      workspace_id TEXT,
+      ssh_server_id TEXT,
+      ssh_server_session_id TEXT,
+      scope TEXT NOT NULL DEFAULT 'workspace',
+      task_id TEXT,
+      directory TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      model_provider_id TEXT,
+      model_model_id TEXT,
+      model_variant TEXT,
+      use_worktree INTEGER NOT NULL DEFAULT 1,
+      auto_approve_permissions INTEGER NOT NULL DEFAULT 1,
+      skip_base_branch_sync INTEGER NOT NULL DEFAULT 0,
+      base_branch TEXT,
+      mode TEXT NOT NULL DEFAULT 'chat',
+      status TEXT NOT NULL DEFAULT 'idle',
+      started_at TEXT,
+      completed_at TEXT,
+      last_activity_at TEXT,
+      session_id TEXT,
+      session_server_url TEXT,
+      error_message TEXT,
+      error_timestamp TEXT,
+      error_code TEXT,
+      worktree_original_branch TEXT,
+      worktree_working_branch TEXT,
+      worktree_path TEXT,
+      pending_permission_requests TEXT,
+      queued_messages TEXT,
+      active_message_id TEXT,
+      interrupt_requested INTEGER NOT NULL DEFAULT 0,
+      connection_status TEXT NOT NULL DEFAULT 'disconnected',
+      is_private INTEGER NOT NULL DEFAULT 0,
+      startup_stage TEXT,
+      execution_host_id TEXT,
+      execution_host_revision INTEGER
+    );
+    CREATE TABLE chat_transcript_entries (
+      chat_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (chat_id, entry_id),
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+    CREATE TABLE chat_transcript_meta (
+      chat_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      entry_count INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+    );
+    CREATE TABLE vnc_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ssh_server_id TEXT,
+      remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
+      remote_port INTEGER NOT NULL,
+      local_port INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      pid INTEGER,
+      connected_at TEXT,
+      error_message TEXT,
+      execution_host_id TEXT,
+      execution_host_revision INTEGER
+    );
+    CREATE TABLE provisioning_jobs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      status TEXT NOT NULL,
+      workspace_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      execution_host_id TEXT,
+      execution_host_revision INTEGER
+    );
+  `);
+}
+
 describe("database schema", () => {
   afterEach(() => {
     closeDatabase();
@@ -104,8 +297,10 @@ describe("database schema", () => {
       }
       expect(columnNames("workspaces")).toContain("archived");
       expect(columnNames("workspaces")).toContain("allow_clanky_context");
-      expect(columnNames("workspaces")).toContain("execution_node_id");
+      expect(columnNames("workspaces")).not.toContain("execution_node_id");
       expect(columnNames("workspaces")).toContain("execution_target_revision");
+      expect(columnNames("workspaces")).toContain("execution_host_id");
+      expect(columnNames("workspaces")).toContain("execution_host_revision");
       expect(columnNames("workspaces")).toContain("workspace_type");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
@@ -113,10 +308,11 @@ describe("database schema", () => {
       expect(tableNames()).toContain("terminal_sessions");
       expect(tableNames()).toContain("execution_hosts");
       const terminalCols = (getDatabase().query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
-      expect(terminalCols).toContain("target_transport");
-      expect(terminalCols).toContain("target_key");
-      expect(terminalCols).toContain("target_revision");
+      expect(terminalCols).not.toContain("target_transport");
+      expect(terminalCols).not.toContain("target_key");
+      expect(terminalCols).not.toContain("target_revision");
       expect(terminalCols).toContain("execution_host_id");
+      expect(terminalCols).toContain("execution_host_revision");
       for (const tableName of [
         "workspaces",
         "chats",
@@ -142,6 +338,216 @@ describe("database schema", () => {
       expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)?.version ?? 0);
     });
   });
+
+  // This persistence-boundary scenario protects the only upgrade where several
+  // user-visible resource types move to one canonical execution-host identity.
+  test("migration v46 preserves valid SSH resources and removes synthetic sessions", () => {
+      const db = new Database(":memory:");
+      const now = "2026-01-01T00:00:00.000Z";
+      try {
+        createCanonicalMigrationFixture(db);
+        db.run(`
+          INSERT INTO execution_hosts (
+            id, user_id, kind, source_id, target_key, revision, created_at, updated_at
+          ) VALUES ('host-ssh', 'user-1', 'ssh', 'ssh-1', 'sha256:target', 3, ?, ?)
+        `, [now, now]);
+        db.run(`
+          INSERT INTO ssh_servers (
+            id, user_id, name, address, username, port, created_at, updated_at,
+            repositories_base_path
+          ) VALUES ('ssh-1', 'user-1', 'Build host', 'build.example', 'builder', 22, ?, ?, '/srv/repos')
+        `, [now, now]);
+        db.run(`
+          INSERT INTO workspaces (
+            id, user_id, name, directory, workspace_type,
+            execution_target_revision, server_fingerprint, execution_host_id,
+            execution_host_revision, server_settings, created_at, updated_at,
+            ssh_server_id, provider
+          ) VALUES (
+            'workspace-1', 'user-1', 'Project', '/srv/repos/project', 'git',
+            7, 'legacy-fingerprint', 'host-ssh', 3,
+            '{"agent":{"transport":"ssh","hostname":"build.example","provider":"copilot"}}',
+            ?, ?, 'ssh-1', 'claude'
+          )
+        `, [now, now]);
+        db.run(`
+          INSERT INTO terminal_sessions (
+            id, user_id, name, workspace_id, directory, remote_session_name,
+            target_revision, created_at, updated_at
+          ) VALUES (
+            'workspace-terminal', 'user-1', 'Workspace shell', 'workspace-1',
+            '/srv/repos/project', 'workspace-shell', 7, ?, ?
+          )
+        `, [now, now]);
+        for (const [id, name] of [
+          ["direct-terminal", "Direct shell"],
+          ["synthetic-chat-session", "Synthetic chat transport"],
+        ] as const) {
+          db.run(`
+            INSERT INTO ssh_server_sessions (
+              id, user_id, ssh_server_id, name, remote_session_name,
+              created_at, updated_at
+            ) VALUES (?, 'user-1', 'ssh-1', ?, ?, ?, ?)
+          `, [id, name, `${id}-remote`, now, now]);
+        }
+        db.run(`
+          INSERT INTO chats (
+            id, user_id, name, source_kind, ssh_server_id,
+            ssh_server_session_id, scope, directory, created_at, updated_at
+          ) VALUES (
+            'direct-chat', 'user-1', 'Investigate', 'ssh_server', 'ssh-1',
+            'synthetic-chat-session', 'ssh_server', '/srv/repos', ?, ?
+          )
+        `, [now, now]);
+        db.run(`
+          INSERT INTO chat_transcript_entries (
+            chat_id, user_id, entry_id, kind, timestamp, sequence, payload,
+            created_at, updated_at
+          ) VALUES (
+            'direct-chat', 'user-1', 'message-1', 'message', ?, 1,
+            '{"role":"user","content":"hello"}', ?, ?
+          )
+        `, [now, now, now]);
+        db.run(`
+          INSERT INTO chat_transcript_meta (
+            chat_id, user_id, revision, entry_count, updated_at
+          ) VALUES ('direct-chat', 'user-1', 'revision-1', 1, ?)
+        `, [now]);
+        db.run(`
+          INSERT INTO vnc_sessions (
+            id, user_id, ssh_server_id, remote_port, local_port, created_at,
+            updated_at, status
+          ) VALUES ('vnc-1', 'user-1', 'ssh-1', 5900, 15900, ?, ?, 'stopped')
+        `, [now, now]);
+        db.run(`
+          INSERT INTO provisioning_jobs (
+            id, user_id, config_json, state_json, status, workspace_id,
+            created_at, updated_at, execution_host_id, execution_host_revision
+          ) VALUES (
+            'provision-1', 'user-1',
+            '{"sshServerId":"ssh-1","targetDirectory":"/srv/repos/new"}',
+            '{}', 'completed', 'workspace-1', ?, ?, 'host-ssh', 3
+          )
+        `, [now, now]);
+
+        migrateCanonicalExecutionHosts(db);
+
+        expect(db.query(`
+          SELECT id, execution_host_id, execution_host_revision, server_settings
+          FROM workspaces
+        `).get()).toEqual({
+          id: "workspace-1",
+          execution_host_id: "host-ssh",
+          execution_host_revision: 3,
+          server_settings: '{"agent":{"provider":"copilot"}}',
+        });
+        expect(db.query(`
+          SELECT id, workspace_id, workspace_execution_target_revision,
+                 execution_host_id, execution_host_revision
+          FROM terminal_sessions
+          ORDER BY id
+        `).all()).toEqual([
+          {
+            id: "direct-terminal",
+            workspace_id: null,
+            workspace_execution_target_revision: null,
+            execution_host_id: "host-ssh",
+            execution_host_revision: 3,
+          },
+          {
+            id: "workspace-terminal",
+            workspace_id: "workspace-1",
+            workspace_execution_target_revision: 7,
+            execution_host_id: "host-ssh",
+            execution_host_revision: 3,
+          },
+        ]);
+        expect(db.query(`
+          SELECT id, source_kind, workspace_id, execution_host_id,
+                 execution_host_revision
+          FROM chats
+        `).get()).toEqual({
+          id: "direct-chat",
+          source_kind: "execution_host",
+          workspace_id: null,
+          execution_host_id: "host-ssh",
+          execution_host_revision: 3,
+        });
+        expect(db.query("SELECT entry_id FROM chat_transcript_entries").get()).toEqual({
+          entry_id: "message-1",
+        });
+        expect(db.query("SELECT revision FROM chat_transcript_meta").get()).toEqual({
+          revision: "revision-1",
+        });
+        expect(db.query(`
+          SELECT execution_host_id, execution_host_revision FROM vnc_sessions
+        `).get()).toEqual({
+          execution_host_id: "host-ssh",
+          execution_host_revision: 3,
+        });
+        const provisioning = db.query(`
+          SELECT execution_host_id, execution_host_revision, config_json
+          FROM provisioning_jobs
+        `).get() as {
+          execution_host_id: string;
+          execution_host_revision: number;
+          config_json: string;
+        };
+        expect(provisioning.execution_host_id).toBe("host-ssh");
+        expect(provisioning.execution_host_revision).toBe(3);
+        expect(JSON.parse(provisioning.config_json)).toEqual({
+          targetDirectory: "/srv/repos/new",
+          executionHostBinding: {
+            host: { kind: "ssh", serverId: "ssh-1" },
+            targetKey: "sha256:target",
+            revision: 3,
+          },
+        });
+        expect(db.query(`
+          SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name = 'ssh_server_sessions'
+        `).get()).toBeNull();
+        for (const tableName of [
+          "workspaces",
+          "terminal_sessions",
+          "chats",
+          "vnc_sessions",
+          "provisioning_jobs",
+        ]) {
+          const columns = (db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
+            name: string;
+          }>).map((column) => column.name);
+          expect(columns).not.toContain("ssh_server_id");
+        }
+        expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      } finally {
+        db.close();
+      }
+    });
+
+    test("migration v46 rejects a valid resource without a canonical host", () => {
+      const db = new Database(":memory:");
+      const now = "2026-01-01T00:00:00.000Z";
+      try {
+        createCanonicalMigrationFixture(db);
+        db.run(`
+          INSERT INTO workspaces (
+            id, user_id, name, directory, workspace_type,
+            execution_target_revision, server_fingerprint, server_settings,
+            created_at, updated_at
+          ) VALUES (
+            'unresolved-workspace', 'user-1', 'Project', '/srv/project', 'git',
+            1, 'legacy-fingerprint', '{}', ?, ?
+          )
+        `, [now, now]);
+
+        expect(() => migrateCanonicalExecutionHosts(db)).toThrow(
+          "Cannot canonicalize workspaces with an unresolved execution host: unresolved-workspace",
+        );
+      } finally {
+        db.close();
+      }
+    });
 
   test("migration v5 creates preview sessions with the baseline status default", () => {
     const migration = migrations.find((candidate) => candidate.version === 5);
@@ -394,7 +800,7 @@ describe("database schema", () => {
         server_settings: string;
       };
       expect(JSON.parse(defaultSettings.server_settings)).toEqual({
-        agent: { provider: "opencode", transport: "stdio" },
+        agent: { provider: "opencode" },
       });
 
       const taskModes = db.query("SELECT id, mode FROM tasks ORDER BY id").all() as Array<{
@@ -952,7 +1358,7 @@ describe("database schema", () => {
     }
   });
 
-  test("migration v38 creates terminal_sessions and rejects non-empty ssh_sessions", async () => {
+  test("keeps the canonical terminal session schema when migration v38 is replayed", async () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
       const db = getDatabase();
@@ -960,16 +1366,16 @@ describe("database schema", () => {
       // Verify terminal_sessions table exists from baseline
       expect(tableNames()).toContain("terminal_sessions");
       const cols = (db.query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
-      expect(cols).toContain("target_transport");
-      expect(cols).toContain("target_hostname");
-      expect(cols).toContain("target_port");
-      expect(cols).toContain("target_username");
-      expect(cols).toContain("target_execution_node_id");
+      expect(cols).not.toContain("target_transport");
+      expect(cols).not.toContain("target_hostname");
+      expect(cols).not.toContain("target_port");
+      expect(cols).not.toContain("target_username");
+      expect(cols).not.toContain("target_execution_node_id");
       expect(cols).toContain("task_id");
       expect(cols).toContain("connection_mode");
       expect(cols).toContain("is_private");
-      expect(cols).toContain("target_key");
-      expect(cols).toContain("target_revision");
+      expect(cols).toContain("execution_host_id");
+      expect(cols).toContain("execution_host_revision");
 
       // Migration v38 is idempotent on clean databases
       const migration = migrations.find((m) => m.version === 38);

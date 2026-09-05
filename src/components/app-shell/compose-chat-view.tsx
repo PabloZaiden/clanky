@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Chat, SshServer, Workspace } from "@/shared";
-import type { CreateSshServerChatRequest, ModelInfo } from "@/contracts";
+import type { Chat, Workspace } from "@/shared";
 import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
-import {
-  DEFAULT_EXECUTION_AGENT_PROVIDER,
-  type AgentProvider,
-} from "@/shared/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { apiRequest } from "../../lib/api-client";
-import { isApiErrorCode } from "../../lib/api-error";
-import { getStoredSshCredentialToken, invalidateStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
@@ -24,13 +16,12 @@ import {
 import { BranchSelector } from "../create-task/branch-selector";
 import {
   ErrorState,
-  Modal,
   SelectField,
   TextField,
   useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Button } from "../common";
 import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ImportableChatSession {
@@ -79,7 +70,6 @@ function getPreferredModelKey(
 
 export function ComposeChatView({
   composeWorkspace,
-  composeServer = null,
   workspaces,
   workspacesLoading,
   workspaceError,
@@ -87,10 +77,8 @@ export function ComposeChatView({
   navigateWithinShell,
   createChat,
   importExistingChat,
-  createSshServerChat = async () => null,
 }: {
   composeWorkspace: Workspace | null;
-  composeServer?: SshServer | null;
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -98,7 +86,6 @@ export function ComposeChatView({
   navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
-  createSshServerChat?: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
 }) {
   const { error: showError } = useToast();
   const {
@@ -125,18 +112,7 @@ export function ComposeChatView({
   const [importSessions, setImportSessions] = useState<ImportableChatSession[]>([]);
   const [importSessionsLoading, setImportSessionsLoading] = useState(false);
   const [selectedImportSessionId, setSelectedImportSessionId] = useState("");
-  const [remoteDirectory, setRemoteDirectory] = useState(composeServer?.config.repositoriesBasePath ?? "~");
-  const [remoteProvider, setRemoteProvider] = useState<AgentProvider>(
-    DEFAULT_EXECUTION_AGENT_PROVIDER,
-  );
-  const [remoteModels, setRemoteModels] = useState<ModelInfo[]>([]);
-  const [remoteModelsLoading, setRemoteModelsLoading] = useState(false);
-  const [remoteCredentialToken, setRemoteCredentialToken] = useState<string | null>(null);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
   const loadedWorkspaceRef = useRef<string | null>(null);
-  const isServerChat = Boolean(composeServer);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -144,18 +120,12 @@ export function ComposeChatView({
   );
 
   useEffect(() => {
-    if (isServerChat) {
-      return;
-    }
     loadedWorkspaceRef.current = null;
     setSelectedWorkspaceId(composeWorkspace?.id ?? "");
     setSelectedModel("");
-  }, [composeWorkspace?.id, isServerChat]);
+  }, [composeWorkspace?.id]);
 
   useEffect(() => {
-    if (isServerChat) {
-      return;
-    }
     if (!selectedWorkspace) {
       loadedWorkspaceRef.current = null;
       resetCreateModalState();
@@ -175,7 +145,7 @@ export function ComposeChatView({
       selectedWorkspace.directory,
       selectedWorkspace.workspaceType,
     );
-  }, [handleWorkspaceChange, isServerChat, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
+  }, [handleWorkspaceChange, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
 
   useEffect(() => {
     if (!selectedWorkspace || selectedWorkspace.workspaceType !== "git") {
@@ -186,7 +156,7 @@ export function ComposeChatView({
   }, [currentBranch, defaultBranch, selectedWorkspace?.id, selectedWorkspace?.workspaceType]);
 
   useEffect(() => {
-    if (isServerChat || !importExistingSession || !selectedWorkspace) {
+    if (!importExistingSession || !selectedWorkspace) {
       setImportSessions([]);
       setSelectedImportSessionId("");
       return;
@@ -228,7 +198,7 @@ export function ComposeChatView({
     })();
 
     return () => controller.abort();
-  }, [importExistingSession, isServerChat, selectedWorkspace?.id, showError]);
+  }, [importExistingSession, selectedWorkspace?.id, showError]);
 
   useEffect(() => {
     if (importExistingSession) {
@@ -237,7 +207,7 @@ export function ComposeChatView({
   }, [importExistingSession]);
 
   useEffect(() => {
-    if (isServerChat || selectedModel || models.length === 0) {
+    if (selectedModel || models.length === 0) {
       return;
     }
     setSelectedModel(
@@ -247,163 +217,9 @@ export function ComposeChatView({
         lastModel,
       ),
     );
-  }, [isServerChat, lastModel, models, selectedModel, storedChatModel]);
-
-  useEffect(() => {
-    if (!composeServer) {
-      return;
-    }
-    setName("");
-    setRemoteDirectory(composeServer.config.repositoriesBasePath ?? "~");
-    setRemoteProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
-    setSelectedModel("");
-    setRemoteModels([]);
-    setRemoteCredentialToken(null);
-  }, [composeServer?.config.id, composeServer?.config.repositoriesBasePath]);
-
-  useEffect(() => {
-    if (!composeServer) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const token = await getStoredSshCredentialToken(composeServer.config.id);
-        if (cancelled) {
-          return;
-        }
-        if (!token) {
-          setPasswordModalOpen(true);
-          return;
-        }
-        setRemoteCredentialToken(token);
-      } catch (error) {
-        if (!cancelled) {
-          showError(String(error));
-          setPasswordModalOpen(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [composeServer?.config.id, showError]);
-
-  useEffect(() => {
-    if (!composeServer || !remoteCredentialToken || !remoteDirectory.trim()) {
-      setRemoteModels([]);
-      setSelectedModel("");
-      return;
-    }
-    const controller = new AbortController();
-    void (async () => {
-      setRemoteModelsLoading(true);
-      try {
-        const nextModels = await apiRequest<ModelInfo[]>(
-          `/api/ssh-servers/${composeServer.config.id}/chat-models`,
-          {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            credentialToken: remoteCredentialToken,
-            providerID: remoteProvider,
-            directory: remoteDirectory.trim(),
-          }),
-          signal: controller.signal,
-            action: "Discover remote chat models",
-            fallbackMessage: "Failed to discover remote models",
-          },
-        );
-        if (controller.signal.aborted) {
-          return;
-        }
-        setRemoteModels(nextModels);
-        const firstModel = nextModels.find((model) => model.connected) ?? nextModels[0];
-        setSelectedModel(firstModel
-          ? makeModelKey(firstModel.providerID, firstModel.modelID, firstModel.variants?.[0] ?? "")
-          : "");
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        if (isApiErrorCode(error, "invalid_credential_token") && composeServer) {
-          invalidateStoredSshCredentialToken(composeServer.config.id);
-          setRemoteCredentialToken(null);
-          setPasswordModalOpen(true);
-        }
-        setRemoteModels([]);
-        setSelectedModel("");
-        showError(String(error));
-      } finally {
-        if (!controller.signal.aborted) {
-          setRemoteModelsLoading(false);
-        }
-      }
-    })();
-    return () => controller.abort();
-  }, [composeServer, remoteCredentialToken, remoteDirectory, remoteProvider, showError]);
-
-  async function handlePasswordSubmit(): Promise<void> {
-    if (!composeServer) {
-      return;
-    }
-    const trimmedPassword = password.trim();
-    if (!trimmedPassword) {
-      showError("Enter the SSH password for this server");
-      return;
-    }
-    setPasswordSaving(true);
-    try {
-      await storeSshServerPassword(composeServer.config.id, trimmedPassword);
-      const token = await getStoredSshCredentialToken(composeServer.config.id);
-      if (!token) {
-        throw new Error("Failed to exchange SSH credential");
-      }
-      setRemoteCredentialToken(token);
-      setPassword("");
-      setPasswordModalOpen(false);
-    } catch (error) {
-      showError(String(error));
-    } finally {
-      setPasswordSaving(false);
-    }
-  }
+  }, [lastModel, models, selectedModel, storedChatModel]);
 
   async function handleSubmit(): Promise<void> {
-    if (composeServer) {
-      const parsedModel = parseModelKey(effectiveSelectedModel);
-      if (!parsedModel) {
-        showError("Select a model first");
-        return;
-      }
-      if (!remoteCredentialToken) {
-        setPasswordModalOpen(true);
-        return;
-      }
-      setIsSubmitting(true);
-      try {
-        const chat = await createSshServerChat(composeServer.config.id, {
-          name: name.trim() || undefined,
-          directory: remoteDirectory.trim(),
-          model: {
-            providerID: parsedModel.providerID,
-            modelID: parsedModel.modelID,
-            variant: parsedModel.variant ?? "",
-          },
-          autoApprovePermissions,
-          credentialToken: remoteCredentialToken,
-        });
-        if (!chat) {
-          showError("Failed to create chat");
-          return;
-        }
-        navigateWithinShell({ view: "chat", chatId: chat.config.id });
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
     if (!selectedWorkspace) {
       showError("Select a workspace first");
       return;
@@ -490,31 +306,24 @@ export function ComposeChatView({
 
   const handleCancel = useCallback(() => {
     navigateWithinShell(
-      composeServer
-        ? { view: "ssh-server", serverId: composeServer.config.id }
-        : composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : { view: "home" },
+      composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : { view: "home" },
     );
-  }, [composeServer, composeWorkspace, navigateWithinShell]);
+  }, [composeWorkspace, navigateWithinShell]);
 
-  const modelOptions = isServerChat ? remoteModels : models;
-  const modelOptionsLoading = isServerChat ? remoteModelsLoading : modelsLoading;
+  const modelOptions = models;
+  const modelOptionsLoading = modelsLoading;
   const effectiveSelectedModel = selectedModel || (
-    !isServerChat && models.length > 0
+    models.length > 0
       ? getPreferredModelKey(models, storedChatModel, lastModel)
       : ""
   );
   const canSubmit = !isSubmitting
-    && (
-      isServerChat
-      || selectedWorkspace?.workspaceType !== "git"
-      || !branchesLoading
-    )
+    && (selectedWorkspace?.workspaceType !== "git" || !branchesLoading)
     && !modelOptionsLoading
     && !importSessionsLoading
-    && (isServerChat || Boolean(selectedWorkspace))
-    && (!isServerChat || Boolean(remoteDirectory.trim() && remoteCredentialToken))
+    && Boolean(selectedWorkspace)
     && Boolean(effectiveSelectedModel)
-    && (!isServerChat && importExistingSession ? Boolean(selectedImportSessionId.trim()) : true);
+    && (importExistingSession ? Boolean(selectedImportSessionId.trim()) : true);
   const headerActions = useMemo(() => (
     <>
       <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>
@@ -544,8 +353,7 @@ export function ComposeChatView({
             placeholder="Repository pairing session"
           />
 
-        {!isServerChat && (
-          <div>
+        <div>
           <SelectField
             id="chat-workspace"
             label="Workspace"
@@ -566,33 +374,8 @@ export function ComposeChatView({
             <ErrorState title="Unable to load workspaces" description={workspaceError} />
           )}
         </div>
-        )}
 
-        {isServerChat && (
-          <>
-            <TextField
-                id="chat-directory"
-                label="Remote directory"
-                value={remoteDirectory}
-                onChange={(event) => setRemoteDirectory(event.target.value)}
-                className="font-mono"
-            />
-
-            <SelectField
-                id="chat-provider"
-                label="Provider"
-                value={remoteProvider}
-                onChange={(event) => setRemoteProvider(event.target.value as AgentProvider)}
-            >
-                {AGENT_PROVIDER_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>{option.label}</option>
-                ))}
-            </SelectField>
-          </>
-        )}
-
-        {!isServerChat && (
-          <div>
+        <div>
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
@@ -632,7 +415,6 @@ export function ComposeChatView({
               </div>
             )}
           </div>
-        )}
 
         <div>
           <label htmlFor="chat-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -645,15 +427,15 @@ export function ComposeChatView({
             models={modelOptions}
             loading={modelOptionsLoading}
             showDisconnected
-            variantDiscovery={!isServerChat && selectedWorkspace ? {
+            variantDiscovery={selectedWorkspace ? {
               workspaceId: selectedWorkspace.id,
             } : undefined}
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-            emptyText={isServerChat ? "Enter SSH credentials to load models" : "Select a workspace to load models"}
+            emptyText="Select a workspace to load models"
           />
         </div>
 
-        {!isServerChat && selectedWorkspace?.workspaceType === "git" && (
+        {selectedWorkspace?.workspaceType === "git" && (
           <BranchSelector
           selectedBranch={baseBranch}
           onBranchChange={setBaseBranch}
@@ -665,7 +447,7 @@ export function ComposeChatView({
           />
         )}
 
-        {!isServerChat && selectedWorkspace?.workspaceType === "git" && (
+        {selectedWorkspace?.workspaceType === "git" && (
           <div>
           <label className="flex items-start gap-3">
             <input
@@ -687,7 +469,7 @@ export function ComposeChatView({
         </div>
         )}
 
-        {!isServerChat && selectedWorkspace?.workspaceType === "directory" && (
+        {selectedWorkspace?.workspaceType === "directory" && (
         <p className="text-sm text-gray-500 dark:text-gray-400">
           This chat runs directly at the selected path without branches or worktrees.
         </p>
@@ -713,31 +495,6 @@ export function ComposeChatView({
         </div>
       </div>
 
-      <Modal
-        isOpen={passwordModalOpen}
-        onClose={() => setPasswordModalOpen(false)}
-        title="SSH password required"
-        description={composeServer ? `Enter the SSH password for ${composeServer.config.name} to discover models and start chats.` : undefined}
-        footer={(
-          <>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setPasswordModalOpen(false)} disabled={passwordSaving}>
-              Cancel
-            </Button>
-            <Button type="button" size="sm" onClick={() => void handlePasswordSubmit()} loading={passwordSaving}>
-              Save password
-            </Button>
-          </>
-        )}
-      >
-        <TextField
-          id="ssh-chat-password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          {...PASSWORD_INPUT_PROPS}
-        />
-      </Modal>
     </>
   );
 }

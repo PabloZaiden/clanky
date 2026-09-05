@@ -20,8 +20,6 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "name",
   "source_kind",
   "workspace_id",
-  "ssh_server_id",
-  "ssh_server_session_id",
   "scope",
   "task_id",
   "directory",
@@ -106,14 +104,6 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
       workspaceId: requireChatString(row, "workspace_id", rowId),
     };
   }
-  if (sourceKind === "ssh_server") {
-    return {
-      kind: "ssh_server",
-      sshServerId: requireChatString(row, "ssh_server_id", rowId),
-      sshServerSessionId: requireChatString(row, "ssh_server_session_id", rowId),
-      directory: requireChatString(row, "directory", rowId),
-    };
-  }
   if (sourceKind === "execution_host") {
     const executionHost = executionHostBindingFromRow(row);
     if (!executionHost) {
@@ -135,14 +125,18 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     kind: "workspace" as const,
     workspaceId: config.workspaceId,
   };
+  const executionHostBinding = source.kind === "execution_host"
+    ? source.executionHost
+    : config.executionHostBinding;
+  if (!executionHostBinding) {
+    throw new Error(`Chat ${config.id} has no execution-host binding`);
+  }
   return {
     id: config.id,
     user_id: userId,
     name: config.name,
     source_kind: source.kind,
     workspace_id: source.kind === "workspace" ? source.workspaceId : null,
-    ssh_server_id: source.kind === "ssh_server" ? source.sshServerId : null,
-    ssh_server_session_id: source.kind === "ssh_server" ? source.sshServerSessionId : null,
     scope: config.scope,
     task_id: config.taskId ?? null,
     directory: config.directory,
@@ -175,10 +169,8 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     interrupt_requested: state.interruptRequested ? 1 : 0,
     connection_status: state.connectionStatus ?? "disconnected",
     startup_stage: state.startupStage ?? null,
-    execution_host_id: config.executionHostBinding
-      ? resolveExecutionHostBindingId(userId, config.executionHostBinding)
-      : null,
-    execution_host_revision: config.executionHostBinding?.revision ?? null,
+    execution_host_id: resolveExecutionHostBindingId(userId, executionHostBinding),
+    execution_host_revision: executionHostBinding.revision,
   };
 }
 
@@ -191,7 +183,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     name: requireChatString(row, "name", rowId),
     ...(source.kind === "workspace" ? { workspaceId: source.workspaceId } : {}),
     source,
-    executionHostBinding: executionHostBindingFromRow(row),
+    executionHostBinding: executionHostBindingFromRow(row) ?? undefined,
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),
     taskId: (row["task_id"] as string | null) ?? undefined,
     directory: requireChatString(row, "directory", rowId),

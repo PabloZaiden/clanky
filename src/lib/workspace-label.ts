@@ -1,5 +1,5 @@
 import type { SshServer } from "@/shared/ssh-server";
-import type { Workspace, WorkspaceExecutionTarget } from "@/shared/workspace";
+import type { ExecutionHostDescriptor, Workspace } from "@/shared";
 import { getServerLabel } from "@/shared/settings";
 
 /**
@@ -7,23 +7,15 @@ import { getServerLabel } from "@/shared/settings";
  * mistaking a local stdio node for a remote peer.
  */
 export function getWorkspaceServerLabel(
-  workspace: Pick<Workspace, "serverSettings" | "executionNodeId">,
-  registeredSshServers: readonly SshServer[],
-  executionTargets: readonly WorkspaceExecutionTarget[],
+  workspace: Pick<Workspace, "serverSettings" | "executionHostBinding">,
+  _registeredSshServers: readonly SshServer[],
+  executionTargets: readonly ExecutionHostDescriptor[],
 ): string {
-  const nodeId = workspace.executionNodeId?.trim();
-  if (!nodeId) {
-    return getServerLabel(workspace.serverSettings, registeredSshServers);
-  }
-
-  const localNodeId = executionTargets.find((target) => target.kind === "local")?.nodeId;
-  if (executionTargets.length === 0) {
-    return `${workspace.serverSettings.agent.provider} via stdio on selected host`;
-  }
-  const target = executionTargets.find((candidate) => candidate.nodeId === nodeId);
-  return getServerLabel(workspace.serverSettings, registeredSshServers, {
-    nodeId,
-    localNodeId,
-    instanceName: target?.kind === "mesh" ? target.name : undefined,
+  const target = executionTargets.find(
+    (candidate) => candidate.targetKey === workspace.executionHostBinding.targetKey,
+  );
+  return getServerLabel(workspace.serverSettings, target ?? {
+    ref: workspace.executionHostBinding.host,
+    name: "selected host",
   });
 }

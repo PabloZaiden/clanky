@@ -4,7 +4,7 @@
  */
 
 import type { BackendConnectionConfig } from "../../backends/types";
-import type { ServerSettings } from "@/shared/settings";
+import type { RuntimeServerSettings } from "@/shared/settings";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {
@@ -19,7 +19,7 @@ import {
 } from "../managed-context-environment";
 
 function buildAgentRuntimeCommand(
-  settings: ServerSettings,
+  settings: RuntimeServerSettings,
   directory: string,
   runtimeEnvironment?: Record<string, string>,
 ): { command: string; args: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
@@ -68,7 +68,7 @@ function buildAgentRuntimeCommand(
  * @returns A complete BackendConnectionConfig
  */
 export function buildConnectionConfig(
-  settings: ServerSettings,
+  settings: RuntimeServerSettings,
   directory: string,
   runtimeEnvironment?: Record<string, string>,
 ): BackendConnectionConfig {

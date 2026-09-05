@@ -11,6 +11,7 @@ import { join } from "path";
 import { mkdtemp, rm, mkdir, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
+import { fetchTestLocalExecutionHost } from "../setup";
 
 function structuredTreeRecord(...fields: string[]): string {
   return `${fields.join("\0")}\0\0`;
@@ -65,16 +66,17 @@ describe("workspace files API integration", () => {
   });
 
   async function createWorkspace() {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     const response = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Workspace Files",
         directory: workDir,
+        executionHost,
         serverSettings: {
           agent: {
             provider: "opencode",
-            transport: "stdio",
           },
         },
       }),

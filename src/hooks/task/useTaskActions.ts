@@ -9,7 +9,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Task, WorkspaceTerminalSession } from "@/shared";
+import type { Task, TerminalSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type {
@@ -74,7 +74,7 @@ export interface UseTaskActionsResult {
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
   ) => Promise<boolean>;
-  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
+  connectTerminal: () => Promise<TerminalSession | null>;
 }
 
 export function useTaskActions(params: UseTaskActionsParams): UseTaskActionsResult {

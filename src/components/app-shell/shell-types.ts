@@ -4,8 +4,16 @@ import {
   isFinalState,
 } from "../../utils";
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
-import type { Agent, Chat, Task, Workspace, WorkspaceTerminalSession } from "@/shared";
-import type { SshServer, SshServerSession } from "@/shared/ssh-server";
+import {
+  executionHostRefsEqual,
+  type Agent,
+  type Chat,
+  type ExecutionHostDescriptor,
+  type Task,
+  type TerminalSession,
+  type Workspace,
+} from "@/shared";
+import type { SshServer } from "@/shared/ssh-server";
 import {
   getChatStatusBadgeVariant,
   getTerminalSessionStatusBadgeVariant,
@@ -17,7 +25,7 @@ import {
 export type SidebarWorkspaceGroupId = "all";
 
 export interface SidebarWorkspaceTerminalNode {
-  session: WorkspaceTerminalSession;
+  session: TerminalSession;
   title: string;
   subtitle: string;
   badge: string;
@@ -63,9 +71,8 @@ export interface SidebarWorkspaceGroupNode {
   workspaces: SidebarWorkspaceNode[];
 }
 
-export interface SidebarServerSessionNode {
-  session: SshServerSession;
-  id: string;
+export interface SidebarExecutionHostTerminalNode {
+  session: TerminalSession;
   title: string;
   subtitle: string;
   badge: string;
@@ -73,10 +80,11 @@ export interface SidebarServerSessionNode {
   createdAt: string;
 }
 
-export interface SidebarServerNode {
-  server: SshServer;
+export interface SidebarExecutionHostNode {
+  host: ExecutionHostDescriptor;
+  sshServer?: SshServer;
   key: string;
-  sessions: SidebarServerSessionNode[];
+  terminalSessions: SidebarExecutionHostTerminalNode[];
   chats: SidebarChatNode[];
   historyChats: SidebarChatNode[];
 }
@@ -97,10 +105,9 @@ export type SidebarActiveWorkItem =
       chatNode: SidebarChatNode;
     }
   | {
-      kind: "ssh-server-chat";
+      kind: "execution-host-chat";
       key: string;
-      server: SshServer;
-      serverName: string;
+      host: ExecutionHostDescriptor;
       chatNode: SidebarChatNode;
     }
   | {
@@ -111,11 +118,10 @@ export type SidebarActiveWorkItem =
       sessionNode: SidebarWorkspaceTerminalNode;
     }
   | {
-      kind: "ssh-server-session";
+      kind: "execution-host-terminal";
       key: string;
-      server: SshServer;
-      serverName: string;
-      sessionNode: SidebarServerSessionNode;
+      host: ExecutionHostDescriptor;
+      sessionNode: SidebarExecutionHostTerminalNode;
     };
 
 export type SidebarChatHistoryItem =
@@ -127,15 +133,14 @@ export type SidebarChatHistoryItem =
       chatNode: SidebarChatNode;
     }
   | {
-      kind: "ssh-server-chat";
+      kind: "execution-host-chat";
       key: string;
-      server: SshServer;
-      serverName: string;
+      host: ExecutionHostDescriptor;
       chatNode: SidebarChatNode;
     };
 
 interface BuildActiveWorkSidebarItemsOptions {
-  serverNodes?: SidebarServerNode[];
+  executionHostNodes?: SidebarExecutionHostNode[];
 }
 
 export type CodeExplorerTarget =
@@ -152,14 +157,8 @@ export type CodeExplorerTarget =
       filePath?: string;
     }
   | {
-      contentType: "server";
-      serverId: string;
-      startDirectory?: string;
-      filePath?: string;
-    }
-  | {
       contentType: "execution-host";
-      hostKind: "local" | "mesh";
+      hostKind: "local" | "mesh" | "ssh";
       hostId: string;
       startDirectory?: string;
       filePath?: string;
@@ -194,7 +193,7 @@ export function getProvisioningStatusBadgeVariant(status: string | undefined): B
 }
 
 function createWorkspaceTerminalNode(
-  session: WorkspaceTerminalSession,
+  session: TerminalSession,
   taskNameById: ReadonlyMap<string, string>,
 ): SidebarWorkspaceTerminalNode {
   const linkedTaskName = session.config.taskId ? taskNameById.get(session.config.taskId) : undefined;
@@ -228,11 +227,11 @@ export function buildWorkspaceSidebarGroups({
   workspaces: Workspace[];
   tasks: Task[];
   chats: Chat[];
-  terminalSessions?: WorkspaceTerminalSession[];
+  terminalSessions?: TerminalSession[];
 }): SidebarWorkspaceGroupNode[] {
   const tasksByWorkspaceId = new Map<string, Task[]>();
   const chatsByWorkspaceId = new Map<string, Chat[]>();
-  const terminalsByWorkspaceId = new Map<string, WorkspaceTerminalSession[]>();
+  const terminalsByWorkspaceId = new Map<string, TerminalSession[]>();
   const taskNameById = new Map(tasks.map((task) => [task.config.id, task.config.name]));
 
   for (const task of tasks) {
@@ -358,23 +357,21 @@ export function buildActiveWorkSidebarItems(
     }
   }
 
-  for (const serverNode of options.serverNodes ?? []) {
-    for (const chatNode of serverNode.chats) {
+  for (const hostNode of options.executionHostNodes ?? []) {
+    for (const chatNode of hostNode.chats) {
       chatItems.push({
-        kind: "ssh-server-chat",
-        key: `ssh-server-chat:${chatNode.chat.config.id}`,
-        server: serverNode.server,
-        serverName: serverNode.server.config.name,
+        kind: "execution-host-chat",
+        key: `execution-host-chat:${chatNode.chat.config.id}`,
+        host: hostNode.host,
         chatNode,
       });
     }
 
-    for (const sessionNode of serverNode.sessions) {
+    for (const sessionNode of hostNode.terminalSessions) {
       sessionItems.push({
-        kind: "ssh-server-session",
-        key: `ssh-server-session:${sessionNode.id}`,
-        server: serverNode.server,
-        serverName: serverNode.server.config.name,
+        kind: "execution-host-terminal",
+        key: `execution-host-terminal:${sessionNode.session.config.id}`,
+        host: hostNode.host,
         sessionNode,
       });
     }
@@ -407,13 +404,12 @@ export function buildChatHistorySidebarItems(
     }
   }
 
-  for (const serverNode of options.serverNodes ?? []) {
-    for (const chatNode of serverNode.historyChats) {
+  for (const hostNode of options.executionHostNodes ?? []) {
+    for (const chatNode of hostNode.historyChats) {
       historyItems.push({
-        kind: "ssh-server-chat",
-        key: `ssh-server-chat:${chatNode.chat.config.id}`,
-        server: serverNode.server,
-        serverName: serverNode.server.config.name,
+        kind: "execution-host-chat",
+        key: `execution-host-chat:${chatNode.chat.config.id}`,
+        host: hostNode.host,
         chatNode,
       });
     }
@@ -422,10 +418,9 @@ export function buildChatHistorySidebarItems(
   return historyItems;
 }
 
-function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
+function createExecutionHostTerminalNode(session: TerminalSession): SidebarExecutionHostTerminalNode {
   return {
     session,
-    id: session.config.id,
     title: session.config.name,
     subtitle: getTerminalConnectionModeLabel(session.config.connectionMode),
     badge: getTerminalSessionStatusLabel(session.state.status),
@@ -434,34 +429,39 @@ function createServerSessionNodeFromStandaloneSession(session: SshServerSession)
   };
 }
 
-export function buildServerSidebarNodes({
+export function buildExecutionHostSidebarNodes({
+  executionHosts,
   servers,
-  sessionsByServerId,
+  terminalSessions,
   chats = [],
 }: {
+  executionHosts: ExecutionHostDescriptor[];
   servers: SshServer[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
+  terminalSessions: TerminalSession[];
   chats?: Chat[];
-}): SidebarServerNode[] {
-  const chatsByServerId = new Map<string, Chat[]>();
-
-  for (const chat of chats) {
-    if (!isStandaloneChat(chat) || chat.config.source?.kind !== "ssh_server") {
-      continue;
-    }
-    const serverChats = chatsByServerId.get(chat.config.source.sshServerId) ?? [];
-    serverChats.push(chat);
-    chatsByServerId.set(chat.config.source.sshServerId, serverChats);
-  }
-
-  return servers.map((server) => {
-    const standaloneSessions = (sessionsByServerId[server.config.id] ?? [])
-      .map(createServerSessionNodeFromStandaloneSession);
+}): SidebarExecutionHostNode[] {
+  return executionHosts.map((host) => {
+    const sshServerId = host.ref.kind === "ssh" ? host.ref.serverId : null;
+    const hostChats = chats.filter((chat) => {
+      const source = chat.config.source;
+      return isStandaloneChat(chat)
+        && source?.kind === "execution_host"
+        && executionHostRefsEqual(source.executionHost.host, host.ref);
+    });
+    const hostTerminalSessions = terminalSessions
+      .filter((session) => (
+        !session.config.workspaceId
+        && executionHostRefsEqual(session.config.executionHostBinding.host, host.ref)
+      ))
+      .map(createExecutionHostTerminalNode);
     return {
-      server,
-      key: server.config.id,
-      sessions: sortByDesc(standaloneSessions, (session) => session.createdAt),
-      chats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
+      host,
+      sshServer: sshServerId
+        ? servers.find((server) => server.config.id === sshServerId)
+        : undefined,
+      key: host.targetKey,
+      terminalSessions: sortByDesc(hostTerminalSessions, (session) => session.createdAt),
+      chats: sortByDesc(hostChats, (chat) => chat.config.updatedAt)
         .filter((chat) => chat.state.status !== "done")
         .map((chat) => ({
           chat,
@@ -469,7 +469,7 @@ export function buildServerSidebarNodes({
           badge: formatStatusLabel(chat.state.status),
           badgeVariant: getChatStatusBadgeVariant(chat.state.status),
         })),
-      historyChats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
+      historyChats: sortByDesc(hostChats, (chat) => chat.config.updatedAt)
         .filter((chat) => chat.state.status === "done")
         .map((chat) => ({
           chat,

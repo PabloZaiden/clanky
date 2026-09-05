@@ -1,7 +1,7 @@
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   ExecutionHostDescriptor,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import { getExecutionHostDefaultDirectory } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
@@ -10,10 +10,10 @@ import { FileExplorerView } from "./file-explorer-view";
 interface ExecutionHostFilesViewProps {
   host: ExecutionHostDescriptor;
   startDirectory?: string;
-  terminalSessions: WorkspaceTerminalSession[];
+  terminalSessions: TerminalSession[];
   createTerminalSession: (
     request: CreateTerminalSessionRequest,
-  ) => Promise<WorkspaceTerminalSession>;
+  ) => Promise<TerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
 }
 

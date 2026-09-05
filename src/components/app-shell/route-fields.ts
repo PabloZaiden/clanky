@@ -11,8 +11,13 @@ export function getProvisioningReturnRoute(route: WebAppRoute): WebAppRoute {
   if (returnView === "workspace" && returnId) {
     return { view: "workspace", workspaceId: returnId };
   }
-  if (returnView === "ssh-server-settings" && returnId) {
-    return { view: "ssh-server-settings", serverId: returnId };
+  const returnKind = getRouteString(route, "returnKind");
+  if (
+    returnView === "execution-host"
+    && returnId
+    && (returnKind === "local" || returnKind === "mesh" || returnKind === "ssh")
+  ) {
+    return { view: "execution-host", hostKind: returnKind, hostId: returnId };
   }
   return { view: "home" };
 }

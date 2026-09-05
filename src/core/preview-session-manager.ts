@@ -17,7 +17,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
-import { buildSshProcessConfig, getSshConnectionTargetFromWorkspace } from "./ssh-connection-target";
+import { buildSshProcessConfig } from "./ssh-connection-target";
+import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 
@@ -225,7 +226,7 @@ export class PreviewSessionManager {
     await this.initialize();
     const workspace = await this.resolveWorkspaceReference(options.workspace);
     await touchWorkspace(workspace.id);
-    const sshTunnel = workspace.serverSettings.agent.transport === "ssh"
+    const sshTunnel = workspace.executionHostBinding.host.kind === "ssh"
       ? await this.startSshTunnel(workspace, options.remoteHost, options.remotePort)
       : undefined;
     const targetPort = sshTunnel ? sshTunnel.localPort : options.remotePort;
@@ -644,7 +645,14 @@ export class PreviewSessionManager {
     remotePort: number,
   ): Promise<{ child: ChildProcess; localPort: number }> {
     const localPort = await ensureLocalPortAvailable(this.getReservedTunnelPorts());
-    const target = getSshConnectionTargetFromWorkspace(workspace);
+    const resolvedTarget = await resolveWorkspaceExecutionTarget(workspace);
+    if (resolvedTarget.kind !== "ssh") {
+      throw new DomainError(
+        "preview_transport_invalid",
+        "An SSH preview tunnel requires an SSH execution host.",
+      );
+    }
+    const target = resolvedTarget.target;
     const config = buildSshProcessConfig({
       target,
       connectionScope: workspace.directory,

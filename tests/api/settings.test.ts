@@ -57,7 +57,8 @@ describe("Settings API integration", () => {
       body: JSON.stringify({
         name: "Second Purge Workspace",
         directory: context.workDir,
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost: context.executionHostBinding.host,
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     expect(createWorkspaceResponse.status).toBe(201);

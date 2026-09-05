@@ -1,6 +1,6 @@
 import type { CheapModelSelection, TaskPromptMode, Task, ModelConfig } from "@/shared/task";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { WorkspaceTerminalSession } from "@/shared/terminal-session";
+import type { TerminalSession } from "@/shared/terminal-session";
 import type { TaskResult } from "./task-errors";
 export type {
   TaskFailure,
@@ -98,7 +98,7 @@ export type AcceptPlanResult =
     }
   | {
       mode: "open_terminal";
-      terminalSession: WorkspaceTerminalSession;
+      terminalSession: TerminalSession;
     };
 
 /**

@@ -6,12 +6,13 @@ import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
-import type { WorkspaceTerminalSession } from "../../src/shared";
+import type { TerminalSession } from "../../src/shared";
 
 class TaskTerminalExecutor extends TestCommandExecutor {
   public deleteCommands: string[] = [];
@@ -77,6 +78,7 @@ describe("Task terminal session API integration", () => {
     db.run("DELETE FROM terminal_sessions");
     db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
+    db.run("DELETE FROM ssh_servers");
     executor.deleteCommands = [];
   });
 
@@ -97,27 +99,31 @@ describe("Task terminal session API integration", () => {
 
   async function createWorkspace(transport: "ssh" | "stdio") {
     workDir = await createGitRepo();
+    const executionHost = transport === "ssh"
+      ? {
+          kind: "ssh" as const,
+          serverId: (await sshServerManager.createServer({
+            name: "Task SSH server",
+            address: "localhost",
+            username: "tester",
+            repositoriesBasePath: null,
+          })).config.id,
+        }
+      : (await (await fetch(`${baseUrl}/api/execution-hosts`)).json() as Array<{
+          ref: { kind: string; nodeId?: string };
+        }>).find((host) => host.ref.kind === "local")!.ref;
     const response = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: `${transport.toUpperCase()} Workspace`,
         directory: workDir,
-        serverSettings: transport === "ssh"
-          ? {
-              agent: {
-                provider: "opencode",
-                transport: "ssh",
-                hostname: "localhost",
-                username: "tester",
-              },
-            }
-          : {
-              agent: {
-                provider: "opencode",
-                transport: "stdio",
-              },
-            },
+        executionHost,
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+          },
+        },
       }),
     });
     expect(response.ok).toBe(true);
@@ -201,7 +207,7 @@ describe("Task terminal session API integration", () => {
       method: "POST",
     });
     expect(firstResponse.ok).toBe(true);
-    const firstSession = await firstResponse.json() as WorkspaceTerminalSession;
+    const firstSession = await firstResponse.json() as TerminalSession;
 
     const secondResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
       method: "POST",
@@ -221,8 +227,7 @@ describe("Task terminal session API integration", () => {
     expect(firstSession.config.directory).toBe(worktreePath);
     expect(secondSession.config.id).toBe(firstSession.config.id);
     expect(fetchedSession.config.id).toBe(firstSession.config.id);
-    expect(firstSession.config.targetBinding.transport).toBe("ssh");
-    expect(firstSession.config.targetBinding.hostname).toBe("localhost");
+    expect(firstSession.config.executionHostBinding.host.kind).toBe("ssh");
   });
 
   test("creates a linked terminal session for stdio workspaces", async () => {
@@ -235,10 +240,13 @@ describe("Task terminal session API integration", () => {
 
     expect(response.ok).toBe(true);
     const session = await response.json() as {
-      config: { taskId?: string; targetBinding: { transport: string } };
+      config: {
+        taskId?: string;
+        executionHostBinding: { host: { kind: string } };
+      };
     };
     expect(session.config.taskId).toBe(task.config.id);
-    expect(session.config.targetBinding.transport).toBe("stdio");
+    expect(session.config.executionHostBinding.host.kind).toBe("local");
   });
 
   test("purging a task deletes its linked terminal session", async () => {
@@ -278,13 +286,13 @@ describe("Task terminal session API integration", () => {
       method: "POST",
     });
     expect(firstResponse.ok).toBe(true);
-    const firstSession = await firstResponse.json() as WorkspaceTerminalSession;
+    const firstSession = await firstResponse.json() as TerminalSession;
 
     const secondResponse = await fetch(`${baseUrl}/api/tasks/${task.config.id}/terminal-session`, {
       method: "POST",
     });
     expect(secondResponse.ok).toBe(true);
-    const secondSession = await secondResponse.json() as WorkspaceTerminalSession;
+    const secondSession = await secondResponse.json() as TerminalSession;
 
     expect(secondSession.config.id).toBe(firstSession.config.id);
   });

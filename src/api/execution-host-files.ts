@@ -2,7 +2,11 @@
  * File explorer routes for local, Mesh, and SSH execution hosts.
  */
 
-import { executionHostRefsEqual, type ExecutionHostRef } from "@/shared";
+import {
+  executionHostRefFromParts,
+  executionHostRefsEqual,
+  type ExecutionHostRef,
+} from "@/shared";
 import { executionHostService } from "../core/execution-host-service";
 import {
   resolveFileExplorerRootDirectory,
@@ -16,12 +20,9 @@ const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function parseRef(req: Request, id: string): ExecutionHostRef {
   const segments = new URL(req.url).pathname.split("/");
-  const kind = segments[3];
-  if (kind === "local" || kind === "mesh") {
-    return { kind, nodeId: id };
-  }
-  if (kind === "ssh") {
-    return { kind, serverId: id };
+  const ref = executionHostRefFromParts(segments[3] ?? "", id);
+  if (ref) {
+    return ref;
   }
   throw new DomainError(
     "execution_host_kind_invalid",

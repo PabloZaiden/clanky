@@ -14,6 +14,8 @@ import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
+import { fetchTestLocalExecutionHost } from "../setup";
+import type { ExecutionHostRef } from "@/shared";
 
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 import {
@@ -27,33 +29,10 @@ import {
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
-function makeServerSettings(overrides?: {
-  mode?: "spawn" | "connect";
-  hostname?: string;
-  port?: number;
-  username?: string;
-  password?: string;
-  identityFile?: string;
-}) {
-  const mode = overrides?.mode ?? "spawn";
-  const isConnect = mode === "connect";
-  if (isConnect) {
-    return {
-      agent: {
-        provider: "opencode" as const,
-        transport: "ssh" as const,
-        hostname: overrides?.hostname ?? "localhost",
-        port: overrides?.port ?? 22,
-        ...(overrides?.username ? { username: overrides.username } : {}),
-        ...(overrides?.password ? { password: overrides.password } : {}),
-        ...(overrides?.identityFile ? { identityFile: overrides.identityFile } : {}),
-      },
-    };
-  }
+function makeServerSettings(provider: "opencode" | "copilot" = "opencode") {
   return {
     agent: {
-      provider: "opencode" as const,
-      transport: "stdio" as const,
+      provider,
     },
   };
 }
@@ -63,6 +42,7 @@ describe("Workspace API Integration", () => {
   let testWorkDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let localExecutionHost: Extract<ExecutionHostRef, { kind: "local" }>;
   let testDefaultBranch = "";
 
   async function createPullTestRepos(): Promise<{
@@ -115,6 +95,7 @@ describe("Workspace API Integration", () => {
     // Start test server on random port
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
+    localExecutionHost = await fetchTestLocalExecutionHost(baseUrl);
   });
 
   afterAll(async () => {
@@ -154,7 +135,8 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Test Workspace",
           directory: testWorkDir,
-        serverSettings: makeServerSettings(),
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
         }),
       });
       expect(createResponse.ok).toBe(true);
@@ -169,54 +151,6 @@ describe("Workspace API Integration", () => {
       expect(data[0].directory).toBe(testWorkDir);
     });
 
-    test("hides SSH secrets by default and includes them with sensitive=true", async () => {
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "SSH Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({
-            mode: "connect",
-            hostname: "ssh.example.com",
-            port: 2222,
-            username: "deploy",
-            password: "super-secret",
-            identityFile: "/keys/id_ed25519",
-          }),
-        }),
-      });
-      expect(createResponse.ok).toBe(true);
-
-      const response = await fetch(`${baseUrl}/api/workspaces`);
-      expect(response.ok).toBe(true);
-      const data = await response.json() as Array<{
-        serverSettings: {
-          agent: Record<string, unknown>;
-        };
-      }>;
-
-      expect(data).toHaveLength(1);
-      expect(data[0]!.serverSettings.agent).toEqual(expect.objectContaining({
-        transport: "ssh",
-        hostname: "ssh.example.com",
-        port: 2222,
-        username: "deploy",
-      }));
-      expect(data[0]!.serverSettings.agent["password"]).toBeUndefined();
-      expect(data[0]!.serverSettings.agent["identityFile"]).toBeUndefined();
-
-      const sensitiveResponse = await fetch(`${baseUrl}/api/workspaces?sensitive=true`);
-      expect(sensitiveResponse.ok).toBe(true);
-      const sensitiveData = await sensitiveResponse.json() as Array<{
-        serverSettings: {
-          agent: Record<string, unknown>;
-        };
-      }>;
-
-      expect(sensitiveData[0]!.serverSettings.agent["password"]).toBe("super-secret");
-      expect(sensitiveData[0]!.serverSettings.agent["identityFile"]).toBe("/keys/id_ed25519");
-    });
   });
 
   describe("GET /api/workspaces/execution-targets", () => {
@@ -224,74 +158,16 @@ describe("Workspace API Integration", () => {
       const response = await fetch(`${baseUrl}/api/workspaces/execution-targets`);
       expect(response.ok).toBe(true);
       const targets = await response.json() as Array<{
-        nodeId: string;
-        kind: string;
+        ref: { kind: string; nodeId?: string };
         availability: string;
       }>;
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({
-        kind: "local",
+        ref: { kind: "local" },
         availability: "local",
       });
-      expect(targets[0]!.nodeId.length).toBeGreaterThan(0);
+      expect(targets[0]!.ref.nodeId?.length).toBeGreaterThan(0);
     });
-  });
-
-  describe("sensitive workspace reads", () => {
-    test("hides secrets on detail and server-settings reads unless sensitive=true", async () => {
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Detail Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({
-            mode: "connect",
-            hostname: "detail.example.com",
-            username: "builder",
-            password: "detail-secret",
-            identityFile: "/keys/detail",
-          }),
-        }),
-      });
-      expect(createResponse.ok).toBe(true);
-      const created = await createResponse.json() as { id: string };
-
-      const detailResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
-      expect(detailResponse.ok).toBe(true);
-      const detail = await detailResponse.json() as {
-        serverSettings: { agent: Record<string, unknown> };
-      };
-      expect(detail.serverSettings.agent["password"]).toBeUndefined();
-      expect(detail.serverSettings.agent["identityFile"]).toBeUndefined();
-
-      const sensitiveDetailResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}?sensitive=true`);
-      expect(sensitiveDetailResponse.ok).toBe(true);
-      const sensitiveDetail = await sensitiveDetailResponse.json() as {
-        serverSettings: { agent: Record<string, unknown> };
-      };
-      expect(sensitiveDetail.serverSettings.agent["password"]).toBe("detail-secret");
-      expect(sensitiveDetail.serverSettings.agent["identityFile"]).toBe("/keys/detail");
-
-      const settingsResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}/server-settings`);
-      expect(settingsResponse.ok).toBe(true);
-      const settings = await settingsResponse.json() as {
-        agent: Record<string, unknown>;
-      };
-      expect(settings.agent["password"]).toBeUndefined();
-      expect(settings.agent["identityFile"]).toBeUndefined();
-
-      const sensitiveSettingsResponse = await fetch(
-        `${baseUrl}/api/workspaces/${created.id}/server-settings?sensitive=true`,
-      );
-      expect(sensitiveSettingsResponse.ok).toBe(true);
-      const sensitiveSettings = await sensitiveSettingsResponse.json() as {
-        agent: Record<string, unknown>;
-      };
-      expect(sensitiveSettings.agent["password"]).toBe("detail-secret");
-      expect(sensitiveSettings.agent["identityFile"]).toBe("/keys/detail");
-    });
-
   });
 
   describe("POST /api/workspaces", () => {
@@ -302,7 +178,8 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "New Workspace",
           directory: testWorkDir,
-        serverSettings: makeServerSettings(),
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
         }),
       });
 
@@ -328,6 +205,7 @@ describe("Workspace API Integration", () => {
           name: "Directory Workspace",
           directory: nonGitDir,
           workspaceType: "directory",
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
         }),
       });
@@ -350,6 +228,7 @@ describe("Workspace API Integration", () => {
           name: "Explicit Directory Workspace",
           directory: testWorkDir,
           workspaceType: "directory",
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
         }),
       });
@@ -370,41 +249,22 @@ describe("Workspace API Integration", () => {
       expect((await updateResponse.json()).workspaceType).toBe("directory");
     });
 
-    test("rejects an untrusted stdio execution node", async () => {
+    test("rejects an unavailable execution host", async () => {
       const response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "Owned Workspace",
           directory: testWorkDir,
+          executionHost: { kind: "mesh", nodeId: "attacker-node" },
           serverSettings: makeServerSettings(),
-          executionNodeId: "attacker-node",
         }),
       });
 
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
-        error: "workspace_execution_target_not_trusted",
+        error: "execution_host_unavailable",
       });
-    });
-
-    test("keeps SSH workspace execution ownership null", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "SSH Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({ mode: "connect" }),
-          executionNodeId: "attacker-node",
-        }),
-      });
-
-      expect(response.ok).toBe(true);
-      const created = await response.json() as { id: string; executionNodeId?: string | null };
-      expect(created.executionNodeId).toBeNull();
-      const persistedResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
-      expect((await persistedResponse.json()).executionNodeId).toBeNull();
     });
 
     test("persists an opted-in Clanky context setting", async () => {
@@ -414,6 +274,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Opted-in Workspace",
           directory: testWorkDir,
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
           allowClankyContext: true,
         }),
@@ -436,7 +297,8 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Non-Git Workspace",
           directory: nonGitDir,
-        serverSettings: makeServerSettings(),
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
         }),
       });
 
@@ -459,6 +321,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name,
           directory: testWorkDir,
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
         }),
       });
@@ -562,6 +425,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Archivable Workspace",
           directory: testWorkDir,
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
         }),
       });
@@ -615,52 +479,6 @@ describe("Workspace API Integration", () => {
       expect(persistedUnarchivedWorkspace?.allowClankyContext).toBe(false);
     });
 
-    test("redacts workspace secrets by default and includes them with sensitive=true", async () => {
-      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Sensitive Workspace",
-          directory: testWorkDir,
-          serverSettings: makeServerSettings({
-            mode: "connect",
-            hostname: "sensitive.example.com",
-            username: "deploy",
-            password: "put-secret",
-            identityFile: "/keys/put",
-          }),
-        }),
-      });
-      const workspace = await createResponse.json() as { id: string };
-
-      const defaultResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Sensitive Workspace Updated",
-        }),
-      });
-      expect(defaultResponse.ok).toBe(true);
-      const redactedWorkspace = await defaultResponse.json() as {
-        serverSettings: { agent: Record<string, unknown> };
-      };
-      expect(redactedWorkspace.serverSettings.agent["password"]).toBeUndefined();
-      expect(redactedWorkspace.serverSettings.agent["identityFile"]).toBeUndefined();
-
-      const sensitiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}?sensitive=true`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Sensitive Workspace Renamed Again",
-        }),
-      });
-      expect(sensitiveResponse.ok).toBe(true);
-      const sensitiveWorkspace = await sensitiveResponse.json() as {
-        serverSettings: { agent: Record<string, unknown> };
-      };
-      expect(sensitiveWorkspace.serverSettings.agent["password"]).toBe("put-secret");
-      expect(sensitiveWorkspace.serverSettings.agent["identityFile"]).toBe("/keys/put");
-    });
 
   });
 
@@ -673,7 +491,8 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Delete Me",
           directory: testWorkDir,
-        serverSettings: makeServerSettings(),
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -705,14 +524,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Delete Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: tmpdir(),
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-delete-workspace`, {
@@ -742,14 +565,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Delete Trailing Base Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: `${tmpdir()}/`,
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-delete-trailing-base-workspace`, {
@@ -779,14 +606,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Preserve Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: tmpdir(),
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-preserve-workspace`, {
@@ -838,14 +669,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Fail Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: tmpdir(),
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-fail-workspace`, {
@@ -899,14 +734,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Exists Fail Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: tmpdir(),
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-exists-fail-workspace`, {
@@ -936,14 +775,18 @@ describe("Workspace API Integration", () => {
         name: "Auto Token Fail Workspace",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding: {
+          host: { kind: "ssh", serverId: sshServer.config.id },
+          targetKey: `ssh:${sshServer.config.id}`,
+          revision: 1,
+        },
         serverSettings: makeServerSettings(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sourceDirectory,
-        sshServerId: sshServer.config.id,
         basePath: tmpdir(),
         repoUrl: "git@example.com:test/repo.git",
-        provider: "opencode",
       });
 
       const response = await fetch(`${baseUrl}/api/workspaces/auto-token-fail-workspace`, {
@@ -971,6 +814,7 @@ describe("Workspace API Integration", () => {
           name: "Directory Pull Workspace",
           directory: testWorkDir,
           workspaceType: "directory",
+          executionHost: localExecutionHost,
           serverSettings: makeServerSettings(),
         }),
       });
@@ -1001,7 +845,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Pull Test Workspace",
             directory: repos.cloneDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -1036,7 +881,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Branch Mismatch Workspace",
             directory: repos.cloneDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -1069,7 +915,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Dirty Workspace",
             directory: repos.cloneDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -1102,7 +949,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Missing Remote Workspace",
             directory: repos.cloneDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -1136,7 +984,8 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Task Test Workspace",
           directory: testWorkDir,
-        serverSettings: makeServerSettings(),
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
         }),
       });
       expect(workspaceResponse.ok).toBe(true);
@@ -1234,17 +1083,14 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Update Settings Test",
             directory: testWorkDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
 
         // Update server settings
-        const newSettings = makeServerSettings({
-          mode: "connect",
-          hostname: "example.com",
-          port: 8080,
-        });
+        const newSettings = makeServerSettings("copilot");
 
         const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`, {
           method: "PUT",
@@ -1254,77 +1100,18 @@ describe("Workspace API Integration", () => {
         expect(response.ok).toBe(true);
         const updatedSettings = await response.json();
 
-        expect(updatedSettings.agent.transport).toBe("ssh");
-        expect(updatedSettings.agent.hostname).toBe("example.com");
-        expect(updatedSettings.agent.port).toBe(8080);
+        expect(updatedSettings.agent.provider).toBe("copilot");
 
         // Verify persistence by fetching again
         const getResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`);
         const fetchedSettings = await getResponse.json();
-        expect(fetchedSettings.agent.transport).toBe("ssh");
-        expect(fetchedSettings.agent.hostname).toBe("example.com");
-      });
-
-      test("redacts updated server settings by default and includes them with sensitive=true", async () => {
-        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: "Sensitive Server Settings",
-            directory: testWorkDir,
-            serverSettings: makeServerSettings(),
-          }),
-        });
-        const workspace = await createResponse.json() as { id: string };
-
-        const redactedUpdateResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(makeServerSettings({
-            mode: "connect",
-            hostname: "redacted.example.com",
-            username: "builder",
-            password: "settings-secret",
-            identityFile: "/keys/settings",
-          })),
-        });
-        expect(redactedUpdateResponse.ok).toBe(true);
-        const redactedSettings = await redactedUpdateResponse.json() as {
-          agent: Record<string, unknown>;
-        };
-        expect(redactedSettings.agent["password"]).toBeUndefined();
-        expect(redactedSettings.agent["identityFile"]).toBeUndefined();
-
-        const sensitiveUpdateResponse = await fetch(
-          `${baseUrl}/api/workspaces/${workspace.id}/server-settings?sensitive=true`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(makeServerSettings({
-              mode: "connect",
-              hostname: "sensitive.example.com",
-              username: "builder",
-              password: "settings-secret-2",
-              identityFile: "/keys/settings-2",
-            })),
-          },
-        );
-        expect(sensitiveUpdateResponse.ok).toBe(true);
-        const sensitiveSettings = await sensitiveUpdateResponse.json() as {
-          agent: Record<string, unknown>;
-        };
-        expect(sensitiveSettings.agent["password"]).toBe("settings-secret-2");
-        expect(sensitiveSettings.agent["identityFile"]).toBe("/keys/settings-2");
+        expect(fetchedSettings.agent.provider).toBe("copilot");
       });
 
       test("does not emit a reset event when submitted server settings are unchanged", async () => {
         const { taskEventEmitter } = await import("../../src/core/event-emitter");
 
-        const initialSettings = makeServerSettings({
-          mode: "connect",
-          hostname: "unchanged.example.com",
-          port: 2222,
-        });
+        const initialSettings = makeServerSettings("copilot");
 
         const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
           method: "POST",
@@ -1332,6 +1119,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "No-op Server Settings Update",
             directory: testWorkDir,
+            executionHost: localExecutionHost,
             serverSettings: initialSettings,
           }),
         });
@@ -1375,7 +1163,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Workspace Settings Update Test",
             directory: testWorkDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1397,18 +1186,14 @@ describe("Workspace API Integration", () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: "Updated Name",
-              serverSettings: makeServerSettings({
-                mode: "connect",
-                hostname: "new-server.com",
-                port: 8080,
-              }),
+              serverSettings: makeServerSettings("copilot"),
             }),
           });
 
           expect(response.ok).toBe(true);
           const updated = await response.json();
           expect(updated.name).toBe("Updated Name");
-          expect(updated.serverSettings.agent.hostname).toBe("new-server.com");
+          expect(updated.serverSettings.agent.provider).toBe("copilot");
 
           // Verify a server.reset event was emitted for this workspace
           expect(events.length).toBe(1);
@@ -1430,7 +1215,8 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "No Reset Test",
             directory: testWorkDir,
-          serverSettings: makeServerSettings(),
+            executionHost: localExecutionHost,
+            serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1476,11 +1262,7 @@ describe("Workspace API Integration", () => {
 
         try {
           // Create workspace A with specific settings
-          const settingsA = makeServerSettings({
-            mode: "connect",
-            hostname: "server-a.com",
-            port: 5001,
-          });
+          const settingsA = makeServerSettings("opencode");
 
           const createResponseA = await fetch(`${baseUrl}/api/workspaces`, {
             method: "POST",
@@ -1488,6 +1270,7 @@ describe("Workspace API Integration", () => {
             body: JSON.stringify({
               name: "Workspace A",
               directory: testWorkDir,
+              executionHost: localExecutionHost,
               serverSettings: settingsA,
             }),
           });
@@ -1495,11 +1278,7 @@ describe("Workspace API Integration", () => {
           const workspaceA = await createResponseA.json();
 
           // Create workspace B with different settings
-          const settingsB = makeServerSettings({
-            mode: "connect",
-            hostname: "server-b.com",
-            port: 5002,
-          });
+          const settingsB = makeServerSettings("copilot");
 
           const createResponseB = await fetch(`${baseUrl}/api/workspaces`, {
             method: "POST",
@@ -1507,6 +1286,7 @@ describe("Workspace API Integration", () => {
             body: JSON.stringify({
               name: "Workspace B",
               directory: testWorkDir2,
+              executionHost: localExecutionHost,
               serverSettings: settingsB,
             }),
           });
@@ -1514,18 +1294,11 @@ describe("Workspace API Integration", () => {
           const workspaceB = await createResponseB.json();
 
           // Verify initial settings are different
-          expect(workspaceA.serverSettings.agent.hostname).toBe("server-a.com");
-          expect(workspaceA.serverSettings.agent.port).toBe(5001);
-
-          expect(workspaceB.serverSettings.agent.hostname).toBe("server-b.com");
-          expect(workspaceB.serverSettings.agent.port).toBe(5002);
+          expect(workspaceA.serverSettings.agent.provider).toBe("opencode");
+          expect(workspaceB.serverSettings.agent.provider).toBe("copilot");
 
           // Update workspace A's settings
-          const newSettingsA = makeServerSettings({
-            mode: "connect",
-            hostname: "updated-server-a.com",
-            port: 6001,
-          });
+          const newSettingsA = makeServerSettings("copilot");
 
           const updateResponseA = await fetch(`${baseUrl}/api/workspaces/${workspaceA.id}/server-settings`, {
             method: "PUT",
@@ -1538,15 +1311,13 @@ describe("Workspace API Integration", () => {
           const getResponseA = await fetch(`${baseUrl}/api/workspaces/${workspaceA.id}`);
           expect(getResponseA.ok).toBe(true);
           const updatedA = await getResponseA.json();
-          expect(updatedA.serverSettings.agent.hostname).toBe("updated-server-a.com");
-          expect(updatedA.serverSettings.agent.port).toBe(6001);
+          expect(updatedA.serverSettings.agent.provider).toBe("copilot");
 
           // CRITICAL: Verify workspace B was NOT affected
           const getResponseB = await fetch(`${baseUrl}/api/workspaces/${workspaceB.id}`);
           expect(getResponseB.ok).toBe(true);
           const unchangedB = await getResponseB.json();
-          expect(unchangedB.serverSettings.agent.hostname).toBe("server-b.com");
-          expect(unchangedB.serverSettings.agent.port).toBe(5002);
+          expect(unchangedB.serverSettings.agent.provider).toBe("copilot");
 
           // Also verify via the list endpoint
           const listResponse = await fetch(`${baseUrl}/api/workspaces`);
@@ -1556,8 +1327,8 @@ describe("Workspace API Integration", () => {
           const listedA = workspaces.find((w: { id: string }) => w.id === workspaceA.id);
           const listedB = workspaces.find((w: { id: string }) => w.id === workspaceB.id);
 
-          expect(listedA.serverSettings.agent.hostname).toBe("updated-server-a.com");
-          expect(listedB.serverSettings.agent.hostname).toBe("server-b.com");
+          expect(listedA.serverSettings.agent.provider).toBe("copilot");
+          expect(listedB.serverSettings.agent.provider).toBe("copilot");
         } finally {
           // Cleanup the second test directory
           await rm(testWorkDir2, { recursive: true, force: true });
@@ -1607,6 +1378,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name,
             directory: testWorkDir,
+            executionHost: localExecutionHost,
             serverSettings: makeServerSettings(),
           }),
         });

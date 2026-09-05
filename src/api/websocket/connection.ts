@@ -2,9 +2,8 @@ import type { ServerWebSocket } from "bun";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
 import {
-  releaseWorkspaceTerminalSocket,
-  startSshServerTerminalBridge,
-  startWorkspaceTerminalBridge,
+  releaseTerminalSocket,
+  startTerminalBridge,
 } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
 import { runWithCurrentUser } from "../../core/user-context";
@@ -52,8 +51,7 @@ function clearPreviewBridgeKeepalive(ws: ServerWebSocket<WebSocketData>): void {
  */
 export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
-    sshServerSessionId,
-    workspaceTerminalSessionId,
+    terminalSessionId,
     terminalMode,
     vncMode,
     vncSessionId,
@@ -87,8 +85,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     terminalMode: terminalMode ?? false,
     vncMode: vncMode ?? false,
     previewBridgeMode: previewBridgeMode ?? false,
-    sshServerSessionId: sshServerSessionId ?? "none",
-    workspaceTerminalSessionId: workspaceTerminalSessionId ?? "none",
+    terminalSessionId: terminalSessionId ?? "none",
     vncSessionId: vncSessionId ?? "none",
     activeConnections: activeConnections.size,
   });
@@ -145,14 +142,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     return;
   }
 
-  if (terminalMode && workspaceTerminalSessionId) {
-    void startWorkspaceTerminalBridge(ws);
-    return;
-  }
-
-  // Standalone SSH server terminal sockets attach directly and do not subscribe to app events.
-  if (terminalMode && sshServerSessionId) {
-    void startSshServerTerminalBridge(ws);
+  if (terminalMode && terminalSessionId) {
+    void startTerminalBridge(ws);
     return;
   }
 
@@ -209,11 +200,11 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
-  ws.data.workspaceTerminalAttachment?.release();
-  ws.data.workspaceTerminalAttachment = undefined;
-  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
-  if (workspaceTerminalSessionId) {
-    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  ws.data.terminalAttachment?.release();
+  ws.data.terminalAttachment = undefined;
+  const terminalSessionId = ws.data.terminalSessionId;
+  if (terminalSessionId) {
+    releaseTerminalSocket(terminalSessionId, ws);
   }
 
   if (ws.data.vncSocket) {
@@ -244,7 +235,7 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
 export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
-    sshServerSessionId: ws.data.sshServerSessionId,
+    terminalSessionId: ws.data.terminalSessionId,
     vncSessionId: ws.data.vncSessionId,
     previewBridgeSessionId: ws.data.previewBridgeSessionId,
   });
@@ -254,11 +245,11 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
-  ws.data.workspaceTerminalAttachment?.release();
-  ws.data.workspaceTerminalAttachment = undefined;
-  const workspaceTerminalSessionId = ws.data.workspaceTerminalSessionId;
-  if (workspaceTerminalSessionId) {
-    releaseWorkspaceTerminalSocket(workspaceTerminalSessionId, ws);
+  ws.data.terminalAttachment?.release();
+  ws.data.terminalAttachment = undefined;
+  const terminalSessionId = ws.data.terminalSessionId;
+  if (terminalSessionId) {
+    releaseTerminalSocket(terminalSessionId, ws);
   }
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();

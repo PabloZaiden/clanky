@@ -186,6 +186,11 @@ function createFrameworkAuthTables(database: Database): void {
 function createTables(database: Database): void {
   // Wrap all schema creation in a transaction
   const createAllTables = database.transaction(() => {
+    const hasCanonicalExecutionHosts = database.query(`
+      SELECT 1
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'execution_hosts'
+    `).get() !== null;
     createFrameworkAuthTables(database);
 
     // Workspaces table - stores workspace identity and execution context
@@ -425,52 +430,53 @@ function createTables(database: Database): void {
       )
     `);
 
-    // SSH server sessions table - sessions on standalone SSH servers
-    database.run(`
-      CREATE TABLE IF NOT EXISTS ssh_server_sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        ssh_server_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        remote_session_name TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'ready',
-        last_connected_at TEXT,
-        error_message TEXT,
-        connection_mode TEXT NOT NULL DEFAULT 'dtach',
-        use_tmux INTEGER NOT NULL DEFAULT 0,
-        runtime_connection_mode TEXT,
-        notice_message TEXT,
-        FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
-      )
-    `);
+    if (!hasCanonicalExecutionHosts) {
+      database.run(`
+        CREATE TABLE IF NOT EXISTS ssh_server_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          ssh_server_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          remote_session_name TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ready',
+          last_connected_at TEXT,
+          error_message TEXT,
+          connection_mode TEXT NOT NULL DEFAULT 'dtach',
+          use_tmux INTEGER NOT NULL DEFAULT 0,
+          runtime_connection_mode TEXT,
+          notice_message TEXT,
+          FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
+        )
+      `);
 
-    database.run(`
-      CREATE TABLE IF NOT EXISTS vnc_sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        ssh_server_id TEXT NOT NULL,
-        remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
-        remote_port INTEGER NOT NULL,
-        local_port INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        pid INTEGER,
-        connected_at TEXT,
-        error_message TEXT,
-        FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
-      )
-    `);
-    database.run(`
-      DROP INDEX IF EXISTS idx_vnc_sessions_active_server_port
-    `);
-    database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_server_port
-      ON vnc_sessions(user_id, ssh_server_id, remote_port)
-      WHERE status IN ('starting', 'active', 'stopping')
-    `);
+      database.run(`
+        CREATE TABLE IF NOT EXISTS vnc_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          ssh_server_id TEXT NOT NULL,
+          remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
+          remote_port INTEGER NOT NULL,
+          local_port INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL,
+          pid INTEGER,
+          connected_at TEXT,
+          error_message TEXT,
+          FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
+        )
+      `);
+      database.run(`
+        DROP INDEX IF EXISTS idx_vnc_sessions_active_server_port
+      `);
+      database.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_server_port
+        ON vnc_sessions(user_id, ssh_server_id, remote_port)
+        WHERE status IN ('starting', 'active', 'stopping')
+      `);
+    }
     database.run(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_local_port
       ON vnc_sessions(local_port)
@@ -568,12 +574,12 @@ function createTables(database: Database): void {
       CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(user_id, created_at DESC)
     `);
 
-    // Create composite index for workspace lookups by directory and server_fingerprint.
-    // The leftmost prefix also covers single-column directory lookups.
-    database.run(`
-      CREATE INDEX IF NOT EXISTS idx_workspaces_directory_server_fingerprint
-      ON workspaces(user_id, directory, server_fingerprint)
-    `);
+    if (!hasCanonicalExecutionHosts) {
+      database.run(`
+        CREATE INDEX IF NOT EXISTS idx_workspaces_directory_server_fingerprint
+        ON workspaces(user_id, directory, server_fingerprint)
+      `);
+    }
 
     // Drop the redundant single-column index now covered by the composite index.
     database.run(`
@@ -607,10 +613,12 @@ function createTables(database: Database): void {
       CREATE INDEX IF NOT EXISTS idx_chats_workspace_created_at
       ON chats(user_id, workspace_id, created_at DESC)
     `);
-    database.run(`
-      CREATE INDEX IF NOT EXISTS idx_chats_ssh_server_created_at
-      ON chats(user_id, ssh_server_id, created_at DESC)
-    `);
+    if (!hasCanonicalExecutionHosts) {
+      database.run(`
+        CREATE INDEX IF NOT EXISTS idx_chats_ssh_server_created_at
+        ON chats(user_id, ssh_server_id, created_at DESC)
+      `);
+    }
     database.run(`
       DROP INDEX IF EXISTS idx_chats_task_id_unique
     `);
@@ -651,15 +659,16 @@ function createTables(database: Database): void {
       ON ssh_servers(user_id, name COLLATE NOCASE, created_at ASC)
     `);
 
-    // SSH server sessions indexes
-    database.run(`
-      CREATE INDEX IF NOT EXISTS idx_ssh_server_sessions_server_id
-      ON ssh_server_sessions(user_id, ssh_server_id, created_at DESC)
-    `);
-    database.run(`
-      CREATE INDEX IF NOT EXISTS idx_ssh_server_sessions_created_at
-      ON ssh_server_sessions(user_id, created_at DESC)
-    `);
+    if (!hasCanonicalExecutionHosts) {
+      database.run(`
+        CREATE INDEX IF NOT EXISTS idx_ssh_server_sessions_server_id
+        ON ssh_server_sessions(user_id, ssh_server_id, created_at DESC)
+      `);
+      database.run(`
+        CREATE INDEX IF NOT EXISTS idx_ssh_server_sessions_created_at
+        ON ssh_server_sessions(user_id, created_at DESC)
+      `);
+    }
 
     // Preview session indexes
     database.run(`

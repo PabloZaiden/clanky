@@ -5,7 +5,7 @@
  */
 
 import { useMemo, useState } from "react";
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import { StatusBadge } from "../common";
 import { CompactBar } from "./compact-bar";
 
@@ -13,16 +13,16 @@ function getTerminalConnectionModeLabel(mode: "dtach" | "direct" | string): stri
   return mode === "direct" ? "Direct" : "Persistent";
 }
 
-function getEffectiveConnectionMode(session: WorkspaceTerminalSession): string {
+function getEffectiveConnectionMode(session: TerminalSession): string {
   return session.state.runtimeConnectionMode ?? session.config.connectionMode;
 }
 
-function isPersistentTerminalSession(session: WorkspaceTerminalSession): boolean {
+function isPersistentTerminalSession(session: TerminalSession): boolean {
   return getEffectiveConnectionMode(session) !== "direct";
 }
 
 export interface TerminalInfoSectionProps {
-  session: WorkspaceTerminalSession;
+  session: TerminalSession;
 }
 
 export function TerminalInfoSection({ session }: TerminalInfoSectionProps) {
@@ -91,12 +91,12 @@ export function TerminalInfoSection({ session }: TerminalInfoSectionProps) {
           <dt className="text-gray-500 dark:text-gray-400">Last connected</dt>
           <dd className="text-gray-900 dark:text-gray-100">{session.state.lastConnectedAt ?? "Never"}</dd>
         </div>
-        {session.config.targetBinding && (
-          <div className="min-w-0">
-            <dt className="text-gray-500 dark:text-gray-400">Transport</dt>
-            <dd className="text-gray-900 dark:text-gray-100">{session.config.targetBinding.transport}</dd>
-          </div>
-        )}
+        <div className="min-w-0">
+          <dt className="text-gray-500 dark:text-gray-400">Transport</dt>
+          <dd className="text-gray-900 dark:text-gray-100">
+            {session.config.executionHostBinding.host.kind}
+          </dd>
+        </div>
         {session.state.notice && (
           <div className="min-w-0 sm:col-span-2">
             <dt className="text-gray-500 dark:text-gray-400">Notice</dt>

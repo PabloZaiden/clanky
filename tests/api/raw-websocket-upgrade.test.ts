@@ -43,14 +43,7 @@ describe("raw WebSocket upgrade flow", () => {
     await expect(failure.text()).resolves.toBe("WebSocket upgrade failed");
   });
 
-  test("keeps route validation and transport-specific payloads at the route boundary", async () => {
-    const sshResponse = await getRouteHandler("/api/ssh-terminal")(
-      new Request("http://localhost/api/ssh-terminal"),
-      createRouteContext(),
-    );
-    expect(sshResponse?.status).toBe(400);
-    expect(await sshResponse?.text()).toBe("sshServerSessionId is required");
-
+  test("keeps route validation and transport payloads at the route boundary", async () => {
     const terminalResponse = await getRouteHandler("/api/terminal")(
       new Request("http://localhost/api/terminal"),
       createRouteContext(),

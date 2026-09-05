@@ -52,14 +52,8 @@ async function deleteProvisionedServerDirectory(workspace: Workspace, credential
   const sourceDirectory = workspace.sourceDirectory?.trim();
   const basePath = workspace.basePath?.trim();
   await executionHostService.listHosts();
-  const binding = workspace.executionHostBinding
-    ?? (workspace.sshServerId
-      ? executionHostService.getBinding({
-          kind: "ssh",
-          serverId: workspace.sshServerId,
-        })
-      : null);
-  if (!sourceDirectory || !basePath || !binding || !isSafeProvisionedDirectory(sourceDirectory, basePath)) {
+  const binding = workspace.executionHostBinding;
+  if (!sourceDirectory || !basePath || !isSafeProvisionedDirectory(sourceDirectory, basePath)) {
     throw new DomainError(
       "workspace_delete_metadata_invalid",
       "Workspace is missing safe auto-provisioned directory metadata",

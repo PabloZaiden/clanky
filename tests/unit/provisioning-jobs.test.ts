@@ -11,7 +11,7 @@ import {
 } from "../../src/persistence/provisioning-jobs";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import { testOwnerUser } from "../setup";
+import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
 
 describe("provisioning job recovery", () => {
   let dataDir: string;
@@ -33,11 +33,15 @@ describe("provisioning job recovery", () => {
 
   test("marks persisted in-flight jobs interrupted after a server restart", async () => {
     const createdAt = new Date().toISOString();
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      () => getTestLocalExecutionHostBinding(),
+    );
     const job: ProvisioningJob = {
       config: {
         id: crypto.randomUUID(),
         name: "Interrupted workspace",
-        sshServerId: "ssh-server-id",
+        executionHostBinding,
         repoUrl: "https://github.com/octocat/interrupted.git",
         basePath: "/workspaces",
         provider: "copilot",

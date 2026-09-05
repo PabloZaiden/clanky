@@ -104,6 +104,9 @@ export const crudRoutes = defineRoutes({
               workspace_execution_target_not_trusted: {
                 status: 400,
               },
+              execution_host_unavailable: {
+                status: 400,
+              },
               workspace_execution_target_in_use: {
                 status: 409,
               },
@@ -190,6 +193,9 @@ export const crudRoutes = defineRoutes({
           return domainErrorResponse(error, {
             mappings: {
               workspace_execution_target_not_trusted: {
+                status: 400,
+              },
+              execution_host_unavailable: {
                 status: 400,
               },
             },

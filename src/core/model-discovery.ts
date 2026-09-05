@@ -10,7 +10,7 @@ import { DomainError } from "./domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";
-import type { ServerSettings } from "@/shared/settings";
+import type { RuntimeServerSettings, ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 
@@ -100,12 +100,15 @@ async function getAgentBackendModels(
   settings: ServerSettings,
   workspace?: Workspace,
 ): Promise<ModelInfo[]> {
+  const runtimeSettings: RuntimeServerSettings = workspace
+    ? await backendManager.getWorkspaceSettings(workspace.id)
+    : { agent: { ...settings.agent, transport: "stdio" } };
   const testBackend = backendManager.getTestBackend();
   if (testBackend) {
     if (testBackend.isConnected()) {
       await testBackend.disconnect();
     }
-    await testBackend.connect(buildConnectionConfig(settings, directory));
+    await testBackend.connect(buildConnectionConfig(runtimeSettings, directory));
     return await testBackend.getModels(directory);
   }
 
@@ -116,9 +119,9 @@ async function getAgentBackendModels(
 
   const tempBackend = workspace
     ? await backendManager.createBackendForWorkspace(workspace, settings)
-    : backendManager.createStandaloneBackend(settings);
+    : backendManager.createStandaloneBackend(runtimeSettings);
   try {
-    await tempBackend.connect(buildConnectionConfig(settings, directory));
+    await tempBackend.connect(buildConnectionConfig(runtimeSettings, directory));
     return await tempBackend.getModels(directory);
   } finally {
     try {
@@ -136,12 +139,15 @@ async function getAgentBackendModelVariants(
   modelID: string,
   workspace?: Workspace,
 ): Promise<string[]> {
+  const runtimeSettings: RuntimeServerSettings = workspace
+    ? await backendManager.getWorkspaceSettings(workspace.id)
+    : { agent: { ...settings.agent, transport: "stdio" } };
   const testBackend = backendManager.getTestBackend();
   if (testBackend) {
     if (testBackend.isConnected()) {
       await testBackend.disconnect();
     }
-    await testBackend.connect(buildConnectionConfig(settings, directory));
+    await testBackend.connect(buildConnectionConfig(runtimeSettings, directory));
     if (testBackend.getModelVariants) {
       return await testBackend.getModelVariants(directory, modelID);
     }
@@ -160,9 +166,9 @@ async function getAgentBackendModelVariants(
 
   const tempBackend = workspace
     ? await backendManager.createBackendForWorkspace(workspace, settings)
-    : backendManager.createStandaloneBackend(settings);
+    : backendManager.createStandaloneBackend(runtimeSettings);
   try {
-    await tempBackend.connect(buildConnectionConfig(settings, directory));
+    await tempBackend.connect(buildConnectionConfig(runtimeSettings, directory));
     if (tempBackend.getModelVariants) {
       return await tempBackend.getModelVariants(directory, modelID);
     }

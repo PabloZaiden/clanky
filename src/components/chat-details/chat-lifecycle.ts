@@ -22,6 +22,7 @@ import {
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
 import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isAbortError } from "../../lib/request-lifecycle";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
@@ -39,10 +40,6 @@ const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "
 
 export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 export function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
@@ -550,8 +547,10 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
 
   const handleReconnect = useCallback(async (): Promise<void> => {
     try {
-      const credentialToken = chatRef.current?.config.source?.kind === "ssh_server"
-        ? await getStoredSshCredentialToken(chatRef.current.config.source.sshServerId)
+      const source = chatRef.current?.config.source;
+      const credentialToken = source?.kind === "execution_host"
+        && source.executionHost.host.kind === "ssh"
+        ? await getStoredSshCredentialToken(source.executionHost.host.serverId)
         : null;
       const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
@@ -657,7 +656,8 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loading,
     error,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
-    needsSshCredentials: chat?.config.source?.kind === "ssh_server"
+    needsSshCredentials: chat?.config.source?.kind === "execution_host"
+      && chat.config.source.executionHost.host.kind === "ssh"
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
     loadToolCallDetails,

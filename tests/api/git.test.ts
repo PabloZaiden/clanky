@@ -17,6 +17,8 @@ import type { CommandOptions, CommandResult } from "../../src/core/command-execu
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { getDefaultServerSettings } from "@/shared/settings";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
+import { getTestLocalExecutionHostBinding } from "../setup";
+import type { ExecutionHostBinding } from "@/shared";
 
 describe("Git API Integration", () => {
   let testDataDir: string;
@@ -24,6 +26,7 @@ describe("Git API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let githubIssuesCommandResult: CommandResult | null = null;
+  let executionHostBinding: ExecutionHostBinding;
 
   class GitHubIssuesTestExecutor extends TestCommandExecutor {
     override async exec(
@@ -46,6 +49,7 @@ describe("Git API Integration", () => {
     // Set env var for persistence
     process.env["CLANKY_DATA_DIR"] = testDataDir;
     await initializeDatabase();
+    executionHostBinding = await getTestLocalExecutionHostBinding();
 
     // Initialize git repo with a couple branches
     await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
@@ -59,6 +63,8 @@ describe("Git API Integration", () => {
       name: "Git Test",
       directory: testWorkDir,
       workspaceType: "git",
+      executionTargetRevision: 1,
+      executionHostBinding,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       serverSettings: getDefaultServerSettings(),
@@ -115,6 +121,8 @@ describe("Git API Integration", () => {
         name: "Directory Git API",
         directory: testWorkDir,
         workspaceType: "directory",
+        executionTargetRevision: 1,
+        executionHostBinding,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         serverSettings: getDefaultServerSettings(),
@@ -308,14 +316,13 @@ describe("Git API Integration", () => {
         name: "Git Test Persisted",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         serverSettings: {
           agent: {
             provider: "opencode",
-            transport: "ssh",
-            hostname: "git-host.test",
-            port: 22,
           },
         },
         repoUrl: "https://github.com/persisted/repo.git",
@@ -338,14 +345,13 @@ describe("Git API Integration", () => {
         name: "Git Test Non-GitHub Persisted",
         directory: testWorkDir,
         workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         serverSettings: {
           agent: {
             provider: "opencode",
-            transport: "ssh",
-            hostname: "git-host.test",
-            port: 22,
           },
         },
         repoUrl: "https://gitlab.com/persisted/repo.git",

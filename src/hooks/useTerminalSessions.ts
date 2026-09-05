@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import type { CreateTerminalSessionRequest, UpdateTerminalSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
@@ -11,14 +11,14 @@ import { apiRequest } from "../lib/api-client";
 import { useResourceRefresh, type ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseTerminalSessionsResult {
-  sessions: WorkspaceTerminalSession[];
+  sessions: TerminalSession[];
   loading: boolean;
   error: string | null;
   refresh: (options?: ResourceRefreshOptions) => Promise<void>;
-  createSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
-  updateSession: (id: string, request: UpdateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
+  createSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
+  updateSession: (id: string, request: UpdateTerminalSessionRequest) => Promise<TerminalSession>;
   deleteSession: (id: string) => Promise<boolean>;
-  getSession: (id: string) => WorkspaceTerminalSession | undefined;
+  getSession: (id: string) => TerminalSession | undefined;
 }
 
 export interface UseTerminalSessionsOptions {
@@ -27,11 +27,11 @@ export interface UseTerminalSessionsOptions {
 
 export function useTerminalSessions({ realtime = true }: UseTerminalSessionsOptions = {}): UseTerminalSessionsResult {
   const log = createLogger("useTerminalSessions");
-  const [sessions, setSessions] = useState<WorkspaceTerminalSession[]>([]);
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSessions = useCallback(async (signal: AbortSignal): Promise<WorkspaceTerminalSession[]> => {
-    return await apiRequest<WorkspaceTerminalSession[]>("/api/terminal-sessions", {
+  const loadSessions = useCallback(async (signal: AbortSignal): Promise<TerminalSession[]> => {
+    return await apiRequest<TerminalSession[]>("/api/terminal-sessions", {
       signal,
       action: "Fetch terminal sessions",
       fallbackMessage: "Failed to fetch terminal sessions",
@@ -56,10 +56,10 @@ export function useTerminalSessions({ realtime = true }: UseTerminalSessionsOpti
 
   const refreshInBackground = useCallback(() => refresh({ showLoading: false }), [refresh]);
 
-  const createSession = useCallback(async (request: CreateTerminalSessionRequest): Promise<WorkspaceTerminalSession> => {
+  const createSession = useCallback(async (request: CreateTerminalSessionRequest): Promise<TerminalSession> => {
     try {
       setError(null);
-      const session = await apiRequest<WorkspaceTerminalSession>("/api/terminal-sessions", {
+      const session = await apiRequest<TerminalSession>("/api/terminal-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -76,10 +76,10 @@ export function useTerminalSessions({ realtime = true }: UseTerminalSessionsOpti
     }
   }, []);
 
-  const updateSession = useCallback(async (id: string, request: UpdateTerminalSessionRequest): Promise<WorkspaceTerminalSession> => {
+  const updateSession = useCallback(async (id: string, request: UpdateTerminalSessionRequest): Promise<TerminalSession> => {
     try {
       setError(null);
-      const session = await apiRequest<WorkspaceTerminalSession>(`/api/terminal-sessions/${id}`, {
+      const session = await apiRequest<TerminalSession>(`/api/terminal-sessions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),

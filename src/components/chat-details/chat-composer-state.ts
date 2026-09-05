@@ -80,7 +80,6 @@ export function useChatComposer({
   );
   const { models, modelsLoading } = useAvailableModels({
     workspaceId: isEmbedded
-      || chat.config.source?.kind === "ssh_server"
       || chat.config.source?.kind === "execution_host"
       ? undefined
       : chat.config.workspaceId,

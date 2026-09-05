@@ -19,7 +19,7 @@ import type { AgentRun } from "@/shared/agent";
 import { agentEventEmitter } from "../../src/core/event-emitter";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, NeverCompletingMockBackend, defaultTestModel } from "../mocks/mock-backend";
-import { seedTestOwnerUser } from "../setup";
+import { fetchTestLocalExecutionHost, seedTestOwnerUser } from "../setup";
 import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 
@@ -52,13 +52,15 @@ describe("Agents API Integration", () => {
   let generationTurn = 0;
 
   async function getOrCreateWorkspace(directory: string): Promise<string> {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Agent Test Workspace",
         directory,
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost,
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -289,7 +291,8 @@ describe("Agents API Integration", () => {
         name: "Directory Agent Workspace",
         directory: testWorkDir,
         workspaceType: "directory",
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost: await fetchTestLocalExecutionHost(baseUrl),
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     expect(workspaceResponse.status).toBe(201);

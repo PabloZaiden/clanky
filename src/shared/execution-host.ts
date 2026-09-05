@@ -137,6 +137,19 @@ export function getExecutionHostSourceId(ref: ExecutionHostRef): string {
   return ref.kind === "ssh" ? ref.serverId : ref.nodeId;
 }
 
+export function executionHostRefFromParts(
+  kind: string,
+  sourceId: string,
+): ExecutionHostRef | null {
+  if (kind === "local" || kind === "mesh") {
+    return { kind, nodeId: sourceId };
+  }
+  if (kind === "ssh") {
+    return { kind, serverId: sourceId };
+  }
+  return null;
+}
+
 export function serializeExecutionHostRef(ref: ExecutionHostRef): string {
   return `${ref.kind}:${encodeURIComponent(getExecutionHostSourceId(ref))}`;
 }
@@ -158,13 +171,11 @@ export function parseExecutionHostRef(value: string): ExecutionHostRef {
     throw new Error("Invalid execution host reference");
   }
 
-  if (kind === "local" || kind === "mesh") {
-    return { kind, nodeId: sourceId };
+  const ref = executionHostRefFromParts(kind, sourceId);
+  if (!ref) {
+    throw new Error("Invalid execution host reference");
   }
-  if (kind === "ssh") {
-    return { kind, serverId: sourceId };
-  }
-  throw new Error("Invalid execution host reference");
+  return ref;
 }
 
 export function executionHostRefsEqual(
@@ -172,6 +183,15 @@ export function executionHostRefsEqual(
   right: ExecutionHostRef,
 ): boolean {
   return serializeExecutionHostRef(left) === serializeExecutionHostRef(right);
+}
+
+export function executionHostBindingsEqual(
+  left: ExecutionHostBinding,
+  right: ExecutionHostBinding,
+): boolean {
+  return executionHostRefsEqual(left.host, right.host)
+    && left.targetKey === right.targetKey
+    && left.revision === right.revision;
 }
 
 export function supportsExecutionHostCapability(

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { SshServer, SshServerPrerequisiteReport } from "@/shared";
 import type { UpdateSshServerRequest } from "@/contracts";
-import { checkSshServerPrerequisitesApi } from "../../hooks/sshServerActions";
+import { checkExecutionHostPrerequisitesApi } from "../../hooks/executionHostActions";
 import { useToast } from "@pablozaiden/webapp/web";
 import { DeleteSshServerSection } from "./delete-ssh-server-section";
 import { SshServerPrerequisitesSection } from "./ssh-server-prerequisites-section";
@@ -77,8 +77,8 @@ export function SshServerSettingsForm({
     setCheckingPrerequisites(true);
     setPrerequisiteError(null);
     try {
-      const report = await checkSshServerPrerequisitesApi({
-        serverId: server.config.id,
+      const report = await checkExecutionHostPrerequisitesApi({
+        executionHost: { kind: "ssh", serverId: server.config.id },
         password: trimSshServerFormValues(values).password,
       });
       setPrerequisiteReport(report);

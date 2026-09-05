@@ -70,9 +70,9 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const sshServerId = validation.data.executionHost?.kind === "ssh"
+        const sshServerId = validation.data.executionHost.kind === "ssh"
           ? validation.data.executionHost.serverId
-          : validation.data.sshServerId;
+          : null;
         const server = sshServerId
           ? await sshServerManager.getServer(sshServerId)
           : null;
@@ -87,9 +87,7 @@ export const provisioningRoutes = defineRoutes({
 
         const snapshot = await provisioningManager.startJob({
           name: validation.data.name,
-          sshServerId: validation.data.sshServerId ?? undefined,
-          executionNodeId: validation.data.executionNodeId ?? undefined,
-          executionHost: validation.data.executionHost ?? undefined,
+          executionHost: validation.data.executionHost,
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,

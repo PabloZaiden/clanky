@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkspaceExecutionTarget } from "@/shared/workspace";
+import type { ExecutionHostDescriptor } from "@/shared";
 import { apiRequest } from "../../lib/api-client";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { isAbortError } from "../../lib/request-lifecycle";
@@ -7,11 +7,11 @@ import { isAbortError } from "../../lib/request-lifecycle";
 const log = createLogger("useWorkspaceExecutionTargets");
 
 export function useWorkspaceExecutionTargets(): {
-  targets: WorkspaceExecutionTarget[];
+  targets: ExecutionHostDescriptor[];
   loading: boolean;
   refresh: () => Promise<void>;
 } {
-  const [targets, setTargets] = useState<WorkspaceExecutionTarget[]>([]);
+  const [targets, setTargets] = useState<ExecutionHostDescriptor[]>([]);
   const [loading, setLoading] = useState(true);
   const activeControllerRef = useRef<AbortController | null>(null);
   const latestRequestIdRef = useRef(0);
@@ -34,7 +34,7 @@ export function useWorkspaceExecutionTargets(): {
 
     setLoading(true);
     try {
-      const nextTargets = await apiRequest<WorkspaceExecutionTarget[]>("/api/workspaces/execution-targets", {
+      const nextTargets = await apiRequest<ExecutionHostDescriptor[]>("/api/workspaces/execution-targets", {
         action: "Load workspace execution targets",
         fallbackMessage: "Failed to load workspace execution targets",
         signal: controller.signal,

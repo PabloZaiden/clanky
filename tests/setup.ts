@@ -22,12 +22,44 @@ import { runWithCurrentUser } from "../src/core/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { initializeGitRepository } from "./helpers/git-fixtures";
 import { pollUntil } from "./helpers/polling";
+import { executionHostService } from "../src/core/execution-host-service";
+import type { ExecutionHostBinding, ExecutionHostRef } from "@/shared";
 
 /**
  * Default test workspace ID that can be used in tests.
  * This workspace is automatically created by setupTestContext().
  */
 export const testWorkspaceId = "test-workspace-id";
+
+export async function getTestLocalExecutionHostBinding(): Promise<ExecutionHostBinding> {
+  const localHost = (await executionHostService.listHosts())
+    .find((host) => host.ref.kind === "local");
+  if (!localHost) {
+    throw new Error("Local execution host is unavailable in the test context");
+  }
+
+  return {
+    host: localHost.ref,
+    targetKey: localHost.targetKey,
+    revision: localHost.revision,
+  };
+}
+
+export async function fetchTestLocalExecutionHost(baseUrl: string): Promise<Extract<
+  ExecutionHostRef,
+  { kind: "local" }
+>> {
+  const response = await fetch(`${baseUrl}/api/execution-hosts`);
+  if (!response.ok) {
+    throw new Error(`Failed to list execution hosts: HTTP ${response.status}`);
+  }
+  const hosts = await response.json() as Array<{ ref: ExecutionHostRef }>;
+  const localHost = hosts.find((host) => host.ref.kind === "local");
+  if (!localHost || localHost.ref.kind !== "local") {
+    throw new Error("Local execution host is unavailable");
+  }
+  return localHost.ref;
+}
 
 /**
  * Default test model configuration for task creation.
@@ -75,6 +107,7 @@ export interface TestContext {
   dataDir: string;
   /** Temporary working directory (simulates a project) */
   workDir: string;
+  executionHostBinding: ExecutionHostBinding;
   /** Event emitter for task events */
   emitter: SimpleEventEmitter<TaskEvent>;
   /** Collected events for assertions */
@@ -131,15 +164,21 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   seedTestOwnerUser();
 
   // Create the default test workspace (required for tasks with workspaceId)
-  await runWithCurrentUser(testOwnerUser, () => createWorkspace({
-    id: testWorkspaceId,
-    name: "Test Workspace",
-    directory: workDir,
-    workspaceType: "git",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    serverSettings: getDefaultServerSettings(),
-  }));
+  const executionHostBinding = await runWithCurrentUser(testOwnerUser, async () => {
+    const binding = await getTestLocalExecutionHostBinding();
+    await createWorkspace({
+      id: testWorkspaceId,
+      name: "Test Workspace",
+      directory: workDir,
+      workspaceType: "git",
+      executionTargetRevision: 1,
+      executionHostBinding: binding,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      serverSettings: getDefaultServerSettings(),
+    });
+    return binding;
+  });
 
   // Create initial files
   for (const [path, content] of Object.entries(initialFiles)) {
@@ -191,6 +230,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   return {
     dataDir,
     workDir,
+    executionHostBinding,
     emitter,
     events,
     git,

@@ -1,4 +1,3 @@
-export { WorkspaceGearIcon } from "./workspace-gear-icon";
 export { WorkspaceHeader } from "./workspace-header";
 export { StatusSections } from "./status-sections";
 export type { StatusSectionsProps } from "./status-sections";

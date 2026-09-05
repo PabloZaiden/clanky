@@ -6,21 +6,30 @@ import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persis
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { previewSessionManager } from "../../src/core/preview-session-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
-import type { PreviewBridgeServerMessage, Workspace } from "@/shared";
-import { seedTestOwnerUser, testOwnerUser } from "../setup";
+import type { ExecutionHostBinding, PreviewBridgeServerMessage, Workspace } from "@/shared";
+import {
+  getTestLocalExecutionHostBinding,
+  seedTestOwnerUser,
+  testOwnerUser,
+} from "../setup";
 import { pollUntil } from "../helpers/polling";
 
-function buildWorkspace(id: string, name: string): Workspace {
+function buildWorkspace(
+  id: string,
+  name: string,
+  executionHostBinding: ExecutionHostBinding,
+): Workspace {
   const now = new Date().toISOString();
   return {
     id,
     name,
     directory: `/tmp/${id}`,
     workspaceType: "git",
+    executionTargetRevision: 1,
+    executionHostBinding,
     serverSettings: {
       agent: {
         provider: "opencode",
-        transport: "stdio",
       },
     },
     createdAt: now,
@@ -55,12 +64,17 @@ async function waitForBridgeMessage(
 
 describe("workspace previews", () => {
   let dataDir: string;
+  let executionHostBinding: ExecutionHostBinding;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-previews-data-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
     await initializeDatabase();
     seedTestOwnerUser();
+    executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      getTestLocalExecutionHostBinding,
+    );
   });
 
   afterAll(async () => {
@@ -76,7 +90,7 @@ describe("workspace previews", () => {
 
   test("registers, lists, and closes a CLI-owned preview", async () => {
     await runWithCurrentUser(testOwnerUser, async () => {
-      await createWorkspace(buildWorkspace("workspace-1", "App"));
+      await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
       const { preview } = await previewSessionManager.registerCliPreview({
         workspace: "workspace-1",
         remoteHost: "127.0.0.1",
@@ -105,7 +119,7 @@ describe("workspace previews", () => {
 
   test("does not expose closed previews from workspace or active lists", async () => {
     await runWithCurrentUser(testOwnerUser, async () => {
-      await createWorkspace(buildWorkspace("workspace-1", "App"));
+      await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
       const { preview } = await previewSessionManager.registerCliPreview({
         workspace: "workspace-1",
         remoteHost: "127.0.0.1",
@@ -148,7 +162,7 @@ describe("workspace previews", () => {
 
     try {
       await runWithCurrentUser(testOwnerUser, async () => {
-        await createWorkspace(buildWorkspace("workspace-1", "App"));
+        await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
         const sentMessages: PreviewBridgeServerMessage[] = [];
         const bridgeSocket = {
           data: { user: testOwnerUser },
@@ -240,7 +254,7 @@ describe("workspace previews", () => {
 
     try {
       await runWithCurrentUser(testOwnerUser, async () => {
-        await createWorkspace(buildWorkspace("workspace-1", "App"));
+        await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
         const sentMessages: PreviewBridgeServerMessage[] = [];
         const bridgeSocket = {
           data: { user: testOwnerUser },
@@ -331,7 +345,7 @@ describe("workspace previews", () => {
 
     try {
       await runWithCurrentUser(testOwnerUser, async () => {
-        await createWorkspace(buildWorkspace("workspace-1", "App"));
+        await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
         const sentMessages: PreviewBridgeServerMessage[] = [];
         const bridgeSocket = {
           data: { user: testOwnerUser },
@@ -423,7 +437,7 @@ describe("workspace previews", () => {
 
     try {
       await runWithCurrentUser(testOwnerUser, async () => {
-        await createWorkspace(buildWorkspace("workspace-1", "App"));
+        await createWorkspace(buildWorkspace("workspace-1", "App", executionHostBinding));
 
         for (const [index, localUrl] of ["", "not a valid URL"].entries()) {
           const sentMessages: PreviewBridgeServerMessage[] = [];

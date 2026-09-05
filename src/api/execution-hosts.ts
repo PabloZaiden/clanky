@@ -14,7 +14,11 @@ import {
   ResolveExecutionHostWorkingDirectoryRequestSchema,
   UpdateExecutionHostConfigurationSchema,
 } from "@/contracts/schemas";
-import type { ExecutionHostRef } from "@/shared";
+import {
+  executionHostRefFromParts,
+  executionHostRefsEqual,
+  type ExecutionHostRef,
+} from "@/shared";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
@@ -25,16 +29,6 @@ import { getModelsForExecutionHost } from "../core/model-discovery";
 import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
 const log = createLogger("api:execution-hosts");
-
-function parseExecutionHostRef(kind: string, id: string): ExecutionHostRef | null {
-  if (kind === "local" || kind === "mesh") {
-    return { kind, nodeId: id };
-  }
-  if (kind === "ssh") {
-    return { kind, serverId: id };
-  }
-  return null;
-}
 
 function resolveSshPassword(
   ref: ExecutionHostRef,
@@ -52,7 +46,7 @@ async function resolveWorkingDirectoryResponse(
   userId: string,
   credentialToken: string | null,
 ): Promise<Response> {
-  const ref = parseExecutionHostRef(kind, id);
+  const ref = executionHostRefFromParts(kind, id);
   if (!ref) {
     return errorResponse(
       "execution_host_kind_invalid",
@@ -148,7 +142,7 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
@@ -215,7 +209,7 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
@@ -288,13 +282,13 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
       }
       try {
         const descriptor = (await executionHostService.listHosts())
-          .find((host) => JSON.stringify(host.ref) === JSON.stringify(ref));
+          .find((host) => executionHostRefsEqual(host.ref, ref));
         if (!descriptor) {
           return errorResponse("execution_host_unavailable", "Execution host not found or unavailable.", 404);
         }
@@ -336,7 +330,7 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
       }
@@ -381,7 +375,7 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
@@ -446,7 +440,7 @@ export const executionHostRoutes = defineRoutes({
       if (!validation.success) {
         return validation.response;
       }
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",

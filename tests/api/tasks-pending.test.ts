@@ -17,6 +17,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { NeverCompletingMockBackend } from "../mocks/mock-backend";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
+import { fetchTestLocalExecutionHost } from "../setup";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" };
@@ -29,13 +30,15 @@ describe("POST /api/tasks/:id/pending", () => {
 
   // Helper to get or create a workspace for a directory
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost,
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();

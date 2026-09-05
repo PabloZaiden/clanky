@@ -5,7 +5,6 @@ import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from 
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
-import { DEFAULT_EXECUTION_AGENT_PROVIDER } from "@/shared/settings";
 import { useState } from "react";
 import { useShellHeaderActions } from "./shell-header-actions";
 
@@ -29,7 +28,8 @@ export function RebuildWorkspaceView({
   const actionLabelLower = actionLabel.toLowerCase();
   const formId = `${mode}-workspace-form`;
 
-  const sshServerId = workspace.sshServerId ?? "";
+  const executionHost = workspace.executionHostBinding.host;
+  const sshServerId = executionHost.kind === "ssh" ? executionHost.serverId : "";
   const selectedServer = servers.find((s) => s.config.id === sshServerId);
   const selectedServerHasStoredCredential = sshServerId
     ? getStoredSshServerCredential(sshServerId) !== null
@@ -40,12 +40,12 @@ export function RebuildWorkspaceView({
 
     const snapshot = await provisioning.startJob({
       name: workspace.name,
-      sshServerId,
+      executionHost,
       repoUrl: workspace.repoUrl ?? "",
       basePath: workspace.basePath ?? "",
       devcontainerSubpath: workspace.devcontainerSubpath ?? null,
       devboxTemplate: null,
-      provider: workspace.provider ?? DEFAULT_EXECUTION_AGENT_PROVIDER,
+      provider: workspace.serverSettings.agent.provider,
       password,
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
@@ -78,7 +78,7 @@ export function RebuildWorkspaceView({
         form={formId}
         size="sm"
         loading={provisioning.starting}
-        disabled={!sshServerId || (!!sshServerId && !selectedServer)}
+        disabled={executionHost.kind === "ssh" && !selectedServer}
       >
         {`${actionLabel} Devbox`}
       </Button>
@@ -104,12 +104,14 @@ export function RebuildWorkspaceView({
 
             <div>
               <SelectField
-                label="Saved SSH server"
+                label="Execution host"
                 id={`${mode}-ssh-server`}
                 value={sshServerId}
                 disabled
               >
-                <option value="">No SSH server</option>
+                {executionHost.kind !== "ssh" && (
+                  <option value="">{executionHost.kind}</option>
+                )}
                 {servers.map((server) => (
                   <option key={server.config.id} value={server.config.id}>
                     {server.config.name} ({server.config.username}@{server.config.address})
@@ -147,7 +149,7 @@ export function RebuildWorkspaceView({
             <TextField
               id={`${mode}-provider`}
               label="Provider"
-              value={workspace.provider ?? DEFAULT_EXECUTION_AGENT_PROVIDER}
+              value={workspace.serverSettings.agent.provider}
               disabled
             />
 

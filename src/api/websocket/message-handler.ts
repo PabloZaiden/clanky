@@ -3,8 +3,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 import type {
-  startSshServerTerminalBridge,
-  startWorkspaceTerminalBridge,
+  startTerminalBridge,
   sendTerminalAuthError,
 } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
@@ -16,8 +15,7 @@ import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 const log = createLogger("api:websocket");
 
 type TerminalHelpers = {
-  startSshServerTerminalBridge: typeof startSshServerTerminalBridge;
-  startWorkspaceTerminalBridge: typeof startWorkspaceTerminalBridge;
+  startTerminalBridge: typeof startTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
 };
 
@@ -41,8 +39,7 @@ function logTerminalResizeError(
   error: unknown,
 ): void {
   log.warn("Ignoring terminal resize error", {
-    terminalSessionId: ws.data.workspaceTerminalSessionId,
-    sshServerSessionId: ws.data.sshServerSessionId,
+    terminalSessionId: ws.data.terminalSessionId,
     error: String(error),
   });
 }
@@ -95,8 +92,7 @@ function enqueueLatestTerminalResize(
   state.running = true;
   void drainLatestTerminalResize(ws, states, state).catch((error: unknown) => {
     log.warn("Terminal resize queue failed", {
-      terminalSessionId: ws.data.workspaceTerminalSessionId,
-      sshServerSessionId: ws.data.sshServerSessionId,
+      terminalSessionId: ws.data.terminalSessionId,
       error: String(error),
     });
   });
@@ -205,7 +201,7 @@ export function createMessageHandler(helpers: TerminalHelpers) {
 
       if (
         ws.data.terminalMode
-        && ws.data.workspaceTerminalSessionId
+        && ws.data.terminalSessionId
         && !ws.data.terminalBridge
         && data.type === "terminal.auth"
       ) {
@@ -219,32 +215,8 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           );
           return;
         }
-        void helpers.startWorkspaceTerminalBridge(ws, credentialToken);
+        void helpers.startTerminalBridge(ws, credentialToken);
         return;
-      }
-
-      if (ws.data.terminalMode && ws.data.sshServerSessionId && !ws.data.terminalBridge) {
-        if (data.type === "terminal.auth") {
-          const credentialToken = typeof data.credentialToken === "string"
-            ? data.credentialToken.trim()
-            : "";
-          if (!credentialToken) {
-            helpers.sendTerminalAuthError(
-              ws,
-              "credentialToken is required for standalone SSH terminals",
-            );
-            return;
-          }
-          void helpers.startSshServerTerminalBridge(ws, credentialToken);
-          return;
-        }
-        if (data.type !== "ping") {
-          helpers.sendTerminalAuthError(
-            ws,
-            "terminal.auth is required before using a standalone SSH terminal",
-          );
-          return;
-        }
       }
 
       if (ws.data.terminalMode && ws.data.terminalBridge) {
