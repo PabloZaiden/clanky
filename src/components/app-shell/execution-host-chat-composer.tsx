@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ErrorState,
+  Modal,
   SelectField,
   TextField,
   type WebAppRoute,
@@ -14,17 +15,23 @@ import type {
   ExecutionHostWorkingDirectory,
 } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
+import { isApiErrorCode } from "../../lib/api-error";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
 } from "../../lib/model-selection-preferences";
+import {
+  getStoredSshCredentialToken,
+  invalidateStoredSshCredentialToken,
+  storeSshServerPassword,
+} from "../../lib/ssh-browser-credentials";
 import {
   makeModelKey,
   ModelSelector,
   modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
-import { Button } from "../common";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { useShellHeaderActions } from "./shell-header-actions";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 
@@ -53,12 +60,66 @@ export function ExecutionHostChatComposer({
   const [selectedModel, setSelectedModel] = useState("");
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const sshServerId = host.ref.kind === "ssh" ? host.ref.serverId : null;
+  const [sshCredential, setSshCredential] = useState<{
+    serverId: string;
+    token: string | null;
+  } | null>(null);
+  const credentialToken = sshServerId && sshCredential?.serverId === sshServerId
+    ? sshCredential.token
+    : null;
+  const credentialsReady = sshServerId === null
+    || sshCredential?.serverId === sshServerId;
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestSshCredentials = useCallback(() => {
+    if (!sshServerId) {
+      return;
+    }
+    invalidateStoredSshCredentialToken(sshServerId);
+    setSshCredential({ serverId: sshServerId, token: null });
+    setPasswordModalOpen(true);
+  }, [sshServerId]);
   const discovery = useExecutionHostModelDiscovery(
     host,
     discoveryDirectory,
     storedModel?.providerID,
+    credentialToken,
+    requestSshCredentials,
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setSshCredential(null);
+    setPassword("");
+    setPasswordModalOpen(false);
+    if (!sshServerId) {
+      return;
+    }
+    void (async () => {
+      try {
+        const token = await getStoredSshCredentialToken(sshServerId);
+        if (cancelled) {
+          return;
+        }
+        setSshCredential({ serverId: sshServerId, token });
+        if (!token) {
+          setPasswordModalOpen(true);
+        }
+      } catch (credentialError) {
+        if (!cancelled) {
+          setError(String(credentialError));
+          setSshCredential({ serverId: sshServerId, token: null });
+          setPasswordModalOpen(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sshServerId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -67,11 +128,18 @@ export function ExecutionHostChatComposer({
     setDirectoryLoading(host.repositoriesBasePath === null);
     setSelectedModel("");
     setError(null);
+    if (!credentialsReady || (host.ref.kind === "ssh" && !credentialToken)) {
+      setDirectoryLoading(false);
+      return () => controller.abort();
+    }
     void (async () => {
       try {
         const resolved = await apiRequest<ExecutionHostWorkingDirectory>(
           `${apiPath}/working-directory`,
           {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credentialToken }),
             signal: controller.signal,
             action: "Resolve execution-host working directory",
             fallbackMessage: "Failed to resolve the server working directory",
@@ -85,6 +153,9 @@ export function ExecutionHostChatComposer({
         if (directoryError instanceof DOMException && directoryError.name === "AbortError") {
           return;
         }
+        if (isApiErrorCode(directoryError, "invalid_credential_token")) {
+          requestSshCredentials();
+        }
         setError(String(directoryError));
       } finally {
         if (!controller.signal.aborted) {
@@ -93,7 +164,14 @@ export function ExecutionHostChatComposer({
       }
     })();
     return () => controller.abort();
-  }, [apiPath, host.repositoriesBasePath]);
+  }, [
+    apiPath,
+    credentialToken,
+    credentialsReady,
+    host.ref.kind,
+    host.repositoriesBasePath,
+    requestSshCredentials,
+  ]);
 
   useEffect(() => {
     const candidates = [host.preferredModel, storedModel];
@@ -161,7 +239,7 @@ export function ExecutionHostChatComposer({
           variant: model.variant,
         },
         autoApprovePermissions,
-        credentialToken: null,
+        credentialToken,
       };
       const chat = await apiRequest<Chat>(`${apiPath}/chats`, {
         method: "POST",
@@ -173,6 +251,9 @@ export function ExecutionHostChatComposer({
       saveStoredChatModelPreference(model);
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (submitError) {
+      if (isApiErrorCode(submitError, "invalid_credential_token")) {
+        requestSshCredentials();
+      }
       setError(String(submitError));
     } finally {
       setSubmitting(false);
@@ -182,16 +263,47 @@ export function ExecutionHostChatComposer({
     autoApprovePermissions,
     directory,
     discovery.provider,
+    credentialToken,
     host.name,
     name,
     navigateWithinShell,
+    requestSshCredentials,
     selectedModel,
   ]);
+
+  const handlePasswordSubmit = useCallback(async () => {
+    if (!sshServerId) {
+      return;
+    }
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) {
+      setError("Enter the SSH password for this server.");
+      return;
+    }
+    setPasswordSaving(true);
+    setError(null);
+    try {
+      await storeSshServerPassword(sshServerId, trimmedPassword);
+      const token = await getStoredSshCredentialToken(sshServerId);
+      if (!token) {
+        throw new Error("Failed to exchange SSH credential.");
+      }
+      setSshCredential({ serverId: sshServerId, token });
+      setPassword("");
+      setPasswordModalOpen(false);
+    } catch (passwordError) {
+      setError(String(passwordError));
+    } finally {
+      setPasswordSaving(false);
+    }
+  }, [password, sshServerId]);
 
   const canSubmit = !submitting
     && !directoryLoading
     && !discovery.providersLoading
     && !discovery.modelsLoading
+    && credentialsReady
+    && (host.ref.kind !== "ssh" || Boolean(credentialToken))
     && Boolean(directory.trim())
     && Boolean(selectedModel);
   const headerActions = useMemo(() => (
@@ -213,74 +325,119 @@ export function ExecutionHostChatComposer({
   useShellHeaderActions(headerActions);
 
   return (
-    <div className="space-y-5">
-      {error || discovery.error ? (
-        <ErrorState description={error ?? discovery.error ?? ""} />
-      ) : null}
-      <TextField
-        id="execution-host-chat-name"
-        label="Name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder={`${host.name} chat`}
-      />
-      <TextField
-        id="execution-host-chat-directory"
-        label="Directory"
-        value={directory}
-        onChange={(event) => setDirectory(event.target.value)}
-        onBlur={() => {
-          if (directory.trim()) {
-            setDiscoveryDirectory(directory.trim());
+    <>
+      <div className="space-y-5">
+        {error || discovery.error ? (
+          <ErrorState description={error ?? discovery.error ?? ""} />
+        ) : null}
+        <TextField
+          id="execution-host-chat-name"
+          label="Name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder={`${host.name} chat`}
+        />
+        <TextField
+          id="execution-host-chat-directory"
+          label="Directory"
+          value={directory}
+          onChange={(event) => setDirectory(event.target.value)}
+          onBlur={() => {
+            if (directory.trim()) {
+              setDiscoveryDirectory(directory.trim());
+            }
+          }}
+          disabled={directoryLoading}
+          className="font-mono"
+        />
+        <SelectField
+          id="execution-host-chat-provider"
+          label="Provider"
+          value={discovery.provider}
+          onChange={(event) =>
+            discovery.setProvider(event.target.value as typeof discovery.provider)}
+          disabled={
+            discovery.providersLoading || discovery.providerOptions.length === 0
           }
-        }}
-        disabled={directoryLoading}
-        className="font-mono"
-      />
-      <SelectField
-        id="execution-host-chat-provider"
-        label="Provider"
-        value={discovery.provider}
-        onChange={(event) => discovery.setProvider(event.target.value as typeof discovery.provider)}
-        disabled={discovery.providersLoading || discovery.providerOptions.length === 0}
-      >
-        {discovery.providerOptions.length === 0 ? (
-          <option value="">
-            {discovery.providersLoading ? "Loading providers..." : "No providers available"}
-          </option>
-        ) : discovery.providerOptions.map((option) => (
-          <option key={option.id} value={option.id}>{option.label}</option>
-        ))}
-      </SelectField>
-      <div>
-        <label
-          htmlFor="execution-host-chat-model"
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Model
+          {discovery.providerOptions.length === 0 ? (
+            <option value="">
+              {discovery.providersLoading
+                ? "Loading providers..."
+                : "No providers available"}
+            </option>
+          ) : discovery.providerOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </SelectField>
+        <div>
+          <label
+            htmlFor="execution-host-chat-model"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Model
+          </label>
+          <ModelSelector
+            id="execution-host-chat-model"
+            value={selectedModel}
+            onChange={setSelectedModel}
+            models={discovery.models}
+            loading={discovery.modelsLoading}
+            showDisconnected
+            className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+            emptyText="Choose an available provider and directory"
+          />
+        </div>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={autoApprovePermissions}
+            onChange={(event) => setAutoApprovePermissions(event.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+          />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Auto-approve permissions
+          </span>
         </label>
-        <ModelSelector
-          id="execution-host-chat-model"
-          value={selectedModel}
-          onChange={setSelectedModel}
-          models={discovery.models}
-          loading={discovery.modelsLoading}
-          showDisconnected
-          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-          emptyText="Choose an available provider and directory"
-        />
       </div>
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={autoApprovePermissions}
-          onChange={(event) => setAutoApprovePermissions(event.target.checked)}
-          className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+      <Modal
+        isOpen={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+        title="SSH password required"
+        description={`Enter the SSH password for ${host.name} to discover models and start chats.`}
+        footer={(
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setPasswordModalOpen(false)}
+              disabled={passwordSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void handlePasswordSubmit()}
+              loading={passwordSaving}
+            >
+              Save password
+            </Button>
+          </>
+        )}
+      >
+        <TextField
+          id="execution-host-chat-ssh-password"
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          {...PASSWORD_INPUT_PROPS}
         />
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Auto-approve permissions
-        </span>
-      </label>
-    </div>
+      </Modal>
+    </>
   );
 }

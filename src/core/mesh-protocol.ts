@@ -9,6 +9,7 @@ import type {
   MeshEnrollmentRequest,
   MeshEnrollmentResponse,
   MeshHealthCheck,
+  MeshHealthCheckResponse,
   MeshRevocationNotice,
   MeshWorkerUpdateRequest,
 } from "@/contracts/schemas/mesh";
@@ -17,6 +18,7 @@ import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execu
 type UnsignedEnrollmentRequest = Omit<MeshEnrollmentRequest, "signature">;
 type UnsignedEnrollmentResponse = Omit<MeshEnrollmentResponse, "signature">;
 type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
+type UnsignedHealthCheckResponse = Omit<MeshHealthCheckResponse, "signature">;
 type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 type UnsignedWorkerUpdateRequest = Omit<MeshWorkerUpdateRequest, "signature">;
@@ -71,6 +73,22 @@ export function buildMeshHealthCheckSigningPayload(
     envelope.senderFingerprint,
     envelope.nonce,
     envelope.sentAt,
+  ]);
+}
+
+export function buildMeshHealthCheckResponseSigningPayload(
+  envelope: UnsignedHealthCheckResponse,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-health-check-response-v1",
+    envelope.protocolVersion,
+    envelope.workerNodeId,
+    envelope.controllerNodeId,
+    envelope.requestNonce,
+    envelope.workerDirectory,
+    envelope.workerCapabilities,
+    envelope.workerAcceptRemoteExecution,
+    envelope.workerConfigRevision,
   ]);
 }
 

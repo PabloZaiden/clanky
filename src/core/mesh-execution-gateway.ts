@@ -115,9 +115,6 @@ export function assertMeshExecutionPath(_root: string, requested: string): strin
 }
 
 export function assertMeshExecutionCwd(_root: string, cwd: string): string {
-  if (cwd === ".") {
-    return cwd;
-  }
   return assertMeshExecutionPath(_root, cwd);
 }
 

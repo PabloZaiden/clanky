@@ -52,7 +52,10 @@ import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
 import { runWithCurrentUser } from "./core/user-context";
-import { configureMeshRuntime } from "./core/mesh-runtime";
+import {
+  configureMeshRuntime,
+  getMeshWorkerDirectory,
+} from "./core/mesh-runtime";
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
 import { configureMeshWorkerShutdown } from "./core/mesh-worker-update";
 
@@ -358,7 +361,7 @@ export async function getWebAppServer(
   if (meshWorker) {
     await setLocalMeshExecutionConfiguration({
       acceptRemoteExecution: options.workerExecutionEnabled ?? true,
-      repositoriesBasePath: options.workerDirectory?.trim() || process.cwd(),
+      repositoriesBasePath: getMeshWorkerDirectory(),
       preferredModel: null,
     });
   }

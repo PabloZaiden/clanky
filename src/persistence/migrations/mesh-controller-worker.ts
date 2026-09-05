@@ -2,9 +2,9 @@
  * Migration v45: destructive clean-break to controller-worker mesh.
  *
  * Deletes all legacy Mesh identities, links, members, pairing/enrollment
- * artifacts, kind='mesh' execution hosts, and all associated workspaces,
- * tasks, chats, transcripts, agents, runs, terminal/preview/provisioning/VNC
- * records. Preserves all local/SSH data.
+ * artifacts, remote Mesh execution hosts, local execution hosts bound to the
+ * rotated legacy identity, and their complete dependent data graph. SSH data
+ * and local data unrelated to that identity are preserved.
  *
  * Creates new persistence tables for controller-worker grants and worker
  * registrations. Flags the node identity for fresh regeneration on next
@@ -21,16 +21,64 @@ function tableExists(db: Database, name: string): boolean {
 
 export function migrateMeshControllerWorker(db: Database): void {
   const migrate = db.transaction(() => {
+    db.run("DROP TABLE IF EXISTS temp._legacy_mesh_node_ids");
     db.run("DROP TABLE IF EXISTS temp._mesh_host_ids");
     db.run("DROP TABLE IF EXISTS temp._mesh_workspace_ids");
+    db.run("DROP TABLE IF EXISTS temp._mesh_chat_ids");
+    db.run("DROP TABLE IF EXISTS temp._mesh_agent_ids");
+    db.run("DROP TABLE IF EXISTS temp._mesh_agent_run_ids");
+    db.run(`
+      CREATE TEMP TABLE _legacy_mesh_node_ids (
+        node_id TEXT PRIMARY KEY
+      )
+    `);
+    if (tableExists(db, "mesh_nodes")) {
+      db.run(`
+        INSERT OR IGNORE INTO _legacy_mesh_node_ids(node_id)
+        SELECT node_id FROM mesh_nodes
+      `);
+    }
+    if (tableExists(db, "mesh_node_identity")) {
+      db.run(`
+        INSERT OR IGNORE INTO _legacy_mesh_node_ids(node_id)
+        SELECT node_id FROM mesh_node_identity
+      `);
+    }
     db.run(`
       CREATE TEMP TABLE _mesh_host_ids AS
-      SELECT id FROM execution_hosts WHERE kind = 'mesh'
+      SELECT id FROM execution_hosts
+      WHERE kind = 'mesh'
+        OR (
+          kind = 'local'
+          AND source_id IN (SELECT node_id FROM _legacy_mesh_node_ids)
+        )
     `);
     db.run(`
       CREATE TEMP TABLE _mesh_workspace_ids AS
       SELECT id FROM workspaces
       WHERE execution_host_id IN (SELECT id FROM _mesh_host_ids)
+        OR execution_node_id IN (SELECT node_id FROM _legacy_mesh_node_ids)
+    `);
+    db.run(`
+      CREATE TEMP TABLE _mesh_chat_ids AS
+      SELECT id FROM chats
+      WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
+        OR (
+          source_kind = 'execution_host'
+          AND execution_host_id IN (SELECT id FROM _mesh_host_ids)
+        )
+    `);
+    db.run(`
+      CREATE TEMP TABLE _mesh_agent_ids AS
+      SELECT id FROM agents
+      WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
+        OR generation_chat_id IN (SELECT id FROM _mesh_chat_ids)
+    `);
+    db.run(`
+      CREATE TEMP TABLE _mesh_agent_run_ids AS
+      SELECT id FROM agent_runs
+      WHERE agent_id IN (SELECT id FROM _mesh_agent_ids)
+        OR chat_id IN (SELECT id FROM _mesh_chat_ids)
     `);
 
     db.run(`
@@ -61,49 +109,50 @@ export function migrateMeshControllerWorker(db: Database): void {
     for (const table of ["chat_transcript_entries", "chat_transcript_meta"]) {
       if (tableExists(db, table)) {
         db.run(`
-          DELETE FROM ${table} WHERE chat_id IN (
-            SELECT id FROM chats WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
-            UNION
-            SELECT id FROM chats
-            WHERE source_kind = 'execution_host'
-              AND execution_host_id IN (SELECT id FROM _mesh_host_ids)
-          )
+          DELETE FROM ${table}
+          WHERE chat_id IN (SELECT id FROM _mesh_chat_ids)
         `);
       }
     }
     for (const table of ["agent_run_transcript_entries", "agent_run_transcript_meta"]) {
       if (tableExists(db, table)) {
         db.run(`
-          DELETE FROM ${table} WHERE agent_run_id IN (
-            SELECT run.id FROM agent_runs run
-            JOIN agents agent ON agent.id = run.agent_id
-            WHERE agent.workspace_id IN (SELECT id FROM _mesh_workspace_ids)
-          )
+          DELETE FROM ${table}
+          WHERE agent_run_id IN (SELECT id FROM _mesh_agent_run_ids)
         `);
       }
     }
     db.run(`
-      DELETE FROM agent_runs WHERE agent_id IN (
-        SELECT id FROM agents WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
-      )
+      UPDATE agents
+      SET active_run_id = NULL
+      WHERE active_run_id IN (SELECT id FROM _mesh_agent_run_ids)
     `);
-    db.run("DELETE FROM agents WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)");
-    db.run("DELETE FROM chats WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)");
-    db.run(`
-      DELETE FROM chats
-      WHERE source_kind = 'execution_host'
-        AND execution_host_id IN (SELECT id FROM _mesh_host_ids)
-    `);
+    db.run("DELETE FROM agent_runs WHERE id IN (SELECT id FROM _mesh_agent_run_ids)");
+    db.run("DELETE FROM agents WHERE id IN (SELECT id FROM _mesh_agent_ids)");
+    db.run("DELETE FROM chats WHERE id IN (SELECT id FROM _mesh_chat_ids)");
     db.run("DELETE FROM preview_sessions WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)");
-    db.run("DELETE FROM terminal_sessions WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)");
-    db.run("DELETE FROM terminal_sessions WHERE execution_host_id IN (SELECT id FROM _mesh_host_ids)");
-    db.run("DELETE FROM provisioning_jobs WHERE execution_host_id IN (SELECT id FROM _mesh_host_ids)");
+    db.run(`
+      DELETE FROM terminal_sessions
+      WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
+        OR execution_host_id IN (SELECT id FROM _mesh_host_ids)
+        OR target_transport = 'mesh'
+        OR target_execution_node_id IN (SELECT node_id FROM _legacy_mesh_node_ids)
+    `);
+    db.run(`
+      DELETE FROM provisioning_jobs
+      WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)
+        OR execution_host_id IN (SELECT id FROM _mesh_host_ids)
+    `);
     db.run("DELETE FROM vnc_sessions WHERE execution_host_id IN (SELECT id FROM _mesh_host_ids)");
     db.run("DELETE FROM tasks WHERE workspace_id IN (SELECT id FROM _mesh_workspace_ids)");
     db.run("DELETE FROM workspaces WHERE id IN (SELECT id FROM _mesh_workspace_ids)");
     db.run("DELETE FROM execution_hosts WHERE id IN (SELECT id FROM _mesh_host_ids)");
+    db.run("DROP TABLE _mesh_agent_run_ids");
+    db.run("DROP TABLE _mesh_agent_ids");
+    db.run("DROP TABLE _mesh_chat_ids");
     db.run("DROP TABLE _mesh_workspace_ids");
     db.run("DROP TABLE _mesh_host_ids");
+    db.run("DROP TABLE _legacy_mesh_node_ids");
 
     for (const table of [
       "mesh_pairing_approvals",

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pollUntil } from "../helpers/polling";
@@ -80,6 +80,47 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
   return node;
 }
 
+async function restartWorker(
+  node: MeshProcess,
+  options: { directory: string; executionEnabled: boolean },
+): Promise<void> {
+  node.child.kill();
+  await node.child.exited;
+  await mkdir(options.directory, { recursive: true });
+  const port = new URL(node.baseUrl).port;
+  node.child = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "serve",
+    "--mesh-worker",
+    "true",
+    "--worker-directory",
+    options.directory,
+    "--worker-execution-enabled",
+    String(options.executionEnabled),
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: node.dataDir,
+      CLANKY_HOST: "127.0.0.1",
+      CLANKY_PORT: port,
+      CLANKY_PUBLIC_BASE_URL: node.baseUrl,
+      CLANKY_LOG_LEVEL: "fatal",
+    },
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  await pollUntil(
+    async () => fetch(`${node.baseUrl}/api/health`).then(
+      (response) => response.ok,
+    ).catch(() => false),
+    (ready) => ready,
+    { description: "worker restart to become healthy", timeoutMs: 10_000 },
+  );
+}
+
 async function jsonRequest(
   node: MeshProcess,
   path: string,
@@ -152,6 +193,31 @@ describe("controller-worker Mesh", () => {
     expect(workerStatus.body.controllers).toBeUndefined();
 
     const workerNodeId = statusA.body.workers[0].workerNodeId as string;
+    const initialRevision = statusA.body.workers[0].workerConfigRevision as number;
+    const nextDirectory = join(worker.dataDir, "next-directory");
+    await restartWorker(worker, {
+      directory: nextDirectory,
+      executionEnabled: false,
+    });
+    expect((await jsonRequest(controllerA, "/api/mesh/health", {
+      method: "POST",
+    })).status).toBe(200);
+    expect((await jsonRequest(controllerB, "/api/mesh/health", {
+      method: "POST",
+    })).status).toBe(200);
+    const [updatedStatusA, updatedStatusB] = await Promise.all([
+      jsonRequest(controllerA, "/api/mesh/status"),
+      jsonRequest(controllerB, "/api/mesh/status"),
+    ]);
+    for (const status of [updatedStatusA, updatedStatusB]) {
+      expect(status.body.workers[0]).toMatchObject({
+        workerDirectory: nextDirectory,
+        workerAcceptRemoteExecution: false,
+      });
+      expect(status.body.workers[0].workerConfigRevision)
+        .toBeGreaterThan(initialRevision);
+    }
+
     expect((await jsonRequest(controllerA, "/api/mesh/workers/revoke", {
       method: "POST",
       body: { workerNodeId },

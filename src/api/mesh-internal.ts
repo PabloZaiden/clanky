@@ -157,8 +157,9 @@ export const meshInternalRoutes = defineRoutes({
       }
       try {
         requireMeshRuntimeRole("worker");
-        await meshManager.receiveHealthCheck(parsed.data);
-        return Response.json({ success: true });
+        return Response.json(
+          await meshManager.receiveHealthCheck(parsed.data),
+        );
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

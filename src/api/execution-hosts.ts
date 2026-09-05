@@ -11,6 +11,7 @@ import {
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
   GetDevboxTemplatesRequestSchema,
+  ResolveExecutionHostWorkingDirectoryRequestSchema,
   UpdateExecutionHostConfigurationSchema,
 } from "@/contracts/schemas";
 import type { ExecutionHostRef } from "@/shared";
@@ -45,6 +46,48 @@ function resolveSshPassword(
   return sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken);
 }
 
+async function resolveWorkingDirectoryResponse(
+  kind: string,
+  id: string,
+  userId: string,
+  credentialToken: string | null,
+): Promise<Response> {
+  const ref = parseExecutionHostRef(kind, id);
+  if (!ref) {
+    return errorResponse(
+      "execution_host_kind_invalid",
+      "Execution host kind must be local, mesh, or ssh.",
+      400,
+    );
+  }
+  try {
+    return Response.json(
+      await executionHostService.resolveWorkingDirectory(ref, {
+        userId,
+        sshPassword: resolveSshPassword(ref, credentialToken),
+      }),
+    );
+  } catch (error) {
+    log.error("Failed to resolve execution-host working directory", {
+      kind: ref.kind,
+      error: String(error),
+    });
+    return domainErrorResponse(error, {
+      fallback: {
+        error: "execution_host_directory_unavailable",
+        message: "Failed to resolve the execution-host working directory.",
+        status: 500,
+      },
+      mappings: {
+        execution_host_unavailable: {
+          status: 404,
+          message: "Execution host not found or unavailable.",
+        },
+      },
+    });
+  }
+}
+
 export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts": {
     auth: "user",
@@ -67,40 +110,29 @@ export const executionHostRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Resolve the configured or current directory of an execution host.",
+    requestSchema: ResolveExecutionHostWorkingDirectoryRequestSchema,
     async GET(_req, ctx): Promise<Response> {
-      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
-      if (!ref) {
-        return errorResponse(
-          "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
-          400,
-        );
+      return await resolveWorkingDirectoryResponse(
+        ctx.params["kind"]!,
+        ctx.params["id"]!,
+        ctx.requireUser().id,
+        null,
+      );
+    },
+    async POST(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        ResolveExecutionHostWorkingDirectoryRequestSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
       }
-      try {
-        return Response.json(
-          await executionHostService.resolveWorkingDirectory(ref, {
-            userId: ctx.requireUser().id,
-          }),
-        );
-      } catch (error) {
-        log.error("Failed to resolve execution-host working directory", {
-          kind: ref.kind,
-          error: String(error),
-        });
-        return domainErrorResponse(error, {
-          fallback: {
-            error: "execution_host_directory_unavailable",
-            message: "Failed to resolve the execution-host working directory.",
-            status: 500,
-          },
-          mappings: {
-            execution_host_unavailable: {
-              status: 404,
-              message: "Execution host not found or unavailable.",
-            },
-          },
-        });
-      }
+      return await resolveWorkingDirectoryResponse(
+        ctx.params["kind"]!,
+        ctx.params["id"]!,
+        ctx.requireUser().id,
+        validation.data.credentialToken ?? null,
+      );
     },
   },
   "/api/execution-hosts/:kind/:id/configuration": {
@@ -224,6 +256,9 @@ export const executionHostRoutes = defineRoutes({
             status: 500,
           },
           mappings: {
+            invalid_credential_token: {
+              status: 400,
+            },
             execution_host_unavailable: {
               status: 404,
               error: "execution_host_unavailable",
@@ -282,6 +317,11 @@ export const executionHostRoutes = defineRoutes({
             message: "Failed to check execution-host prerequisites.",
             status: 500,
           },
+          mappings: {
+            invalid_credential_token: {
+              status: 400,
+            },
+          },
         });
       }
     },
@@ -319,91 +359,132 @@ export const executionHostRoutes = defineRoutes({
             message: "Failed to list execution-host Devbox templates.",
             status: 500,
           },
+          mappings: {
+            invalid_credential_token: {
+              status: 400,
+            },
+          },
         });
       }
     },
   },
   "/api/execution-hosts/:kind/:id/chat-providers": {
-            auth: "user",
-            sameOrigin: "mutations",
-            description: "Discover ACP providers available on an execution host.",
-            requestSchema: DiscoverExecutionHostProvidersRequestSchema,
-            async POST(req, ctx): Promise<Response> {
-              const validation = await parseAndValidate(DiscoverExecutionHostProvidersRequestSchema, req);
-              if (!validation.success) {
-                return validation.response;
-              }
-              const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
-              if (!ref) {
-                return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
-              }
-              try {
-                executionHostService.getBinding(ref);
-                const executor = await executionHostService.getCommandExecutorForRef(ref, {
-                  operationId: `provider-discovery:${ctx.params["id"]!}`,
-                  directory: "/",
-                  sshPassword: resolveSshPassword(ref, validation.data.credentialToken ?? null),
-                });
-                const results = await Promise.all(AGENT_PROVIDER_IDS.map(async (providerID) => ({
-                  providerID,
-                  available: (await executor.exec(
-                    "sh",
-                    ["-lc", buildProviderAvailabilityShellCheck(providerID)],
-                    { cwd: "/" },
-                  )).success,
-                })));
-                return Response.json({ providers: results });
-              } catch (error) {
-                log.error("Failed to discover execution-host providers", {
-                  kind: ref.kind,
-                  error: String(error),
-                });
-                return domainErrorResponse(error, {
-                  fallback: {
-                    error: "execution_host_provider_discovery_failed",
-                    message: "Failed to discover execution-host providers.",
-                    status: 500,
-                  },
-                });
-              }
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Discover ACP providers available on an execution host.",
+    requestSchema: DiscoverExecutionHostProvidersRequestSchema,
+    async POST(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        DiscoverExecutionHostProvidersRequestSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Invalid execution host kind.",
+          400,
+        );
+      }
+      try {
+        executionHostService.getBinding(ref);
+        const executor = await executionHostService.getCommandExecutorForRef(
+          ref,
+          {
+            operationId: `provider-discovery:${ctx.params["id"]!}`,
+            directory: "/",
+            sshPassword: resolveSshPassword(
+              ref,
+              validation.data.credentialToken ?? null,
+            ),
+          },
+        );
+        const results = await Promise.all(
+          AGENT_PROVIDER_IDS.map(async (providerID) => ({
+            providerID,
+            available: (await executor.exec(
+              "sh",
+              ["-lc", buildProviderAvailabilityShellCheck(providerID)],
+              { cwd: "/" },
+            )).success,
+          })),
+        );
+        return Response.json({ providers: results });
+      } catch (error) {
+        log.error("Failed to discover execution-host providers", {
+          kind: ref.kind,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_provider_discovery_failed",
+            message: "Failed to discover execution-host providers.",
+            status: 500,
+          },
+          mappings: {
+            invalid_credential_token: {
+              status: 400,
             },
+          },
+        });
+      }
+    },
   },
   "/api/execution-hosts/:kind/:id/chat-models": {
-            auth: "user",
-            sameOrigin: "mutations",
-            description: "Discover ACP models for a provider on an execution host.",
-            requestSchema: DiscoverExecutionHostModelsRequestSchema,
-            async POST(req, ctx): Promise<Response> {
-              const validation = await parseAndValidate(DiscoverExecutionHostModelsRequestSchema, req);
-              if (!validation.success) {
-                return validation.response;
-              }
-              const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
-              if (!ref) {
-                return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
-              }
-              try {
-                const binding = executionHostService.getBinding(ref);
-                const models = await getModelsForExecutionHost(
-                  binding,
-                  validation.data.directory,
-                  validation.data.providerID,
-                  resolveSshPassword(ref, validation.data.credentialToken ?? null),
-                );
-                return Response.json(
-                  models.filter((model) => model.providerID === validation.data.providerID),
-                );
-              } catch (error) {
-                log.error("Failed to discover execution-host models", {
-                  kind: ref.kind,
-                  providerID: validation.data.providerID,
-                  error: String(error),
-                });
-                return domainErrorResponse(error, {
-                  fallback: {
-                    error: "execution_host_model_discovery_failed",
-                    message: "Failed to discover execution-host models.",
-                    status: 500,
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Discover ACP models for a provider on an execution host.",
+    requestSchema: DiscoverExecutionHostModelsRequestSchema,
+    async POST(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        DiscoverExecutionHostModelsRequestSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Invalid execution host kind.",
+          400,
+        );
+      }
+      try {
+        const binding = executionHostService.getBinding(ref);
+        const models = await getModelsForExecutionHost(
+          binding,
+          validation.data.directory,
+          validation.data.providerID,
+          resolveSshPassword(
+            ref,
+            validation.data.credentialToken ?? null,
+          ),
+        );
+        return Response.json(
+          models.filter((model) =>
+            model.providerID === validation.data.providerID),
+        );
+      } catch (error) {
+        log.error("Failed to discover execution-host models", {
+          kind: ref.kind,
+          providerID: validation.data.providerID,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_model_discovery_failed",
+            message: "Failed to discover execution-host models.",
+            status: 500,
+          },
+          mappings: {
+            invalid_credential_token: {
+              status: 400,
+            },
           },
         });
       }

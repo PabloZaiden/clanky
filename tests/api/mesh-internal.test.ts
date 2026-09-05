@@ -143,7 +143,16 @@ describe("Mesh internal controller-worker routes", () => {
     }), undefined as never);
 
     expect(response!.status).toBe(200);
-    expect(await readJson(response!)).toEqual({ success: true });
+    expect(await readJson(response!)).toMatchObject({
+      protocolVersion: 1,
+      controllerNodeId: "controller-1",
+      requestNonce: unsigned.nonce,
+      workerDirectory: dataDir,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      signature: expect.any(String),
+    });
   });
 
   test("rejects execution requests whose identity headers do not match", async () => {

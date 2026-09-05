@@ -106,6 +106,18 @@ export const MeshHealthCheckSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
+export const MeshHealthCheckResponseSchema = z.object({
+  protocolVersion: z.literal(1),
+  workerNodeId: z.string().trim().min(1),
+  controllerNodeId: z.string().trim().min(1),
+  requestNonce: z.string().trim().min(1),
+  workerDirectory: z.string().trim().min(1).max(16_384),
+  workerCapabilities: ExecutionHostCapabilitiesSchema,
+  workerAcceptRemoteExecution: z.boolean(),
+  workerConfigRevision: z.number().int().min(1),
+  signature: z.string().trim().min(1),
+});
+
 // --- Signed revocation notice (controller → worker) ---
 
 export const MeshRevocationNoticeSchema = z.object({
@@ -138,5 +150,6 @@ export type EnrollMeshWorkerRequest = z.infer<typeof EnrollMeshWorkerRequestSche
 export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestSchema>;
 export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema>;
 export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
+export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseSchema>;
 export type MeshRevocationNotice = z.infer<typeof MeshRevocationNoticeSchema>;
 export type MeshWorkerUpdateRequest = z.infer<typeof MeshWorkerUpdateRequestSchema>;

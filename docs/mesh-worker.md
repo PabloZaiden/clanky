@@ -42,7 +42,10 @@ Remote execution is enabled by default. Disable this worker as an execution
 target without revoking its controller grants with
 `--worker-execution-enabled false`,
 `CLANKY_WORKER_EXECUTION_ENABLED=false`, or the equivalent persisted serve
-option.
+option. The worker advances its persisted configuration revision whenever its
+resolved directory or execution policy changes. Each controller health probe
+verifies the worker's signed response and synchronizes the newer snapshot into
+that controller's execution-host registration.
 
 Set the public endpoint and optional display name using the bootstrap API key:
 
@@ -96,3 +99,12 @@ the handoff. There is no automatic rollback after the replacement starts.
 
 Direct chats created on a Mesh server use the normal provider and model
 selection. Provider and model defaults are not stored on the worker.
+
+## Upgrade from the peer Mesh
+
+Database migration 45 is an intentional clean break. It deletes the previous
+Mesh identity, peer records, Mesh execution hosts, local hosts bound to that
+identity, and all dependent workspaces, tasks, chats, agents, sessions,
+terminals, provisioning jobs, VNC sessions, transcripts, and context API-key
+bindings. It does not remap legacy data to controller-worker registrations.
+Unrelated SSH hosts and their data are preserved.

@@ -198,7 +198,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/mesh/internal/execution/file` | Receive a streamed file chunk in an authenticated mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
-| POST | `/api/mesh/internal/health` | Receive a signed Mesh transport health check from an enrolled controller. |
+| POST | `/api/mesh/internal/health` | Receive a signed health check from an enrolled controller and return the worker's signed execution-policy snapshot. |
 | POST | `/api/mesh/internal/revocation` | Receive a signed revocation from an enrolled controller. |
 | POST | `/api/mesh/internal/update` | Start a signed self-update on this Mesh worker. |
 | GET | `/api/mesh/status` | Get this controller's workers or this worker's local status. |

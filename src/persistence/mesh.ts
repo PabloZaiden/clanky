@@ -189,24 +189,14 @@ export async function deleteRevokedWorkerRegistration(
   log.info("Deleted revoked worker registration", { workerNodeId });
 }
 
-export async function updateWorkerLastSeen(
-  workerNodeId: string,
-): Promise<void> {
-  const db = getDatabase();
-  const now = new Date().toISOString();
-  db.run(
-    "UPDATE mesh_worker_registrations SET last_seen_at = ? WHERE worker_node_id = ?",
-    [now, workerNodeId],
-  );
-}
-
-export async function updateWorkerExecutionConfig(
-  workerNodeId: string,
-  directory: string | null,
-  capabilities: ExecutionHostCapabilities | null,
-  acceptRemoteExecution: boolean,
-  configRevision: number,
-): Promise<void> {
+export async function updateWorkerHealthSnapshot(input: {
+  workerNodeId: string;
+  localUserId: string;
+  directory: string;
+  capabilities: ExecutionHostCapabilities;
+  acceptRemoteExecution: boolean;
+  configRevision: number;
+}): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
   db.run(
@@ -215,15 +205,18 @@ export async function updateWorkerExecutionConfig(
       worker_capabilities_json = ?,
       worker_accept_remote_execution = ?,
       worker_config_revision = ?,
+      last_seen_at = ?,
       updated_at = ?
-    WHERE worker_node_id = ?`,
+    WHERE worker_node_id = ? AND local_user_id = ?`,
     [
-      directory,
-      capabilities ? JSON.stringify(capabilities) : null,
-      acceptRemoteExecution ? 1 : 0,
-      configRevision,
+      input.directory,
+      JSON.stringify(input.capabilities),
+      input.acceptRemoteExecution ? 1 : 0,
+      input.configRevision,
       now,
-      workerNodeId,
+      now,
+      input.workerNodeId,
+      input.localUserId,
     ],
   );
 }

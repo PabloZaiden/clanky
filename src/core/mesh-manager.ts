@@ -10,9 +10,11 @@ import type {
   MeshEnrollmentRequest,
   MeshEnrollmentResponse,
   MeshHealthCheck,
+  MeshHealthCheckResponse,
   MeshRevocationNotice,
   MeshWorkerUpdateRequest,
 } from "@/contracts/schemas/mesh";
+import { MeshHealthCheckResponseSchema } from "@/contracts/schemas/mesh";
 import type {
   MeshControllerGrant,
   MeshControllerStatus,
@@ -34,7 +36,7 @@ import {
   deleteRevokedWorkerRegistration,
   saveControllerGrant,
   saveWorkerRegistration,
-  updateWorkerLastSeen,
+  updateWorkerHealthSnapshot,
 } from "../persistence/mesh";
 import {
   consumeMeshEnrollmentToken,
@@ -52,6 +54,7 @@ import {
   buildMeshEnrollmentRequestSigningPayload,
   buildMeshEnrollmentResponseSigningPayload,
   buildMeshHealthCheckSigningPayload,
+  buildMeshHealthCheckResponseSigningPayload,
   buildMeshRevocationNoticeSigningPayload,
   buildMeshWorkerUpdateSigningPayload,
 } from "./mesh-protocol";
@@ -305,6 +308,7 @@ export class MeshManager {
     const identity = await ensureLocalMeshIdentityWithEndpoint();
     const workers = await listActiveWorkerRegistrations(userId);
 
+    let executionHostsChanged = false;
     for (const worker of workers) {
       try {
         const nonce = crypto.randomUUID();
@@ -324,12 +328,71 @@ export class MeshManager {
           worker.workerEndpoint,
           "api/mesh/internal/health",
         );
-        await postMeshControlMessage(route, {
+        const response = await postMeshControlMessage(route, {
           ...envelope,
           signature,
-        }, identity.nodeId);
-
-        await updateWorkerLastSeen(worker.workerNodeId);
+        }, nonce);
+        const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
+          await response.json(),
+        );
+        if (!parsedResponse.success) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response has an invalid shape.",
+          );
+        }
+        const health = parsedResponse.data;
+        if (
+          health.workerNodeId !== worker.workerNodeId
+          || health.controllerNodeId !== identity.nodeId
+          || health.requestNonce !== nonce
+        ) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response does not match the request.",
+          );
+        }
+        const { signature: responseSignature, ...unsignedResponse } = health;
+        if (!await verifyMeshPayloadSignature(
+          buildMeshHealthCheckResponseSigningPayload(unsignedResponse),
+          responseSignature,
+          worker.workerPublicKey,
+        )) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response signature is invalid.",
+          );
+        }
+        if (health.workerConfigRevision < worker.workerConfigRevision) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response contains a stale configuration revision.",
+          );
+        }
+        const configurationChanged =
+          health.workerConfigRevision !== worker.workerConfigRevision
+          || health.workerDirectory !== worker.workerDirectory
+          || health.workerAcceptRemoteExecution !== worker.workerAcceptRemoteExecution
+          || JSON.stringify(health.workerCapabilities)
+            !== JSON.stringify(worker.workerCapabilities);
+        if (
+          health.workerConfigRevision === worker.workerConfigRevision
+          && configurationChanged
+        ) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker changed configuration without advancing its revision.",
+          );
+        }
+        await updateWorkerHealthSnapshot({
+          workerNodeId: worker.workerNodeId,
+          localUserId: userId,
+          directory: health.workerDirectory,
+          capabilities: health.workerCapabilities,
+          acceptRemoteExecution: health.workerAcceptRemoteExecution,
+          configRevision: health.workerConfigRevision,
+        });
+        executionHostsChanged ||= configurationChanged;
       } catch (error) {
         log.warn("Worker health check failed", {
           workerNodeId: worker.workerNodeId,
@@ -341,7 +404,7 @@ export class MeshManager {
     }
 
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: false },
+      { type: "mesh.changed", executionHostsChanged },
       { userId },
     );
   }
@@ -416,7 +479,7 @@ export class MeshManager {
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
-  ): Promise<void> {
+  ): Promise<MeshHealthCheckResponse> {
     requireMeshRuntimeRole("worker");
     assertMeshPeerIdentity(
       envelope.senderPublicKey,
@@ -455,6 +518,24 @@ export class MeshManager {
     log.debug("Received valid health check", {
       senderNodeId: envelope.senderNodeId,
     });
+    const identity = await ensureLocalMeshNodeIdentity();
+    const execution = await getWorkerExecutionConfig();
+    const response: Omit<MeshHealthCheckResponse, "signature"> = {
+      protocolVersion: 1,
+      workerNodeId: identity.nodeId,
+      controllerNodeId: envelope.senderNodeId,
+      requestNonce: envelope.nonce,
+      workerDirectory: execution.directory,
+      workerCapabilities: execution.capabilities,
+      workerAcceptRemoteExecution: execution.acceptRemoteExecution,
+      workerConfigRevision: execution.revision,
+    };
+    return {
+      ...response,
+      signature: await signMeshPayload(
+        buildMeshHealthCheckResponseSigningPayload(response),
+      ),
+    };
   }
 
   // --- Worker: enrollment against a controller ---
@@ -475,6 +556,7 @@ export class MeshManager {
       );
     }
 
+    const execution = await getWorkerExecutionConfig();
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const envelope: Omit<MeshEnrollmentRequest, "signature"> = {
@@ -486,10 +568,10 @@ export class MeshManager {
       workerPublicKey: identity.publicKey,
       workerFingerprint: identity.fingerprint,
       workerEncryptionPublicKey: identity.encryptionPublicKey,
-      workerDirectory: getMeshWorkerDirectory(),
-      workerCapabilities: { ...DEFAULT_EXECUTION_HOST_CAPABILITIES },
-      workerAcceptRemoteExecution: isMeshWorkerExecutionEnabled(),
-      workerConfigRevision: 1,
+      workerDirectory: execution.directory,
+      workerCapabilities: execution.capabilities,
+      workerAcceptRemoteExecution: execution.acceptRemoteExecution,
+      workerConfigRevision: execution.revision,
       enrollmentToken: input.enrollmentToken,
       expectedControllerFingerprint: input.expectedFingerprint,
       nonce,
@@ -622,7 +704,7 @@ export class MeshManager {
     const controllers = (await listControllerGrants()).filter(
       (grant) => grant.grantStatus === "active",
     );
-    const execution = getWorkerExecutionConfig();
+    const execution = await getWorkerExecutionConfig();
     return { node: identity, execution, controllerCount: controllers.length };
   }
 
@@ -656,13 +738,14 @@ export class MeshManager {
  * Get the worker's local execution configuration.
  * Worker directory is process.cwd() or CLANKY_WORKER_DIRECTORY.
  */
-function getWorkerExecutionConfig(): MeshWorkerExecutionConfig {
+async function getWorkerExecutionConfig(): Promise<MeshWorkerExecutionConfig> {
+  const identity = await ensureLocalMeshNodeIdentity();
   const directory = getMeshWorkerDirectory();
   return {
     directory,
     acceptRemoteExecution: isMeshWorkerExecutionEnabled(),
     capabilities: { ...DEFAULT_EXECUTION_HOST_CAPABILITIES },
-    revision: 1,
+    revision: identity.execution.revision,
   };
 }
 
