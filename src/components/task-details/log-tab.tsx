@@ -9,8 +9,6 @@ interface LogTabProps {
   logs: TaskLogEntry[];
   showSystemInfo: boolean;
   onShowSystemInfoChange: (v: boolean) => void;
-  showReasoning: boolean;
-  onShowReasoningChange: (v: boolean) => void;
   showTools: boolean;
   onShowToolsChange: (v: boolean) => void;
   markdownEnabled: boolean;
@@ -27,8 +25,6 @@ export function LogTab({
   logs,
   showSystemInfo,
   onShowSystemInfoChange,
-  showReasoning,
-  onShowReasoningChange,
   showTools,
   onShowToolsChange,
   markdownEnabled,
@@ -49,7 +45,6 @@ export function LogTab({
           toolCalls={toolCalls}
           logs={logs}
           showSystemInfo={showSystemInfo}
-          showReasoning={showReasoning}
           showTools={showTools}
           markdownEnabled={markdownEnabled}
           isActive={isLogActive}
@@ -76,18 +71,6 @@ export function LogTab({
                 className="clanky-log-filter-input rounded"
               />
               <span>System</span>
-            </span>
-          </label>
-          <label className="clanky-log-filter shrink-0 cursor-pointer text-[11px] sm:text-sm">
-            <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
-              <input
-                type="checkbox"
-                checked={showReasoning}
-                onChange={(e) => onShowReasoningChange(e.target.checked)}
-                aria-label="Show reasoning"
-                className="clanky-log-filter-input rounded"
-              />
-              <span>Reasoning</span>
             </span>
           </label>
           <label className="clanky-log-filter shrink-0 cursor-pointer text-[11px] sm:text-sm">
