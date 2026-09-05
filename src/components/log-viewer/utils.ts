@@ -4,6 +4,7 @@ import type {
   GroupedEntryBase,
   DisplayEntry,
   LogEntry,
+  ReasoningGroupEntryBase,
   ToolGroupEntryBase,
 } from "./types";
 
@@ -65,6 +66,8 @@ export function getEntryGroupKey(entry: GroupedEntryBase): string {
       return `tool|${entry.data.name}`;
     case "tool-group":
       return "tool-group";
+    case "reasoning-group":
+      return "reasoning-group";
     case "log":
       return `log|${entry.data.level}|${entry.data.message}`;
   }
@@ -82,28 +85,85 @@ function createToolGroupEntry(tools: ToolGroupEntryBase["tools"]): ToolGroupEntr
   };
 }
 
-export function groupConsecutiveToolEntries(sorted: EntryBase[]): GroupedEntryBase[] {
+function createReasoningGroupEntry(
+  entries: Array<Extract<EntryBase, { type: "log" }>>,
+  isActive: boolean,
+): ReasoningGroupEntryBase {
+  const firstEntry = entries[0]!;
+  const lastEntry = entries[entries.length - 1]!;
+  const endedAt = lastEntry.reasoningEndTimestamp;
+
+  return {
+    type: "reasoning-group",
+    id: firstEntry.data.id,
+    logs: entries.map((entry) => entry.data),
+    timestamp: firstEntry.timestamp,
+    lastTimestamp: lastEntry.timestamp,
+    endedAt,
+    isActive: isActive && endedAt === undefined,
+  };
+}
+
+export function groupConsecutiveEntries(
+  sorted: EntryBase[],
+  isActive: boolean,
+): GroupedEntryBase[] {
   const groupedEntries: GroupedEntryBase[] = [];
 
   for (let index = 0; index < sorted.length; index += 1) {
     const entry = sorted[index]!;
-    if (entry.type !== "tool") {
-      groupedEntries.push(entry);
+    if (entry.type === "tool") {
+      const consecutiveTools = [entry.data];
+      let cursor = index + 1;
+      while (cursor < sorted.length && sorted[cursor]?.type === "tool") {
+        consecutiveTools.push((sorted[cursor] as Extract<EntryBase, { type: "tool" }>).data);
+        cursor += 1;
+      }
+
+      groupedEntries.push(createToolGroupEntry(consecutiveTools));
+      index = cursor - 1;
       continue;
     }
 
-    const consecutiveTools = [entry.data];
-    let cursor = index + 1;
-    while (cursor < sorted.length && sorted[cursor]?.type === "tool") {
-      consecutiveTools.push((sorted[cursor] as Extract<EntryBase, { type: "tool" }>).data);
-      cursor += 1;
+    if (entry.type === "log" && isReasoningLogEntry(entry.data)) {
+      const consecutiveReasoning = [entry];
+      let cursor = index + 1;
+      while (
+        cursor < sorted.length
+        && sorted[cursor]?.type === "log"
+        && isReasoningLogEntry((sorted[cursor] as Extract<EntryBase, { type: "log" }>).data)
+      ) {
+        consecutiveReasoning.push(sorted[cursor] as Extract<EntryBase, { type: "log" }>);
+        cursor += 1;
+      }
+
+      groupedEntries.push(createReasoningGroupEntry(consecutiveReasoning, isActive));
+      index = cursor - 1;
+      continue;
     }
 
-    groupedEntries.push(createToolGroupEntry(consecutiveTools));
-    index = cursor - 1;
+    groupedEntries.push(entry);
   }
 
   return groupedEntries;
+}
+
+/**
+ * Format a completed reasoning duration using whole seconds below one minute
+ * and whole minutes from one minute onward.
+ */
+export function formatThoughtDuration(startTimestamp: string, endTimestamp: string): string {
+  const elapsedMilliseconds = Date.parse(endTimestamp) - Date.parse(startTimestamp);
+  const elapsedSeconds = Number.isFinite(elapsedMilliseconds)
+    ? Math.max(0, Math.floor(elapsedMilliseconds / 1000))
+    : 0;
+
+  if (elapsedSeconds < 60) {
+    return `${elapsedSeconds} second${elapsedSeconds === 1 ? "" : "s"}`;
+  }
+
+  const elapsedMinutes = Math.max(1, Math.floor(elapsedSeconds / 60));
+  return `${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}`;
 }
 
 export function isReasoningLogEntry(logEntry: LogEntry): boolean {
@@ -140,11 +200,11 @@ export function getEntrySpacingClass(entry: DisplayEntry, previousEntry?: Displa
     return "";
   }
 
-  if (entry.type === "tool-group") {
+  if (entry.type === "tool-group" || entry.type === "reasoning-group") {
     return "mt-2";
   }
 
-  if (previousEntry.type === "tool-group") {
+  if (previousEntry.type === "tool-group" || previousEntry.type === "reasoning-group") {
     return "mt-2 sm:mt-3";
   }
 
