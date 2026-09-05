@@ -58,12 +58,16 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
             childEntry,
             groupedChildEntries[index - 1],
           );
+          const childEntryForRender =
+            index === 0 && entry.showTimestamp
+              ? { ...childEntry, showTimestamp: false }
+              : childEntry;
 
-          if (childEntry.type === "tool-group") {
+          if (childEntryForRender.type === "tool-group") {
             return (
               <ToolGroupEntry
-                key={`working-tool-group-${childEntry.id}`}
-                entry={childEntry}
+                key={`working-tool-group-${childEntryForRender.id}`}
+                entry={childEntryForRender}
                 spacingClass={spacingClass}
                 toolPathDisplayRoot={toolPathDisplayRoot}
                 onLoadToolDetails={onLoadToolDetails}
@@ -73,8 +77,8 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
 
           return (
             <ReasoningGroupEntry
-              key={`working-reasoning-group-${childEntry.id}`}
-              entry={childEntry}
+              key={`working-reasoning-group-${childEntryForRender.id}`}
+              entry={childEntryForRender}
               spacingClass={spacingClass}
               markdownEnabled={markdownEnabled}
               fileLinkContext={fileLinkContext}

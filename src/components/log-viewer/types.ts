@@ -67,8 +67,9 @@ export interface TranscriptFileLinkContext {
 }
 
 /**
- * Internal marker used to preserve a response boundary when the corresponding
- * assistant message or response log is hidden by the viewer options.
+ * Internal marker used to preserve separation whenever a response is hidden
+ * or filtered, including assistant messages, response logs, and response logs
+ * with missing or empty response content.
  */
 export interface ResponseBoundaryEntryBase {
   type: "response-boundary";
