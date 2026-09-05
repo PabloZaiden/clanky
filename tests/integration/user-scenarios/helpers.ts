@@ -522,6 +522,12 @@ export async function getOrCreateWorkspace(
   name?: string
 ): Promise<string> {
   const hostsResponse = await fetch(`${baseUrl}/api/execution-hosts`);
+  if (!hostsResponse.ok) {
+    const details = await hostsResponse.text();
+    throw new Error(
+      `Failed to list execution hosts (${hostsResponse.status}): ${details || hostsResponse.statusText}`,
+    );
+  }
   const hosts = await hostsResponse.json() as Array<{
     ref: { kind: string; nodeId?: string };
   }>;

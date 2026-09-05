@@ -20,7 +20,11 @@ export function shouldIncludeSensitiveData(req: Request): boolean {
 }
 
 export function sanitizeServerSettings(settings: ServerSettings): PublicServerSettings {
-  return settings;
+  return {
+    agent: {
+      provider: settings.agent.provider,
+    },
+  };
 }
 
 export function sanitizeWorkspace(workspace: Workspace): PublicWorkspace {

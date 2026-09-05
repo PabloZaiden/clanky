@@ -42,10 +42,14 @@ function validateColumnNames(columns: string[]): void {
 }
 
 function rowToVncSession(row: Record<string, unknown>): VncSession {
+  const executionHostBinding = executionHostBindingFromRow(row);
+  if (!executionHostBinding) {
+    throw new Error(`VNC session ${String(row["id"])} has no execution-host binding`);
+  }
   return {
     config: {
       id: row["id"] as string,
-      executionHostBinding: executionHostBindingFromRow(row)!,
+      executionHostBinding,
       remoteHost: "127.0.0.1",
       remotePort: row["remote_port"] as number,
       localPort: row["local_port"] as number,
