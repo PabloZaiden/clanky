@@ -3,6 +3,7 @@ import type {
   ExecutionHostDescriptor,
   WorkspaceTerminalSession,
 } from "@/shared";
+import { getExecutionHostDefaultDirectory } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { FileExplorerView } from "./file-explorer-view";
 
@@ -39,7 +40,7 @@ export function ExecutionHostFilesView({
   return (
     <FileExplorerView
       title={`${host.name} files`}
-      defaultRootDirectory={host.repositoriesBasePath ?? "/"}
+      defaultRootDirectory={getExecutionHostDefaultDirectory(host)}
       backRoute={{
         view: "execution-host",
         hostKind: host.ref.kind,
@@ -59,7 +60,7 @@ export function ExecutionHostFilesView({
       onCreateTerminal={async (options) => await createTerminalSession({
         executionHost: host.ref,
         name: `${host.name} terminal`,
-        directory: startDirectory ?? host.repositoriesBasePath ?? "/",
+        directory: startDirectory ?? getExecutionHostDefaultDirectory(host),
         connectionMode: "direct",
         useTmux: options?.useTmux ?? false,
       })}

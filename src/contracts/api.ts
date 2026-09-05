@@ -25,6 +25,7 @@ import {
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
   CreateExecutionHostChatRequestSchema,
+  ExecutionHostWorkingDirectorySchema,
   DiscoverSshServerChatModelsRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
   GenerateTaskTitleRequestSchema,
@@ -188,6 +189,7 @@ export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 export type CreateSshServerChatRequest = z.infer<typeof CreateSshServerChatRequestSchema>;
 export type CreateExecutionHostChatRequest = z.infer<typeof CreateExecutionHostChatRequestSchema>;
+export type ExecutionHostWorkingDirectory = z.infer<typeof ExecutionHostWorkingDirectorySchema>;
 export type ImportExistingChatRequest = z.infer<typeof ImportExistingChatRequestSchema>;
 
 /**

@@ -10,6 +10,7 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import {
   MeshHealthCheckSchema,
+  MeshExecutionConfigurationUpdateSchema,
   MeshPeerPairingApprovalSchema,
   MeshPeerPairingRequestSchema,
   MeshMembershipUpdateSchema,
@@ -51,10 +52,16 @@ function internalMeshErrorResponse(error: unknown): Response {
             ? 409
           : error.code === "mesh_execution_context_changed"
             ? 409
+          : error.code === "mesh_execution_configuration_stale"
+            ? 409
+          : error.code === "mesh_execution_configuration_request_expired"
+            ? 410
           : error.code === "mesh_execution_owner_mismatch"
             ? 403
           : error.code === "workspace_not_found"
             ? 404
+          : error.code === "execution_host_directory_invalid"
+            ? 400
           : error.code === "mesh_execution_session_invalid"
             || error.code === "mesh_execution_session_expired"
             ? 401
@@ -187,6 +194,37 @@ export const meshInternalRoutes = defineRoutes({
       }
       try {
         return Response.json(await meshManager.receiveHealthCheck(parsed.data));
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/execution/configuration": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Apply a signed node-owned Mesh execution configuration update.",
+    tags: ["mesh", "internal", "execution"],
+    async POST(req): Promise<Response> {
+      const parsed = await parseAndValidate(
+        MeshExecutionConfigurationUpdateSchema,
+        req,
+      );
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      const nodeId = req.headers.get("x-clanky-mesh-node-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (nodeId !== parsed.data.senderNodeId || requestId !== parsed.data.nonce) {
+        return errorResponse(
+          "mesh_peer_headers_invalid",
+          "Mesh identity headers do not match the signed configuration update.",
+          400,
+        );
+      }
+      try {
+        return Response.json(
+          await meshManager.receiveExecutionConfigurationUpdate(parsed.data),
+        );
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

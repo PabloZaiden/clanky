@@ -31,6 +31,7 @@ export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Serv
         params: matched.params,
         server,
         requireUser: () => options.user ?? testOwnerUser,
+        requireOwner: () => options.user ?? testOwnerUser,
       };
       return await handler(req, context as RouteContext) ?? new Response(null, { status: 204 });
     },

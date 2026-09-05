@@ -1,25 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CodeValue,
   ErrorState,
+  FormActions,
   FormGroup,
   Panel,
+  SelectField,
   TextField,
   type WebAppRoute,
+  useToast,
 } from "@pablozaiden/webapp/web";
 import type {
   ExecutionHostDescriptor,
   VncSession,
 } from "@/shared";
+import { getExecutionHostDefaultDirectory } from "@/shared";
+import type { ExecutionHostWorkingDirectory } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
+import {
+  makeModelKey,
+  ModelSelector,
+  parseModelKey,
+} from "../ModelSelector";
 import { VncViewer } from "./VncViewer";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
+import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 
 interface ExecutionHostViewProps {
   host: ExecutionHostDescriptor;
   provisioning: UseProvisioningJobResult;
   onNavigate: (route: WebAppRoute) => void;
+  onRefresh: () => Promise<void>;
 }
 
 function hostApiPath(host: ExecutionHostDescriptor): string {
@@ -27,8 +39,32 @@ function hostApiPath(host: ExecutionHostDescriptor): string {
   return `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(id)}`;
 }
 
-export function ExecutionHostView({ host, provisioning, onNavigate }: ExecutionHostViewProps) {
-  const [directory, setDirectory] = useState("/");
+export function ExecutionHostView({
+  host,
+  provisioning,
+  onNavigate,
+  onRefresh,
+}: ExecutionHostViewProps) {
+  const toast = useToast();
+  const [directory, setDirectory] = useState(host.repositoriesBasePath ?? "");
+  const [directoryConfigured, setDirectoryConfigured] = useState(
+    host.repositoriesBasePath !== null,
+  );
+  const [directoryLoading, setDirectoryLoading] = useState(
+    host.repositoriesBasePath === null,
+  );
+  const [discoveryDirectory, setDiscoveryDirectory] = useState(
+    host.repositoriesBasePath ?? "",
+  );
+  const [preferredModel, setPreferredModel] = useState(
+    host.preferredModel
+      ? makeModelKey(
+        host.preferredModel.providerID,
+        host.preferredModel.modelID,
+        host.preferredModel.variant,
+      )
+      : "",
+  );
   const [vncPort, setVncPort] = useState("5900");
   const [vncUsername, setVncUsername] = useState("");
   const [vncPassword, setVncPassword] = useState("");
@@ -36,6 +72,61 @@ export function ExecutionHostView({ host, provisioning, onNavigate }: ExecutionH
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const available = host.availability === "local" || host.availability === "online";
+  const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory);
+  const apiPath = hostApiPath(host);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setDirectory(host.repositoriesBasePath ?? "");
+    setDiscoveryDirectory(host.repositoriesBasePath ?? "");
+    setDirectoryConfigured(host.repositoriesBasePath !== null);
+    setDirectoryLoading(host.repositoriesBasePath === null);
+    setError(null);
+    void (async () => {
+      try {
+        const resolved = await apiRequest<ExecutionHostWorkingDirectory>(
+          `${apiPath}/working-directory`,
+          {
+            signal: controller.signal,
+            action: "Resolve execution-host working directory",
+            fallbackMessage: "Failed to resolve the server working directory",
+          },
+        );
+        if (!controller.signal.aborted) {
+          setDirectory(resolved.directory);
+          setDiscoveryDirectory(resolved.directory);
+          setDirectoryConfigured(resolved.configured);
+        }
+      } catch (directoryError) {
+        if (directoryError instanceof DOMException && directoryError.name === "AbortError") {
+          return;
+        }
+        setError(String(directoryError));
+      } finally {
+        if (!controller.signal.aborted) {
+          setDirectoryLoading(false);
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [apiPath, host.configurationRevision, host.repositoriesBasePath]);
+
+  useEffect(() => {
+    const preferred = host.preferredModel;
+    setPreferredModel(preferred
+      ? makeModelKey(
+        preferred.providerID,
+        preferred.modelID,
+        preferred.variant,
+      )
+      : "");
+  }, [
+    apiPath,
+    host.configurationRevision,
+    host.preferredModel?.modelID,
+    host.preferredModel?.providerID,
+    host.preferredModel?.variant,
+  ]);
 
   async function runAction<T>(name: string, action: () => Promise<T>): Promise<T | null> {
     setPendingAction(name);
@@ -72,12 +163,38 @@ export function ExecutionHostView({ host, provisioning, onNavigate }: ExecutionH
     }
   }
 
+  async function saveDefaults(repositoriesBasePath: string | null) {
+    const parsedModel = parseModelKey(preferredModel);
+    const updated = await runAction("defaults", () =>
+      apiRequest<ExecutionHostDescriptor>(`${apiPath}/configuration`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repositoriesBasePath,
+          preferredModel: parsedModel,
+          expectedRevision: host.configurationRevision,
+        }),
+        action: "Save execution-host defaults",
+        fallbackMessage: "Failed to save server defaults",
+      }));
+    if (!updated) {
+      return;
+    }
+    setDirectoryConfigured(updated.repositoriesBasePath !== null);
+    if (updated.repositoriesBasePath) {
+      setDirectory(updated.repositoriesBasePath);
+      setDiscoveryDirectory(updated.repositoriesBasePath);
+    }
+    await onRefresh();
+    toast.success("Server defaults saved");
+  }
+
   async function runArise() {
     const snapshot = await provisioning.startJob({
       name: host.name,
       executionHost: host.ref,
       repoUrl: "",
-      basePath: host.repositoriesBasePath ?? "/workspaces",
+      basePath: getExecutionHostDefaultDirectory(host),
       devcontainerSubpath: null,
       devboxTemplate: null,
       provider: "copilot",
@@ -116,12 +233,92 @@ export function ExecutionHostView({ host, provisioning, onNavigate }: ExecutionH
       </Panel>
 
       <Panel>
-        <TextField
-          id="execution-host-directory"
-          label="Target directory"
-          value={directory}
-          onChange={(event) => setDirectory(event.target.value)}
-        />
+        <div className="space-y-4">
+          <TextField
+            id="execution-host-directory"
+            label="Target directory"
+            value={directory}
+            onChange={(event) => {
+              setDirectory(event.target.value);
+              setDirectoryConfigured(true);
+            }}
+            onBlur={() => {
+              if (directory.trim()) {
+                setDiscoveryDirectory(directory.trim());
+              }
+            }}
+            disabled={directoryLoading}
+            className="font-mono"
+          />
+          <SelectField
+            id="execution-host-provider"
+            label="Preferred provider"
+            value={discovery.provider}
+            onChange={(event) => {
+              discovery.setProvider(event.target.value as typeof discovery.provider);
+              setPreferredModel("");
+            }}
+            disabled={discovery.providersLoading || discovery.providerOptions.length === 0}
+          >
+            {discovery.providerOptions.length === 0 ? (
+              <option value="">
+                {discovery.providersLoading ? "Loading providers..." : "No providers available"}
+              </option>
+            ) : discovery.providerOptions.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </SelectField>
+          <div>
+            <label
+              htmlFor="execution-host-model"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Preferred model
+            </label>
+            <ModelSelector
+              id="execution-host-model"
+              value={preferredModel}
+              onChange={setPreferredModel}
+              models={discovery.models}
+              loading={discovery.modelsLoading}
+              showDisconnected
+              additionalOptions={[{ value: "", label: "No node preference" }]}
+              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+              emptyText="Choose an available provider and directory"
+            />
+          </div>
+          {discovery.error ? <ErrorState description={discovery.error} /> : null}
+          <FormActions>
+            {!directoryConfigured ? (
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Using the server process directory
+              </span>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void saveDefaults(null)}
+                disabled={pendingAction !== null}
+              >
+                Use process directory
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={() => void saveDefaults(directory.trim())}
+              loading={pendingAction === "defaults"}
+              disabled={
+                !available
+                || directoryLoading
+                || !directory.trim()
+                || discovery.providersLoading
+                || discovery.modelsLoading
+              }
+            >
+              Save defaults
+            </Button>
+          </FormActions>
+        </div>
       </Panel>
 
       <FormGroup title="Arise">

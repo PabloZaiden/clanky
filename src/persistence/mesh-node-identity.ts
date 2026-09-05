@@ -28,11 +28,27 @@ import {
   type ExecutionHostCapabilities,
   type ExecutionNodeConfiguration,
 } from "@/shared/execution-host";
+import type { ModelConfig } from "@/shared/model";
 import { getDataDir, getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh-node-identity");
 const IDENTITY_FILE_VERSION = 1;
 const IDENTITY_FILE_NAME = "node-identity.json";
+let identityMutationTail: Promise<void> = Promise.resolve();
+
+async function withIdentityMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const previousMutation = identityMutationTail;
+  let releaseMutation: () => void = () => {};
+  identityMutationTail = new Promise<void>((resolve) => {
+    releaseMutation = resolve;
+  });
+  await previousMutation;
+  try {
+    return await operation();
+  } finally {
+    releaseMutation();
+  }
+}
 
 interface StoredMeshNodeIdentity {
   version: number;
@@ -101,6 +117,34 @@ function parseExecutionConfiguration(
     );
   }
   const record = value as Record<string, unknown>;
+  const preferredModelValue = record["preferredModel"];
+  let preferredModel: ModelConfig | null = null;
+  if (preferredModelValue !== undefined && preferredModelValue !== null) {
+    const preferredModelRecord = typeof preferredModelValue === "object"
+      && !Array.isArray(preferredModelValue)
+      ? preferredModelValue as Record<string, unknown>
+      : null;
+    const providerID = preferredModelRecord?.["providerID"];
+    const modelID = preferredModelRecord?.["modelID"];
+    const variant = preferredModelRecord?.["variant"];
+    if (
+      typeof providerID !== "string"
+      || typeof modelID !== "string"
+      || typeof variant !== "string"
+      || !providerID.trim()
+      || !modelID.trim()
+    ) {
+      throw new DomainError(
+        "mesh_node_identity_invalid",
+        "The stored preferred model is invalid.",
+      );
+    }
+    preferredModel = {
+      providerID,
+      modelID,
+      variant,
+    };
+  }
   if (
     typeof record["name"] !== "string"
     || (record["endpoint"] !== null && typeof record["endpoint"] !== "string")
@@ -122,6 +166,7 @@ function parseExecutionConfiguration(
     name: record["name"],
     endpoint: record["endpoint"],
     repositoriesBasePath: record["repositoriesBasePath"],
+    preferredModel,
     acceptRemoteExecution: record["acceptRemoteExecution"],
     capabilities: parseExecutionCapabilities(record["capabilities"]),
     revision: record["revision"],
@@ -676,7 +721,7 @@ export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   return publicIdentity(replacement);
 }
 
-export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeIdentity> {
+async function setLocalMeshInstanceNameUnlocked(value: string): Promise<MeshNodeIdentity> {
   const instanceName = normalizeMeshInstanceName(value);
   let identity = await readStoredIdentity();
   if (!identity) {
@@ -704,7 +749,11 @@ export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeI
   return publicIdentity(updated);
 }
 
-export async function setLocalMeshEndpoint(value: string): Promise<MeshNodeIdentity> {
+export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeIdentity> {
+  return await withIdentityMutation(() => setLocalMeshInstanceNameUnlocked(value));
+}
+
+async function setLocalMeshEndpointUnlocked(value: string): Promise<MeshNodeIdentity> {
   let identity = await readStoredIdentity();
   if (!identity) {
     await ensureLocalMeshNodeIdentity();
@@ -735,8 +784,14 @@ export async function setLocalMeshEndpoint(value: string): Promise<MeshNodeIdent
   return publicIdentity(updated);
 }
 
-export async function setLocalMeshExecutionConfiguration(
-  updates: Pick<ExecutionNodeConfiguration, "acceptRemoteExecution" | "repositoriesBasePath">,
+export async function setLocalMeshEndpoint(value: string): Promise<MeshNodeIdentity> {
+  return await withIdentityMutation(() => setLocalMeshEndpointUnlocked(value));
+}
+
+async function setLocalMeshExecutionConfigurationUnlocked(
+  updates: Pick<ExecutionNodeConfiguration, "acceptRemoteExecution" | "repositoriesBasePath">
+    & Partial<Pick<ExecutionNodeConfiguration, "preferredModel">>,
+  expectedRevision?: number,
 ): Promise<MeshNodeIdentity> {
   let identity = await readStoredIdentity();
   if (!identity) {
@@ -749,10 +804,23 @@ export async function setLocalMeshExecutionConfiguration(
       "The mesh node identity is unavailable.",
     );
   }
+  if (
+    expectedRevision !== undefined
+    && identity.execution.revision !== expectedRevision
+  ) {
+    throw new DomainError(
+      "mesh_execution_configuration_stale",
+      "The Mesh execution configuration changed before it could be saved.",
+    );
+  }
   const repositoriesBasePath = updates.repositoriesBasePath?.trim() || null;
+  const preferredModel = updates.preferredModel === undefined
+    ? identity.execution.preferredModel
+    : updates.preferredModel;
   if (
     identity.execution.acceptRemoteExecution === updates.acceptRemoteExecution
     && identity.execution.repositoriesBasePath === repositoriesBasePath
+    && JSON.stringify(identity.execution.preferredModel) === JSON.stringify(preferredModel)
   ) {
     return publicIdentity(identity);
   }
@@ -762,6 +830,7 @@ export async function setLocalMeshExecutionConfiguration(
       ...identity.execution,
       acceptRemoteExecution: updates.acceptRemoteExecution,
       repositoriesBasePath,
+      preferredModel,
       revision: identity.execution.revision + 1,
     },
     updatedAt: new Date().toISOString(),
@@ -769,6 +838,16 @@ export async function setLocalMeshExecutionConfiguration(
   await writeStoredIdentity(updated);
   upsertIdentityRows(updated);
   return publicIdentity(updated);
+}
+
+export async function setLocalMeshExecutionConfiguration(
+  updates: Pick<ExecutionNodeConfiguration, "acceptRemoteExecution" | "repositoriesBasePath">
+    & Partial<Pick<ExecutionNodeConfiguration, "preferredModel">>,
+  expectedRevision?: number,
+): Promise<MeshNodeIdentity> {
+  return await withIdentityMutation(
+    () => setLocalMeshExecutionConfigurationUnlocked(updates, expectedRevision),
+  );
 }
 
 export async function requireLocalMeshExecutionCapability(

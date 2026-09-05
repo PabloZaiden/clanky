@@ -1,4 +1,9 @@
-import type { TerminalConnectionMode, Workspace, WorkspaceTerminalSession } from "@/shared";
+import type {
+  ExecutionHostDescriptor,
+  TerminalConnectionMode,
+  Workspace,
+  WorkspaceTerminalSession,
+} from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
 import type { SshServer, SshServerSession } from "@/shared/ssh-server";
@@ -14,8 +19,9 @@ import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AgentComposer } from "./agents-view";
 import type { UseAgentsResult } from "../../hooks/useAgents";
+import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "terminal-session" | "ssh-server" | "ssh-server-chat";
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "ssh-session" | "terminal-session" | "ssh-server" | "ssh-server-chat" | "execution-host-chat";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
@@ -27,6 +33,7 @@ export function isComposeKind(value: string): value is ComposeKind {
     "terminal-session",
     "ssh-server",
     "ssh-server-chat",
+    "execution-host-chat",
   ].includes(value);
 }
 
@@ -34,6 +41,7 @@ interface ComposeViewProps {
   kind: ComposeKind;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeExecutionHost: ExecutionHostDescriptor | null;
   navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
@@ -73,6 +81,7 @@ export function ComposeView(props: ComposeViewProps) {
     kind,
     composeWorkspace,
     composeServer,
+    composeExecutionHost,
     navigateWithinShell,
     setComposeActionState,
     handleTaskSubmit,
@@ -166,6 +175,15 @@ export function ComposeView(props: ComposeViewProps) {
         createSshServerChat={createSshServerChat}
       />
     );
+  }
+
+  if (kind === "execution-host-chat") {
+    return composeExecutionHost ? (
+      <ExecutionHostChatComposer
+        host={composeExecutionHost}
+        navigateWithinShell={navigateWithinShell}
+      />
+    ) : null;
   }
 
   if (kind === "terminal-session") {

@@ -30,6 +30,16 @@ interface MeshStatus {
   node: {
     nodeId: string;
     meshEndpoint?: string | null;
+    execution?: {
+      repositoriesBasePath: string | null;
+      preferredModel: {
+        providerID: string;
+        modelID: string;
+        variant: string;
+      } | null;
+      acceptRemoteExecution: boolean;
+      revision: number;
+    };
   };
   links: MeshLink[];
   pendingPairingRequests: MeshPairingRequest[];
@@ -147,7 +157,7 @@ async function startMeshNode(
       CLANKY_DATA_DIR: dataDir,
       CLANKY_DISABLE_PASSKEY: "true",
       CLANKY_HOST: "127.0.0.1",
-      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_LOG_LEVEL: process.env["CLANKY_TEST_MESH_LOG_LEVEL"] ?? "fatal",
       CLANKY_MOCK_ACP: options.mockAcp ? "true" : "false",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
@@ -291,17 +301,20 @@ async function pairNodes(joiner: MeshNodeProcess, target: MeshNodeProcess): Prom
   expect(completion.status).toBe(200);
 }
 
-async function waitForThreeMemberConvergence(nodes: MeshNodeProcess[]): Promise<MeshStatus[]> {
+async function waitForMemberConvergence(
+  nodes: MeshNodeProcess[],
+  expectedMemberCount: number,
+): Promise<MeshStatus[]> {
   let statuses: MeshStatus[] = [];
   await waitForCondition(async () => {
     statuses = await Promise.all(nodes.map((node) => getStatus(node)));
     return statuses.every((status) => {
       const link = status.links[0];
-      return link?.members.length === 3
+      return link?.members.length === expectedMemberCount
         && link.members.every((member) => member.endpoint !== null)
-        && new Set(link.members.map((member) => member.endpoint)).size === 3;
+        && new Set(link.members.map((member) => member.endpoint)).size === expectedMemberCount;
     });
-  }, "The three mesh nodes did not converge.");
+  }, `The ${String(expectedMemberCount)} Mesh members did not converge.`);
   return statuses;
 }
 
@@ -342,7 +355,7 @@ describe("three-process mesh cluster", () => {
     await pairNodes(nodeA, nodeB);
     await pairNodes(nodeC, nodeB);
 
-    const converged = await waitForThreeMemberConvergence(meshNodes);
+    const converged = await waitForMemberConvergence(meshNodes, 3);
     expect(new Set(getLink(converged[0]!).members.map((member) => member.endpoint))).toEqual(
       new Set(meshNodes.map((node) => node.baseUrl)),
     );
@@ -375,6 +388,7 @@ describe("three-process mesh cluster", () => {
       const result = await postJson(node, "/api/mesh/instance-name", {
         instanceName: `Instance ${node.name}`,
       });
+
       expect(result.status).toBe(200);
     }
 
@@ -418,6 +432,203 @@ describe("three-process mesh cluster", () => {
     }, "A peer restart replaced the direct pairing route.");
   });
 
+  test("updates node-owned execution defaults through the signed Mesh boundary", async () => {
+    for (const name of ["A", "B"]) {
+      meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-defaults-${name.toLowerCase()}-`)));
+    }
+    meshNodes.push(await startMeshNode("A", meshDataDirs[0]!));
+    meshNodes.push(await startMeshNode("B", meshDataDirs[1]!));
+    const nodeA = meshNodes[0]!;
+    const nodeB = meshNodes[1]!;
+
+    for (const node of meshNodes) {
+      const result = await postJson(node, "/api/mesh/instance-name", {
+        instanceName: `Instance ${node.name}`,
+      });
+      expect(result.status).toBe(200);
+    }
+    await pairNodes(nodeA, nodeB);
+    await waitForMemberConvergence(meshNodes, 2);
+
+    const nodeBStatus = await getStatus(nodeB);
+    const nodeBId = nodeBStatus.node.nodeId;
+    const hostsResult = await request(nodeA, "/api/execution-hosts");
+    expect(hostsResult.status).toBe(200);
+    const host = (hostsResult.body as Array<{
+      ref: { kind: string; nodeId?: string };
+      configurationRevision: number;
+    }>).find((candidate) =>
+      candidate.ref.kind === "mesh" && candidate.ref.nodeId === nodeBId);
+    expect(host).toBeDefined();
+
+    const preferredModel = {
+      providerID: "copilot",
+      modelID: "auto",
+      variant: "",
+    };
+    const update = await request(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/configuration`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          repositoriesBasePath: nodeB.dataDir,
+          preferredModel,
+          expectedRevision: host!.configurationRevision,
+        }),
+      },
+    );
+    if (update.status !== 200) {
+      throw new Error(
+        `Mesh configuration update failed: ${JSON.stringify(update.body)}\n`
+        + `Controller logs: ${nodeA.output.read()}\nTarget logs: ${nodeB.output.read()}`,
+      );
+    }
+    expect(update.status).toBe(200);
+    expect(update.body).toMatchObject({
+      repositoriesBasePath: nodeB.dataDir,
+      preferredModel,
+      configurationRevision: host!.configurationRevision + 1,
+    });
+
+    await waitForCondition(async () => {
+      const [targetStatus, controllerHosts] = await Promise.all([
+        getStatus(nodeB),
+        request(nodeA, "/api/execution-hosts"),
+      ]);
+      const controllerHost = (controllerHosts.body as Array<{
+        ref: { kind: string; nodeId?: string };
+        repositoriesBasePath: string | null;
+        preferredModel: unknown;
+      }>).find((candidate) =>
+        candidate.ref.kind === "mesh" && candidate.ref.nodeId === nodeBId);
+      return targetStatus.node.execution?.repositoriesBasePath === nodeB.dataDir
+        && targetStatus.node.execution.preferredModel?.modelID === "auto"
+        && targetStatus.node.execution.acceptRemoteExecution
+        && controllerHost?.repositoriesBasePath === nodeB.dataDir
+        && JSON.stringify(controllerHost.preferredModel) === JSON.stringify(preferredModel);
+    }, "The node-owned execution defaults did not converge.");
+
+    const staleUpdate = await request(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/configuration`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          repositoriesBasePath: nodeB.dataDir,
+          preferredModel: null,
+          expectedRevision: host!.configurationRevision,
+        }),
+      },
+    );
+    expect(staleUpdate.status).toBe(409);
+  });
+
+  test("discovers and starts a direct chat on a Mesh execution host", async () => {
+    for (const name of ["A", "B"]) {
+      meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-chat-${name.toLowerCase()}-`)));
+    }
+    meshNodes.push(await startMeshNode("A", meshDataDirs[0]!, undefined, { mockAcp: true }));
+    meshNodes.push(await startMeshNode("B", meshDataDirs[1]!, undefined, { mockAcp: true }));
+    const nodeA = meshNodes[0]!;
+    const nodeB = meshNodes[1]!;
+
+    for (const node of meshNodes) {
+      const result = await postJson(node, "/api/mesh/instance-name", {
+        instanceName: `Instance ${node.name}`,
+      });
+      expect(result.status).toBe(200);
+    }
+    await pairNodes(nodeA, nodeB);
+    await waitForMemberConvergence(meshNodes, 2);
+
+    const nodeBId = (await getStatus(nodeB)).node.nodeId;
+    const workingDirectory = await request(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/working-directory`,
+    );
+    if (workingDirectory.status !== 200) {
+      throw new Error(
+        `Mesh working-directory resolution failed: ${JSON.stringify(workingDirectory.body)}\n`
+        + `Controller logs: ${nodeA.output.read()}\nTarget logs: ${nodeB.output.read()}`,
+      );
+    }
+    expect(workingDirectory.status).toBe(200);
+    expect(workingDirectory.body).toEqual({
+      directory: process.cwd(),
+      configured: false,
+    });
+
+    const providers = await postJson(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/chat-providers`,
+      { credentialToken: null },
+    );
+    expect(providers.status).toBe(200);
+    expect((providers.body as {
+      providers: Array<{ providerID: string; available: boolean }>;
+    }).providers).toContainEqual({
+      providerID: "copilot",
+      available: true,
+    });
+
+    const models = await postJson(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/chat-models`,
+      {
+        credentialToken: null,
+        providerID: "copilot",
+        directory: process.cwd(),
+      },
+    );
+    expect(models.status).toBe(200);
+    const selectedModel = (models.body as Array<{
+      providerID: string;
+      modelID: string;
+      variants?: string[];
+      connected: boolean;
+    }>).find((model) => model.connected);
+    expect(selectedModel).toBeDefined();
+
+    const created = await postJson(
+      nodeA,
+      `/api/execution-hosts/mesh/${encodeURIComponent(nodeBId)}/chats`,
+      {
+        name: "Mesh direct chat",
+        directory: process.cwd(),
+        model: {
+          providerID: selectedModel!.providerID,
+          modelID: selectedModel!.modelID,
+          variant: selectedModel!.variants?.[0] ?? "",
+        },
+        autoApprovePermissions: true,
+        credentialToken: null,
+      },
+    );
+    expect(created.status).toBe(201);
+    const chatId = (created.body as {
+      config: { id: string; source: { kind: string; directory: string } };
+    }).config.id;
+    expect(created.body).toMatchObject({
+      config: {
+        source: {
+          kind: "execution_host",
+          directory: process.cwd(),
+        },
+      },
+    });
+
+    const reconnected = await postJson(
+      nodeA,
+      `/api/chats/${encodeURIComponent(chatId)}/reconnect`,
+      { credentialToken: null },
+    );
+    expect(reconnected.status).toBe(200);
+    expect(reconnected.body).toMatchObject({
+      state: { connectionStatus: "connected" },
+    });
+  });
+
   test("keeps a remote-stdio workspace local while executing through its selected peer", async () => {
     for (const name of ["A", "B"]) {
       meshDataDirs.push(await mkdtemp(join(tmpdir(), `clanky-mesh-execution-${name.toLowerCase()}-`)));
@@ -443,11 +654,7 @@ describe("three-process mesh cluster", () => {
     }
 
     await pairNodes(nodeA, nodeB);
-    await waitForCondition(async () => {
-      const status = await getStatus(nodeB);
-      return status.links[0]?.members.length === 2
-        && status.links[0].members.every((member) => member.endpoint !== null);
-    }, "The execution mesh did not converge.");
+    await waitForMemberConvergence(meshNodes, 2);
 
     const nodeBId = (await getStatus(nodeB)).node.nodeId;
     const workspaceResult = await postJson(nodeA, "/api/workspaces", {

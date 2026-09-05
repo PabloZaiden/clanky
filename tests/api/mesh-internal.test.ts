@@ -294,6 +294,25 @@ describe("mesh internal routes", () => {
         nodeId: pairing.requestedNodeId,
         requestId: "not-the-nonce",
       },
+      {
+        path: "/api/mesh/internal/execution/configuration",
+        payload: {
+          protocolVersion: 1,
+          linkId,
+          senderNodeId: pairing.requestedNodeId,
+          senderPublicKey: pairing.publicKey,
+          senderFingerprint: pairing.fingerprint,
+          targetNodeId: "target-node",
+          expectedRevision: 1,
+          repositoriesBasePath: null,
+          preferredModel: null,
+          nonce: crypto.randomUUID(),
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+          signature: "signature",
+        },
+        nodeId: pairing.requestedNodeId,
+        requestId: "not-the-nonce",
+      },
     ] as const;
 
     for (const testCase of cases) {

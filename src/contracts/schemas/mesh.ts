@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { ExecutionNodeConfigurationSchema } from "./execution-host";
+import { ModelConfigSchema } from "./model";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_PAIRING_DIRECTIONS,
@@ -61,6 +62,7 @@ export const UpdateMeshEndpointSchema = z.object({
 export const UpdateMeshExecutionConfigurationSchema = z.object({
   acceptRemoteExecution: z.boolean(),
   repositoriesBasePath: z.string().trim().nullable(),
+  preferredModel: ModelConfigSchema.nullable().optional(),
 });
 
 export const ApproveMeshPairingRequestSchema = z.object({
@@ -168,6 +170,21 @@ export const MeshHealthCheckSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
+export const MeshExecutionConfigurationUpdateSchema = z.object({
+  protocolVersion: z.literal(1),
+  linkId: z.string().trim().min(1),
+  senderNodeId: z.string().trim().min(1),
+  senderPublicKey: z.string().min(1),
+  senderFingerprint: z.string().trim().min(1),
+  targetNodeId: z.string().trim().min(1),
+  expectedRevision: z.number().int().min(1),
+  repositoriesBasePath: z.string().trim().min(1).nullable(),
+  preferredModel: ModelConfigSchema.nullable(),
+  nonce: z.string().trim().min(1),
+  expiresAt: z.string().datetime(),
+  signature: z.string().trim().min(1),
+}).strict();
+
 export type StartMeshPairingRequest = z.infer<typeof StartMeshPairingRequestSchema>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
@@ -182,3 +199,6 @@ export type MeshPeerPairingRequest = z.infer<typeof MeshPeerPairingRequestSchema
 export type MeshPeerPairingApproval = z.infer<typeof MeshPeerPairingApprovalSchema>;
 export type MeshMembershipUpdate = z.infer<typeof MeshMembershipUpdateSchema>;
 export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
+export type MeshExecutionConfigurationUpdate = z.infer<
+  typeof MeshExecutionConfigurationUpdateSchema
+>;

@@ -8,7 +8,10 @@ import type {
   ExecutionHostDescriptor,
   ExecutionHostRef,
 } from "@/shared/execution-host";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
+import {
+  DEFAULT_EXECUTION_HOST_CAPABILITIES,
+  executionHostRefsEqual,
+} from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import {
   getExecutionHostByRef,
@@ -107,6 +110,8 @@ export class ExecutionHostService {
         name: identity.execution?.name || identity.instanceName || "Local",
         endpoint: identity.execution?.endpoint ?? identity.meshEndpoint,
         repositoriesBasePath: identity.execution?.repositoriesBasePath ?? null,
+        preferredModel: identity.execution?.preferredModel ?? null,
+        configurationRevision: identity.execution?.revision ?? 1,
         availability: "local",
         accessRequirement: { kind: "none" },
         acceptRemoteExecution: true,
@@ -136,6 +141,8 @@ export class ExecutionHostService {
           name: node.execution.name || node.instanceName || member.nodeId,
           endpoint: member.endpoint ?? node.endpoint,
           repositoriesBasePath: node.execution.repositoriesBasePath,
+          preferredModel: node.execution.preferredModel ?? null,
+          configurationRevision: node.execution.revision,
           availability: member.status === "active" && Boolean(member.endpoint ?? node.endpoint)
             ? "online"
             : "offline",
@@ -159,6 +166,8 @@ export class ExecutionHostService {
         name: server.name,
         endpoint: `${server.address}:${String(server.port ?? 22)}`,
         repositoriesBasePath: server.repositoriesBasePath,
+        preferredModel: null,
+        configurationRevision: host.revision,
         availability: host.revokedAt ? "revoked" : "unavailable",
         accessRequirement: {
           kind: "sshCredentials",
@@ -177,6 +186,82 @@ export class ExecutionHostService {
 
   getRegisteredHosts(userId: string = requireCurrentUserId()): PersistedExecutionHost[] {
     return listExecutionHosts(userId);
+  }
+
+  async resolveWorkingDirectory(
+    ref: ExecutionHostRef,
+    options: {
+      userId?: string;
+      sshPassword?: string;
+    } = {},
+  ): Promise<{ directory: string; configured: boolean }> {
+    const userId = options.userId ?? requireCurrentUserId();
+    const descriptor = (await this.listHosts(userId))
+      .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
+    if (!descriptor) {
+      throw new DomainError(
+        "execution_host_unavailable",
+        "The selected execution host is unavailable.",
+      );
+    }
+    const configuredDirectory = descriptor.repositoriesBasePath?.trim();
+    if (configuredDirectory && configuredDirectory !== ".") {
+      return {
+        directory: configuredDirectory,
+        configured: true,
+      };
+    }
+
+    const executor = await this.getCommandExecutorForRef(ref, {
+      operationId: `working-directory:${descriptor.targetKey}`,
+      directory: ".",
+      provider: "copilot",
+      localUserId: userId,
+      sshPassword: options.sshPassword,
+    });
+    const result = await executor.exec("/bin/pwd", [], {
+      cwd: ".",
+      maxOutputBytes: 16 * 1024,
+    });
+    const directory = result.stdout.trim();
+    if (!result.success || !directory) {
+      throw new DomainError(
+        "execution_host_directory_unavailable",
+        "The execution host current directory could not be resolved.",
+        { details: { stderr: result.stderr.trim(), exitCode: result.exitCode } },
+      );
+    }
+    return { directory, configured: configuredDirectory === "." };
+  }
+
+  async assertDirectoryExists(
+    ref: ExecutionHostRef,
+    directory: string,
+    options: {
+      userId?: string;
+      sshPassword?: string;
+    } = {},
+  ): Promise<void> {
+    const userId = options.userId ?? requireCurrentUserId();
+    const binding = this.getBinding(ref, userId);
+    const executor = await this.getCommandExecutor(binding, {
+      operationId: `validate-directory:${binding.targetKey}`,
+      directory: ".",
+      provider: "copilot",
+      localUserId: userId,
+      sshPassword: options.sshPassword,
+    });
+    const result = await executor.exec(
+      "/bin/sh",
+      ["-c", "test -d \"$1\"", "clanky-directory-check", directory],
+      { cwd: ".", maxOutputBytes: 16 * 1024 },
+    );
+    if (!result.success) {
+      throw new DomainError(
+        "execution_host_directory_invalid",
+        "The selected directory does not exist on the execution host.",
+      );
+    }
   }
 
   getBinding(

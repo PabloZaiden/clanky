@@ -18,6 +18,7 @@ import { routes } from "../../src/server";
  */
 const PUBLIC_ROUTE_ALLOWLIST = [
   "/api/mesh/internal/execution/acp",
+  "/api/mesh/internal/execution/configuration",
   "/api/mesh/internal/execution/file",
   "/api/mesh/internal/execution/rpc",
   "/api/mesh/internal/execution/session",
@@ -33,6 +34,7 @@ const PUBLIC_ROUTE_ALLOWLIST = [
 
 /** Owner-only routes are destructive; downgrading one to `user` must fail the build. */
 const OWNER_ROUTE_ALLOWLIST = [
+  "/api/execution-hosts/:kind/:id/configuration",
   "/api/mesh/enrollment-tokens",
   "/api/mesh/endpoint",
   "/api/mesh/execution",

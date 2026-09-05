@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { ErrorState, Page, type WebAppRootProps, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Agent, Chat, Task, SshServer, Workspace } from "@/shared";
+import type {
+  Agent,
+  Chat,
+  ExecutionHostDescriptor,
+  Task,
+  SshServer,
+  Workspace,
+} from "@/shared";
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { AppRouteContent, type ShellMainContentProps } from "./shell-main-content";
 import { getRouteString } from "./route-fields";
@@ -43,6 +50,7 @@ export interface ShellRouteSelection {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeExecutionHost: ExecutionHostDescriptor | null;
   composeServerSessionCount: number;
   selectedServer: SshServer | null;
   selectedAgent: Agent | null;
@@ -55,6 +63,7 @@ type ShellRouteContentSelection = Pick<
   | "selectedWorkspace"
   | "composeWorkspace"
   | "composeServer"
+  | "composeExecutionHost"
   | "composeServerSessionCount"
   | "selectedServer"
 >;
@@ -69,6 +78,7 @@ interface ShellRouteSelectionData {
   chats: Chat[];
   workspaces: Workspace[];
   servers: SshServer[];
+  executionHosts: ExecutionHostDescriptor[];
   sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
   agents: Agent[];
 }
@@ -80,6 +90,7 @@ export function getShellRouteSelection(
     chats,
     workspaces,
     servers,
+    executionHosts,
     sessionsByServerId,
     agents,
   }: ShellRouteSelectionData,
@@ -136,6 +147,7 @@ export function getShellRouteSelection(
       && composeKind !== "ssh-session"
       && composeKind !== "ssh-server"
       && composeKind !== "ssh-server-chat"
+      && composeKind !== "execution-host-chat"
       ? (workspaces.find((workspace) => workspace.id === (workspaceId ?? composeScopeId)) ?? null)
       : null;
   const composeServer =
@@ -146,6 +158,14 @@ export function getShellRouteSelection(
   const composeServerSessionCount = composeServer
     ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
     : 0;
+  const composeExecutionHost =
+    route.view === "compose" && composeKind === "execution-host-chat"
+      ? (executionHosts.find((host) => {
+          const hostId = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+          return host.ref.kind === getRouteString(route, "hostKind")
+            && hostId === getRouteString(route, "hostId");
+        }) ?? null)
+      : null;
   const selectedServer =
     route.view === "ssh-server"
       || route.view === "vnc-session"
@@ -172,6 +192,7 @@ export function getShellRouteSelection(
     selectedWorkspace,
     composeWorkspace,
     composeServer,
+    composeExecutionHost,
     composeServerSessionCount,
     selectedServer,
     selectedAgent,
@@ -203,6 +224,7 @@ function renderShellRouteContent(
     chats: context.chats,
     workspaces: context.workspaces,
     servers: context.servers,
+    executionHosts: context.executionHosts,
     sessionsByServerId: context.sessionsByServerId,
     agents: context.agents.agents,
   });
@@ -216,6 +238,7 @@ function renderShellRouteContent(
       selectedWorkspace={selection.selectedWorkspace}
       composeWorkspace={selection.composeWorkspace}
       composeServer={selection.composeServer}
+      composeExecutionHost={selection.composeExecutionHost}
       composeServerSessionCount={selection.composeServerSessionCount}
       selectedServer={selection.selectedServer}
     />

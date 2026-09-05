@@ -34,6 +34,98 @@ describe("Execution hosts API", () => {
     expect(localHost).toBeDefined();
     expect(localHost?.accessRequirement).toEqual({ kind: "none" });
 
+    const workingDirectoryResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/working-directory`,
+    );
+    expect(workingDirectoryResponse.status).toBe(200);
+    expect(await workingDirectoryResponse.json()).toEqual({
+      directory: process.cwd(),
+      configured: false,
+    });
+
+    const dotConfigurationResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/configuration`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repositoriesBasePath: ".",
+          preferredModel: null,
+          expectedRevision: localHost!.configurationRevision,
+        }),
+      },
+    );
+    expect(dotConfigurationResponse.status).toBe(200);
+    const dotConfiguredHost = await dotConfigurationResponse.json() as ExecutionHostDescriptor;
+    expect(dotConfiguredHost.repositoriesBasePath).toBe(".");
+    const dotWorkingDirectoryResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/working-directory`,
+    );
+    expect(dotWorkingDirectoryResponse.status).toBe(200);
+    expect(await dotWorkingDirectoryResponse.json()).toEqual({
+      directory: process.cwd(),
+      configured: true,
+    });
+
+    const updateConfigurationResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/configuration`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repositoriesBasePath: testDataDir,
+          preferredModel: {
+            providerID: "copilot",
+            modelID: "default",
+            variant: "",
+          },
+          expectedRevision: dotConfiguredHost.configurationRevision,
+        }),
+      },
+    );
+    expect(updateConfigurationResponse.status).toBe(200);
+    const updatedHost = await updateConfigurationResponse.json() as ExecutionHostDescriptor;
+    expect(updatedHost.repositoriesBasePath).toBe(testDataDir);
+    expect(updatedHost.preferredModel).toEqual({
+      providerID: "copilot",
+      modelID: "default",
+      variant: "",
+    });
+    expect(updatedHost.configurationRevision).toBe(localHost!.configurationRevision + 2);
+
+    const staleUpdateResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/configuration`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repositoriesBasePath: testDataDir,
+          preferredModel: null,
+          expectedRevision: localHost!.configurationRevision,
+        }),
+      },
+    );
+    expect(staleUpdateResponse.status).toBe(409);
+
+    const invalidDirectoryResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/chats`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Invalid directory chat",
+          directory: `${testDataDir}/missing`,
+          model: {
+            providerID: "copilot",
+            modelID: "default",
+            variant: "",
+          },
+          autoApprovePermissions: true,
+        }),
+      },
+    );
+    expect(invalidDirectoryResponse.status).toBe(400);
+
     const createResponse = await fetch(
       `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/chats`,
       {
