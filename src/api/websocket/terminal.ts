@@ -83,18 +83,18 @@ export async function startTerminalBridge(
     return;
   }
 
-  if (!credentialToken) {
-    const resolved = await runWithCurrentUser(
-      ws.data.user,
-      async () => await resolveTerminal(terminalSessionId),
-    );
-    if (resolved.executionHostBinding.host.kind === "ssh" && !resolved.workspace) {
-      return;
-    }
-  }
-
-  claimTerminalSocket(terminalSessionId, ws);
   try {
+    if (!credentialToken) {
+      const resolved = await runWithCurrentUser(
+        ws.data.user,
+        async () => await resolveTerminal(terminalSessionId),
+      );
+      if (resolved.executionHostBinding.host.kind === "ssh" && !resolved.workspace) {
+        return;
+      }
+    }
+
+    claimTerminalSocket(terminalSessionId, ws);
     const { connection, attachment, resolved } = await runWithCurrentUser(
       ws.data.user,
       async () => await createTerminalConnection(terminalSessionId, {

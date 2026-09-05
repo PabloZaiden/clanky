@@ -15,7 +15,7 @@ import {
 } from "../persistence/workspaces";
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import {
-  executionHostRefsEqual,
+  executionHostBindingsEqual,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
   type Workspace,
@@ -214,10 +214,12 @@ export class WorkspaceManager {
     const nameChanged = updates.name !== undefined && updates.name !== current.name;
     const serverSettingsChanged = updates.serverSettings !== undefined
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
-    const nextExecutionHost = updates.executionHost ?? current.executionHostBinding.host;
-    const executionTargetChanged = !executionHostRefsEqual(
-      current.executionHostBinding.host,
-      nextExecutionHost,
+    const nextExecutionHostBinding = updates.executionHost
+      ? executionHostService.getBinding(updates.executionHost)
+      : current.executionHostBinding;
+    const executionTargetChanged = !executionHostBindingsEqual(
+      current.executionHostBinding,
+      nextExecutionHostBinding,
     );
     const privateChanged = updates.isPrivate !== undefined
       && updates.isPrivate !== (current.isPrivate === true);
@@ -255,7 +257,7 @@ export class WorkspaceManager {
       normalizedUpdates.executionTargetRevision = current.executionTargetRevision + 1;
     }
     if (executionTargetChanged) {
-      normalizedUpdates.executionHostBinding = executionHostService.getBinding(nextExecutionHost);
+      normalizedUpdates.executionHostBinding = nextExecutionHostBinding;
     }
     if (privateChanged) {
       normalizedUpdates.isPrivate = updates.isPrivate;

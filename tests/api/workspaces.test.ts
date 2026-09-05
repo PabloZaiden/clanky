@@ -479,6 +479,83 @@ describe("Workspace API Integration", () => {
       expect(persistedUnarchivedWorkspace?.allowClankyContext).toBe(false);
     });
 
+    test("refreshes the binding when the selected SSH host configuration changes", async () => {
+      const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Mutable SSH Host",
+          address: "old-host.example",
+          username: "builder",
+          repositoriesBasePath: null,
+        }),
+      });
+      expect(createServerResponse.status).toBe(201);
+      const serverId = (await createServerResponse.json() as { config: { id: string } }).config.id;
+      const executionHost = { kind: "ssh" as const, serverId };
+
+      const initialHostsResponse = await fetch(`${baseUrl}/api/execution-hosts`);
+      expect(initialHostsResponse.status).toBe(200);
+      const initialHost = (await initialHostsResponse.json() as Array<{
+        ref: ExecutionHostRef;
+        targetKey: string;
+        revision: number;
+      }>).find((host) => host.ref.kind === "ssh" && host.ref.serverId === serverId);
+      expect(initialHost).toBeDefined();
+
+      const createWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "SSH Binding Refresh",
+          directory: testWorkDir,
+          executionHost,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createWorkspaceResponse.status).toBe(201);
+      const workspace = await createWorkspaceResponse.json() as {
+        id: string;
+        executionHostBinding: { targetKey: string; revision: number };
+        executionTargetRevision: number;
+      };
+
+      const updateServerResponse = await fetch(`${baseUrl}/api/ssh-servers/${serverId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: "new-host.example" }),
+      });
+      expect(updateServerResponse.status).toBe(200);
+
+      const refreshedHostsResponse = await fetch(`${baseUrl}/api/execution-hosts`);
+      expect(refreshedHostsResponse.status).toBe(200);
+      const refreshedHost = (await refreshedHostsResponse.json() as Array<{
+        ref: ExecutionHostRef;
+        targetKey: string;
+        revision: number;
+      }>).find((host) => host.ref.kind === "ssh" && host.ref.serverId === serverId);
+      expect(refreshedHost).toBeDefined();
+      expect(refreshedHost!.targetKey).not.toBe(workspace.executionHostBinding.targetKey);
+      expect(refreshedHost!.revision).toBeGreaterThan(workspace.executionHostBinding.revision);
+
+      const refreshWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ executionHost }),
+      });
+      expect(refreshWorkspaceResponse.status).toBe(200);
+      const refreshedWorkspace = await refreshWorkspaceResponse.json() as {
+        executionHostBinding: { targetKey: string; revision: number };
+        executionTargetRevision: number;
+      };
+      expect(refreshedWorkspace.executionHostBinding).toMatchObject({
+        targetKey: refreshedHost!.targetKey,
+        revision: refreshedHost!.revision,
+      });
+      expect(refreshedWorkspace.executionTargetRevision).toBe(
+        workspace.executionTargetRevision + 1,
+      );
+    });
 
   });
 
