@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
+import type { ExecutionHostRef } from "@/shared";
 import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceMutations(
@@ -86,7 +87,7 @@ export function useWorkspaceMutations(
   const updateWorkspace = useCallback(async (
     name: string,
     settings: ServerSettings,
-    executionNodeId: string | null,
+    executionHost: ExecutionHostRef,
     archived: boolean,
     allowClankyContext: boolean,
   ): Promise<boolean> => {
@@ -105,7 +106,7 @@ export function useWorkspaceMutations(
         body: JSON.stringify({
           name,
           serverSettings: settings,
-          executionNodeId: settings.agent.transport === "stdio" ? executionNodeId : null,
+          executionHost,
           archived,
           allowClankyContext,
         }),

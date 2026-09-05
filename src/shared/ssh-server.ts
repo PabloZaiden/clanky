@@ -2,10 +2,6 @@
  * Standalone SSH server and credential domain types.
  */
 
-import type {
-  TerminalConnectionMode,
-  TerminalSessionState,
-} from "./terminal-session";
 import type { ExecutionHostBinding } from "./execution-host";
 
 export type SshKeyAlgorithm = "RSA-OAEP-256";
@@ -80,30 +76,6 @@ export interface SshCredentialExchangeResponse {
   expiresAt: string;
 }
 
-/**
- * Standalone SSH session configuration.
- */
-export interface SshServerSessionConfig {
-  id: string;
-  name: string;
-  sshServerId: string;
-  connectionMode: TerminalConnectionMode;
-  useTmux: boolean;
-  remoteSessionName: string;
-  createdAt: string;
-  updatedAt: string;
-  isPrivate?: boolean;
-}
-
-/**
- * Standalone SSH session backed by a registered SSH server rather than a
- * workspace. These can use persistent or direct SSH.
- */
-export interface SshServerSession {
-  config: SshServerSessionConfig;
-  state: TerminalSessionState;
-}
-
 export type VncSessionStatus =
   | "starting"
   | "active"
@@ -113,9 +85,7 @@ export type VncSessionStatus =
 
 export interface VncSessionConfig {
   id: string;
-  sshServerId?: string;
-  /** Canonical execution host snapshot retained alongside the legacy SSH ID. */
-  executionHostBinding?: ExecutionHostBinding | null;
+  executionHostBinding: ExecutionHostBinding;
   remoteHost: "127.0.0.1";
   remotePort: number;
   localPort: number;

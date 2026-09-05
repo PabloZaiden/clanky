@@ -6,6 +6,11 @@ import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
+import {
+  parseExecutionHostRef,
+  serializeExecutionHostRef,
+  type ExecutionHostRef,
+} from "@/shared";
 import type { AgentProvider } from "@/shared/settings";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
@@ -54,19 +59,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceType,
     setWorkspaceType,
     workspaceServerSettings,
-    workspaceExecutionNodeId,
-    setWorkspaceExecutionNodeId,
+    workspaceExecutionHost,
+    setWorkspaceExecutionHost,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,
     workspaceTesting,
     workspaceCreateSubmitting,
-    automaticServerId,
-    setAutomaticServerId,
-    automaticExecutionNodeId,
-    setAutomaticExecutionNodeId,
-    automaticExecutionHostKind,
-    setAutomaticExecutionHostKind,
+    automaticExecutionHost,
+    setAutomaticExecutionHost,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -92,21 +93,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
-  const selectedServerHasStoredCredential = automaticServerId
-    ? getStoredSshServerCredential(automaticServerId) !== null
+  const selectedServerHasStoredCredential = automaticExecutionHost?.kind === "ssh"
+    ? getStoredSshServerCredential(automaticExecutionHost.serverId) !== null
     : false;
-  const automaticExecutionHost = useMemo(() => (
-    automaticExecutionNodeId && automaticExecutionHostKind
-      ? { kind: automaticExecutionHostKind, nodeId: automaticExecutionNodeId }
-      : undefined
-  ), [automaticExecutionHostKind, automaticExecutionNodeId]);
   const {
     templates,
     templatesLoading,
     templatesError,
     refreshTemplates,
   } = useDevboxTemplates({
-    serverId: automaticServerId,
     password: automaticPassword,
     executionHost: automaticExecutionHost,
   });
@@ -122,7 +117,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
   const automaticFormValid =
     workspaceName.trim().length > 0 &&
-    (Boolean(automaticExecutionNodeId) || automaticServerId.trim().length > 0) &&
+    automaticExecutionHost !== null &&
     (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0) &&
     automaticBasePath.trim().length > 0 &&
     (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
@@ -222,18 +217,17 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               </label>
               <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
-                initialExecutionNodeId={workspaceExecutionNodeId}
-                onChange={(settings: ServerSettings, isValid: boolean, executionNodeId: string | null) => {
+                initialExecutionHost={workspaceExecutionHost}
+                onChange={(settings: ServerSettings, isValid: boolean, executionHost: ExecutionHostRef | null) => {
                   setWorkspaceServerSettings((current: ServerSettings) => {
                     return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
                   });
-                  setWorkspaceExecutionNodeId(executionNodeId);
+                  setWorkspaceExecutionHost(executionHost);
                   setWorkspaceServerSettingsValid(isValid);
                 }}
                 onTest={handleTestWorkspaceConnection}
                 testing={workspaceTesting}
                 remoteOnly={dashboardData.remoteOnly}
-                registeredSshServers={servers}
               />
             </>
           ) : (
@@ -241,62 +235,49 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               <SelectField
                 id="automatic-execution-kind"
                 label="Provisioning and execution host"
-                value={
-                  automaticExecutionNodeId && automaticExecutionHostKind
-                    ? `${automaticExecutionHostKind}:${automaticExecutionNodeId}`
-                    : ""
-                }
+                value={automaticExecutionHost
+                  ? serializeExecutionHostRef(automaticExecutionHost)
+                  : ""}
                 onChange={(event) => {
-                  const [kind, nodeId] = event.target.value.split(":", 2);
-                  if ((kind === "local" || kind === "mesh") && nodeId) {
-                    setAutomaticExecutionHostKind(kind);
-                    setAutomaticExecutionNodeId(nodeId);
-                    setAutomaticServerId("");
-                    setAutomaticDevboxTemplate("");
-                    setAutomaticBasePath("/workspaces");
+                  const value = event.target.value;
+                  const host = value ? parseExecutionHostRef(value) : null;
+                  setAutomaticExecutionHost(host);
+                  setAutomaticDevboxTemplate("");
+                  if (host?.kind === "ssh") {
+                    saveLastAutomaticWorkspaceSshServerId(host.serverId);
+                    const selectedServer = servers.find(
+                      (server) => server.config.id === host.serverId,
+                    );
+                    setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
                     return;
                   }
-                  setAutomaticExecutionHostKind(null);
-                  setAutomaticExecutionNodeId(null);
+                  const selectedTarget = executionTargets.find(
+                    (target) => host
+                      && serializeExecutionHostRef(target.ref) === serializeExecutionHostRef(host),
+                  );
+                  setAutomaticBasePath(selectedTarget?.repositoriesBasePath ?? "/workspaces");
                 }}
               >
-                <option value="">Saved SSH server (devbox SSH)</option>
+                <option value="">Select an execution host</option>
                 {executionTargets
-                  .filter((target) => !dashboardData.remoteOnly || target.kind === "mesh")
+                  .filter((target) =>
+                    !dashboardData.remoteOnly || target.ref.kind !== "local"
+                  )
                   .map((target) => (
-                    <option key={`${target.kind}:${target.nodeId}`} value={`${target.kind}:${target.nodeId}`}>
-                      {target.name} via {target.kind === "local" ? "stdio" : "Mesh"}
+                    <option
+                      key={target.targetKey}
+                      value={serializeExecutionHostRef(target.ref)}
+                    >
+                      {target.name} via {target.ref.kind}
                     </option>
                   ))}
               </SelectField>
 
-              {!automaticExecutionNodeId && (
-              <SelectField
-                  id="automatic-ssh-server"
-                  label="Saved SSH server"
-                  value={automaticServerId}
-                  onChange={(event) => {
-                    const newServerId = event.target.value;
-                    setAutomaticServerId(newServerId);
-                    saveLastAutomaticWorkspaceSshServerId(newServerId);
-                    setAutomaticDevboxTemplate("");
-                    const selectedServer = servers.find((s) => s.config.id === newServerId);
-                    setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
-                  }}
-              >
-                  <option value="">Select a saved SSH server</option>
-                  {servers.map((server) => (
-                    <option key={server.config.id} value={server.config.id}>
-                      {server.config.name} ({server.config.username}@{server.config.address})
-                    </option>
-                  ))}
-              </SelectField>
+              {executionTargets.length === 0 && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  No execution host is available for automatic workspace provisioning.
+                </p>
               )}
-                {!automaticExecutionNodeId && servers.length === 0 && (
-                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    Register a saved SSH server first to use automatic workspace provisioning.
-                  </p>
-                )}
 
               <TextField
                 id="automatic-repo-url"
@@ -350,7 +331,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   ))}
               </SelectField>
 
-              {!automaticExecutionNodeId && !selectedServerHasStoredCredential && (
+              {automaticExecutionHost?.kind === "ssh" && !selectedServerHasStoredCredential && (
                 <TextField
                   id="automatic-ssh-password"
                   label="SSH password"
@@ -400,7 +381,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                           autoSelectedDevboxTemplateRef.current = null;
                           setAutomaticDevboxTemplate(event.target.value);
                         }}
-                        disabled={!automaticServerId || templatesLoading}
+                        disabled={!automaticExecutionHost || templatesLoading}
                       >
                         {!automaticCreateNewRepository && (
                           <option value="">Use repository devcontainer (default)</option>

@@ -2,7 +2,7 @@
  * Event types for workspace terminal session lifecycle updates.
  */
 
-import type { WorkspaceTerminalSession, TerminalSessionStatus } from "./terminal-session";
+import type { TerminalSession, TerminalSessionStatus } from "./terminal-session";
 
 export type TerminalSessionEvent =
   | TerminalSessionCreatedEvent
@@ -13,14 +13,14 @@ export type TerminalSessionEvent =
 export interface TerminalSessionCreatedEvent {
   type: "terminal_session.created";
   terminalSessionId: string;
-  session: WorkspaceTerminalSession;
+  session: TerminalSession;
   timestamp: string;
 }
 
 export interface TerminalSessionUpdatedEvent {
   type: "terminal_session.updated";
   terminalSessionId: string;
-  session: WorkspaceTerminalSession;
+  session: TerminalSession;
   timestamp: string;
 }
 

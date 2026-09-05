@@ -3,7 +3,7 @@
  * runtimes.
  */
 
-import type { ServerSettings, SshServerConfig, Workspace } from "@/shared";
+import type { RuntimeServerSettings, SshServerConfig } from "@/shared";
 import { buildSshCommandArgs } from "./remote-command-executor";
 
 export type SshAuthenticationMode = "agent" | "identity" | "password";
@@ -34,7 +34,7 @@ export interface BuildSshProcessConfigOptions {
   env?: Record<string, string>;
 }
 
-export function getSshConnectionTargetFromSettings(settings: ServerSettings): SshConnectionTarget | null {
+export function getSshConnectionTargetFromSettings(settings: RuntimeServerSettings): SshConnectionTarget | null {
   if (settings.agent.transport !== "ssh") {
     return null;
   }
@@ -51,14 +51,6 @@ export function getSshConnectionTargetFromSettings(settings: ServerSettings): Ss
     password: settings.agent.password?.trim() || undefined,
     identityFile: settings.agent.identityFile?.trim() || undefined,
   };
-}
-
-export function getSshConnectionTargetFromWorkspace(workspace: Workspace): SshConnectionTarget {
-  const target = getSshConnectionTargetFromSettings(workspace.serverSettings);
-  if (!target) {
-    throw new Error("This operation requires a workspace configured with ssh transport");
-  }
-  return target;
 }
 
 export function buildSshAuthority(target: SshConnectionTarget): string {

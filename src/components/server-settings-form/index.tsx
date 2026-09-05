@@ -1,244 +1,128 @@
 /**
- * ServerSettingsForm component for configuring workspace connection settings.
- * This component is shared between workspace creation and settings forms.
+ * Shared workspace runtime form.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_SERVER_AGENT_PROVIDER,
-  findRegisteredSshServer,
+  parseExecutionHostRef,
+  serializeExecutionHostRef,
   type AgentProvider,
-  type AgentTransport,
+  type ExecutionHostRef,
   type ServerSettings,
-} from "@/shared/settings";
-import type { SshServer } from "@/shared";
+} from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
-import { SshFields } from "./ssh-fields";
-import { TestConnection } from "./test-connection";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
-
-const OTHER_SSH_SERVER_OPTION = "__other__";
-
-function resolveRegisteredSshServerId(hostname: string, registeredSshServers: readonly SshServer[]): string {
-  return findRegisteredSshServer(hostname, registeredSshServers)?.config.id ?? OTHER_SSH_SERVER_OPTION;
-}
+import { TestConnection } from "./test-connection";
 
 export interface ServerSettingsFormProps {
-  /** Initial server settings (for editing) */
   initialSettings?: ServerSettings;
-  /** Selected stdio execution node. */
-  initialExecutionNodeId?: string | null;
-  /** Callback when settings change */
-  onChange: (settings: ServerSettings, isValid: boolean, executionNodeId: string | null) => void;
-  /** Callback to test connection - if not provided, test button is hidden */
-  onTest?: (settings: ServerSettings, executionNodeId: string | null) => Promise<{ success: boolean; error?: string }>;
-  /** Whether testing is in progress */
+  initialExecutionHost?: ExecutionHostRef | null;
+  onChange: (
+    settings: ServerSettings,
+    isValid: boolean,
+    executionHost: ExecutionHostRef | null,
+  ) => void;
+  onTest?: (
+    settings: ServerSettings,
+    executionHost: ExecutionHostRef,
+  ) => Promise<{ success: boolean; error?: string }>;
   testing?: boolean;
-  /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
-  /** Optional list of registered SSH servers for hostname selection */
-  registeredSshServers?: readonly SshServer[];
 }
 
-/**
- * ServerSettingsForm provides UI for configuring connection settings.
- */
 export function ServerSettingsForm({
   initialSettings,
-  initialExecutionNodeId = null,
+  initialExecutionHost = null,
   onChange,
   onTest,
   testing = false,
   remoteOnly = false,
-  registeredSshServers = [],
 }: ServerSettingsFormProps) {
-  const { targets: executionTargets, loading: executionTargetsLoading } = useWorkspaceExecutionTargets();
-  const localExecutionTarget = executionTargets.find((target) => target.kind === "local");
-  const remoteExecutionTargets = executionTargets.filter((target) => target.kind === "mesh");
-  const preserveRemoteStdio = remoteOnly
-    && initialSettings?.agent.transport === "stdio"
-    && initialExecutionNodeId !== null;
-  const [agentProvider, setAgentProvider] = useState<AgentProvider>(
+  const { targets, loading } = useWorkspaceExecutionTargets();
+  const selectableTargets = useMemo(
+    () => targets.filter((target) =>
+      target.acceptRemoteExecution
+      && (!remoteOnly || target.ref.kind !== "local")
+    ),
+    [remoteOnly, targets],
+  );
+  const [provider, setProvider] = useState<AgentProvider>(
     initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
   );
-  const [agentTransport, setAgentTransport] = useState<AgentTransport>(
-    remoteOnly && !preserveRemoteStdio ? "ssh" : (initialSettings?.agent.transport ?? "stdio"),
+  const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(
+    initialExecutionHost,
   );
-  const [executionNodeId, setExecutionNodeId] = useState<string | null>(initialExecutionNodeId);
-  const [agentHostname, setAgentHostname] = useState(
-    initialSettings?.agent.transport === "ssh" ? initialSettings.agent.hostname : "localhost",
-  );
-  const [selectedRegisteredSshServerId, setSelectedRegisteredSshServerId] = useState(
-    initialSettings?.agent.transport === "ssh"
-      ? resolveRegisteredSshServerId(initialSettings.agent.hostname, registeredSshServers)
-      : OTHER_SSH_SERVER_OPTION,
-  );
-  const [agentPort, setAgentPort] = useState(
-    String(initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.port ?? 22) : 22),
-  );
-  const [agentUsername, setAgentUsername] = useState(
-    initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.username ?? "") : "",
-  );
-  const [agentPassword, setAgentPassword] = useState(
-    initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.password ?? "") : "",
-  );
-
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
-    const nextProvider = initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
-    const nextTransport = remoteOnly && !preserveRemoteStdio
-      ? "ssh"
-      : (initialSettings?.agent.transport ?? "stdio");
-    const nextExecutionNodeId = nextTransport === "stdio" ? initialExecutionNodeId : null;
-    const nextHost = initialSettings?.agent.transport === "ssh" ? initialSettings.agent.hostname : "localhost";
-    const nextSelectedRegisteredSshServerId = nextTransport === "ssh"
-      ? resolveRegisteredSshServerId(nextHost, registeredSshServers)
-      : OTHER_SSH_SERVER_OPTION;
-    const nextPort = String(initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.port ?? 22) : 22);
-    const nextUsername = initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.username ?? "") : "";
-    const nextPassword = initialSettings?.agent.transport === "ssh" ? (initialSettings.agent.password ?? "") : "";
-
-    setAgentProvider(nextProvider);
-    setAgentTransport(nextTransport);
-    setExecutionNodeId(nextExecutionNodeId);
-    setAgentHostname(nextHost);
-    setSelectedRegisteredSshServerId(nextSelectedRegisteredSshServerId);
-    setAgentPort(nextPort);
-    setAgentUsername(nextUsername);
-    setAgentPassword(nextPassword);
+    const nextProvider =
+      initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
+    setProvider(nextProvider);
+    setExecutionHost(initialExecutionHost);
     setTestResult(null);
-    setShowPassword(false);
-
-    const settings = buildSettings({
-      provider: nextProvider,
-      transport: nextTransport,
-      manualHostname: nextHost,
-      selectedRegisteredSshServerId: nextSelectedRegisteredSshServerId,
-      port: nextPort,
-      username: nextUsername,
-      password: nextPassword,
-    });
-    onChange(settings, validateSettings(settings, nextExecutionNodeId), nextExecutionNodeId);
-  }, [initialSettings, initialExecutionNodeId, remoteOnly]);
-
-  useEffect(() => {
-    if (agentTransport !== "stdio" || executionTargetsLoading) {
-      return;
-    }
-    if (executionNodeId) {
-      return;
-    }
-    const nextTarget = remoteOnly ? remoteExecutionTargets[0] : localExecutionTarget;
-    if (!nextTarget) {
-      return;
-    }
-    setExecutionNodeId(nextTarget.nodeId);
-    const settings = buildSettings();
-    onChange(settings, validateSettings(settings, nextTarget.nodeId), nextTarget.nodeId);
-  }, [agentTransport, executionNodeId, executionTargetsLoading, remoteOnly, executionTargets]);
-
-  function buildSettings(overrides?: {
-    provider?: AgentProvider;
-    transport?: AgentTransport;
-    manualHostname?: string;
-    selectedRegisteredSshServerId?: string;
-    port?: string;
-    username?: string;
-    password?: string;
-  }): ServerSettings {
-    const provider = overrides?.provider ?? agentProvider;
-    const transport = overrides?.transport ?? agentTransport;
-    const manualHostname = overrides?.manualHostname ?? agentHostname;
-    const nextSelectedRegisteredSshServerId = overrides?.selectedRegisteredSshServerId ?? selectedRegisteredSshServerId;
-    const selectedRegisteredSshServer = registeredSshServers.find(
-      (server) => server.config.id === nextSelectedRegisteredSshServerId,
+    onChange(
+      { agent: { provider: nextProvider } },
+      initialExecutionHost !== null,
+      initialExecutionHost,
     );
-    const hostname = nextSelectedRegisteredSshServerId !== OTHER_SSH_SERVER_OPTION && selectedRegisteredSshServer
-      ? selectedRegisteredSshServer.config.address
-      : manualHostname;
-    const port = overrides?.port ?? agentPort;
-    const username = overrides?.username ?? agentUsername;
-    const password = overrides?.password ?? agentPassword;
+  }, [initialExecutionHost, initialSettings, onChange]);
 
-    if (transport === "ssh") {
-      return {
-        agent: {
-          provider,
-          transport,
-          hostname: hostname.trim(),
-          port: parseInt(port, 10) || 22,
-          username: username.trim() || undefined,
-          password: password.trim() || undefined,
-        },
-      };
-    }
-
-    return {
-      agent: {
-        provider,
-        transport,
-      },
-    };
-  }
-
-  function validateSettings(settings: ServerSettings, selectedExecutionNodeId = executionNodeId): boolean {
-    if (settings.agent.transport === "ssh") {
-      return settings.agent.hostname.trim().length > 0;
-    }
-    return Boolean(selectedExecutionNodeId)
-      && (!remoteOnly || remoteExecutionTargets.some((target) => target.nodeId === selectedExecutionNodeId));
-  }
-
-  function notifyChange(overrides?: {
-    provider?: AgentProvider;
-    transport?: AgentTransport;
-    manualHostname?: string;
-    selectedRegisteredSshServerId?: string;
-    port?: string;
-    username?: string;
-    password?: string;
-  }, selectedExecutionNodeId = executionNodeId) {
-    const settings = buildSettings(overrides);
-    const nodeId = settings.agent.transport === "stdio" ? selectedExecutionNodeId : null;
-    onChange(settings, validateSettings(settings, nodeId), nodeId);
-  }
-
-  const showRegisteredSshServerSelect = agentTransport === "ssh" && registeredSshServers.length > 0;
-  const showManualHostnameInput = agentTransport === "ssh"
-    && (!showRegisteredSshServerSelect || selectedRegisteredSshServerId === OTHER_SSH_SERVER_OPTION);
-
-  async function handleTest() {
-    if (!onTest) {
+  useEffect(() => {
+    if (loading || executionHost || selectableTargets.length === 0) {
       return;
     }
+    const nextHost = selectableTargets[0]!.ref;
+    setExecutionHost(nextHost);
+    onChange({ agent: { provider } }, true, nextHost);
+  }, [executionHost, loading, onChange, provider, selectableTargets]);
 
+  function updateProvider(nextProvider: AgentProvider): void {
+    setProvider(nextProvider);
     setTestResult(null);
-    const settings = buildSettings();
-    const result = await onTest(settings, settings.agent.transport === "stdio" ? executionNodeId : null);
-    setTestResult(result);
+    onChange(
+      { agent: { provider: nextProvider } },
+      executionHost !== null,
+      executionHost,
+    );
+  }
+
+  function updateExecutionHost(serialized: string): void {
+    const nextHost = serialized ? parseExecutionHostRef(serialized) : null;
+    setExecutionHost(nextHost);
+    setTestResult(null);
+    onChange({ agent: { provider } }, nextHost !== null, nextHost);
+  }
+
+  async function handleTest(): Promise<void> {
+    if (!onTest || !executionHost) {
+      return;
+    }
+    setTestResult(null);
+    setTestResult(await onTest({ agent: { provider } }, executionHost));
   }
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4 p-4 rounded-lg bg-gray-50 dark:bg-neutral-900">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Connection</h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+          Runtime
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="agent-provider" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="agent-provider"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Provider
             </label>
             <select
               id="agent-provider"
-              value={agentProvider}
-              onChange={(e) => {
-                const value = e.target.value as AgentProvider;
-                setAgentProvider(value);
-                setTestResult(null);
-                notifyChange({ provider: value });
-              }}
+              value={provider}
+              onChange={(event) => updateProvider(event.target.value as AgentProvider)}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
             >
               {AGENT_PROVIDER_OPTIONS.map((option) => (
@@ -246,126 +130,44 @@ export function ServerSettingsForm({
               ))}
             </select>
           </div>
-
           <div>
-            <label htmlFor="agent-transport" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Transport
-            </label>
-            <select
-              id="agent-transport"
-              value={agentTransport}
-              onChange={(e) => {
-                const value = e.target.value as AgentTransport;
-                setAgentTransport(value);
-                setTestResult(null);
-                const nextTarget = value === "stdio"
-                  ? (remoteOnly ? remoteExecutionTargets[0]?.nodeId : localExecutionTarget?.nodeId)
-                    ?? executionNodeId
-                  : null;
-                setExecutionNodeId(nextTarget);
-                notifyChange({ transport: value }, nextTarget);
-              }}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+            <label
+              htmlFor="execution-host"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
-              <option value="stdio" disabled={remoteOnly && remoteExecutionTargets.length === 0}>
-                stdio
-              </option>
-              <option value="ssh">ssh</option>
-            </select>
-          </div>
-        </div>
-
-        {agentTransport === "stdio" && (
-          <div>
-            <label htmlFor="agent-execution-node" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Execution host
             </label>
             <select
-              id="agent-execution-node"
-              value={executionNodeId ?? ""}
-              disabled={executionTargetsLoading}
-              onChange={(event) => {
-                const nodeId = event.target.value || null;
-                setExecutionNodeId(nodeId);
-                setTestResult(null);
-                notifyChange(undefined, nodeId);
-              }}
+              id="execution-host"
+              value={executionHost ? serializeExecutionHostRef(executionHost) : ""}
+              disabled={loading}
+              onChange={(event) => updateExecutionHost(event.target.value)}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
             >
               <option value="" disabled>
-                {executionTargetsLoading ? "Loading execution hosts..." : "Select an execution host"}
+                {loading ? "Loading execution hosts..." : "Select an execution host"}
               </option>
-              {executionTargets.map((target) => (
+              {selectableTargets.map((target) => (
                 <option
-                  key={target.nodeId}
-                  value={target.nodeId}
-                  disabled={remoteOnly && target.kind === "local"}
+                  key={serializeExecutionHostRef(target.ref)}
+                  value={serializeExecutionHostRef(target.ref)}
                 >
-                  {target.kind === "local"
-                    ? `${target.name} (local)`
-                    : target.name}
+                  {target.name} ({target.ref.kind})
                 </option>
               ))}
-              {executionNodeId && !executionTargets.some((target) => target.nodeId === executionNodeId) && (
-                <option value={executionNodeId}>Mesh peer {executionNodeId.slice(0, 8)} (unavailable)</option>
-              )}
             </select>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Paired peers remain selectable while offline; connection attempts fail without automatic failover.
-            </p>
           </div>
-        )}
-
-        {agentTransport === "ssh" && (
-          <SshFields
-            registeredSshServers={registeredSshServers}
-            showRegisteredSshServerSelect={showRegisteredSshServerSelect}
-            selectedRegisteredSshServerId={selectedRegisteredSshServerId}
-            showManualHostnameInput={showManualHostnameInput}
-            agentHostname={agentHostname}
-            agentPort={agentPort}
-            agentUsername={agentUsername}
-            agentPassword={agentPassword}
-            showPassword={showPassword}
-            onRegisteredSshServerChange={(value) => {
-              setSelectedRegisteredSshServerId(value);
-              setTestResult(null);
-              notifyChange({ selectedRegisteredSshServerId: value });
-            }}
-            onHostnameChange={(value) => {
-              setAgentHostname(value);
-              setTestResult(null);
-              notifyChange({ manualHostname: value });
-            }}
-            onPortChange={(value) => {
-              setAgentPort(value);
-              setTestResult(null);
-              notifyChange({ port: value });
-            }}
-            onUsernameChange={(value) => {
-              setAgentUsername(value);
-              setTestResult(null);
-              notifyChange({ username: value });
-            }}
-            onPasswordChange={(value) => {
-              setAgentPassword(value);
-              setTestResult(null);
-              notifyChange({ password: value });
-            }}
-            onShowPasswordToggle={() => setShowPassword((prev) => !prev)}
-          />
-        )}
+        </div>
       </div>
 
       {onTest && (
         <TestConnection
           onTest={handleTest}
           testing={testing}
+          disabled={!executionHost}
           testResult={testResult}
         />
       )}
     </div>
   );
 }
-
-export default ServerSettingsForm;

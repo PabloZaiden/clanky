@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { RouteContext } from "@pablozaiden/webapp/server";
 import { routes } from "../../src/server";
 import { authorizedRawWebSocketUpgrade } from "../../src/api/raw-websocket-upgrade";
+import { startTerminalBridge } from "../../src/api/websocket/terminal";
 import type { ClankyRealtimeEvent } from "../../src/realtime";
-import { testOwnerUser } from "../setup";
+import { setupTestContext, teardownTestContext, testOwnerUser } from "../setup";
 
 function getRouteHandler(path: string): NonNullable<typeof routes[string]["GET"]> {
   const handler = routes[path]?.GET;
@@ -43,14 +44,7 @@ describe("raw WebSocket upgrade flow", () => {
     await expect(failure.text()).resolves.toBe("WebSocket upgrade failed");
   });
 
-  test("keeps route validation and transport-specific payloads at the route boundary", async () => {
-    const sshResponse = await getRouteHandler("/api/ssh-terminal")(
-      new Request("http://localhost/api/ssh-terminal"),
-      createRouteContext(),
-    );
-    expect(sshResponse?.status).toBe(400);
-    expect(await sshResponse?.text()).toBe("sshServerSessionId is required");
-
+  test("keeps route validation and transport payloads at the route boundary", async () => {
     const terminalResponse = await getRouteHandler("/api/terminal")(
       new Request("http://localhost/api/terminal"),
       createRouteContext(),
@@ -80,5 +74,34 @@ describe("raw WebSocket upgrade flow", () => {
       vncMode: true,
       user: testOwnerUser,
     });
+  });
+
+  test("reports terminal resolution failures through the socket", async () => {
+    const context = await setupTestContext();
+    const messages: string[] = [];
+    const ws = {
+      data: {
+        terminalMode: true,
+        terminalSessionId: "missing-terminal",
+        user: testOwnerUser,
+      },
+      send(message: string) {
+        messages.push(message);
+      },
+      close() {},
+    } as unknown as Parameters<typeof startTerminalBridge>[0];
+
+    try {
+      await startTerminalBridge(ws);
+      expect(messages.map((message) => JSON.parse(message))).toEqual([
+        {
+          type: "terminal.error",
+          code: "terminal_session_not_found",
+          message: "Terminal session not found.",
+        },
+      ]);
+    } finally {
+      await teardownTestContext(context);
+    }
   });
 });

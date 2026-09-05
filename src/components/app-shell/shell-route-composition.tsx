@@ -23,18 +23,12 @@ const ROUTE_VIEWS = [
   "chat",
   "chat-transcript",
   "terminal",
-  "ssh",
   "workspace",
   "workspace-files",
   "workspace-previews",
   "workspace-settings",
-  "ssh-server",
   "execution-host",
   "execution-host-files",
-  "vnc-session",
-  "ssh-server-settings",
-  "server-files",
-  "server-arise",
   "provisioning-job",
   "compose",
   "rebuild-workspace",
@@ -51,8 +45,6 @@ export interface ShellRouteSelection {
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  composeServerSessionCount: number;
-  selectedServer: SshServer | null;
   selectedAgent: Agent | null;
 }
 
@@ -64,8 +56,6 @@ type ShellRouteContentSelection = Pick<
   | "composeWorkspace"
   | "composeServer"
   | "composeExecutionHost"
-  | "composeServerSessionCount"
-  | "selectedServer"
 >;
 
 export type ShellRouteCompositionContext = Omit<
@@ -79,7 +69,6 @@ interface ShellRouteSelectionData {
   workspaces: Workspace[];
   servers: SshServer[];
   executionHosts: ExecutionHostDescriptor[];
-  sessionsByServerId: Record<string, import("@/shared/ssh-server").SshServerSession[]>;
   agents: Agent[];
 }
 
@@ -91,7 +80,6 @@ export function getShellRouteSelection(
     workspaces,
     servers,
     executionHosts,
-    sessionsByServerId,
     agents,
   }: ShellRouteSelectionData,
 ): ShellRouteSelection {
@@ -104,9 +92,6 @@ export function getShellRouteSelection(
     : null;
   const codeExplorerWorkspaceId = codeExplorerContentType === "workspace"
     ? getRouteString(route, "workspaceId") ?? null
-    : null;
-  const codeExplorerServerId = codeExplorerContentType === "server"
-    ? getRouteString(route, "serverId") ?? null
     : null;
   const taskId = getRouteString(route, "taskId");
   const chatId = getRouteString(route, "chatId");
@@ -144,20 +129,15 @@ export function getShellRouteSelection(
             : null;
   const composeWorkspace =
     route.view === "compose"
-      && composeKind !== "ssh-session"
       && composeKind !== "ssh-server"
-      && composeKind !== "ssh-server-chat"
       && composeKind !== "execution-host-chat"
       ? (workspaces.find((workspace) => workspace.id === (workspaceId ?? composeScopeId)) ?? null)
       : null;
   const composeServer =
     route.view === "compose"
-      && (composeKind === "ssh-session" || composeKind === "ssh-server" || composeKind === "ssh-server-chat")
+      && composeKind === "ssh-server"
       ? (servers.find((server) => server.config.id === (serverId ?? composeScopeId)) ?? null)
       : null;
-  const composeServerSessionCount = composeServer
-    ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
-    : 0;
   const composeExecutionHost =
     route.view === "compose" && composeKind === "execution-host-chat"
       ? (executionHosts.find((host) => {
@@ -166,16 +146,6 @@ export function getShellRouteSelection(
             && hostId === getRouteString(route, "hostId");
         }) ?? null)
       : null;
-  const selectedServer =
-    route.view === "ssh-server"
-      || route.view === "vnc-session"
-      || route.view === "ssh-server-settings"
-      || route.view === "server-files"
-      || route.view === "server-arise"
-      ? (serverId ? (servers.find((server) => server.config.id === serverId) ?? null) : null)
-      : codeExplorerServerId
-        ? (servers.find((server) => server.config.id === codeExplorerServerId) ?? null)
-        : null;
   const selectedAgentId = route.view === "agent" || route.view === "agent-run"
     ? getRouteString(route, "agentId") ?? null
     : null;
@@ -193,8 +163,6 @@ export function getShellRouteSelection(
     composeWorkspace,
     composeServer,
     composeExecutionHost,
-    composeServerSessionCount,
-    selectedServer,
     selectedAgent,
   };
 }
@@ -225,7 +193,6 @@ function renderShellRouteContent(
     workspaces: context.workspaces,
     servers: context.servers,
     executionHosts: context.executionHosts,
-    sessionsByServerId: context.sessionsByServerId,
     agents: context.agents.agents,
   });
 
@@ -239,8 +206,6 @@ function renderShellRouteContent(
       composeWorkspace={selection.composeWorkspace}
       composeServer={selection.composeServer}
       composeExecutionHost={selection.composeExecutionHost}
-      composeServerSessionCount={selection.composeServerSessionCount}
-      selectedServer={selection.selectedServer}
     />
   );
 }

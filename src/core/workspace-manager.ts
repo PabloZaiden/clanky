@@ -15,9 +15,10 @@ import {
 } from "../persistence/workspaces";
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import {
-  supportsExecutionHostCapability,
+  executionHostBindingsEqual,
+  type ExecutionHostDescriptor,
+  type ExecutionHostRef,
   type Workspace,
-  type WorkspaceExecutionTarget,
   type WorkspaceType,
 } from "@/shared";
 import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
@@ -30,44 +31,25 @@ import {
 } from "./workspace-deletion";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
-import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
-import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import { listActiveWorkerRegistrations } from "../persistence/mesh";
-import { requireCurrentUserId } from "./user-context";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
-import {
-  ensureExecutionHost,
-  toExecutionHostBinding,
-} from "../persistence/execution-hosts";
+import { executionHostService } from "./execution-host-service";
 
 const log = createLogger("core:workspace-manager");
-
-function createExecutionHostBinding(
-  userId: string,
-  target: Awaited<ReturnType<typeof resolveWorkspaceExecutionTarget>>,
-) {
-  if (!target.hostRef) {
-    return null;
-  }
-  return toExecutionHostBinding(
-    ensureExecutionHost(userId, target.hostRef, target.targetKey),
-  );
-}
 
 export interface CreateWorkspaceInput {
   name: string;
   directory: string;
   workspaceType?: WorkspaceType;
   serverSettings?: ServerSettings;
-  executionNodeId?: string | null;
+  executionHost: ExecutionHostRef;
   archived?: boolean;
   isPrivate?: boolean;
   allowClankyContext?: boolean;
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
->;
+  Pick<Workspace, "name" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
+> & { executionHost?: ExecutionHostRef };
 
 export type WorkspaceDirectoryValidation = Awaited<
   ReturnType<typeof backendManager.validateRemoteDirectory>
@@ -75,13 +57,13 @@ export type WorkspaceDirectoryValidation = Awaited<
 
 function normalizeCreateInput(input: CreateWorkspaceInput): Required<
   Pick<CreateWorkspaceInput, "name" | "directory" | "workspaceType" | "serverSettings" | "allowClankyContext">
-> & Pick<CreateWorkspaceInput, "executionNodeId" | "archived" | "isPrivate"> {
+> & Pick<CreateWorkspaceInput, "executionHost" | "archived" | "isPrivate"> {
   return {
     name: input.name.trim(),
     directory: input.directory.trim(),
     workspaceType: input.workspaceType ?? DEFAULT_WORKSPACE_TYPE,
     serverSettings: input.serverSettings ?? getDefaultServerSettings(),
-    executionNodeId: input.executionNodeId,
+    executionHost: input.executionHost,
     archived: input.archived,
     isPrivate: input.isPrivate,
     allowClankyContext: input.allowClankyContext === true,
@@ -118,8 +100,9 @@ function getValidationFailure(
 
 function createWorkspaceRecordFromInput(
   input: Required<Pick<CreateWorkspaceInput, "name" | "directory" | "workspaceType" | "serverSettings" | "allowClankyContext">>
-    & Pick<CreateWorkspaceInput, "executionNodeId">
+    & Pick<CreateWorkspaceInput, "executionHost">
     & Pick<CreateWorkspaceInput, "archived" | "isPrivate">,
+  executionHostBinding: Workspace["executionHostBinding"],
 ): Workspace {
   const now = new Date().toISOString();
   return {
@@ -127,8 +110,8 @@ function createWorkspaceRecordFromInput(
     name: input.name,
     directory: input.directory,
     workspaceType: input.workspaceType,
-    executionNodeId: null,
     executionTargetRevision: 1,
+    executionHostBinding,
     serverSettings: input.serverSettings,
     createdAt: now,
     updatedAt: now,
@@ -139,19 +122,6 @@ function createWorkspaceRecordFromInput(
 }
 
 export class WorkspaceManager {
-  private async resolveExecutionNodeId(
-    serverSettings: ServerSettings,
-    executionNodeId?: string | null,
-  ): Promise<string | null> {
-    const target = await resolveWorkspaceExecutionTarget(
-      { serverSettings, executionNodeId },
-    );
-    if (target.kind === "ssh") {
-      return null;
-    }
-    return target.kind === "mesh" ? target.nodeId : target.executionNodeId;
-  }
-
   async getWorkspace(id: string): Promise<Workspace | null> {
     return await getWorkspaceRecord(id);
   }
@@ -172,63 +142,33 @@ export class WorkspaceManager {
 
   async validateRemoteDirectory(
     serverSettings: ServerSettings,
+    executionHost: ExecutionHostRef,
     directory: string,
-    executionNodeId?: string | null,
   ): Promise<WorkspaceDirectoryValidation> {
-    const targetNodeId = await this.resolveExecutionNodeId(serverSettings, executionNodeId);
-    return await backendManager.validateRemoteDirectory(serverSettings, directory, targetNodeId);
+    return await backendManager.validateRemoteDirectory(
+      serverSettings,
+      directory,
+      executionHost,
+    );
   }
 
-  async listExecutionTargets(): Promise<WorkspaceExecutionTarget[]> {
-    const identity = await ensureLocalMeshNodeIdentity();
-    const targets: WorkspaceExecutionTarget[] = identity.execution?.acceptRemoteExecution
-      ? [{
-          nodeId: identity.nodeId,
-          name: identity.execution.name,
-          kind: "local",
-          availability: "local",
-        }]
-      : [];
-    for (const worker of await listActiveWorkerRegistrations(requireCurrentUserId())) {
-      if (worker.workerNodeId === identity.nodeId) {
-        continue;
-      }
-      if (
-        !worker.workerAcceptRemoteExecution
-        || !supportsExecutionHostCapability(
-          worker.workerCapabilities ?? {},
-          "commandExecution",
-        )
-      ) {
-        continue;
-      }
-      targets.push({
-        nodeId: worker.workerNodeId,
-        name: worker.workerInstanceName ?? worker.workerNodeId,
-        kind: "mesh",
-        availability: "available",
-      });
-    }
-    return targets;
+  async listExecutionTargets(): Promise<ExecutionHostDescriptor[]> {
+    return await executionHostService.listHosts();
   }
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
     const normalized = normalizeCreateInput(input);
-    const executionNodeId = await this.resolveExecutionNodeId(
-      normalized.serverSettings,
-      normalized.executionNodeId,
-    );
     log.debug("Creating workspace", {
       name: normalized.name,
       directory: normalized.directory,
       provider: normalized.serverSettings.agent.provider,
-      transport: normalized.serverSettings.agent.transport,
+      transport: normalized.executionHost.kind,
     });
 
     const validation = await this.validateRemoteDirectory(
       normalized.serverSettings,
+      normalized.executionHost,
       normalized.directory,
-      executionNodeId,
     );
     const failure = getValidationFailure(validation, normalized.workspaceType);
     if (failure) {
@@ -240,15 +180,9 @@ export class WorkspaceManager {
       });
     }
 
-    const target = await resolveWorkspaceExecutionTarget({
-      serverSettings: normalized.serverSettings,
-      executionNodeId,
-    });
-    const workspace = createWorkspaceRecordFromInput(normalized);
-    workspace.executionNodeId = executionNodeId;
-    workspace.executionHostBinding = createExecutionHostBinding(
-      requireCurrentUserId(),
-      target,
+    const workspace = createWorkspaceRecordFromInput(
+      normalized,
+      executionHostService.getBinding(normalized.executionHost),
     );
     await createWorkspaceRecord(workspace);
     log.info("Workspace created", {
@@ -280,23 +214,13 @@ export class WorkspaceManager {
     const nameChanged = updates.name !== undefined && updates.name !== current.name;
     const serverSettingsChanged = updates.serverSettings !== undefined
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
-    const nextSettings = updates.serverSettings ?? current.serverSettings;
-    const requestedExecutionNodeId = nextSettings.agent.transport === "stdio"
-      ? updates.executionNodeId ?? (
-        current.serverSettings.agent.transport === "stdio"
-          ? current.executionNodeId
-          : null
-      )
-      : null;
-    const currentTarget = await resolveWorkspaceExecutionTarget(
-      current,
-      { validateMeshTarget: false },
+    const nextExecutionHostBinding = updates.executionHost
+      ? executionHostService.getBinding(updates.executionHost)
+      : current.executionHostBinding;
+    const executionTargetChanged = !executionHostBindingsEqual(
+      current.executionHostBinding,
+      nextExecutionHostBinding,
     );
-    const nextTarget = await resolveWorkspaceExecutionTarget(
-      { serverSettings: nextSettings, executionNodeId: requestedExecutionNodeId },
-      { validateMeshTarget: false },
-    );
-    const executionTargetChanged = currentTarget.targetKey !== nextTarget.targetKey;
     const privateChanged = updates.isPrivate !== undefined
       && updates.isPrivate !== (current.isPrivate === true);
     const archivedChanged = updates.archived !== undefined
@@ -322,12 +246,6 @@ export class WorkspaceManager {
       }
     }
 
-    const resolvedNextTarget = serverSettingsChanged || updates.executionNodeId !== undefined
-      ? await resolveWorkspaceExecutionTarget({
-        serverSettings: nextSettings,
-        executionNodeId: requestedExecutionNodeId,
-      })
-      : nextTarget;
     const normalizedUpdates: UpdateWorkspaceInput = {};
     if (nameChanged) {
       normalizedUpdates.name = updates.name;
@@ -335,26 +253,11 @@ export class WorkspaceManager {
     if (serverSettingsChanged) {
       normalizedUpdates.serverSettings = updates.serverSettings;
     }
-    if (serverSettingsChanged || updates.executionNodeId !== undefined) {
-      normalizedUpdates.executionNodeId = resolvedNextTarget.kind === "ssh"
-        ? null
-        : resolvedNextTarget.kind === "mesh"
-          ? resolvedNextTarget.nodeId
-          : resolvedNextTarget.executionNodeId;
+    if (executionTargetChanged) {
+      normalizedUpdates.executionTargetRevision = current.executionTargetRevision + 1;
     }
     if (executionTargetChanged) {
-      normalizedUpdates.executionTargetRevision = (current.executionTargetRevision ?? 1) + 1;
-    }
-    if (
-      executionTargetChanged
-      || !current.executionHostBinding
-      || serverSettingsChanged
-      || updates.executionNodeId !== undefined
-    ) {
-      normalizedUpdates.executionHostBinding = createExecutionHostBinding(
-        requireCurrentUserId(),
-        resolvedNextTarget,
-      );
+      normalizedUpdates.executionHostBinding = nextExecutionHostBinding;
     }
     if (privateChanged) {
       normalizedUpdates.isPrivate = updates.isPrivate;
@@ -379,9 +282,9 @@ export class WorkspaceManager {
   async updateServerSettings(
     id: string,
     serverSettings: ServerSettings,
-    executionNodeId?: string | null,
+    executionHost?: ExecutionHostRef,
   ): Promise<Workspace | null> {
-    return await this.updateWorkspace(id, { serverSettings, executionNodeId });
+    return await this.updateWorkspace(id, { serverSettings, executionHost });
   }
 
   async touchWorkspace(id: string): Promise<void> {
@@ -409,11 +312,10 @@ export class WorkspaceManager {
   async testConnection(
     serverSettings: ServerSettings,
     directory: string,
-    executionNodeId?: string | null,
+    executionHost: ExecutionHostRef,
   ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
     try {
-      const targetNodeId = await this.resolveExecutionNodeId(serverSettings, executionNodeId);
-      return await backendManager.testConnection(serverSettings, directory, targetNodeId);
+      return await backendManager.testConnection(serverSettings, directory, executionHost);
     } catch (error) {
       return { success: false, error: String(error) };
     }

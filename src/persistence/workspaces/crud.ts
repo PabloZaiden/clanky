@@ -8,7 +8,6 @@
  */
 
 import type { Workspace } from "@/shared/workspace";
-import { getServerFingerprint } from "@/shared/settings";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -73,7 +72,7 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "serverSettings" | "executionNodeId" | "executionTargetRevision" | "executionHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+    "name" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
@@ -100,23 +99,6 @@ export async function updateWorkspace(
   if (updates.serverSettings !== undefined) {
     setClauses.push("server_settings = ?");
     values.push(JSON.stringify(updates.serverSettings));
-    setClauses.push("server_fingerprint = ?");
-    values.push(getServerFingerprint(
-      updates.serverSettings,
-      updates.executionNodeId,
-    ));
-  }
-
-  if (updates.executionNodeId !== undefined) {
-    setClauses.push("execution_node_id = ?");
-    values.push(updates.executionNodeId);
-    if (updates.serverSettings === undefined) {
-      const existing = await getWorkspace(id);
-      if (existing) {
-        setClauses.push("server_fingerprint = ?");
-        values.push(getServerFingerprint(existing.serverSettings, updates.executionNodeId));
-      }
-    }
   }
 
   if (updates.executionTargetRevision !== undefined) {
@@ -126,11 +108,9 @@ export async function updateWorkspace(
 
   if (updates.executionHostBinding !== undefined) {
     setClauses.push("execution_host_id = ?");
-    values.push(updates.executionHostBinding
-      ? resolveExecutionHostBindingId(userId, updates.executionHostBinding)
-      : null);
+    values.push(resolveExecutionHostBindingId(userId, updates.executionHostBinding));
     setClauses.push("execution_host_revision = ?");
-    values.push(updates.executionHostBinding?.revision ?? null);
+    values.push(updates.executionHostBinding.revision);
   }
 
   if (updates.devcontainerSubpath !== undefined) {

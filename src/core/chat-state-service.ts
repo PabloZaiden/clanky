@@ -6,7 +6,6 @@ import {
   deleteChat,
   getWorkspaceChatNameStats,
   listChatSummaries,
-  listChatSummariesBySshServer,
   listChatSummariesByWorkspace,
   listChats,
   listChatsByWorkspace,
@@ -109,10 +108,6 @@ export class ChatStateService implements ChatStatePort {
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
     return (await listChatSummariesByWorkspace(workspaceId)).filter(isStandaloneChat);
-  }
-
-  async getChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
-    return (await listChatSummariesBySshServer(sshServerId)).filter(isStandaloneChat);
   }
 
   async getWorkspace(workspaceId: string): Promise<Workspace | null> {

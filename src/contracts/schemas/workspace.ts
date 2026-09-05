@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { AGENT_PROVIDER_IDS } from "@/shared";
-import { ExecutionHostBindingSchema } from "./execution-host";
+import { ExecutionHostRefSchema } from "./execution-host";
 
 /**
  * Agent provider options.
@@ -23,35 +23,9 @@ export const WorkspaceTypeSchema = z.enum(["git", "directory"]);
  * - stdio: local ACP CLI process
  * - ssh: ACP CLI process started over SSH
  */
-export const AgentTransportSchema = z.enum(["stdio", "ssh"]);
-
-const StdioAgentSettingsSchema = z.object({
+export const AgentSettingsSchema = z.object({
   provider: AgentProviderSchema,
-  transport: z.literal("stdio"),
 }).strict();
-
-const SshAgentSettingsSchema = z.object({
-  provider: AgentProviderSchema,
-  transport: z.literal("ssh"),
-  hostname: z.string().min(1, "hostname is required for ssh transport"),
-  port: z.number().int().min(1).max(65535).optional(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  identityFile: z.string().min(1).optional(),
-}).strict();
-
-/**
- * Schema for the agent settings.
- *
- * Note: this is intentionally a single channel config. Execution behavior is
- * derived from transport:
- * - stdio => local deterministic execution
- * - ssh => ssh deterministic execution
- */
-export const AgentSettingsSchema = z.discriminatedUnion("transport", [
-  StdioAgentSettingsSchema,
-  SshAgentSettingsSchema,
-]);
 
 /**
  * Schema for workspace server settings.
@@ -72,8 +46,7 @@ export const CreateWorkspaceRequestSchema = z.object({
   name: z.string().min(1, "name is required"),
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
-  executionNodeId: z.string().trim().min(1).nullable().optional(),
-  executionHostBinding: ExecutionHostBindingSchema.nullable().optional(),
+  executionHost: ExecutionHostRefSchema,
   allowClankyContext: z.boolean().optional(),
   workspaceType: WorkspaceTypeSchema.default("git"),
 });
@@ -87,8 +60,7 @@ export const CreateWorkspaceRequestSchema = z.object({
 export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
-  executionNodeId: z.string().trim().min(1).nullable().optional(),
-  executionHostBinding: ExecutionHostBindingSchema.nullable().optional(),
+  executionHost: ExecutionHostRefSchema.optional(),
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
@@ -108,7 +80,7 @@ export const DeleteWorkspaceRequestSchema = z.object({
 export const TestConnectionRequestSchema = z.object({
   settings: ServerSettingsSchema,
   directory: z.string().min(1, "directory is required"),
-  executionNodeId: z.string().trim().min(1).nullable().optional(),
+  executionHost: ExecutionHostRefSchema,
 });
 
 // Export inferred types
@@ -117,7 +89,6 @@ export const TestConnectionRequestSchema = z.object({
  * This is the single source of truth for server connection configuration.
  */
 export type AgentProvider = z.infer<typeof AgentProviderSchema>;
-export type AgentTransport = z.infer<typeof AgentTransportSchema>;
 export type AgentSettings = z.infer<typeof AgentSettingsSchema>;
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>;
 

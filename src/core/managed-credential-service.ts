@@ -448,7 +448,7 @@ export class ManagedCredentialService {
     let rawValue = this.publicBaseUrl?.trim();
     if (!rawValue) {
       const workspace = await getWorkspace(identity.workspaceId);
-      if (workspace?.serverSettings.agent.transport === "stdio") {
+      if (workspace?.executionHostBinding.host.kind === "local") {
         rawValue = this.localBaseUrl?.trim();
       }
     }

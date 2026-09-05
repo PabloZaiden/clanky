@@ -1,5 +1,5 @@
 /**
- * Owns active workspace-terminal attachments independently of WebSocket
+ * Owns active terminal attachments independently of WebSocket
  * transport details so lifecycle operations can close them before deletion.
  */
 
@@ -8,22 +8,22 @@ interface DisposableTerminalConnection {
   dispose(): Promise<void>;
 }
 
-interface WorkspaceTerminalAttachment {
+interface TerminalAttachment {
   connection: DisposableTerminalConnection;
 }
 
-export interface WorkspaceTerminalAttachmentHandle {
+export interface TerminalAttachmentHandle {
   isActive(): boolean;
   release(): void;
 }
 
-const activeAttachments = new Map<string, WorkspaceTerminalAttachment>();
+const activeAttachments = new Map<string, TerminalAttachment>();
 const blockedSessions = new Set<string>();
 
-export async function claimWorkspaceTerminalAttachment(
+export async function claimTerminalAttachment(
   sessionId: string,
   connection: DisposableTerminalConnection,
-): Promise<WorkspaceTerminalAttachmentHandle> {
+): Promise<TerminalAttachmentHandle> {
   if (blockedSessions.has(sessionId)) {
     throw new DomainError(
       "terminal_session_closing",
@@ -32,7 +32,7 @@ export async function claimWorkspaceTerminalAttachment(
     );
   }
 
-  const attachment: WorkspaceTerminalAttachment = {
+  const attachment: TerminalAttachment = {
     connection,
   };
   const previous = activeAttachments.get(sessionId);
@@ -81,7 +81,7 @@ export async function claimWorkspaceTerminalAttachment(
   };
 }
 
-export async function blockAndCloseWorkspaceTerminalAttachment(sessionId: string): Promise<void> {
+export async function blockAndCloseTerminalAttachment(sessionId: string): Promise<void> {
   blockedSessions.add(sessionId);
   const attachment = activeAttachments.get(sessionId);
   if (!attachment) {
@@ -91,10 +91,10 @@ export async function blockAndCloseWorkspaceTerminalAttachment(sessionId: string
   await attachment.connection.dispose();
 }
 
-export function unblockWorkspaceTerminalAttachment(sessionId: string): void {
+export function unblockTerminalAttachment(sessionId: string): void {
   blockedSessions.delete(sessionId);
 }
 
-export function isWorkspaceTerminalAttachmentBlocked(sessionId: string): boolean {
+export function isTerminalAttachmentBlocked(sessionId: string): boolean {
   return blockedSessions.has(sessionId);
 }

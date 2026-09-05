@@ -59,7 +59,6 @@ export interface UploadFileExplorerFileOptions extends WorkspaceFileRequestOptio
 
 export type FileExplorerTarget =
   | { type: "workspace"; id: string; startDirectory?: string }
-  | { type: "server"; id: string; startDirectory?: string }
   | {
       type: "executionHost";
       id: string;
@@ -186,7 +185,7 @@ async function buildFileExplorerRequestInit(
 ): Promise<RequestInit> {
   const headers = new Headers(init?.headers);
 
-  if (target.type === "server") {
+  if (target.type === "executionHost" && target.kind === "ssh") {
     const credentialToken = await requireFileExplorerServerCredentialToken(target.id);
     headers.set("x-clanky-ssh-credential-token", credentialToken);
   }
@@ -201,9 +200,6 @@ async function buildFileExplorerRequestInit(
 function getFileExplorerBasePath(target: FileExplorerTarget): string {
   if (target.type === "workspace") {
     return `/api/workspaces/${target.id}/files`;
-  }
-  if (target.type === "server") {
-    return `/api/ssh-servers/${target.id}/files`;
   }
   return `/api/execution-hosts/${target.kind}/${encodeURIComponent(target.id)}/files`;
 }
@@ -350,7 +346,7 @@ export async function getFileExplorerDownloadUrl(
   const searchParams = buildFileExplorerSearchParams(target, {
     path,
   }, options);
-  if (target.type === "server") {
+  if (target.type === "executionHost" && target.kind === "ssh") {
     searchParams.set("credentialToken", await requireFileExplorerServerCredentialToken(target.id));
   }
   return appPath(`${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`);
@@ -631,56 +627,4 @@ export async function downloadWorkspaceFileApi(
   options?: WorkspaceFileRequestOptions,
 ): Promise<Blob> {
   return await downloadFileExplorerFileApi({ type: "workspace", id: workspaceId }, path, options);
-}
-
-export async function listServerFilesApi(
-  serverId: string,
-  path = "",
-  options?: WorkspaceFileRequestOptions,
-): Promise<SshServerFileListResponse> {
-  const response = await listFileExplorerFilesApi({ type: "server", id: serverId }, path, options);
-  return response as SshServerFileListResponse;
-}
-
-export async function readServerFileApi(
-  serverId: string,
-  path: string,
-  options?: WorkspaceFileRequestOptions,
-): Promise<SshServerFileReadResponse> {
-  const response = await readFileExplorerFileApi({ type: "server", id: serverId }, path, options);
-  return response as SshServerFileReadResponse;
-}
-
-export async function getServerFileMetadataApi(
-  serverId: string,
-  path: string,
-  options?: WorkspaceFileRequestOptions,
-): Promise<SshServerFileMetadataResponse> {
-  const response = await getFileExplorerFileMetadataApi({ type: "server", id: serverId }, path, options);
-  return response as SshServerFileMetadataResponse;
-}
-
-export async function loadServerFileTreeApi(
-  serverId: string,
-  options?: WorkspaceFileRequestOptions,
-): Promise<SshServerFileTreeResponse> {
-  const response = await loadFileExplorerTreeApi({ type: "server", id: serverId }, options);
-  return response as SshServerFileTreeResponse;
-}
-
-export async function writeServerFileApi(
-  serverId: string,
-  request: WriteFileExplorerRequest,
-  options?: WorkspaceFileRequestOptions,
-): Promise<SshServerFileWriteResponse> {
-  const response = await writeFileExplorerFileApi({ type: "server", id: serverId }, request, options);
-  return response as SshServerFileWriteResponse;
-}
-
-export async function downloadServerFileApi(
-  serverId: string,
-  path: string,
-  options?: WorkspaceFileRequestOptions,
-): Promise<Blob> {
-  return await downloadFileExplorerFileApi({ type: "server", id: serverId }, path, options);
 }

@@ -19,7 +19,7 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { generateTaskName } from "../../utils/name-generator";
-import { normalizeCommitScope } from "../../utils/commit-scope";
+import { normalizeCommitScope } from "@/shared";
 import { assertValidTransition, isActiveStatus } from "../task-state-machine";
 import { normalizeBranchPrefix } from "../branch-name";
 import { resolvePullRequestDestination } from "../pull-request-navigation";

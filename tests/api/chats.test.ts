@@ -10,7 +10,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { initializeDatabase } from "../../src/persistence/database";
 import { loadChat, saveChat, updateChatState } from "../../src/persistence/chats";
-import { createWorkspace } from "../../src/persistence/workspaces";
+import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
@@ -34,6 +34,7 @@ import {
   runGit,
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
+import { fetchTestLocalExecutionHost } from "../setup";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -137,13 +138,15 @@ describe("Chats API Integration", () => {
   }
 
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
-        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+        executionHost,
+        serverSettings: { agent: { provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -2494,12 +2497,18 @@ describe("Chats API Integration", () => {
 
   test("runs directory workspace chats directly and rejects Git options", async () => {
     const workspaceId = crypto.randomUUID();
+    const existingWorkspace = await getWorkspace(testWorkspaceId);
+    if (!existingWorkspace) {
+      throw new Error("Expected the chat test workspace to exist");
+    }
     await createWorkspace({
       id: workspaceId,
       name: "Directory Chat Workspace",
       directory: testWorkDir,
       workspaceType: "directory",
-      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
+      executionTargetRevision: 1,
+      executionHostBinding: existingWorkspace.executionHostBinding,
+      serverSettings: { agent: { provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

@@ -2,8 +2,7 @@
  * WebSocket handlers for Clanky Tasks Management System.
  *
  * Supports raw websocket surfaces:
- * - WS /api/terminal for canonical workspace terminal streams
- * - WS /api/ssh-terminal for interactive SSH terminal streams
+ * - WS /api/terminal for canonical terminal streams
  * - WS /api/vnc for raw VNC traffic
  * - WS /api/previews/bridge for live-preview forwarding
  *
@@ -19,8 +18,7 @@
 
 export type { WebSocketData } from "./types";
 export {
-  startSshServerTerminalBridge,
-  startWorkspaceTerminalBridge,
+  startTerminalBridge,
   sendTerminalAuthError,
 } from "./terminal";
 export { open, close, error, activeConnections, MAX_CONNECTIONS } from "./connection";
@@ -29,8 +27,7 @@ export { createMessageHandler } from "./message-handler";
 import { open, close, error } from "./connection";
 import { createMessageHandler } from "./message-handler";
 import {
-  startSshServerTerminalBridge,
-  startWorkspaceTerminalBridge,
+  startTerminalBridge,
   sendTerminalAuthError,
 } from "./terminal";
 
@@ -38,20 +35,17 @@ import {
  * WebSocket message handlers for Bun.serve().
  * These handlers manage raw WebSocket transport lifecycles.
  *
- * `message` is created via a factory that holds a reference to `websocketHandlers`
- * itself so that spying on `websocketHandlers.startSshServerTerminalBridge` in tests correctly
- * intercepts calls made from inside the message handler.
+ * `message` is created via a factory that holds a live reference to the
+ * terminal helpers.
  */
 export const websocketHandlers = {
-  startSshServerTerminalBridge,
-  startWorkspaceTerminalBridge,
+  startTerminalBridge,
   sendTerminalAuthError,
   open,
   close,
   error,
 } as {
-  startSshServerTerminalBridge: typeof startSshServerTerminalBridge;
-  startWorkspaceTerminalBridge: typeof startWorkspaceTerminalBridge;
+  startTerminalBridge: typeof startTerminalBridge;
   sendTerminalAuthError: typeof sendTerminalAuthError;
   open: typeof open;
   close: typeof close;

@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TerminalConnectionMode, SshServer, SshServerSession } from "@/shared";
-import type { CreateSshServerRequest, UpdateSshServerSessionRequest, UpdateSshServerRequest } from "@/contracts";
+import type { SshServer } from "@/shared";
+import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import {
-  createStandaloneSshSessionApi,
   createSshServerApi,
-  deleteStandaloneSshSessionApi,
   deleteSshServerApi,
-  listSshServerSessionsApi,
   listSshServersApi,
   saveStandaloneSshServerPassword,
-  updateStandaloneSshSessionApi,
   updateSshServerApi,
 } from "./sshServerActions";
 import {
@@ -22,19 +18,12 @@ import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseSshServersResult {
   servers: SshServer[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
   loading: boolean;
   error: string | null;
   refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
-  createSession: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
-  ) => Promise<SshServerSession>;
-  updateSession: (serverId: string, sessionId: string, request: UpdateSshServerSessionRequest) => Promise<SshServerSession>;
-  deleteSession: (serverId: string, sessionId: string) => Promise<boolean>;
   hasStoredCredential: (serverId: string) => boolean;
 }
 
@@ -44,7 +33,6 @@ export interface UseSshServersOptions {
 
 export function useSshServers({ realtime = true }: UseSshServersOptions = {}): UseSshServersResult {
   const [servers, setServers] = useState<SshServer[]>([]);
-  const [sessionsByServerId, setSessionsByServerId] = useState<Record<string, SshServerSession[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
@@ -58,11 +46,7 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
         }
         setError(null);
         const nextServers = await listSshServersApi();
-        const sessionEntries = await Promise.all(nextServers.map(async (server) => {
-          return [server.config.id, await listSshServerSessionsApi(server.config.id)] as const;
-        }));
         setServers(nextServers);
-        setSessionsByServerId(Object.fromEntries(sessionEntries));
       } catch (err) {
         setError(String(err));
       } finally {
@@ -81,7 +65,6 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
         await saveStandaloneSshServerPassword(server.config.id, password);
       }
       setServers((prev) => [...prev, server].sort((left, right) => left.config.name.localeCompare(right.config.name)));
-      setSessionsByServerId((prev) => ({ ...prev, [server.config.id]: [] }));
       return server;
     } catch (err) {
       setError(String(err));
@@ -124,74 +107,6 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
       await deleteSshServerApi(id);
       clearStoredSshServerCredential(id);
       setServers((prev) => prev.filter((server) => server.config.id !== id));
-      setSessionsByServerId((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      return true;
-    } catch (err) {
-      setError(String(err));
-      return false;
-    }
-  }, []);
-
-  const createSession = useCallback(async (
-    serverId: string,
-    options: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean } = {},
-  ): Promise<SshServerSession> => {
-    try {
-      setError(null);
-      const session = await createStandaloneSshSessionApi({
-        serverId,
-        name: options.name ?? "SSH session",
-        connectionMode: options.connectionMode ?? "dtach",
-        useTmux: options.useTmux,
-      });
-      setSessionsByServerId((prev) => ({
-        ...prev,
-        [serverId]: [session, ...(prev[serverId] ?? [])],
-      }));
-      return session;
-    } catch (err) {
-      const message = String(err);
-      setError(message);
-      throw err instanceof Error ? err : new Error(message);
-    }
-  }, []);
-
-  const updateSession = useCallback(async (
-    serverId: string,
-    sessionId: string,
-    request: UpdateSshServerSessionRequest,
-  ): Promise<SshServerSession> => {
-    try {
-      setError(null);
-      const session = await updateStandaloneSshSessionApi(sessionId, request);
-      setSessionsByServerId((prev) => ({
-        ...prev,
-        [serverId]: (prev[serverId] ?? []).map((item) => item.config.id === sessionId ? session : item),
-      }));
-      return session;
-    } catch (err) {
-      const message = String(err);
-      setError(message);
-      throw err instanceof Error ? err : new Error(message);
-    }
-  }, []);
-
-  const deleteSession = useCallback(async (serverId: string, sessionId: string): Promise<boolean> => {
-    try {
-      setError(null);
-      await deleteStandaloneSshSessionApi({
-        serverId,
-        sessionId,
-        requireCredential: false,
-      });
-      setSessionsByServerId((prev) => ({
-        ...prev,
-        [serverId]: (prev[serverId] ?? []).filter((session) => session.config.id !== sessionId),
-      }));
       return true;
     } catch (err) {
       setError(String(err));
@@ -200,8 +115,8 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
   }, []);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-server-sessions"],
-    filters: { resource: "ssh-server-sessions" },
+    resources: ["execution-hosts"],
+    filters: { resource: "execution-hosts" },
     enabled: realtime,
     refresh: () => refresh({ showLoading: false }),
     onReconnect: () => refresh({ showLoading: false }),
@@ -216,16 +131,12 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
 
   return {
     servers,
-    sessionsByServerId,
     loading,
     error,
     refresh,
     createServer,
     updateServer,
     deleteServer,
-    createSession,
-    updateSession,
-    deleteSession,
     hasStoredCredential: (serverId: string) => getStoredSshServerCredential(serverId) !== null,
   };
 }

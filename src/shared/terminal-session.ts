@@ -5,7 +5,6 @@
  * host. Both forms can use a persistent dtach-backed shell or a direct shell.
  */
 
-import type { AgentTransport } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
 
 /**
@@ -40,32 +39,7 @@ export type TerminalSessionStatus =
   | "disconnected"
   | "failed";
 
-/**
- * Snapshot of the workspace execution target at the time the session was
- * created. Terminal sessions are bound to an immutable target revision:
- * if the workspace's transport or connection target changes, existing
- * sessions become invalid and must be deleted before creating new ones.
- */
-export interface TerminalTargetBinding {
-  /** Workspace transport at session creation time */
-  transport: AgentTransport;
-  /** Credential-free key for the resolved execution host */
-  targetKey: string;
-  /** Workspace execution-target revision captured at creation time */
-  workspaceRevision: number;
-  /** SSH hostname (only for ssh transport) */
-  hostname?: string;
-  /** SSH port (only for ssh transport) */
-  port?: number;
-  /** SSH username (only for ssh transport) */
-  username?: string;
-  /** Mesh execution node ID (only for stdio transport with Mesh) */
-  executionNodeId?: string;
-}
-
-/**
- * Persistent workspace terminal session configuration.
- */
+/** Persistent terminal session configuration. */
 export interface TerminalSessionConfig {
   /** Unique identifier (UUID v4) */
   id: string;
@@ -83,10 +57,10 @@ export interface TerminalSessionConfig {
   useTmux: boolean;
   /** Remote identifier used for persistent session sockets and direct-shell tracking */
   remoteSessionName: string;
-  /** Snapshot of the workspace execution target at session creation */
-  targetBinding: TerminalTargetBinding;
-  /** Canonical execution host snapshot retained alongside legacy target fields. */
-  executionHostBinding?: ExecutionHostBinding | null;
+  /** Workspace target revision captured at creation, absent for direct sessions. */
+  workspaceExecutionTargetRevision?: number;
+  /** Canonical execution host snapshot. */
+  executionHostBinding: ExecutionHostBinding;
   /** ISO 8601 timestamp of when the session was created */
   createdAt: string;
   /** ISO 8601 timestamp of the last configuration update */
@@ -117,7 +91,7 @@ export interface TerminalSessionState {
 /**
  * Combined workspace terminal session object returned by the API.
  */
-export interface WorkspaceTerminalSession {
+export interface TerminalSession {
   config: TerminalSessionConfig;
   state: TerminalSessionState;
 }

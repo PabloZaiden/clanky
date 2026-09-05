@@ -40,6 +40,14 @@ class SshServerApiExecutor extends TestCommandExecutor {
         exitCode: available ? 0 : 255,
       };
     }
+    if (command === "/bin/sh" && args[0] === "-c" && args[1]?.includes("test -d")) {
+      return {
+        success: true,
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
     if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v bash")) {
       const available = this.options.bashAvailable ?? true;
       return {
@@ -187,7 +195,7 @@ describe("Standalone SSH servers API integration", () => {
     backendManager.resetForTesting();
     const db = getDatabase();
     db.run("DELETE FROM chats");
-    db.run("DELETE FROM ssh_server_sessions");
+    db.run("DELETE FROM terminal_sessions");
     db.run("DELETE FROM ssh_servers");
   });
 
@@ -265,7 +273,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(deleteResponse.ok).toBe(true);
   });
 
-  test("exchanges encrypted credentials and creates a standalone SSH session", async () => {
+  test("exchanges encrypted credentials without persisting the secret", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -285,27 +293,10 @@ describe("Standalone SSH servers API integration", () => {
     });
     expect(credentialResponse.status).toBe(201);
     const exchange = await credentialResponse.json() as { credentialToken: string };
-
-    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        credentialToken: exchange.credentialToken,
-        name: "Deploy shell",
-        connectionMode: "dtach",
-        useTmux: false,
-      }),
-    });
-    expect(createSessionResponse.status).toBe(201);
-    const session = await createSessionResponse.json() as { config: { id: string; name: string; useTmux: boolean } };
-    expect(session.config.name).toBe("Deploy shell");
-    expect(session.config.useTmux).toBe(false);
-
-    const getSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
-    expect(getSessionResponse.ok).toBe(true);
+    expect(exchange.credentialToken.length).toBeGreaterThan(0);
   });
 
-  test("creates a standalone SSH session with a null credential token for direct mode", async () => {
+  test("creates a direct terminal through the transport-neutral API", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -318,12 +309,13 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        credentialToken: null,
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
         name: "Direct shell",
+        directory: "/",
         connectionMode: "direct",
       }),
     });
@@ -336,7 +328,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.useTmux).toBe(false);
   });
 
-  test("deletes a standalone persistent SSH session without requiring credentials", async () => {
+  test("deletes a persistent SSH terminal without requiring credentials", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -349,32 +341,31 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        credentialToken: null,
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
         name: "Persistent shell",
+        directory: "/",
         connectionMode: "dtach",
       }),
     });
     expect(createSessionResponse.status).toBe(201);
     const session = await createSessionResponse.json() as { config: { id: string } };
 
-    const deleteResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
+    const deleteResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialToken: null }),
     });
 
     expect(deleteResponse.ok).toBe(true);
     expect(await deleteResponse.json()).toEqual({ success: true });
 
-    const getResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
+    const getResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`);
     expect(getResponse.status).toBe(404);
   });
 
-  test("deletes a standalone persistent SSH session when remote cleanup fails", async () => {
+  test("deletes a persistent SSH terminal when remote cleanup fails", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -387,20 +378,13 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id)),
-    });
-    expect(credentialResponse.status).toBe(201);
-    const exchange = await credentialResponse.json() as { credentialToken: string };
-
-    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        credentialToken: exchange.credentialToken,
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
         name: "Persistent shell",
+        directory: "/",
         connectionMode: "dtach",
       }),
     });
@@ -409,20 +393,18 @@ describe("Standalone SSH servers API integration", () => {
 
     executorFactory = () => new FailingStandalonePersistentCleanupExecutor();
 
-    const deleteResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
+    const deleteResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialToken: exchange.credentialToken }),
     });
 
     expect(deleteResponse.ok).toBe(true);
     expect(await deleteResponse.json()).toEqual({ success: true });
 
-    const getResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
+    const getResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`);
     expect(getResponse.status).toBe(404);
   });
 
-  test("creates and lists SSH-server-owned chats", async () => {
+  test("creates an SSH execution-host chat", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -435,7 +417,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const createChatResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chats`, {
+    const createChatResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -450,22 +432,23 @@ describe("Standalone SSH servers API integration", () => {
       config: {
         id: string;
         workspaceId: string;
-        source: { kind: string; sshServerId: string; directory: string };
+        source: {
+          kind: string;
+          executionHost: { host: { kind: string; serverId: string } };
+          directory: string;
+        };
       };
       state: { connectionStatus: string };
     };
     expect(chat.config.workspaceId).toBeUndefined();
     expect(chat.config.source).toMatchObject({
-      kind: "ssh_server",
-      sshServerId: createdServer.config.id,
+      kind: "execution_host",
+      executionHost: {
+        host: { kind: "ssh", serverId: createdServer.config.id },
+      },
       directory: "/workspaces/project",
     });
     expect(chat.state.connectionStatus).toBe("needs_credentials");
-
-    const listChatsResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chats`);
-    expect(listChatsResponse.ok).toBe(true);
-    const chats = await listChatsResponse.json() as Array<{ config: { id: string } }>;
-    expect(chats.map((item) => item.config.id)).toEqual([chat.config.id]);
 
     const reconnectResponse = await fetch(`${baseUrl}/api/chats/${chat.config.id}/reconnect`, {
       method: "POST",
@@ -529,7 +512,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const exchange = await credentialResponse.json() as { credentialToken: string };
 
-    const copilotResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
+    const copilotResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/chat-models`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -548,7 +531,7 @@ describe("Standalone SSH servers API integration", () => {
       { providerID: "copilot", providerName: "Copilot", modelID: "claude-from-copilot-runtime" },
     ]);
 
-    const codexResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
+    const codexResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/chat-models`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -568,7 +551,7 @@ describe("Standalone SSH servers API integration", () => {
     ]);
   });
 
-  test("deletes direct standalone SSH sessions", async () => {
+  test("deletes direct SSH terminals through the transport-neutral API", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -581,30 +564,29 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
         name: "Direct shell",
+        directory: "/",
         connectionMode: "direct",
-        credentialToken: null,
       }),
     });
     expect(createSessionResponse.status).toBe(201);
     const session = await createSessionResponse.json() as { config: { id: string } };
 
-    const deleteSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
+    const deleteSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialToken: null }),
     });
     expect(deleteSessionResponse.ok).toBe(true);
 
-    const getDeletedSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
+    const getDeletedSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`);
     expect(getDeletedSessionResponse.status).toBe(404);
   });
 
-  test("checks standalone SSH server prerequisites through the API", async () => {
+  test("checks SSH prerequisites through the transport-neutral API", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -617,7 +599,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
+    const checkResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/prerequisites`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: null }),
@@ -654,7 +636,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
+    const checkResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/prerequisites`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: null }),
@@ -687,7 +669,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+    const templatesResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/devbox-templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: null }),
@@ -731,7 +713,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+    const templatesResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/devbox-templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: "invalid-token" }),
@@ -755,15 +737,15 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+    const templatesResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/devbox-templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: null }),
     });
     expect(templatesResponse.status).toBe(500);
     const body = await templatesResponse.json() as { error: string; message: string };
-    expect(body.error).toBe("ssh_server_error");
-    expect(body.message).toBe("SSH server operation failed");
+    expect(body.error).toBe("execution_host_templates_failed");
+    expect(body.message).toBe("Failed to list execution-host Devbox templates.");
     expect(body.message).not.toContain("Failed to parse devbox templates output as JSON");
   });
 
@@ -781,15 +763,15 @@ describe("Standalone SSH servers API integration", () => {
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
-    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+    const templatesResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/devbox-templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken: null }),
     });
     expect(templatesResponse.status).toBe(500);
     const body = await templatesResponse.json() as { error: string; message: string };
-    expect(body.error).toBe("ssh_server_templates_failed");
-    expect(body.message).toBe("Failed to list devbox templates");
+    expect(body.error).toBe("execution_host_templates_failed");
+    expect(body.message).toBe("Failed to list execution-host Devbox templates.");
     expect(body.message).not.toContain("devbox: command not found");
   });
 });

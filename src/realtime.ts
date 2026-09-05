@@ -11,7 +11,6 @@ import type {
   ChatEvent,
   PreviewEvent,
   ProvisioningEvent,
-  SshServerSessionEvent,
   TerminalSessionEvent,
   TaskEvent,
 } from "@/shared";
@@ -31,7 +30,6 @@ export const CLANKY_REALTIME_RESOURCES = {
   chats: "chats",
   agents: "agents",
   agentRuns: "agent-runs",
-  sshServerSessions: "ssh-server-sessions",
   terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   previews: "previews",
@@ -93,7 +91,6 @@ export type ClankyDomainEvent =
   | TaskEvent
   | ChatEvent
   | AgentEvent
-  | SshServerSessionEvent
   | TerminalSessionEvent
   | ProvisioningEvent
   | PreviewEvent
@@ -385,25 +382,6 @@ export function publishClankyDomainEvent(
     case "agent.runs.purged":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, undefined, event.agentId);
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
-      return;
-
-    case "ssh_server_session.created":
-    case "ssh_server_session.updated":
-    case "ssh_server_session.status":
-      publishChanged(
-        publisher,
-        owner,
-        CLANKY_REALTIME_RESOURCES.sshServerSessions,
-        event.sshServerSessionId,
-      );
-      return;
-    case "ssh_server_session.deleted":
-      publishDeleted(
-        publisher,
-        owner,
-        CLANKY_REALTIME_RESOURCES.sshServerSessions,
-        event.sshServerSessionId,
-      );
       return;
 
     case "terminal_session.created":

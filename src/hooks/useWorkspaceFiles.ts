@@ -151,13 +151,3 @@ export function useWorkspaceFiles(
 ): UseWorkspaceFilesResult {
   return useFileExplorer({ type: "workspace", id: workspaceId }, options);
 }
-
-export function useServerFiles(
-  serverId: string,
-  options?: {
-    loadFullTree?: boolean;
-    pollIntervalMs?: number;
-  },
-): UseFileExplorerResult {
-  return useFileExplorer({ type: "server", id: serverId }, options);
-}

@@ -8,7 +8,6 @@ export * from "./common";
 // Main components
 export { TaskCard } from "./TaskCard";
 export { TaskDetails } from "./TaskDetails";
-export { SshServerSessionDetails } from "./SshServerSessionDetails";
 export { TerminalSessionDetails, type TerminalSessionDetailsProps } from "./terminal/terminal-session-details";
 export { ConversationViewer, LogViewer } from "./LogViewer";
 export { ChatDetails } from "./ChatDetails";

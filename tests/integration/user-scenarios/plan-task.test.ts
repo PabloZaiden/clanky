@@ -735,14 +735,11 @@ describe("Plan + Task User Scenarios", () => {
       );
       expect(currentSettingsResponse.status).toBe(200);
       const currentSettings = await currentSettingsResponse.json();
-      expect(currentSettings.agent.transport).toBe("stdio");
+      expect(currentSettings.agent.provider).toBeDefined();
 
       const updatedSettings = {
         agent: {
-          provider: currentSettings.agent.provider,
-          transport: "ssh",
-          hostname: "127.0.0.1",
-          port: 22,
+          provider: currentSettings.agent.provider === "opencode" ? "copilot" : "opencode",
         },
       };
 

@@ -9,10 +9,15 @@ function workspace(id: string, name: string): Workspace {
     name,
     directory: `/workspaces/${id}`,
     workspaceType: "git",
+    executionTargetRevision: 1,
+    executionHostBinding: {
+      host: { kind: "local", nodeId: "test-local-node" },
+      targetKey: "local:test",
+      revision: 1,
+    },
     serverSettings: {
       agent: {
         provider: "opencode",
-        transport: "stdio",
       },
     },
     createdAt: now,

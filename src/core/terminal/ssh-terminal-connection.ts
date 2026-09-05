@@ -24,7 +24,6 @@ export class SshInteractiveTerminalConnection implements InteractiveTerminalConn
       onExit: (code, signal) => callbacks.onExit?.(code, signal),
       onError: callbacks.onError,
     }, {
-      sessionKind: "terminal",
       credentialToken,
     });
   }

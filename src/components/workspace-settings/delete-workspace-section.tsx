@@ -40,8 +40,9 @@ export function DeleteWorkspaceSection({
       const options: DeleteWorkspaceRequest = {};
       if (deleteServerDirectory && canDeleteServerDirectory) {
         options.deleteServerDirectory = true;
-        if (workspace.sshServerId) {
-          options.credentialToken = await getStoredSshCredentialToken(workspace.sshServerId);
+        const host = workspace.executionHostBinding.host;
+        if (host.kind === "ssh") {
+          options.credentialToken = await getStoredSshCredentialToken(host.serverId);
         }
       }
       const result = await onDeleteWorkspace(options);

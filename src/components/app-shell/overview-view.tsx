@@ -4,7 +4,6 @@ import {
   type Agent,
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
-  type SshServerSession,
 } from "@/shared";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
@@ -15,7 +14,7 @@ import {
   buildChatHistorySidebarItems,
   type SidebarChatHistoryItem,
   type SidebarActiveWorkItem,
-  type SidebarServerNode,
+  type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
 import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
@@ -24,13 +23,10 @@ import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
-  if (host.ref.kind === "ssh") {
-    return { view: "ssh-server", serverId: host.ref.serverId };
-  }
   return {
     view: "execution-host",
     hostKind: host.ref.kind,
-    hostId: host.ref.nodeId,
+    hostId: getExecutionHostSourceId(host.ref),
   };
 }
 
@@ -41,31 +37,28 @@ function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
   if (item.kind === "chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
   }
-  if (item.kind === "ssh-server-chat") {
+  if (item.kind === "execution-host-chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
   }
   if (item.kind === "terminal-session") {
     return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
   }
-  return { view: "ssh", sshServerSessionId: item.sessionNode.id };
+  return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
 }
 
 function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
   if (item.kind === "task") {
     return item.taskNode.title;
   }
-  if (item.kind === "chat" || item.kind === "ssh-server-chat") {
+  if (item.kind === "chat" || item.kind === "execution-host-chat") {
     return item.chatNode.title;
   }
   return item.sessionNode.title;
 }
 
 function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
-  if (item.kind === "ssh-server-session") {
-    return item.serverName;
-  }
-  if (item.kind === "ssh-server-chat") {
-    return item.serverName;
+  if (item.kind === "execution-host-terminal" || item.kind === "execution-host-chat") {
+    return item.host.name;
   }
   return item.workspaceName;
 }
@@ -77,7 +70,7 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
   if (item.kind === "task") {
     return { label: item.taskNode.badge, variant: item.taskNode.badgeVariant };
   }
-  if (item.kind === "chat" || item.kind === "ssh-server-chat") {
+  if (item.kind === "chat" || item.kind === "execution-host-chat") {
     return { label: item.chatNode.badge, variant: item.chatNode.badgeVariant };
   }
   return { label: item.sessionNode.badge, variant: item.sessionNode.badgeVariant };
@@ -90,13 +83,13 @@ function isActiveWorkPrivateHidden(item: SidebarActiveWorkItem, showPrivateItems
   if (item.kind === "chat") {
     return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems);
   }
-  if (item.kind === "ssh-server-chat") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.server.config]), showPrivateItems);
+  if (item.kind === "execution-host-chat") {
+    return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.host]), showPrivateItems);
   }
   if (item.kind === "terminal-session") {
     return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.workspace]), showPrivateItems);
   }
-  return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.server.config]), showPrivateItems);
+  return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.host]), showPrivateItems);
 }
 
 function getChatHistoryRoute(item: SidebarChatHistoryItem): WebAppRoute {
@@ -104,13 +97,13 @@ function getChatHistoryRoute(item: SidebarChatHistoryItem): WebAppRoute {
 }
 
 function getChatHistorySubtitle(item: SidebarChatHistoryItem): string {
-  return item.kind === "chat" ? item.workspaceName : item.serverName;
+  return item.kind === "chat" ? item.workspaceName : item.host.name;
 }
 
 function isChatHistoryPrivateHidden(item: SidebarChatHistoryItem, showPrivateItems: boolean): boolean {
   return item.kind === "chat"
     ? shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems)
-    : shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.server.config]), showPrivateItems);
+    : shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.host]), showPrivateItems);
 }
 
 function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
@@ -136,11 +129,10 @@ function getProvisioningJobDescription(job: PublicProvisioningJob): string {
 
 export function OverviewView({
   executionHosts,
-  sessionsByServerId,
+  executionHostNodes,
   agents,
   agentsLoading,
   agentsError,
-  serverNodes,
   workspaceGroups,
   sidebarWorkspaceGroups,
   onNavigate,
@@ -148,11 +140,10 @@ export function OverviewView({
   showPrivateItems = false,
 }: {
   executionHosts: ExecutionHostDescriptor[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
+  executionHostNodes: SidebarExecutionHostNode[];
   agents: Agent[];
   agentsLoading: boolean;
   agentsError: string | null;
-  serverNodes: SidebarServerNode[];
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
@@ -160,24 +151,23 @@ export function OverviewView({
   showPrivateItems?: boolean;
 }) {
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }),
-    [serverNodes, sidebarWorkspaceGroups],
+    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
+    [executionHostNodes, sidebarWorkspaceGroups],
   );
   const chatHistoryItems = useMemo(
-    () => buildChatHistorySidebarItems(sidebarWorkspaceGroups, { serverNodes }),
-    [serverNodes, sidebarWorkspaceGroups],
+    () => buildChatHistorySidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
+    [executionHostNodes, sidebarWorkspaceGroups],
   );
   const serverMapItems = useMemo(() => {
     return executionHosts
       .filter((host) => host.ref.kind !== "local")
       .map((host) => ({
         host,
-        sessionCount: host.ref.kind === "ssh"
-          ? sessionsByServerId[host.ref.serverId]?.length ?? 0
-          : null,
+        sessionCount: executionHostNodes.find((node) => node.host.targetKey === host.targetKey)
+          ?.terminalSessions.length ?? 0,
       }))
       .sort((left, right) => left.host.name.localeCompare(right.host.name));
-  }, [executionHosts, sessionsByServerId]);
+  }, [executionHostNodes, executionHosts]);
   const workspaceNamesById = useMemo(() => {
     return Object.fromEntries(
       workspaceGroups.map((group) => [group.workspace.id, group.workspace.name]),
@@ -288,9 +278,7 @@ export function OverviewView({
                     key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
                     title={host.name}
                     description={host.endpoint ?? "Endpoint unavailable"}
-                    meta={sessionCount === null
-                      ? undefined
-                      : `${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+                    meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
                     badge={(
                       <span className="flex items-center gap-2">
                         <ServerTransportIcon transport={host.ref.kind} />

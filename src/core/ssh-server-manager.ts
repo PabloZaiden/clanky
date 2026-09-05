@@ -1,62 +1,28 @@
 /**
- * Core manager for standalone SSH servers and server-owned SSH sessions.
+ * Core manager for registered SSH execution hosts and browser-owned credentials.
  */
 
-import {
-  DEFAULT_TERMINAL_CONNECTION_MODE,
-  DEFAULT_TERMINAL_USE_TMUX,
-  type DevboxTemplateSummary,
-  type TerminalConnectionMode,
-  type SshServer,
-  type SshServerConfig,
-  type SshServerPrerequisiteReport,
-  type TerminalSessionStatus,
-  type SshServerSession,
-} from "@/shared";
+import { type SshServer, type SshServerConfig } from "@/shared";
 import {
   type CreateSshServerRequest,
-  type CreateSshServerSessionRequest,
-  type CheckSshServerPrerequisitesRequest,
-  type GetDevboxTemplatesRequest,
-  type DeleteSshServerSessionRequest,
   type UpdateSshServerRequest,
-  type UpdateSshServerSessionRequest,
 } from "@/contracts";
 import type { CommandExecutor } from "./command-executor";
 import {
-  countSshServerSessionsByServerId,
   deleteSshServer,
-  deleteSshServerSession,
   getSshServer,
   getSshServerConfig,
-  getSshServerSession,
-  listSshServerSessionsByServerId,
   listSshServers,
   saveSshServerConfig,
-  saveSshServerSession,
 } from "../persistence/ssh-servers";
-import { listChatSummariesBySshServer } from "../persistence/chats";
-import { buildDefaultSshServerSessionName } from "../utils";
-import { isPersistentTerminalSession } from "../utils";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { CommandExecutorImpl } from "./remote-command-executor";
-import { sshServerSessionEventEmitter } from "./event-emitter";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
-import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
-import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
-import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
-import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "./domain-error";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
-
-const log = createLogger("core:ssh-server-manager");
-
-function buildRemoteSessionName(id: string): string {
-  return `clanky-${id.replace(/-/g, "").slice(0, 24)}`;
-}
 
 export class SshServerManager {
   private testExecutorFactory: SshServerExecutorFactory | null = null;
@@ -124,24 +90,6 @@ export class SshServerManager {
     return await deleteSshServer(id);
   }
 
-  async listSessions(serverId: string): Promise<SshServerSession[]> {
-    await this.requireServerConfig(serverId);
-    const [sessions, chats] = await Promise.all([
-      listSshServerSessionsByServerId(serverId),
-      listChatSummariesBySshServer(serverId),
-    ]);
-    const internalSessionIds = new Set(
-      chats
-        .map((chat) => chat.config.source?.kind === "ssh_server" ? chat.config.source.sshServerSessionId : null)
-        .filter((sessionId): sessionId is string => typeof sessionId === "string" && sessionId.length > 0),
-    );
-    return sessions.filter((session) => !internalSessionIds.has(session.config.id));
-  }
-
-  async getSession(id: string): Promise<SshServerSession | null> {
-    return await getSshServerSession(id);
-  }
-
   async getCommandExecutor(
     serverId: string,
     password?: string,
@@ -150,141 +98,6 @@ export class SshServerManager {
     return {
       server,
       executor: this.buildExecutor(server, password ?? ""),
-    };
-  }
-
-  async checkPrerequisites(
-    serverId: string,
-    request: CheckSshServerPrerequisitesRequest = { credentialToken: null },
-  ): Promise<SshServerPrerequisiteReport> {
-    const server = await this.requireServerConfig(serverId);
-    const credentialToken = request.credentialToken?.trim();
-    const password = credentialToken
-      ? sshCredentialManager.getPasswordForToken(server.id, credentialToken)
-      : undefined;
-    return await checkSshServerPrerequisites(server, this.buildExecutor(server, password ?? ""));
-  }
-
-  async listDevboxTemplates(
-    serverId: string,
-    request: GetDevboxTemplatesRequest = { credentialToken: null },
-  ): Promise<DevboxTemplateSummary[]> {
-    const server = await this.requireServerConfig(serverId);
-    const credentialToken = request.credentialToken?.trim();
-    const password = credentialToken
-      ? sshCredentialManager.getPasswordForToken(server.id, credentialToken)
-      : undefined;
-    const executor = this.buildExecutor(server, password ?? "");
-    const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
-    if (!result.success) {
-      throw new DomainError(
-        "ssh_server_templates_failed",
-        "Failed to list devbox templates",
-        {
-          details: {
-            serverId,
-            exitCode: result.exitCode,
-          },
-        },
-      );
-    }
-    return parseDevboxTemplatesOutput(result.stdout);
-  }
-
-  async createSession(serverId: string, request: CreateSshServerSessionRequest): Promise<SshServerSession> {
-    const server = await this.requireServerConfig(serverId);
-    const connectionMode = this.getConnectionMode(request);
-    const useTmux = request.useTmux ?? DEFAULT_TERMINAL_USE_TMUX;
-
-    const now = new Date().toISOString();
-    const sessionCount = await countSshServerSessionsByServerId(serverId);
-    const sessionId = crypto.randomUUID();
-    const session: SshServerSession = {
-      config: {
-        id: sessionId,
-        sshServerId: serverId,
-        name: request.name?.trim() || buildDefaultSshServerSessionName(server.name, sessionCount),
-        connectionMode,
-        useTmux,
-        remoteSessionName: buildRemoteSessionName(sessionId),
-        createdAt: now,
-        updatedAt: now,
-      },
-      state: {
-        status: "ready",
-      },
-    };
-    await saveSshServerSession(session);
-    sshServerSessionEventEmitter.emit({
-      type: "ssh_server_session.created",
-      sshServerSessionId: session.config.id,
-      session,
-      timestamp: session.config.updatedAt,
-    });
-    return session;
-  }
-
-  async updateSession(id: string, request: UpdateSshServerSessionRequest): Promise<SshServerSession> {
-    const session = await this.requireSession(id);
-    const updated: SshServerSession = {
-      config: {
-        ...session.config,
-        ...(request.name !== undefined ? { name: request.name.trim() } : {}),
-        ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
-        updatedAt: new Date().toISOString(),
-      },
-      state: session.state,
-    };
-    await saveSshServerSession(updated);
-    sshServerSessionEventEmitter.emit({
-      type: "ssh_server_session.updated",
-      sshServerSessionId: updated.config.id,
-      session: updated,
-      timestamp: updated.config.updatedAt,
-    });
-    return updated;
-  }
-
-  async deleteSession(id: string, request: DeleteSshServerSessionRequest): Promise<boolean> {
-    const session = await this.requireSession(id);
-    await this.deletePersistentSessionBestEffort(session, request);
-
-    const deleted = await deleteSshServerSession(id);
-    if (deleted) {
-      sshServerSessionEventEmitter.emit({
-        type: "ssh_server_session.deleted",
-        sshServerSessionId: id,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    return deleted;
-  }
-
-  async deleteInternalSessionRecord(id: string): Promise<boolean> {
-    return await deleteSshServerSession(id);
-  }
-
-  async getTerminalConnection(
-    sessionId: string,
-    credentialToken: string,
-  ): Promise<{ session: SshServerSession; server: SshServerConfig; target: SshConnectionTarget; executor: CommandExecutor }> {
-    const session = await this.requireSession(sessionId);
-    const server = await this.requireServerConfig(session.config.sshServerId);
-    const trimmedToken = credentialToken.trim();
-    if (!trimmedToken) {
-      throw new DomainError(
-        "invalid_credential_token",
-        "SSH credential token is required for standalone terminal connections",
-      );
-    }
-
-    const password = sshCredentialManager.getPasswordForToken(server.id, trimmedToken);
-    const target = getSshConnectionTargetFromServer(server, password);
-    return {
-      session,
-      server,
-      target,
-      executor: this.buildExecutor(server, password),
     };
   }
 
@@ -308,65 +121,8 @@ export class SshServerManager {
     };
   }
 
-  async markStatus(id: string, status: TerminalSessionStatus, error?: string): Promise<SshServerSession> {
-    const session = await this.requireSession(id);
-    const updatedSession: SshServerSession = {
-      config: {
-        ...session.config,
-        updatedAt: new Date().toISOString(),
-      },
-      state: {
-        ...session.state,
-        status,
-        error: error?.trim() || undefined,
-        lastConnectedAt: status === "connected"
-          ? new Date().toISOString()
-          : session.state.lastConnectedAt,
-      },
-    };
-    await saveSshServerSession(updatedSession);
-    sshServerSessionEventEmitter.emit({
-      type: "ssh_server_session.status",
-      sshServerSessionId: id,
-      status,
-      error: updatedSession.state.error,
-      timestamp: updatedSession.config.updatedAt,
-    });
-    return updatedSession;
-  }
-
-  async updateRuntimeConnectionState(
-    id: string,
-    options: { runtimeConnectionMode?: TerminalConnectionMode; notice?: string },
-  ): Promise<SshServerSession> {
-    const session = await this.requireSession(id);
-    const updatedSession: SshServerSession = {
-      config: {
-        ...session.config,
-        updatedAt: new Date().toISOString(),
-      },
-      state: {
-        ...session.state,
-        runtimeConnectionMode: options.runtimeConnectionMode,
-        notice: options.notice?.trim() || undefined,
-      },
-    };
-    await saveSshServerSession(updatedSession);
-    sshServerSessionEventEmitter.emit({
-      type: "ssh_server_session.updated",
-      sshServerSessionId: updatedSession.config.id,
-      session: updatedSession,
-      timestamp: updatedSession.config.updatedAt,
-    });
-    return updatedSession;
-  }
-
   setExecutorFactoryForTesting(factory: SshServerExecutorFactory | null): void {
     this.testExecutorFactory = factory;
-  }
-
-  private getConnectionMode(request: { connectionMode?: TerminalConnectionMode }): TerminalConnectionMode {
-    return request.connectionMode ?? DEFAULT_TERMINAL_CONNECTION_MODE;
   }
 
   private buildExecutor(server: SshServerConfig, password: string): CommandExecutor {
@@ -395,51 +151,6 @@ export class SshServerManager {
     return server;
   }
 
-  private async requireSession(id: string): Promise<SshServerSession> {
-    const session = await getSshServerSession(id);
-    if (!session) {
-      throw new DomainError(
-        "ssh_server_session_not_found",
-        "SSH server session not found",
-        { details: { sessionId: id } },
-      );
-    }
-    return session;
-  }
-
-  private async deletePersistentSessionBestEffort(
-    session: SshServerSession,
-    request: DeleteSshServerSessionRequest,
-  ): Promise<void> {
-    if (!isPersistentTerminalSession(session)) {
-      return;
-    }
-
-    const credentialToken = request.credentialToken?.trim();
-    if (!credentialToken) {
-      return;
-    }
-
-    try {
-      const server = await this.requireServerConfig(session.config.sshServerId);
-      const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
-      const executor = this.buildExecutor(server, password);
-      const result = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
-        cwd: "/",
-      });
-      if (!result.success) {
-        throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to stop remote persistent SSH session");
-      }
-    } catch (error) {
-      log.warn("Failed to stop remote standalone persistent SSH session during deletion", {
-        sshServerSessionId: session.config.id,
-        sshServerId: session.config.sshServerId,
-        remoteSessionName: session.config.remoteSessionName,
-        status: session.state.status,
-        error: String(error),
-      });
-    }
-  }
 }
 
 export const sshServerManager = new SshServerManager();

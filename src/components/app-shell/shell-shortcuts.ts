@@ -33,7 +33,7 @@ export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinitio
     action: "new-ssh-session",
     key: "s",
     labelKey: "S",
-    route: { view: "compose", kind: "ssh-session" },
+    route: { view: "compose", kind: "terminal-session" },
   },
   settings: {
     action: "settings",

@@ -15,7 +15,7 @@ import type {
   Chat,
   ReviewComment,
   SshServer,
-  WorkspaceTerminalSession,
+  TerminalSession,
   WorkspaceFileEntry,
   WorkspaceFileKind,
   WorkspaceFileNode,
@@ -41,10 +41,7 @@ import {
   PlanAcceptRequestSchema,
   CreateSshServerRequestSchema,
   UpdateSshServerRequestSchema,
-  CreateSshServerSessionRequestSchema,
-  UpdateSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
-  DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
   CreateWorkspaceRequestSchema,
@@ -406,11 +403,6 @@ export interface FileExplorerConflictResponse {
 export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 
 /**
- * Request body for PATCH /api/ssh-server-sessions/:id.
- */
-export type UpdateSshServerSessionRequest = z.infer<typeof UpdateSshServerSessionRequestSchema>;
-
-/**
  * Request body for POST /api/terminal-sessions.
  */
 export type CreateTerminalSessionRequest = z.infer<typeof CreateTerminalSessionRequestSchema>;
@@ -431,19 +423,9 @@ export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema
 export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema>;
 
 /**
- * Request body for POST /api/ssh-servers/:id/sessions.
- */
-export type CreateSshServerSessionRequest = z.infer<typeof CreateSshServerSessionRequestSchema>;
-
-/**
  * Request body for POST /api/ssh-servers/:id/credentials.
  */
 export type SshCredentialExchangeRequest = z.infer<typeof SshCredentialExchangeRequestSchema>;
-
-/**
- * Request body for DELETE /api/ssh-server-sessions/:id.
- */
-export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
 
 /**
  * Request body for POST /api/ssh-servers/:id/prerequisites/check.
@@ -593,7 +575,7 @@ export type PlanAcceptResponse =
       /** Which acceptance path was taken */
       mode: "open_terminal";
       /** Linked workspace terminal session created or reused for the task */
-      terminalSession: WorkspaceTerminalSession;
+      terminalSession: TerminalSession;
     };
 
 /**

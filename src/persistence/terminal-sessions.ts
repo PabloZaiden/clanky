@@ -6,8 +6,7 @@ import {
   DEFAULT_TERMINAL_CONNECTION_MODE,
   normalizeTerminalUseTmux,
   normalizeTerminalConnectionMode,
-  type WorkspaceTerminalSession,
-  type TerminalTargetBinding,
+  type TerminalSession,
 } from "@/shared";
 import { getDatabase } from "./database";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -31,13 +30,7 @@ const ALLOWED_TERMINAL_SESSION_COLUMNS = new Set([
   "connection_mode",
   "use_tmux",
   "remote_session_name",
-  "target_transport",
-  "target_key",
-  "target_revision",
-  "target_hostname",
-  "target_port",
-  "target_username",
-  "target_execution_node_id",
+  "workspace_execution_target_revision",
   "created_at",
   "updated_at",
   "is_private",
@@ -66,44 +59,7 @@ function validateColumnNames(columns: string[]): void {
   }
 }
 
-function serializeTargetBinding(binding: TerminalTargetBinding): Record<string, unknown> {
-  return {
-    target_transport: binding.transport,
-    target_key: binding.targetKey,
-    target_revision: binding.workspaceRevision,
-    target_hostname: binding.hostname ?? null,
-    target_port: binding.port ?? null,
-    target_username: binding.username ?? null,
-    target_execution_node_id: binding.executionNodeId ?? null,
-  };
-}
-
-function deserializeTargetBinding(row: Record<string, unknown>): TerminalTargetBinding {
-  const transport = (row["target_transport"] as string) === "ssh" ? "ssh" as const : "stdio" as const;
-  const targetKey = typeof row["target_key"] === "string" ? row["target_key"] : "";
-  const targetRevision = typeof row["target_revision"] === "number"
-    ? Math.max(1, Math.floor(row["target_revision"] as number))
-    : 1;
-  const binding: TerminalTargetBinding = {
-    transport,
-    targetKey,
-    workspaceRevision: targetRevision,
-  };
-  if (transport === "ssh") {
-    const hostname = row["target_hostname"] as string | null;
-    if (hostname) binding.hostname = hostname;
-    const port = row["target_port"] as number | null;
-    if (port !== null && port !== undefined) binding.port = port;
-    const username = row["target_username"] as string | null;
-    if (username) binding.username = username;
-  } else {
-    const executionNodeId = row["target_execution_node_id"] as string | null;
-    if (executionNodeId) binding.executionNodeId = executionNodeId;
-  }
-  return binding;
-}
-
-function terminalSessionToRow(session: WorkspaceTerminalSession): Record<string, unknown> {
+function terminalSessionToRow(session: TerminalSession): Record<string, unknown> {
   const userId = requirePersistenceUserId();
   return {
     id: session.config.id,
@@ -115,7 +71,8 @@ function terminalSessionToRow(session: WorkspaceTerminalSession): Record<string,
     connection_mode: session.config.connectionMode,
     use_tmux: session.config.useTmux ? 1 : 0,
     remote_session_name: session.config.remoteSessionName,
-    ...serializeTargetBinding(session.config.targetBinding),
+    workspace_execution_target_revision:
+      session.config.workspaceExecutionTargetRevision ?? null,
     created_at: session.config.createdAt,
     updated_at: session.config.updatedAt,
     is_private: session.config.isPrivate ? 1 : 0,
@@ -124,14 +81,15 @@ function terminalSessionToRow(session: WorkspaceTerminalSession): Record<string,
     error_message: session.state.error ?? null,
     runtime_connection_mode: session.state.runtimeConnectionMode ?? null,
     notice_message: session.state.notice ?? null,
-    execution_host_id: session.config.executionHostBinding
-      ? resolveExecutionHostBindingId(userId, session.config.executionHostBinding)
-      : null,
-    execution_host_revision: session.config.executionHostBinding?.revision ?? null,
+    execution_host_id: resolveExecutionHostBindingId(
+      userId,
+      session.config.executionHostBinding,
+    ),
+    execution_host_revision: session.config.executionHostBinding.revision,
   };
 }
 
-function rowToTerminalSession(row: Record<string, unknown>): WorkspaceTerminalSession {
+function rowToTerminalSession(row: Record<string, unknown>): TerminalSession {
   return {
     config: {
       id: row["id"] as string,
@@ -144,14 +102,15 @@ function rowToTerminalSession(row: Record<string, unknown>): WorkspaceTerminalSe
       ),
       useTmux: normalizeTerminalUseTmux(row["use_tmux"]),
       remoteSessionName: row["remote_session_name"] as string,
-      targetBinding: deserializeTargetBinding(row),
-      executionHostBinding: executionHostBindingFromRow(row),
+      workspaceExecutionTargetRevision:
+        (row["workspace_execution_target_revision"] as number | null) ?? undefined,
+      executionHostBinding: requireExecutionHostBinding(row),
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
       isPrivate: row["is_private"] === 1,
     },
     state: {
-      status: row["status"] as WorkspaceTerminalSession["state"]["status"],
+      status: row["status"] as TerminalSession["state"]["status"],
       lastConnectedAt: (row["last_connected_at"] as string | null) ?? undefined,
       error: (row["error_message"] as string | null) ?? undefined,
       runtimeConnectionMode: (row["runtime_connection_mode"] as string | null)
@@ -162,7 +121,17 @@ function rowToTerminalSession(row: Record<string, unknown>): WorkspaceTerminalSe
   };
 }
 
-export async function saveTerminalSession(session: WorkspaceTerminalSession): Promise<void> {
+function requireExecutionHostBinding(
+  row: Record<string, unknown>,
+): TerminalSession["config"]["executionHostBinding"] {
+  const binding = executionHostBindingFromRow(row);
+  if (!binding) {
+    throw new Error(`Terminal session ${String(row["id"])} has no execution-host binding`);
+  }
+  return binding;
+}
+
+export async function saveTerminalSession(session: TerminalSession): Promise<void> {
   const db = getDatabase();
   const row = terminalSessionToRow(session);
   const columns = Object.keys(row);
@@ -199,7 +168,7 @@ export async function saveTerminalSession(session: WorkspaceTerminalSession): Pr
   });
 }
 
-export async function getTerminalSession(id: string): Promise<WorkspaceTerminalSession | null> {
+export async function getTerminalSession(id: string): Promise<TerminalSession | null> {
   const db = getDatabase();
   const row = db.query(
     `${TERMINAL_SESSION_SELECT}
@@ -208,7 +177,7 @@ export async function getTerminalSession(id: string): Promise<WorkspaceTerminalS
   return row ? rowToTerminalSession(row) : null;
 }
 
-export async function listTerminalSessions(): Promise<WorkspaceTerminalSession[]> {
+export async function listTerminalSessions(): Promise<TerminalSession[]> {
   const db = getDatabase();
   const rows = db.query(
     `${TERMINAL_SESSION_SELECT}
@@ -218,7 +187,7 @@ export async function listTerminalSessions(): Promise<WorkspaceTerminalSession[]
   return rows.map(rowToTerminalSession);
 }
 
-export async function listTerminalSessionsByWorkspace(workspaceId: string): Promise<WorkspaceTerminalSession[]> {
+export async function listTerminalSessionsByWorkspace(workspaceId: string): Promise<TerminalSession[]> {
   const db = getDatabase();
   const rows = db.query(
     `${TERMINAL_SESSION_SELECT}
@@ -228,7 +197,7 @@ export async function listTerminalSessionsByWorkspace(workspaceId: string): Prom
   return rows.map(rowToTerminalSession);
 }
 
-export async function getTerminalSessionByTaskId(taskId: string): Promise<WorkspaceTerminalSession | null> {
+export async function getTerminalSessionByTaskId(taskId: string): Promise<TerminalSession | null> {
   const db = getDatabase();
   const row = db.query(
     `${TERMINAL_SESSION_SELECT}

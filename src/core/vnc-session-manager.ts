@@ -5,10 +5,8 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { VncSession } from "@/shared";
 import {
   deleteVncSession,
-  findActiveVncSession,
   findActiveVncSessionByExecutionHost,
   getVncSession,
-  listVncSessionsBySshServerId,
   listVncSessionsByExecutionHostId,
   listVncSessionsByStatuses,
   listReservedVncLocalPortsForMaintenance,
@@ -68,11 +66,6 @@ export class VncSessionManager {
     }
   }
 
-  async listServerSessions(sshServerId: string): Promise<VncSession[]> {
-    await this.initialize();
-    return await listVncSessionsBySshServerId(sshServerId);
-  }
-
   async listHostSessions(host: ExecutionHostRef): Promise<VncSession[]> {
     await this.initialize();
     await executionHostService.listHosts();
@@ -88,25 +81,19 @@ export class VncSessionManager {
   }
 
   async createOrResumeSession(options: {
-    sshServerId?: string;
-    executionHost?: ExecutionHostRef;
+    executionHost: ExecutionHostRef;
     remotePort: number;
     credentialToken: string | null;
   }): Promise<VncSession> {
     await this.initialize();
-    const ref = options.executionHost
-      ?? (options.sshServerId
-        ? { kind: "ssh" as const, serverId: options.sshServerId }
-        : null);
-    if (!ref) {
-      throw new DomainError("execution_host_required", "An execution host is required.");
-    }
+    const ref = options.executionHost;
     await executionHostService.listHosts();
     const executionHostBinding = executionHostService.getBinding(ref);
     const executionHost = executionHostService.validateBinding(executionHostBinding);
-    const existing = options.sshServerId
-      ? await findActiveVncSession(options.sshServerId, options.remotePort)
-      : await findActiveVncSessionByExecutionHost(executionHost.id, options.remotePort);
+    const existing = await findActiveVncSessionByExecutionHost(
+      executionHost.id,
+      options.remotePort,
+    );
     if (existing) {
       return existing;
     }
@@ -134,7 +121,6 @@ export class VncSessionManager {
     const session: VncSession = {
       config: {
         id: crypto.randomUUID(),
-        sshServerId: ref.kind === "ssh" ? ref.serverId : undefined,
         executionHostBinding,
         remoteHost: VNC_REMOTE_HOST,
         remotePort: options.remotePort,

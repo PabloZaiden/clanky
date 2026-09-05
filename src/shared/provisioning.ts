@@ -4,7 +4,7 @@
 
 import type { AgentProvider, ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
-import type { ExecutionHostBinding, ExecutionHostRef } from "./execution-host";
+import type { ExecutionHostBinding } from "./execution-host";
 
 export type ProvisioningJobStatus =
   | "pending"
@@ -48,11 +48,7 @@ export interface ProvisioningJobError {
 export interface ProvisioningJobConfig {
   id: string;
   name: string;
-  sshServerId?: string;
-  executionNodeId?: string;
-  executionHost?: ExecutionHostRef;
-  /** Canonical execution host snapshot retained alongside legacy target IDs. */
-  executionHostBinding?: ExecutionHostBinding | null;
+  executionHostBinding: ExecutionHostBinding;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

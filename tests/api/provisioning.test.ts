@@ -10,7 +10,6 @@ import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
-import type { ProvisioningJobSnapshot } from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
@@ -24,7 +23,11 @@ interface ProvisioningSnapshotResponse {
     job: {
       config: {
         id: string;
-        executionNodeId?: string;
+        executionHostBinding?: {
+          host: { kind: string; nodeId?: string; serverId?: string };
+          targetKey: string;
+          revision: number;
+        };
         devcontainerSubpath?: string;
         devboxTemplate?: string;
         githubUser?: string;
@@ -45,7 +48,11 @@ interface ProvisioningSnapshotResponse {
   workspace?: {
     id: string;
     directory: string;
-    executionNodeId?: string | null;
+    executionHostBinding?: {
+      host: { kind: string; nodeId?: string; serverId?: string };
+      targetKey: string;
+      revision: number;
+    };
     serverSettings?: {
       agent: Record<string, unknown>;
     };
@@ -105,7 +112,6 @@ describe("Provisioning API integration", () => {
     backendManager.setBackendForTesting(createMockBackend());
     db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
-    db.run("DELETE FROM ssh_server_sessions");
     db.run("DELETE FROM ssh_servers");
   });
 
@@ -151,7 +157,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Example Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
@@ -195,7 +201,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl,
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -257,7 +263,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Mesh Example",
-        executionNodeId: "paired-mesh-node",
+        executionHost: { kind: "mesh", nodeId: "paired-mesh-node" },
         repoUrl: "https://github.com/octocat/mesh-example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -274,22 +280,29 @@ describe("Provisioning API integration", () => {
 
     expect(response.status).toBe(201);
     const started = await response.json() as ProvisioningSnapshotResponse;
-    expect(started.job.config.executionNodeId).toBe("paired-mesh-node");
+    expect(started.job.config.executionHostBinding?.host).toEqual({
+      kind: "mesh",
+      nodeId: "paired-mesh-node",
+    });
 
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.workspace).toMatchObject({
       directory: "/workspaces/mesh-example",
-      executionNodeId: "paired-mesh-node",
+      executionHostBinding: {
+        host: {
+          kind: "mesh",
+          nodeId: "paired-mesh-node",
+        },
+      },
       serverSettings: {
         agent: {
           provider: "copilot",
-          transport: "stdio",
         },
       },
     });
   });
 
-  test("hides provisioning SSH secrets by default and includes them with sensitive=true", async () => {
+  test("never persists provisioning SSH secrets", async () => {
     const sshServer = await createServer();
     sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
       devboxStatusOutput: createDevboxStatusOutput({
@@ -303,7 +316,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Secure Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -331,8 +344,8 @@ describe("Provisioning API integration", () => {
     );
     expect(sensitiveResponse.ok).toBe(true);
     const sensitive = await sensitiveResponse.json() as ProvisioningSnapshotResponse;
-    expect(sensitive.job.state.serverSettings?.agent["password"]).toBe("runtime-secret");
-    expect(sensitive.workspace?.serverSettings?.agent["password"]).toBe("runtime-secret");
+    expect(sensitive.job.state.serverSettings?.agent["password"]).toBeUndefined();
+    expect(sensitive.workspace?.serverSettings?.agent["password"]).toBeUndefined();
 
     provisioningManager.resetForTesting();
     const reloadedSensitiveResponse = await fetch(
@@ -343,104 +356,6 @@ describe("Provisioning API integration", () => {
     expect(reloadedSensitive.job.state.serverSettings?.agent["password"]).toBeUndefined();
   });
 
-  test("redacts provisioning start snapshots by default and includes secrets with sensitive=true", async () => {
-    const sshServer = await createServer();
-    const snapshot = {
-      job: {
-        config: {
-          id: "job-sensitive-start",
-          name: "Sensitive Start",
-          sshServerId: sshServer.config.id,
-          repoUrl: "https://github.com/octocat/example.git",
-          basePath: "/workspaces",
-          provider: "copilot" as const,
-          mode: "restart" as const,
-          targetDirectory: "/workspaces/existing",
-          workspaceId: "workspace-sensitive",
-          createdAt: new Date().toISOString(),
-        },
-        state: {
-          status: "running",
-          workspaceId: "workspace-sensitive",
-          updatedAt: new Date().toISOString(),
-          serverSettings: {
-            agent: {
-              provider: "copilot" as const,
-              transport: "ssh" as const,
-              hostname: "ssh.example.com",
-              port: 2222,
-              username: "deploy",
-              password: "route-secret",
-            },
-          },
-        },
-      },
-      logs: [],
-      workspace: {
-        id: "workspace-sensitive",
-        name: "Sensitive Workspace",
-        directory: "/workspaces/existing",
-        workspaceType: "git",
-        serverSettings: {
-          agent: {
-            provider: "copilot" as const,
-            transport: "ssh" as const,
-            hostname: "ssh.example.com",
-            port: 2222,
-            username: "deploy",
-            password: "route-secret",
-            identityFile: "/keys/id_ed25519",
-          },
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    } satisfies ProvisioningJobSnapshot;
-
-    const originalStartJob = provisioningManager.startJob;
-    provisioningManager.startJob = async () => snapshot;
-
-    try {
-      const requestBody = {
-        name: "Sensitive Start",
-        sshServerId: sshServer.config.id,
-        repoUrl: "https://github.com/octocat/example.git",
-        basePath: "/workspaces",
-        devcontainerSubpath: null,
-        devboxTemplate: null,
-        provider: "copilot" as const,
-        credentialToken: null,
-        mode: "restart" as const,
-        targetDirectory: "/workspaces/existing",
-        workspaceId: "workspace-sensitive",
-      };
-
-      const defaultResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      expect(defaultResponse.status).toBe(201);
-      const redacted = await defaultResponse.json() as ProvisioningSnapshotResponse;
-      expect(redacted.job.state.serverSettings?.agent["password"]).toBeUndefined();
-      expect(redacted.workspace?.serverSettings?.agent["password"]).toBeUndefined();
-      expect(redacted.workspace?.serverSettings?.agent["identityFile"]).toBeUndefined();
-
-      const sensitiveResponse = await fetch(`${baseUrl}/api/provisioning-jobs?sensitive=true`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      expect(sensitiveResponse.status).toBe(201);
-      const sensitive = await sensitiveResponse.json() as ProvisioningSnapshotResponse;
-      expect(sensitive.job.state.serverSettings?.agent["password"]).toBe("route-secret");
-      expect(sensitive.workspace?.serverSettings?.agent["password"]).toBe("route-secret");
-      expect(sensitive.workspace?.serverSettings?.agent["identityFile"]).toBe("/keys/id_ed25519");
-    } finally {
-      provisioningManager.startJob = originalStartJob;
-    }
-  });
-
   test("returns 400 for an invalid credential token", async () => {
     const sshServer = await createServer();
 
@@ -449,7 +364,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Bad Token Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -478,7 +393,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Slow Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -515,7 +430,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Broken Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -544,7 +459,7 @@ describe("Provisioning API integration", () => {
 
     const requestBody = {
       name: "Retry Workspace",
-      sshServerId: sshServer.config.id,
+      executionHost: { kind: "ssh", serverId: sshServer.config.id },
       repoUrl: "https://github.com/octocat/retry.git",
       basePath: "/workspaces",
       devcontainerSubpath: null,
@@ -627,7 +542,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Owned Workspace",
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "https://github.com/octocat/owned.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -686,7 +601,7 @@ describe("Provisioning API integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: sshServer.config.name,
-        sshServerId: sshServer.config.id,
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
         repoUrl: "",
         basePath: "",
         devcontainerSubpath: null,

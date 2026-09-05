@@ -11,8 +11,12 @@ import {
   useToast,
 } from "@pablozaiden/webapp/web";
 import type {
+  Chat,
   ExecutionHostDescriptor,
+  SshServer,
+  TerminalSession,
   VncSession,
+  Workspace,
 } from "@/shared";
 import {
   getExecutionHostAgentProvider,
@@ -29,12 +33,33 @@ import {
 import { VncViewer } from "./VncViewer";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
+import { createOrResumeExecutionHostVncSessionApi } from "../../hooks/executionHostActions";
+import { SshServerSettingsForm } from "./ssh-server-settings-form";
+import { useShellHeaderActions } from "./shell-header-actions";
+import { ClankyListRow } from "./clanky-list-row";
+import {
+  formatStatusLabel,
+  getChatStatusBadgeVariant,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
+  StatusBadge,
+} from "../common";
 
 interface ExecutionHostViewProps {
   host: ExecutionHostDescriptor;
+  workspaces: Workspace[];
+  sessions: TerminalSession[];
+  chats: Chat[];
+  sshServer?: SshServer;
   provisioning: UseProvisioningJobResult;
   onNavigate: (route: WebAppRoute) => void;
   onRefresh: () => Promise<void>;
+  onUpdateSshServer: (
+    id: string,
+    request?: import("@/contracts").UpdateSshServerRequest,
+    password?: string,
+  ) => Promise<SshServer | null>;
+  onDeleteSshServer: (id: string) => Promise<boolean>;
 }
 
 function hostApiPath(host: ExecutionHostDescriptor): string {
@@ -44,9 +69,15 @@ function hostApiPath(host: ExecutionHostDescriptor): string {
 
 export function ExecutionHostView({
   host,
+  workspaces,
+  sessions,
+  chats,
+  sshServer,
   provisioning,
   onNavigate,
   onRefresh,
+  onUpdateSshServer,
+  onDeleteSshServer,
 }: ExecutionHostViewProps) {
   const toast = useToast();
   const [directory, setDirectory] = useState(host.repositoriesBasePath ?? "");
@@ -74,11 +105,24 @@ export function ExecutionHostView({
   const [vncSession, setVncSession] = useState<VncSession | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sshFormValid, setSshFormValid] = useState(false);
+  const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
   const available = host.availability === "local"
     || host.availability === "available"
     || host.availability === "online";
   const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory);
   const apiPath = hostApiPath(host);
+  useShellHeaderActions(sshServer ? (
+    <Button
+      type="submit"
+      form="execution-host-ssh-settings"
+      size="sm"
+      loading={sshFormSubmitting}
+      disabled={!sshFormValid || sshFormSubmitting}
+    >
+      Save
+    </Button>
+  ) : null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,16 +197,11 @@ export function ExecutionHostView({
       return;
     }
 
-    const session = await runAction("vnc", () => apiRequest<VncSession>(
-      `${hostApiPath(host)}/vnc-sessions`,
-      {
-        method: "POST",
-        body: JSON.stringify({ remotePort, credentialToken: null }),
-        headers: { "Content-Type": "application/json" },
-        action: "Start VNC session",
-        fallbackMessage: "Failed to start VNC session",
-      },
-    ));
+    const session = await runAction("vnc", () =>
+      createOrResumeExecutionHostVncSessionApi({
+        executionHost: host.ref,
+        remotePort,
+      }));
     if (session) {
       setVncSession(session);
     }
@@ -212,6 +251,7 @@ export function ExecutionHostView({
         view: "provisioning-job",
         provisioningJobId: snapshot.job.config.id,
         returnView: "execution-host",
+        returnKind: host.ref.kind,
         returnId: host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId,
       });
     }
@@ -237,7 +277,95 @@ export function ExecutionHostView({
         </div>
       </Panel>
 
-      {host.ref.kind === "local" ? <Panel>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel padding="compact">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Workspaces</p>
+          <p className="mt-2 text-3xl font-semibold">{workspaces.length}</p>
+        </Panel>
+        <Panel padding="compact">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Terminals</p>
+          <p className="mt-2 text-3xl font-semibold">{sessions.length}</p>
+        </Panel>
+        <Panel padding="compact">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Chats</p>
+          <p className="mt-2 text-3xl font-semibold">{chats.length}</p>
+        </Panel>
+      </div>
+
+      {workspaces.length > 0 ? (
+        <Panel title="Workspaces">
+          <div className="space-y-2">
+            {workspaces.map((workspace) => (
+              <ClankyListRow
+                key={workspace.id}
+                title={workspace.name}
+                description={workspace.directory}
+                onClick={() => onNavigate({ view: "workspace", workspaceId: workspace.id })}
+              />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {sessions.length > 0 ? (
+        <Panel title="Terminals">
+          <div className="space-y-2">
+            {sessions.map((session) => (
+              <ClankyListRow
+                key={session.config.id}
+                title={session.config.name}
+                description={session.config.directory}
+                badge={(
+                  <StatusBadge variant={getTerminalSessionStatusBadgeVariant(session.state.status)}>
+                    {getTerminalSessionStatusLabel(session.state.status)}
+                  </StatusBadge>
+                )}
+                onClick={() => onNavigate({
+                  view: "terminal",
+                  terminalSessionId: session.config.id,
+                })}
+              />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {chats.length > 0 ? (
+        <Panel title="Chats">
+          <div className="space-y-2">
+            {chats.map((chat) => (
+              <ClankyListRow
+                key={chat.config.id}
+                title={chat.config.name}
+                description={chat.config.directory}
+                badge={(
+                  <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
+                    {formatStatusLabel(chat.state.status)}
+                  </StatusBadge>
+                )}
+                onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
+              />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      {sshServer ? (
+        <SshServerSettingsForm
+          server={sshServer}
+          relatedSessionCount={sessions.length}
+          formId="execution-host-ssh-settings"
+          onSave={onUpdateSshServer}
+          onDeleteServer={async () => await onDeleteSshServer(sshServer.config.id)}
+          onSaved={async () => {
+            await onRefresh();
+            toast.success("Server settings saved");
+          }}
+          onDeleted={() => onNavigate({ view: "home" })}
+          onValidityChange={setSshFormValid}
+          onSubmittingChange={setSshFormSubmitting}
+        />
+      ) : host.ref.kind === "local" ? <Panel>
         <div className="space-y-4">
           <TextField
             id="execution-host-directory"

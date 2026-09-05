@@ -3,7 +3,6 @@
  */
 
 import {
-  AcpBackend,
   createAcpSessionNotFoundError,
   getAcpErrorMessage,
   isAcpError,
@@ -11,7 +10,6 @@ import {
 } from "../backends/acp";
 import type {
   Backend,
-  BackendConnectionConfig,
   ImportableSession,
 } from "../backends/types";
 import type { Chat } from "@/shared";
@@ -19,16 +17,11 @@ import {
   SshCredentialsRequiredError,
   getChatWorkspaceId,
   isExecutionHostChat,
-  isSshServerChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import type { AgentProvider } from "@/shared/settings";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { sshCredentialManager } from "./ssh-credential-manager";
-import { sshServerManager } from "./ssh-server-manager";
-import { buildSshRemoteShellCommand } from "./remote-command-executor";
-import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
-import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-runtime-command";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { buildManagedContextEnvironment } from "./managed-context-environment";
@@ -48,10 +41,9 @@ export interface ChatSessionServiceDependencies {
   worktree: ChatWorktreePort;
   backendManager?: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost"
+    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
   >;
   sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
-  sshServerManager?: Pick<typeof sshServerManager, "getCommandExecutor">;
   hasActiveStream?: (chatId: string) => boolean;
 }
 
@@ -60,24 +52,22 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly worktree: ChatWorktreePort;
   private readonly backendManager: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost"
+    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
   >;
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
-  private readonly sshServerManager: Pick<typeof sshServerManager, "getCommandExecutor">;
   private readonly hasActiveStream: (chatId: string) => boolean;
-  private readonly sshChatBackends = new Map<string, Backend>();
+  private readonly directChatBackends = new Map<string, Backend>();
 
   constructor(dependencies: ChatSessionServiceDependencies) {
     this.state = dependencies.state;
     this.worktree = dependencies.worktree;
     this.backendManager = dependencies.backendManager ?? backendManager;
     this.sshCredentialManager = dependencies.sshCredentialManager ?? sshCredentialManager;
-    this.sshServerManager = dependencies.sshServerManager ?? sshServerManager;
     this.hasActiveStream = dependencies.hasActiveStream ?? (() => false);
   }
 
   getChatBackend(chatId: string, workspaceId?: string): Backend {
-    const directBackend = this.sshChatBackends.get(chatId);
+    const directBackend = this.directChatBackends.get(chatId);
     if (directBackend) {
       return directBackend;
     }
@@ -98,7 +88,8 @@ export class ChatSessionService implements ChatSessionPort {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
-      await backend.connect(buildConnectionConfig(workspace.serverSettings, directory));
+      const settings = await this.backendManager.getWorkspaceSettings(workspaceId);
+      await backend.connect(buildConnectionConfig(settings, directory));
     }
     return backend;
   }
@@ -121,11 +112,6 @@ export class ChatSessionService implements ChatSessionPort {
       await this.state.updateStartupStage(chat, "connecting_provider");
       return await this.ensureExecutionHostBackendConnected(chat, options);
     }
-    if (isSshServerChat(chat)) {
-      await this.state.updateStartupStage(chat, "connecting_provider");
-      return this.ensureSshServerBackendConnected(chat, options);
-    }
-
     const workspaceId = getChatWorkspaceId(chat);
     const workspace = await this.state.getWorkspace(workspaceId);
     if (!workspace) {
@@ -157,7 +143,7 @@ export class ChatSessionService implements ChatSessionPort {
       );
       try {
         await backend.connect(buildConnectionConfig(
-          workspace.serverSettings,
+          await this.backendManager.getWorkspaceSettings(workspaceId),
           stagedWorking.directory,
           buildManagedContextEnvironment(credential),
         ));
@@ -270,7 +256,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async disconnectChat(chatId: string): Promise<void> {
-    const sshBackend = this.sshChatBackends.get(chatId);
+    const sshBackend = this.directChatBackends.get(chatId);
     let sshDisconnectError: unknown;
     if (sshBackend) {
       try {
@@ -282,7 +268,7 @@ export class ChatSessionService implements ChatSessionPort {
         sshDisconnectError = error;
         log.error("Failed to disconnect SSH chat backend", { chatId, error: String(error) });
       } finally {
-        this.sshChatBackends.delete(chatId);
+        this.directChatBackends.delete(chatId);
       }
     }
     await this.backendManager.disconnectChat(chatId);
@@ -321,44 +307,6 @@ export class ChatSessionService implements ChatSessionPort {
     }
   }
 
-  async buildSshChatConnectionConfig(chat: Chat, password: string): Promise<BackendConnectionConfig> {
-    const source = chat.config.source;
-    if (source?.kind !== "ssh_server") {
-      throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
-    }
-    const provider = chat.config.model.providerID;
-    if (
-      provider !== "opencode"
-      && provider !== "copilot"
-      && provider !== "codex"
-      && provider !== "claude"
-      && provider !== "pi"
-    ) {
-      throw new Error(`Unsupported SSH chat provider: ${provider}`);
-    }
-    const providerCommand = getProviderAcpCommand(provider as AgentProvider, "ssh");
-    const providerInvocation = buildProviderShellInvocation(providerCommand);
-    const directory = source.directory || chat.config.directory;
-
-    return {
-      mode: "spawn",
-      provider: provider as AgentProvider,
-      transport: "ssh",
-      directory,
-      ...await this.buildSshChatProcessConfig(source.sshServerId, password, providerInvocation, directory),
-    };
-  }
-
-  private getOrCreateSshChatBackend(chatId: string): Backend {
-    const existing = this.sshChatBackends.get(chatId);
-    if (existing) {
-      return existing;
-    }
-    const backend = new AcpBackend();
-    this.sshChatBackends.set(chatId, backend);
-    return backend;
-  }
-
   private async ensureExecutionHostBackendConnected(
     chat: Chat,
     options: ReconnectChatOptions,
@@ -368,7 +316,7 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
     }
     const directory = source.directory || chat.config.directory;
-    const existing = this.sshChatBackends.get(chat.config.id);
+    const existing = this.directChatBackends.get(chat.config.id);
     if (existing?.isConnected() && existing.getDirectory() === directory) {
       return existing;
     }
@@ -396,73 +344,13 @@ export class ChatSessionService implements ChatSessionPort {
         chat.config.model.providerID as AgentProvider,
         password,
       );
-      this.sshChatBackends.set(chat.config.id, backend);
+      this.directChatBackends.set(chat.config.id, backend);
       await backend.connect(buildConnectionConfig(settings, directory));
       return backend;
     } catch (error) {
       if (source.executionHost.host.kind === "ssh") {
         await this.markSshConnectionFailed(chat, error);
       }
-      throw error;
-    }
-  }
-
-  private async ensureSshServerBackendConnected(chat: Chat, options: ReconnectChatOptions): Promise<Backend> {
-    const source = chat.config.source;
-    if (source?.kind !== "ssh_server") {
-      throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
-    }
-
-    const backend = this.getOrCreateSshChatBackend(chat.config.id);
-    const directory = source.directory || chat.config.directory;
-    if (backend.isConnected() && backend.getDirectory() === directory) {
-      return backend;
-    }
-
-    const credentialToken = options.credentialToken?.trim();
-    if (!credentialToken) {
-      await this.markSshCredentialsRequired(chat);
-      throw new SshCredentialsRequiredError();
-    }
-
-    const connectingChat = await this.state.updateState(chat, {
-      ...chat.state,
-      connectionStatus: "connecting",
-      lastActivityAt: createTimestamp(),
-    });
-
-    let password: string;
-    try {
-      password = this.sshCredentialManager.getPasswordForToken(source.sshServerId, credentialToken);
-    } catch (error) {
-      await this.markSshCredentialsRequired(connectingChat, String(error));
-      throw new SshCredentialsRequiredError(String(error), {
-        cause: error instanceof Error ? error : undefined,
-      });
-    }
-
-    let config: BackendConnectionConfig;
-    try {
-      config = await this.buildSshChatConnectionConfig(connectingChat, password);
-    } catch (error) {
-      await this.markSshConnectionFailed(connectingChat, error);
-      throw error;
-    }
-
-    if (backend.isConnected()) {
-      await backend.disconnect();
-    }
-
-    try {
-      await backend.connect(config);
-      await this.state.updateState(connectingChat, {
-        ...connectingChat.state,
-        connectionStatus: "connected",
-        lastActivityAt: createTimestamp(),
-      });
-      return backend;
-    } catch (error) {
-      await this.markSshConnectionFailed(connectingChat, error);
       throw error;
     }
   }
@@ -494,37 +382,6 @@ export class ChatSessionService implements ChatSessionPort {
       },
       lastActivityAt: createTimestamp(),
     });
-  }
-
-  private async buildSshChatProcessConfig(
-    sshServerId: string,
-    password: string,
-    providerInvocation: string,
-    directory: string,
-  ): Promise<
-    Pick<
-      BackendConnectionConfig,
-      "hostname" | "port" | "username" | "password" | "identityFile" | "command" | "args" | "env"
-    >
-  > {
-    const { server } = await this.sshServerManager.getCommandExecutor(sshServerId, password);
-    const target = getSshConnectionTargetFromServer(server, password);
-    const processConfig = buildSshProcessConfig({
-      target,
-      remoteCommand: buildSshRemoteShellCommand(providerInvocation),
-      connectionScope: directory,
-      passwordHandling: "environment",
-    });
-    return {
-      hostname: target.host,
-      port: target.port,
-      username: target.username,
-      password: target.password,
-      identityFile: target.identityFile,
-      command: processConfig.command,
-      args: processConfig.args,
-      env: processConfig.env,
-    };
   }
 
   private async recreateSession(chat: Chat, backend: Backend): Promise<Chat> {
@@ -564,7 +421,7 @@ export class ChatSessionService implements ChatSessionPort {
       ...chat.state,
       status,
       error: undefined,
-      connectionStatus: isSshServerChat(chat) || isExecutionHostChat(chat)
+      connectionStatus: isExecutionHostChat(chat)
         ? "connected"
         : chat.state.connectionStatus,
       startupStage: undefined,

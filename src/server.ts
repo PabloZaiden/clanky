@@ -31,7 +31,6 @@ import {
   agentEventEmitter,
   chatEventEmitter,
   provisioningEventEmitter,
-  sshServerSessionEventEmitter,
   terminalSessionEventEmitter,
   taskEventEmitter,
   previewEventEmitter,
@@ -46,7 +45,7 @@ import {
 } from "./realtime";
 import { installRealtimeHeartbeat } from "./realtime-heartbeat";
 import { CLANKY_VERSION } from "./version";
-import { resolveWorkspaceTerminal } from "./core/workspace-terminal-connection";
+import { resolveTerminal } from "./core/terminal-connection";
 import { isDomainError } from "./core/domain-error";
 import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
@@ -122,7 +121,6 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     taskEventEmitter.subscribe(publishEvent),
     chatEventEmitter.subscribe(publishEvent),
     agentEventEmitter.subscribe(publishEvent),
-    sshServerSessionEventEmitter.subscribe(publishEvent),
     terminalSessionEventEmitter.subscribe(publishEvent),
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
@@ -218,36 +216,10 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
       });
     },
   },
-  "/api/ssh-terminal": {
-    auth: "user",
-    sameOrigin: "always",
-    description: "Open the raw websocket bridge for an SSH terminal.",
-    GET: (req, ctx) => {
-      const user = ctx.requireUser();
-      const url = new URL(req.url);
-      const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-
-      if (!sshServerSessionId) {
-        return new Response("sshServerSessionId is required", { status: 400 });
-      }
-
-      return authorizedRawWebSocketUpgrade(user.id, () => {
-        const upgraded = ctx.server?.upgrade(req, {
-          data: {
-            webappSocketHandler: "clanky",
-            sshServerSessionId,
-            terminalMode: true,
-            user,
-          },
-        });
-        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-      });
-    },
-  },
   "/api/terminal": {
     auth: "user",
     sameOrigin: "always",
-    description: "Open the raw websocket bridge for a workspace terminal.",
+    description: "Open the raw websocket bridge for a terminal session.",
     async GET(req, ctx): Promise<Response | undefined> {
       const user = ctx.requireUser();
       const terminalSessionId = new URL(req.url).searchParams.get("terminalSessionId")?.trim();
@@ -257,14 +229,14 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
       try {
         const resolved = await runWithCurrentUser(
           user,
-          async () => await resolveWorkspaceTerminal(terminalSessionId),
+          async () => await resolveTerminal(terminalSessionId),
         );
         return authorizedRawWebSocketUpgrade(user.id, () => {
           const upgraded = ctx.server?.upgrade(req, {
             data: {
               webappSocketHandler: "clanky",
-              workspaceTerminalSessionId: terminalSessionId,
-              workspaceTerminalTransport: resolved.transport,
+              terminalSessionId,
+              terminalTransport: resolved.executionHostBinding.host.kind,
               terminalMode: true,
               user,
             },

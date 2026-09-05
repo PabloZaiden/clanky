@@ -19,7 +19,7 @@ import {
   useTerminalSessions,
   useWorkspaces,
 } from "../../hooks";
-import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
+import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { getShellRouteSelection } from "./shell-route-composition";
 
 export function useShellResources(route: WebAppRoute) {
@@ -30,7 +30,6 @@ export function useShellResources(route: WebAppRoute) {
     refresh: refreshChats,
     createChat,
     importExistingChat,
-    createSshServerChat,
     updateChat,
     markChatDone,
     deleteChat,
@@ -50,16 +49,12 @@ export function useShellResources(route: WebAppRoute) {
   } = useTasks();
   const {
     servers,
-    sessionsByServerId,
     loading: sshServersLoading,
     error: sshServersError,
     refresh: refreshSshServers,
     createServer,
     updateServer,
     deleteServer,
-    createSession: createStandaloneSession,
-    updateSession: updateStandaloneSession,
-    deleteSession: deleteStandaloneSession,
   } = useSshServers({ realtime: false });
   const {
     sessions: terminalSessions,
@@ -72,7 +67,7 @@ export function useShellResources(route: WebAppRoute) {
   } = useTerminalSessions({ realtime: false });
   const executionHosts = useExecutionHosts();
 
-  const refreshSshSessionsAndServers = useCallback(async (): Promise<void> => {
+  const refreshExecutionHostResources = useCallback(async (): Promise<void> => {
     await Promise.all([
       refreshSshServers({ showLoading: false }),
       refreshTerminalSessions({ showLoading: false }),
@@ -80,9 +75,9 @@ export function useShellResources(route: WebAppRoute) {
   }, [refreshSshServers, refreshTerminalSessions]);
 
   useRealtimeRefreshWithRecovery({
-    resources: ["ssh-server-sessions", "terminal-sessions"],
-    refresh: refreshSshSessionsAndServers,
-    onReconnect: refreshSshSessionsAndServers,
+    resources: ["execution-hosts", "terminal-sessions"],
+    refresh: refreshExecutionHostResources,
+    onReconnect: refreshExecutionHostResources,
   });
   const {
     workspaces,
@@ -123,13 +118,14 @@ export function useShellResources(route: WebAppRoute) {
     }),
     [chats, tasks, terminalSessions, workspaces],
   );
-  const serverNodes = useMemo(
-    () => buildServerSidebarNodes({
+  const executionHostNodes = useMemo(
+    () => buildExecutionHostSidebarNodes({
+      executionHosts: executionHosts.hosts,
       servers,
-      sessionsByServerId,
+      terminalSessions,
       chats,
     }),
-    [chats, servers, sessionsByServerId],
+    [chats, executionHosts.hosts, servers, terminalSessions],
   );
   const quickChatWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
@@ -175,7 +171,6 @@ export function useShellResources(route: WebAppRoute) {
     workspaces,
     servers,
     executionHosts: executionHosts.hosts,
-    sessionsByServerId,
     agents: agents.agents,
   });
 
@@ -186,7 +181,6 @@ export function useShellResources(route: WebAppRoute) {
     refreshChats,
     createChat,
     importExistingChat,
-    createSshServerChat,
     updateChat,
     markChatDone,
     deleteChat,
@@ -202,16 +196,12 @@ export function useShellResources(route: WebAppRoute) {
     purgeTask,
     purgeArchivedWorkspaceTasks,
     servers,
-    sessionsByServerId,
     sshServersLoading,
     sshServersError,
     refreshSshServers,
     createServer,
     updateServer,
     deleteServer,
-    createStandaloneSession,
-    updateStandaloneSession,
-    deleteStandaloneSession,
     terminalSessions,
     executionHosts: executionHosts.hosts,
     executionHostsLoading: executionHosts.loading,
@@ -242,7 +232,7 @@ export function useShellResources(route: WebAppRoute) {
     workspaceGroups,
     allWorkspaceGroups,
     sidebarWorkspaceGroups,
-    serverNodes,
+    executionHostNodes,
     quickChatWorkspace,
     quickChatUnavailableReason,
     shellLoading,

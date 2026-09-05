@@ -4,7 +4,6 @@ import { requirePersistenceUserId } from "./ownership";
 import {
   EXECUTION_HOST_JOIN_COLUMNS,
   executionHostBindingFromRow,
-  getExecutionHostByRef,
   resolveExecutionHostBindingId,
 } from "./execution-hosts";
 
@@ -13,7 +12,6 @@ const RESUMABLE_STATUSES = ["starting", "active"];
 const ALLOWED_VNC_SESSION_COLUMNS = new Set([
   "id",
   "user_id",
-  "ssh_server_id",
   "remote_host",
   "remote_port",
   "local_port",
@@ -44,11 +42,14 @@ function validateColumnNames(columns: string[]): void {
 }
 
 function rowToVncSession(row: Record<string, unknown>): VncSession {
+  const executionHostBinding = executionHostBindingFromRow(row);
+  if (!executionHostBinding) {
+    throw new Error(`VNC session ${String(row["id"])} has no execution-host binding`);
+  }
   return {
     config: {
       id: row["id"] as string,
-      sshServerId: (row["ssh_server_id"] as string | null) ?? undefined,
-      executionHostBinding: executionHostBindingFromRow(row),
+      executionHostBinding,
       remoteHost: "127.0.0.1",
       remotePort: row["remote_port"] as number,
       localPort: row["local_port"] as number,
@@ -66,16 +67,9 @@ function rowToVncSession(row: Record<string, unknown>): VncSession {
 
 function vncSessionToRow(session: VncSession): Record<string, string | number | null> {
   const userId = requirePersistenceUserId();
-  const fallbackHost = session.config.sshServerId
-    ? getExecutionHostByRef(userId, {
-        kind: "ssh",
-        serverId: session.config.sshServerId,
-      })
-    : null;
   return {
     id: session.config.id,
     user_id: userId,
-    ssh_server_id: session.config.sshServerId ?? null,
     remote_host: session.config.remoteHost,
     remote_port: session.config.remotePort,
     local_port: session.config.localPort,
@@ -85,12 +79,8 @@ function vncSessionToRow(session: VncSession): Record<string, string | number | 
     pid: session.state.pid ?? null,
     connected_at: session.state.connectedAt ?? null,
     error_message: session.state.error ?? null,
-    execution_host_id: session.config.executionHostBinding
-      ? resolveExecutionHostBindingId(userId, session.config.executionHostBinding)
-      : fallbackHost?.id ?? null,
-    execution_host_revision: session.config.executionHostBinding?.revision
-      ?? fallbackHost?.revision
-      ?? null,
+    execution_host_id: resolveExecutionHostBindingId(userId, session.config.executionHostBinding),
+    execution_host_revision: session.config.executionHostBinding.revision,
   };
 }
 
@@ -119,15 +109,6 @@ export async function getVncSession(id: string): Promise<VncSession | null> {
   return row ? rowToVncSession(row) : null;
 }
 
-export async function listVncSessionsBySshServerId(sshServerId: string): Promise<VncSession[]> {
-  const rows = getDatabase().query(
-    `${VNC_SESSION_SELECT}
-     WHERE vnc_session.ssh_server_id = ? AND vnc_session.user_id = ?
-     ORDER BY vnc_session.created_at DESC`,
-  ).all(sshServerId, requirePersistenceUserId()) as Record<string, unknown>[];
-  return rows.map(rowToVncSession);
-}
-
 export async function listVncSessionsByExecutionHostId(
   executionHostId: string,
 ): Promise<VncSession[]> {
@@ -137,17 +118,6 @@ export async function listVncSessionsByExecutionHostId(
      ORDER BY vnc_session.created_at DESC`,
   ).all(executionHostId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToVncSession);
-}
-
-export async function findActiveVncSession(sshServerId: string, remotePort: number): Promise<VncSession | null> {
-  const rows = getDatabase().query(
-    `${VNC_SESSION_SELECT}
-     WHERE vnc_session.ssh_server_id = ? AND vnc_session.remote_port = ?
-       AND vnc_session.user_id = ?
-       AND vnc_session.status IN (${RESUMABLE_STATUSES.map(() => "?").join(", ")})
-     ORDER BY vnc_session.created_at DESC LIMIT 1`,
-  ).all(sshServerId, remotePort, requirePersistenceUserId(), ...RESUMABLE_STATUSES) as Record<string, unknown>[];
-  return rows[0] ? rowToVncSession(rows[0]) : null;
 }
 
 export async function findActiveVncSessionByExecutionHost(

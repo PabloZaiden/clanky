@@ -1,6 +1,6 @@
-import type { Workspace, SshServer, WorkspaceExecutionTarget } from "@/shared";
+import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
-import { WorkspaceGearIcon } from "./workspace-gear-icon";
+import { GearIcon } from "../common";
 
 /** Workspace header with icon, name, settings button, path, and task count */
 export function WorkspaceHeader({
@@ -14,7 +14,7 @@ export function WorkspaceHeader({
   workspace: Workspace;
   taskCount: number;
   registeredSshServers: readonly SshServer[];
-  executionTargets: readonly WorkspaceExecutionTarget[];
+  executionTargets: readonly ExecutionHostDescriptor[];
   onOpenSettings: () => void;
   privateHidden?: boolean;
 }) {
@@ -33,7 +33,7 @@ export function WorkspaceHeader({
           className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
           title="Workspace Settings"
         >
-          <WorkspaceGearIcon />
+          <GearIcon />
         </button>
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:flex-1">

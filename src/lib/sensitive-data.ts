@@ -20,20 +20,10 @@ export function shouldIncludeSensitiveData(req: Request): boolean {
 }
 
 export function sanitizeServerSettings(settings: ServerSettings): PublicServerSettings {
-  if (settings.agent.transport === "stdio") {
-    return {
-      agent: settings.agent,
-    };
-  }
-
-  const {
-    password: _password,
-    identityFile: _identityFile,
-    ...publicAgentSettings
-  } = settings.agent;
-
   return {
-    agent: publicAgentSettings,
+    agent: {
+      provider: settings.agent.provider,
+    },
   };
 }
 

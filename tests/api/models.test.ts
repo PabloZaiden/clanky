@@ -5,15 +5,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
 import { backendManager } from "../../src/core/backend-manager";
-import { runWithCurrentUser } from "../../src/core/user-context";
-import { createWorkspace } from "../../src/persistence/workspaces";
 import type { AgentProvider } from "@/shared/settings";
-import type { Workspace } from "@/shared/workspace";
-import { setupTestContext, teardownTestContext, testOwnerUser, type TestContext } from "../setup";
+import { setupTestContext, teardownTestContext, type TestContext } from "../setup";
 import { MockAcpBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -27,38 +21,14 @@ class VariantTrackingBackend extends MockAcpBackend {
   }
 }
 
-function makeWorkspace(
-  id: string,
-  directory: string,
-  provider: AgentProvider,
-): Workspace {
-  const now = new Date().toISOString();
-  return {
-    id,
-    name: id,
-    directory,
-    workspaceType: "git",
-    createdAt: now,
-    updatedAt: now,
-    serverSettings: {
-      agent: {
-        provider,
-        transport: "stdio",
-      },
-    },
-  };
-}
-
 describe("Models API", () => {
   let ctx: TestContext;
   let server: Server<unknown>;
   let baseUrl: string;
   let backend: VariantTrackingBackend;
-  let extraWorkDir: string;
 
   beforeEach(async () => {
     ctx = await setupTestContext();
-    extraWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-models-extra-work-"));
     backend = new VariantTrackingBackend();
     backendManager.setBackendForTesting(backend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
@@ -70,7 +40,6 @@ describe("Models API", () => {
   afterEach(async () => {
     server.stop();
     await teardownTestContext(ctx);
-    await rm(extraWorkDir, { recursive: true, force: true });
   });
 
   test("validates required query parameters for model variants", async () => {
@@ -97,11 +66,7 @@ describe("Models API", () => {
     ]);
   });
 
-  test("keeps variant cache entries isolated by workspace provider and directory", async () => {
-    await runWithCurrentUser(testOwnerUser, () => createWorkspace(
-      makeWorkspace("copilot-workspace-id", extraWorkDir, "copilot"),
-    ));
-
+  test("keeps variant cache entries isolated when the workspace provider changes", async () => {
     const first = await fetch(
       `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
     );
@@ -110,24 +75,43 @@ describe("Models API", () => {
       variants: [`opencode:${ctx.workDir}:test-model`],
     });
 
+    const updateResponse = await fetch(`${baseUrl}/api/workspaces/test-workspace-id`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        serverSettings: {
+          agent: {
+            provider: "copilot",
+          },
+        },
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+    backendManager.setSettingsForTesting({
+      agent: {
+        provider: "copilot",
+        transport: "stdio",
+      },
+    });
+
     const second = await fetch(
-      `${baseUrl}/api/models/variants?workspaceId=copilot-workspace-id&modelID=test-model`,
+      `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
     );
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({
-      variants: [`copilot:${extraWorkDir}:test-model`],
+      variants: [`copilot:${ctx.workDir}:test-model`],
     });
 
-    const repeatedFirst = await fetch(
+    const repeatedSecond = await fetch(
       `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
     );
-    expect(repeatedFirst.status).toBe(200);
-    expect(await repeatedFirst.json()).toEqual({
-      variants: [`opencode:${ctx.workDir}:test-model`],
+    expect(repeatedSecond.status).toBe(200);
+    expect(await repeatedSecond.json()).toEqual({
+      variants: [`copilot:${ctx.workDir}:test-model`],
     });
     expect(backend.variantRequests).toEqual([
       { directory: ctx.workDir, modelID: "test-model", provider: "opencode" },
-      { directory: extraWorkDir, modelID: "test-model", provider: "copilot" },
+      { directory: ctx.workDir, modelID: "test-model", provider: "copilot" },
     ]);
   });
 });

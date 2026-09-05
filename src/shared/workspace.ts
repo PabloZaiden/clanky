@@ -11,7 +11,7 @@
  * @module types/workspace
  */
 
-import type { AgentProvider, ServerSettings } from "./settings";
+import type { ServerSettings } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
 
 /**
@@ -30,15 +30,10 @@ export interface Workspace {
   directory: string;
   /** Whether the workspace exposes Git-backed task and branch capabilities */
   workspaceType: WorkspaceType;
-  /** Mesh node that owns execution of this workspace when using stdio transport */
-  executionNodeId?: string | null;
   /** Monotonic revision of the workspace execution target */
-  executionTargetRevision?: number;
-  /**
-   * Canonical execution-host binding. Legacy records may omit this while
-   * their transport-specific fields are normalized during migration.
-   */
-  executionHostBinding?: ExecutionHostBinding | null;
+  executionTargetRevision: number;
+  /** Canonical immutable execution-host binding. */
+  executionHostBinding: ExecutionHostBinding;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */
@@ -53,35 +48,20 @@ export interface Workspace {
   allowClankyContext?: boolean;
   /** Directory on the remote host where the repo was cloned (for auto-provisioned workspaces) */
   sourceDirectory?: string;
-  /** ID of the SSH server used for provisioning */
-  sshServerId?: string;
   /** Git repository URL used during provisioning */
   repoUrl?: string;
   /** Base path on the remote host used during provisioning */
   basePath?: string;
   /** Optional devcontainer definition subpath used during provisioning */
   devcontainerSubpath?: string;
-  /** Agent provider used during provisioning */
-  provider?: AgentProvider;
 }
 
 export type WorkspaceType = "git" | "directory";
 
 export const DEFAULT_WORKSPACE_TYPE: WorkspaceType = "git";
 
-export interface WorkspaceExecutionTarget {
-  nodeId: string;
-  name: string;
-  kind: "local" | "mesh";
-  availability: "local" | "available";
-}
-
-export type PublicAgentSettings =
-  | Extract<ServerSettings["agent"], { transport: "stdio" }>
-  | Omit<Extract<ServerSettings["agent"], { transport: "ssh" }>, "password" | "identityFile">;
-
 export interface PublicServerSettings {
-  agent: PublicAgentSettings;
+  agent: ServerSettings["agent"];
 }
 
 export interface PublicWorkspace extends Omit<Workspace, "serverSettings"> {

@@ -1,18 +1,18 @@
 import { useState } from "react";
-import type { Workspace, SshServer, WorkspaceExecutionTarget } from "@/shared";
+import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
-import { WorkspaceGearIcon } from "./workspace-gear-icon";
+import { GearIcon } from "../common";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
   registeredSshServers: readonly SshServer[];
-  executionTargets: readonly WorkspaceExecutionTarget[];
+  executionTargets: readonly ExecutionHostDescriptor[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   showPrivateItems?: boolean;
@@ -64,7 +64,7 @@ export function EmptyWorkspacesSection({
                 className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
                 title="Workspace Settings"
               >
-                <WorkspaceGearIcon />
+                <GearIcon />
               </button>
               <button
                 onClick={() => {
@@ -93,8 +93,9 @@ export function EmptyWorkspacesSection({
             const options: DeleteWorkspaceRequest = {};
             if (deleteServerDirectory && isAutoProvisionedWorkspace(deleteWorkspace)) {
               options.deleteServerDirectory = true;
-              if (deleteWorkspace.sshServerId) {
-                options.credentialToken = await getStoredSshCredentialToken(deleteWorkspace.sshServerId);
+              const host = deleteWorkspace.executionHostBinding.host;
+              if (host.kind === "ssh") {
+                options.credentialToken = await getStoredSshCredentialToken(host.serverId);
               }
             }
             const result = await onDeleteWorkspace(deleteWorkspace.id, options);

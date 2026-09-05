@@ -14,10 +14,6 @@ export { useChats, type UseChatsResult } from "./useChats";
 export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";
-export {
-  useSshServerSession,
-  type UseSshServerSessionResult,
-} from "./useSshServerSession";
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
@@ -52,7 +48,6 @@ export {
 export {
   useFileExplorer,
   useWorkspaceFiles,
-  useServerFiles,
   type UseFileExplorerResult,
   type UseWorkspaceFilesResult,
   type WorkspaceFileConflictState,
@@ -95,8 +90,6 @@ export {
   createSshServerApi,
   updateSshServerApi,
   deleteSshServerApi,
-  createStandaloneSshSessionApi,
-  deleteStandaloneSshSessionApi,
   saveStandaloneSshServerPassword,
 } from "./sshServerActions";
 export {
@@ -113,9 +106,4 @@ export {
   downloadWorkspaceFileApi,
   getWorkspaceFileMetadataApi,
   writeWorkspaceFileApi,
-  listServerFilesApi,
-  readServerFileApi,
-  downloadServerFileApi,
-  getServerFileMetadataApi,
-  writeServerFileApi,
 } from "./workspaceFileActions";

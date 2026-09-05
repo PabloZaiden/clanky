@@ -6,7 +6,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type {
   ExecutionHostBinding,
   Workspace,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { backendManager } from "./backend-manager";
@@ -29,25 +29,21 @@ import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 import { workspaceManager } from "./workspace-manager";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import {
-  claimWorkspaceTerminalAttachment,
-  isWorkspaceTerminalAttachmentBlocked,
-  type WorkspaceTerminalAttachmentHandle,
-} from "./workspace-terminal-attachment-registry";
+  claimTerminalAttachment,
+  isTerminalAttachmentBlocked,
+  type TerminalAttachmentHandle,
+} from "./terminal-attachment-registry";
 import { executionHostService } from "./execution-host-service";
 
-const log = createLogger("core:workspace-terminal-connection");
+const log = createLogger("core:terminal-connection");
 
-export type WorkspaceTerminalTransport = "ssh" | "local" | "mesh";
-
-export interface ResolvedWorkspaceTerminal {
-  session: WorkspaceTerminalSession;
+export interface ResolvedTerminal {
+  session: TerminalSession;
   workspace?: Workspace;
   executionHostBinding: ExecutionHostBinding;
-  transport: WorkspaceTerminalTransport;
-  executionNodeId?: string;
 }
 
-function targetMismatch(message: string, session: WorkspaceTerminalSession): DomainError {
+function targetMismatch(message: string, session: TerminalSession): DomainError {
   return new DomainError("terminal_execution_target_changed", message, {
     details: {
       terminalSessionId: session.config.id,
@@ -56,9 +52,9 @@ function targetMismatch(message: string, session: WorkspaceTerminalSession): Dom
   });
 }
 
-export async function resolveWorkspaceTerminal(
+export async function resolveTerminal(
   sessionId: string,
-): Promise<ResolvedWorkspaceTerminal> {
+): Promise<ResolvedTerminal> {
   const session = await terminalSessionManager.getSession(sessionId);
   if (!session) {
     throw new DomainError("terminal_session_not_found", "Terminal session not found.", {
@@ -67,47 +63,28 @@ export async function resolveWorkspaceTerminal(
   }
   if (!session.config.workspaceId) {
     const binding = session.config.executionHostBinding;
-    if (!binding) {
-      throw new DomainError(
-        "terminal_execution_host_missing",
-        "The direct terminal has no execution-host binding.",
-      );
-    }
     executionHostService.validateBinding(binding);
     return {
       session,
       executionHostBinding: binding,
-      transport: binding.host.kind,
-      ...(binding.host.kind === "mesh"
-        ? { executionNodeId: binding.host.nodeId }
-        : {}),
     };
   }
   const workspace = await workspaceManager.requireWorkspace(session.config.workspaceId);
-  const binding = session.config.targetBinding;
+  const binding = session.config.executionHostBinding;
   const target = await resolveWorkspaceExecutionTarget(workspace);
   if (
     binding.targetKey !== target.targetKey
-    || binding.workspaceRevision !== (workspace.executionTargetRevision ?? 1)
+    || binding.revision !== target.binding.revision
+    || session.config.workspaceExecutionTargetRevision
+      !== workspace.executionTargetRevision
   ) {
     throw targetMismatch("The workspace execution target changed after this session was created.", session);
   }
 
-  const transport = target.kind === "ssh"
-    ? "ssh"
-    : target.kind === "local"
-      ? "local"
-      : "mesh";
   return {
     session,
     workspace,
-    executionHostBinding: session.config.executionHostBinding ?? {
-      host: target.hostRef!,
-      targetKey: target.targetKey,
-      revision: workspace.executionTargetRevision ?? 1,
-    },
-    transport,
-    ...(target.kind === "mesh" ? { executionNodeId: target.nodeId } : {}),
+    executionHostBinding: binding,
   };
 }
 
@@ -121,7 +98,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
     private readonly sessionId: string,
     private readonly user: CurrentUser,
     private readonly connection: InteractiveTerminalConnection,
-    private readonly configuredMode: WorkspaceTerminalSession["config"]["connectionMode"],
+    private readonly configuredMode: TerminalSession["config"]["connectionMode"],
     private readonly lifecycle: { exitStatus?: "disconnected" | "failed" },
     private readonly cleanupFailedLaunch?: (error: unknown) => Promise<void>,
   ) {}
@@ -217,7 +194,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
         }
       }
     }
-    if (isWorkspaceTerminalAttachmentBlocked(this.sessionId)) {
+    if (isTerminalAttachmentBlocked(this.sessionId)) {
       return;
     }
     if (this.connectFailed || this.lifecycle.exitStatus === "failed") {
@@ -250,7 +227,7 @@ function buildStatusCallbacks(
     onExit: (code, signal) => {
       const status = code === 0 || code === null ? "disconnected" : "failed";
       lifecycle.exitStatus = status;
-      if (isWorkspaceTerminalAttachmentBlocked(sessionId)) {
+      if (isTerminalAttachmentBlocked(sessionId)) {
         callbacks.onExit?.(code, signal);
         return;
       }
@@ -271,18 +248,19 @@ function buildStatusCallbacks(
   };
 }
 
-export async function createWorkspaceTerminalConnection(
+export async function createTerminalConnection(
   sessionId: string,
   callbacks: InteractiveTerminalCallbacks,
   credentialToken?: string,
 ): Promise<{
   connection: InteractiveTerminalConnection;
-  attachment: WorkspaceTerminalAttachmentHandle;
-  resolved: ResolvedWorkspaceTerminal;
+  attachment: TerminalAttachmentHandle;
+  resolved: ResolvedTerminal;
 }> {
   const user = requireCurrentUser();
-  const resolved = await resolveWorkspaceTerminal(sessionId);
-  if (resolved.transport === "ssh") {
+  const resolved = await resolveTerminal(sessionId);
+  const host = resolved.executionHostBinding.host;
+  if (host.kind === "ssh") {
     const connection = new SshInteractiveTerminalConnection(
       sessionId,
       callbacks,
@@ -290,7 +268,7 @@ export async function createWorkspaceTerminalConnection(
     );
     return {
       connection,
-      attachment: await claimWorkspaceTerminalAttachment(sessionId, connection),
+      attachment: await claimTerminalAttachment(sessionId, connection),
       resolved,
     };
   }
@@ -339,7 +317,7 @@ export async function createWorkspaceTerminalConnection(
   const statusCallbacks = buildStatusCallbacks(sessionId, user, callbacks, lifecycle);
   try {
     let connection: InteractiveTerminalConnection;
-    if (resolved.transport === "local") {
+    if (host.kind === "local") {
       if (!executor) {
         throw new DomainError("terminal_connection_unavailable", "The local terminal executor is unavailable.");
       }
@@ -377,17 +355,11 @@ export async function createWorkspaceTerminalConnection(
         },
       });
     } else {
-      if (!resolved.executionNodeId) {
-        throw new DomainError(
-          "mesh_terminal_target_unavailable",
-          "The workspace terminal has no Mesh execution target.",
-        );
-      }
       connection = new MeshInteractiveTerminalConnection({
         workspaceId: resolved.workspace?.id ?? `execution-host:${resolved.executionHostBinding.targetKey}`,
         executionRoot: resolved.workspace?.directory ?? resolved.session.config.directory,
         directory: resolved.session.config.directory,
-        executionNodeId: resolved.executionNodeId,
+        executionNodeId: host.nodeId,
         provider: resolved.workspace?.serverSettings.agent.provider
           ?? await executionHostService.resolveAgentProvider(
             resolved.executionHostBinding.host,
@@ -436,7 +408,7 @@ export async function createWorkspaceTerminalConnection(
     );
     return {
       connection: managedConnection,
-      attachment: await claimWorkspaceTerminalAttachment(sessionId, managedConnection),
+      attachment: await claimTerminalAttachment(sessionId, managedConnection),
       resolved,
     };
   } catch (error) {

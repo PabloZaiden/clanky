@@ -4,7 +4,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Chat, ExecutionHostDescriptor, WorkspaceTerminalSession } from "@/shared";
+import type { Chat, ExecutionHostDescriptor, TerminalSession } from "@/shared";
 import { initializeDatabase } from "../../src/persistence/database";
 import { serveNativeApiRoutes } from "../native-api-server";
 
@@ -173,7 +173,7 @@ describe("Execution hosts API", () => {
       }),
     });
     expect(createTerminalResponse.status).toBe(201);
-    const terminal = await createTerminalResponse.json() as WorkspaceTerminalSession;
+    const terminal = await createTerminalResponse.json() as TerminalSession;
     expect(terminal.config.workspaceId).toBeUndefined();
     expect(terminal.config.executionHostBinding).toEqual({
       host: localHost!.ref,
@@ -185,7 +185,7 @@ describe("Execution hosts API", () => {
       `${baseUrl}/api/terminal-sessions/${terminal.config.id}`,
     );
     expect(getTerminalResponse.status).toBe(200);
-    const persistedTerminal = await getTerminalResponse.json() as WorkspaceTerminalSession;
+    const persistedTerminal = await getTerminalResponse.json() as TerminalSession;
     expect(persistedTerminal.config.executionHostBinding).toEqual(
       terminal.config.executionHostBinding,
     );

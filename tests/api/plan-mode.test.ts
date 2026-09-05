@@ -22,10 +22,11 @@ import {
   runGit,
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
+import { fetchTestLocalExecutionHost } from "../setup";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
-const defaultServerSettings = { agent: { provider: "opencode", transport: "stdio" } };
+const defaultServerSettings = { agent: { provider: "opencode" } };
 interface PlanTaskResponse extends Record<string, unknown> {
   state?: {
     status?: string;
@@ -69,12 +70,14 @@ describe("Plan Mode API Integration", () => {
     name?: string,
     serverSettings?: Record<string, unknown>,
   ): Promise<string> {
+    const executionHost = await fetchTestLocalExecutionHost(baseUrl);
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        executionHost,
         serverSettings: serverSettings ?? defaultServerSettings,
       }),
     });
@@ -455,14 +458,7 @@ describe("Plan Mode API Integration", () => {
     test("accepts the plan in open_terminal mode and returns the linked terminal session", async () => {
       const sshWorkDir = await createTestWorkDir();
       try {
-        const sshWorkspaceId = await getOrCreateWorkspace(sshWorkDir, "SSH Test Workspace", {
-          agent: {
-            provider: "opencode",
-            transport: "ssh",
-            hostname: "localhost",
-            username: "tester",
-          },
-        });
+        const sshWorkspaceId = await getOrCreateWorkspace(sshWorkDir, "Terminal Test Workspace");
 
         const createResponse = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",

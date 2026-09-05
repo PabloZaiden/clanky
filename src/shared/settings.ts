@@ -3,7 +3,7 @@
  * Defines workspace settings for agent and deterministic execution channels.
  */
 
-import type { SshServer } from "./ssh-server";
+import type { ExecutionHostDescriptor, ExecutionHostRef } from "./execution-host";
 
 export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi", "grok"] as const;
 
@@ -17,7 +17,11 @@ export function isAgentProvider(value: unknown): value is AgentProvider {
     && AGENT_PROVIDER_IDS.includes(value as AgentProvider);
 }
 
-export type AgentSettings =
+export interface AgentSettings {
+  provider: AgentProvider;
+}
+
+export type RuntimeAgentSettings =
   | {
       provider: AgentProvider;
       transport: "stdio";
@@ -36,42 +40,33 @@ export interface ServerSettings {
   agent: AgentSettings;
 }
 
-/**
- * Get default server settings.
- * @param remoteOnly - If true, defaults to `ssh` transport instead of `stdio`.
- *                     This should be passed from the server config (CLANKY_REMOTE_ONLY env var).
- */
-export function getDefaultServerSettings(remoteOnly: boolean = false): ServerSettings {
-  const defaultAgent = remoteOnly
-    ? {
-        provider: DEFAULT_SERVER_AGENT_PROVIDER,
-        transport: "ssh" as const,
-        hostname: "127.0.0.1",
-        port: 22,
-        username: "",
-        password: "",
-      }
-    : {
-        provider: DEFAULT_SERVER_AGENT_PROVIDER,
-        transport: "stdio" as const,
-      };
+export interface RuntimeServerSettings {
+  agent: RuntimeAgentSettings;
+}
 
+export function getDefaultServerSettings(): ServerSettings {
   return {
-    agent: defaultAgent,
+    agent: {
+      provider: DEFAULT_SERVER_AGENT_PROVIDER,
+    },
   };
 }
 
-/**
- * Defaults for creating a new workspace from the UI.
- * New workspaces should start on Copilot over SSH, regardless of remote-only mode.
- */
+export function getDefaultRuntimeServerSettings(
+  provider: AgentProvider = DEFAULT_SERVER_AGENT_PROVIDER,
+): RuntimeServerSettings {
+  return {
+    agent: {
+      provider,
+      transport: "stdio",
+    },
+  };
+}
+
 export function getCreateWorkspaceDefaultServerSettings(): ServerSettings {
   return {
     agent: {
       provider: DEFAULT_EXECUTION_AGENT_PROVIDER,
-      transport: "ssh",
-      hostname: "localhost",
-      port: 22,
     },
   };
 }
@@ -104,108 +99,12 @@ function isServerSettings(value: unknown): value is ServerSettings {
     return false;
   }
   const agentRecord = agent as Record<string, unknown>;
-  if (
-    typeof agentRecord["provider"] !== "string"
-    || !AGENT_PROVIDER_IDS.includes(agentRecord["provider"] as AgentProvider)
-  ) {
-    return false;
-  }
-
-  if (agentRecord["transport"] === "stdio") {
-    return true;
-  }
-  if (
-    agentRecord["transport"] !== "ssh"
-    || typeof agentRecord["hostname"] !== "string"
-    || agentRecord["hostname"].trim().length === 0
-  ) {
-    return false;
-  }
-  if (
-    agentRecord["port"] !== undefined
-    && (typeof agentRecord["port"] !== "number"
-      || !Number.isInteger(agentRecord["port"])
-      || agentRecord["port"] < 1
-      || agentRecord["port"] > 65535)
-  ) {
-    return false;
-  }
-  return ["username", "password", "identityFile"].every(
-    (key) => agentRecord[key] === undefined || typeof agentRecord[key] === "string",
-  );
-}
-
-function getComparableServerSettings(settings: ServerSettings): ServerSettings {
-  if (settings.agent.transport === "ssh") {
-    return {
-      agent: {
-        provider: settings.agent.provider,
-        transport: "ssh",
-        hostname: settings.agent.hostname,
-        ...(settings.agent.port !== undefined ? { port: settings.agent.port } : {}),
-        ...(settings.agent.username !== undefined ? { username: settings.agent.username } : {}),
-        ...(settings.agent.password !== undefined ? { password: settings.agent.password } : {}),
-        ...(settings.agent.identityFile !== undefined ? { identityFile: settings.agent.identityFile } : {}),
-      },
-    };
-  }
-
-  return {
-    agent: {
-      provider: settings.agent.provider,
-      transport: "stdio",
-    },
-  };
+  return typeof agentRecord["provider"] === "string"
+    && AGENT_PROVIDER_IDS.includes(agentRecord["provider"] as AgentProvider);
 }
 
 export function areServerSettingsEqual(left: ServerSettings, right: ServerSettings): boolean {
-  return JSON.stringify(getComparableServerSettings(left)) === JSON.stringify(getComparableServerSettings(right));
-}
-
-function normalizeHostname(hostname: string): string {
-  return hostname.trim().toLowerCase();
-}
-
-function normalizeUsername(username: string | undefined): string {
-  return username?.trim() ?? "";
-}
-
-function normalizeSshServerAddress(address: string): string {
-  return address.trim().toLowerCase();
-}
-
-export function findRegisteredSshServer(
-  hostname: string,
-  registeredSshServers: readonly SshServer[],
-): SshServer | undefined {
-  const normalizedHostname = normalizeSshServerAddress(hostname);
-  if (!normalizedHostname) {
-    return undefined;
-  }
-
-  return registeredSshServers.find((server) => {
-    return normalizeSshServerAddress(server.config.address) === normalizedHostname;
-  });
-}
-
-/**
- * Build a deterministic, credential-free fingerprint for workspace routing.
- */
-export function getServerFingerprint(
-  settings: ServerSettings,
-  executionNodeId?: string | null,
-): string {
-  const provider = settings.agent.provider;
-
-  if (settings.agent.transport === "ssh") {
-    const hostname = normalizeHostname(settings.agent.hostname);
-    const port = settings.agent.port ?? 22;
-    const username = normalizeUsername(settings.agent.username);
-    return `${provider}:ssh:${hostname}:${port}:${username}`;
-  }
-
-  const target = executionNodeId?.trim() || "local";
-  return `${provider}:stdio:${target}`;
+  return left.agent.provider === right.agent.provider;
 }
 
 /**
@@ -213,30 +112,11 @@ export function getServerFingerprint(
  */
 export function getServerLabel(
   settings: ServerSettings,
-  registeredSshServers: readonly SshServer[] = [],
-  executionTarget?: {
-    nodeId?: string | null;
-    localNodeId?: string | null;
-    instanceName?: string | null;
-  },
+  executionHost?: Pick<ExecutionHostDescriptor, "name" | "ref"> | null,
 ): string {
-  if (settings.agent.transport === "ssh") {
-    const hostname = settings.agent.hostname.trim() || "127.0.0.1";
-    const port = settings.agent.port ?? 22;
-    const username = settings.agent.username?.trim();
-    const registeredServer = findRegisteredSshServer(hostname, registeredSshServers);
-    const hostDisplay = registeredServer?.config.name ?? hostname;
-    const authority = username ? `${username}@${hostDisplay}` : hostDisplay;
-    return `${settings.agent.provider} via ssh (${authority}:${port})`;
-  }
-
-  const nodeId = executionTarget?.nodeId?.trim();
-  if (nodeId && nodeId !== executionTarget?.localNodeId) {
-    const target = executionTarget?.instanceName?.trim() || `mesh peer ${nodeId.slice(0, 8)}`;
-    return `${settings.agent.provider} via stdio on ${target}`;
-  }
-
-  return `${settings.agent.provider} via local stdio`;
+  const hostLabel = executionHost?.name.trim()
+    || (executionHost?.ref.kind === "local" ? "local" : "execution host");
+  return `${settings.agent.provider} on ${hostLabel}`;
 }
 
 /**
@@ -249,7 +129,7 @@ export interface ConnectionStatus {
   /** Selected agent provider */
   provider: AgentProvider;
   /** Selected transport */
-  transport: AgentTransport;
+  transport: ExecutionHostRef["kind"];
   /** Provider capability list */
   capabilities: string[];
   /** Connected server URL, when applicable */

@@ -2,7 +2,7 @@
  * Plan-related task actions: feedback, accept, and discard.
  */
 
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import type { PlanAcceptResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
@@ -18,7 +18,7 @@ export type AcceptPlanResult =
   | {
       success: true;
       mode: "open_terminal";
-      terminalSession: WorkspaceTerminalSession;
+      terminalSession: TerminalSession;
     }
   | {
       success: false;

@@ -31,11 +31,8 @@ export {
 } from "./task-status";
 
 export { sanitizeBranchName } from "./sanitize-branch-name";
-export { normalizeCommitScope } from "./commit-scope";
-
 export { formatFileSize, formatRelativeTime } from "./format";
 
-export { buildDefaultSshServerSessionName } from "./ssh-server-session-name";
 
 export { readClipboardContent, writeTextToClipboard, type ClipboardReadResult } from "./clipboard";
 

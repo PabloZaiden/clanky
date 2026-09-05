@@ -19,8 +19,6 @@ export const CHAT_METADATA_COLUMNS = [
   "name",
   "source_kind",
   "workspace_id",
-  "ssh_server_id",
-  "ssh_server_session_id",
   "scope",
   "task_id",
   "directory",
@@ -181,17 +179,6 @@ export async function listChatSummariesByWorkspace(workspaceId: string): Promise
   const rows = getDatabase()
     .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE workspace_id = ? AND ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
     .all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
-  return rows.map((row) => createChatListSnapshot(rowToChat(row)));
-}
-
-export async function listChatsBySshServer(sshServerId: string): Promise<Chat[]> {
-  return listChatSummariesBySshServer(sshServerId);
-}
-
-export async function listChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
-  const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
-    .all(sshServerId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 

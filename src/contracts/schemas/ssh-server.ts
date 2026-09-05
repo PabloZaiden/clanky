@@ -3,7 +3,6 @@
  */
 
 import { z } from "zod";
-import { TerminalConnectionModeSchema } from "./terminal-session";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
@@ -48,24 +47,6 @@ export const SshCredentialExchangeRequestSchema = z.object({
 
 export const SshCredentialTokenSchema = RequiredTrimmedStringSchema;
 
-export const CreateSshServerSessionRequestSchema = z.object({
-  name: z.string().trim().min(1, "name is required"),
-  credentialToken: SshCredentialTokenSchema.nullable(),
-  connectionMode: TerminalConnectionModeSchema,
-  useTmux: z.boolean().optional(),
-});
-
-export const UpdateSshServerSessionRequestSchema = z.object({
-  name: z.string().trim().min(1, "name is required").optional(),
-  isPrivate: z.boolean().optional(),
-}).refine((value) => value.name !== undefined || value.isPrivate !== undefined, {
-  message: "at least one field must be provided",
-});
-
-export const DeleteSshServerSessionRequestSchema = z.object({
-  credentialToken: SshCredentialTokenSchema.nullable(),
-});
-
 export const CheckSshServerPrerequisitesRequestSchema = z.object({
   credentialToken: SshCredentialTokenSchema.nullable(),
 });
@@ -85,9 +66,6 @@ export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema
 export type SshServerEncryptedCredential = z.infer<typeof SshServerEncryptedCredentialSchema>;
 export type SshCredentialExchangeRequest = z.infer<typeof SshCredentialExchangeRequestSchema>;
 export type SshCredentialToken = z.infer<typeof SshCredentialTokenSchema>;
-export type CreateSshServerSessionRequest = z.infer<typeof CreateSshServerSessionRequestSchema>;
-export type UpdateSshServerSessionRequest = z.infer<typeof UpdateSshServerSessionRequestSchema>;
-export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
 export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
 export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;
 export type CreateVncSessionRequest = z.infer<typeof CreateVncSessionRequestSchema>;

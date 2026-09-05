@@ -11,8 +11,8 @@
  * - git: Git repository and GitHub information
  * - workspaces: Workspace CRUD, server settings, previews, and file operations
  * - agents-md: AGENTS.md optimization for Clanky
- * - ssh-servers: Standalone SSH server registry, credentials, sessions, VNC, and files
- * - terminal-sessions: Transport-neutral workspace terminal sessions
+ * - ssh-servers: SSH execution-host registration and credential exchange
+ * - terminal-sessions: Transport-neutral terminal sessions
  * - provisioning: Remote workspace provisioning jobs
  * - chats: Standalone and task-linked chat sessions
  * - agents: Scheduled-agent management and runs
@@ -35,7 +35,6 @@ import { gitRoutes } from "./git";
 import { workspacesRoutes } from "./workspaces";
 import { agentsMdRoutes } from "./agents-md";
 import { sshServersRoutes } from "./ssh-servers";
-import { sshServerFilesRoutes } from "./ssh-server-files";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
@@ -59,7 +58,6 @@ const nativeApiRoutes = {
   ...gitRoutes,
   ...workspacesRoutes,
   ...agentsMdRoutes,
-  ...sshServerFilesRoutes,
   ...sshServersRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
@@ -105,7 +103,6 @@ export * from "./git";
 export * from "./workspaces";
 export * from "./agents-md";
 export * from "./ssh-servers";
-export * from "./ssh-server-files";
 export * from "./terminal-sessions";
 export * from "./websocket";
 export * from "./provisioning";

@@ -4,7 +4,6 @@
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { parseServerSettings } from "../../shared/settings";
 import {
   buildLocalTargetKey,
   buildMeshTargetKey,
@@ -263,9 +262,28 @@ function backfillWorkspaceHosts(db: Database): void {
       continue;
     }
 
-    let settings;
+    let settings: {
+      transport: "stdio" | "ssh";
+      hostname?: string;
+      port?: number;
+      username?: string;
+    };
     try {
-      settings = parseServerSettings(row.server_settings);
+      const parsed = JSON.parse(row.server_settings) as {
+        agent?: {
+          transport?: unknown;
+          hostname?: unknown;
+          port?: unknown;
+          username?: unknown;
+        };
+      };
+      const agent = parsed.agent;
+      settings = {
+        transport: agent?.transport === "ssh" ? "ssh" : "stdio",
+        ...(typeof agent?.hostname === "string" ? { hostname: agent.hostname } : {}),
+        ...(typeof agent?.port === "number" ? { port: agent.port } : {}),
+        ...(typeof agent?.username === "string" ? { username: agent.username } : {}),
+      };
     } catch (error) {
       log.warn("Skipping execution-host backfill for invalid workspace settings", {
         workspaceId: row.id,
@@ -274,7 +292,7 @@ function backfillWorkspaceHosts(db: Database): void {
       continue;
     }
 
-    if (settings.agent.transport === "stdio") {
+    if (settings.transport === "stdio") {
       if (!row.execution_node_id) {
         continue;
       }
@@ -295,9 +313,12 @@ function backfillWorkspaceHosts(db: Database): void {
       continue;
     }
 
-    const port = settings.agent.port ?? 22;
-    const username = settings.agent.username ?? "";
-    const targetKey = buildSshTargetKey(settings.agent.hostname, port, username);
+    if (!settings.hostname) {
+      continue;
+    }
+    const port = settings.port ?? 22;
+    const username = settings.username ?? "";
+    const targetKey = buildSshTargetKey(settings.hostname, port, username);
     const knownHost = db.query(`
       SELECT id, revision
       FROM execution_hosts
@@ -318,7 +339,7 @@ function backfillWorkspaceHosts(db: Database): void {
       serverId,
       row.user_id,
       row.name,
-      settings.agent.hostname,
+      settings.hostname,
       username,
       port,
       row.created_at,

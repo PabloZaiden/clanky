@@ -4,6 +4,7 @@
 
 import type { ServerSettings, ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
+import type { ExecutionHostRef } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 
@@ -17,12 +18,12 @@ export interface WorkspaceSettingsFormProps {
   onSave: (
     name: string,
     settings: ServerSettings,
-    executionNodeId: string | null,
+    executionHost: ExecutionHostRef,
     archived: boolean,
     allowClankyContext: boolean,
   ) => Promise<boolean>;
   /** Callback to test connection */
-  onTest: (settings: ServerSettings, executionNodeId: string | null) => Promise<{ success: boolean; error?: string }>;
+  onTest: (settings: ServerSettings, executionHost: ExecutionHostRef) => Promise<{ success: boolean; error?: string }>;
   /** Callback to purge the workspace tasks covered by the terminal-state settings action */
   onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;
   /** Callback to delete the workspace */

@@ -34,7 +34,6 @@ import {
   getChatWorkspaceId,
   isChatBusyStatus,
   isExecutionHostChat,
-  isSshServerChat,
   isStandaloneChat,
   isWorkspaceChat,
 } from "@/shared/chat";
@@ -164,8 +163,7 @@ export class ChatConversationService implements ChatConversationPort {
     };
 
     try {
-      const startupStage = isSshServerChat(chat)
-        || isExecutionHostChat(chat)
+      const startupStage = isExecutionHostChat(chat)
         || this.worktree.hasEstablishedWorkspaceContext(chat)
         ? "connecting_provider" as const
         : "preparing_workspace" as const;
@@ -188,7 +186,7 @@ export class ChatConversationService implements ChatConversationPort {
       }
 
       let workingDirectory: ChatDirectoryResolution | undefined;
-      if (isSshServerChat(current)) {
+      if (isExecutionHostChat(current)) {
         current = await this.state.updateStartupStage(current, "connecting_provider");
       } else {
         workingDirectory = await timer.measure("worktree_preparation", () =>

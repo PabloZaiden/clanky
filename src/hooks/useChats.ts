@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { Chat, ChatEvent } from "@/shared";
-import type { CreateChatRequest, CreateSshServerChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
+import type { CreateChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import {
   getStreamingActivityStatus,
@@ -72,7 +72,6 @@ export interface UseChatsResult {
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
-  createSshServerChat: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   markChatDone: (id: string) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
@@ -193,30 +192,6 @@ export function useChats(): UseChatsResult {
         error: String(importError),
       });
       setError(String(importError));
-      return null;
-    }
-  }, []);
-
-  const createSshServerChat = useCallback(async (
-    serverId: string,
-    request: CreateSshServerChatRequest,
-  ): Promise<Chat | null> => {
-    try {
-      const chat = await apiRequest<Chat>(`/api/ssh-servers/${serverId}/chats`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-        action: "Create SSH-server chat",
-        fallbackMessage: "Failed to create SSH-server chat",
-      });
-      setChats((prev) => upsertChat(prev, chat));
-      return chat;
-    } catch (createError) {
-      log.error("Failed to create SSH-server chat", {
-        serverId,
-        error: String(createError),
-      });
-      setError(String(createError));
       return null;
     }
   }, []);
@@ -374,7 +349,6 @@ export function useChats(): UseChatsResult {
     getChat,
     createChat,
     importExistingChat,
-    createSshServerChat,
     updateChat,
     markChatDone,
     deleteChat,

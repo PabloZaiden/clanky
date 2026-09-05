@@ -22,11 +22,9 @@ import type {
   Chat,
   ExecutionHostDescriptor,
   SshServer,
-  SshServerSession,
   Task,
   Workspace,
 } from "@/shared";
-import { findRegisteredSshServer } from "@/shared";
 import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 
 export interface HeaderModel {
@@ -62,14 +60,12 @@ interface UseShellHeaderOptions {
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  selectedServer: SshServer | null;
   selectedAgent: Agent | null;
   tasksLoading: boolean;
   chatsLoading: boolean;
   agents: UseAgentsResult;
   servers: SshServer[];
-  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
+  terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
   editingAgentId: ShellDialogComposition["editingAgentId"];
   composeActionState: UseComposeStateResult["composeActionState"];
@@ -125,56 +121,23 @@ function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: 
   return workspace.name;
 }
 
-function getServerName(serverId: string | undefined, servers: SshServer[]): string | undefined {
-  if (!serverId) {
-    return undefined;
-  }
-  return servers.find((server) => server.config.id === serverId)?.config.name;
-}
-
 function getChatScopeSubtitle(
   chat: Chat | null,
   workspaces: Workspace[],
-  servers: SshServer[],
 ): string | undefined {
   if (!chat) {
     return undefined;
   }
   const source = chat.config.source;
-  if (source?.kind === "ssh_server") {
-    return getServerName(source.sshServerId, servers);
-  }
   if (source?.kind === "execution_host") {
     return source.executionHost.targetKey;
   }
   return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
 }
 
-function getStandaloneSshSessionScopeSubtitle({
-  sshServerSessionId,
-  sessionsByServerId,
-  servers,
-}: {
-  sshServerSessionId: string | undefined;
-  sessionsByServerId: Record<string, SshServerSession[]>;
-  servers: SshServer[];
-}): string | undefined {
-  if (!sshServerSessionId) {
-    return undefined;
-  }
-
-  for (const [serverId, serverSessions] of Object.entries(sessionsByServerId)) {
-    if (serverSessions.some((session) => session.config.id === sshServerSessionId)) {
-      return getServerName(serverId, servers);
-    }
-  }
-
-  return undefined;
-}
-
 function getTerminalSessionScopeSubtitle(
   terminalSessionId: string | undefined,
-  terminalSessions: import("@/shared").WorkspaceTerminalSession[],
+  terminalSessions: import("@/shared").TerminalSession[],
   workspaces: Workspace[],
 ): string | undefined {
   if (!terminalSessionId) {
@@ -183,6 +146,7 @@ function getTerminalSessionScopeSubtitle(
   const terminalSession = terminalSessions.find((session) => session.config.id === terminalSessionId);
   return terminalSession
     ? getWorkspaceScopeSubtitle(terminalSession.config.workspaceId, workspaces)
+      ?? terminalSession.config.executionHostBinding.targetKey
     : undefined;
 }
 
@@ -195,12 +159,9 @@ interface HeaderScopeOptions {
   selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
-  selectedServer: SshServer | null;
   selectedAgent: Agent | null;
   agentRunWorkspaceId: string | undefined;
-  terminalSessions: import("@/shared").WorkspaceTerminalSession[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
-  servers: SshServer[];
+  terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
 }
 
@@ -213,12 +174,9 @@ function getHeaderScopeSubtitle({
   selectedTask,
   selectedChat,
   selectedWorkspace,
-  selectedServer,
   selectedAgent,
   agentRunWorkspaceId,
   terminalSessions,
-  sessionsByServerId,
-  servers,
   workspaces,
 }: HeaderScopeOptions): string | undefined {
   switch (route.view) {
@@ -227,13 +185,7 @@ function getHeaderScopeSubtitle({
       return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
     case "chat":
     case "chat-transcript":
-      return getChatScopeSubtitle(selectedChat, workspaces, servers);
-    case "ssh":
-      return getStandaloneSshSessionScopeSubtitle({
-        sshServerSessionId: getRouteString(route, "sshServerSessionId"),
-        sessionsByServerId,
-        servers,
-      });
+      return getChatScopeSubtitle(selectedChat, workspaces);
     case "terminal":
       return getTerminalSessionScopeSubtitle(
         getRouteString(route, "terminalSessionId"),
@@ -252,15 +204,12 @@ function getHeaderScopeSubtitle({
         return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
       }
       if (contentType === "chat") {
-        return getChatScopeSubtitle(selectedChat, workspaces, servers);
+        return getChatScopeSubtitle(selectedChat, workspaces);
       }
       if (contentType === "workspace") {
         return selectedWorkspace
           ? getWorkspaceScopeSubtitle(selectedWorkspace.id, workspaces)
           : undefined;
-      }
-      if (contentType === "server") {
-        return selectedServer?.config.name;
       }
       return undefined;
     }
@@ -290,14 +239,12 @@ export function useShellHeader({
   composeWorkspace,
   composeServer,
   composeExecutionHost,
-  selectedServer,
   selectedAgent,
   tasksLoading,
   chatsLoading,
   agents,
   servers,
   terminalSessions,
-  sessionsByServerId,
   workspaces,
   editingAgentId,
   composeActionState,
@@ -338,12 +285,9 @@ export function useShellHeader({
       selectedTask,
       selectedChat,
       selectedWorkspace,
-      selectedServer,
       selectedAgent,
       agentRunWorkspaceId: agentRun?.configSnapshot.workspaceId,
       terminalSessions,
-      sessionsByServerId,
-      servers,
       workspaces,
     });
 
@@ -373,10 +317,6 @@ export function useShellHeader({
         return nodeModel
           ? { title: nodeModel.title, scopeSubtitle, detailSubtitle: "Transcript" }
           : { title: "Chat transcript" };
-      case "ssh":
-        return nodeModel
-          ? { ...nodeModel, scopeSubtitle }
-          : { title: "SSH session", scopeSubtitle };
       case "terminal":
         return nodeModel ? { ...nodeModel, scopeSubtitle } : { title: "Terminal" };
       case "workspace":
@@ -388,20 +328,9 @@ export function useShellHeader({
         if (!selectedWorkspace) {
           return { ...nodeModel };
         }
-        const workspaceAgent = selectedWorkspace.serverSettings.agent;
-        if (workspaceAgent.transport === "stdio") {
-          return {
-            ...nodeModel,
-            detailSubtitle: "stdio",
-          };
-        }
-        const workspaceHostname = workspaceAgent.hostname.trim() || "127.0.0.1";
-        const workspacePort = workspaceAgent.port ?? 22;
-        const registeredServer = findRegisteredSshServer(workspaceHostname, servers);
-        const workspaceServerLabel = registeredServer?.config.name ?? workspaceHostname;
         return {
           ...nodeModel,
-          detailSubtitle: workspacePort === 22 ? workspaceServerLabel : `${workspaceServerLabel}:${workspacePort}`,
+          detailSubtitle: selectedWorkspace.executionHostBinding.targetKey,
         };
       case "workspace-files":
         return nodeModel
@@ -415,53 +344,12 @@ export function useShellHeader({
         return nodeModel
           ? { title: nodeModel.title, detailSubtitle: "Workspace settings" }
           : { title: "Workspace settings" };
-      case "ssh-server":
-        if (!selectedServer) {
-          return nodeModel ?? { title: "SSH server" };
-        }
-        const standaloneSessions = sessionsByServerId[selectedServer.config.id] ?? [];
-        return {
-          title: selectedServer.config.name,
-          detailSubtitle: `${selectedServer.config.username}@${selectedServer.config.address}`,
-          badge: `${standaloneSessions.length} session${standaloneSessions.length === 1 ? "" : "s"}`,
-          badgeVariant: "default",
-          badgeIsStatus: false,
-        };
       case "execution-host":
         return nodeModel ?? { title: "Execution server" };
       case "execution-host-files":
         return nodeModel
           ? { title: nodeModel.title, detailSubtitle: "Files" }
           : { title: "Server files" };
-      case "vnc-session":
-        return nodeModel
-          ? {
-              title: nodeModel.title,
-              detailSubtitle: nodeModel.nodeSubtitle
-                ? `VNC session · ${nodeModel.nodeSubtitle}`
-                : "VNC session",
-            }
-          : { title: "VNC session" };
-      case "ssh-server-settings":
-        return nodeModel
-          ? {
-              title: nodeModel.title,
-              detailSubtitle: nodeModel.nodeSubtitle
-                ? `SSH server settings · ${nodeModel.nodeSubtitle}`
-                : "SSH server settings",
-            }
-          : { title: "SSH server settings" };
-      case "server-files":
-        return nodeModel
-          ? {
-              title: nodeModel.title,
-              detailSubtitle: nodeModel.nodeSubtitle
-                ? `Files · ${nodeModel.nodeSubtitle}`
-                : "Files",
-            }
-          : { title: "Server files" };
-      case "server-arise":
-        return nodeModel ? { title: `Arise ${nodeModel.title}` } : { title: "Arise" };
       case "provisioning-job":
         return { title: "Provisioning" };
       case "agent": {
@@ -513,9 +401,7 @@ export function useShellHeader({
               ? getTaskCodeExplorerRootDirectory(selectedTask)
               : contentType === "chat" && selectedChat
                 ? getChatCodeExplorerRootDirectory(selectedChat)
-                : contentType === "server"
-                  ? selectedServer?.config.repositoriesBasePath?.trim() || "/"
-                  : undefined
+                : undefined
         );
         return {
           title: headerNode ? `${headerNode.title} code explorer` : "Code Explorer",
@@ -532,7 +418,6 @@ export function useShellHeader({
         }
         if (
           composeKind === "chat"
-          || composeKind === "ssh-server-chat"
           || composeKind === "execution-host-chat"
         ) {
           return {
@@ -556,15 +441,9 @@ export function useShellHeader({
         if (composeKind === "workspace") {
           return { title: "Create a workspace" };
         }
-        if (composeKind === "ssh-session") {
-          return {
-            title: composeServer ? "Create an SSH session" : "Create a standalone SSH session",
-            scopeSubtitle,
-          };
-        }
         if (composeKind === "ssh-server") {
           return {
-            title: composeServer ? `Edit ${composeServer.config.name}` : "Register a standalone SSH server",
+            title: composeServer ? `Edit ${composeServer.config.name}` : "Register an SSH server",
             scopeSubtitle,
             detailSubtitle: composeServer ? "Update the saved host metadata and optional client-only password." : undefined,
           };
@@ -592,12 +471,10 @@ export function useShellHeader({
     route,
     selectedAgent,
     selectedChat,
-    selectedServer,
     selectedTask,
     selectedWorkspace,
     terminalSessions,
     servers,
-    sessionsByServerId,
     taskId,
     tasksLoading,
     workspaces,

@@ -1,7 +1,7 @@
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { ExecutionHostKind } from "@/shared";
 import type { InteractiveTerminalConnection } from "../../core/terminal";
-import type { WorkspaceTerminalTransport } from "../../core/workspace-terminal-connection";
-import type { WorkspaceTerminalAttachmentHandle } from "../../core/workspace-terminal-attachment-registry";
+import type { TerminalAttachmentHandle } from "../../core/terminal-attachment-registry";
 import type { TcpTunnel } from "../../core/tcp-tunnel";
 
 /**
@@ -9,12 +9,10 @@ import type { TcpTunnel } from "../../core/tcp-tunnel";
  * Stored in the WebSocket's data property for per-connection state.
  */
 export interface WebSocketData {
-  /** Optional standalone SSH server session ID to attach a terminal */
-  sshServerSessionId?: string;
-  /** Canonical workspace terminal session ID */
-  workspaceTerminalSessionId?: string;
+  /** Canonical terminal session ID */
+  terminalSessionId?: string;
   /** Resolved transport for a canonical workspace terminal */
-  workspaceTerminalTransport?: WorkspaceTerminalTransport;
+  terminalTransport?: ExecutionHostKind;
   /** Optional VNC session ID for raw RFB websocket traffic */
   vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
@@ -36,7 +34,7 @@ export interface WebSocketData {
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: Pick<InteractiveTerminalConnection, "sendInput" | "resize" | "dispose">;
   /** Core-owned attachment for canonical workspace terminal sessions */
-  workspaceTerminalAttachment?: WorkspaceTerminalAttachmentHandle;
+  terminalAttachment?: TerminalAttachmentHandle;
   /** Whether this socket relays a mesh ACP session */
   meshAcpMode?: boolean;
   /** Mesh ACP session identifier */

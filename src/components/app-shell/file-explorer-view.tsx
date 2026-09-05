@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { WorkspaceFileEntry, WorkspaceTerminalSession } from "@/shared";
-import type { SshServerSession } from "@/shared/ssh-server";
+import type { WorkspaceFileEntry, TerminalSession } from "@/shared";
 import {
   useFileExplorer,
   useFileExplorerFullTreePreference,
@@ -10,7 +9,6 @@ import {
 } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
-import { SshServerSessionDetails } from "../SshServerSessionDetails";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
@@ -45,11 +43,7 @@ function FileIcon() {
 }
 
 type ExplorerPane = "editor" | "terminal";
-type ExplorerSession = SshServerSession | WorkspaceTerminalSession;
-
-function isWorkspaceTerminalSession(session: ExplorerSession): session is WorkspaceTerminalSession {
-  return "targetBinding" in session.config;
-}
+type ExplorerSession = TerminalSession;
 
 function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
@@ -123,14 +117,14 @@ export function FileExplorerView({
   buildRoute,
 }: FileExplorerViewProps) {
   const toast = useToast();
-  const hasStoredServerCredential = target.type === "server"
+  const hasStoredServerCredential = target.type === "executionHost" && target.kind === "ssh"
     ? getStoredSshServerCredential(target.id) !== null
     : true;
   const [startupBlockedByPassword, setStartupBlockedByPassword] = useState(
-    target.type === "server" && !hasStoredServerCredential,
+    target.type === "executionHost" && target.kind === "ssh" && !hasStoredServerCredential,
   );
   const [serverPasswordModalOpen, setServerPasswordModalOpen] = useState(
-    target.type === "server" && !hasStoredServerCredential,
+    target.type === "executionHost" && target.kind === "ssh" && !hasStoredServerCredential,
   );
   const [serverPassword, setServerPassword] = useState("");
   const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
@@ -198,16 +192,23 @@ export function FileExplorerView({
   }, [fullTreePreference.enabled]);
 
   useEffect(() => {
-    const requiresPasswordBeforeStart = target.type === "server" && !hasStoredServerCredential;
+    const requiresPasswordBeforeStart = target.type === "executionHost"
+      && target.kind === "ssh"
+      && !hasStoredServerCredential;
     setStartupBlockedByPassword(requiresPasswordBeforeStart);
     setServerPasswordModalOpen(requiresPasswordBeforeStart);
     setServerPassword("");
     setServerPasswordError(null);
     setServerPasswordSubmitting(false);
-  }, [hasStoredServerCredential, target.id, target.type]);
+  }, [
+    hasStoredServerCredential,
+    target.id,
+    target.type,
+    target.type === "executionHost" ? target.kind : undefined,
+  ]);
 
   useEffect(() => {
-    if (target.type !== "server") {
+    if (target.type !== "executionHost" || target.kind !== "ssh") {
       return;
     }
 
@@ -218,7 +219,12 @@ export function FileExplorerView({
       setServerPasswordError(explorer.error);
       setServerPasswordModalOpen(true);
     }
-  }, [explorer.error, explorer.errorCode, target.type]);
+  }, [
+    explorer.error,
+    explorer.errorCode,
+    target.type,
+    target.type === "executionHost" ? target.kind : undefined,
+  ]);
 
   useEffect(() => {
     const failure = explorer.operationFailure;
@@ -299,8 +305,9 @@ export function FileExplorerView({
       };
     }
     return {
-      view: "server-files",
-      serverId: target.id,
+      view: "execution-host-files",
+      hostKind: target.kind,
+      hostId: target.id,
       startDirectory,
     };
   }
@@ -429,7 +436,7 @@ export function FileExplorerView({
   }, [backRoute, onNavigate, startupBlockedByPassword]);
 
   const handleSubmitServerPassword = useCallback(async () => {
-    if (target.type !== "server") {
+    if (target.type !== "executionHost" || target.kind !== "ssh") {
       return;
     }
 
@@ -755,15 +762,9 @@ export function FileExplorerView({
                 </div>
               </div>
               <div className="flex min-h-0 flex-1 overflow-hidden">
-                {selectedSession && isWorkspaceTerminalSession(selectedSession) ? (
+                {selectedSession ? (
                   <TerminalSessionDetails
                     terminalSessionId={selectedSessionId}
-                    showBackButton={false}
-                    forcedFocusMode={true}
-                  />
-                ) : selectedSession ? (
-                  <SshServerSessionDetails
-                    sshServerSessionId={selectedSessionId}
                     showBackButton={false}
                     forcedFocusMode={true}
                   />

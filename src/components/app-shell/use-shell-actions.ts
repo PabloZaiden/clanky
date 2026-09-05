@@ -4,10 +4,9 @@ import type {
   Agent,
   Chat,
   SshServer,
-  SshServerSession,
   Task,
   Workspace,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
 import {
@@ -51,12 +50,9 @@ interface UseShellActionsOptions {
   updateChat: UseChatsResult["updateChat"];
   agents: UseAgentsResult;
   updateTask: UseTasksResult["updateTask"];
-  updateStandaloneSession: UseSshServersResult["updateSession"];
   updateServer: UseSshServersResult["updateServer"];
-  refreshSshServers: UseSshServersResult["refresh"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
-  deleteStandaloneSession: UseSshServersResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
   quickChatSettings: UseQuickChatSettingsResult;
   quickChatWorkspace: Workspace | null;
@@ -84,12 +80,9 @@ export function useShellActions({
   updateChat,
   agents,
   updateTask,
-  updateStandaloneSession,
   updateServer,
-  refreshSshServers,
   updateTerminalSession,
   deleteTerminalSession,
-  deleteStandaloneSession,
   createChat,
   quickChatSettings,
   quickChatWorkspace,
@@ -215,11 +208,8 @@ export function useShellActions({
     route,
     navigateWithinShell,
     onError: toast.error,
-    updateStandaloneSession,
-    refreshSshServers,
     updateTerminalSession,
     deleteTerminalSession,
-    deleteStandaloneSession,
     agents,
     createChat,
     quickChatSettings,
@@ -255,7 +245,7 @@ export function useShellActions({
     }
   }, [toast, updateWorkspace]);
 
-  const toggleTerminalSessionPrivate = useCallback(async (session: WorkspaceTerminalSession): Promise<void> => {
+  const toggleTerminalSessionPrivate = useCallback(async (session: TerminalSession): Promise<void> => {
     try {
       await updateTerminalSession(session.config.id, { isPrivate: !session.config.isPrivate });
     } catch (error) {
@@ -269,17 +259,6 @@ export function useShellActions({
       toast.error(server.config.isPrivate ? "Failed to unmark SSH server as private" : "Failed to mark SSH server as private");
     }
   }, [toast, updateServer]);
-
-  const toggleStandaloneSshSessionPrivate = useCallback(async (
-    serverId: string,
-    session: SshServerSession,
-  ): Promise<void> => {
-    try {
-      await updateStandaloneSession(serverId, session.config.id, { isPrivate: !session.config.isPrivate });
-    } catch (error) {
-      toast.error(String(error));
-    }
-  }, [toast, updateStandaloneSession]);
 
   const stopSidebarTask = useCallback(async (task: Task): Promise<void> => {
     try {
@@ -312,7 +291,6 @@ export function useShellActions({
     toggleWorkspacePrivate,
     toggleTerminalSessionPrivate,
     toggleSshServerPrivate,
-    toggleStandaloneSshSessionPrivate,
     stopSidebarTask,
   };
 }

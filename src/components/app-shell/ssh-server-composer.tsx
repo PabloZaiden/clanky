@@ -14,7 +14,6 @@ import {
 
 interface SshServerComposerProps {
   initialServer?: SshServer | null;
-  relatedSessionCount?: number;
   onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
   onCreateServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
@@ -23,7 +22,6 @@ interface SshServerComposerProps {
 
 export function SshServerComposer({
   initialServer,
-  relatedSessionCount = 0,
   onCancel,
   onNavigate,
   onCreateServer,
@@ -66,7 +64,11 @@ export function SshServerComposer({
       const hasChanges = Boolean(request) || Boolean(nextValues.password);
 
       if (!hasChanges) {
-        onNavigate({ view: "ssh-server", serverId: initialServer.config.id });
+        onNavigate({
+          view: "execution-host",
+          hostKind: "ssh",
+          hostId: initialServer.config.id,
+        });
         return;
       }
     }
@@ -94,7 +96,11 @@ export function SshServerComposer({
         toast.error(initialServer ? "Failed to update SSH server" : "Failed to create SSH server");
         return;
       }
-      onNavigate({ view: "ssh-server", serverId: server.config.id });
+      onNavigate({
+        view: "execution-host",
+        hostKind: "ssh",
+        hostId: server.config.id,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +108,7 @@ export function SshServerComposer({
 
   useShellHeaderActions(
     <>
-      <Badge variant="info" size="sm">Standalone SSH</Badge>
+      <Badge variant="info" size="sm">SSH</Badge>
       <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
         Cancel
       </Button>
@@ -118,7 +124,7 @@ export function SshServerComposer({
         values={values}
         onChange={handleChange}
         isEditing={isEditing}
-        relatedSessionCount={relatedSessionCount}
+        relatedSessionCount={0}
         disabled={submitting}
       />
     </form>

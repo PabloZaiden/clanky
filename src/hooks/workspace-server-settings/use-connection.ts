@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
+import type { ExecutionHostRef } from "@/shared";
 import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceConnection(
@@ -12,8 +13,8 @@ export function useWorkspaceConnection(
 
   const testConnection = useCallback(
     async (
-      testSettings?: ServerSettings,
-      executionNodeId?: string | null,
+      testSettings: ServerSettings,
+      executionHost: ExecutionHostRef,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!workspaceId) {
         return { success: false, error: "No workspace selected" };
@@ -28,9 +29,7 @@ export function useWorkspaceConnection(
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: testSettings
-              ? JSON.stringify({ settings: testSettings, executionNodeId })
-              : "{}",
+            body: JSON.stringify({ settings: testSettings, executionHost }),
             action: "Test workspace server connection",
             fallbackMessage: "Failed to test workspace server connection",
           },

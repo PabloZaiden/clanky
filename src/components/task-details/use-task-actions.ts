@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { log, replaceWebAppRoute, type ToastService } from "@pablozaiden/webapp/web";
-import type { WorkspaceTerminalSession } from "@/shared";
+import type { TerminalSession } from "@/shared";
 import type { PullRequestDestinationResponse, UpdateTaskRequest } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
@@ -34,7 +34,7 @@ interface UseTaskActionsOptions {
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
-  connectTerminal: () => Promise<WorkspaceTerminalSession | null>;
+  connectTerminal: () => Promise<TerminalSession | null>;
   update: (request: UpdateTaskRequest) => Promise<boolean>;
   fetchReviewComments: () => Promise<void>;
 }

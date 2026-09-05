@@ -18,7 +18,6 @@ export * from "./preferences";
 export * from "./provisioning";
 export * from "./settings";
 export * from "./ssh-server";
-export * from "./ssh-server-session-events";
 export * from "./terminal-session";
 export * from "./terminal-session-events";
 export * from "./tool-call";

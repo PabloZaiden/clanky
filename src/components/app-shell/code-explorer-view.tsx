@@ -4,12 +4,10 @@ import type {
   Chat,
   ExecutionHostDescriptor,
   Task,
-  TerminalConnectionMode,
   Workspace,
-  WorkspaceTerminalSession,
+  TerminalSession,
 } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
-import type { SshServer, SshServerSession } from "@/shared/ssh-server";
 import { FileExplorerView } from "./file-explorer-view";
 import {
   getCodeExplorerOptionGroups,
@@ -24,14 +22,8 @@ interface CodeExplorerViewProps {
   chats: Chat[];
   executionHosts?: ExecutionHostDescriptor[];
   workspaces: Workspace[];
-  terminalSessions: WorkspaceTerminalSession[];
-  servers: SshServer[];
-  sessionsByServerId: Record<string, SshServerSession[]>;
-  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<WorkspaceTerminalSession>;
-  createStandaloneSession?: (
-    serverId: string,
-    options?: { name?: string; connectionMode?: TerminalConnectionMode; useTmux?: boolean },
-  ) => Promise<SshServerSession>;
+  terminalSessions: TerminalSession[];
+  createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
 }
 
@@ -42,10 +34,7 @@ export function CodeExplorerView({
   executionHosts = [],
   workspaces,
   terminalSessions,
-  servers,
-  sessionsByServerId,
   createTerminalSession,
-  createStandaloneSession,
   onNavigate,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
@@ -53,8 +42,7 @@ export function CodeExplorerView({
     chats,
     executionHosts,
     workspaces,
-    servers,
-  }), [chats, executionHosts, tasks, servers, workspaces]);
+  }), [chats, executionHosts, tasks, workspaces]);
   const groupedOptions = useMemo(() => getCodeExplorerOptionGroups(options), [options]);
   const resolvedTarget = resolveCodeExplorerTarget({
     target: routeTarget,
@@ -63,10 +51,7 @@ export function CodeExplorerView({
     executionHosts,
     workspaces,
     terminalSessions,
-    servers,
-    sessionsByServerId,
     createTerminalSession,
-    createStandaloneSession,
   });
 
   if (!routeTarget || !resolvedTarget) {
@@ -94,9 +79,7 @@ export function CodeExplorerView({
                           ? { workspaceId: option.target.workspaceId }
                           : option.target.contentType === "task"
                             ? { taskId: option.target.taskId }
-                            : option.target.contentType === "server"
-                              ? { serverId: option.target.serverId }
-                              : option.target.contentType === "execution-host"
+                            : option.target.contentType === "execution-host"
                                 ? {
                                     hostKind: option.target.hostKind,
                                     hostId: option.target.hostId,

@@ -7,7 +7,7 @@
  * @see https://www.conventionalcommits.org/en/v1.0.0/
  */
 
-import { normalizeCommitScope } from "../utils/commit-scope";
+import { normalizeCommitScope } from "@/shared";
 
 /** Valid conventional commit types. */
 export const CONVENTIONAL_COMMIT_TYPES = [

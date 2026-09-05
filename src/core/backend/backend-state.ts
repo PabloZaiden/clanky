@@ -5,12 +5,9 @@
  */
 
 import type { Backend } from "../../backends/types";
-import type {
-  ExecutionHostBinding,
-  ExecutionHostRef,
-} from "@/shared/execution-host";
+import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { TaskEvent } from "@/shared/events";
-import type { ConnectionStatus, ServerSettings } from "@/shared/settings";
+import type { ConnectionStatus, RuntimeServerSettings } from "@/shared/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
 import { SSH_CONNECTION_TIMEOUT_MS } from "../ssh-reliability-policy";
 
@@ -34,14 +31,10 @@ export const DEFAULT_CONNECTION_TIMEOUT_MS = SSH_CONNECTION_TIMEOUT_MS;
  */
 export interface WorkspaceConnectionState {
   backend: Backend;
-  settings: ServerSettings;
+  settings: RuntimeServerSettings;
   connectionError: string | null;
-  executionNodeId?: string | null;
   localNodeId?: string | null;
-  executionTargetKind?: "local" | "mesh" | "ssh";
-  executionHostRef?: ExecutionHostRef | null;
   executionHostBinding?: ExecutionHostBinding | null;
-  executionTargetKey?: string;
 }
 
 /**
@@ -60,7 +53,7 @@ export interface DerivedExecutionSettings {
   sshTarget?: SshConnectionTarget;
 }
 
-export function deriveExecutionSettings(settings: ServerSettings): DerivedExecutionSettings {
+export function deriveExecutionSettings(settings: RuntimeServerSettings): DerivedExecutionSettings {
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   if (sshTarget) {
     return {
@@ -75,7 +68,7 @@ export function deriveExecutionSettings(settings: ServerSettings): DerivedExecut
 /**
  * Build a displayable server URL for agent transports that expose host/port.
  */
-export function buildAgentServerUrl(settings: ServerSettings): string | undefined {
+export function buildAgentServerUrl(settings: RuntimeServerSettings): string | undefined {
   if (!REMOTE_AGENT_TRANSPORTS.has(settings.agent.transport) || settings.agent.transport !== "ssh") {
     return undefined;
   }

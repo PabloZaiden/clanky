@@ -23,9 +23,7 @@ type ProvisioningStreamEvent = Extract<
 
 export interface StartProvisioningJobRequest {
   name: string;
-  executionHost?: ExecutionHostRef;
-  sshServerId?: string;
-  executionNodeId?: string;
+  executionHost: ExecutionHostRef;
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
@@ -321,8 +319,11 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     try {
       setStarting(true);
       setError(null);
-      const credentialToken = request.sshServerId
-        ? await resolveProvisioningCredentialToken(request.sshServerId, request.password)
+      const credentialToken = request.executionHost.kind === "ssh"
+        ? await resolveProvisioningCredentialToken(
+          request.executionHost.serverId,
+          request.password,
+        )
         : undefined;
 
       const nextSnapshot = await apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {
@@ -330,9 +331,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: request.name.trim(),
-          executionHost: request.executionHost ?? null,
-          sshServerId: request.sshServerId ?? null,
-          executionNodeId: request.executionNodeId ?? null,
+          executionHost: request.executionHost,
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
           devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,
