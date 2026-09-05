@@ -8,6 +8,7 @@ import {
   formatThoughtDuration,
   formatTime,
   getEntrySpacingClass,
+  getWorkingGroupToolSummary,
 } from "./utils";
 import type {
   DisplayEntry,
@@ -40,9 +41,10 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
   toolPathDisplayRoot,
   onLoadToolDetails,
 }: WorkingGroupEntryProps) {
+  const toolSummary = getWorkingGroupToolSummary(entry.entries, toolPathDisplayRoot);
   const summary = entry.isActive
-    ? "Working…"
-    : `Worked for ${formatThoughtDuration(entry.timestamp, entry.endedAt ?? entry.lastTimestamp)}`;
+    ? `Thinking and using ${toolSummary}…`
+    : `Worked for ${formatThoughtDuration(entry.timestamp, entry.endedAt ?? entry.lastTimestamp)} - thought and used ${toolSummary}`;
   const groupedChildEntries = useMemo(
     () => annotateDisplayEntries(entry.entries).filter(
       (childEntry): childEntry is WorkingChildDisplayEntry =>

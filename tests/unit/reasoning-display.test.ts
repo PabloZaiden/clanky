@@ -4,6 +4,7 @@ import type { EntryBase, LogEntry } from "../../src/components/log-viewer/types"
 import {
   annotateReasoningBoundaries,
   formatThoughtDuration,
+  getWorkingGroupToolSummary,
   groupConsecutiveEntries,
   isReasoningLogEntry,
 } from "../../src/components/log-viewer/utils";
@@ -38,13 +39,28 @@ function createReasoningEntry(
 function createToolEntry(
   id: string,
   timestamp: string,
+  summary?: string,
 ): Extract<EntryBase, { type: "tool" }> {
-  const tool: ToolCallDisplayData = {
-    id,
-    name: "read",
-    status: "completed",
-    timestamp,
-  };
+  const tool: ToolCallDisplayData = summary
+    ? {
+        id,
+        name: "view",
+        status: "completed",
+        timestamp,
+        summary,
+        kind: "view",
+        outputLabel: "Result",
+        outputType: "text",
+        hasInput: false,
+        hasOutput: false,
+        detailAvailable: true,
+      }
+    : {
+        id,
+        name: "read",
+        status: "completed",
+        timestamp,
+      };
   return {
     type: "tool",
     data: tool,
@@ -155,6 +171,69 @@ describe("reasoning display helpers", () => {
         "tool-mixed-2",
       ]);
     }
+  });
+
+  test("shows individual tool details for short mixed working groups", () => {
+    const grouped = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-detail",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry(
+        "tool-detail-1",
+        "2026-09-05T00:00:01.000Z",
+        "View src/one.ts",
+      ),
+      createToolEntry(
+        "tool-detail-2",
+        "2026-09-05T00:00:02.000Z",
+        "Edit src/two.ts",
+      ),
+      createReasoningEntry("reasoning-detail-end", "2026-09-05T00:00:03.000Z"),
+    ], true);
+
+    const workingGroup = grouped[0];
+    expect(workingGroup?.type).toBe("working-group");
+    if (workingGroup?.type !== "working-group") {
+      return;
+    }
+
+    expect(getWorkingGroupToolSummary(workingGroup.entries)).toBe(
+      "2 tools: View src/one.ts, Edit src/two.ts",
+    );
+  });
+
+  test("uses the total call count for larger mixed working groups", () => {
+    const grouped = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-count-1",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-count-1", "2026-09-05T00:00:01.000Z", "View one"),
+      createReasoningEntry(
+        "reasoning-count-2",
+        "2026-09-05T00:00:02.000Z",
+        "2026-09-05T00:00:03.000Z",
+      ),
+      createToolEntry("tool-count-2", "2026-09-05T00:00:03.000Z", "View two"),
+      createReasoningEntry(
+        "reasoning-count-3",
+        "2026-09-05T00:00:04.000Z",
+        "2026-09-05T00:00:05.000Z",
+      ),
+      createToolEntry("tool-count-3", "2026-09-05T00:00:05.000Z", "View three"),
+    ], true);
+
+    const workingGroup = grouped[0];
+    expect(workingGroup?.type).toBe("working-group");
+    if (workingGroup?.type !== "working-group") {
+      return;
+    }
+
+    expect(workingGroup.entries.filter((entry) => entry.type === "tool-group")).toHaveLength(3);
+    expect(getWorkingGroupToolSummary(workingGroup.entries)).toBe("3 tools");
   });
 
   test("uses the first following event to close a mixed working group", () => {

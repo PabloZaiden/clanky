@@ -1,3 +1,4 @@
+import { getToolMeta } from "./tool-inference";
 import type { LogLevel } from "@/shared";
 import type {
   EntryBase,
@@ -16,6 +17,38 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+
+const MAX_TOOL_DETAIL_SUMMARY_LENGTH = 72;
+const MAX_WORKING_TOOL_DETAIL_COUNT = 2;
+
+export function truncateToolSummary(summary: string): string {
+  const suffix = "...";
+  return summary.length > MAX_TOOL_DETAIL_SUMMARY_LENGTH
+    ? `${summary.slice(0, MAX_TOOL_DETAIL_SUMMARY_LENGTH - suffix.length)}${suffix}`
+    : summary;
+}
+
+export function getWorkingGroupToolSummary(
+  entries: WorkingGroupEntryBase["entries"],
+  toolPathDisplayRoot?: string,
+): string {
+  const tools = entries.flatMap((entry) => entry.type === "tool-group" ? entry.tools : []);
+  const toolCountLabel = `${tools.length} tool${tools.length === 1 ? "" : "s"}`;
+
+  if (tools.length === 0 || tools.length > MAX_WORKING_TOOL_DETAIL_COUNT) {
+    return toolCountLabel;
+  }
+
+  const summaries = tools
+    .map((tool) => truncateToolSummary(
+      getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot }).summary,
+    ))
+    .filter((summary) => summary.length > 0);
+
+  return summaries.length > 0
+    ? `${toolCountLabel}: ${summaries.join(", ")}`
+    : toolCountLabel;
+}
 
 /**
  * Format a timestamp for display.

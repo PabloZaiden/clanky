@@ -1,7 +1,12 @@
 import { memo, useId, useMemo, useState } from "react";
 import type { DisplayEntry, ToolGroupEntryBase } from "./types";
 import type { ToolCallData } from "@/shared";
-import { annotateDisplayEntries, formatTime, getEntrySpacingClass } from "./utils";
+import {
+  annotateDisplayEntries,
+  formatTime,
+  getEntrySpacingClass,
+  truncateToolSummary,
+} from "./utils";
 import { ToolEntry } from "./tool-entry";
 import { getToolMeta, type InferredToolKind } from "./tool-inference";
 
@@ -13,12 +18,6 @@ interface ToolGroupEntryProps {
   spacingClass: string;
   toolPathDisplayRoot?: string;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
-}
-
-function truncateToolSummary(summary: string): string {
-  const maxLength = 72;
-  const suffix = "...";
-  return summary.length > maxLength ? `${summary.slice(0, maxLength - suffix.length)}${suffix}` : summary;
 }
 
 function getPluralToolLabel(kind: InferredToolKind): string {
