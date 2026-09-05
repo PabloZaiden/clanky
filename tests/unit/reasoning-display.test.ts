@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ToolCallDisplayData } from "../../src/shared";
 import type { EntryBase, LogEntry } from "../../src/components/log-viewer/types";
 import {
   annotateReasoningBoundaries,
@@ -16,6 +17,37 @@ function createReasoningLog(id: string, timestamp: string, content: string): Log
       logKind: "reasoning",
       responseContent: content,
     },
+    timestamp,
+  };
+}
+
+function createReasoningEntry(
+  id: string,
+  timestamp: string,
+  reasoningEndTimestamp?: string,
+): Extract<EntryBase, { type: "log" }> {
+  return {
+    type: "log",
+    data: createReasoningLog(id, timestamp, id),
+    timestamp,
+    reasoningGroupId: id,
+    reasoningEndTimestamp,
+  };
+}
+
+function createToolEntry(
+  id: string,
+  timestamp: string,
+): Extract<EntryBase, { type: "tool" }> {
+  const tool: ToolCallDisplayData = {
+    id,
+    name: "read",
+    status: "completed",
+    timestamp,
+  };
+  return {
+    type: "tool",
+    data: tool,
     timestamp,
   };
 }
@@ -81,6 +113,114 @@ describe("reasoning display helpers", () => {
     expect(reasoningGroup.endedAt).toBe(nextMessage.timestamp);
     expect(reasoningGroup.isActive).toBe(false);
     expect(grouped[1]?.type).toBe("message");
+  });
+
+  test("keeps consecutive tools unwrapped while wrapping mixed activity", () => {
+    const pureTools = groupConsecutiveEntries([
+      createToolEntry("tool-only-1", "2026-09-05T00:00:00.000Z"),
+      createToolEntry("tool-only-2", "2026-09-05T00:00:01.000Z"),
+    ], true);
+
+    expect(pureTools).toHaveLength(1);
+    expect(pureTools[0]?.type).toBe("tool-group");
+
+    const mixed = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-mixed-1",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-mixed-1", "2026-09-05T00:00:01.000Z"),
+      createToolEntry("tool-mixed-2", "2026-09-05T00:00:02.000Z"),
+      createReasoningEntry("reasoning-mixed-2", "2026-09-05T00:00:03.000Z"),
+    ], true);
+
+    expect(mixed).toHaveLength(1);
+    const workingGroup = mixed[0];
+    expect(workingGroup?.type).toBe("working-group");
+    if (workingGroup?.type !== "working-group") {
+      return;
+    }
+    expect(workingGroup.isActive).toBe(true);
+    expect(workingGroup.entries.map((entry) => entry.type)).toEqual([
+      "reasoning-group",
+      "tool-group",
+      "reasoning-group",
+    ]);
+    const toolGroup = workingGroup.entries[1];
+    expect(toolGroup?.type).toBe("tool-group");
+    if (toolGroup?.type === "tool-group") {
+      expect(toolGroup.tools.map((tool) => tool.id)).toEqual([
+        "tool-mixed-1",
+        "tool-mixed-2",
+      ]);
+    }
+  });
+
+  test("uses the first following event to close a mixed working group", () => {
+    const responseTimestamp = "2026-09-05T00:00:10.000Z";
+    const grouped = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-completed",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-completed", "2026-09-05T00:00:01.000Z"),
+      {
+        type: "message",
+        data: {
+          id: "response-message",
+          role: "assistant",
+          content: "Finished",
+          timestamp: responseTimestamp,
+        },
+        timestamp: responseTimestamp,
+      },
+    ], true);
+
+    const workingGroup = grouped[0];
+    expect(workingGroup?.type).toBe("working-group");
+    if (workingGroup?.type !== "working-group") {
+      return;
+    }
+    expect(workingGroup.endedAt).toBe(responseTimestamp);
+    expect(workingGroup.isActive).toBe(false);
+    expect(formatThoughtDuration(workingGroup.timestamp, workingGroup.endedAt!)).toBe("10 seconds");
+    expect(grouped[1]?.type).toBe("message");
+  });
+
+  test("does not join mixed runs across a hidden response boundary", () => {
+    const firstBoundaryTimestamp = "2026-09-05T00:00:02.000Z";
+    const grouped = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-before-response",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-before-response", "2026-09-05T00:00:01.000Z"),
+      {
+        type: "response-boundary",
+        id: "hidden-response",
+        timestamp: firstBoundaryTimestamp,
+      },
+      createReasoningEntry(
+        "reasoning-after-response",
+        "2026-09-05T00:00:03.000Z",
+        "2026-09-05T00:00:04.000Z",
+      ),
+      createToolEntry("tool-after-response", "2026-09-05T00:00:04.000Z"),
+    ], true);
+
+    expect(grouped).toHaveLength(2);
+    const firstGroup = grouped[0];
+    const secondGroup = grouped[1];
+    expect(firstGroup?.type).toBe("working-group");
+    expect(secondGroup?.type).toBe("working-group");
+    if (firstGroup?.type !== "working-group" || secondGroup?.type !== "working-group") {
+      return;
+    }
+    expect(firstGroup.endedAt).toBe(firstBoundaryTimestamp);
+    expect(secondGroup.isActive).toBe(true);
   });
 
   test("keeps adjacent reasoning runs separate when their end timestamps differ", () => {

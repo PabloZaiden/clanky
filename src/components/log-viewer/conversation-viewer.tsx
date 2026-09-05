@@ -13,6 +13,7 @@ import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { ReasoningGroupEntry } from "./reasoning-group-entry";
+import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
@@ -73,6 +74,11 @@ export const ConversationViewer = memo(function ConversationViewer({
 
     messages.forEach((msg) => {
       if (msg.role === "assistant" && !showAssistantMessages) {
+        result.push({
+          type: "response-boundary",
+          id: `assistant-response-${msg.id}`,
+          timestamp: msg.timestamp,
+        });
         return;
       }
       result.push({ type: "message", data: msg, timestamp: msg.timestamp });
@@ -107,11 +113,16 @@ export const ConversationViewer = memo(function ConversationViewer({
       }
 
       if (isResponseLogEntry(logEntry)) {
-        if (!showResponseLogs) return;
         const content = logEntry.details?.["responseContent"];
-        if (typeof content === "string" && content.length > 0) {
-          result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
+        if (!showResponseLogs || typeof content !== "string" || content.length === 0) {
+          result.push({
+            type: "response-boundary",
+            id: `response-log-${logEntry.id}`,
+            timestamp: logEntry.timestamp,
+          });
+          return;
         }
+        result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
         return;
       }
 
@@ -142,6 +153,9 @@ export const ConversationViewer = memo(function ConversationViewer({
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const isEmpty = groupedEntries.length === 0;
+  const hasActiveWorkingGroup = visibleEntries.some(
+    (entry) => entry.type === "working-group" && entry.isActive,
+  );
   const { containerRef, contentRef } = useStickyBottomScroll([
     visibleEntries,
     isActive,
@@ -221,6 +235,18 @@ export const ConversationViewer = memo(function ConversationViewer({
                     fileLinkContext={resolvedFileLinkContext}
                   />
                 );
+              } else if (entry.type === "working-group") {
+                return (
+                  <WorkingGroupEntry
+                    key={`working-group-${entry.id}`}
+                    entry={entry}
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    fileLinkContext={resolvedFileLinkContext}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
               } else {
                 return (
                   <LogEntryItem
@@ -235,7 +261,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                 );
               }
             })}
-            {isActive && !isEmpty && (
+            {isActive && !isEmpty && !hasActiveWorkingGroup && (
               <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
                 <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
                 <span>{activeStateMessage}</span>
