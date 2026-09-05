@@ -90,6 +90,7 @@ export interface ShellSidebarCompositionOptions {
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   executionHostNodes: SidebarExecutionHostNode[];
   executionHosts: ExecutionHostDescriptor[];
+  remoteOnly: boolean;
   chats: Chat[];
   terminalSessions: TerminalSession[];
   workspaces: Workspace[];
@@ -685,6 +686,7 @@ function buildSidebarNodes(
     sidebarWorkspaceGroups,
     executionHostNodes,
     executionHosts,
+    remoteOnly,
     chats,
     terminalSessions,
     workspaces,
@@ -980,6 +982,7 @@ function buildSidebarNodes(
     .map(buildWorkspaceNode));
 
   const unifiedServerNodes = executionHosts
+    .filter((host) => !remoteOnly || host.ref.kind !== "local")
     .map((host): SidebarNode => {
       const hostId = executionHostId(host);
       const belongsToHost = (ref: import("@/shared").ExecutionHostRef | undefined) => {
