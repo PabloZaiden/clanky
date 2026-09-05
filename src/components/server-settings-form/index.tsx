@@ -11,6 +11,7 @@ import {
   type ExecutionHostRef,
   type ServerSettings,
 } from "@/shared";
+import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
@@ -82,30 +83,32 @@ export function ServerSettingsForm({
   useEffect(() => {
     const nextProvider =
       initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
-    setProvider(nextProvider);
-    setExecutionHost(initialExecutionHost);
-    setSshTarget(
-      initialSshTarget
+    const workspaceSshRef = initialExecutionHost
+      && isWorkspaceSshExecutionHostRef(initialExecutionHost);
+    const nextExecutionHost = workspaceSshRef ? null : initialExecutionHost;
+    const nextSshTarget = initialSshTarget
+      ? {
+        host: initialSshTarget.host,
+        port: initialSshTarget.port,
+        username: initialSshTarget.username,
+      }
+      : workspaceSshRef
         ? {
-          host: initialSshTarget.host,
-          port: initialSshTarget.port,
-          username: initialSshTarget.username,
+          host: "",
+          port: 22,
+          username: "",
         }
-        : null,
-    );
+        : null;
+    setProvider(nextProvider);
+    setExecutionHost(nextExecutionHost);
+    setSshTarget(nextSshTarget);
     setClearStoredPassword(false);
     setTestResult(null);
     onChangeRef.current(
       { agent: { provider: nextProvider } },
-      initialExecutionHost !== null || initialSshTarget !== null,
-      initialExecutionHost,
-      initialSshTarget
-        ? {
-          host: initialSshTarget.host,
-          port: initialSshTarget.port,
-          username: initialSshTarget.username,
-        }
-        : null,
+      nextExecutionHost !== null || isSshTargetValid(nextSshTarget),
+      nextExecutionHost,
+      nextSshTarget,
     );
   }, [initialExecutionHost, initialSshTarget, initialSettings]);
 
@@ -123,8 +126,9 @@ export function ServerSettingsForm({
     setTestResult(null);
     onChangeRef.current(
       { agent: { provider: nextProvider } },
-      executionHost !== null,
+      executionHost !== null || isSshTargetValid(sshTarget),
       executionHost,
+      sshTarget,
     );
   }
 
