@@ -525,29 +525,49 @@ describe("database schema", () => {
       }
     });
 
-    test("migration v46 rejects a valid resource without a canonical host", () => {
-      const db = new Database(":memory:");
-      const now = "2026-01-01T00:00:00.000Z";
-      try {
-        createCanonicalMigrationFixture(db);
-        db.run(`
-          INSERT INTO workspaces (
-            id, user_id, name, directory, workspace_type,
-            execution_target_revision, server_fingerprint, server_settings,
-            created_at, updated_at
-          ) VALUES (
-            'unresolved-workspace', 'user-1', 'Project', '/srv/project', 'git',
-            1, 'legacy-fingerprint', '{}', ?, ?
-          )
-        `, [now, now]);
+  test("migration v46 rejects a valid resource without a canonical host", () => {
+    const db = new Database(":memory:");
+    const now = "2026-01-01T00:00:00.000Z";
+    try {
+      createCanonicalMigrationFixture(db);
+      db.run(`
+        INSERT INTO workspaces (
+          id, user_id, name, directory, workspace_type,
+          execution_target_revision, server_fingerprint, server_settings,
+          created_at, updated_at
+        ) VALUES (
+          'unresolved-workspace', 'user-1', 'Project', '/srv/project', 'git',
+          1, 'legacy-fingerprint', '{}', ?, ?
+        )
+      `, [now, now]);
 
-        expect(() => migrateCanonicalExecutionHosts(db)).toThrow(
-          "Cannot canonicalize workspaces with an unresolved execution host: unresolved-workspace",
-        );
-      } finally {
-        db.close();
-      }
-    });
+      expect(() => migrateCanonicalExecutionHosts(db)).toThrow(
+        "Cannot canonicalize workspaces with an unresolved execution host: unresolved-workspace",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v46 discards a VNC session without a canonical host", () => {
+    const db = new Database(":memory:");
+    const now = "2026-01-01T00:00:00.000Z";
+    try {
+      createCanonicalMigrationFixture(db);
+      db.run(`
+        INSERT INTO vnc_sessions (
+          id, user_id, ssh_server_id, remote_port, local_port, created_at,
+          updated_at, status
+        ) VALUES ('orphan-vnc', 'user-1', NULL, 5900, 15900, ?, ?, 'stopped')
+      `, [now, now]);
+
+      migrateCanonicalExecutionHosts(db);
+
+      expect(db.query("SELECT id FROM vnc_sessions").all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
 
   test("migration v5 creates preview sessions with the baseline status default", () => {
     const migration = migrations.find((candidate) => candidate.version === 5);
