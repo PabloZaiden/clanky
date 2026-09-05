@@ -14,6 +14,16 @@
 import type { ServerSettings } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
 
+export interface WorkspaceSshTarget {
+  kind: "ssh";
+  host: string;
+  port: number;
+  username: string;
+  credentialConfigured: boolean;
+  targetKey: string;
+  revision: number;
+}
+
 /**
  * A workspace represents a user-selected execution context for Clanky Tasks.
  *
@@ -34,6 +44,10 @@ export interface Workspace {
   executionTargetRevision: number;
   /** Canonical immutable execution-host binding. */
   executionHostBinding: ExecutionHostBinding;
+  /** Registered host used to provision an isolated workspace, when applicable. */
+  provisioningHostBinding?: ExecutionHostBinding;
+  /** Workspace-owned SSH target used by the execution runtime, when applicable. */
+  sshTarget?: WorkspaceSshTarget;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */

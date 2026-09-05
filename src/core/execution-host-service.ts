@@ -12,6 +12,7 @@ import {
   DEFAULT_EXECUTION_HOST_CAPABILITIES,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
+  isWorkspaceSshExecutionHostRef,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import {
@@ -38,6 +39,7 @@ import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { sshServerManager } from "./ssh-server-manager";
 import { requireCurrentUserId } from "./user-context";
+import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 
 export interface ExecutionHostCommandContext {
   directory: string;
@@ -300,7 +302,18 @@ export class ExecutionHostService {
     context: ExecutionHostCommandContext,
   ): Promise<CommandExecutor> {
     const userId = context.localUserId ?? requireCurrentUserId();
-    if (host.kind !== "ssh" && this.testExecutorFactory) {
+    if (this.testExecutorFactory && host.kind !== "ssh") {
+      return this.testExecutorFactory(context.directory);
+    }
+    if (this.testExecutorFactory && isWorkspaceSshExecutionHostRef(host)) {
+      const target = await getWorkspaceSshTarget(host.workspaceId, userId);
+      if (!target) {
+        throw new DomainError(
+          "workspace_execution_target_missing",
+          "The workspace SSH execution target is not configured.",
+          { details: { workspaceId: host.workspaceId } },
+        );
+      }
       return this.testExecutorFactory(context.directory);
     }
     if (host.kind === "local") {
@@ -338,10 +351,45 @@ export class ExecutionHostService {
         identityFile: context.sshTargetOverride.identityFile,
       });
     }
+    if (isWorkspaceSshExecutionHostRef(host)) {
+      const target = await getWorkspaceSshTarget(host.workspaceId, userId);
+      if (!target) {
+        throw new DomainError(
+          "workspace_execution_target_missing",
+          "The workspace SSH execution target is not configured.",
+          { details: { workspaceId: host.workspaceId } },
+        );
+      }
+      return new CommandExecutorImpl({
+        provider: "ssh",
+        directory: context.directory,
+        host: target.host,
+        port: target.port,
+        user: target.username,
+        password: target.password,
+      });
+    }
     return (await sshServerManager.getCommandExecutor(
       host.serverId,
       context.sshPassword,
     )).executor;
+  }
+
+  async getCommandExecutorForSshTarget(
+    target: SshConnectionTarget,
+    context: Pick<ExecutionHostCommandContext, "directory" | "operationId"> & {
+      sshPassword?: string;
+    },
+  ): Promise<CommandExecutor> {
+    return new CommandExecutorImpl({
+      provider: "ssh",
+      directory: context.directory,
+      host: target.host,
+      port: target.port,
+      user: target.username,
+      password: target.password ?? context.sshPassword,
+      identityFile: target.identityFile,
+    });
   }
 }
 

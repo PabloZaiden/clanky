@@ -68,11 +68,12 @@ export function WorkspaceSettingsView({
           <WorkspaceSettingsForm
             workspace={workspaceFromHook}
             status={workspaceStatus}
-            onSave={async (name, settings, executionHost, archived, allowClankyContext) => {
+            onSave={async (name, settings, executionHost, sshTarget, archived, allowClankyContext) => {
               const success = await updateWorkspaceSettings(
                 name,
                 settings,
                 executionHost,
+                sshTarget,
                 archived,
                 allowClankyContext,
               );

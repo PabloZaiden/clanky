@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
@@ -93,9 +94,13 @@ export function EmptyWorkspacesSection({
             const options: DeleteWorkspaceRequest = {};
             if (deleteServerDirectory && isAutoProvisionedWorkspace(deleteWorkspace)) {
               options.deleteServerDirectory = true;
-              const host = deleteWorkspace.executionHostBinding.host;
-              if (host.kind === "ssh") {
-                options.credentialToken = await getStoredSshCredentialToken(host.serverId);
+              const host = (
+                deleteWorkspace.provisioningHostBinding
+                ?? deleteWorkspace.executionHostBinding
+              ).host;
+              const serverId = getRegisteredSshServerId(host);
+              if (serverId) {
+                options.credentialToken = await getStoredSshCredentialToken(serverId);
               }
             }
             const result = await onDeleteWorkspace(deleteWorkspace.id, options);

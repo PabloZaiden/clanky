@@ -1,12 +1,20 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
-import type { ExecutionHostRef, Workspace, WorkspaceType } from "@/shared";
+import {
+  getRegisteredSshServerId,
+  type ExecutionHostRef,
+  type Workspace,
+  type WorkspaceType,
+} from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
   getCreateWorkspaceDefaultServerSettings,
 } from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
-import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
+import type {
+  CreateWorkspaceRequest,
+  WorkspaceSshTargetRequest,
+} from "@/contracts/schemas/workspace";
 import type { SshServer } from "@/shared/ssh-server";
 import { apiRequest } from "../../lib/api-client";
 import {
@@ -28,6 +36,8 @@ export interface UseWorkspaceCreateResult {
   workspaceServerSettings: ServerSettings;
   workspaceExecutionHost: ExecutionHostRef | null;
   setWorkspaceExecutionHost: (host: ExecutionHostRef | null) => void;
+  workspaceSshTarget: WorkspaceSshTargetRequest | null;
+  setWorkspaceSshTarget: (target: WorkspaceSshTargetRequest | null) => void;
   setWorkspaceServerSettings: (settings: ServerSettings | ((current: ServerSettings) => ServerSettings)) => void;
   workspaceServerSettingsValid: boolean;
   setWorkspaceServerSettingsValid: (valid: boolean) => void;
@@ -56,7 +66,8 @@ export interface UseWorkspaceCreateResult {
   handleCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void;
   handleTestWorkspaceConnection: (
     settings: ServerSettings,
-    executionHost: ExecutionHostRef,
+    executionHost: ExecutionHostRef | null,
+    sshTarget?: WorkspaceSshTargetRequest | null,
   ) => Promise<{ success: boolean; error?: string }>;
   handleBackToAutomaticWorkspaceForm: () => void;
 }
@@ -88,6 +99,7 @@ export function useWorkspaceCreate({
     getCreateWorkspaceDefaultServerSettings(),
   );
   const [workspaceExecutionHost, setWorkspaceExecutionHost] = useState<ExecutionHostRef | null>(null);
+  const [workspaceSshTarget, setWorkspaceSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
@@ -163,6 +175,7 @@ export function useWorkspaceCreate({
     setWorkspaceType("git");
     setWorkspaceServerSettings(getCreateWorkspaceDefaultServerSettings());
     setWorkspaceExecutionHost(null);
+    setWorkspaceSshTarget(null);
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
@@ -185,8 +198,8 @@ export function useWorkspaceCreate({
     setAutomaticBasePath(
       getRouteString(route, "basePath")
         ?? getAutomaticWorkspaceBasePath(
-          requestedExecutionHost?.kind === "ssh"
-            ? servers.find((server) => server.config.id === requestedExecutionHost.serverId) ?? null
+          requestedExecutionHost
+            ? servers.find((server) => server.config.id === getRegisteredSshServerId(requestedExecutionHost)) ?? null
             : defaultAutomaticServer,
         ),
     );
@@ -234,7 +247,8 @@ export function useWorkspaceCreate({
 
   async function handleTestWorkspaceConnection(
     settings: ServerSettings,
-    executionHost: ExecutionHostRef,
+    executionHost: ExecutionHostRef | null,
+    sshTarget?: WorkspaceSshTargetRequest | null,
   ) {
     const trimmedDirectory = workspaceDirectory.trim();
     if (!trimmedDirectory) {
@@ -246,7 +260,12 @@ export function useWorkspaceCreate({
       return await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings, directory: trimmedDirectory, executionHost }),
+        body: JSON.stringify({
+          settings,
+          directory: trimmedDirectory,
+          ...(executionHost ? { executionHost } : {}),
+          ...(sshTarget ? { sshTarget } : {}),
+        }),
         action: "Test server connection",
         fallbackMessage: "Failed to test server connection",
       });
@@ -331,7 +350,11 @@ export function useWorkspaceCreate({
       }
 
       const directory = workspaceDirectory.trim();
-      if (!directory || !workspaceServerSettingsValid) {
+      if (
+        !directory
+        || !workspaceServerSettingsValid
+        || (!workspaceExecutionHost && !workspaceSshTarget)
+      ) {
         toast.error("Directory and valid connection settings are required.");
         return;
       }
@@ -343,7 +366,8 @@ export function useWorkspaceCreate({
           directory,
           workspaceType,
           serverSettings: workspaceServerSettings,
-          executionHost: workspaceExecutionHost!,
+          ...(workspaceExecutionHost ? { executionHost: workspaceExecutionHost } : {}),
+          ...(workspaceSshTarget ? { sshTarget: workspaceSshTarget } : {}),
         };
         const workspace = await createWorkspace(request);
         if (!workspace) {
@@ -369,6 +393,8 @@ export function useWorkspaceCreate({
     workspaceServerSettings,
     workspaceExecutionHost,
     setWorkspaceExecutionHost,
+    workspaceSshTarget,
+    setWorkspaceSshTarget,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,

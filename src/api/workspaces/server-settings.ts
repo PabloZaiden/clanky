@@ -136,7 +136,9 @@ export const serverSettingsRoutes = defineRoutes({
         // Optionally accept settings in the body to test proposed settings
         // If no body, use the workspace's current settings
         let settings = workspace.serverSettings;
-        let executionHost = workspace.executionHostBinding.host;
+        let executionHost: typeof workspace.executionHostBinding.host | undefined =
+          workspace.executionHostBinding.host;
+        let sshTarget = undefined;
 
         const bodyText = await req.text();
         if (bodyText.trim()) {
@@ -163,6 +165,7 @@ export const serverSettingsRoutes = defineRoutes({
             if (proposed.success && "settings" in (bodyJson as object)) {
               settings = proposed.data.settings;
               executionHost = proposed.data.executionHost;
+              sshTarget = proposed.data.sshTarget;
             } else {
               const parsedSettings = ServerSettingsSchema.safeParse(bodyJson);
               if (!parsedSettings.success) {
@@ -180,6 +183,7 @@ export const serverSettingsRoutes = defineRoutes({
           settings,
           workspace.directory,
           executionHost,
+          sshTarget,
         );
         return Response.json(result);
       } catch (error) {
@@ -209,13 +213,14 @@ export const serverSettingsRoutes = defineRoutes({
         return result.response;
       }
 
-      const { settings, directory, executionHost } = result.data;
+      const { settings, directory, executionHost, sshTarget } = result.data;
 
       try {
         const testResult = await workspaceManager.testConnection(
           settings,
           directory,
           executionHost,
+          sshTarget,
         );
         return Response.json(testResult);
       } catch (error) {

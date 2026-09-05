@@ -16,10 +16,13 @@ export interface ExecutionHostModelConfig extends ModelConfig {
 export const EXECUTION_HOST_KINDS = ["local", "mesh", "ssh"] as const;
 export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 
+export const WORKSPACE_SSH_TARGET_SOURCE_PREFIX = "workspace-target:";
+
 export type ExecutionHostRef =
   | { kind: "local"; nodeId: string }
   | { kind: "mesh"; nodeId: string }
-  | { kind: "ssh"; serverId: string };
+  | { kind: "ssh"; serverId: string; scope?: "server" }
+  | { kind: "ssh"; scope: "workspace"; workspaceId: string };
 
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
@@ -102,6 +105,21 @@ export interface ExecutionHostBinding {
   revision: number;
 }
 
+export function isWorkspaceSshExecutionHostRef(
+  ref: ExecutionHostRef,
+): ref is Extract<ExecutionHostRef, { kind: "ssh"; scope: "workspace" }> {
+  return ref.kind === "ssh" && ref.scope === "workspace";
+}
+
+export function getRegisteredSshServerId(
+  ref: ExecutionHostRef,
+): string | null {
+  if (ref.kind !== "ssh" || isWorkspaceSshExecutionHostRef(ref)) {
+    return null;
+  }
+  return ref.serverId;
+}
+
 export interface ExecutionHostDescriptor {
   ref: ExecutionHostRef;
   targetKey: string;
@@ -134,7 +152,12 @@ export function getExecutionHostAgentProvider(
 }
 
 export function getExecutionHostSourceId(ref: ExecutionHostRef): string {
-  return ref.kind === "ssh" ? ref.serverId : ref.nodeId;
+  if (ref.kind === "ssh") {
+    return isWorkspaceSshExecutionHostRef(ref)
+      ? `${WORKSPACE_SSH_TARGET_SOURCE_PREFIX}${ref.workspaceId}`
+      : ref.serverId;
+  }
+  return ref.nodeId;
 }
 
 export function executionHostRefFromParts(
@@ -145,6 +168,12 @@ export function executionHostRefFromParts(
     return { kind, nodeId: sourceId };
   }
   if (kind === "ssh") {
+    if (sourceId.startsWith(WORKSPACE_SSH_TARGET_SOURCE_PREFIX)) {
+      const workspaceId = sourceId.slice(WORKSPACE_SSH_TARGET_SOURCE_PREFIX.length).trim();
+      return workspaceId
+        ? { kind: "ssh", scope: "workspace", workspaceId }
+        : null;
+    }
     return { kind, serverId: sourceId };
   }
   return null;

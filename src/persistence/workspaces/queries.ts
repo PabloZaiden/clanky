@@ -12,7 +12,10 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToWorkspace } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
-import { EXECUTION_HOST_JOIN_COLUMNS } from "../execution-hosts";
+import {
+  EXECUTION_HOST_JOIN_COLUMNS,
+  PROVISIONING_HOST_JOIN_COLUMNS,
+} from "../execution-hosts";
 
 const log = createLogger("persistence:workspaces");
 
@@ -24,11 +27,24 @@ export async function listWorkspaces(): Promise<Workspace[]> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const stmt = db.prepare(`
-    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS},
+      ${PROVISIONING_HOST_JOIN_COLUMNS},
+      workspace_target.host AS workspace_ssh_target_host,
+      workspace_target.port AS workspace_ssh_target_port,
+      workspace_target.username AS workspace_ssh_target_username,
+      workspace_target.password_ciphertext IS NOT NULL AS workspace_ssh_target_password_configured,
+      workspace_target.target_key AS workspace_ssh_target_key,
+      workspace_target.revision AS workspace_ssh_target_revision
     FROM workspaces workspace
     LEFT JOIN execution_hosts execution_host
       ON execution_host.id = workspace.execution_host_id
       AND execution_host.user_id = workspace.user_id
+    LEFT JOIN execution_hosts provisioning_host
+      ON provisioning_host.id = workspace.provisioning_host_id
+      AND provisioning_host.user_id = workspace.user_id
+    LEFT JOIN workspace_execution_targets workspace_target
+      ON workspace_target.workspace_id = workspace.id
+      AND workspace_target.user_id = workspace.user_id
     WHERE workspace.user_id = ?
     ORDER BY workspace.name COLLATE NOCASE ASC
   `);

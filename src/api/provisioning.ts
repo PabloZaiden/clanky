@@ -12,6 +12,7 @@ import {
   shouldIncludeSensitiveData,
 } from "../lib/sensitive-data";
 import { SensitiveQuerySchema } from "./route-schemas";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 
 const log = createLogger("api:provisioning");
 
@@ -70,9 +71,14 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const sshServerId = validation.data.executionHost.kind === "ssh"
-          ? validation.data.executionHost.serverId
-          : null;
+        const sshServerId = getRegisteredSshServerId(validation.data.executionHost);
+        if (validation.data.executionHost.kind === "ssh" && !sshServerId) {
+          return errorResponse(
+            "invalid_execution_host",
+            "Provisioning requires a registered SSH server.",
+            400,
+          );
+        }
         const server = sshServerId
           ? await sshServerManager.getServer(sshServerId)
           : null;

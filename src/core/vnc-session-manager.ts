@@ -21,7 +21,13 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 import { DomainError, isDomainError } from "./domain-error";
 import type { ExecutionHostRef } from "@/shared";
+import {
+  getRegisteredSshServerId,
+  isWorkspaceSshExecutionHostRef,
+} from "@/shared/execution-host";
 import { executionHostService } from "./execution-host-service";
+import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
+import type { SshConnectionTarget } from "./ssh-connection-target";
 import {
   openForwardedTcpTunnel,
   openTcpTunnel,
@@ -68,7 +74,6 @@ export class VncSessionManager {
 
   async listHostSessions(host: ExecutionHostRef): Promise<VncSession[]> {
     await this.initialize();
-    await executionHostService.listHosts();
     const persisted = executionHostService.validateBinding(
       executionHostService.getBinding(host),
     );
@@ -87,9 +92,51 @@ export class VncSessionManager {
   }): Promise<VncSession> {
     await this.initialize();
     const ref = options.executionHost;
-    await executionHostService.listHosts();
     const executionHostBinding = executionHostService.getBinding(ref);
     const executionHost = executionHostService.validateBinding(executionHostBinding);
+    const serverId = getRegisteredSshServerId(ref);
+    const server = serverId
+      ? await getSshServerConfig(serverId)
+      : null;
+    let sshTarget: SshConnectionTarget | null = null;
+
+    if (serverId && !server) {
+      throw new DomainError("ssh_server_not_found", "SSH server not found", {
+        details: { serverId },
+      });
+    }
+    if (serverId) {
+      const credentialToken = options.credentialToken?.trim();
+      if (!credentialToken) {
+        throw new DomainError(
+          "invalid_credential_token",
+          "SSH credential token is required to start a VNC session",
+        );
+      }
+      const password = sshCredentialManager.getPasswordForToken(serverId, credentialToken);
+      sshTarget = getSshConnectionTargetFromServer(server!, password);
+    } else if (isWorkspaceSshExecutionHostRef(ref)) {
+      const target = await getWorkspaceSshTarget(ref.workspaceId);
+      if (!target) {
+        throw new DomainError(
+          "workspace_execution_target_missing",
+          "The workspace SSH execution target is not configured.",
+          { details: { workspaceId: ref.workspaceId } },
+        );
+      }
+      sshTarget = {
+        host: target.host,
+        port: target.port,
+        username: target.username,
+        password: target.password,
+      };
+    } else if (ref.kind === "ssh") {
+      throw new DomainError(
+        "ssh_server_not_found",
+        "Workspace-owned SSH targets require a workspace-bound VNC session.",
+      );
+    }
+
     const existing = await findActiveVncSessionByExecutionHost(
       executionHost.id,
       options.remotePort,
@@ -98,24 +145,6 @@ export class VncSessionManager {
       return existing;
     }
 
-    const server = ref.kind === "ssh"
-      ? await getSshServerConfig(ref.serverId)
-      : null;
-    if (ref.kind === "ssh" && !server) {
-      throw new DomainError("ssh_server_not_found", "SSH server not found", {
-        details: { serverId: ref.serverId },
-      });
-    }
-    const credentialToken = options.credentialToken?.trim();
-    if (ref.kind === "ssh" && !credentialToken) {
-      throw new DomainError(
-        "invalid_credential_token",
-        "SSH credential token is required to start a VNC session",
-      );
-    }
-    const password = ref.kind === "ssh"
-      ? sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken!)
-      : "";
     const localPort = await ensureLocalPortAvailable(await this.getReservedLocalPorts());
     const now = new Date().toISOString();
     const session: VncSession = {
@@ -133,7 +162,7 @@ export class VncSessionManager {
     await saveVncSession(session);
 
     try {
-      if (!server) {
+      if (!sshTarget) {
         const activeSession: VncSession = {
           config: { ...session.config, updatedAt: new Date().toISOString() },
           state: {
@@ -144,7 +173,7 @@ export class VncSessionManager {
         await saveVncSession(activeSession);
         return activeSession;
       }
-      const spawnConfig = this.buildSpawnConfig(server, password, session);
+      const spawnConfig = this.buildSpawnConfig(sshTarget, session);
       const child = spawn(spawnConfig.command, spawnConfig.args, {
         env: spawnConfig.env,
         stdio: ["ignore", "ignore", "pipe"],
@@ -226,10 +255,10 @@ export class VncSessionManager {
     };
   }
 
-  private buildSpawnConfig(server: NonNullable<Awaited<ReturnType<typeof getSshServerConfig>>>, password: string, session: VncSession) {
+  private buildSpawnConfig(target: SshConnectionTarget, session: VncSession) {
     return buildSshProcessConfig({
-      target: getSshConnectionTargetFromServer(server, password),
-      connectionScope: `vnc:${server.id}:${session.config.remotePort}`,
+      target,
+      connectionScope: `vnc:${target.host}:${String(target.port)}:${session.config.remotePort}`,
       extraArgs: [
         "-N",
         "-T",

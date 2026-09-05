@@ -40,12 +40,18 @@ import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
+import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import type {
   ExecutionHostBinding,
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
+import {
+  getWorkspaceSshTarget,
+  type WorkspaceSshTargetInput,
+} from "../../persistence/workspace-execution-targets";
+import type { SshConnectionTarget } from "../ssh-connection-target";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
@@ -126,6 +132,7 @@ class BackendManager {
     binding: ExecutionHostBinding,
     provider: AgentProvider,
     sshPassword?: string,
+    sshTargetOverride?: SshConnectionTarget,
   ): Promise<RuntimeServerSettings> {
     executionHostService.validateBinding(binding);
     if (binding.host.kind !== "ssh") {
@@ -133,6 +140,25 @@ class BackendManager {
         agent: {
           provider,
           transport: "stdio",
+        },
+      };
+    }
+    if (isWorkspaceSshExecutionHostRef(binding.host)) {
+      const target = sshTargetOverride
+        ?? await getWorkspaceSshTarget(binding.host.workspaceId);
+      if (!target) {
+        throw new Error(
+          `Workspace SSH execution target not found: ${binding.host.workspaceId}`,
+        );
+      }
+      return {
+        agent: {
+          provider,
+          transport: "ssh",
+          hostname: target.host,
+          port: target.port,
+          username: target.username,
+          password: target.password,
         },
       };
     }
@@ -543,18 +569,45 @@ class BackendManager {
   async testConnection(
     settings: ServerSettings,
     directory: string,
-    executionHost: ExecutionHostRef,
+    executionHost?: ExecutionHostRef,
+    sshTarget?: WorkspaceSshTargetInput,
   ): Promise<{ success: boolean; error?: string }> {
-    const binding = executionHostService.getBinding(executionHost);
-    const runtimeSettings = await this.buildRuntimeSettings(
-      binding,
-      settings.agent.provider,
-    );
+    const directSshTarget: SshConnectionTarget | undefined = sshTarget
+      ? {
+          host: sshTarget.host.trim(),
+          port: sshTarget.port,
+          username: sshTarget.username.trim(),
+          ...(sshTarget.password ? { password: sshTarget.password } : {}),
+        }
+      : undefined;
+    const binding = executionHost
+      ? executionHostService.getBinding(executionHost)
+      : undefined;
+    if (!binding && !directSshTarget) {
+      return { success: false, error: "An execution host or SSH target is required" };
+    }
+    const runtimeSettings = binding
+      ? await this.buildRuntimeSettings(
+          binding,
+          settings.agent.provider,
+          undefined,
+          directSshTarget,
+        )
+      : {
+          agent: {
+            provider: settings.agent.provider,
+            transport: "ssh" as const,
+            hostname: directSshTarget!.host,
+            port: directSshTarget!.port,
+            username: directSshTarget!.username,
+            password: directSshTarget!.password,
+          },
+        };
     const localNodeId = await this.getLocalMeshNodeId();
     // Reuse the configured test backend when present so tests can stub connection behavior.
     const testBackend = this.isTestBackend && this.testBackend
       ? this.testBackend
-      : this.createBackendForSettings(runtimeSettings, executionHost.kind !== "ssh"
+      : this.createBackendForSettings(runtimeSettings, binding && executionHost?.kind !== "ssh"
         ? {
             workspaceId: crypto.randomUUID(),
             localNodeId,
@@ -604,12 +657,13 @@ class BackendManager {
   async validateRemoteDirectory(
     settings: ServerSettings,
     directory: string,
-    executionHost: ExecutionHostRef,
+    executionHost?: ExecutionHostRef,
+    sshTarget?: WorkspaceSshTargetInput,
   ): Promise<{ success: boolean; isGitRepo?: boolean; directoryExists?: boolean; error?: string }> {
     log.debug("Validating remote directory", {
       directory,
       provider: settings.agent.provider,
-      transport: executionHost.kind,
+      transport: sshTarget ? "ssh" : executionHost?.kind,
     });
 
     // In test mode, use the test executor factory if available
@@ -630,17 +684,37 @@ class BackendManager {
     }
 
     try {
-      const binding = executionHostService.getBinding(executionHost);
-      const executor = await executionHostService.getCommandExecutor(
-        binding,
-        {
-          operationId: `validate-directory:${binding.targetKey}`,
-          directory,
-          provider: settings.agent.provider,
-        },
-      );
+      const binding = executionHost
+        ? executionHostService.getBinding(executionHost)
+        : undefined;
+      const executor = sshTarget
+        ? await executionHostService.getCommandExecutorForSshTarget(
+            {
+              host: sshTarget.host.trim(),
+              port: sshTarget.port,
+              username: sshTarget.username.trim(),
+              ...(sshTarget.password ? { password: sshTarget.password } : {}),
+            },
+            {
+              operationId: `validate-directory:${sshTarget.host}:${String(sshTarget.port)}`,
+              directory,
+            },
+          )
+        : binding
+          ? await executionHostService.getCommandExecutor(
+              binding,
+              {
+                operationId: `validate-directory:${binding.targetKey}`,
+                directory,
+                provider: settings.agent.provider,
+              },
+            )
+          : null;
+      if (!executor) {
+        return { success: false, error: "An execution host or SSH target is required" };
+      }
 
-      if (executionHost.kind === "ssh") {
+      if (executionHost?.kind === "ssh" || sshTarget) {
         const connectivityProbe = await executor.exec("true", [], { cwd: "/" });
         if (!connectivityProbe.success) {
           const detail = connectivityProbe.stderr || connectivityProbe.stdout || `exit code ${connectivityProbe.exitCode}`;

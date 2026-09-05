@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
 import type { ExecutionHostRef } from "@/shared";
+import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceMutations(
@@ -87,7 +88,8 @@ export function useWorkspaceMutations(
   const updateWorkspace = useCallback(async (
     name: string,
     settings: ServerSettings,
-    executionHost: ExecutionHostRef,
+    executionHost: ExecutionHostRef | null,
+    sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
   ): Promise<boolean> => {
@@ -106,7 +108,8 @@ export function useWorkspaceMutations(
         body: JSON.stringify({
           name,
           serverSettings: settings,
-          executionHost,
+          ...(executionHost ? { executionHost } : {}),
+          ...(sshTarget ? { sshTarget } : {}),
           archived,
           allowClankyContext,
         }),

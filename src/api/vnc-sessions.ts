@@ -35,6 +35,14 @@ function mapVncError(error: unknown): Response {
         status: 500,
         message: "VNC tunnel failed to start",
       },
+      workspace_execution_target_missing: {
+        status: 409,
+        message: "The workspace SSH execution target is not configured.",
+      },
+      execution_host_unavailable: {
+        status: 404,
+        message: "Execution host not found or unavailable.",
+      },
     },
     fallback: {
       error: "vnc_session_error",

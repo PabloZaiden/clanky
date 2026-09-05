@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import type { Workspace } from "@/shared/workspace";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
@@ -40,9 +41,10 @@ export function DeleteWorkspaceSection({
       const options: DeleteWorkspaceRequest = {};
       if (deleteServerDirectory && canDeleteServerDirectory) {
         options.deleteServerDirectory = true;
-        const host = workspace.executionHostBinding.host;
-        if (host.kind === "ssh") {
-          options.credentialToken = await getStoredSshCredentialToken(host.serverId);
+        const host = (workspace.provisioningHostBinding ?? workspace.executionHostBinding).host;
+        const serverId = getRegisteredSshServerId(host);
+        if (serverId) {
+          options.credentialToken = await getStoredSshCredentialToken(serverId);
         }
       }
       const result = await onDeleteWorkspace(options);

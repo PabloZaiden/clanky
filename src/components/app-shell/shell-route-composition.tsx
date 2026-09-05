@@ -8,6 +8,7 @@ import type {
   SshServer,
   Workspace,
 } from "@/shared";
+import { getExecutionHostSourceId } from "@/shared";
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { AppRouteContent, type ShellMainContentProps } from "./shell-main-content";
 import { getRouteString } from "./route-fields";
@@ -141,7 +142,7 @@ export function getShellRouteSelection(
   const composeExecutionHost =
     route.view === "compose" && composeKind === "execution-host-chat"
       ? (executionHosts.find((host) => {
-          const hostId = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+          const hostId = getExecutionHostSourceId(host.ref);
           return host.ref.kind === getRouteString(route, "hostKind")
             && hostId === getRouteString(route, "hostId");
         }) ?? null)

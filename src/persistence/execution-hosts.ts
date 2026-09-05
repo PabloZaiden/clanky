@@ -8,6 +8,7 @@ import type {
   ExecutionHostRef,
 } from "@/shared";
 import {
+  executionHostRefFromParts,
   getExecutionHostSourceId,
 } from "@/shared";
 import { getDatabase } from "./database";
@@ -36,10 +37,11 @@ interface ExecutionHostRow {
 }
 
 function refFromParts(kind: ExecutionHostKind, sourceId: string): ExecutionHostRef {
-  if (kind === "ssh") {
-    return { kind, serverId: sourceId };
+  const ref = executionHostRefFromParts(kind, sourceId);
+  if (!ref) {
+    throw new Error(`Unsupported execution host reference: ${kind}:${sourceId}`);
   }
-  return { kind, nodeId: sourceId };
+  return ref;
 }
 
 function rowToExecutionHost(row: ExecutionHostRow): PersistedExecutionHost {
@@ -114,12 +116,17 @@ export function ensureExecutionHost(
   userId: string,
   ref: ExecutionHostRef,
   targetKey: string,
+  options: { forceRevision?: boolean } = {},
 ): PersistedExecutionHost {
   const db = getDatabase();
   const sourceId = getExecutionHostSourceId(ref);
   const existing = getExecutionHostByRef(userId, ref);
   if (existing) {
-    if (existing.targetKey === targetKey && existing.revokedAt === null) {
+    if (
+      existing.targetKey === targetKey
+      && existing.revokedAt === null
+      && options.forceRevision !== true
+    ) {
       return existing;
     }
     const updatedAt = new Date().toISOString();
@@ -177,11 +184,12 @@ export function revokeExecutionHost(userId: string, hostId: string): boolean {
 
 export function executionHostBindingFromRow(
   row: Record<string, unknown>,
+  prefix = "execution_host",
 ): ExecutionHostBinding | null {
-  const kind = row["execution_host_kind"];
-  const sourceId = row["execution_host_source_id"];
-  const targetKey = row["execution_host_target_key"];
-  const revision = row["execution_host_revision"];
+  const kind = row[`${prefix}_kind`];
+  const sourceId = row[`${prefix}_source_id`];
+  const targetKey = row[`${prefix}_target_key`];
+  const revision = row[`${prefix}_revision`];
   if (
     (kind !== "local" && kind !== "mesh" && kind !== "ssh")
     || typeof sourceId !== "string"
@@ -201,4 +209,10 @@ export const EXECUTION_HOST_JOIN_COLUMNS = `
   execution_host.kind AS execution_host_kind,
   execution_host.source_id AS execution_host_source_id,
   execution_host.target_key AS execution_host_target_key
+`;
+
+export const PROVISIONING_HOST_JOIN_COLUMNS = `
+  provisioning_host.kind AS provisioning_host_kind,
+  provisioning_host.source_id AS provisioning_host_source_id,
+  provisioning_host.target_key AS provisioning_host_target_key
 `;

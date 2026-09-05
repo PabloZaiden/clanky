@@ -4,7 +4,7 @@ import type {
   SshServerPrerequisiteReport,
   VncSession,
 } from "@/shared";
-import { getExecutionHostSourceId } from "@/shared";
+import { getExecutionHostSourceId, getRegisteredSshServerId } from "@/shared";
 import type {
   CheckSshServerPrerequisitesRequest,
   GetDevboxTemplatesRequest,
@@ -63,9 +63,13 @@ async function resolveExecutionHostCredentialToken(
   if (host.kind !== "ssh") {
     return undefined;
   }
+  const serverId = getRegisteredSshServerId(host);
+  if (!serverId) {
+    return undefined;
+  }
   return required
-    ? await resolveCredentialToken(host.serverId, password)
-    : await resolveOptionalCredentialToken(host.serverId, password);
+    ? await resolveCredentialToken(serverId, password)
+    : await resolveOptionalCredentialToken(serverId, password);
 }
 
 export async function checkExecutionHostPrerequisitesApi(options: {
@@ -162,8 +166,12 @@ export async function createOrResumeExecutionHostVncSessionApi(options: {
     if (options.executionHost.kind !== "ssh") {
       throw error;
     }
-    invalidateStoredSshCredentialToken(options.executionHost.serverId);
-    return await requestSession(await resolveCredentialToken(options.executionHost.serverId));
+    const serverId = getRegisteredSshServerId(options.executionHost);
+    if (!serverId) {
+      throw error;
+    }
+    invalidateStoredSshCredentialToken(serverId);
+    return await requestSession(await resolveCredentialToken(serverId));
   }
 }
 

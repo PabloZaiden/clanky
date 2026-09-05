@@ -4,7 +4,6 @@ import type { CommandExecutor } from "../command-executor";
 import { GitService } from "../git";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
-  createWorkspace,
   deleteWorkspace,
   getWorkspace,
 } from "../../persistence/workspaces";
@@ -23,7 +22,9 @@ import type {
   ProvisioningJobSnapshot,
   ProvisioningLogEntry,
   ServerSettings,
+  DevboxStatusResult,
 } from "@/shared";
+import { getRegisteredSshServerId, isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { buildError, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
@@ -34,6 +35,8 @@ import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 import { executionHostService } from "../execution-host-service";
+import { getSshServerConfig } from "../../persistence/ssh-servers";
+import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -46,8 +49,52 @@ async function resolveProvisioningExecutionHostBinding(
   userId: string,
   options: StartProvisioningJobOptions,
 ): Promise<ExecutionHostBinding> {
+  if (
+    (options.mode === "rebuild" || options.mode === "restart")
+    && options.workspaceId
+  ) {
+    const workspace = await getWorkspace(options.workspaceId);
+    if (workspace?.provisioningHostBinding) {
+      executionHostService.validateBinding(workspace.provisioningHostBinding, userId);
+      return workspace.provisioningHostBinding;
+    }
+  }
   await executionHostService.listHosts(userId);
   return executionHostService.getBinding(options.executionHost, userId);
+}
+
+async function buildWorkspaceSshTarget(
+  binding: ExecutionHostBinding,
+  status: DevboxStatusResult,
+  credential: { username?: string; password?: string },
+): Promise<WorkspaceSshTargetInput | null> {
+  const registeredServerId = getRegisteredSshServerId(binding.host);
+  const server = registeredServerId
+    ? await getSshServerConfig(registeredServerId)
+    : null;
+  const host = status.sshHost?.trim() || server?.address.trim();
+  if (!host) {
+    return null;
+  }
+  const username = status.sshUser?.trim()
+    || credential.username?.trim()
+    || server?.username.trim()
+    || status.remoteUser?.trim();
+  if (!username) {
+    throw new ProvisioningFailedError(
+      "invalid_devbox_status",
+      "devbox_status",
+      "devbox status did not include an SSH username for the workspace execution target",
+    );
+  }
+  const port = status.sshPort ?? server?.port ?? 22;
+  const password = status.password?.trim() || credential.password?.trim();
+  return {
+    host,
+    port,
+    username,
+    ...(password ? { password } : {}),
+  };
 }
 
 function getProvisioningTargetKey(config: ProvisioningJob["config"]): string | null {
@@ -460,7 +507,7 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = targetDirectory;
+      const resolvedDirectory = status.workdir?.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -473,6 +520,7 @@ export class ProvisioningManager {
       if (resolvedPassword && !record.secretValues.includes(resolvedPassword)) {
         record.secretValues.push(resolvedPassword);
       }
+      const sshTarget = await buildWorkspaceSshTarget(binding, status, devboxCredential);
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
@@ -487,23 +535,26 @@ export class ProvisioningManager {
       // unique ID, not by directory+server_fingerprint. Two separate
       // devbox containers may share the same directory path and SSH
       // fingerprint but represent distinct workspaces.
-      const now = new Date().toISOString();
-      const workspace = {
-        id: crypto.randomUUID(),
+      const workspace = await workspaceManager.createWorkspace({
         name: record.job.config.name,
         directory: resolvedDirectory,
-        workspaceType: "git" as const,
-        executionTargetRevision: 1,
+        workspaceType: "git",
         serverSettings,
-        createdAt: now,
-        updatedAt: now,
+        ...(sshTarget
+          ? {
+              sshTarget,
+              provisioningHost: binding.host,
+            }
+          : {
+              executionHost: binding.host,
+              provisioningHost: binding.host,
+            }),
+        skipValidation: true,
         sourceDirectory: record.job.state.targetDirectory,
-        executionHostBinding: binding,
         repoUrl: record.job.config.repoUrl,
         basePath: record.job.config.basePath,
         devcontainerSubpath: record.job.config.devcontainerSubpath,
-      };
-      await createWorkspace(workspace);
+      });
       createdWorkspaceId = workspace.id;
       this.updateState(record, {
         workspaceId: workspace.id,
@@ -515,7 +566,7 @@ export class ProvisioningManager {
       const connectionResult = await backendManager.testConnection(
         serverSettings,
         resolvedDirectory,
-        binding.host,
+        workspace.executionHostBinding.host,
       );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(
@@ -731,7 +782,15 @@ export class ProvisioningManager {
         );
       }
 
-      const resolvedDirectory = targetDirectory;
+      let devboxCredential = parseDevboxCredentialContent("");
+      if (!status.password && status.hasCredentialFile && status.credentialPath) {
+        const credentialContent = await executor.readFile(status.credentialPath);
+        if (credentialContent) {
+          devboxCredential = parseDevboxCredentialContent(credentialContent);
+        }
+      }
+
+      const resolvedDirectory = status.workdir?.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -745,6 +804,7 @@ export class ProvisioningManager {
           provider: record.job.config.provider,
         },
       };
+      const sshTarget = await buildWorkspaceSshTarget(binding, status, devboxCredential);
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
@@ -756,7 +816,21 @@ export class ProvisioningManager {
 
       // Update the existing workspace's server settings (port/password may change after rebuild)
       const updatedWorkspace = await workspaceManager.updateWorkspace(workspaceId, {
+        ...(workspace.directory !== resolvedDirectory
+          ? { directory: resolvedDirectory }
+          : {}),
         serverSettings,
+        ...(sshTarget
+          ? { sshTarget }
+          : (
+            isWorkspaceSshExecutionHostRef(workspace.executionHostBinding.host)
+              ? {
+                  executionHost: binding.host,
+                  sshTarget: null,
+                }
+              : {}
+          )),
+        allowExecutionTargetChangeWithTerminals: true,
         ...(devcontainerSubpath !== workspace.devcontainerSubpath
           ? { devcontainerSubpath }
           : {}),
@@ -774,7 +848,7 @@ export class ProvisioningManager {
       const connectionResult = await backendManager.testConnection(
         serverSettings,
         resolvedDirectory,
-        binding.host,
+        updatedWorkspace.executionHostBinding.host,
       );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(

@@ -3,6 +3,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
@@ -28,8 +29,10 @@ export function RebuildWorkspaceView({
   const actionLabelLower = actionLabel.toLowerCase();
   const formId = `${mode}-workspace-form`;
 
-  const executionHost = workspace.executionHostBinding.host;
-  const sshServerId = executionHost.kind === "ssh" ? executionHost.serverId : "";
+  const executionHost = (
+    workspace.provisioningHostBinding ?? workspace.executionHostBinding
+  ).host;
+  const sshServerId = getRegisteredSshServerId(executionHost) ?? "";
   const selectedServer = servers.find((s) => s.config.id === sshServerId);
   const selectedServerHasStoredCredential = sshServerId
     ? getStoredSshServerCredential(sshServerId) !== null

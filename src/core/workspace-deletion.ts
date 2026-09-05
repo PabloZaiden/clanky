@@ -8,6 +8,7 @@ import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/w
 import { managedCredentialService } from "./managed-credential-service";
 import { terminalSessionManager } from "./terminal-session-manager";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -51,8 +52,7 @@ function deletionFailure(
 async function deleteProvisionedServerDirectory(workspace: Workspace, credentialToken?: string | null): Promise<void> {
   const sourceDirectory = workspace.sourceDirectory?.trim();
   const basePath = workspace.basePath?.trim();
-  await executionHostService.listHosts();
-  const binding = workspace.executionHostBinding;
+  const binding = workspace.provisioningHostBinding ?? workspace.executionHostBinding;
   if (!sourceDirectory || !basePath || !isSafeProvisionedDirectory(sourceDirectory, basePath)) {
     throw new DomainError(
       "workspace_delete_metadata_invalid",
@@ -62,8 +62,9 @@ async function deleteProvisionedServerDirectory(workspace: Workspace, credential
   }
 
   const token = credentialToken?.trim();
-  const password = binding.host.kind === "ssh" && token
-    ? sshCredentialManager.getPasswordForToken(binding.host.serverId, token)
+  const serverId = getRegisteredSshServerId(binding.host);
+  const password = serverId && token
+    ? sshCredentialManager.getPasswordForToken(serverId, token)
     : undefined;
   const executor = await executionHostService.getCommandExecutor(binding, {
     operationId: `workspace-delete:${workspace.id}`,

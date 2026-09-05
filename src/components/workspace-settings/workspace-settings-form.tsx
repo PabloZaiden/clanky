@@ -7,6 +7,7 @@ import { StatusBadge } from "../common";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import type { ExecutionHostRef } from "@/shared";
+import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
@@ -39,6 +40,7 @@ export function WorkspaceSettingsForm({
   const [allowClankyContext, setAllowClankyContext] = useState(false);
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
   const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(null);
+  const [sshTarget, setSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
   const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
 
   // Initialize form from workspace when the selected workspace changes
@@ -49,6 +51,15 @@ export function WorkspaceSettingsForm({
       setAllowClankyContext(workspace.allowClankyContext === true);
       setServerSettings(workspace.serverSettings);
       setExecutionHost(workspace.executionHostBinding.host);
+      setSshTarget(
+        workspace.sshTarget
+          ? {
+            host: workspace.sshTarget.host,
+            port: workspace.sshTarget.port,
+            username: workspace.sshTarget.username,
+          }
+          : null,
+      );
       setIsServerSettingsValid(true);
       return;
     }
@@ -58,19 +69,21 @@ export function WorkspaceSettingsForm({
     setAllowClankyContext(false);
     setServerSettings(null);
     setExecutionHost(null);
+    setSshTarget(null);
     setIsServerSettingsValid(true);
   }, [workspace]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (!serverSettings || !executionHost) return;
+    if (!serverSettings || (!executionHost && !sshTarget)) return;
 
     log.debug("Saving workspace settings", { workspaceName: name.trim() });
     const success = await onSave(
       name.trim(),
       serverSettings,
       executionHost,
+      sshTarget,
       archived,
       allowClankyContext,
     );
@@ -86,6 +99,7 @@ export function WorkspaceSettingsForm({
     settings: ServerSettings,
     isValid: boolean,
     selectedExecutionHost: ExecutionHostRef | null,
+    selectedSshTarget?: WorkspaceSshTargetRequest | null,
   ) {
     log.debug("Server settings changed", {
       provider: settings.agent.provider,
@@ -94,6 +108,7 @@ export function WorkspaceSettingsForm({
     });
     setServerSettings(settings);
     setExecutionHost(selectedExecutionHost);
+    setSshTarget(selectedSshTarget ?? null);
     setIsServerSettingsValid(isValid);
   }
 
@@ -201,6 +216,8 @@ export function WorkspaceSettingsForm({
           <ServerSettingsForm
             initialSettings={workspace.serverSettings}
             initialExecutionHost={workspace.executionHostBinding.host}
+            initialSshTarget={workspace.sshTarget}
+            allowWorkspaceSshTarget
             onChange={handleServerSettingsChange}
             onTest={onTest}
             testing={testing}

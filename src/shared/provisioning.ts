@@ -112,6 +112,7 @@ export interface DevboxStatusResult {
   port?: number | null;
   password?: string | null;
   workdir?: string | null;
+  sshHost?: string | null;
   sshUser?: string | null;
   sshPort?: number | null;
   remoteUser?: string | null;

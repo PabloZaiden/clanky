@@ -36,6 +36,13 @@ export const ServerSettingsSchema = z.object({
   agent: AgentSettingsSchema,
 }).strict();
 
+export const WorkspaceSshTargetSchema = z.object({
+  host: z.string().min(1, "host is required"),
+  port: z.number().int().min(1).max(65535),
+  username: z.string().min(1, "username is required"),
+  password: z.string().nullable().optional(),
+}).strict();
+
 /**
  * Schema for CreateWorkspaceRequest - POST /api/workspaces
  *
@@ -46,10 +53,17 @@ export const CreateWorkspaceRequestSchema = z.object({
   name: z.string().min(1, "name is required"),
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
-  executionHost: ExecutionHostRefSchema,
+  executionHost: ExecutionHostRefSchema.optional(),
+  sshTarget: WorkspaceSshTargetSchema.optional(),
   allowClankyContext: z.boolean().optional(),
   workspaceType: WorkspaceTypeSchema.default("git"),
-});
+}).refine(
+  (value) => Boolean(value.executionHost) !== Boolean(value.sshTarget),
+  {
+    message: "Exactly one execution host or SSH target is required",
+    path: ["executionHost"],
+  },
+);
 
 /**
  * Schema for UpdateWorkspaceRequest - PUT /api/workspaces/:id
@@ -61,6 +75,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
   executionHost: ExecutionHostRefSchema.optional(),
+  sshTarget: WorkspaceSshTargetSchema.nullable().optional(),
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
@@ -80,8 +95,15 @@ export const DeleteWorkspaceRequestSchema = z.object({
 export const TestConnectionRequestSchema = z.object({
   settings: ServerSettingsSchema,
   directory: z.string().min(1, "directory is required"),
-  executionHost: ExecutionHostRefSchema,
-});
+  executionHost: ExecutionHostRefSchema.optional(),
+  sshTarget: WorkspaceSshTargetSchema.optional(),
+}).refine(
+  (value) => Boolean(value.executionHost) !== Boolean(value.sshTarget),
+  {
+    message: "Exactly one execution host or SSH target is required",
+    path: ["executionHost"],
+  },
+);
 
 // Export inferred types
 /**
@@ -95,3 +117,4 @@ export type ServerSettings = z.infer<typeof ServerSettingsSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
+export type WorkspaceSshTargetRequest = z.infer<typeof WorkspaceSshTargetSchema>;
