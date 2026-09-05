@@ -3,10 +3,13 @@
  */
 
 import type { Database } from "bun:sqlite";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   DEFAULT_SERVER_AGENT_PROVIDER,
   isAgentProvider,
 } from "../../shared/settings";
+
+const log = createLogger("persistence:migrations:canonical-execution-hosts");
 
 interface BindingRow {
   id: string;
@@ -174,6 +177,24 @@ function backfillBindings(db: Database): void {
     )
     WHERE execution_host_id IS NULL
   `);
+}
+
+function discardUnresolvedVncSessions(db: Database): void {
+  const result = db.run(`
+    DELETE FROM vnc_sessions
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM execution_hosts host
+      WHERE host.id = vnc_sessions.execution_host_id
+        AND host.user_id = vnc_sessions.user_id
+        AND host.revision = vnc_sessions.execution_host_revision
+    )
+  `);
+  if (result.changes > 0) {
+    log.warn("Discarded VNC sessions without a canonical execution host", {
+      count: result.changes,
+    });
+  }
 }
 
 function validateBindings(db: Database): void {
@@ -503,6 +524,7 @@ export function migrateCanonicalExecutionHosts(db: Database): void {
   db.run("BEGIN IMMEDIATE");
   try {
     backfillBindings(db);
+    discardUnresolvedVncSessions(db);
     validateBindings(db);
     rewriteWorkspaceSettings(db);
     rewriteProvisioningConfigs(db);
