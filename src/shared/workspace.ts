@@ -73,7 +73,7 @@ export interface WorkspaceExecutionTarget {
   nodeId: string;
   name: string;
   kind: "local" | "mesh";
-  availability: "local" | "online" | "offline";
+  availability: "local" | "available";
 }
 
 export type PublicAgentSettings =

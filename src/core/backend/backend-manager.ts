@@ -32,7 +32,7 @@ import {
 } from "./backend-state";
 import type { CommandExecutorFactory } from "./backend-executor-factory";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
-import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../../persistence/mesh";
+import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../user-context";
 import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
@@ -733,17 +733,11 @@ class BackendManager {
       status.executionAvailability = "local";
     } else if (target.kind === "mesh") {
       const localNodeId = await this.getLocalMeshNodeId();
-      const link = await getMeshLinkForLocalUser(requireCurrentUserId());
-      const member = link
-        ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === target.nodeId)
-        : undefined;
-      const node = await getMeshNode(target.nodeId);
+      const registration = await getWorkerRegistration(target.nodeId, requireCurrentUserId());
       status.executionAvailability = (
         target.nodeId !== localNodeId
-        && link?.status === "active"
-        && member?.status === "active"
-        && node?.status === "active"
-        && Boolean(member.endpoint ?? node.endpoint)
+        && registration?.grantStatus === "active"
+        && Boolean(registration.workerEndpoint)
       )
         ? "remote-connected"
         : "remote-unavailable";

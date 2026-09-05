@@ -18,11 +18,7 @@ import {
 } from "@/shared/mesh-terminal";
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
-import {
-  getMeshLinkForLocalUser,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../../persistence/mesh";
+import { getWorkerRegistration } from "../../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -317,20 +313,15 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       throw new DomainError("mesh_terminal_encryption_unavailable", "The local Mesh identity has no encryption key.");
     }
     const localUserId = this.config.localUserId ?? requireCurrentUserId();
-    const link = await getMeshLinkForLocalUser(localUserId);
-    if (!link || link.status !== "active") {
-      throw new DomainError("mesh_terminal_link_unavailable", "The local Mesh link is unavailable.");
-    }
-    const member = (await listMeshLinkMembers(link.linkId))
-      .find((candidate) => candidate.nodeId === this.config.executionNodeId);
-    const node = await getMeshNode(this.config.executionNodeId);
-    const endpoint = member?.endpoint ?? node?.endpoint;
+    const registration = await getWorkerRegistration(
+      this.config.executionNodeId,
+      localUserId,
+    );
+    const endpoint = registration?.workerEndpoint;
     if (
-      !member
-      || member.status !== "active"
-      || !node
-      || node.status !== "active"
-      || !node.encryptionPublicKey
+      !registration
+      || registration.grantStatus !== "active"
+      || !registration.workerEncryptionPublicKey
       || !endpoint
     ) {
       throw new DomainError(
@@ -343,7 +334,6 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
       capability: MESH_TERMINAL_CAPABILITY,
       requestId: crypto.randomUUID(),
-      linkId: link.linkId,
       callerNodeId: identity.nodeId,
       callerPublicKey: identity.publicKey,
       callerFingerprint: identity.fingerprint,
@@ -362,7 +352,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         ? {
             encryptedEnvironment: encryptMeshPayload(
               this.runtimeEnvironment,
-              node.encryptionPublicKey,
+              registration.workerEncryptionPublicKey,
             ),
           }
         : {}),

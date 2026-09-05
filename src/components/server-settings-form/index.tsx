@@ -303,7 +303,7 @@ export function ServerSettingsForm({
                 >
                   {target.kind === "local"
                     ? `${target.name} (local)`
-                    : `${target.name}${target.availability === "offline" ? " (offline)" : ""}`}
+                    : target.name}
                 </option>
               ))}
               {executionNodeId && !executionTargets.some((target) => target.nodeId === executionNodeId) && (

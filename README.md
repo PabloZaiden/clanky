@@ -245,36 +245,38 @@ For a public deployment, configure the reverse proxy to:
   a path, query, or fragment, as shown above;
 - mount a durable volume for all of `/app/data` and back it up.
 
-For mesh connections between trusted private-network instances, configure the
-Mesh endpoint in each instance's Mesh settings to the absolute HTTP(S) origin
-reachable by its peers, such as `http://192.168.1.20:3000`. If no endpoint has
-been saved yet, Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and
-persists that value. Later changes to the public base URL do not change the
-saved Mesh endpoint. Do not expose an HTTP mesh endpoint to an untrusted
-network.
+For Mesh connections between trusted private-network instances, configure each
+worker's Mesh endpoint to the absolute HTTP(S) origin reachable by its
+controllers, such as `http://192.168.1.20:3000`. If no endpoint has been saved
+yet, Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and persists that
+value. Later changes to the public base URL do not change the saved Mesh
+endpoint. Do not expose an HTTP Mesh endpoint to an untrusted network.
 
-Mesh provides pairing, membership, health, and trusted transport between
-independent Clanky instances. A workspace may use local `stdio`, `stdio via
-<mesh instance>`, or SSH; with remote `stdio`, ACP processes and
-file/command operations run on the selected peer while the workspace record
-and all application data remain local to the instance where it was created.
+Mesh provides enrollment, health checks, and trusted controller-to-worker
+transport. A worker may grant access to multiple independent controllers;
+controllers do not join each other. A workspace may use local `stdio`, remote
+`stdio` through a Mesh worker, or SSH. With remote `stdio`, ACP processes and
+file/command operations run on the selected worker while the workspace record
+and all application data remain local to its controller.
 The **Servers** view lists enabled local and Mesh hosts alongside registered
 SSH servers. From a host, users can start an automatic workspace with that
 target preselected, browse files, open a chat or terminal, run Arise, and
 connect through VNC when the advertised capabilities permit it. Automatic
 workspace template discovery runs on the selected host.
-An active paired peer is a host-level trust boundary: it may request a remote
+An enrolled controller is a host-level trust boundary: it may request a remote
 execution session rooted at any absolute path on the receiving host, so Mesh
 does not provide per-workspace sandboxing or a host-side root allowlist. Pair
-only instances that are trusted with command and file access to that host.
-Keep mesh peers on a trusted network and use HTTPS (including WebSocket
+only controllers that are trusted with command and file access to that host.
+Keep Mesh workers on a trusted network and use HTTPS (including WebSocket
 upgrades) when prompts, environment values, or file contents could cross an
 untrusted network. SSH-backed workspaces keep their existing routing.
 
-Each node can disable **Accept remote execution** in Mesh settings. Disabled
-nodes remain visible members but cannot be selected as execution targets.
-Execution policy and membership changes update connected browsers through
-realtime resource invalidation.
+Each worker can disable **Accept remote execution**. Its persisted execution
+directory and policy revision are returned in signed health responses, so each
+controller synchronizes changes without replacing the durable grant. Disabled
+workers remain enrolled but cannot be selected as execution targets. Controller
+registration changes update connected browsers through realtime resource
+invalidation.
 
 For unattended enrollment, create a short-lived single-use token on an
 existing owner instance and consume it from the new node:
@@ -302,6 +304,12 @@ The bootstrap command is idempotent: repeated runs report the existing key ID
 without printing its secret. Use `--rotate` to revoke that key and issue a new
 plaintext key once. Enrollment tokens are stored only as hashes, expire after
 15 minutes by default, and are consumed atomically.
+
+The controller-worker schema is an intentional clean break from the previous
+peer Mesh. Migration 45 deletes legacy Mesh identities, hosts, and all
+dependent workspaces, tasks, chats, agents, sessions, terminals, provisioning
+jobs, VNC resources, and transcripts rather than remapping them. Unrelated SSH
+data is preserved.
 
 Mesh-worker mode can be selected equivalently with the `--mesh-worker` flag,
 `CLANKY_MESH_WORKER`, or persisted configuration:

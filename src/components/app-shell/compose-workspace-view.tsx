@@ -266,7 +266,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   .map((target) => (
                     <option key={`${target.kind}:${target.nodeId}`} value={`${target.kind}:${target.nodeId}`}>
                       {target.name} via {target.kind === "local" ? "stdio" : "Mesh"}
-                      {target.availability === "offline" ? " (offline)" : ""}
                     </option>
                   ))}
               </SelectField>

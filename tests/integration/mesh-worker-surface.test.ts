@@ -96,7 +96,7 @@ test("Mesh worker exposes only its transport and authenticated control surface",
     expect((await fetch(`${baseUrl}/api/mesh/status`, {
       headers: authenticatedHeaders,
     })).status).toBe(200);
-    expect((await fetch(`${baseUrl}/api/mesh/pairing-requests`, {
+    expect((await fetch(`${baseUrl}/api/mesh/enroll`, {
       method: "POST",
       headers: authenticatedHeaders,
       body: "{}",

@@ -18,7 +18,7 @@
  * - agents: Scheduled-agent management and runs
  * - vnc-sessions: VNC session management
  * - previews: Workspace preview management
- * - mesh: Linked-instance pairing and transport membership
+ * - mesh: Controller-managed worker enrollment and transport
  * - agent-prompt-bridge: Internal deterministic-agent prompt bridge
  * - raw websocket upgrades: Realtime, terminal, preview, and VNC transports are defined separately
  * 

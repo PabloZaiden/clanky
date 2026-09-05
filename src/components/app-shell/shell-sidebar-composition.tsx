@@ -705,7 +705,9 @@ function executionHostDirectory(host: ExecutionHostDescriptor): string {
 }
 
 function executionHostAvailable(host: ExecutionHostDescriptor): boolean {
-  return host.availability === "local" || host.availability === "online";
+  return host.availability === "local"
+    || host.availability === "available"
+    || host.availability === "online";
 }
 
 function createExecutionHostWorkspace(
@@ -1101,6 +1103,7 @@ function buildSidebarNodes(
       subtitle: serverNode.server.config.address,
       badge: executionHost?.availability ?? "offline",
       badgeVariant: executionHost?.availability === "online"
+        || executionHost?.availability === "available"
         ? "success"
         : "disabled",
       render: renderServerSidebarItem("ssh"),
@@ -1230,7 +1233,9 @@ function buildSidebarNodes(
         title: host.name,
         subtitle,
         badge: host.availability,
-        badgeVariant: host.availability === "online" || host.availability === "local"
+        badgeVariant: host.availability === "online"
+          || host.availability === "available"
+          || host.availability === "local"
           ? "success"
           : "disabled",
         render: renderServerSidebarItem(host.ref.kind),

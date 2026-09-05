@@ -74,7 +74,9 @@ export function ExecutionHostView({
   const [vncSession, setVncSession] = useState<VncSession | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const available = host.availability === "local" || host.availability === "online";
+  const available = host.availability === "local"
+    || host.availability === "available"
+    || host.availability === "online";
   const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory);
   const apiPath = hostApiPath(host);
 
@@ -235,7 +237,7 @@ export function ExecutionHostView({
         </div>
       </Panel>
 
-      <Panel>
+      {host.ref.kind === "local" ? <Panel>
         <div className="space-y-4">
           <TextField
             id="execution-host-directory"
@@ -322,7 +324,16 @@ export function ExecutionHostView({
             </Button>
           </FormActions>
         </div>
-      </Panel>
+      </Panel> : (
+        <Panel>
+          <div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
+            <span className="text-sm font-medium">Worker directory</span>
+            <div className="min-w-0 overflow-x-auto sm:text-right">
+              <CodeValue value={directoryLoading ? "Loading..." : directory} />
+            </div>
+          </div>
+        </Panel>
+      )}
 
       <FormGroup title="Arise">
         <div>

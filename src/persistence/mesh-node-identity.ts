@@ -14,7 +14,7 @@ import {
   sign,
   verify,
 } from "node:crypto";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
@@ -452,30 +452,6 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
     identity.createdAt,
     now,
   ]);
-  db.run(`
-    INSERT INTO mesh_nodes (
-      node_id, instance_name, public_key, fingerprint, encryption_public_key,
-      execution_config_json, endpoint, transport, status,
-      last_seen_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'https', 'active', ?, ?, ?)
-    ON CONFLICT(node_id) DO UPDATE SET
-      instance_name = excluded.instance_name,
-      public_key = excluded.public_key,
-      fingerprint = excluded.fingerprint,
-      encryption_public_key = excluded.encryption_public_key,
-      execution_config_json = excluded.execution_config_json,
-      updated_at = excluded.updated_at
-  `, [
-    identity.nodeId,
-    identity.instanceName,
-    identity.publicKey,
-    identity.fingerprint,
-    identity.encryptionPublicKey ?? null,
-    JSON.stringify(identity.execution),
-    now,
-    identity.createdAt,
-    now,
-  ]);
 }
 
 function backfillWorkspaceExecutionNodeOwnership(nodeId: string): void {
@@ -529,50 +505,11 @@ function backfillWorkspaceExecutionNodeOwnership(nodeId: string): void {
   }
 }
 
-function remapLocalWorkspaceExecutionNode(previousNodeId: string, replacementNodeId: string): void {
-  const db = getDatabase();
-  if (!db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get("workspaces")) {
-    return;
-  }
-
-  const rows = db.query(`
-    SELECT id, server_settings
-    FROM workspaces
-    WHERE execution_node_id = ?
-  `).all(previousNodeId) as Array<{
-    id: string;
-    server_settings: string | null;
-  }>;
-  const update = db.prepare(`
-    UPDATE workspaces
-    SET execution_node_id = ?
-    WHERE id = ? AND execution_node_id = ?
-  `);
-
-  for (const row of rows) {
-    let parsed: unknown;
-    try {
-      parsed = row.server_settings ? JSON.parse(row.server_settings) : null;
-    } catch (error) {
-      log.warn("Skipping workspace execution ownership remap for invalid settings", {
-        workspaceId: row.id,
-        error: String(error),
-      });
-      continue;
-    }
-    const agent = typeof parsed === "object" && parsed !== null
-      && typeof (parsed as Record<string, unknown>)["agent"] === "object"
-      && (parsed as Record<string, unknown>)["agent"] !== null
-      ? (parsed as Record<string, unknown>)["agent"] as Record<string, unknown>
-      : null;
-    if (agent?.["transport"] === "stdio") {
-      update.run(replacementNodeId, row.id, previousNodeId);
-    }
-  }
-}
-
 /**
  * Ensure that this data directory has a durable node identity.
+ *
+ * After migration v45 (clean-break), the DB row is cleared but the identity
+ * file may remain. In that case, delete the stale file and generate fresh.
  */
 export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   const db = getDatabase();
@@ -582,9 +519,26 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
     FROM mesh_node_identity
     WHERE singleton = 1
   `).get() as MeshNodeIdentityRow | null;
-  const stored = await readStoredIdentity();
+  let stored = await readStoredIdentity();
 
-  if (row && !stored) {
+  if (!row && stored) {
+    // Post-migration cleanup: DB was cleared, delete stale identity file
+    log.info("Clearing stale mesh identity file after migration", {
+      nodeId: stored.nodeId,
+    });
+    try {
+      await unlink(identityFilePath());
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        throw new DomainError(
+          "mesh_node_identity_reset_failed",
+          "The legacy Mesh identity could not be removed.",
+          { cause: error },
+        );
+      }
+    }
+    stored = null;
+  } else if (row && !stored) {
     throw new DomainError(
       "mesh_node_identity_missing",
       "The mesh node private identity is missing from the data directory.",
@@ -634,93 +588,9 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
 }
 
 /**
- * Replace a revoked local node identity before a rejoin pairing flow.
- *
- * A node identity is intentionally never reused after revocation. The
- * previous public key remains in mesh_nodes so peers can reject it forever.
+ * Identity rotation is not supported in the controller-worker model.
+ * A revoked worker must be re-enrolled with a fresh identity.
  */
-export async function rotateLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
-  const current = await readStoredIdentity();
-  if (!current) {
-    throw new DomainError("mesh_node_identity_missing", "The local mesh node identity is unavailable.");
-  }
-  const db = getDatabase();
-  const activeMembership = db.query(`
-    SELECT 1
-    FROM mesh_link_members
-    WHERE node_id = ? AND status = 'active'
-    LIMIT 1
-  `).get(current.nodeId);
-  if (activeMembership) {
-    throw new DomainError(
-      "mesh_node_rotation_not_allowed",
-      "An active mesh node cannot rotate its identity.",
-    );
-  }
-
-  const replacement = createStoredIdentity(
-    current.instanceName,
-    current.meshEndpoint,
-    current.execution,
-  );
-  try {
-    await writeStoredIdentity(replacement);
-    const now = new Date().toISOString();
-    db.transaction(() => {
-      db.run(`
-        UPDATE mesh_nodes
-        SET status = 'revoked', updated_at = ?
-        WHERE node_id = ?
-      `, [now, current.nodeId]);
-      db.run(`
-        UPDATE mesh_node_identity
-        SET node_id = ?, instance_name = ?, mesh_endpoint = ?, public_key = ?, fingerprint = ?,
-          encryption_public_key = ?, execution_config_json = ?,
-          created_at = ?, updated_at = ?
-        WHERE singleton = 1
-      `, [
-        replacement.nodeId,
-        replacement.instanceName,
-        replacement.meshEndpoint,
-        replacement.publicKey,
-        replacement.fingerprint,
-        replacement.encryptionPublicKey ?? null,
-        JSON.stringify(replacement.execution),
-        replacement.createdAt,
-        replacement.updatedAt,
-      ]);
-      remapLocalWorkspaceExecutionNode(current.nodeId, replacement.nodeId);
-      db.run(`
-        INSERT INTO mesh_nodes (
-        node_id, instance_name, public_key, fingerprint, encryption_public_key,
-          execution_config_json, endpoint, transport, status,
-          last_seen_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, 'https', 'rejoining', NULL, ?, ?)
-      `, [
-        replacement.nodeId,
-        replacement.instanceName,
-        replacement.publicKey,
-        replacement.fingerprint,
-        replacement.encryptionPublicKey ?? null,
-        JSON.stringify(replacement.execution),
-        replacement.createdAt,
-        now,
-      ]);
-    })();
-  } catch (error) {
-    await writeStoredIdentity(current);
-    throw new DomainError(
-      "mesh_node_rotation_failed",
-      "The local mesh node identity could not be rotated.",
-      { cause: error },
-    );
-  }
-  log.info("Rotated local mesh node identity for mesh rejoin", {
-    previousNodeId: current.nodeId,
-    nodeId: replacement.nodeId,
-  });
-  return publicIdentity(replacement);
-}
 
 async function setLocalMeshInstanceNameUnlocked(value: string): Promise<MeshNodeIdentity> {
   const instanceName = normalizeMeshInstanceName(value);

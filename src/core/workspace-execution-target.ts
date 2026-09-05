@@ -15,11 +15,7 @@ import {
   buildMeshTargetKey,
   buildSshTargetKey,
 } from "../persistence/workspace-target-key";
-import {
-  getMeshLinkForLocalUser,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { getWorkerRegistration } from "../persistence/mesh";
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId } from "./user-context";
 import {
@@ -70,24 +66,11 @@ function sshTargetKey(target: SshConnectionTarget): string {
 }
 
 async function assertTrustedMeshTarget(targetNodeId: string): Promise<void> {
-  const link = await getMeshLinkForLocalUser(requireCurrentUserId());
-  const member = link
-    ? (await listMeshLinkMembers(link.linkId)).find((candidate) => candidate.nodeId === targetNodeId)
-    : undefined;
-  const node = await getMeshNode(targetNodeId);
-  if (
-    !link
-    || link.status !== "active"
-    || !member
-    || member.status === "pending"
-    || member.status === "revoked"
-    || !node
-    || node.status === "pending"
-    || node.status === "revoked"
-  ) {
+  const registration = await getWorkerRegistration(targetNodeId, requireCurrentUserId());
+  if (!registration || registration.grantStatus !== "active") {
     throw new DomainError(
       "workspace_execution_target_not_trusted",
-      "The selected stdio execution target is not a trusted mesh peer.",
+      "The selected stdio execution target is not an enrolled Mesh worker.",
       { details: { executionNodeId: targetNodeId } },
     );
   }

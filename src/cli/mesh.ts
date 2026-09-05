@@ -1,8 +1,8 @@
 import {
   runApiCliCommand,
   type CliCommandResult,
-  type WebAppCliCommandDefinition,
   type WebAppCliCommandContext,
+  type WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { RouteCatalogEntry } from "@pablozaiden/webapp/server";
 
@@ -12,23 +12,16 @@ export interface ClankyCliContext {
 
 export type MeshOperation =
   | "status"
-  | "pair-start"
-  | "pair-approve"
-  | "pair-complete"
-  | "pair-reject"
   | "enroll"
   | "enrollment-token-create"
   | "revoke"
-  | "rejoin";
+  | "update-worker";
 
 export interface MeshCommand {
   operation: MeshOperation;
   endpoint?: string;
-  requestId?: string;
-  targetUserId?: string;
-  linkId?: string;
+  workerNodeId?: string;
   fingerprint?: string;
-  reason?: string;
   token?: string;
   name?: string;
   ttlSeconds?: number;
@@ -64,9 +57,7 @@ function parseOptions(
       throw usageError(`${name} requires a value`);
     }
     options[name] = value;
-    if (inlineValue === undefined) {
-      index += 1;
-    }
+    if (inlineValue === undefined) index += 1;
   }
   return { positionals, options };
 }
@@ -80,73 +71,47 @@ function requireSinglePositional(positionals: readonly string[], message: string
 
 export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
   const [operation, ...operationArgs] = args;
-  if (!operation) {
-    throw usageError(
-      "Mesh command must be status, revoke, rejoin, or pair",
-    );
-  }
-
   if (operation === "status") {
     const { positionals } = parseOptions(operationArgs, []);
-    if (positionals.length > 0) {
-      throw usageError(`Unexpected argument: ${positionals[0]}`);
-    }
+    if (positionals.length > 0) throw usageError(`Unexpected argument: ${positionals[0]}`);
     return { operation };
   }
-
   if (operation === "revoke") {
     const { positionals } = parseOptions(operationArgs, []);
     return {
       operation,
-      requestId: requireSinglePositional(
-        positionals,
-        "Mesh revoke requires one node ID",
-      ),
+      workerNodeId: requireSinglePositional(positionals, "Mesh revoke requires one worker node ID"),
     };
   }
-
-  if (operation === "rejoin") {
-    const { positionals, options } = parseOptions(operationArgs, ["--target-user-id"]);
+  if (operation === "update-worker") {
+    const { positionals } = parseOptions(operationArgs, []);
     return {
       operation,
-      endpoint: requireSinglePositional(
-        positionals,
-        "Mesh rejoin requires one target endpoint",
-      ),
-      targetUserId: options["--target-user-id"],
+      workerNodeId: requireSinglePositional(positionals, "Mesh update-worker requires one worker node ID"),
     };
   }
-
   if (operation === "enroll") {
     const { positionals, options } = parseOptions(operationArgs, ["--token", "--fingerprint"]);
     const token = options["--token"] ?? process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
     const fingerprint = options["--fingerprint"] ?? process.env["CLANKY_MESH_CONTROLLER_FINGERPRINT"];
-    if (!token) {
-      throw usageError("Mesh enroll requires --token or CLANKY_MESH_ENROLLMENT_TOKEN");
-    }
+    if (!token) throw usageError("Mesh enroll requires --token or CLANKY_MESH_ENROLLMENT_TOKEN");
     if (!fingerprint) {
       throw usageError("Mesh enroll requires --fingerprint or CLANKY_MESH_CONTROLLER_FINGERPRINT");
     }
     return {
       operation,
-      endpoint: requireSinglePositional(
-        positionals,
-        "Mesh enroll requires one target endpoint",
-      ),
+      endpoint: requireSinglePositional(positionals, "Mesh enroll requires one controller endpoint"),
       token,
       fingerprint,
     };
   }
-
   if (operation === "enrollment-token") {
     const [tokenOperation, ...tokenArgs] = operationArgs;
     if (tokenOperation !== "create") {
       throw usageError("Mesh enrollment-token command must be create");
     }
     const { positionals, options } = parseOptions(tokenArgs, ["--name", "--ttl-seconds"]);
-    if (positionals.length > 0) {
-      throw usageError(`Unexpected argument: ${positionals[0]}`);
-    }
+    if (positionals.length > 0) throw usageError(`Unexpected argument: ${positionals[0]}`);
     const ttlSeconds = options["--ttl-seconds"]
       ? Number.parseInt(options["--ttl-seconds"], 10)
       : undefined;
@@ -159,61 +124,7 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
       ttlSeconds,
     };
   }
-
-  if (operation !== "pair") {
-    throw usageError(
-      "Mesh command must be status, revoke, rejoin, or pair",
-    );
-  }
-
-  const [pairOperation, ...pairArgs] = operationArgs;
-  if (pairOperation === "start") {
-    const { positionals, options } = parseOptions(pairArgs, ["--target-user-id"]);
-    return {
-      operation: "pair-start",
-      endpoint: requireSinglePositional(
-        positionals,
-        "Mesh pair start requires one target endpoint",
-      ),
-      targetUserId: options["--target-user-id"],
-    };
-  }
-  if (pairOperation === "approve") {
-    const { positionals, options } = parseOptions(pairArgs, ["--link-id"]);
-    return {
-      operation: "pair-approve",
-      requestId: requireSinglePositional(
-        positionals,
-        "Mesh pair approve requires one request ID",
-      ),
-      linkId: options["--link-id"],
-    };
-  }
-  if (pairOperation === "complete") {
-    const { positionals, options } = parseOptions(pairArgs, ["--fingerprint"]);
-    if (positionals.length !== 1 || !options["--fingerprint"]) {
-      throw usageError(
-        "Mesh pair complete requires a request ID and --fingerprint",
-      );
-    }
-    return {
-      operation: "pair-complete",
-      requestId: positionals[0],
-      fingerprint: options["--fingerprint"],
-    };
-  }
-  if (pairOperation === "reject") {
-    const { positionals, options } = parseOptions(pairArgs, ["--reason"]);
-    return {
-      operation: "pair-reject",
-      requestId: requireSinglePositional(
-        positionals,
-        "Mesh pair reject requires one request ID",
-      ),
-      reason: options["--reason"],
-    };
-  }
-  throw usageError("Mesh pair command must be start, approve, complete, or reject");
+  throw usageError("Mesh command must be status, enroll, enrollment-token, revoke, or update-worker");
 }
 
 export function buildMeshRequest(command: MeshCommand): {
@@ -224,23 +135,14 @@ export function buildMeshRequest(command: MeshCommand): {
   switch (command.operation) {
     case "status":
       return { endpoint: "/api/mesh/status", method: "GET" };
-    case "pair-start":
-      return {
-        endpoint: "/api/mesh/pairing-requests",
-        method: "POST",
-        payload: JSON.stringify({
-          targetEndpoint: command.endpoint,
-          ...(command.targetUserId ? { targetLocalUserId: command.targetUserId } : {}),
-        }),
-      };
     case "enroll":
       return {
-        endpoint: "/api/mesh/pairing-requests",
+        endpoint: "/api/mesh/enroll",
         method: "POST",
         payload: JSON.stringify({
-          targetEndpoint: command.endpoint,
+          controllerEndpoint: command.endpoint,
           enrollmentToken: command.token,
-          expectedFingerprint: command.fingerprint,
+          expectedControllerFingerprint: command.fingerprint,
         }),
       };
     case "enrollment-token-create":
@@ -252,38 +154,16 @@ export function buildMeshRequest(command: MeshCommand): {
           ...(command.ttlSeconds !== undefined ? { ttlSeconds: command.ttlSeconds } : {}),
         }),
       };
-    case "pair-approve":
-      return {
-        endpoint: `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/approve`,
-        method: "POST",
-        payload: JSON.stringify(command.linkId ? { linkId: command.linkId } : {}),
-      };
-    case "pair-complete":
-      return {
-        endpoint: `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/complete`,
-        method: "POST",
-        payload: JSON.stringify({ fingerprint: command.fingerprint }),
-      };
-    case "pair-reject":
-      return {
-        endpoint: `/api/mesh/pairing-requests/${encodeURIComponent(command.requestId ?? "")}/reject`,
-        method: "POST",
-        payload: JSON.stringify(command.reason ? { reason: command.reason } : {}),
-      };
     case "revoke":
       return {
-        endpoint: "/api/mesh/members/revoke",
+        endpoint: "/api/mesh/workers/revoke",
         method: "POST",
-        payload: JSON.stringify({ nodeId: command.requestId }),
+        payload: JSON.stringify({ workerNodeId: command.workerNodeId }),
       };
-    case "rejoin":
+    case "update-worker":
       return {
-        endpoint: "/api/mesh/rejoin",
+        endpoint: `/api/mesh/workers/${encodeURIComponent(command.workerNodeId!)}/update`,
         method: "POST",
-        payload: JSON.stringify({
-          targetEndpoint: command.endpoint,
-          ...(command.targetUserId ? { targetLocalUserId: command.targetUserId } : {}),
-        }),
       };
   }
 }
@@ -291,8 +171,7 @@ export function buildMeshRequest(command: MeshCommand): {
 export async function runMeshCommand(
   context: WebAppCliCommandContext<ClankyCliContext>,
 ): Promise<CliCommandResult> {
-  const command = parseMeshCommandArgs(context.args);
-  const request = buildMeshRequest(command);
+  const request = buildMeshRequest(parseMeshCommandArgs(context.args));
   return await runApiCliCommand({
     args: [
       request.endpoint,
@@ -310,8 +189,8 @@ export async function runMeshCommand(
 
 export function createMeshCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Inspect and manage linked mesh instances.",
-    usage: "mesh <status|revoke|rejoin|enroll|enrollment-token|pair> [options]",
+    description: "Enroll and manage Mesh workers.",
+    usage: "mesh <status|enroll|enrollment-token|revoke|update-worker> [options]",
     handler: runMeshCommand,
   };
 }

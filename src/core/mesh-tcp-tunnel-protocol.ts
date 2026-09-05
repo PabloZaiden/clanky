@@ -8,7 +8,6 @@ export function buildMeshTcpTunnelSigningPayload(
     request.protocolVersion,
     request.capability,
     request.requestId,
-    request.linkId,
     request.callerNodeId,
     request.callerPublicKey,
     request.callerFingerprint,

@@ -50,6 +50,7 @@ import { migrateExecutionHostRegistry } from "./execution-hosts";
 import { migrateDirectExecutionHostTerminalSessions } from "./direct-terminal-sessions";
 import { migrateExecutionHostVncSessions } from "./execution-host-vnc";
 import { migrateMeshEnrollmentTokens } from "./mesh-enrollment-tokens";
+import { migrateMeshControllerWorker } from "./mesh-controller-worker";
 
 const log = createLogger("persistence:migrations");
 
@@ -1522,6 +1523,11 @@ export const migrations: Migration[] = [
     version: 44,
     name: "add_mesh_enrollment_tokens",
     up: migrateMeshEnrollmentTokens,
+  },
+  {
+    version: 45,
+    name: "mesh_controller_worker_clean_break",
+    up: migrateMeshControllerWorker,
   },
 ];
 
