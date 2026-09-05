@@ -50,6 +50,39 @@ export function getLogLevelColor(level: LogLevel): string {
 }
 
 /**
+ * Preserve reasoning-run boundaries from the complete transcript sequence.
+ * Visibility filters are applied later, so a filtered non-reasoning entry must
+ * still prevent the surrounding reasoning entries from sharing a group.
+ */
+export function annotateReasoningBoundaries(sorted: EntryBase[]): EntryBase[] {
+  const annotatedEntries = sorted.map((entry) =>
+    entry.type === "log" && isReasoningLogEntry(entry.data)
+      ? { ...entry }
+      : entry,
+  );
+  let currentReasoningRun: Array<Extract<EntryBase, { type: "log" }>> = [];
+
+  for (const entry of annotatedEntries) {
+    if (entry.type === "log" && isReasoningLogEntry(entry.data)) {
+      entry.reasoningGroupId = currentReasoningRun[0]?.reasoningGroupId ?? entry.data.id;
+      currentReasoningRun.push(entry);
+      continue;
+    }
+
+    if (currentReasoningRun.length === 0) {
+      continue;
+    }
+
+    for (const reasoningEntry of currentReasoningRun) {
+      reasoningEntry.reasoningEndTimestamp = entry.timestamp;
+    }
+    currentReasoningRun = [];
+  }
+
+  return annotatedEntries;
+}
+
+/**
  * Derive a grouping key for an entry. Two consecutive entries belong to
  * the same visual group (and thus collapse their headers) when their
  * keys are equal.
@@ -106,10 +139,12 @@ function createReasoningGroupEntry(
 
 function isMatchingReasoningEntry(
   entry: EntryBase | undefined,
+  reasoningGroupId: string | undefined,
   reasoningEndTimestamp: string | undefined,
 ): entry is Extract<EntryBase, { type: "log" }> {
   return entry?.type === "log"
     && isReasoningLogEntry(entry.data)
+    && entry.reasoningGroupId === reasoningGroupId
     && entry.reasoningEndTimestamp === reasoningEndTimestamp;
 }
 
@@ -139,7 +174,11 @@ export function groupConsecutiveEntries(
       let cursor = index + 1;
       while (cursor < sorted.length) {
         const nextEntry = sorted[cursor];
-        if (!isMatchingReasoningEntry(nextEntry, entry.reasoningEndTimestamp)) {
+        if (!isMatchingReasoningEntry(
+          nextEntry,
+          entry.reasoningGroupId,
+          entry.reasoningEndTimestamp,
+        )) {
           break;
         }
         consecutiveReasoning.push(nextEntry);

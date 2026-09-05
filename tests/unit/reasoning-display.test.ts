@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { EntryBase, LogEntry } from "../../src/components/log-viewer/types";
 import {
+  annotateReasoningBoundaries,
   formatThoughtDuration,
   groupConsecutiveEntries,
+  isReasoningLogEntry,
 } from "../../src/components/log-viewer/utils";
 
 function createReasoningLog(id: string, timestamp: string, content: string): LogEntry {
@@ -123,6 +125,74 @@ describe("reasoning display helpers", () => {
     expect(secondGroup.logs.map((log) => log.id)).toEqual(["reasoning-second-run"]);
     expect(secondGroup.endedAt).toBe(secondEndTimestamp);
     expect(secondGroup.isActive).toBe(false);
+  });
+
+  test("preserves original run boundaries across filtered entries", () => {
+    const sharedEndTimestamp = "2026-09-05T00:00:05.000Z";
+    const firstReasoning = createReasoningLog(
+      "reasoning-filtered-first",
+      "2026-09-05T00:00:00.000Z",
+      "first run",
+    );
+    const secondReasoning = createReasoningLog(
+      "reasoning-filtered-second",
+      sharedEndTimestamp,
+      "second run",
+    );
+    const filteredSystemLog = {
+      id: "system-between-runs",
+      level: "info" as const,
+      message: "System event between reasoning runs.",
+      details: { logKind: "system" },
+      timestamp: sharedEndTimestamp,
+    };
+
+    const annotatedEntries = annotateReasoningBoundaries([
+      {
+        type: "log",
+        data: firstReasoning,
+        timestamp: firstReasoning.timestamp,
+      },
+      {
+        type: "log",
+        data: filteredSystemLog,
+        timestamp: filteredSystemLog.timestamp,
+      },
+      {
+        type: "log",
+        data: secondReasoning,
+        timestamp: secondReasoning.timestamp,
+      },
+      {
+        type: "log",
+        data: {
+          ...filteredSystemLog,
+          id: "system-after-second-run",
+        },
+        timestamp: sharedEndTimestamp,
+      },
+    ]);
+    const visibleReasoningEntries = annotatedEntries.filter(
+      (entry): entry is Extract<EntryBase, { type: "log" }> =>
+        entry.type === "log" && isReasoningLogEntry(entry.data),
+    );
+    const grouped = groupConsecutiveEntries(visibleReasoningEntries, true);
+
+    expect(grouped).toHaveLength(2);
+    const firstGroup = grouped[0];
+    const secondGroup = grouped[1];
+    expect(firstGroup?.type).toBe("reasoning-group");
+    expect(secondGroup?.type).toBe("reasoning-group");
+    if (firstGroup?.type !== "reasoning-group" || secondGroup?.type !== "reasoning-group") {
+      return;
+    }
+
+    expect(firstGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-first"]);
+    expect(firstGroup.endedAt).toBe(sharedEndTimestamp);
+    expect(formatThoughtDuration(firstGroup.timestamp, firstGroup.endedAt!)).toBe("5 seconds");
+    expect(secondGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-second"]);
+    expect(secondGroup.endedAt).toBe(sharedEndTimestamp);
+    expect(formatThoughtDuration(secondGroup.timestamp, secondGroup.endedAt!)).toBe("0 seconds");
   });
 
   test("keeps a trailing reasoning group active while the transcript is active", () => {

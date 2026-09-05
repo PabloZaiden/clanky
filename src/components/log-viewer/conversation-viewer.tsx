@@ -2,6 +2,7 @@ import { useMemo, memo } from "react";
 import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
+  annotateReasoningBoundaries,
   annotateDisplayEntries,
   getEntrySpacingClass,
   groupConsecutiveEntries,
@@ -60,17 +61,13 @@ export const ConversationViewer = memo(function ConversationViewer({
       sourceEntries.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
     sourceEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-    const reasoningEndTimestamps = new Map<string, string | undefined>();
-    let nextNonReasoningTimestamp: string | undefined;
-    for (let index = sourceEntries.length - 1; index >= 0; index -= 1) {
-      const sourceEntry = sourceEntries[index]!;
+    const annotatedSourceEntries = annotateReasoningBoundaries(sourceEntries);
+    const reasoningEntriesById = new Map<string, Extract<EntryBase, { type: "log" }>>();
+    annotatedSourceEntries.forEach((sourceEntry) => {
       if (sourceEntry.type === "log" && isReasoningLogEntry(sourceEntry.data)) {
-        reasoningEndTimestamps.set(sourceEntry.data.id, nextNonReasoningTimestamp);
-      } else {
-        nextNonReasoningTimestamp = sourceEntry.timestamp;
+        reasoningEntriesById.set(sourceEntry.data.id, sourceEntry);
       }
-    }
+    });
 
     const result: EntryBase[] = [];
 
@@ -93,11 +90,13 @@ export const ConversationViewer = memo(function ConversationViewer({
       if (isReasoningLogEntry(logEntry)) {
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
+          const reasoningEntry = reasoningEntriesById.get(logEntry.id);
           result.push({
             type: "log",
             data: logEntry,
             timestamp: logEntry.timestamp,
-            reasoningEndTimestamp: reasoningEndTimestamps.get(logEntry.id),
+            reasoningGroupId: reasoningEntry?.reasoningGroupId,
+            reasoningEndTimestamp: reasoningEntry?.reasoningEndTimestamp,
           });
         }
         return;

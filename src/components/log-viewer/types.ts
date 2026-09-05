@@ -124,6 +124,8 @@ export type EntryBase =
       type: "log";
       data: LogEntry;
       timestamp: string;
+      /** Stable identity of the original consecutive reasoning run. */
+      reasoningGroupId?: string;
       /** Timestamp of the first non-reasoning event after this reasoning block. */
       reasoningEndTimestamp?: string;
     };
