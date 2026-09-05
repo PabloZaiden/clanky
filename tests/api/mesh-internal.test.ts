@@ -7,10 +7,15 @@ import { meshInternalRoutes } from "../../src/api/mesh-internal";
 import {
   buildMeshEnrollmentRequestSigningPayload,
   buildMeshHealthCheckSigningPayload,
+  buildMeshRevocationNoticeSigningPayload,
+  buildMeshWorkerUpdateSigningPayload,
 } from "../../src/core/mesh-protocol";
 import { configureMeshRuntime } from "../../src/core/mesh-runtime";
 import { meshManager } from "../../src/core/mesh-manager";
-import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
+import {
+  ensureLocalMeshNodeIdentity,
+  getMeshNodeFingerprint,
+} from "../../src/persistence/mesh-node-identity";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import {
   listWorkerRegistrations,
@@ -152,6 +157,86 @@ describe("Mesh internal controller-worker routes", () => {
       workerConfigRevision: 1,
       workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
       signature: expect.any(String),
+    });
+  });
+
+  test("rejects signed controller operations targeting another worker", async () => {
+    await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
+    const worker = await ensureLocalMeshNodeIdentity();
+    const controller = createSigningIdentity();
+    await saveControllerGrant({
+      controllerNodeId: "controller-1",
+      controllerInstanceName: "Controller",
+      controllerPublicKey: controller.publicKey,
+      controllerFingerprint: controller.fingerprint,
+      controllerEncryptionPublicKey: null,
+    });
+
+    const revocation = {
+      protocolVersion: 1 as const,
+      controllerNodeId: "controller-1",
+      workerNodeId: `${worker.nodeId}-other`,
+      controllerPublicKey: controller.publicKey,
+      controllerFingerprint: controller.fingerprint,
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const revocationResponse = await meshInternalRoutes[
+      "/api/mesh/internal/revocation"
+    ]!.POST!(new Request("http://worker/api/mesh/internal/revocation", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "controller-1",
+        "x-clanky-mesh-request-id": "controller-1",
+      },
+      body: JSON.stringify({
+        ...revocation,
+        signature: sign(
+          null,
+          Buffer.from(buildMeshRevocationNoticeSigningPayload(revocation)),
+          controller.privateKey,
+        ).toString("base64url"),
+      }),
+    }), undefined as never);
+    expect(revocationResponse!.status).toBe(400);
+    expect(await readJson(revocationResponse!)).toMatchObject({
+      error: "mesh_peer_target_invalid",
+    });
+    expect((await meshManager.getWorkerStatus()).controllerCount).toBe(1);
+
+    const update = {
+      protocolVersion: 1 as const,
+      action: "status" as const,
+      operationId: crypto.randomUUID(),
+      controllerNodeId: "controller-1",
+      workerNodeId: `${worker.nodeId}-other`,
+      controllerPublicKey: controller.publicKey,
+      controllerFingerprint: controller.fingerprint,
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const updateResponse = await meshInternalRoutes[
+      "/api/mesh/internal/update"
+    ]!.POST!(new Request("http://worker/api/mesh/internal/update", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "controller-1",
+        "x-clanky-mesh-request-id": update.nonce,
+      },
+      body: JSON.stringify({
+        ...update,
+        signature: sign(
+          null,
+          Buffer.from(buildMeshWorkerUpdateSigningPayload(update)),
+          controller.privateKey,
+        ).toString("base64url"),
+      }),
+    }), undefined as never);
+    expect(updateResponse!.status).toBe(403);
+    expect(await readJson(updateResponse!)).toMatchObject({
+      error: "mesh_worker_update_target_invalid",
     });
   });
 

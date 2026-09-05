@@ -218,10 +218,47 @@ describe("controller-worker Mesh", () => {
         .toBeGreaterThan(initialRevision);
     }
 
-    expect((await jsonRequest(controllerA, "/api/mesh/workers/revoke", {
+    expect(await jsonRequest(controllerA, "/api/mesh/workers/revoke", {
       method: "POST",
       body: { workerNodeId },
-    })).status).toBe(200);
+    })).toMatchObject({ status: 200 });
     expect((await jsonRequest(controllerB, "/api/mesh/status")).body.workers[0].grantStatus).toBe("active");
+  }, 30_000);
+
+  test("keeps a registration active until the worker acknowledges revocation", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    await enroll(controller, worker);
+    const initialStatus = await jsonRequest(controller, "/api/mesh/status");
+    const workerNodeId = initialStatus.body.workers[0].workerNodeId as string;
+
+    worker.child.kill();
+    await worker.child.exited;
+    const unavailableRevocation = await jsonRequest(
+      controller,
+      "/api/mesh/workers/revoke",
+      {
+        method: "POST",
+        body: { workerNodeId },
+      },
+    );
+    expect(unavailableRevocation.status).toBe(503);
+    expect((await jsonRequest(controller, "/api/mesh/status"))
+      .body.workers[0].grantStatus).toBe("active");
+
+    await restartWorker(worker, {
+      directory: worker.dataDir,
+      executionEnabled: true,
+    });
+    expect(await jsonRequest(controller, "/api/mesh/workers/revoke", {
+      method: "POST",
+      body: { workerNodeId },
+    })).toMatchObject({ status: 200 });
+    expect((await jsonRequest(controller, "/api/mesh/status"))
+      .body.workers[0].grantStatus).toBe("revoked");
+    expect((await jsonRequest(worker, "/api/mesh/status"))
+      .body.controllerCount).toBe(0);
   }, 30_000);
 });

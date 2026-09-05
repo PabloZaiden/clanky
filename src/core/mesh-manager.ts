@@ -243,43 +243,37 @@ export class MeshManager {
     const registration = await getWorkerRegistration(workerNodeId, userId);
     const decision = decideRevokeWorker({ registration });
 
+    const target = registration!;
+    const identity = await ensureLocalMeshNodeIdentity();
+    const nonce = crypto.randomUUID();
+    const expiresAt = new Date(
+      Date.now() + 60_000,
+    ).toISOString();
+    const envelope: Omit<MeshRevocationNotice, "signature"> = {
+      protocolVersion: 1,
+      controllerNodeId: identity.nodeId,
+      workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce,
+      expiresAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshRevocationNoticeSigningPayload(envelope),
+    );
+    const route = resolveMeshRoute(
+      target.workerEndpoint,
+      "api/mesh/internal/revocation",
+    );
+    await postMeshControlMessage(route, {
+      ...envelope,
+      signature,
+    }, identity.nodeId, {
+      "x-clanky-mesh-node-id": identity.nodeId,
+    });
+
     if (decision.kind === "apply") {
       await revokeWorkerRegistration(workerNodeId, userId);
-
-      // Best-effort: notify the worker of the revocation
-      if (registration) {
-        try {
-          const identity = await ensureLocalMeshNodeIdentity();
-          const nonce = crypto.randomUUID();
-          const expiresAt = new Date(
-            Date.now() + 60_000,
-          ).toISOString();
-          const envelope: Omit<MeshRevocationNotice, "signature"> = {
-            protocolVersion: 1,
-            controllerNodeId: identity.nodeId,
-            controllerPublicKey: identity.publicKey,
-            controllerFingerprint: identity.fingerprint,
-            nonce,
-            expiresAt,
-          };
-          const signature = await signMeshPayload(
-            buildMeshRevocationNoticeSigningPayload(envelope),
-          );
-          const route = resolveMeshRoute(
-            registration.workerEndpoint,
-            "api/mesh/internal/revocation",
-          );
-          await postMeshControlMessage(route, {
-            ...envelope,
-            signature,
-          }, identity.nodeId);
-        } catch (error) {
-          log.warn("Failed to notify worker of revocation", {
-            workerNodeId,
-            error: String(error),
-          });
-        }
-      }
     }
 
     meshStateEventEmitter.emit(
@@ -429,6 +423,7 @@ export class MeshManager {
         action,
         operationId,
         controllerNodeId: identity.nodeId,
+        workerNodeId: registration.workerNodeId,
         controllerPublicKey: identity.publicKey,
         controllerFingerprint: identity.fingerprint,
         nonce,
@@ -441,6 +436,9 @@ export class MeshManager {
           signature: await signMeshPayload(buildMeshWorkerUpdateSigningPayload(unsigned)),
         },
         nonce,
+        {
+          "x-clanky-mesh-node-id": identity.nodeId,
+        },
       );
       return await response.json() as MeshWorkerUpdateStatus;
     };
@@ -459,7 +457,14 @@ export class MeshManager {
       } catch (error) {
         if (
           error instanceof DomainError
-          && error.code === "mesh_control_request_unreachable"
+          && (
+            error.code === "mesh_control_request_unreachable"
+            || (
+              error.code === "mesh_control_request_rejected"
+              && typeof error.details["status"] === "number"
+              && [502, 503, 504].includes(error.details["status"])
+            )
+          )
         ) {
           continue;
         }
@@ -668,6 +673,13 @@ export class MeshManager {
       throw new DomainError(
         "mesh_revocation_expired",
         "The revocation notice has expired.",
+      );
+    }
+    const identity = await ensureLocalMeshNodeIdentity();
+    if (envelope.workerNodeId !== identity.nodeId) {
+      throw new DomainError(
+        "mesh_peer_target_invalid",
+        "The revocation notice targets a different Mesh worker.",
       );
     }
 

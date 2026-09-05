@@ -46,6 +46,8 @@ function internalMeshErrorResponse(error: unknown): Response {
           ? 403
         : error.code === "mesh_worker_update_invalid_signature"
           ? 401
+        : error.code === "mesh_worker_update_target_invalid"
+          ? 403
         : error.code === "mesh_worker_update_in_progress"
           || error.code === "mesh_worker_update_unsupported"
           ? 409

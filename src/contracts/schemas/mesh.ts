@@ -123,6 +123,7 @@ export const MeshHealthCheckResponseSchema = z.object({
 export const MeshRevocationNoticeSchema = z.object({
   protocolVersion: z.literal(1),
   controllerNodeId: z.string().trim().min(1),
+  workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
   controllerFingerprint: z.string().trim().min(1),
   nonce: z.string().trim().min(1),
@@ -135,6 +136,7 @@ export const MeshWorkerUpdateRequestSchema = z.object({
   action: z.enum(["start", "status"]),
   operationId: z.string().uuid(),
   controllerNodeId: z.string().trim().min(1),
+  workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
   controllerFingerprint: z.string().trim().min(1),
   nonce: z.string().uuid(),

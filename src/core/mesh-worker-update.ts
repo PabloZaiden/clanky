@@ -4,7 +4,10 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { CLANKY_VERSION } from "../version";
 import { getDataDir } from "../persistence/database";
 import { rename } from "node:fs/promises";
-import { verifyMeshPayloadSignature } from "../persistence/mesh-node-identity";
+import {
+  ensureLocalMeshNodeIdentity,
+  verifyMeshPayloadSignature,
+} from "../persistence/mesh-node-identity";
 import { DomainError } from "./domain-error";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshWorkerUpdateSigningPayload } from "./mesh-protocol";
@@ -73,6 +76,13 @@ async function verifyRequest(envelope: MeshWorkerUpdateRequest): Promise<void> {
     throw new DomainError(
       "mesh_worker_update_invalid_signature",
       "The worker update request signature is invalid.",
+    );
+  }
+  const identity = await ensureLocalMeshNodeIdentity();
+  if (envelope.workerNodeId !== identity.nodeId) {
+    throw new DomainError(
+      "mesh_worker_update_target_invalid",
+      "The update request targets a different Mesh worker.",
     );
   }
   if (usedNonces.size >= MAX_USED_NONCES) {
