@@ -19,18 +19,14 @@ import {
   MESH_TERMINAL_PROTOCOL_VERSION,
   MESH_TERMINAL_SESSION_TTL_MS,
 } from "@/shared/mesh-terminal";
-import {
-  getMeshLinkById,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { getControllerGrant } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
-import { requireTrustedMeshPeer } from "./mesh-peer-auth";
+import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
 import { assertMeshExecutionCwd } from "./mesh-execution-gateway";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -50,7 +46,6 @@ export interface MeshTerminalSocket {
 interface MeshTerminalLease {
   sessionId: string;
   sessionToken: string;
-  linkId: string;
   callerNodeId: string;
   expiresAt: number;
   request: MeshTerminalSessionRequest;
@@ -178,7 +173,6 @@ export class MeshTerminalGateway {
       const lease: MeshTerminalLease = {
         sessionId,
         sessionToken: randomBytes(32).toString("base64url"),
-        linkId: request.linkId,
         callerNodeId: request.callerNodeId,
         expiresAt,
         request,
@@ -442,20 +436,14 @@ export class MeshTerminalGateway {
     if (request.targetNodeId !== identity.nodeId) {
       throw new DomainError("mesh_terminal_target_invalid", "The terminal request targets another Mesh node.");
     }
-    const { link } = await requireTrustedMeshPeer({
-      linkId: request.linkId,
-      nodeId: request.callerNodeId,
+    await requireTrustedController({
+      controllerNodeId: request.callerNodeId,
       publicKey: request.callerPublicKey,
       fingerprint: request.callerFingerprint,
       encryptionPublicKey: request.callerEncryptionPublicKey,
       requireEncryptionKey: true,
-      requireActiveNode: true,
-      requireActiveMember: true,
       context: "terminal caller",
     });
-    if (link.status !== "active") {
-      throw new DomainError("mesh_link_revoked", "The Mesh terminal link is not active.");
-    }
   }
 
   private async requireValidatedLease(
@@ -472,20 +460,10 @@ export class MeshTerminalGateway {
       await this.close(sessionId, true, 1000, "Mesh terminal session expired");
       throw new DomainError("mesh_terminal_session_expired", "The Mesh terminal session has expired.");
     }
-    const link = await getMeshLinkById(lease.linkId);
-    const member = (await listMeshLinkMembers(lease.linkId))
-      .find((candidate) => candidate.nodeId === lease.callerNodeId);
-    const node = await getMeshNode(lease.callerNodeId);
-    if (
-      !link
-      || link.status !== "active"
-      || !member
-      || member.status !== "active"
-      || !node
-      || node.status !== "active"
-    ) {
+    const grant = await getControllerGrant(lease.callerNodeId);
+    if (!grant || grant.grantStatus !== "active") {
       await this.close(sessionId, true, 1008, "Mesh terminal authority changed");
-      throw new DomainError("mesh_terminal_context_changed", "The Mesh terminal caller is no longer trusted.");
+      throw new DomainError("mesh_terminal_context_changed", "The Mesh terminal controller grant is no longer active.");
     }
     return lease;
   }

@@ -7,7 +7,7 @@ import {
   MESH_TCP_TUNNEL_PROTOCOL_VERSION,
   MESH_TCP_TUNNEL_SESSION_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
-import { getMeshLinkById, getMeshNode, listMeshLinkMembers } from "../persistence/mesh";
+import { getControllerGrant } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   requireLocalMeshExecutionCapability,
@@ -15,7 +15,7 @@ import {
 } from "../persistence/mesh-node-identity";
 import { DomainError } from "./domain-error";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
-import { requireTrustedMeshPeer } from "./mesh-peer-auth";
+import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
 
 const MAX_TUNNELS = 32;
@@ -29,7 +29,6 @@ export interface MeshTcpTunnelSocket {
 interface TunnelLease {
   sessionId: string;
   sessionToken: string;
-  linkId: string;
   callerNodeId: string;
   remotePort: number;
   expiresAt: number;
@@ -86,20 +85,14 @@ export class MeshTcpTunnelGateway {
     if (request.targetNodeId !== identity.nodeId) {
       throw new DomainError("mesh_tunnel_target_invalid", "The TCP tunnel targets another node.");
     }
-    const { link } = await requireTrustedMeshPeer({
-      linkId: request.linkId,
-      nodeId: request.callerNodeId,
+    await requireTrustedController({
+      controllerNodeId: request.callerNodeId,
       publicKey: request.callerPublicKey,
       fingerprint: request.callerFingerprint,
       encryptionPublicKey: request.callerEncryptionPublicKey,
       requireEncryptionKey: true,
-      requireActiveNode: true,
-      requireActiveMember: true,
       context: "TCP tunnel caller",
     });
-    if (link.status !== "active") {
-      throw new DomainError("mesh_link_revoked", "The Mesh TCP tunnel link is not active.");
-    }
     const sessionId = crypto.randomUUID();
     const expiresAt = Math.min(expiresAtRequest, Date.now() + MESH_TCP_TUNNEL_SESSION_TTL_MS);
     const expiryTimer = setTimeout(() => {
@@ -109,7 +102,6 @@ export class MeshTcpTunnelGateway {
     const lease: TunnelLease = {
       sessionId,
       sessionToken: randomBytes(32).toString("base64url"),
-      linkId: request.linkId,
       callerNodeId: request.callerNodeId,
       remotePort: request.remotePort,
       expiresAt,
@@ -221,19 +213,10 @@ export class MeshTcpTunnelGateway {
     if (!lease || lease.sessionToken !== sessionToken || lease.expiresAt <= Date.now()) {
       throw new DomainError("mesh_tunnel_session_invalid", "The TCP tunnel session is invalid.");
     }
-    const [link, node, members] = await Promise.all([
-      getMeshLinkById(lease.linkId),
-      getMeshNode(lease.callerNodeId),
-      listMeshLinkMembers(lease.linkId),
-    ]);
-    const member = members.find((candidate) => candidate.nodeId === lease.callerNodeId);
-    if (
-      link?.status !== "active"
-      || node?.status !== "active"
-      || member?.status !== "active"
-    ) {
+    const grant = await getControllerGrant(lease.callerNodeId);
+    if (!grant || grant.grantStatus !== "active") {
       await this.close(sessionId, 1008, "Mesh TCP tunnel authority changed");
-      throw new DomainError("mesh_tunnel_context_changed", "The TCP tunnel caller is no longer trusted.");
+      throw new DomainError("mesh_tunnel_context_changed", "The TCP tunnel controller grant is no longer active.");
     }
     return lease;
   }

@@ -1,76 +1,62 @@
 /**
- * Core orchestration for linked-instance mesh membership.
+ * Core orchestration for the controller-worker mesh.
  *
- * Transport workers will call the persistence functions directly through this
- * boundary as they are added. User-facing routes use this manager so local
- * authentication remains separate from mesh membership.
+ * Controllers enroll workers via single-use tokens. Workers store independent
+ * grants. No membership gossip, no roster propagation, no peer-to-peer
+ * relationships.
  */
 
 import type {
-  ApproveMeshPairingRequest,
-  CompleteMeshPairingRequest,
+  MeshEnrollmentRequest,
+  MeshEnrollmentResponse,
   MeshHealthCheck,
-  MeshExecutionConfigurationUpdate,
-  MeshMembershipUpdate,
-  MeshPeerPairingRequest,
-  MeshPeerPairingApproval,
-  RejectMeshPairingRequest,
-  StartMeshPairingRequest,
-  UpdateMeshExecutionConfigurationRequest,
+  MeshHealthCheckResponse,
+  MeshRevocationNotice,
+  MeshWorkerUpdateRequest,
 } from "@/contracts/schemas/mesh";
-import { ExecutionNodeConfigurationSchema } from "@/contracts/schemas/execution-host";
+import { MeshHealthCheckResponseSchema } from "@/contracts/schemas/mesh";
 import type {
-  ExecutionHostModelConfig,
-  ExecutionNodeConfiguration,
-} from "@/shared/execution-host";
-import type {
-  MeshLinkStatusRecord,
+  MeshControllerGrant,
+  MeshControllerStatus,
   MeshNodeIdentity,
-  MeshPairingMemberRecord,
-  MeshStatusRecord,
+  MeshWorkerExecutionConfig,
+  MeshWorkerStatus,
+  MeshWorkerUpdateStatus,
 } from "@/shared/mesh";
+import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
-  applyMeshMembershipUpdate,
-  approveMeshPairingRequest,
-  assertMeshInstanceNameAvailable,
-  assertMeshLinkInstanceNameAvailable,
-  completeOutgoingMeshPairingRequest,
-  createMeshPairingRequest,
-  getMeshPairingApproval,
-  getMeshPairingRequest,
-  getMeshLinkForLocalUser,
-  getMeshNode,
-  listMeshLinkMembers,
-  listMeshMembershipEntries,
-  listMeshLinksForLocalUser,
-  listPendingMeshPairingRequests,
-  removeRevokedMeshLinkMember,
-  rejectMeshPairingRequest,
-  rollbackMeshPairingApproval,
-  saveMeshNode,
-  saveMeshPairingApproval,
-  mergeMeshLinkMember,
-  setMeshPairingApprovalStatus,
-  setMeshLinkMemberReachability,
-  revokeMeshLinkMember,
+  getControllerGrant,
+  getWorkerRegistration,
+  listActiveWorkerRegistrations,
+  listControllerGrants,
+  listWorkerRegistrations,
+  revokeControllerGrant,
+  revokeWorkerRegistration,
+  deleteRevokedWorkerRegistration,
+  saveControllerGrant,
+  saveWorkerRegistration,
+  updateWorkerHealthSnapshot,
 } from "../persistence/mesh";
 import {
+  consumeMeshEnrollmentToken,
+  createMeshEnrollmentToken,
+  listMeshEnrollmentTokens,
+} from "../persistence/mesh-enrollment-tokens";
+import {
   ensureLocalMeshNodeIdentity,
-  requireMeshInstanceName,
-  rotateLocalMeshNodeIdentity,
   setLocalMeshEndpoint,
-  setLocalMeshExecutionConfiguration,
   setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import {
-  buildMeshPairingApprovalSigningPayload,
+  buildMeshEnrollmentRequestSigningPayload,
+  buildMeshEnrollmentResponseSigningPayload,
   buildMeshHealthCheckSigningPayload,
-  buildMeshExecutionConfigurationUpdateSigningPayload,
-  buildMeshMembershipUpdateSigningPayload,
-  buildMeshPairingRequestSigningPayload,
+  buildMeshHealthCheckResponseSigningPayload,
+  buildMeshRevocationNoticeSigningPayload,
+  buildMeshWorkerUpdateSigningPayload,
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
@@ -80,22 +66,23 @@ import {
 } from "./mesh-transport-config";
 import { DomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
-import { backendManager } from "./backend/backend-manager";
+import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import {
-  assertMeshPeerIdentity,
-  requireTrustedMeshPeer,
-} from "./mesh-peer-auth";
-import {
-  decideCompleteMeshPairing,
-  decideReceiveMeshPairingApproval,
+  decideEnrollWorker,
+  decideRevokeWorker,
+  decideAcceptEnrollment,
 } from "../domain/mesh-transitions";
-import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { meshStateEventEmitter } from "./event-emitter";
-import { CommandExecutorImpl } from "./remote-command-executor";
+import {
+  getMeshRuntimeRole,
+  getMeshWorkerDirectory,
+  isMeshWorkerExecutionEnabled,
+  requireMeshRuntimeRole,
+} from "./mesh-runtime";
 
-const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
-const EXECUTION_CONFIGURATION_REQUEST_TTL_MS = 60 * 1000;
 const log = createLogger("core:mesh-manager");
+const WORKER_UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
+const WORKER_UPDATE_POLL_INTERVAL_MS = 500;
 
 async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
   const identity = await ensureLocalMeshNodeIdentity();
@@ -104,18 +91,6 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
   }
   const endpoint = resolveAdvertisedMeshEndpoint();
   const updatedIdentity = await setLocalMeshEndpoint(endpoint);
-  const existingNode = await getMeshNode(updatedIdentity.nodeId);
-  await saveMeshNode({
-    nodeId: updatedIdentity.nodeId,
-    instanceName: updatedIdentity.instanceName,
-    publicKey: updatedIdentity.publicKey,
-    fingerprint: updatedIdentity.fingerprint,
-    encryptionPublicKey: updatedIdentity.encryptionPublicKey,
-    execution: updatedIdentity.execution,
-    endpoint,
-    transport: getMeshTransport(endpoint),
-    status: existingNode?.status ?? "active",
-  });
   log.info("Materialized the configured public base URL as the local Mesh endpoint", {
     endpoint,
   });
@@ -123,1047 +98,670 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
 }
 
 export class MeshManager {
-  async updateExecutionNodeDefaults(
-    localUserId: string,
-    targetNodeId: string,
-    input: {
-      expectedRevision: number;
-      repositoriesBasePath: string | null;
-      preferredModel: ExecutionHostModelConfig | null;
-    },
-  ): Promise<ExecutionNodeConfiguration> {
+  // --- Controller: enrollment token management ---
+
+  async createEnrollmentToken(
+    userId: string,
+    name: string,
+    ttlSeconds: number,
+  ) {
+    requireMeshRuntimeRole("controller");
     const identity = await ensureLocalMeshIdentityWithEndpoint();
-    if (targetNodeId === identity.nodeId) {
-      const current = identity.execution;
-      if (!current) {
-        throw new DomainError(
-          "mesh_execution_configuration_missing",
-          "The local Mesh execution configuration is unavailable.",
-        );
-      }
-      if (current.revision !== input.expectedRevision) {
-        throw new DomainError(
-          "mesh_execution_configuration_stale",
-          "The Mesh execution configuration changed before it could be saved.",
-        );
-      }
-      const status = await this.setExecutionConfiguration(localUserId, {
-        acceptRemoteExecution: current.acceptRemoteExecution,
-        repositoriesBasePath: input.repositoriesBasePath,
-        preferredModel: input.preferredModel,
-      }, input.expectedRevision);
-      if (!status.node.execution) {
-        throw new DomainError(
-          "mesh_execution_configuration_missing",
-          "The updated Mesh execution configuration is unavailable.",
-        );
-      }
-      return status.node.execution;
-    }
-
-    const link = await getMeshLinkForLocalUser(localUserId);
-    if (!link || link.status !== "active") {
-      throw new DomainError("mesh_link_not_found", "The local user is not linked to an active mesh.");
-    }
-    const member = (await listMeshLinkMembers(link.linkId))
-      .find((candidate) => candidate.nodeId === targetNodeId);
-    if (!member || member.status !== "active" || !member.endpoint) {
-      throw new DomainError(
-        "execution_host_unavailable",
-        "The selected Mesh execution host is unavailable.",
-      );
-    }
-    const target = await getMeshNode(targetNodeId);
-    if (!target?.execution) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The selected Mesh execution configuration is unavailable.",
-      );
-    }
-    if (target.execution.revision !== input.expectedRevision) {
-      throw new DomainError(
-        "mesh_execution_configuration_stale",
-        "The Mesh execution configuration changed before it could be saved.",
-      );
-    }
-
-    const nonce = crypto.randomUUID();
-    const unsigned = {
-      protocolVersion: 1 as const,
-      linkId: link.linkId,
-      senderNodeId: identity.nodeId,
-      senderPublicKey: identity.publicKey,
-      senderFingerprint: identity.fingerprint,
-      targetNodeId,
-      expectedRevision: input.expectedRevision,
-      repositoriesBasePath: input.repositoriesBasePath,
-      preferredModel: input.preferredModel,
-      nonce,
-      expiresAt: new Date(
-        Date.now() + EXECUTION_CONFIGURATION_REQUEST_TTL_MS,
-      ).toISOString(),
-    };
-    const signature = await signMeshPayload(
-      buildMeshExecutionConfigurationUpdateSigningPayload(unsigned),
-    );
-    const response = await postMeshControlMessage(
-      resolveMeshRoute(member.endpoint, "api/mesh/internal/execution/configuration"),
-      { ...unsigned, signature },
-      nonce,
-    );
-    const result = await response.json() as { configuration?: unknown };
-    const configuration = ExecutionNodeConfigurationSchema.safeParse(
-      result.configuration,
-    );
-    if (!configuration.success) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The peer did not return its updated execution configuration.",
-      );
-    }
-    return configuration.data;
-  }
-
-  async receiveExecutionConfigurationUpdate(
-    envelope: MeshExecutionConfigurationUpdate,
-  ): Promise<{ configuration: ExecutionNodeConfiguration }> {
-    if (new Date(envelope.expiresAt).getTime() <= Date.now()) {
-      throw new DomainError(
-        "mesh_execution_configuration_request_expired",
-        "The Mesh execution configuration request has expired.",
-      );
-    }
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    if (envelope.targetNodeId !== identity.nodeId) {
-      throw new DomainError(
-        "mesh_execution_configuration_target_invalid",
-        "The Mesh execution configuration request targets another node.",
-      );
-    }
-    const trusted = await requireTrustedMeshPeer({
-      linkId: envelope.linkId,
-      nodeId: envelope.senderNodeId,
-      publicKey: envelope.senderPublicKey,
-      fingerprint: envelope.senderFingerprint,
-      requireActiveNode: true,
-      requireActiveMember: true,
-      requireEncryptionKey: false,
-      context: "execution configuration sender",
+    return createMeshEnrollmentToken(userId, name, ttlSeconds, {
+      nodeId: identity.nodeId,
+      fingerprint: identity.fingerprint,
     });
-    const { signature, ...unsigned } = envelope;
-    if (!verifyMeshPayloadSignature(
-      buildMeshExecutionConfigurationUpdateSigningPayload(unsigned),
-      signature,
-      envelope.senderPublicKey,
-    )) {
-      throw new DomainError(
-        "mesh_peer_signature_invalid",
-        "The execution configuration signature is invalid.",
-      );
-    }
-    const current = identity.execution;
-    if (!current) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The local Mesh execution configuration is unavailable.",
-      );
-    }
-    if (current.revision !== envelope.expectedRevision) {
-      throw new DomainError(
-        "mesh_execution_configuration_stale",
-        "The Mesh execution configuration changed before it could be saved.",
-      );
-    }
-    if (envelope.repositoriesBasePath) {
-      const executor = new CommandExecutorImpl({
-        provider: "local",
-        directory: ".",
-      });
-      const result = await executor.exec(
-        "/bin/sh",
-        [
-          "-c",
-          "test -d \"$1\"",
-          "clanky-directory-check",
-          envelope.repositoriesBasePath,
-        ],
-        { cwd: ".", maxOutputBytes: 16 * 1024 },
-      );
-      if (!result.success) {
-        throw new DomainError(
-          "execution_host_directory_invalid",
-          "The selected directory does not exist on this execution host.",
-        );
-      }
-    }
-    const status = await this.setExecutionConfiguration(trusted.link.localUserId, {
-      acceptRemoteExecution: current.acceptRemoteExecution,
-      repositoriesBasePath: envelope.repositoriesBasePath,
-      preferredModel: envelope.preferredModel,
-    }, envelope.expectedRevision);
-    if (!status.node.execution) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The updated Mesh execution configuration is unavailable.",
-      );
-    }
-    return { configuration: status.node.execution };
   }
 
-  async checkHealth(localUserId: string): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const link = await getMeshLinkForLocalUser(localUserId);
-    if (!link) {
-      return await this.getStatus(localUserId);
+  async listEnrollmentTokens(userId: string) {
+    requireMeshRuntimeRole("controller");
+    return listMeshEnrollmentTokens(userId);
+  }
+
+  // --- Controller: receive enrollment from worker ---
+
+  async receiveEnrollmentRequest(
+    envelope: MeshEnrollmentRequest,
+  ): Promise<MeshEnrollmentResponse> {
+    requireMeshRuntimeRole("controller");
+    const identity = await ensureLocalMeshNodeIdentity();
+
+    // Verify the enrollment signature
+    assertMeshPeerIdentity(
+      envelope.workerPublicKey,
+      envelope.workerFingerprint,
+      "enrolling worker",
+    );
+    const signingPayload = buildMeshEnrollmentRequestSigningPayload(envelope);
+    const signatureValid = await verifyMeshPayloadSignature(
+      signingPayload,
+      envelope.signature,
+      envelope.workerPublicKey,
+    );
+    if (!signatureValid) {
+      throw new DomainError(
+        "mesh_enrollment_invalid_signature",
+        "The enrollment request signature is invalid.",
+      );
     }
-    const nonce = crypto.randomUUID();
-    const unsigned = {
-      protocolVersion: 1 as const,
-      linkId: link.linkId,
-      senderNodeId: identity.nodeId,
-      senderPublicKey: identity.publicKey,
-      senderFingerprint: identity.fingerprint,
-      nonce,
-      sentAt: new Date().toISOString(),
-    };
-    const signature = await signMeshPayload(buildMeshHealthCheckSigningPayload(unsigned));
-    const members = await listMeshLinkMembers(link.linkId);
-    await Promise.all(members
-      .filter((member) => member.nodeId !== identity.nodeId && member.status !== "revoked")
-      .map(async (member) => {
-        if (!member.endpoint) {
-          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
-          return;
-        }
-        try {
-          await postMeshControlMessage(
-            resolveMeshRoute(member.endpoint, "api/mesh/internal/health"),
-            { ...unsigned, signature },
-            nonce,
-          );
-          await setMeshLinkMemberReachability(link.linkId, member.nodeId, true);
-        } catch (error) {
-          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
-          log.debug("Mesh health check failed", {
-            linkId: link.linkId,
-            peerNodeId: member.nodeId,
-            error: String(error),
-          });
-        }
-      }));
+
+    // Verify the worker is enrolling against the correct controller
+    if (envelope.expectedControllerFingerprint !== identity.fingerprint) {
+      throw new DomainError(
+        "mesh_enrollment_controller_mismatch",
+        "The expected controller fingerprint does not match this node.",
+      );
+    }
+
+    // Verify request is not expired
+    if (Date.parse(envelope.expiresAt) <= Date.now()) {
+      throw new DomainError(
+        "mesh_enrollment_expired",
+        "The enrollment request has expired.",
+      );
+    }
+
+    // Consume the enrollment token atomically
+    const tokenResult = consumeMeshEnrollmentToken(
+      envelope.enrollmentToken,
+      {
+        nodeId: identity.nodeId,
+        fingerprint: identity.fingerprint,
+      },
+    );
+    if (!tokenResult) {
+      throw new DomainError(
+        "mesh_enrollment_token_invalid",
+        "The Mesh enrollment token is invalid, expired, or already used.",
+      );
+    }
+
+    // Decide whether to apply enrollment
+    const existingRegistration = await getWorkerRegistration(
+      envelope.workerNodeId,
+      tokenResult.userId,
+    );
+    const decision = decideEnrollWorker({
+      existingRegistration,
+      workerNodeId: envelope.workerNodeId,
+      localNodeId: identity.nodeId,
+    });
+
+    if (decision.kind === "apply") {
+      await saveWorkerRegistration({
+        workerNodeId: envelope.workerNodeId,
+        localUserId: tokenResult.userId,
+        workerInstanceName: envelope.workerInstanceName ?? null,
+        workerEndpoint: envelope.workerEndpoint,
+        workerTransport: envelope.workerTransport,
+        workerPublicKey: envelope.workerPublicKey,
+        workerFingerprint: envelope.workerFingerprint,
+        workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
+        workerDirectory: envelope.workerDirectory,
+        workerCapabilities: envelope.workerCapabilities,
+        workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
+        workerConfigRevision: envelope.workerConfigRevision,
+      });
+    }
+
     meshStateEventEmitter.emit(
       { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
+      { userId: tokenResult.userId },
     );
-    return await this.getStatus(localUserId);
+
+    const response: Omit<MeshEnrollmentResponse, "signature"> = {
+      protocolVersion: 1,
+      workerNodeId: envelope.workerNodeId,
+      controllerNodeId: identity.nodeId,
+      controllerInstanceName: identity.instanceName,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      controllerEncryptionPublicKey: identity.encryptionPublicKey,
+    };
+    return {
+      ...response,
+      signature: await signMeshPayload(
+        buildMeshEnrollmentResponseSigningPayload(response),
+      ),
+    };
   }
+
+  // --- Controller: worker management ---
+
+  async getControllerStatus(userId: string): Promise<MeshControllerStatus> {
+    requireMeshRuntimeRole("controller");
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const workers = await listWorkerRegistrations(userId);
+    return { node: identity, workers };
+  }
+
+  async revokeWorker(
+    userId: string,
+    workerNodeId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const registration = await getWorkerRegistration(workerNodeId, userId);
+    const decision = decideRevokeWorker({ registration });
+
+    const target = registration!;
+    const identity = await ensureLocalMeshNodeIdentity();
+    const nonce = crypto.randomUUID();
+    const expiresAt = new Date(
+      Date.now() + 60_000,
+    ).toISOString();
+    const envelope: Omit<MeshRevocationNotice, "signature"> = {
+      protocolVersion: 1,
+      controllerNodeId: identity.nodeId,
+      workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce,
+      expiresAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshRevocationNoticeSigningPayload(envelope),
+    );
+    const route = resolveMeshRoute(
+      target.workerEndpoint,
+      "api/mesh/internal/revocation",
+    );
+    await postMeshControlMessage(route, {
+      ...envelope,
+      signature,
+    }, identity.nodeId, {
+      "x-clanky-mesh-node-id": identity.nodeId,
+    });
+
+    if (decision.kind === "apply") {
+      await revokeWorkerRegistration(workerNodeId, userId);
+    }
+
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId },
+    );
+  }
+
+  async removeRevokedWorker(
+    userId: string,
+    workerNodeId: string,
+  ): Promise<void> {
+    await deleteRevokedWorkerRegistration(workerNodeId, userId);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId },
+    );
+  }
+
+  // --- Controller: health check ---
+
+  async checkWorkerHealth(
+    userId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const workers = await listActiveWorkerRegistrations(userId);
+
+    let executionHostsChanged = false;
+    for (const worker of workers) {
+      try {
+        const nonce = crypto.randomUUID();
+        const sentAt = new Date().toISOString();
+        const envelope: Omit<MeshHealthCheck, "signature"> = {
+          protocolVersion: 1,
+          senderNodeId: identity.nodeId,
+          senderPublicKey: identity.publicKey,
+          senderFingerprint: identity.fingerprint,
+          nonce,
+          sentAt,
+        };
+        const signature = await signMeshPayload(
+          buildMeshHealthCheckSigningPayload(envelope),
+        );
+        const route = resolveMeshRoute(
+          worker.workerEndpoint,
+          "api/mesh/internal/health",
+        );
+        const response = await postMeshControlMessage(route, {
+          ...envelope,
+          signature,
+        }, nonce);
+        const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
+          await response.json(),
+        );
+        if (!parsedResponse.success) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response has an invalid shape.",
+          );
+        }
+        const health = parsedResponse.data;
+        if (
+          health.workerNodeId !== worker.workerNodeId
+          || health.controllerNodeId !== identity.nodeId
+          || health.requestNonce !== nonce
+        ) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response does not match the request.",
+          );
+        }
+        const { signature: responseSignature, ...unsignedResponse } = health;
+        if (!await verifyMeshPayloadSignature(
+          buildMeshHealthCheckResponseSigningPayload(unsignedResponse),
+          responseSignature,
+          worker.workerPublicKey,
+        )) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response signature is invalid.",
+          );
+        }
+        if (health.workerConfigRevision < worker.workerConfigRevision) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker health response contains a stale configuration revision.",
+          );
+        }
+        const configurationChanged =
+          health.workerConfigRevision !== worker.workerConfigRevision
+          || health.workerDirectory !== worker.workerDirectory
+          || health.workerAcceptRemoteExecution !== worker.workerAcceptRemoteExecution
+          || JSON.stringify(health.workerCapabilities)
+            !== JSON.stringify(worker.workerCapabilities);
+        if (
+          health.workerConfigRevision === worker.workerConfigRevision
+          && configurationChanged
+        ) {
+          throw new DomainError(
+            "mesh_health_check_response_invalid",
+            "The worker changed configuration without advancing its revision.",
+          );
+        }
+        await updateWorkerHealthSnapshot({
+          workerNodeId: worker.workerNodeId,
+          localUserId: userId,
+          directory: health.workerDirectory,
+          capabilities: health.workerCapabilities,
+          acceptRemoteExecution: health.workerAcceptRemoteExecution,
+          configRevision: health.workerConfigRevision,
+        });
+        executionHostsChanged ||= configurationChanged;
+      } catch (error) {
+        log.warn("Worker health check failed", {
+          workerNodeId: worker.workerNodeId,
+          error: String(error),
+        });
+        // No trust mutation — failed health does not change grant status
+      }
+
+    }
+
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged },
+      { userId },
+    );
+  }
+
+  async updateWorker(
+    userId: string,
+    workerNodeId: string,
+  ): Promise<MeshWorkerUpdateStatus> {
+    requireMeshRuntimeRole("controller");
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const registration = await getWorkerRegistration(workerNodeId, userId);
+    if (!registration || registration.grantStatus !== "active") {
+      throw new DomainError("mesh_worker_not_found", "The active Mesh worker was not found.");
+    }
+    const operationId = crypto.randomUUID();
+    const sendUpdateRequest = async (
+      action: "start" | "status",
+    ): Promise<MeshWorkerUpdateStatus> => {
+      const nonce = crypto.randomUUID();
+      const unsigned: Omit<MeshWorkerUpdateRequest, "signature"> = {
+        protocolVersion: 1,
+        action,
+        operationId,
+        controllerNodeId: identity.nodeId,
+        workerNodeId: registration.workerNodeId,
+        controllerPublicKey: identity.publicKey,
+        controllerFingerprint: identity.fingerprint,
+        nonce,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+      const response = await postMeshControlMessage(
+        resolveMeshRoute(registration.workerEndpoint, "api/mesh/internal/update"),
+        {
+          ...unsigned,
+          signature: await signMeshPayload(buildMeshWorkerUpdateSigningPayload(unsigned)),
+        },
+        nonce,
+        {
+          "x-clanky-mesh-node-id": identity.nodeId,
+        },
+      );
+      return await response.json() as MeshWorkerUpdateStatus;
+    };
+    let update = await sendUpdateRequest("start");
+    const deadline = Date.now() + WORKER_UPDATE_TIMEOUT_MS;
+    while (update.state === "updating" || update.state === "handoff") {
+      if (Date.now() >= deadline) {
+        throw new DomainError(
+          "mesh_worker_update_timeout",
+          "Timed out waiting for the Mesh worker update to finish.",
+        );
+      }
+      await Bun.sleep(WORKER_UPDATE_POLL_INTERVAL_MS);
+      try {
+        update = await sendUpdateRequest("status");
+      } catch (error) {
+        if (
+          error instanceof DomainError
+          && (
+            error.code === "mesh_control_request_unreachable"
+            || (
+              error.code === "mesh_control_request_rejected"
+              && typeof error.details["status"] === "number"
+              && [502, 503, 504].includes(error.details["status"])
+            )
+          )
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (update.state === "failed") {
+      throw new DomainError(
+        "mesh_worker_update_failed",
+        update.error ?? "The Mesh worker update failed.",
+      );
+    }
+    return update;
+  }
+
+  // --- Worker: receive health check ---
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
-  ): Promise<{ status: "ok"; nodeId: string }> {
-    const trusted = await requireTrustedMeshPeer({
-      linkId: envelope.linkId,
-      nodeId: envelope.senderNodeId,
-      publicKey: envelope.senderPublicKey,
-      fingerprint: envelope.senderFingerprint,
-      requireEncryptionKey: false,
-      context: "health check sender",
-    });
-    const { signature, ...unsigned } = envelope;
-    if (!verifyMeshPayloadSignature(
-      buildMeshHealthCheckSigningPayload(unsigned),
-      signature,
+  ): Promise<MeshHealthCheckResponse> {
+    requireMeshRuntimeRole("worker");
+    assertMeshPeerIdentity(
       envelope.senderPublicKey,
-    )) {
-      throw new DomainError("mesh_peer_signature_invalid", "The health check signature is invalid.");
-    }
-    await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: trusted.link.localUserId },
+      envelope.senderFingerprint,
+      "health check sender",
     );
-    return {
-      status: "ok",
-      nodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
-    };
-  }
-
-  private async propagateMembershipUpdate(
-    localUserId: string,
-    options: { includeRevokedPeers?: boolean } = {},
-  ): Promise<void> {
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const link = await getMeshLinkForLocalUser(localUserId);
-    if (!link) {
-      return;
-    }
-    const storedMembers = await listMeshMembershipEntries(link.linkId);
-    const localMember = storedMembers.find((member) => member.nodeId === identity.nodeId);
-    if (!localMember || localMember.status === "revoked") {
-      return;
-    }
-    const members = storedMembers.map((member) => ({
-      ...member,
-      status: member.status === "revoked" ? "revoked" as const : "active" as const,
-    }));
-    const nonce = crypto.randomUUID();
-    const unsigned = {
-      protocolVersion: 1 as const,
-      linkId: link.linkId,
-      senderNodeId: identity.nodeId,
-      senderPublicKey: identity.publicKey,
-      senderFingerprint: identity.fingerprint,
-      senderEncryptionPublicKey: identity.encryptionPublicKey,
-      nonce,
-      members,
-    };
-    const signature = await signMeshPayload(
-      buildMeshMembershipUpdateSigningPayload(unsigned),
-    );
-    await Promise.all(storedMembers
-      .filter((member) => (
-        member.nodeId !== identity.nodeId
-        && Boolean(member.endpoint)
-        && (
-          member.status !== "revoked"
-          || options.includeRevokedPeers === true
-        )
-      ))
-      .map(async (member) => {
-        try {
-          await postMeshControlMessage(
-            resolveMeshRoute(member.endpoint!, "api/mesh/internal/membership"),
-            { ...unsigned, signature },
-            nonce,
-          );
-          await setMeshLinkMemberReachability(link.linkId, member.nodeId, true);
-        } catch (error) {
-          await setMeshLinkMemberReachability(link.linkId, member.nodeId, false);
-          log.warn("Mesh membership update delivery failed", {
-            linkId: link.linkId,
-            peerNodeId: member.nodeId,
-            error: String(error),
-          });
-        }
-      }));
-  }
-
-  async receiveMembershipUpdate(
-    envelope: MeshMembershipUpdate,
-  ): Promise<{ status: "accepted"; memberCount: number }> {
-    const trusted = await requireTrustedMeshPeer({
-      linkId: envelope.linkId,
-      nodeId: envelope.senderNodeId,
-      publicKey: envelope.senderPublicKey,
-      fingerprint: envelope.senderFingerprint,
-      encryptionPublicKey: envelope.senderEncryptionPublicKey,
-      requireEncryptionKey: false,
-      context: "membership update sender",
-    });
-    const { signature, ...unsigned } = envelope;
-    if (!verifyMeshPayloadSignature(
-      buildMeshMembershipUpdateSigningPayload(unsigned),
-      signature,
+    const signingPayload = buildMeshHealthCheckSigningPayload(envelope);
+    const valid = await verifyMeshPayloadSignature(
+      signingPayload,
+      envelope.signature,
       envelope.senderPublicKey,
-    )) {
-      throw new DomainError("mesh_peer_signature_invalid", "The membership update signature is invalid.");
+    );
+    if (!valid) {
+      throw new DomainError(
+        "mesh_health_check_invalid_signature",
+        "The health check signature is invalid.",
+      );
     }
-    for (const member of envelope.members) {
-      assertMeshPeerIdentity(member.publicKey, member.fingerprint, "membership update member");
-      if (member.endpoint) {
-        assertMeshEndpointAllowed(member.endpoint, member.transport);
-      }
+    // Verify the sender has an active grant
+    const grant = await getControllerGrant(envelope.senderNodeId);
+    if (!grant || grant.grantStatus !== "active") {
+      throw new DomainError(
+        "mesh_peer_not_trusted",
+        "The health check sender does not have an active grant.",
+      );
     }
-    const sender = envelope.members.find((member) => member.nodeId === envelope.senderNodeId);
     if (
-      !sender
-      || sender.publicKey !== trusted.node.publicKey
-      || sender.fingerprint !== trusted.node.fingerprint
-      || sender.status === "revoked"
+      grant.controllerPublicKey !== envelope.senderPublicKey
+      || grant.controllerFingerprint !== envelope.senderFingerprint
     ) {
       throw new DomainError(
-        "mesh_peer_identity_mismatch",
-        "The membership update does not contain the trusted sender identity.",
+        "mesh_peer_not_trusted",
+        "The health check sender identity does not match the stored grant.",
       );
     }
-    await applyMeshMembershipUpdate(envelope.linkId, envelope.members);
-    await setMeshLinkMemberReachability(envelope.linkId, envelope.senderNodeId, true);
-    await backendManager.invalidateMeshExecutionConnections();
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: trusted.link.localUserId },
-    );
-    return { status: "accepted", memberCount: envelope.members.length };
-  }
-
-  async getStatus(localUserId: string): Promise<MeshStatusRecord> {
-    const node = await ensureLocalMeshIdentityWithEndpoint();
-    const links = await listMeshLinksForLocalUser(localUserId);
-    const pendingRequests = await listPendingMeshPairingRequests(localUserId);
-    const requestsWithApprovals = await Promise.all(pendingRequests.map(async (request) => {
-      if (request.direction !== "outgoing") {
-        return request;
-      }
-
-      const approval = await getMeshPairingApproval(request.id);
-      return approval ? { ...request, remoteApproval: approval } : request;
-    }));
-    const statusLinks: MeshLinkStatusRecord[] = [];
-
-    for (const link of links) {
-      statusLinks.push({
-        ...link,
-        members: await listMeshLinkMembers(link.linkId),
-        pendingPairingRequests: requestsWithApprovals.filter((request) => request.linkId === link.linkId),
-      });
-    }
-
-    return {
-      node,
-      links: statusLinks,
-      pendingPairingRequests: requestsWithApprovals,
-    };
-  }
-
-  async setInstanceName(localUserId: string, value: string): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    await assertMeshInstanceNameAvailable(localUserId, identity.nodeId, value);
-    await setLocalMeshInstanceName(value);
-    if (await getMeshLinkForLocalUser(localUserId)) {
-      await this.propagateMembershipUpdate(localUserId);
-    }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async setMeshEndpoint(
-    localUserId: string,
-    value: string,
-  ): Promise<MeshStatusRecord> {
-    await ensureLocalMeshNodeIdentity();
-    const normalizedEndpoint = resolveAdvertisedMeshEndpoint(value);
-    const updatedIdentity = await setLocalMeshEndpoint(normalizedEndpoint);
-    const endpoint = resolveAdvertisedMeshEndpoint(updatedIdentity.meshEndpoint);
-    const transport = getMeshTransport(endpoint);
-    const existingNode = await getMeshNode(updatedIdentity.nodeId);
-    await saveMeshNode({
-      nodeId: updatedIdentity.nodeId,
-      instanceName: updatedIdentity.instanceName,
-      publicKey: updatedIdentity.publicKey,
-      fingerprint: updatedIdentity.fingerprint,
-      encryptionPublicKey: updatedIdentity.encryptionPublicKey,
-      execution: updatedIdentity.execution,
-      endpoint,
-      transport,
-      status: existingNode?.status ?? "active",
+    log.debug("Received valid health check", {
+      senderNodeId: envelope.senderNodeId,
     });
-    if (await getMeshLinkForLocalUser(localUserId)) {
-      await this.propagateMembershipUpdate(localUserId);
-    }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async setExecutionConfiguration(
-    localUserId: string,
-    input: UpdateMeshExecutionConfigurationRequest,
-    expectedRevision?: number,
-  ): Promise<MeshStatusRecord> {
-    const previousIdentity = await ensureLocalMeshIdentityWithEndpoint();
-    const previous = previousIdentity.execution;
-    if (!previous) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The local Mesh execution configuration is unavailable.",
-      );
-    }
-    const updatedIdentity = await setLocalMeshExecutionConfiguration(
-      input,
-      expectedRevision,
-    );
-    const next = updatedIdentity.execution;
-    if (!next) {
-      throw new DomainError(
-        "mesh_execution_configuration_missing",
-        "The updated Mesh execution configuration is unavailable.",
-      );
-    }
-    await meshInboundResourceRegistry.applyPolicy(previous, next);
-    if (await getMeshLinkForLocalUser(localUserId)) {
-      await this.propagateMembershipUpdate(localUserId);
-    }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async receivePairingRequest(
-    envelope: MeshPeerPairingRequest,
-  ): Promise<{ requestId: string; status: string; fingerprint: string }> {
-    assertMeshEndpointAllowed(envelope.endpoint, envelope.transport);
-    if (new Date(envelope.expiresAt).getTime() <= Date.now()) {
-      throw new DomainError("mesh_pairing_request_expired", "The mesh pairing request has expired.");
-    }
-
-    assertMeshPeerIdentity(envelope.publicKey, envelope.fingerprint, "pairing request");
-    if (!envelope.requestedInstanceName) {
-      throw new DomainError(
-        "mesh_instance_name_required",
-        "The requesting instance must have a name before joining this mesh.",
-      );
-    }
-    const knownNode = await getMeshNode(envelope.requestedNodeId);
-    if (knownNode?.status === "revoked") {
-      throw new DomainError("mesh_peer_revoked", "The pairing request uses a revoked mesh node identity.");
-    }
-    if (envelope.linkId) {
-      assertMeshLinkInstanceNameAvailable(
-        envelope.linkId,
-        envelope.requestedNodeId,
-        envelope.requestedInstanceName,
-      );
-    }
-    const { signature, ...unsigned } = envelope;
-    const payload = buildMeshPairingRequestSigningPayload(unsigned);
-    if (!verifyMeshPayloadSignature(payload, signature, envelope.publicKey)) {
-      throw new DomainError("mesh_peer_signature_invalid", "The pairing request signature is invalid.");
-    }
-
-    const existing = await getMeshPairingRequest(envelope.requestId);
-    if (existing) {
-      if (
-        existing.direction !== "incoming"
-        || existing.linkId !== (envelope.linkId ?? null)
-        || existing.requestedNodeId !== envelope.requestedNodeId
-        || existing.nonce !== envelope.nonce
-        || existing.signature !== envelope.signature
-      ) {
-        throw new DomainError("mesh_pairing_request_conflict", "The pairing request ID is already used by another request.");
-      }
-      return {
-        requestId: existing.id,
-        status: existing.status,
-        fingerprint: existing.fingerprint,
-      };
-    }
-
-    await saveMeshNode({
-      nodeId: envelope.requestedNodeId,
-      instanceName: envelope.requestedInstanceName,
-      publicKey: envelope.publicKey,
-      fingerprint: envelope.fingerprint,
-      encryptionPublicKey: envelope.encryptionPublicKey,
-      execution: envelope.requestedExecution,
-      endpoint: envelope.endpoint,
-      transport: envelope.transport,
-      status: "pending",
-    });
-    const request = await createMeshPairingRequest({
-      id: envelope.requestId,
-      direction: "incoming",
-      linkId: envelope.linkId ?? null,
-      targetLocalUserId: envelope.targetLocalUserId ?? null,
-      requestedNodeId: envelope.requestedNodeId,
-      requestedInstanceName: envelope.requestedInstanceName,
-      requestedExecution: envelope.requestedExecution,
-      requestedLocalUserId: envelope.requestedLocalUserId,
-      requestedUsername: envelope.requestedUsername ?? null,
-      endpoint: envelope.endpoint,
-      transport: envelope.transport,
-      publicKey: envelope.publicKey,
-      fingerprint: envelope.fingerprint,
-      encryptionPublicKey: envelope.encryptionPublicKey,
-      nonce: envelope.nonce,
-      signature: envelope.signature,
-      expiresAt: envelope.expiresAt,
-    });
-    if (envelope.targetLocalUserId) {
-      meshStateEventEmitter.emit(
-        { type: "mesh.changed", executionHostsChanged: false },
-        { userId: envelope.targetLocalUserId },
-      );
-    }
-    return {
-      requestId: request.id,
-      status: request.status,
-      fingerprint: request.fingerprint,
-    };
-  }
-
-  async startPairing(
-    localUserId: string,
-    localUsername: string,
-    input: StartMeshPairingRequest,
-  ): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const instanceName = requireMeshInstanceName(identity);
-    const localLink = await getMeshLinkForLocalUser(localUserId);
-    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
-    const localTransport = getMeshTransport(localEndpoint);
-    assertMeshEndpointAllowed(input.targetEndpoint);
-    const requestId = crypto.randomUUID();
-    const nonce = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + PAIRING_REQUEST_TTL_MS).toISOString();
-    const unsigned = {
-      protocolVersion: 1 as const,
-      requestId,
-      linkId: localLink?.linkId ?? null,
-      targetLocalUserId: input.targetLocalUserId ?? null,
-      requestedNodeId: identity.nodeId,
-      requestedInstanceName: instanceName,
-      requestedExecution: identity.execution,
-      requestedLocalUserId: localUserId,
-      requestedUsername: localUsername,
-      endpoint: localEndpoint,
-      transport: localTransport,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      encryptionPublicKey: identity.encryptionPublicKey,
-      nonce,
-      expiresAt,
-    };
-    const signature = await signMeshPayload(buildMeshPairingRequestSigningPayload(unsigned));
-    await createMeshPairingRequest({
-      id: requestId,
-      direction: "outgoing",
-      nodeStatus: "active",
-      linkId: localLink?.linkId ?? null,
-      targetLocalUserId: input.targetLocalUserId ?? null,
-      targetEndpoint: input.targetEndpoint,
-      requestedNodeId: identity.nodeId,
-      requestedInstanceName: instanceName,
-      requestedExecution: identity.execution,
-      requestedLocalUserId: localUserId,
-      requestedUsername: localUsername,
-      endpoint: localEndpoint,
-      transport: localTransport,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      encryptionPublicKey: identity.encryptionPublicKey,
-      nonce,
-      signature,
-      expiresAt,
-    });
-
-    try {
-      await postMeshControlMessage(
-        resolveMeshRoute(input.targetEndpoint, "api/mesh/internal/pairing-requests"),
-        { ...unsigned, signature },
-        requestId,
-        input.enrollmentToken
-          ? { "x-clanky-mesh-enrollment-token": input.enrollmentToken }
-          : undefined,
-      );
-    } catch (error) {
-      log.error("Mesh pairing request delivery failed", {
-        requestId,
-        targetEndpoint: input.targetEndpoint,
-        error: String(error),
-      });
-      throw error;
-    }
-    if (input.enrollmentToken) {
-      const approval = await getMeshPairingApproval(requestId);
-      if (!approval) {
-        throw new DomainError(
-          "mesh_enrollment_not_approved",
-          "The enrollment token did not produce a pairing approval.",
-        );
-      }
-      if (approval.fingerprint !== input.expectedFingerprint) {
-        throw new DomainError(
-          "mesh_enrollment_controller_mismatch",
-          "The enrollment approval does not match the expected controller fingerprint.",
-        );
-      }
-      return await this.completePairing(localUserId, requestId, {
-        fingerprint: approval.fingerprint,
-      });
-    }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: false },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async rejoin(
-    localUserId: string,
-    localUsername: string,
-    input: StartMeshPairingRequest,
-  ): Promise<MeshStatusRecord> {
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    requireMeshInstanceName(identity);
-    const links = await listMeshLinksForLocalUser(localUserId);
-    const link = links[0];
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
-    }
-    const member = (await listMeshLinkMembers(link.linkId))
-      .find((candidate) => candidate.nodeId === identity.nodeId);
-    if (!member || member.status !== "revoked") {
-      throw new DomainError(
-        "mesh_rejoin_requires_revoked",
-        "Only a revoked mesh node can rejoin an existing mesh.",
-      );
-    }
-    await rotateLocalMeshNodeIdentity();
-    backendManager.invalidateLocalMeshNodeIdCache();
-    return await this.startPairing(localUserId, localUsername, input);
-  }
-
-  async revokeMember(
-    localUserId: string,
-    nodeId: string,
-  ): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshNodeIdentity();
-    if (nodeId === identity.nodeId) {
-      throw new DomainError(
-        "mesh_member_self_revoke_invalid",
-        "A mesh instance cannot revoke its own transport identity.",
-      );
-    }
-    const link = await listMeshLinksForLocalUser(localUserId).then((links) => links[0] ?? null);
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
-    }
-    await revokeMeshLinkMember({
-      linkId: link.linkId,
-      localUserId,
-      nodeId,
-    });
-    await backendManager.invalidateMeshExecutionConnections();
-    await this.propagateMembershipUpdate(localUserId, { includeRevokedPeers: true });
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async removeRevokedMember(
-    localUserId: string,
-    nodeId: string,
-  ): Promise<MeshStatusRecord> {
-    const link = await listMeshLinksForLocalUser(localUserId).then((links) => links[0] ?? null);
-    if (!link) {
-      throw new DomainError("mesh_link_not_found", "The local user is not linked to a mesh.");
-    }
-    await removeRevokedMeshLinkMember({
-      linkId: link.linkId,
-      localUserId,
-      nodeId,
-    });
-    await backendManager.invalidateMeshExecutionConnections();
-    await this.propagateMembershipUpdate(localUserId);
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
-
-  async receivePairingApproval(
-    envelope: MeshPeerPairingApproval,
-  ): Promise<{ requestId: string; status: string; fingerprint: string }> {
-    assertMeshEndpointAllowed(envelope.endpoint, envelope.transport);
-    assertMeshPeerIdentity(envelope.publicKey, envelope.fingerprint, "pairing approval");
-    if (!envelope.approvedByInstanceName) {
-      throw new DomainError(
-        "mesh_instance_name_required",
-        "The approving instance must have a name before completing the mesh join.",
-      );
-    }
-    const members = envelope.members ?? [];
-    for (const member of members) {
-      assertMeshPeerIdentity(member.publicKey, member.fingerprint, "pairing approval member");
-      if (member.endpoint) {
-        assertMeshEndpointAllowed(member.endpoint, member.transport);
-      }
-    }
-    const { signature, ...unsigned } = envelope;
-    if (!verifyMeshPayloadSignature(
-      buildMeshPairingApprovalSigningPayload(unsigned),
-      signature,
-      envelope.publicKey,
-    )) {
-      throw new DomainError("mesh_peer_signature_invalid", "The pairing approval signature is invalid.");
-    }
-
-    const request = await getMeshPairingRequest(envelope.requestId);
-    const existingApproval = await getMeshPairingApproval(envelope.requestId);
-    const approvalDecision = decideReceiveMeshPairingApproval({
-      request,
-      existingApproval,
-      approvedByNodeId: envelope.approvedByNodeId,
-      signature: envelope.signature,
-      nowMs: Date.now(),
-    });
-    if (approvalDecision.kind === "idempotent") {
-      return {
-        requestId: approvalDecision.approval.requestId,
-        status: approvalDecision.approval.status,
-        fingerprint: approvalDecision.approval.fingerprint,
-      };
-    }
-    const approvedNode = await getMeshNode(envelope.approvedByNodeId);
-    if (approvedNode?.status === "revoked") {
-      throw new DomainError("mesh_peer_revoked", "The pairing approval uses a revoked mesh node identity.");
-    }
-    assertMeshLinkInstanceNameAvailable(
-      envelope.linkId,
-      envelope.approvedByNodeId,
-      envelope.approvedByInstanceName,
-    );
-    await saveMeshNode({
-      nodeId: envelope.approvedByNodeId,
-      instanceName: envelope.approvedByInstanceName,
-      publicKey: envelope.publicKey,
-      fingerprint: envelope.fingerprint,
-      encryptionPublicKey: envelope.encryptionPublicKey,
-      execution: envelope.approvedByExecution,
-      endpoint: envelope.endpoint,
-      transport: envelope.transport,
-      status: "pending",
-    });
-    const approval = await saveMeshPairingApproval({
-      requestId: envelope.requestId,
-      linkId: envelope.linkId,
-      approvedByNodeId: envelope.approvedByNodeId,
-      approvedByInstanceName: envelope.approvedByInstanceName,
-      approvedByExecution: envelope.approvedByExecution,
-      approvedByLocalUserId: envelope.approvedByLocalUserId,
-      endpoint: envelope.endpoint,
-      transport: envelope.transport,
-      publicKey: envelope.publicKey,
-      fingerprint: envelope.fingerprint,
-      encryptionPublicKey: envelope.encryptionPublicKey,
-      signature: envelope.signature,
-      members,
-    });
-    if (request?.requestedLocalUserId) {
-      meshStateEventEmitter.emit(
-        { type: "mesh.changed", executionHostsChanged: false },
-        { userId: request.requestedLocalUserId },
-      );
-    }
+    const execution = await getWorkerExecutionConfig();
+    const response: Omit<MeshHealthCheckResponse, "signature"> = {
+      protocolVersion: 1,
+      workerNodeId: identity.nodeId,
+      controllerNodeId: envelope.senderNodeId,
+      requestNonce: envelope.nonce,
+      workerDirectory: execution.directory,
+      workerCapabilities: execution.capabilities,
+      workerAcceptRemoteExecution: execution.acceptRemoteExecution,
+      workerConfigRevision: execution.revision,
+    };
     return {
-      requestId: approval.requestId,
-      status: approval.status,
-      fingerprint: approval.fingerprint,
+      ...response,
+      signature: await signMeshPayload(
+        buildMeshHealthCheckResponseSigningPayload(response),
+      ),
     };
   }
 
-  async completePairing(
-    localUserId: string,
-    requestId: string,
-    input: CompleteMeshPairingRequest,
-  ): Promise<MeshStatusRecord> {
-    const request = await getMeshPairingRequest(requestId);
-    const storedApproval = await getMeshPairingApproval(requestId);
-    const pairingDecision = decideCompleteMeshPairing({
-      request,
-      approval: storedApproval,
-      localUserId,
-      confirmedFingerprint: input.fingerprint,
-    });
-    if (pairingDecision.kind === "idempotent") {
-      return await this.getStatus(localUserId);
-    }
-    const approval = pairingDecision.approval;
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    requireMeshInstanceName(identity);
-    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
-    const localTransport = getMeshTransport(localEndpoint);
-    await saveMeshNode({
-      nodeId: identity.nodeId,
-      instanceName: identity.instanceName,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      execution: identity.execution,
-      endpoint: localEndpoint,
-      transport: localTransport,
-      status: "active",
-    });
-    const remoteEndpoint = request?.targetEndpoint ?? approval.endpoint;
-    await completeOutgoingMeshPairingRequest({
-      requestId,
-      localUserId,
-      localNodeId: identity.nodeId,
-      localNodeEndpoint: localEndpoint,
-      localNodeTransport: localTransport,
-      remoteNodeId: approval.approvedByNodeId,
-      remoteInstanceName: approval.approvedByInstanceName,
-      remoteLocalUserId: approval.approvedByLocalUserId,
-      remoteEndpoint,
-      remoteTransport: getMeshTransport(remoteEndpoint),
-      remoteAdvertisedEndpoint: approval.endpoint,
-      remoteAdvertisedTransport: approval.transport,
-      remotePublicKey: approval.publicKey,
-      remoteFingerprint: approval.fingerprint,
-      remoteEncryptionPublicKey: approval.encryptionPublicKey,
-      remoteExecution: (await getMeshNode(approval.approvedByNodeId))?.execution,
-      linkId: approval.linkId,
-    });
-    if (!request?.targetEndpoint) {
-      log.warn("Using the advertised Mesh endpoint for a legacy pairing request without a saved target endpoint", {
-        requestId,
-        remoteNodeId: approval.approvedByNodeId,
-        advertisedEndpoint: approval.endpoint,
-      });
-    }
-    for (const member of approval.members) {
-      await mergeMeshLinkMember({
-        linkId: approval.linkId,
-        nodeId: member.nodeId,
-        instanceName: member.instanceName,
-        localUserId: member.localUserId,
-        endpoint: member.endpoint,
-        transport: member.transport,
-        status: member.status,
-        membershipGeneration: member.membershipGeneration,
-        publicKey: member.publicKey,
-        fingerprint: member.fingerprint,
-        encryptionPublicKey: member.encryptionPublicKey,
-        execution: member.execution,
-      });
-    }
-    await setMeshPairingApprovalStatus(requestId, "accepted");
-    await backendManager.invalidateMeshExecutionConnections();
-    await this.propagateMembershipUpdate(localUserId);
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
-  }
+  // --- Worker: enrollment against a controller ---
 
-  async approvePairingRequest(
-    localUserId: string,
-    requestId: string,
-    input: ApproveMeshPairingRequest,
-  ): Promise<MeshStatusRecord> {
+  async enrollWithController(input: {
+    controllerEndpoint: string;
+    enrollmentToken: string;
+    expectedFingerprint: string;
+  }): Promise<MeshControllerGrant> {
+    requireMeshRuntimeRole("worker");
+    assertMeshEndpointAllowed(input.controllerEndpoint);
     const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const instanceName = requireMeshInstanceName(identity);
-    const request = await getMeshPairingRequest(requestId);
-    if (!request) {
-      throw new DomainError("mesh_pairing_request_not_found", "Mesh pairing request was not found.");
-    }
-    if (!request.requestedInstanceName) {
+
+    if (!identity.meshEndpoint) {
       throw new DomainError(
-        "mesh_instance_name_required",
-        "The requesting instance must have a name before it can join this mesh.",
+        "mesh_endpoint_required",
+        "This worker must have a configured mesh endpoint before enrollment.",
       );
     }
-    const localEndpoint = resolveAdvertisedMeshEndpoint(identity.meshEndpoint);
-    const localTransport = getMeshTransport(localEndpoint);
-    await saveMeshNode({
-      nodeId: identity.nodeId,
-      instanceName,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      execution: identity.execution,
-      endpoint: localEndpoint,
-      transport: localTransport,
-      status: "active",
-    });
-    const approval = await approveMeshPairingRequest({
-      requestId,
-      approvingUserId: localUserId,
+
+    const execution = await getWorkerExecutionConfig();
+    const nonce = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const envelope: Omit<MeshEnrollmentRequest, "signature"> = {
+      protocolVersion: 1,
+      workerNodeId: identity.nodeId,
+      workerInstanceName: identity.instanceName,
+      workerEndpoint: identity.meshEndpoint,
+      workerTransport: getMeshTransport(identity.meshEndpoint),
+      workerPublicKey: identity.publicKey,
+      workerFingerprint: identity.fingerprint,
+      workerEncryptionPublicKey: identity.encryptionPublicKey,
+      workerDirectory: execution.directory,
+      workerCapabilities: execution.capabilities,
+      workerAcceptRemoteExecution: execution.acceptRemoteExecution,
+      workerConfigRevision: execution.revision,
+      enrollmentToken: input.enrollmentToken,
+      expectedControllerFingerprint: input.expectedFingerprint,
+      nonce,
+      expiresAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshEnrollmentRequestSigningPayload(envelope),
+    );
+
+    const route = resolveMeshRoute(
+      input.controllerEndpoint,
+      "api/mesh/internal/enrollment",
+    );
+    const response = await postMeshControlMessage(route, {
+      ...envelope,
+      signature,
+    }, identity.nodeId);
+
+    const body = await response.json() as MeshEnrollmentResponse;
+
+    if (
+      body.protocolVersion !== 1
+      || body.workerNodeId !== identity.nodeId
+      || body.controllerFingerprint !== input.expectedFingerprint
+    ) {
+      throw new DomainError(
+        "mesh_enrollment_controller_mismatch",
+        "The controller response fingerprint does not match the expected value.",
+      );
+    }
+    assertMeshPeerIdentity(
+      body.controllerPublicKey,
+      body.controllerFingerprint,
+      "enrollment controller",
+    );
+    const { signature: responseSignature, ...unsignedResponse } = body;
+    if (!await verifyMeshPayloadSignature(
+      buildMeshEnrollmentResponseSigningPayload(unsignedResponse),
+      responseSignature,
+      body.controllerPublicKey,
+    )) {
+      throw new DomainError(
+        "mesh_enrollment_invalid_signature",
+        "The controller enrollment response signature is invalid.",
+      );
+    }
+
+    // Decide and store the grant
+    const existingGrant = await getControllerGrant(body.controllerNodeId);
+    const decision = decideAcceptEnrollment({
+      existingGrant,
+      controllerNodeId: body.controllerNodeId,
       localNodeId: identity.nodeId,
-      localNodeEndpoint: localEndpoint,
-      localNodeTransport: localTransport,
-      linkId: input.linkId,
     });
-    try {
-      const members: MeshPairingMemberRecord[] = await listMeshMembershipEntries(approval.link.linkId);
-      const unsigned = {
-        protocolVersion: 1 as const,
-        requestId,
-        linkId: approval.link.linkId,
-        approvedByNodeId: identity.nodeId,
-        approvedByInstanceName: instanceName,
-        approvedByExecution: identity.execution,
-        approvedByLocalUserId: localUserId,
-        endpoint: localEndpoint,
-        transport: localTransport,
-        publicKey: identity.publicKey,
-        fingerprint: identity.fingerprint,
-        encryptionPublicKey: identity.encryptionPublicKey,
-        members,
-      };
-      const signature = await signMeshPayload(buildMeshPairingApprovalSigningPayload(unsigned));
-      await postMeshControlMessage(
-        resolveMeshRoute(request.endpoint, "api/mesh/internal/pairing-approvals"),
-        { ...unsigned, signature },
-        requestId,
-      );
-    } catch (error) {
-      if (approval.rollback) {
-        try {
-          await rollbackMeshPairingApproval(approval.rollback);
-        } catch (rollbackError) {
-          log.error("Mesh pairing approval rollback failed", {
-            requestId,
-            linkId: approval.link.linkId,
-            peerNodeId: request.requestedNodeId,
-            error: String(error),
-            rollbackError: String(rollbackError),
-          });
-          throw new DomainError(
-            "mesh_pairing_rollback_failed",
-            "Mesh pairing approval failed and the local mesh state could not be rolled back.",
-            {
-              cause: rollbackError,
-              details: { requestId, linkId: approval.link.linkId },
-            },
-          );
-        }
-      }
-      log.error("Mesh pairing approval delivery failed; local membership was rolled back", {
-        requestId,
-        linkId: approval.link.linkId,
-        peerNodeId: request.requestedNodeId,
-        error: String(error),
+
+    if (decision.kind === "apply") {
+      return saveControllerGrant({
+        controllerNodeId: body.controllerNodeId,
+        controllerInstanceName: body.controllerInstanceName,
+        controllerPublicKey: body.controllerPublicKey,
+        controllerFingerprint: body.controllerFingerprint,
+        controllerEncryptionPublicKey: body.controllerEncryptionPublicKey ?? null,
       });
-      throw error;
     }
-    await this.propagateMembershipUpdate(localUserId);
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId: localUserId },
-    );
-    return await this.getStatus(localUserId);
+
+    // idempotent — return existing grant
+    return existingGrant!;
   }
 
-  async rejectPairingRequest(
-    localUserId: string,
-    requestId: string,
-    input: RejectMeshPairingRequest,
-  ): Promise<MeshStatusRecord> {
-    const request = await getMeshPairingRequest(requestId);
-    await rejectMeshPairingRequest(requestId, localUserId, input.reason ?? null);
-    if (request?.direction === "outgoing") {
-      const approval = await getMeshPairingApproval(requestId);
-      if (approval?.status === "pending") {
-        await setMeshPairingApprovalStatus(requestId, "rejected");
-      }
-    }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: false },
-      { userId: localUserId },
+  // --- Worker: receive revocation notice ---
+
+  async receiveRevocationNotice(
+    envelope: MeshRevocationNotice,
+  ): Promise<void> {
+    requireMeshRuntimeRole("worker");
+    assertMeshPeerIdentity(
+      envelope.controllerPublicKey,
+      envelope.controllerFingerprint,
+      "revoking controller",
     );
-    return await this.getStatus(localUserId);
+    const signingPayload = buildMeshRevocationNoticeSigningPayload(envelope);
+    const valid = await verifyMeshPayloadSignature(
+      signingPayload,
+      envelope.signature,
+      envelope.controllerPublicKey,
+    );
+    if (!valid) {
+      throw new DomainError(
+        "mesh_revocation_invalid_signature",
+        "The revocation notice signature is invalid.",
+      );
+    }
+    if (Date.parse(envelope.expiresAt) <= Date.now()) {
+      throw new DomainError(
+        "mesh_revocation_expired",
+        "The revocation notice has expired.",
+      );
+    }
+    const identity = await ensureLocalMeshNodeIdentity();
+    if (envelope.workerNodeId !== identity.nodeId) {
+      throw new DomainError(
+        "mesh_peer_target_invalid",
+        "The revocation notice targets a different Mesh worker.",
+      );
+    }
+
+    const grant = await getControllerGrant(envelope.controllerNodeId);
+    if (!grant) {
+      log.debug("Received revocation for unknown controller", {
+        controllerNodeId: envelope.controllerNodeId,
+      });
+      return;
+    }
+    if (
+      grant.controllerPublicKey !== envelope.controllerPublicKey
+      || grant.controllerFingerprint !== envelope.controllerFingerprint
+    ) {
+      throw new DomainError(
+        "mesh_peer_not_trusted",
+        "The revocation notice identity does not match the stored grant.",
+      );
+    }
+
+    if (grant.grantStatus === "active") {
+      await revokeControllerGrant(envelope.controllerNodeId);
+      log.info("Controller revoked this worker's grant", {
+        controllerNodeId: envelope.controllerNodeId,
+      });
+    }
   }
 
+  // --- Worker: get status ---
+
+  async getWorkerStatus(): Promise<MeshWorkerStatus> {
+    requireMeshRuntimeRole("worker");
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const controllers = (await listControllerGrants()).filter(
+      (grant) => grant.grantStatus === "active",
+    );
+    const execution = await getWorkerExecutionConfig();
+    return { node: identity, execution, controllerCount: controllers.length };
+  }
+
+  async getStatus(userId: string): Promise<MeshControllerStatus | MeshWorkerStatus> {
+    return getMeshRuntimeRole() === "worker"
+      ? await this.getWorkerStatus()
+      : await this.getControllerStatus(userId);
+  }
+
+  // --- Shared: identity management ---
+
+  async setInstanceName(
+    instanceName: string,
+  ): Promise<MeshNodeIdentity> {
+    const identity = await setLocalMeshInstanceName(instanceName);
+    meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+    return identity;
+  }
+
+  async setEndpoint(
+    endpoint: string,
+  ): Promise<MeshNodeIdentity> {
+    assertMeshEndpointAllowed(endpoint);
+    const identity = await setLocalMeshEndpoint(endpoint);
+    meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+    return identity;
+  }
 }
 
+/**
+ * Get the worker's local execution configuration.
+ * Worker directory is process.cwd() or CLANKY_WORKER_DIRECTORY.
+ */
+async function getWorkerExecutionConfig(): Promise<MeshWorkerExecutionConfig> {
+  const identity = await ensureLocalMeshNodeIdentity();
+  const directory = getMeshWorkerDirectory();
+  return {
+    directory,
+    acceptRemoteExecution: isMeshWorkerExecutionEnabled(),
+    capabilities: { ...DEFAULT_EXECUTION_HOST_CAPABILITIES },
+    revision: identity.execution.revision,
+  };
+}
+
+/**
+ * Resolve the worker directory with flag > env > config > cwd precedence.
+ */
 export const meshManager = new MeshManager();

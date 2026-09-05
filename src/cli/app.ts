@@ -7,6 +7,8 @@ import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
 import { createWorkspaceCommand } from "./workspace";
 import { createWorkerCommand } from "./worker";
+import { connectWorkerHandoffFromEnvironment } from "../core/mesh-worker-handoff";
+import { getDataDir } from "../persistence/database";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -53,6 +55,17 @@ export function createClankyCli() {
           description: "Run the restricted Mesh execution worker surface.",
           defaultValue: false,
         },
+        {
+          name: "worker-directory",
+          type: "string",
+          description: "Set the worker-owned default execution directory.",
+        },
+        {
+          name: "worker-execution-enabled",
+          type: "boolean",
+          description: "Allow enrolled controllers to execute on this worker.",
+          defaultValue: true,
+        },
       ],
       development: {
         build: async ({ sourcePath }) => await buildClankyFromSource(sourcePath),
@@ -60,9 +73,16 @@ export function createClankyCli() {
       },
     },
     start: async ({ options }) => {
-      await (await getWebAppServer({
+      const handoff = await connectWorkerHandoffFromEnvironment();
+      const server = await getWebAppServer({
         meshWorker: options["mesh-worker"] === true,
-      })).start();
+        workerDirectory: typeof options["worker-directory"] === "string"
+          ? options["worker-directory"]
+          : undefined,
+        workerExecutionEnabled: options["worker-execution-enabled"] !== false,
+      });
+      await server.start();
+      await handoff?.started(getDataDir());
     },
     appContext,
     commands: {

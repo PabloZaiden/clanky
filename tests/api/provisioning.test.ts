@@ -8,8 +8,8 @@ import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
-import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
-import { createMeshLink, mergeMeshLinkMember, saveMeshNode } from "../../src/persistence/mesh";
+import { saveWorkerRegistration } from "../../src/persistence/mesh";
+import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { ProvisioningJobSnapshot } from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -120,33 +120,19 @@ describe("Provisioning API integration", () => {
 
   async function seedMeshExecutionTarget(): Promise<void> {
     seedTestOwnerUser();
-    const identity = await ensureLocalMeshNodeIdentity();
-    await saveMeshNode({
-      nodeId: identity.nodeId,
-      instanceName: identity.instanceName,
-      publicKey: identity.publicKey,
-      fingerprint: identity.fingerprint,
-      endpoint: identity.meshEndpoint,
-      transport: "http",
-      status: "active",
-    });
-    const link = await createMeshLink({
+    await saveWorkerRegistration({
+      workerNodeId: "paired-mesh-node",
       localUserId: "admin",
-      localNodeId: identity.nodeId,
-      localNodeEndpoint: identity.meshEndpoint,
-      localNodeTransport: "http",
-    });
-    await mergeMeshLinkMember({
-      linkId: link.linkId,
-      nodeId: "paired-mesh-node",
-      instanceName: "Paired mesh node",
-      localUserId: "admin",
-      endpoint: null,
-      transport: "http",
-      status: "active",
-      membershipGeneration: 1,
-      publicKey: "paired-mesh-public-key",
-      fingerprint: "paired-mesh-fingerprint",
+      workerInstanceName: "Paired mesh node",
+      workerEndpoint: "http://127.0.0.1:4100",
+      workerTransport: "http",
+      workerPublicKey: "paired-mesh-public-key",
+      workerFingerprint: "paired-mesh-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerDirectory: "/devbox/workspaces",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
     });
   }
 

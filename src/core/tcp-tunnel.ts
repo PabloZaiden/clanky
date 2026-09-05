@@ -10,7 +10,7 @@ import {
   MESH_TCP_TUNNEL_SESSION_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
 import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-tunnel";
-import { getMeshLinkForLocalUser, getMeshNode, listMeshLinkMembers } from "../persistence/mesh";
+import { getWorkerRegistration } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -75,12 +75,11 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     }
     executionHostService.validateBinding(this.binding);
     const userId = requireCurrentUserId();
-    const [identity, link, node] = await Promise.all([
+    const [identity, registration] = await Promise.all([
       ensureLocalMeshNodeIdentity(),
-      getMeshLinkForLocalUser(userId),
-      getMeshNode(host.nodeId),
+      getWorkerRegistration(host.nodeId, userId),
     ]);
-    if (!link || link.status !== "active" || !node) {
+    if (!registration || registration.grantStatus !== "active") {
       throw new DomainError("mesh_tunnel_target_unavailable", "The Mesh tunnel target is unavailable.");
     }
     if (!identity.encryptionPublicKey) {
@@ -89,9 +88,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         "The local Mesh identity has no encryption key.",
       );
     }
-    const member = (await listMeshLinkMembers(link.linkId))
-      .find((candidate) => candidate.nodeId === host.nodeId && candidate.status === "active");
-    const endpoint = member?.endpoint ?? node.endpoint;
+    const endpoint = registration.workerEndpoint;
     if (!endpoint) {
       throw new DomainError("mesh_tunnel_target_unavailable", "The Mesh tunnel target has no endpoint.");
     }
@@ -100,7 +97,6 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       protocolVersion: MESH_TCP_TUNNEL_PROTOCOL_VERSION,
       capability: MESH_TCP_TUNNEL_CAPABILITY,
       requestId: crypto.randomUUID(),
-      linkId: link.linkId,
       callerNodeId: identity.nodeId,
       callerPublicKey: identity.publicKey,
       callerFingerprint: identity.fingerprint,

@@ -32,11 +32,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import {
-  getMeshLinkForLocalUser,
-  getMeshNode,
-  listMeshLinkMembers,
-} from "../persistence/mesh";
+import { listActiveWorkerRegistrations } from "../persistence/mesh";
 import { requireCurrentUserId } from "./user-context";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import {
@@ -193,36 +189,24 @@ export class WorkspaceManager {
           availability: "local",
         }]
       : [];
-    const link = await getMeshLinkForLocalUser(requireCurrentUserId());
-    if (!link || link.status !== "active") {
-      return targets;
-    }
-
-    for (const member of await listMeshLinkMembers(link.linkId)) {
-      if (
-        member.nodeId === identity.nodeId
-        || member.status === "pending"
-        || member.status === "revoked"
-      ) {
+    for (const worker of await listActiveWorkerRegistrations(requireCurrentUserId())) {
+      if (worker.workerNodeId === identity.nodeId) {
         continue;
       }
-      const node = await getMeshNode(member.nodeId);
       if (
-        !node?.execution?.acceptRemoteExecution
+        !worker.workerAcceptRemoteExecution
         || !supportsExecutionHostCapability(
-          node.execution.capabilities,
+          worker.workerCapabilities ?? {},
           "commandExecution",
         )
       ) {
         continue;
       }
       targets.push({
-        nodeId: member.nodeId,
-        name: node.execution.name,
+        nodeId: worker.workerNodeId,
+        name: worker.workerInstanceName ?? worker.workerNodeId,
         kind: "mesh",
-        availability: member.status === "active" && node?.status === "active"
-          ? "online"
-          : "offline",
+        availability: "available",
       });
     }
     return targets;

@@ -109,6 +109,10 @@ export const ExecutionHostWorkingDirectorySchema = z.object({
   configured: z.boolean(),
 }).strict();
 
+export const ResolveExecutionHostWorkingDirectoryRequestSchema = z.object({
+  credentialToken: z.string().trim().min(1).nullable().optional(),
+}).strict();
+
 export type ExecutionHostRefInput = z.infer<typeof ExecutionHostRefSchema>;
 export type ExecutionNodeConfigurationInput = z.infer<
   typeof ExecutionNodeConfigurationSchema
