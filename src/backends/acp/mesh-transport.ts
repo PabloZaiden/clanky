@@ -5,7 +5,10 @@
  * relays ACP JSON-RPC over the owner's bounded WebSocket gateway.
  */
 
-import type { AgentProvider } from "@/shared/settings";
+import {
+  DEFAULT_SERVER_AGENT_PROVIDER,
+  type AgentProvider,
+} from "@/shared/settings";
 import {
   MESH_ACP_WEBSOCKET_OPEN_TIMEOUT_MS,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
@@ -97,7 +100,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       );
     }
     this.directory = config.directory;
-    this.provider = config.provider ?? "opencode";
+    this.provider = config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
     this.requester = requester;
     this.closing = false;
     const sessionClient = new MeshCommandExecutorClient({
@@ -126,10 +129,13 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     socket.onerror = () => {
       this.failConnection("Mesh ACP WebSocket failed.");
     };
-    socket.onclose = () => {
+    socket.onclose = (event: CloseEvent) => {
       if (this.closing) return;
       this.connected = false;
-      const error = new AcpError("acp_transport_closed", "The Mesh ACP WebSocket closed.");
+      const error = new AcpError(
+        "acp_transport_closed",
+        event.reason.trim() || "The Mesh ACP WebSocket closed.",
+      );
       this.requester?.rejectPending(error);
       const sessionState = this.session;
       if (sessionState) {
@@ -249,9 +255,12 @@ async function waitForWebSocketOpen(socket: WebSocket, signal?: AbortSignal): Pr
       cleanup();
       reject(new AcpError("acp_transport_unavailable", "The Mesh ACP WebSocket could not be opened."));
     };
-    const onClose = () => {
+    const onClose = (event: CloseEvent) => {
       cleanup();
-      reject(new AcpError("acp_transport_unavailable", "The Mesh ACP WebSocket closed before opening."));
+      reject(new AcpError(
+        "acp_transport_unavailable",
+        event.reason.trim() || "The Mesh ACP WebSocket closed before opening.",
+      ));
     };
     timer = setTimeout(() => {
       cleanup();

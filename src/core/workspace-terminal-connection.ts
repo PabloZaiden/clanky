@@ -310,7 +310,6 @@ export async function createWorkspaceTerminalConnection(
         {
           operationId: `terminal:${sessionId}`,
           directory: resolved.session.config.directory,
-          provider: "copilot",
           localUserId: user.id,
         },
       );
@@ -389,7 +388,11 @@ export async function createWorkspaceTerminalConnection(
         executionRoot: resolved.workspace?.directory ?? resolved.session.config.directory,
         directory: resolved.session.config.directory,
         executionNodeId: resolved.executionNodeId,
-        provider: resolved.workspace?.serverSettings.agent.provider ?? "copilot",
+        provider: resolved.workspace?.serverSettings.agent.provider
+          ?? await executionHostService.resolveAgentProvider(
+            resolved.executionHostBinding.host,
+            user.id,
+          ),
         terminalSessionId: sessionId,
         remoteSessionName: resolved.session.config.remoteSessionName,
         connectionMode: resolved.session.state.runtimeConnectionMode

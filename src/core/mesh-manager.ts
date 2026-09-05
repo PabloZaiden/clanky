@@ -10,6 +10,7 @@ import type {
   ApproveMeshPairingRequest,
   CompleteMeshPairingRequest,
   MeshHealthCheck,
+  MeshExecutionConfigurationUpdate,
   MeshMembershipUpdate,
   MeshPeerPairingRequest,
   MeshPeerPairingApproval,
@@ -17,6 +18,11 @@ import type {
   StartMeshPairingRequest,
   UpdateMeshExecutionConfigurationRequest,
 } from "@/contracts/schemas/mesh";
+import { ExecutionNodeConfigurationSchema } from "@/contracts/schemas/execution-host";
+import type {
+  ExecutionHostModelConfig,
+  ExecutionNodeConfiguration,
+} from "@/shared/execution-host";
 import type {
   MeshLinkStatusRecord,
   MeshNodeIdentity,
@@ -62,6 +68,7 @@ import {
 import {
   buildMeshPairingApprovalSigningPayload,
   buildMeshHealthCheckSigningPayload,
+  buildMeshExecutionConfigurationUpdateSigningPayload,
   buildMeshMembershipUpdateSigningPayload,
   buildMeshPairingRequestSigningPayload,
 } from "./mesh-protocol";
@@ -84,8 +91,10 @@ import {
 } from "../domain/mesh-transitions";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { meshStateEventEmitter } from "./event-emitter";
+import { CommandExecutorImpl } from "./remote-command-executor";
 
 const PAIRING_REQUEST_TTL_MS = 15 * 60 * 1000;
+const EXECUTION_CONFIGURATION_REQUEST_TTL_MS = 60 * 1000;
 const log = createLogger("core:mesh-manager");
 
 async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
@@ -114,6 +123,193 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
 }
 
 export class MeshManager {
+  async updateExecutionNodeDefaults(
+    localUserId: string,
+    targetNodeId: string,
+    input: {
+      expectedRevision: number;
+      repositoriesBasePath: string | null;
+      preferredModel: ExecutionHostModelConfig | null;
+    },
+  ): Promise<ExecutionNodeConfiguration> {
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    if (targetNodeId === identity.nodeId) {
+      const current = identity.execution;
+      if (!current) {
+        throw new DomainError(
+          "mesh_execution_configuration_missing",
+          "The local Mesh execution configuration is unavailable.",
+        );
+      }
+      if (current.revision !== input.expectedRevision) {
+        throw new DomainError(
+          "mesh_execution_configuration_stale",
+          "The Mesh execution configuration changed before it could be saved.",
+        );
+      }
+      const status = await this.setExecutionConfiguration(localUserId, {
+        acceptRemoteExecution: current.acceptRemoteExecution,
+        repositoriesBasePath: input.repositoriesBasePath,
+        preferredModel: input.preferredModel,
+      }, input.expectedRevision);
+      if (!status.node.execution) {
+        throw new DomainError(
+          "mesh_execution_configuration_missing",
+          "The updated Mesh execution configuration is unavailable.",
+        );
+      }
+      return status.node.execution;
+    }
+
+    const link = await getMeshLinkForLocalUser(localUserId);
+    if (!link || link.status !== "active") {
+      throw new DomainError("mesh_link_not_found", "The local user is not linked to an active mesh.");
+    }
+    const member = (await listMeshLinkMembers(link.linkId))
+      .find((candidate) => candidate.nodeId === targetNodeId);
+    if (!member || member.status !== "active" || !member.endpoint) {
+      throw new DomainError(
+        "execution_host_unavailable",
+        "The selected Mesh execution host is unavailable.",
+      );
+    }
+    const target = await getMeshNode(targetNodeId);
+    if (!target?.execution) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The selected Mesh execution configuration is unavailable.",
+      );
+    }
+    if (target.execution.revision !== input.expectedRevision) {
+      throw new DomainError(
+        "mesh_execution_configuration_stale",
+        "The Mesh execution configuration changed before it could be saved.",
+      );
+    }
+
+    const nonce = crypto.randomUUID();
+    const unsigned = {
+      protocolVersion: 1 as const,
+      linkId: link.linkId,
+      senderNodeId: identity.nodeId,
+      senderPublicKey: identity.publicKey,
+      senderFingerprint: identity.fingerprint,
+      targetNodeId,
+      expectedRevision: input.expectedRevision,
+      repositoriesBasePath: input.repositoriesBasePath,
+      preferredModel: input.preferredModel,
+      nonce,
+      expiresAt: new Date(
+        Date.now() + EXECUTION_CONFIGURATION_REQUEST_TTL_MS,
+      ).toISOString(),
+    };
+    const signature = await signMeshPayload(
+      buildMeshExecutionConfigurationUpdateSigningPayload(unsigned),
+    );
+    const response = await postMeshControlMessage(
+      resolveMeshRoute(member.endpoint, "api/mesh/internal/execution/configuration"),
+      { ...unsigned, signature },
+      nonce,
+    );
+    const result = await response.json() as { configuration?: unknown };
+    const configuration = ExecutionNodeConfigurationSchema.safeParse(
+      result.configuration,
+    );
+    if (!configuration.success) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The peer did not return its updated execution configuration.",
+      );
+    }
+    return configuration.data;
+  }
+
+  async receiveExecutionConfigurationUpdate(
+    envelope: MeshExecutionConfigurationUpdate,
+  ): Promise<{ configuration: ExecutionNodeConfiguration }> {
+    if (new Date(envelope.expiresAt).getTime() <= Date.now()) {
+      throw new DomainError(
+        "mesh_execution_configuration_request_expired",
+        "The Mesh execution configuration request has expired.",
+      );
+    }
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    if (envelope.targetNodeId !== identity.nodeId) {
+      throw new DomainError(
+        "mesh_execution_configuration_target_invalid",
+        "The Mesh execution configuration request targets another node.",
+      );
+    }
+    const trusted = await requireTrustedMeshPeer({
+      linkId: envelope.linkId,
+      nodeId: envelope.senderNodeId,
+      publicKey: envelope.senderPublicKey,
+      fingerprint: envelope.senderFingerprint,
+      requireActiveNode: true,
+      requireActiveMember: true,
+      requireEncryptionKey: false,
+      context: "execution configuration sender",
+    });
+    const { signature, ...unsigned } = envelope;
+    if (!verifyMeshPayloadSignature(
+      buildMeshExecutionConfigurationUpdateSigningPayload(unsigned),
+      signature,
+      envelope.senderPublicKey,
+    )) {
+      throw new DomainError(
+        "mesh_peer_signature_invalid",
+        "The execution configuration signature is invalid.",
+      );
+    }
+    const current = identity.execution;
+    if (!current) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The local Mesh execution configuration is unavailable.",
+      );
+    }
+    if (current.revision !== envelope.expectedRevision) {
+      throw new DomainError(
+        "mesh_execution_configuration_stale",
+        "The Mesh execution configuration changed before it could be saved.",
+      );
+    }
+    if (envelope.repositoriesBasePath) {
+      const executor = new CommandExecutorImpl({
+        provider: "local",
+        directory: ".",
+      });
+      const result = await executor.exec(
+        "/bin/sh",
+        [
+          "-c",
+          "test -d \"$1\"",
+          "clanky-directory-check",
+          envelope.repositoriesBasePath,
+        ],
+        { cwd: ".", maxOutputBytes: 16 * 1024 },
+      );
+      if (!result.success) {
+        throw new DomainError(
+          "execution_host_directory_invalid",
+          "The selected directory does not exist on this execution host.",
+        );
+      }
+    }
+    const status = await this.setExecutionConfiguration(trusted.link.localUserId, {
+      acceptRemoteExecution: current.acceptRemoteExecution,
+      repositoriesBasePath: envelope.repositoriesBasePath,
+      preferredModel: envelope.preferredModel,
+    }, envelope.expectedRevision);
+    if (!status.node.execution) {
+      throw new DomainError(
+        "mesh_execution_configuration_missing",
+        "The updated Mesh execution configuration is unavailable.",
+      );
+    }
+    return { configuration: status.node.execution };
+  }
+
   async checkHealth(localUserId: string): Promise<MeshStatusRecord> {
     const identity = await ensureLocalMeshIdentityWithEndpoint();
     const link = await getMeshLinkForLocalUser(localUserId);
@@ -377,6 +573,7 @@ export class MeshManager {
   async setExecutionConfiguration(
     localUserId: string,
     input: UpdateMeshExecutionConfigurationRequest,
+    expectedRevision?: number,
   ): Promise<MeshStatusRecord> {
     const previousIdentity = await ensureLocalMeshIdentityWithEndpoint();
     const previous = previousIdentity.execution;
@@ -386,7 +583,10 @@ export class MeshManager {
         "The local Mesh execution configuration is unavailable.",
       );
     }
-    const updatedIdentity = await setLocalMeshExecutionConfiguration(input);
+    const updatedIdentity = await setLocalMeshExecutionConfiguration(
+      input,
+      expectedRevision,
+    );
     const next = updatedIdentity.execution;
     if (!next) {
       throw new DomainError(

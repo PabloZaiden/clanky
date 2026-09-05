@@ -8,9 +8,14 @@ import {
   EXECUTION_HOST_CAPABILITY_IDS,
   EXECUTION_HOST_KINDS,
 } from "@/shared/execution-host";
+import { AGENT_PROVIDER_IDS } from "@/shared/settings";
+import { ModelConfigSchema } from "./model";
 
 const RequiredIdSchema = z.string().trim().min(1);
 const CapabilityVersionSchema = z.number().int().min(1);
+export const ExecutionHostPreferredModelSchema = ModelConfigSchema.extend({
+  providerID: z.enum(AGENT_PROVIDER_IDS),
+});
 
 export const ExecutionHostKindSchema = z.enum(EXECUTION_HOST_KINDS);
 
@@ -49,6 +54,7 @@ export const ExecutionNodeConfigurationSchema = z.object({
   name: RequiredIdSchema,
   endpoint: z.string().nullable(),
   repositoriesBasePath: z.string().nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable().default(null),
   acceptRemoteExecution: z.boolean(),
   capabilities: ExecutionHostCapabilitiesSchema,
   revision: z.number().int().min(1),
@@ -82,6 +88,8 @@ export const ExecutionHostDescriptorSchema = z.object({
   name: RequiredIdSchema,
   endpoint: z.string().nullable(),
   repositoriesBasePath: z.string().nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
+  configurationRevision: z.number().int().min(1),
   availability: ExecutionHostAvailabilitySchema,
   accessRequirement: ExecutionHostAccessRequirementSchema,
   acceptRemoteExecution: z.boolean(),
@@ -90,9 +98,26 @@ export const ExecutionHostDescriptorSchema = z.object({
   isPrivate: z.boolean().optional(),
 }).strict();
 
+export const UpdateExecutionHostConfigurationSchema = z.object({
+  repositoriesBasePath: z.string().trim().min(1).nullable(),
+  preferredModel: ExecutionHostPreferredModelSchema.nullable(),
+  expectedRevision: z.number().int().min(1),
+}).strict();
+
+export const ExecutionHostWorkingDirectorySchema = z.object({
+  directory: z.string().trim().min(1),
+  configured: z.boolean(),
+}).strict();
+
 export type ExecutionHostRefInput = z.infer<typeof ExecutionHostRefSchema>;
 export type ExecutionNodeConfigurationInput = z.infer<
   typeof ExecutionNodeConfigurationSchema
 >;
 export type ExecutionHostBindingInput = z.infer<typeof ExecutionHostBindingSchema>;
 export type ExecutionHostDescriptorInput = z.infer<typeof ExecutionHostDescriptorSchema>;
+export type UpdateExecutionHostConfigurationRequest = z.infer<
+  typeof UpdateExecutionHostConfigurationSchema
+>;
+export type ExecutionHostWorkingDirectory = z.infer<
+  typeof ExecutionHostWorkingDirectorySchema
+>;

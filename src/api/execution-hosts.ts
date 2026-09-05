@@ -11,6 +11,7 @@ import {
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
   GetDevboxTemplatesRequestSchema,
+  UpdateExecutionHostConfigurationSchema,
 } from "@/contracts/schemas";
 import type { ExecutionHostRef } from "@/shared";
 import { domainErrorResponse, errorResponse } from "./helpers";
@@ -20,6 +21,7 @@ import { executionHostDiscoveryService } from "../core/execution-host-discovery-
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
 import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 import { getModelsForExecutionHost } from "../core/model-discovery";
+import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
 const log = createLogger("api:execution-hosts");
 
@@ -61,6 +63,116 @@ export const executionHostRoutes = defineRoutes({
       }
     },
   },
+  "/api/execution-hosts/:kind/:id/working-directory": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Resolve the configured or current directory of an execution host.",
+    async GET(_req, ctx): Promise<Response> {
+      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Execution host kind must be local, mesh, or ssh.",
+          400,
+        );
+      }
+      try {
+        return Response.json(
+          await executionHostService.resolveWorkingDirectory(ref, {
+            userId: ctx.requireUser().id,
+          }),
+        );
+      } catch (error) {
+        log.error("Failed to resolve execution-host working directory", {
+          kind: ref.kind,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_directory_unavailable",
+            message: "Failed to resolve the execution-host working directory.",
+            status: 500,
+          },
+          mappings: {
+            execution_host_unavailable: {
+              status: 404,
+              message: "Execution host not found or unavailable.",
+            },
+          },
+        });
+      }
+    },
+  },
+  "/api/execution-hosts/:kind/:id/configuration": {
+    auth: "owner",
+    sameOrigin: "mutations",
+    description: "Update node-owned defaults for a local or Mesh execution host.",
+    requestSchema: UpdateExecutionHostConfigurationSchema,
+    async PATCH(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        UpdateExecutionHostConfigurationSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+      const ref = parseExecutionHostRef(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Execution host kind must be local, mesh, or ssh.",
+          400,
+        );
+      }
+      try {
+        return Response.json(
+          await executionHostConfigurationService.updateNodeDefaults(
+            ref,
+            validation.data,
+            ctx.requireOwner().id,
+          ),
+        );
+      } catch (error) {
+        log.error("Failed to update execution-host configuration", {
+          kind: ref.kind,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_configuration_failed",
+            message: "Failed to update execution-host configuration.",
+            status: 500,
+          },
+          mappings: {
+            execution_host_unavailable: {
+              status: 404,
+              message: "Execution host not found or unavailable.",
+            },
+            execution_host_directory_invalid: {
+              status: 400,
+              message: "The selected directory does not exist on the execution host.",
+            },
+            execution_host_configuration_unsupported: {
+              status: 400,
+              message: "This execution host must be configured through its transport settings.",
+            },
+            mesh_execution_configuration_stale: {
+              status: 409,
+              message: "The execution-host configuration changed. Refresh and try again.",
+            },
+            mesh_control_request_unreachable: {
+              status: 503,
+              message: "The Mesh execution host could not be reached.",
+            },
+            mesh_control_request_rejected: {
+              status: 502,
+              message: "The Mesh execution host rejected the configuration update.",
+            },
+          },
+        });
+      }
+    },
+  },
   "/api/execution-hosts/:kind/:id/chats": {
     auth: "user",
     sameOrigin: "mutations",
@@ -81,6 +193,15 @@ export const executionHostRoutes = defineRoutes({
       }
       try {
         const binding = executionHostService.getBinding(ref);
+        const sshPassword = resolveSshPassword(
+          ref,
+          validation.data.credentialToken ?? null,
+        );
+        await executionHostService.assertDirectoryExists(
+          ref,
+          validation.data.directory,
+          { sshPassword },
+        );
         const chat = await chatManager.createExecutionHostChat({
           name: validation.data.name,
           executionHost: binding,
@@ -113,6 +234,10 @@ export const executionHostRoutes = defineRoutes({
               error: "execution_host_binding_stale",
               message: "Execution host configuration changed.",
             },
+            execution_host_directory_invalid: {
+              status: 400,
+              message: "The selected directory does not exist on the execution host.",
+            },
           },
         });
       }
@@ -141,7 +266,6 @@ export const executionHostRoutes = defineRoutes({
         const report = await executionHostDiscoveryService.checkPrerequisites(ref, {
           operationId: `prerequisites:${ctx.params["id"]!}`,
           directory: "/",
-          provider: "copilot",
           repositoriesBasePath: descriptor.repositoriesBasePath,
           responseId: ctx.params["id"]!,
           sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
@@ -181,7 +305,6 @@ export const executionHostRoutes = defineRoutes({
         const templates = await executionHostDiscoveryService.listDevboxTemplates(ref, {
           operationId: `devbox-templates:${ctx.params["id"]!}`,
           directory: "/",
-          provider: "copilot",
           sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
         });
         return Response.json(templates);
@@ -219,7 +342,6 @@ export const executionHostRoutes = defineRoutes({
                 const executor = await executionHostService.getCommandExecutorForRef(ref, {
                   operationId: `provider-discovery:${ctx.params["id"]!}`,
                   directory: "/",
-                  provider: "copilot",
                   sshPassword: resolveSshPassword(ref, validation.data.credentialToken ?? null),
                 });
                 const results = await Promise.all(AGENT_PROVIDER_IDS.map(async (providerID) => ({

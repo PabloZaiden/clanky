@@ -7,6 +7,7 @@ import type {
   MeshPeerPairingRequest,
   MeshHealthCheck,
   MeshMembershipUpdate,
+  MeshExecutionConfigurationUpdate,
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
@@ -15,6 +16,10 @@ type UnsignedPairingApproval = Omit<MeshPeerPairingApproval, "signature">;
 type UnsignedMembershipUpdate = Omit<MeshMembershipUpdate, "signature">;
 type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
+type UnsignedExecutionConfigurationUpdate = Omit<
+  MeshExecutionConfigurationUpdate,
+  "signature"
+>;
 
 export function buildMeshPairingRequestSigningPayload(
   envelope: UnsignedPairingRequest,
@@ -95,6 +100,25 @@ export function buildMeshHealthCheckSigningPayload(
     envelope.senderFingerprint,
     envelope.nonce,
     envelope.sentAt,
+  ]);
+}
+
+export function buildMeshExecutionConfigurationUpdateSigningPayload(
+  envelope: UnsignedExecutionConfigurationUpdate,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-execution-configuration-update-v1",
+    envelope.protocolVersion,
+    envelope.linkId,
+    envelope.senderNodeId,
+    envelope.senderPublicKey,
+    envelope.senderFingerprint,
+    envelope.targetNodeId,
+    envelope.expectedRevision,
+    envelope.repositoriesBasePath,
+    envelope.preferredModel,
+    envelope.nonce,
+    envelope.expiresAt,
   ]);
 }
 

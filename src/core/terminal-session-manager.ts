@@ -508,7 +508,6 @@ export class TerminalSessionManager {
             {
               operationId: `terminal-cleanup:${session.config.id}`,
               directory: session.config.directory,
-              provider: "copilot",
             },
           );
       // Reuse the same persistent session delete command, passing a compatible object

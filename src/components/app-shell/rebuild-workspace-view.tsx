@@ -5,6 +5,7 @@ import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from 
 import type { Workspace } from "@/shared/workspace";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
+import { DEFAULT_EXECUTION_AGENT_PROVIDER } from "@/shared/settings";
 import { useState } from "react";
 import { useShellHeaderActions } from "./shell-header-actions";
 
@@ -44,7 +45,7 @@ export function RebuildWorkspaceView({
       basePath: workspace.basePath ?? "",
       devcontainerSubpath: workspace.devcontainerSubpath ?? null,
       devboxTemplate: null,
-      provider: workspace.provider ?? "copilot",
+      provider: workspace.provider ?? DEFAULT_EXECUTION_AGENT_PROVIDER,
       password,
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
@@ -146,7 +147,7 @@ export function RebuildWorkspaceView({
             <TextField
               id={`${mode}-provider`}
               label="Provider"
-              value={workspace.provider ?? "copilot"}
+              value={workspace.provider ?? DEFAULT_EXECUTION_AGENT_PROVIDER}
               disabled
             />
 

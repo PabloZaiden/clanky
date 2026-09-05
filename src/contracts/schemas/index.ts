@@ -23,10 +23,14 @@ export {
   ExecutionHostAccessRequirementSchema,
   ExecutionHostBindingSchema,
   ExecutionHostDescriptorSchema,
+  UpdateExecutionHostConfigurationSchema,
+  ExecutionHostWorkingDirectorySchema,
   type ExecutionHostRefInput,
   type ExecutionNodeConfigurationInput,
   type ExecutionHostBindingInput,
   type ExecutionHostDescriptorInput,
+  type UpdateExecutionHostConfigurationRequest,
+  type ExecutionHostWorkingDirectory,
 } from "./execution-host";
 
 // Task schemas

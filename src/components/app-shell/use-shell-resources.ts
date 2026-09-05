@@ -174,6 +174,7 @@ export function useShellResources(route: WebAppRoute) {
     chats,
     workspaces,
     servers,
+    executionHosts: executionHosts.hosts,
     sessionsByServerId,
     agents: agents.agents,
   });

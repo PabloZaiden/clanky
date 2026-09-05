@@ -2,6 +2,17 @@
  * Transport-neutral execution host contracts.
  */
 
+import type { ModelConfig } from "./model";
+import {
+  DEFAULT_EXECUTION_AGENT_PROVIDER,
+  isAgentProvider,
+  type AgentProvider,
+} from "./settings";
+
+export interface ExecutionHostModelConfig extends ModelConfig {
+  providerID: AgentProvider;
+}
+
 export const EXECUTION_HOST_KINDS = ["local", "mesh", "ssh"] as const;
 export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 
@@ -34,6 +45,7 @@ export interface ExecutionNodeConfiguration {
   name: string;
   endpoint: string | null;
   repositoriesBasePath: string | null;
+  preferredModel: ExecutionHostModelConfig | null;
   acceptRemoteExecution: boolean;
   capabilities: ExecutionHostCapabilities;
   revision: number;
@@ -58,6 +70,7 @@ export function createDefaultExecutionNodeConfiguration(
     name,
     endpoint,
     repositoriesBasePath: null,
+    preferredModel: null,
     acceptRemoteExecution: true,
     capabilities: { ...DEFAULT_EXECUTION_HOST_CAPABILITIES },
     revision: 1,
@@ -94,12 +107,29 @@ export interface ExecutionHostDescriptor {
   name: string;
   endpoint: string | null;
   repositoriesBasePath: string | null;
+  preferredModel: ExecutionHostModelConfig | null;
+  configurationRevision: number;
   availability: ExecutionHostAvailability;
   accessRequirement: ExecutionHostAccessRequirement;
   acceptRemoteExecution: boolean;
   capabilities: ExecutionHostCapabilities;
   revision: number;
   isPrivate?: boolean;
+}
+
+export function getExecutionHostDefaultDirectory(
+  host: Pick<ExecutionHostDescriptor, "repositoriesBasePath">,
+): string {
+  return host.repositoriesBasePath?.trim() || ".";
+}
+
+export function getExecutionHostAgentProvider(
+  host: Pick<ExecutionHostDescriptor, "preferredModel">,
+): AgentProvider {
+  const provider = host.preferredModel?.providerID;
+  return isAgentProvider(provider)
+    ? provider
+    : DEFAULT_EXECUTION_AGENT_PROVIDER;
 }
 
 export function getExecutionHostSourceId(ref: ExecutionHostRef): string {

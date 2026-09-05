@@ -9,6 +9,13 @@ export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi
 
 export type AgentProvider = typeof AGENT_PROVIDER_IDS[number];
 export type AgentTransport = "stdio" | "ssh";
+export const DEFAULT_SERVER_AGENT_PROVIDER: AgentProvider = "opencode";
+export const DEFAULT_EXECUTION_AGENT_PROVIDER: AgentProvider = "copilot";
+
+export function isAgentProvider(value: unknown): value is AgentProvider {
+  return typeof value === "string"
+    && AGENT_PROVIDER_IDS.includes(value as AgentProvider);
+}
 
 export type AgentSettings =
   | {
@@ -37,7 +44,7 @@ export interface ServerSettings {
 export function getDefaultServerSettings(remoteOnly: boolean = false): ServerSettings {
   const defaultAgent = remoteOnly
     ? {
-        provider: "opencode" as const,
+        provider: DEFAULT_SERVER_AGENT_PROVIDER,
         transport: "ssh" as const,
         hostname: "127.0.0.1",
         port: 22,
@@ -45,7 +52,7 @@ export function getDefaultServerSettings(remoteOnly: boolean = false): ServerSet
         password: "",
       }
     : {
-        provider: "opencode" as const,
+        provider: DEFAULT_SERVER_AGENT_PROVIDER,
         transport: "stdio" as const,
       };
 
@@ -61,7 +68,7 @@ export function getDefaultServerSettings(remoteOnly: boolean = false): ServerSet
 export function getCreateWorkspaceDefaultServerSettings(): ServerSettings {
   return {
     agent: {
-      provider: "copilot",
+      provider: DEFAULT_EXECUTION_AGENT_PROVIDER,
       transport: "ssh",
       hostname: "localhost",
       port: 22,

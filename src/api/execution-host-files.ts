@@ -57,11 +57,12 @@ async function resolveExecutionHostFileTarget(
     sshPassword = sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken);
   }
 
-  const defaultRoot = descriptor.repositoriesBasePath?.trim() || "/";
+  const defaultRoot = (await executionHostService.resolveWorkingDirectory(ref, {
+    sshPassword,
+  })).directory;
   const executor = await executionHostService.getCommandExecutorForRef(ref, {
     operationId: `file-explorer:${id}`,
     directory: defaultRoot,
-    provider: "copilot",
     sshPassword,
   });
   return {

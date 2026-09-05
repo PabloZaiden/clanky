@@ -4,8 +4,13 @@
  */
 
 import { useEffect, useState } from "react";
-import { findRegisteredSshServer } from "@/shared/settings";
-import type { ServerSettings, AgentProvider, AgentTransport } from "@/shared/settings";
+import {
+  DEFAULT_SERVER_AGENT_PROVIDER,
+  findRegisteredSshServer,
+  type AgentProvider,
+  type AgentTransport,
+  type ServerSettings,
+} from "@/shared/settings";
 import type { SshServer } from "@/shared";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { SshFields } from "./ssh-fields";
@@ -54,7 +59,7 @@ export function ServerSettingsForm({
     && initialSettings?.agent.transport === "stdio"
     && initialExecutionNodeId !== null;
   const [agentProvider, setAgentProvider] = useState<AgentProvider>(
-    initialSettings?.agent.provider ?? "opencode",
+    initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
   );
   const [agentTransport, setAgentTransport] = useState<AgentTransport>(
     remoteOnly && !preserveRemoteStdio ? "ssh" : (initialSettings?.agent.transport ?? "stdio"),
@@ -82,7 +87,7 @@ export function ServerSettingsForm({
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    const nextProvider = initialSettings?.agent.provider ?? "opencode";
+    const nextProvider = initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
     const nextTransport = remoteOnly && !preserveRemoteStdio
       ? "ssh"
       : (initialSettings?.agent.transport ?? "stdio");

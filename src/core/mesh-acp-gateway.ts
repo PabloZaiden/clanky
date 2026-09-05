@@ -5,15 +5,49 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import { MESH_EXECUTION_MAX_MESSAGE_BYTES } from "@/shared/mesh-execution";
 import { AcpProcess } from "../backends/acp/acp-process";
+import type { AcpProcessExit } from "../backends/acp/types";
 import {
   buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "./agent-runtime-command";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { DomainError } from "./domain-error";
+import { CommandExecutorImpl } from "./remote-command-executor";
 
 const log = createLogger("core:mesh-acp-gateway");
 const MAX_RELAY_SESSIONS = 64;
+const MAX_STARTUP_STDERR_BYTES = 2_048;
+
+function appendStartupDiagnostic(current: string, line: string): string {
+  const combined = `${current}${current ? "\n" : ""}${line}`.replace(/[\r\n\t]+/g, " ");
+  if (Buffer.byteLength(combined, "utf8") <= MAX_STARTUP_STDERR_BYTES) {
+    return combined;
+  }
+  let bounded = combined;
+  while (Buffer.byteLength(bounded, "utf8") > MAX_STARTUP_STDERR_BYTES) {
+    bounded = bounded.slice(1);
+  }
+  return bounded;
+}
+
+function meshAcpExitReason(
+  provider: string,
+  exit: AcpProcessExit,
+  stderr: string,
+): string {
+  const status = exit.signalCode
+    ? `signal ${exit.signalCode}`
+    : `code ${String(exit.exitCode)}`;
+  let reason = `${provider} ACP exited with ${status}`;
+  const diagnostic = stderr.trim();
+  if (diagnostic) {
+    reason += `: ${diagnostic}`;
+  }
+  while (Buffer.byteLength(reason, "utf8") > 123) {
+    reason = reason.slice(0, -1);
+  }
+  return reason;
+}
 
 export interface MeshAcpSocket {
   send(data: string): void;
@@ -69,10 +103,25 @@ export class MeshAcpGateway {
     }
     const config = await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
     await this.closeRelay(sessionId);
+    const directoryCheck = await new CommandExecutorImpl({
+      provider: "local",
+      directory: ".",
+    }).exec(
+      "/bin/sh",
+      ["-c", "test -d \"$1\"", "clanky-acp-directory-check", config.directory],
+      { cwd: ".", maxOutputBytes: 16 * 1024 },
+    );
+    if (!directoryCheck.success) {
+      throw new DomainError(
+        "mesh_acp_directory_invalid",
+        `The ACP working directory does not exist: ${config.directory}`,
+      );
+    }
     const providerCommand = getProviderAcpCommand(config.provider, "stdio");
     let processHandle: AcpProcess | null = null;
-    let processExited = false;
+    let processExit: AcpProcessExit | null = null;
     let outputLimitExceeded = false;
+    let startupStderr = "";
     try {
       const spawned = await AcpProcess.spawn({
         command: providerCommand.command,
@@ -84,12 +133,20 @@ export class MeshAcpGateway {
         onLine: (source, line) => {
           if (source === "stdout") {
             this.sendLine(sessionId, line);
+          } else {
+            startupStderr = appendStartupDiagnostic(startupStderr, line);
           }
         },
-        onExit: () => {
-          processExited = true;
+        onExit: (exit) => {
+          processExit = exit;
           if (processHandle) {
-            void this.handleProcessExit(sessionId, processHandle);
+            void this.handleProcessExit(
+              sessionId,
+              processHandle,
+              config.provider,
+              exit,
+              startupStderr,
+            );
           }
         },
         onOutputLimitExceeded: () => {
@@ -108,9 +165,12 @@ export class MeshAcpGateway {
       });
       processHandle = spawned;
     } catch (error) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       throw new DomainError(
         "mesh_acp_process_failed",
-        "The mesh ACP process did not expose usable streams.",
+        `Failed to start ${config.provider} ACP in ${config.directory}: ${String(error)}`,
         { cause: error },
       );
     }
@@ -143,8 +203,17 @@ export class MeshAcpGateway {
       await this.closeRelay(sessionId);
       return;
     }
-    if (processExited || process.exitCode !== null) {
-      await this.handleProcessExit(sessionId, process);
+    if (processExit || process.exitCode !== null) {
+      await this.handleProcessExit(
+        sessionId,
+        process,
+        config.provider,
+        processExit ?? {
+          exitCode: process.exitCode ?? -1,
+          signalCode: process.signalCode,
+        },
+        startupStderr,
+      );
     }
   }
 
@@ -204,7 +273,13 @@ export class MeshAcpGateway {
     meshExecutionGateway.closeAll();
   }
 
-  private async handleProcessExit(sessionId: string, process: AcpProcess): Promise<void> {
+  private async handleProcessExit(
+    sessionId: string,
+    process: AcpProcess,
+    provider: string,
+    exit: AcpProcessExit,
+    stderr: string,
+  ): Promise<void> {
     const relay = this.relays.get(sessionId);
     if (!relay || relay.process !== process) {
       return;
@@ -213,7 +288,7 @@ export class MeshAcpGateway {
     clearTimeout(relay.expiryTimer);
     meshExecutionGateway.closeSession(sessionId);
     try {
-      relay.socket.close(1011, "ACP process exited");
+      relay.socket.close(1011, meshAcpExitReason(provider, exit, stderr));
     } catch (error) {
       log.debug("Failed to close mesh ACP socket after process exit", {
         sessionId,

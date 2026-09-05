@@ -6,6 +6,7 @@ import {
 
 describe("mesh execution path validation", () => {
   test("accepts arbitrary absolute host paths", () => {
+    expect(assertMeshExecutionCwd(".", ".")).toBe(".");
     expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo"))
       .toBe("/workspaces/repo");
     expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo/.clanky-worktrees/task-1"))
@@ -18,6 +19,8 @@ describe("mesh execution path validation", () => {
 
   test("rejects non-absolute paths and NUL bytes", () => {
     expect(() => assertMeshExecutionPath("/workspaces/repo", "relative/path"))
+      .toThrow();
+    expect(() => assertMeshExecutionCwd("/workspaces/repo", "relative/path"))
       .toThrow();
     expect(() => assertMeshExecutionCwd("/workspaces/repo", "/tmp/invalid\0path"))
       .toThrow();

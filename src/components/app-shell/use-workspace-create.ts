@@ -1,7 +1,10 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type { ExecutionHostKind, Workspace, WorkspaceType } from "@/shared";
-import { getCreateWorkspaceDefaultServerSettings } from "@/shared/settings";
+import {
+  DEFAULT_EXECUTION_AGENT_PROVIDER,
+  getCreateWorkspaceDefaultServerSettings,
+} from "@/shared/settings";
 import type { AgentProvider, ServerSettings } from "@/shared/settings";
 import type { CreateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { SshServer } from "@/shared/ssh-server";
@@ -106,7 +109,9 @@ export function useWorkspaceCreate({
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
   const [automaticGithubUser, setAutomaticGithubUser] = useState("");
   const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
-  const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
+  const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>(
+    DEFAULT_EXECUTION_AGENT_PROVIDER,
+  );
   const [automaticPassword, setAutomaticPassword] = useState("");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
@@ -221,7 +226,7 @@ export function useWorkspaceCreate({
     setAutomaticDevboxTemplate("");
     setAutomaticGithubUser("");
     setAutomaticAdvancedOpen(false);
-    setAutomaticProvider("copilot");
+    setAutomaticProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
     setAutomaticPassword("");
   }, [
     provisioning.clearActiveJob,

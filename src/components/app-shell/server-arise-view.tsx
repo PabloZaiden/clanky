@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import type { SshServer } from "@/shared";
+import { DEFAULT_EXECUTION_AGENT_PROVIDER } from "@/shared/settings";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ErrorState, FormGroup, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useShellHeaderActions } from "./shell-header-actions";
@@ -31,7 +32,7 @@ export function ServerAriseView({
       basePath: server.config.repositoriesBasePath ?? "",
       devcontainerSubpath: null,
       devboxTemplate: null,
-      provider: "copilot",
+      provider: DEFAULT_EXECUTION_AGENT_PROVIDER,
       password,
       mode: "arise",
       targetDirectory: null,

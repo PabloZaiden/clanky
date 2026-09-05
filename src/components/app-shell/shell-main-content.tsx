@@ -61,6 +61,7 @@ export interface ShellMainContentProps {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeExecutionHost: ExecutionHostDescriptor | null;
   composeServerSessionCount: number;
   selectedServer: SshServer | null;
 
@@ -71,6 +72,7 @@ export interface ShellMainContentProps {
   refreshChats: () => Promise<void>;
   purgeTask: (taskId: string) => Promise<boolean>;
   refreshSshServers: () => Promise<void>;
+  refreshExecutionHosts: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
   createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").WorkspaceTerminalSession>;
   createStandaloneSession: (
@@ -693,6 +695,7 @@ function renderMainContent(props: ShellMainContentProps) {
         host={host}
         provisioning={props.provisioning}
         onNavigate={navigateWithinShell}
+        onRefresh={props.refreshExecutionHosts}
       />
     );
   }
@@ -883,6 +886,7 @@ function renderMainContent(props: ShellMainContentProps) {
         kind={kind}
         composeWorkspace={props.composeWorkspace}
         composeServer={props.composeServer}
+        composeExecutionHost={props.composeExecutionHost}
         navigateWithinShell={navigateWithinShell}
         composeActionState={props.composeActionState}
         setComposeActionState={props.setComposeActionState}

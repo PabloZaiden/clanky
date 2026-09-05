@@ -17,6 +17,7 @@ import type {
   Workspace,
   WorkspaceTerminalSession,
 } from "@/shared";
+import { getExecutionHostDefaultDirectory } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
@@ -530,7 +531,9 @@ function getSshServerSidebarActions(
           workspaceMode: "automatic",
           executionHostKind: "ssh",
           executionHostId: serverId,
-          basePath: executionHost?.repositoriesBasePath ?? server.config.repositoriesBasePath ?? "/workspaces",
+          basePath: executionHost
+            ? getExecutionHostDefaultDirectory(executionHost)
+            : server.config.repositoriesBasePath ?? ".",
         }),
       },
       {
@@ -698,7 +701,7 @@ function executionHostId(host: ExecutionHostDescriptor): string {
 }
 
 function executionHostDirectory(host: ExecutionHostDescriptor): string {
-  return host.repositoriesBasePath ?? "/workspaces";
+  return getExecutionHostDefaultDirectory(host);
 }
 
 function executionHostAvailable(host: ExecutionHostDescriptor): boolean {
@@ -742,30 +745,16 @@ async function createExecutionHostTerminal(
   }
 }
 
-async function createExecutionHostChat(
+function createExecutionHostChat(
   host: ExecutionHostDescriptor,
   handlers: ShellSidebarActionHandlers,
-): Promise<void> {
-  try {
-    const chat = await apiRequest<Chat>(
-      `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(executionHostId(host))}/chats`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: `${host.name} chat`,
-          directory: executionHostDirectory(host),
-          model: { providerID: "copilot", modelID: "default", variant: "" },
-          autoApprovePermissions: true,
-        }),
-        headers: { "Content-Type": "application/json" },
-        action: "Create chat",
-        fallbackMessage: "Failed to create chat",
-      },
-    );
-    handlers.navigateWithinShell({ view: "chat", chatId: chat.config.id });
-  } catch (error) {
-    handlers.onError(String(error));
-  }
+): void {
+  handlers.navigateWithinShell({
+    view: "compose",
+    kind: "execution-host-chat",
+    hostKind: host.ref.kind,
+    hostId: executionHostId(host),
+  });
 }
 
 function getExecutionHostSidebarActions(
@@ -1302,7 +1291,7 @@ function buildSidebarNodes(
               title: "New chat",
               label: "New",
               onAction: executionHostAvailable(host) && host.capabilities.acpRuntime
-                ? () => void createExecutionHostChat(host, handlers)
+                ? () => createExecutionHostChat(host, handlers)
                 : undefined,
             },
             children: hostChats.map((chat): SidebarNode => ({

@@ -20,6 +20,7 @@ import { HOME_ROUTE } from "./use-shell-navigation";
 import type {
   Agent,
   Chat,
+  ExecutionHostDescriptor,
   SshServer,
   SshServerSession,
   Task,
@@ -60,6 +61,7 @@ interface UseShellHeaderOptions {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeExecutionHost: ExecutionHostDescriptor | null;
   selectedServer: SshServer | null;
   selectedAgent: Agent | null;
   tasksLoading: boolean;
@@ -189,6 +191,7 @@ interface HeaderScopeOptions {
   composeKind: string | undefined;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeExecutionHost: ExecutionHostDescriptor | null;
   selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
@@ -206,6 +209,7 @@ function getHeaderScopeSubtitle({
   composeKind,
   composeWorkspace,
   composeServer,
+  composeExecutionHost,
   selectedTask,
   selectedChat,
   selectedWorkspace,
@@ -266,7 +270,7 @@ function getHeaderScopeSubtitle({
       }
       return composeWorkspace
         ? getWorkspaceScopeSubtitle(composeWorkspace.id, workspaces)
-        : composeServer?.config.name;
+        : composeServer?.config.name ?? composeExecutionHost?.name;
     default:
       return undefined;
   }
@@ -285,6 +289,7 @@ export function useShellHeader({
   selectedWorkspace,
   composeWorkspace,
   composeServer,
+  composeExecutionHost,
   selectedServer,
   selectedAgent,
   tasksLoading,
@@ -329,6 +334,7 @@ export function useShellHeader({
       composeKind,
       composeWorkspace,
       composeServer,
+      composeExecutionHost,
       selectedTask,
       selectedChat,
       selectedWorkspace,
@@ -524,11 +530,17 @@ export function useShellHeader({
             scopeSubtitle,
           };
         }
-        if (composeKind === "chat" || composeKind === "ssh-server-chat") {
+        if (
+          composeKind === "chat"
+          || composeKind === "ssh-server-chat"
+          || composeKind === "execution-host-chat"
+        ) {
           return {
-            title: composeServer
-              ? `Start a new chat on ${composeServer.config.name}`
-              : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
+            title: composeExecutionHost
+              ? `Start a new chat on ${composeExecutionHost.name}`
+              : composeServer
+                ? `Start a new chat on ${composeServer.config.name}`
+                : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
             scopeSubtitle,
             detailSubtitle: composeServer
               ? `${composeServer.config.username}@${composeServer.config.address}`
@@ -573,6 +585,7 @@ export function useShellHeader({
     chatsLoading,
     composeKind,
     composeServer,
+    composeExecutionHost,
     composeWorkspace,
     editingAgentId,
     headerNode,

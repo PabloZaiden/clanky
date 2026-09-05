@@ -28,7 +28,11 @@ export const CreateSshServerChatRequestSchema = z.object({
   credentialToken: z.string().trim().min(1).nullable().optional(),
 });
 
-export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSchema;
+export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSchema.extend({
+  model: ModelConfigSchema.extend({
+    providerID: AgentProviderSchema,
+  }),
+});
 
 export const ImportExistingChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),

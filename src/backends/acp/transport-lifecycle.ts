@@ -20,7 +20,10 @@ import {
   getSshReliabilityPolicy,
   type SshReliabilityPolicy,
 } from "../../core/ssh-reliability-policy";
-import type { AgentProvider } from "@/shared/settings";
+import {
+  DEFAULT_SERVER_AGENT_PROVIDER,
+  type AgentProvider,
+} from "@/shared/settings";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 
 import {
@@ -141,7 +144,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     }
 
     this.directory = config.directory;
-    this.provider = config.provider ?? "opencode";
+    this.provider = config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
     this.stage = "spawn";
     this.session = {
       id: crypto.randomUUID(),
@@ -192,7 +195,10 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     signal: AbortSignal | undefined,
     requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
-    const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
+    const providerCommand = getProviderAcpCommand(
+      config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
+      config.transport,
+    );
     const command = config.command ?? providerCommand.command;
     const args = config.args ?? providerCommand.args;
     const spawnEnv = config.transport === "ssh"

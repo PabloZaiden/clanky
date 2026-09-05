@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, SshServer, Workspace } from "@/shared";
 import type { CreateSshServerChatRequest, ModelInfo } from "@/contracts";
 import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
-import type { AgentProvider } from "@/shared/settings";
+import {
+  DEFAULT_EXECUTION_AGENT_PROVIDER,
+  type AgentProvider,
+} from "@/shared/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { apiRequest } from "../../lib/api-client";
@@ -123,7 +126,9 @@ export function ComposeChatView({
   const [importSessionsLoading, setImportSessionsLoading] = useState(false);
   const [selectedImportSessionId, setSelectedImportSessionId] = useState("");
   const [remoteDirectory, setRemoteDirectory] = useState(composeServer?.config.repositoriesBasePath ?? "~");
-  const [remoteProvider, setRemoteProvider] = useState<AgentProvider>("copilot");
+  const [remoteProvider, setRemoteProvider] = useState<AgentProvider>(
+    DEFAULT_EXECUTION_AGENT_PROVIDER,
+  );
   const [remoteModels, setRemoteModels] = useState<ModelInfo[]>([]);
   const [remoteModelsLoading, setRemoteModelsLoading] = useState(false);
   const [remoteCredentialToken, setRemoteCredentialToken] = useState<string | null>(null);
@@ -250,7 +255,7 @@ export function ComposeChatView({
     }
     setName("");
     setRemoteDirectory(composeServer.config.repositoriesBasePath ?? "~");
-    setRemoteProvider("copilot");
+    setRemoteProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
     setSelectedModel("");
     setRemoteModels([]);
     setRemoteCredentialToken(null);

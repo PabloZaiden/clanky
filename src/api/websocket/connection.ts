@@ -106,7 +106,11 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         sessionId: meshAcpSessionId,
         error: String(error),
       });
-      ws.close(1011, "Mesh ACP relay unavailable");
+      let reason = error.message || "Mesh ACP relay unavailable";
+      while (Buffer.byteLength(reason, "utf8") > 123) {
+        reason = reason.slice(0, -1);
+      }
+      ws.close(1011, reason);
     });
     return;
   }
