@@ -2,15 +2,17 @@ import { useMemo, memo } from "react";
 import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
+  annotateReasoningBoundaries,
   annotateDisplayEntries,
   getEntrySpacingClass,
-  groupConsecutiveToolEntries,
+  groupConsecutiveEntries,
   isReasoningLogEntry,
   isResponseLogEntry,
 } from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
+import { ReasoningGroupEntry } from "./reasoning-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
@@ -21,7 +23,6 @@ export const ConversationViewer = memo(function ConversationViewer({
   logs = [],
   maxHeight,
   showSystemInfo = false,
-  showReasoning = true,
   showTools = true,
   markdownEnabled = false,
   isActive = false,
@@ -49,6 +50,25 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [fileLinkContext, imagePreview.openImagePreview]);
 
   const groupedEntries = useMemo(() => {
+    const sourceEntries: EntryBase[] = [];
+    messages.forEach((msg) => {
+      sourceEntries.push({ type: "message", data: msg, timestamp: msg.timestamp });
+    });
+    toolCalls.forEach((tool) => {
+      sourceEntries.push({ type: "tool", data: tool, timestamp: tool.timestamp });
+    });
+    logs.forEach((logEntry) => {
+      sourceEntries.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
+    });
+    sourceEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    const annotatedSourceEntries = annotateReasoningBoundaries(sourceEntries);
+    const reasoningEntriesById = new Map<string, Extract<EntryBase, { type: "log" }>>();
+    annotatedSourceEntries.forEach((sourceEntry) => {
+      if (sourceEntry.type === "log" && isReasoningLogEntry(sourceEntry.data)) {
+        reasoningEntriesById.set(sourceEntry.data.id, sourceEntry);
+      }
+    });
+
     const result: EntryBase[] = [];
 
     messages.forEach((msg) => {
@@ -68,10 +88,16 @@ export const ConversationViewer = memo(function ConversationViewer({
       const logKind = logEntry.details?.["logKind"] as string | undefined;
 
       if (isReasoningLogEntry(logEntry)) {
-        if (!showReasoning) return;
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
-          result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
+          const reasoningEntry = reasoningEntriesById.get(logEntry.id);
+          result.push({
+            type: "log",
+            data: logEntry,
+            timestamp: logEntry.timestamp,
+            reasoningGroupId: reasoningEntry?.reasoningGroupId,
+            reasoningEndTimestamp: reasoningEntry?.reasoningEndTimestamp,
+          });
         }
         return;
       }
@@ -111,8 +137,8 @@ export const ConversationViewer = memo(function ConversationViewer({
     });
 
     result.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    return groupConsecutiveToolEntries(result);
-  }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
+    return groupConsecutiveEntries(result, isActive);
+  }, [isActive, logs, messages, showAssistantMessages, showResponseLogs, showSystemInfo, showTools, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const isEmpty = groupedEntries.length === 0;
@@ -183,6 +209,16 @@ export const ConversationViewer = memo(function ConversationViewer({
                     spacingClass={spacingClass}
                     toolPathDisplayRoot={toolPathDisplayRoot}
                     onLoadToolDetails={onLoadToolDetails}
+                  />
+                );
+              } else if (entry.type === "reasoning-group") {
+                return (
+                  <ReasoningGroupEntry
+                    key={`reasoning-group-${entry.id}`}
+                    entry={entry}
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    fileLinkContext={resolvedFileLinkContext}
                   />
                 );
               } else {

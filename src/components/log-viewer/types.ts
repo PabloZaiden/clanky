@@ -77,8 +77,6 @@ export interface LogViewerProps {
   maxHeight?: string;
   /** Whether to show system information logs (info, warn, error, debug, trace, system agent messages). Default: false */
   showSystemInfo?: boolean;
-  /** Whether to show reasoning entries ("AI reasoning..." logs). Default: true */
-  showReasoning?: boolean;
   /**
    * Whether to show tool-related entries derived from `toolCalls` (ToolEntry rows).
    * Legacy tool-related agent log messages (e.g. logKind="tool" or messages starting
@@ -122,7 +120,15 @@ export interface ConversationViewerProps extends LogViewerProps {
 export type EntryBase =
   | { type: "message"; data: MessageData; timestamp: string }
   | { type: "tool"; data: ToolCallDisplayData; timestamp: string }
-  | { type: "log"; data: LogEntry; timestamp: string };
+  | {
+      type: "log";
+      data: LogEntry;
+      timestamp: string;
+      /** Stable identity of the original consecutive reasoning run. */
+      reasoningGroupId?: string;
+      /** Timestamp of the first non-reasoning event after this reasoning block. */
+      reasoningEndTimestamp?: string;
+    };
 
 export interface ToolGroupEntryBase {
   type: "tool-group";
@@ -136,7 +142,23 @@ export interface ToolGroupEntryBase {
   lastTimestamp: string;
 }
 
-export type GroupedEntryBase = EntryBase | ToolGroupEntryBase;
+export interface ReasoningGroupEntryBase {
+  type: "reasoning-group";
+  /** Stable identity for a consecutive run of reasoning logs. */
+  id: string;
+  /** Reasoning log entries contained in this consecutive run. */
+  logs: LogEntry[];
+  /** Timestamp of the first reasoning log in the run. */
+  timestamp: string;
+  /** Timestamp of the last reasoning log in the run. */
+  lastTimestamp: string;
+  /** Timestamp of the first event after the reasoning run, when available. */
+  endedAt?: string;
+  /** Whether this run is the currently streaming reasoning block. */
+  isActive: boolean;
+}
+
+export type GroupedEntryBase = EntryBase | ToolGroupEntryBase | ReasoningGroupEntryBase;
 
 /**
  * Display entry with derived metadata for rendering grouped rows.
