@@ -104,6 +104,15 @@ function createReasoningGroupEntry(
   };
 }
 
+function isMatchingReasoningEntry(
+  entry: EntryBase | undefined,
+  reasoningEndTimestamp: string | undefined,
+): entry is Extract<EntryBase, { type: "log" }> {
+  return entry?.type === "log"
+    && isReasoningLogEntry(entry.data)
+    && entry.reasoningEndTimestamp === reasoningEndTimestamp;
+}
+
 export function groupConsecutiveEntries(
   sorted: EntryBase[],
   isActive: boolean,
@@ -128,12 +137,12 @@ export function groupConsecutiveEntries(
     if (entry.type === "log" && isReasoningLogEntry(entry.data)) {
       const consecutiveReasoning = [entry];
       let cursor = index + 1;
-      while (
-        cursor < sorted.length
-        && sorted[cursor]?.type === "log"
-        && isReasoningLogEntry((sorted[cursor] as Extract<EntryBase, { type: "log" }>).data)
-      ) {
-        consecutiveReasoning.push(sorted[cursor] as Extract<EntryBase, { type: "log" }>);
+      while (cursor < sorted.length) {
+        const nextEntry = sorted[cursor];
+        if (!isMatchingReasoningEntry(nextEntry, entry.reasoningEndTimestamp)) {
+          break;
+        }
+        consecutiveReasoning.push(nextEntry);
         cursor += 1;
       }
 

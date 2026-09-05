@@ -79,6 +79,52 @@ describe("reasoning display helpers", () => {
     expect(grouped[1]?.type).toBe("message");
   });
 
+  test("keeps adjacent reasoning runs separate when their end timestamps differ", () => {
+    const firstEndTimestamp = "2026-09-05T00:00:05.000Z";
+    const secondEndTimestamp = "2026-09-05T00:00:09.000Z";
+    const firstReasoning = createReasoningLog(
+      "reasoning-first-run",
+      "2026-09-05T00:00:00.000Z",
+      "first run",
+    );
+    const secondReasoning = createReasoningLog(
+      "reasoning-second-run",
+      "2026-09-05T00:00:06.000Z",
+      "second run",
+    );
+
+    const grouped = groupConsecutiveEntries([
+      {
+        type: "log",
+        data: firstReasoning,
+        timestamp: firstReasoning.timestamp,
+        reasoningEndTimestamp: firstEndTimestamp,
+      },
+      {
+        type: "log",
+        data: secondReasoning,
+        timestamp: secondReasoning.timestamp,
+        reasoningEndTimestamp: secondEndTimestamp,
+      },
+    ], true);
+
+    expect(grouped).toHaveLength(2);
+    const firstGroup = grouped[0];
+    const secondGroup = grouped[1];
+    expect(firstGroup?.type).toBe("reasoning-group");
+    expect(secondGroup?.type).toBe("reasoning-group");
+    if (firstGroup?.type !== "reasoning-group" || secondGroup?.type !== "reasoning-group") {
+      return;
+    }
+
+    expect(firstGroup.logs.map((log) => log.id)).toEqual(["reasoning-first-run"]);
+    expect(firstGroup.endedAt).toBe(firstEndTimestamp);
+    expect(firstGroup.isActive).toBe(false);
+    expect(secondGroup.logs.map((log) => log.id)).toEqual(["reasoning-second-run"]);
+    expect(secondGroup.endedAt).toBe(secondEndTimestamp);
+    expect(secondGroup.isActive).toBe(false);
+  });
+
   test("keeps a trailing reasoning group active while the transcript is active", () => {
     const reasoning = createReasoningLog(
       "reasoning-active",
