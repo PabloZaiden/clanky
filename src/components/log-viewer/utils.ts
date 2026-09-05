@@ -5,7 +5,10 @@ import type {
   DisplayEntry,
   LogEntry,
   ReasoningGroupEntryBase,
+  ResponseBoundaryEntryBase,
   ToolGroupEntryBase,
+  WorkingGroupChildEntry,
+  WorkingGroupEntryBase,
 } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -101,6 +104,8 @@ export function getEntryGroupKey(entry: GroupedEntryBase): string {
       return "tool-group";
     case "reasoning-group":
       return "reasoning-group";
+    case "working-group":
+      return "working-group";
     case "log":
       return `log|${entry.data.level}|${entry.data.message}`;
   }
@@ -148,14 +153,89 @@ function isMatchingReasoningEntry(
     && entry.reasoningEndTimestamp === reasoningEndTimestamp;
 }
 
-export function groupConsecutiveEntries(
-  sorted: EntryBase[],
+type GroupingEntry = GroupedEntryBase | ResponseBoundaryEntryBase;
+
+function isWorkingGroupChild(entry: GroupingEntry): entry is WorkingGroupChildEntry {
+  return entry.type === "tool-group" || entry.type === "reasoning-group";
+}
+
+function createWorkingGroupEntry(
+  entries: WorkingGroupChildEntry[],
+  nextEntry: GroupingEntry | undefined,
+  isActive: boolean,
+): WorkingGroupEntryBase {
+  const firstEntry = entries[0]!;
+  const lastEntry = entries[entries.length - 1]!;
+
+  return {
+    type: "working-group",
+    id: firstEntry.id,
+    entries,
+    timestamp: firstEntry.timestamp,
+    lastTimestamp: lastEntry.lastTimestamp,
+    endedAt: nextEntry?.timestamp,
+    isActive: isActive && nextEntry === undefined,
+  };
+}
+
+function groupMixedWorkingEntries(
+  entries: GroupingEntry[],
   isActive: boolean,
 ): GroupedEntryBase[] {
   const groupedEntries: GroupedEntryBase[] = [];
 
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+
+    if (!isWorkingGroupChild(entry)) {
+      if (entry.type !== "response-boundary") {
+        groupedEntries.push(entry);
+      }
+      continue;
+    }
+
+    const consecutiveChildren: WorkingGroupChildEntry[] = [entry];
+    let cursor = index + 1;
+    let hasToolGroup = entry.type === "tool-group";
+    let hasReasoningGroup = entry.type === "reasoning-group";
+
+    while (cursor < entries.length) {
+      const nextEntry = entries[cursor];
+      if (!nextEntry || !isWorkingGroupChild(nextEntry)) {
+        break;
+      }
+
+      consecutiveChildren.push(nextEntry);
+      hasToolGroup ||= nextEntry.type === "tool-group";
+      hasReasoningGroup ||= nextEntry.type === "reasoning-group";
+      cursor += 1;
+    }
+
+    const nextEntry = entries[cursor];
+    if (hasToolGroup && hasReasoningGroup) {
+      groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, isActive));
+    } else {
+      groupedEntries.push(...consecutiveChildren);
+    }
+    index = cursor - 1;
+  }
+
+  return groupedEntries;
+}
+
+export function groupConsecutiveEntries(
+  sorted: EntryBase[],
+  isActive: boolean,
+): GroupedEntryBase[] {
+  const groupedEntries: GroupingEntry[] = [];
+
   for (let index = 0; index < sorted.length; index += 1) {
     const entry = sorted[index]!;
+    if (entry.type === "response-boundary") {
+      groupedEntries.push(entry);
+      continue;
+    }
+
     if (entry.type === "tool") {
       const consecutiveTools = [entry.data];
       let cursor = index + 1;
@@ -193,7 +273,7 @@ export function groupConsecutiveEntries(
     groupedEntries.push(entry);
   }
 
-  return groupedEntries;
+  return groupMixedWorkingEntries(groupedEntries, isActive);
 }
 
 /**
@@ -252,11 +332,19 @@ export function getEntrySpacingClass(entry: DisplayEntry, previousEntry?: Displa
     return "";
   }
 
-  if (entry.type === "tool-group" || entry.type === "reasoning-group") {
+  if (
+    entry.type === "tool-group"
+    || entry.type === "reasoning-group"
+    || entry.type === "working-group"
+  ) {
     return "mt-2";
   }
 
-  if (previousEntry.type === "tool-group" || previousEntry.type === "reasoning-group") {
+  if (
+    previousEntry.type === "tool-group"
+    || previousEntry.type === "reasoning-group"
+    || previousEntry.type === "working-group"
+  ) {
     return "mt-2 sm:mt-3";
   }
 

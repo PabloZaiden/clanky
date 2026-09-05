@@ -66,6 +66,17 @@ export interface TranscriptFileLinkContext {
   onFileOpenError?: (message: string) => void;
 }
 
+/**
+ * Internal marker used to preserve separation whenever a response is hidden
+ * or filtered, including assistant messages, response logs, and response logs
+ * with missing or empty response content.
+ */
+export interface ResponseBoundaryEntryBase {
+  type: "response-boundary";
+  id: string;
+  timestamp: string;
+}
+
 export interface LogViewerProps {
   /** Messages to display (only user messages are rendered; assistant messages are filtered out) */
   messages: MessageData[];
@@ -128,7 +139,8 @@ export type EntryBase =
       reasoningGroupId?: string;
       /** Timestamp of the first non-reasoning event after this reasoning block. */
       reasoningEndTimestamp?: string;
-    };
+    }
+  | ResponseBoundaryEntryBase;
 
 export interface ToolGroupEntryBase {
   type: "tool-group";
@@ -158,7 +170,29 @@ export interface ReasoningGroupEntryBase {
   isActive: boolean;
 }
 
-export type GroupedEntryBase = EntryBase | ToolGroupEntryBase | ReasoningGroupEntryBase;
+export type WorkingGroupChildEntry = ToolGroupEntryBase | ReasoningGroupEntryBase;
+
+export interface WorkingGroupEntryBase {
+  type: "working-group";
+  /** Stable identity for a consecutive mixed thinking/tools run. */
+  id: string;
+  /** Existing tool and reasoning groups contained in this outer group. */
+  entries: WorkingGroupChildEntry[];
+  /** Timestamp of the first thinking/tool event in the run. */
+  timestamp: string;
+  /** Timestamp of the last thinking/tool event in the run. */
+  lastTimestamp: string;
+  /** Timestamp of the first event after the run, when available. */
+  endedAt?: string;
+  /** Whether this run is the currently streaming mixed activity block. */
+  isActive: boolean;
+}
+
+export type GroupedEntryBase =
+  | Exclude<EntryBase, ResponseBoundaryEntryBase>
+  | ToolGroupEntryBase
+  | ReasoningGroupEntryBase
+  | WorkingGroupEntryBase;
 
 /**
  * Display entry with derived metadata for rendering grouped rows.
