@@ -10,6 +10,7 @@ import type {
   Workspace,
   TerminalSession,
 } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { getWorkspace } from "../../persistence/workspaces";
 import {
   buildPersistentSessionBackendInstallHint,
@@ -122,8 +123,15 @@ export class SshTerminalBridge {
           "The terminal session is not bound to an SSH execution host.",
         );
       }
+      const serverId = getRegisteredSshServerId(host);
+      if (!serverId) {
+        throw new DomainError(
+          "terminal_execution_host_invalid",
+          "Workspace-owned SSH targets require a workspace-bound terminal.",
+        );
+      }
       const connection = await sshServerManager.getExecutionHostTerminalConnection(
-        host.serverId,
+        serverId,
         this.connectOptions.credentialToken ?? "",
       );
       this.workspace = null;

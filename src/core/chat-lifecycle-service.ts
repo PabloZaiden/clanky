@@ -41,6 +41,7 @@ import type {
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 import { executionHostService } from "./execution-host-service";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -223,7 +224,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       },
       state: {
         ...createInitialChatState(id),
-        connectionStatus: options.executionHost.host.kind === "ssh"
+        connectionStatus: getRegisteredSshServerId(options.executionHost.host)
           ? "needs_credentials"
           : "disconnected",
       },

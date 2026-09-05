@@ -3,8 +3,10 @@
  */
 
 import type { ExecutionHostBinding, ExecutionHostRef, Workspace } from "@/shared";
+import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
 import { getSshServerConfig } from "../persistence/ssh-servers";
+import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 
 export type ResolvedWorkspaceExecutionTarget =
@@ -31,7 +33,7 @@ export type ResolvedWorkspaceExecutionTarget =
     };
 
 export async function resolveWorkspaceExecutionTarget(
-  workspace: Pick<Workspace, "executionHostBinding">,
+  workspace: Pick<Workspace, "id" | "executionHostBinding">,
 ): Promise<ResolvedWorkspaceExecutionTarget> {
   const binding = workspace.executionHostBinding;
   const host = binding.host;
@@ -51,6 +53,36 @@ export async function resolveWorkspaceExecutionTarget(
       binding,
       targetKey: binding.targetKey,
       nodeId: host.nodeId,
+    };
+  }
+
+  if (isWorkspaceSshExecutionHostRef(host)) {
+    if (host.workspaceId !== workspace.id) {
+      throw new DomainError(
+        "workspace_execution_target_mismatch",
+        "The workspace SSH execution target belongs to another workspace.",
+        { details: { workspaceId: workspace.id, targetWorkspaceId: host.workspaceId } },
+      );
+    }
+    const target = await getWorkspaceSshTarget(workspace.id);
+    if (!target) {
+      throw new DomainError(
+        "workspace_execution_target_missing",
+        "The workspace SSH execution target is not configured.",
+        { details: { workspaceId: workspace.id } },
+      );
+    }
+    return {
+      kind: "ssh",
+      hostRef: host,
+      binding,
+      targetKey: binding.targetKey,
+      target: {
+        host: target.host,
+        port: target.port,
+        username: target.username,
+        password: target.password,
+      },
     };
   }
 

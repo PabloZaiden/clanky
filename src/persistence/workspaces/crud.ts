@@ -17,6 +17,7 @@ import {
 import { requirePersistenceUserId } from "../ownership";
 import {
   EXECUTION_HOST_JOIN_COLUMNS,
+  PROVISIONING_HOST_JOIN_COLUMNS,
   resolveExecutionHostBindingId,
 } from "../execution-hosts";
 
@@ -48,11 +49,24 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const stmt = db.prepare(`
-    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS}
+    SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS},
+      ${PROVISIONING_HOST_JOIN_COLUMNS},
+      workspace_target.host AS workspace_ssh_target_host,
+      workspace_target.port AS workspace_ssh_target_port,
+      workspace_target.username AS workspace_ssh_target_username,
+      workspace_target.password_ciphertext IS NOT NULL AS workspace_ssh_target_password_configured,
+      workspace_target.target_key AS workspace_ssh_target_key,
+      workspace_target.revision AS workspace_ssh_target_revision
     FROM workspaces workspace
     LEFT JOIN execution_hosts execution_host
       ON execution_host.id = workspace.execution_host_id
       AND execution_host.user_id = workspace.user_id
+    LEFT JOIN execution_hosts provisioning_host
+      ON provisioning_host.id = workspace.provisioning_host_id
+      AND provisioning_host.user_id = workspace.user_id
+    LEFT JOIN workspace_execution_targets workspace_target
+      ON workspace_target.workspace_id = workspace.id
+      AND workspace_target.user_id = workspace.user_id
     WHERE workspace.id = ? AND workspace.user_id = ?
   `);
   const row = stmt.get(id, userId) as Record<string, unknown> | null;
@@ -72,12 +86,13 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+    "name" | "directory" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
     hasNameUpdate: updates.name !== undefined,
+    hasDirectoryUpdate: updates.directory !== undefined,
     hasSettingsUpdate: updates.serverSettings !== undefined,
     hasExecutionTargetRevisionUpdate: updates.executionTargetRevision !== undefined,
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
@@ -96,6 +111,11 @@ export async function updateWorkspace(
     values.push(updates.name);
   }
 
+  if (updates.directory !== undefined) {
+    setClauses.push("directory = ?");
+    values.push(updates.directory);
+  }
+
   if (updates.serverSettings !== undefined) {
     setClauses.push("server_settings = ?");
     values.push(JSON.stringify(updates.serverSettings));
@@ -111,6 +131,15 @@ export async function updateWorkspace(
     values.push(resolveExecutionHostBindingId(userId, updates.executionHostBinding));
     setClauses.push("execution_host_revision = ?");
     values.push(updates.executionHostBinding.revision);
+  }
+
+  if (updates.provisioningHostBinding !== undefined) {
+    setClauses.push("provisioning_host_id = ?");
+    values.push(updates.provisioningHostBinding
+      ? resolveExecutionHostBindingId(userId, updates.provisioningHostBinding)
+      : null);
+    setClauses.push("provisioning_host_revision = ?");
+    values.push(updates.provisioningHostBinding?.revision ?? null);
   }
 
   if (updates.devcontainerSubpath !== undefined) {

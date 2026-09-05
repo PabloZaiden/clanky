@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor } from "@/shared";
+import { getExecutionHostSourceId } from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
   isAgentProvider,
@@ -16,7 +17,7 @@ interface ProviderAvailability {
 }
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
-  const id = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+  const id = getExecutionHostSourceId(host.ref);
   return `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(id)}`;
 }
 
@@ -44,7 +45,7 @@ export function useExecutionHostModelDiscovery(
     () => executionHostApiPath(host),
     [
       host.ref.kind,
-      host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId,
+      getExecutionHostSourceId(host.ref),
     ],
   );
 

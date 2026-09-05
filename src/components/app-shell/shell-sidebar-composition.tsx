@@ -16,7 +16,7 @@ import type {
   Workspace,
   TerminalSession,
 } from "@/shared";
-import { getExecutionHostDefaultDirectory } from "@/shared";
+import { getExecutionHostDefaultDirectory, getExecutionHostSourceId } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
@@ -591,7 +591,7 @@ function renderServerSidebarItem(transport: ServerTransportKind) {
 }
 
 function executionHostId(host: ExecutionHostDescriptor): string {
-  return host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+  return getExecutionHostSourceId(host.ref);
 }
 
 function executionHostDirectory(host: ExecutionHostDescriptor): string {
@@ -986,7 +986,7 @@ function buildSidebarNodes(
         if (!ref || ref.kind !== host.ref.kind) {
           return false;
         }
-        return (ref.kind === "ssh" ? ref.serverId : ref.nodeId) === hostId;
+        return getExecutionHostSourceId(ref) === hostId;
       };
       const hostChats = chats.filter((chat) => {
         const source = chat.config.source;

@@ -1485,4 +1485,158 @@ describe("database schema", () => {
       db.close();
     }
   });
+
+  test("migration v47 separates registered provisioning hosts and creates incomplete SSH targets idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 47);
+    if (!migration) {
+      throw new Error("Migration v47 was not found");
+    }
+
+    const db = new Database(":memory:");
+    try {
+      db.run("PRAGMA foreign_keys = ON");
+      db.exec(`
+        CREATE TABLE execution_hosts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          target_key TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          source_directory TEXT,
+          execution_host_id TEXT,
+          execution_host_revision INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE chats (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          execution_host_id TEXT,
+          execution_host_revision INTEGER
+        );
+        CREATE TABLE terminal_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          execution_host_id TEXT,
+          execution_host_revision INTEGER
+        );
+      `);
+      db.exec(`
+        INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, revision, revoked_at, created_at, updated_at
+        ) VALUES
+          ('host-ssh', 'user-1', 'ssh', 'server-1', 'ssh:old-host:22:builder', 3, NULL,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+          ('host-local', 'user-1', 'local', 'node-1', 'local:node-1', 1, NULL,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+        INSERT INTO workspaces (
+          id, user_id, name, directory, source_directory, execution_host_id,
+          execution_host_revision, created_at, updated_at
+        ) VALUES
+          ('workspace-ssh', 'user-1', 'SSH workspace', '/workspaces/ssh',
+            '/sources/ssh', 'host-ssh', 3, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+          ('workspace-local', 'user-1', 'Local workspace', '/workspaces/local',
+            '/sources/local', 'host-local', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+        INSERT INTO chats (id, user_id, workspace_id, execution_host_id, execution_host_revision)
+          VALUES ('chat-ssh', 'user-1', 'workspace-ssh', 'host-ssh', 3);
+        INSERT INTO terminal_sessions (
+          id, user_id, workspace_id, execution_host_id, execution_host_revision
+        ) VALUES ('terminal-ssh', 'user-1', 'workspace-ssh', 'host-ssh', 3);
+      `);
+
+      migration.up(db);
+      migration.up(db);
+
+      const workspace = db.query(`
+        SELECT execution_host_id, execution_host_revision,
+          provisioning_host_id, provisioning_host_revision
+        FROM workspaces
+        WHERE id = 'workspace-ssh'
+      `).get() as {
+        execution_host_id: string;
+        execution_host_revision: number;
+        provisioning_host_id: string;
+        provisioning_host_revision: number;
+      };
+      expect(workspace.provisioning_host_id).toBe("host-ssh");
+      expect(workspace.provisioning_host_revision).toBe(3);
+      expect(workspace.execution_host_id).not.toBe("host-ssh");
+      expect(workspace.execution_host_revision).toBe(1);
+
+      const directHost = db.query(`
+        SELECT kind, source_id, target_key, revision
+        FROM execution_hosts
+        WHERE id = ?
+      `).get(workspace.execution_host_id) as {
+        kind: string;
+        source_id: string;
+        target_key: string;
+        revision: number;
+      };
+      expect(directHost).toEqual({
+        kind: "ssh",
+        source_id: "workspace-target:workspace-ssh",
+        target_key: "workspace-target-missing:workspace-ssh",
+        revision: 1,
+      });
+
+      const target = db.query(`
+        SELECT host, port, username, password_ciphertext, target_key, revision
+        FROM workspace_execution_targets
+        WHERE workspace_id = 'workspace-ssh'
+      `).get();
+      expect(target).toEqual({
+        host: null,
+        port: null,
+        username: null,
+        password_ciphertext: null,
+        target_key: "workspace-target-missing:workspace-ssh",
+        revision: 1,
+      });
+
+      expect(db.query(`
+        SELECT execution_host_id, execution_host_revision
+        FROM chats
+        WHERE id = 'chat-ssh'
+      `).get()).toEqual({
+        execution_host_id: workspace.execution_host_id,
+        execution_host_revision: 1,
+      });
+      expect(db.query(`
+        SELECT execution_host_id, execution_host_revision
+        FROM terminal_sessions
+        WHERE id = 'terminal-ssh'
+      `).get()).toEqual({
+        execution_host_id: workspace.execution_host_id,
+        execution_host_revision: 1,
+      });
+
+      const localWorkspace = db.query(`
+        SELECT execution_host_id, provisioning_host_id
+        FROM workspaces
+        WHERE id = 'workspace-local'
+      `).get();
+      expect(localWorkspace).toEqual({
+        execution_host_id: "host-local",
+        provisioning_host_id: null,
+      });
+      expect(
+        db.query("SELECT COUNT(*) AS count FROM workspace_execution_targets").get(),
+      ).toEqual({ count: 1 });
+    } finally {
+      db.close();
+    }
+  });
 });

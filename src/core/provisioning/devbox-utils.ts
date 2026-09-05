@@ -45,6 +45,11 @@ export function parseDevboxStatusOutput(output: string): DevboxStatusResult {
     running: record["running"] === true,
     port: typeof record["port"] === "number" ? record["port"] : null,
     password: typeof record["password"] === "string" ? record["password"] : null,
+    sshHost: typeof record["sshHost"] === "string"
+      ? record["sshHost"]
+      : typeof record["host"] === "string"
+        ? record["host"]
+        : null,
     workdir: typeof record["workdir"] === "string" ? record["workdir"] : null,
     sshUser: typeof record["sshUser"] === "string" ? record["sshUser"] : null,
     sshPort: typeof record["sshPort"] === "number" ? record["sshPort"] : null,

@@ -10,6 +10,7 @@ import type {
   Chat,
   ExecutionHostDescriptor,
 } from "@/shared";
+import { getExecutionHostSourceId, getRegisteredSshServerId } from "@/shared";
 import type {
   CreateExecutionHostChatRequest,
   ExecutionHostWorkingDirectory,
@@ -36,7 +37,7 @@ import { useShellHeaderActions } from "./shell-header-actions";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
-  const id = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+  const id = getExecutionHostSourceId(host.ref);
   return `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(id)}`;
 }
 
@@ -60,13 +61,13 @@ export function ExecutionHostChatComposer({
   const [selectedModel, setSelectedModel] = useState("");
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const sshServerId = host.ref.kind === "ssh" ? host.ref.serverId : null;
+  const sshServerId = getRegisteredSshServerId(host.ref);
   const [sshCredential, setSshCredential] = useState<{
     serverId: string;
     token: string | null;
   } | null>(null);
   const credentialToken = sshServerId && sshCredential?.serverId === sshServerId
-    ? sshCredential.token
+    ? sshCredential?.token ?? null
     : null;
   const credentialsReady = sshServerId === null
     || sshCredential?.serverId === sshServerId;
@@ -209,7 +210,7 @@ export function ExecutionHostChatComposer({
   }, [discovery.models, discovery.provider, host.preferredModel, storedModel]);
 
   const handleCancel = useCallback(() => {
-    const id = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+    const id = getExecutionHostSourceId(host.ref);
     navigateWithinShell({
       view: "execution-host",
       hostKind: host.ref.kind,

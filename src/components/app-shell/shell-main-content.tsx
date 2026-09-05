@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ConfirmModal, ErrorState, LoadingState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Chat, ExecutionHostDescriptor, Task, Workspace } from "@/shared";
+import { getExecutionHostSourceId, type Chat, type ExecutionHostDescriptor, type Task, type Workspace } from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -249,9 +249,7 @@ function ProvisioningJobRouteView({
                   onClick={() => navigateWithinShell({
                     view: "execution-host",
                     hostKind: "ssh",
-                    hostId: "serverId" in snapshot.job.config.executionHostBinding.host
-                      ? snapshot.job.config.executionHostBinding.host.serverId
-                      : "",
+                    hostId: getExecutionHostSourceId(snapshot.job.config.executionHostBinding.host),
                   })}
                 >
                   Open server
@@ -610,9 +608,7 @@ function renderMainContent(props: ShellMainContentProps) {
       return missingRouteParameter(route.view, !hostKind ? "hostKind" : "hostId");
     }
     const host = executionHosts.find((candidate) => {
-      const id = candidate.ref.kind === "ssh"
-        ? candidate.ref.serverId
-        : candidate.ref.nodeId;
+      const id = getExecutionHostSourceId(candidate.ref);
       return candidate.ref.kind === hostKind && id === hostId;
     });
     if (!host) {
@@ -669,9 +665,7 @@ function renderMainContent(props: ShellMainContentProps) {
     const hostKind = getRouteString(route, "hostKind");
     const hostId = getRouteString(route, "hostId");
     const host = executionHosts.find((candidate) => {
-      const id = candidate.ref.kind === "ssh"
-        ? candidate.ref.serverId
-        : candidate.ref.nodeId;
+      const id = getExecutionHostSourceId(candidate.ref);
       return candidate.ref.kind === hostKind && id === hostId;
     });
     if (!host) {

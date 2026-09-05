@@ -21,6 +21,7 @@ import type {
 import {
   getExecutionHostAgentProvider,
   getExecutionHostDefaultDirectory,
+  getExecutionHostSourceId,
 } from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
@@ -63,7 +64,7 @@ interface ExecutionHostViewProps {
 }
 
 function hostApiPath(host: ExecutionHostDescriptor): string {
-  const id = host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+  const id = getExecutionHostSourceId(host.ref);
   return `/api/execution-hosts/${host.ref.kind}/${encodeURIComponent(id)}`;
 }
 
@@ -252,7 +253,7 @@ export function ExecutionHostView({
         provisioningJobId: snapshot.job.config.id,
         returnView: "execution-host",
         returnKind: host.ref.kind,
-        returnId: host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId,
+        returnId: getExecutionHostSourceId(host.ref),
       });
     }
   }

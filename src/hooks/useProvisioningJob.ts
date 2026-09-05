@@ -13,6 +13,7 @@ import type {
   PublicProvisioningJobSnapshot,
   ExecutionHostRef,
 } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream, type RealtimeStreamStatus } from "./useRealtimeStream";
 
@@ -319,11 +320,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     try {
       setStarting(true);
       setError(null);
-      const credentialToken = request.executionHost.kind === "ssh"
-        ? await resolveProvisioningCredentialToken(
-          request.executionHost.serverId,
-          request.password,
-        )
+      const serverId = getRegisteredSshServerId(request.executionHost);
+      const credentialToken = serverId
+        ? await resolveProvisioningCredentialToken(serverId, request.password)
         : undefined;
 
       const nextSnapshot = await apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {

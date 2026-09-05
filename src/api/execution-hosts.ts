@@ -17,6 +17,7 @@ import {
 import {
   executionHostRefFromParts,
   executionHostRefsEqual,
+  getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared";
 import { domainErrorResponse, errorResponse } from "./helpers";
@@ -34,10 +35,11 @@ function resolveSshPassword(
   ref: ExecutionHostRef,
   credentialToken: string | null,
 ): string | undefined {
-  if (ref.kind !== "ssh" || !credentialToken) {
+  const serverId = getRegisteredSshServerId(ref);
+  if (!serverId || !credentialToken) {
     return undefined;
   }
-  return sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken);
+  return sshCredentialManager.getPasswordForToken(serverId, credentialToken);
 }
 
 async function resolveWorkingDirectoryResponse(

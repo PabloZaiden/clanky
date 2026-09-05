@@ -38,6 +38,10 @@ function getSshServerKeyStorePath(): string {
   return join(getDataDir(), "ssh-server-keys");
 }
 
+function getWorkspaceExecutionTargetKeyPath(): string {
+  return join(getDataDir(), "workspace-execution-target.key");
+}
+
 /**
  * Get the database instance, initializing if needed.
  * This is a singleton pattern to avoid multiple connections.
@@ -826,6 +830,11 @@ export async function deleteAndReinitializeDatabase(): Promise<void> {
   }
 
   await rm(getSshServerKeyStorePath(), { recursive: true, force: true });
+  try {
+    await unlink(getWorkspaceExecutionTargetKeyPath());
+  } catch {
+    // The workspace target key may not exist on older installations.
+  }
    
   // Reinitialize
   await initializeDatabase();

@@ -52,6 +52,7 @@ import { migrateExecutionHostVncSessions } from "./execution-host-vnc";
 import { migrateMeshEnrollmentTokens } from "./mesh-enrollment-tokens";
 import { migrateMeshControllerWorker } from "./mesh-controller-worker";
 import { migrateCanonicalExecutionHosts } from "./canonical-execution-hosts";
+import { migrateWorkspaceExecutionTargets } from "./workspace-execution-targets";
 
 const log = createLogger("persistence:migrations");
 
@@ -109,6 +110,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "provisioning_jobs",
   "provisioning_job_logs",
   "execution_hosts",
+  "workspace_execution_targets",
 ]);
 
 /**
@@ -1535,6 +1537,11 @@ export const migrations: Migration[] = [
     name: "canonical_execution_host_bindings",
     up: migrateCanonicalExecutionHosts,
     transactional: false,
+  },
+  {
+    version: 47,
+    name: "workspace_execution_targets",
+    up: migrateWorkspaceExecutionTargets,
   },
 ];
 

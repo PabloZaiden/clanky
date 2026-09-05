@@ -3,7 +3,7 @@ import type {
   ExecutionHostDescriptor,
   TerminalSession,
 } from "@/shared";
-import { getExecutionHostDefaultDirectory } from "@/shared";
+import { getExecutionHostDefaultDirectory, getExecutionHostSourceId } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { FileExplorerView } from "./file-explorer-view";
 
@@ -18,7 +18,7 @@ interface ExecutionHostFilesViewProps {
 }
 
 function executionHostId(host: ExecutionHostDescriptor): string {
-  return host.ref.kind === "ssh" ? host.ref.serverId : host.ref.nodeId;
+  return getExecutionHostSourceId(host.ref);
 }
 
 export function ExecutionHostFilesView({
@@ -34,7 +34,7 @@ export function ExecutionHostFilesView({
     if (!ref || ref.kind !== host.ref.kind) {
       return false;
     }
-    return (ref.kind === "ssh" ? ref.serverId : ref.nodeId) === hostId;
+    return getExecutionHostSourceId(ref) === hostId;
   });
 
   return (

@@ -13,6 +13,7 @@ import type {
   ToolCallDisplayData,
 } from "@/shared";
 import { shouldIncludeChatTranscriptLog } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import {
   isToolCallDetailsStale,
   isToolCallSummary,
@@ -548,9 +549,13 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const handleReconnect = useCallback(async (): Promise<void> => {
     try {
       const source = chatRef.current?.config.source;
-      const credentialToken = source?.kind === "execution_host"
+      const serverId = source?.kind === "execution_host"
         && source.executionHost.host.kind === "ssh"
-        ? await getStoredSshCredentialToken(source.executionHost.host.serverId)
+        ? getRegisteredSshServerId(source.executionHost.host)
+        : null;
+      const credentialToken = source?.kind === "execution_host"
+        && serverId
+        ? await getStoredSshCredentialToken(serverId)
         : null;
       const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
@@ -657,7 +662,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     error,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
     needsSshCredentials: chat?.config.source?.kind === "execution_host"
-      && chat.config.source.executionHost.host.kind === "ssh"
+      && getRegisteredSshServerId(chat.config.source.executionHost.host) !== null
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
     loadToolCallDetails,

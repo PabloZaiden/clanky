@@ -19,7 +19,7 @@ export const ExecutionHostPreferredModelSchema = ModelConfigSchema.extend({
 
 export const ExecutionHostKindSchema = z.enum(EXECUTION_HOST_KINDS);
 
-export const ExecutionHostRefSchema = z.discriminatedUnion("kind", [
+export const ExecutionHostRefSchema = z.union([
   z.object({
     kind: z.literal("local"),
     nodeId: RequiredIdSchema,
@@ -31,6 +31,11 @@ export const ExecutionHostRefSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("ssh"),
     serverId: RequiredIdSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("ssh"),
+    scope: z.literal("workspace"),
+    workspaceId: RequiredIdSchema,
   }).strict(),
 ]);
 

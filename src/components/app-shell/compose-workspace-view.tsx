@@ -7,11 +7,13 @@ import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
+  getRegisteredSshServerId,
   parseExecutionHostRef,
   serializeExecutionHostRef,
   type ExecutionHostRef,
 } from "@/shared";
 import type { AgentProvider } from "@/shared/settings";
+import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
   ErrorState,
@@ -61,6 +63,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceServerSettings,
     workspaceExecutionHost,
     setWorkspaceExecutionHost,
+    workspaceSshTarget,
+    setWorkspaceSshTarget,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,
@@ -93,8 +97,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
-  const selectedServerHasStoredCredential = automaticExecutionHost?.kind === "ssh"
-    ? getStoredSshServerCredential(automaticExecutionHost.serverId) !== null
+  const automaticSshServerId = automaticExecutionHost
+    ? getRegisteredSshServerId(automaticExecutionHost)
+    : null;
+  const selectedServerHasStoredCredential = automaticSshServerId
+    ? getStoredSshServerCredential(automaticSshServerId) !== null
     : false;
   const {
     templates,
@@ -124,6 +131,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const manualFormValid =
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
+    (workspaceExecutionHost !== null || workspaceSshTarget !== null) &&
     workspaceServerSettingsValid;
   const createActionLabel =
     workspaceCreateMode === "automatic" ? "Start Provisioning" : "Create Workspace";
@@ -218,11 +226,18 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
-                onChange={(settings: ServerSettings, isValid: boolean, executionHost: ExecutionHostRef | null) => {
+                allowWorkspaceSshTarget
+                onChange={(
+                  settings: ServerSettings,
+                  isValid: boolean,
+                  executionHost: ExecutionHostRef | null,
+                  sshTarget?: WorkspaceSshTargetRequest | null,
+                ) => {
                   setWorkspaceServerSettings((current: ServerSettings) => {
                     return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
                   });
                   setWorkspaceExecutionHost(executionHost);
+                  setWorkspaceSshTarget(sshTarget ?? null);
                   setWorkspaceServerSettingsValid(isValid);
                 }}
                 onTest={handleTestWorkspaceConnection}
@@ -243,10 +258,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   const host = value ? parseExecutionHostRef(value) : null;
                   setAutomaticExecutionHost(host);
                   setAutomaticDevboxTemplate("");
-                  if (host?.kind === "ssh") {
-                    saveLastAutomaticWorkspaceSshServerId(host.serverId);
+                  const serverId = host ? getRegisteredSshServerId(host) : null;
+                  if (serverId) {
+                    saveLastAutomaticWorkspaceSshServerId(serverId);
                     const selectedServer = servers.find(
-                      (server) => server.config.id === host.serverId,
+                      (server) => server.config.id === serverId,
                     );
                     setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
                     return;

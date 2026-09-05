@@ -20,6 +20,7 @@ import {
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import type { AgentProvider } from "@/shared/settings";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { managedContextIdentityResolver } from "./managed-context-identity";
@@ -326,15 +327,18 @@ export class ChatSessionService implements ChatSessionPort {
 
     let password: string | undefined;
     if (source.executionHost.host.kind === "ssh") {
-      const credentialToken = options.credentialToken?.trim();
-      if (!credentialToken) {
-        await this.markSshCredentialsRequired(chat);
-        throw new SshCredentialsRequiredError();
+      const serverId = getRegisteredSshServerId(source.executionHost.host);
+      if (serverId) {
+        const credentialToken = options.credentialToken?.trim();
+        if (!credentialToken) {
+          await this.markSshCredentialsRequired(chat);
+          throw new SshCredentialsRequiredError();
+        }
+        password = this.sshCredentialManager.getPasswordForToken(
+          serverId,
+          credentialToken,
+        );
       }
-      password = this.sshCredentialManager.getPasswordForToken(
-        source.executionHost.host.serverId,
-        credentialToken,
-      );
     }
 
     try {

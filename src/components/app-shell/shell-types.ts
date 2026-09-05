@@ -6,6 +6,7 @@ import {
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import {
   executionHostRefsEqual,
+  getRegisteredSshServerId,
   type Agent,
   type Chat,
   type ExecutionHostDescriptor,
@@ -441,7 +442,7 @@ export function buildExecutionHostSidebarNodes({
   chats?: Chat[];
 }): SidebarExecutionHostNode[] {
   return executionHosts.map((host) => {
-    const sshServerId = host.ref.kind === "ssh" ? host.ref.serverId : null;
+    const sshServerId = getRegisteredSshServerId(host.ref);
     const hostChats = chats.filter((chat) => {
       const source = chat.config.source;
       return isStandaloneChat(chat)

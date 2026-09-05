@@ -4,6 +4,7 @@
  */
 
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
+import { realpathSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -195,6 +196,148 @@ describe("Workspace API Integration", () => {
       expect(data.workspaceType).toBe("git");
     });
 
+    test("creates and executes a workspace-owned SSH target without a registered server", async () => {
+      const password = "workspace-only-secret";
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Direct SSH Workspace",
+          directory: testWorkDir,
+          sshTarget: {
+            host: "devbox.example.com",
+            port: 5005,
+            username: "vscode",
+            password,
+          },
+          serverSettings: makeServerSettings(),
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const created = await response.json() as {
+        id: string;
+        executionHostBinding: {
+          host: { kind: string; scope?: string; workspaceId?: string };
+          targetKey: string;
+          revision: number;
+        };
+        sshTarget?: {
+          kind: string;
+          host: string;
+          port: number;
+          username: string;
+          credentialConfigured: boolean;
+          password?: string;
+        };
+      };
+      expect(created.executionHostBinding.host).toEqual({
+        kind: "ssh",
+        scope: "workspace",
+        workspaceId: created.id,
+      });
+      expect(created.sshTarget).toMatchObject({
+        kind: "ssh",
+        host: "devbox.example.com",
+        port: 5005,
+        username: "vscode",
+        credentialConfigured: true,
+      });
+      expect(created.sshTarget?.password).toBeUndefined();
+
+      const persisted = await getWorkspace(created.id);
+      expect(persisted?.sshTarget).toMatchObject({
+        host: "devbox.example.com",
+        port: 5005,
+        username: "vscode",
+        credentialConfigured: true,
+      });
+
+      const { getWorkspaceSshTarget } = await import(
+        "../../src/persistence/workspace-execution-targets"
+      );
+      const storedTarget = await getWorkspaceSshTarget(created.id);
+      expect(storedTarget?.password).toBe(password);
+
+      const database = (await import("../../src/persistence/database")).getDatabase();
+      const storedRow = database.query(
+        "SELECT password_ciphertext FROM workspace_execution_targets WHERE workspace_id = ?",
+      ).get(created.id) as { password_ciphertext: string | null } | null;
+      expect(storedRow?.password_ciphertext).toBeTruthy();
+      expect(storedRow?.password_ciphertext).not.toContain(password);
+
+      const execResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "pwd",
+          args: [],
+        }),
+      });
+      expect(execResponse.status).toBe(200);
+      expect(await execResponse.json()).toMatchObject({
+        workspaceId: created.id,
+        success: true,
+        stdout: `${realpathSync(testWorkDir)}\n`,
+      });
+
+      const targetsResponse = await fetch(`${baseUrl}/api/workspaces/execution-targets`);
+      expect(targetsResponse.status).toBe(200);
+      const targets = await targetsResponse.json() as Array<{
+        ref: { kind: string; scope?: string };
+      }>;
+      expect(targets.some((target) =>
+        target.ref.kind === "ssh" && target.ref.scope === "workspace"
+      )).toBe(false);
+
+      const updateResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sshTarget: {
+            host: "devbox-updated.example.com",
+            port: 5006,
+            username: "devbox-user",
+          },
+        }),
+      });
+      expect(updateResponse.status).toBe(200);
+      const updated = await updateResponse.json() as {
+        sshTarget?: {
+          host: string;
+          port: number;
+          username: string;
+          credentialConfigured: boolean;
+        };
+      };
+      expect(updated.sshTarget).toMatchObject({
+        host: "devbox-updated.example.com",
+        port: 5006,
+        username: "devbox-user",
+        credentialConfigured: true,
+      });
+      expect((await getWorkspaceSshTarget(created.id))?.password).toBe(password);
+
+      const clearResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sshTarget: {
+            host: "devbox-updated.example.com",
+            port: 5006,
+            username: "devbox-user",
+            password: null,
+          },
+        }),
+      });
+      expect(clearResponse.status).toBe(200);
+      const cleared = await clearResponse.json() as {
+        sshTarget?: { credentialConfigured: boolean };
+      };
+      expect(cleared.sshTarget?.credentialConfigured).toBe(false);
+      expect((await getWorkspaceSshTarget(created.id))?.password).toBeUndefined();
+    });
+
     test("creates and persists a directory workspace without requiring Git", async () => {
       const nonGitDir = await mkdtemp(join(tmpdir(), "directory-workspace-"));
 
@@ -345,7 +488,7 @@ describe("Workspace API Integration", () => {
       expect(await response.json()).toMatchObject({
         workspaceId: workspace.id,
         success: true,
-        stdout: `${tmpdir()}\n`,
+        stdout: `${realpathSync(tmpdir())}\n`,
         stderr: "",
         exitCode: 0,
       });
@@ -500,7 +643,7 @@ describe("Workspace API Integration", () => {
         ref: ExecutionHostRef;
         targetKey: string;
         revision: number;
-      }>).find((host) => host.ref.kind === "ssh" && host.ref.serverId === serverId);
+      }>).find((host) => host.ref.kind === "ssh" && "serverId" in host.ref && host.ref.serverId === serverId);
       expect(initialHost).toBeDefined();
 
       const createWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -533,7 +676,7 @@ describe("Workspace API Integration", () => {
         ref: ExecutionHostRef;
         targetKey: string;
         revision: number;
-      }>).find((host) => host.ref.kind === "ssh" && host.ref.serverId === serverId);
+      }>).find((host) => host.ref.kind === "ssh" && "serverId" in host.ref && host.ref.serverId === serverId);
       expect(refreshedHost).toBeDefined();
       expect(refreshedHost!.targetKey).not.toBe(workspace.executionHostBinding.targetKey);
       expect(refreshedHost!.revision).toBeGreaterThan(workspace.executionHostBinding.revision);

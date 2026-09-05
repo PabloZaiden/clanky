@@ -5,6 +5,7 @@
 import {
   executionHostRefFromParts,
   executionHostRefsEqual,
+  getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared";
 import { executionHostService } from "../core/execution-host-service";
@@ -45,6 +46,13 @@ async function resolveExecutionHostFileTarget(
 
   let sshPassword: string | undefined;
   if (ref.kind === "ssh") {
+    const serverId = getRegisteredSshServerId(ref);
+    if (!serverId) {
+      throw new DomainError(
+        "execution_host_unavailable",
+        "Workspace-owned SSH targets are only available through their workspace.",
+      );
+    }
     const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim()
       || (options?.allowCredentialTokenQuery
         ? new URL(req.url).searchParams.get("credentialToken")?.trim()
@@ -55,7 +63,7 @@ async function resolveExecutionHostFileTarget(
         "SSH credential token is required for this execution host.",
       );
     }
-    sshPassword = sshCredentialManager.getPasswordForToken(ref.serverId, credentialToken);
+    sshPassword = sshCredentialManager.getPasswordForToken(serverId, credentialToken);
   }
 
   const defaultRoot = (await executionHostService.resolveWorkingDirectory(ref, {

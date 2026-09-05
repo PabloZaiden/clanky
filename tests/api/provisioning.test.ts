@@ -49,9 +49,22 @@ interface ProvisioningSnapshotResponse {
     id: string;
     directory: string;
     executionHostBinding?: {
-      host: { kind: string; nodeId?: string; serverId?: string };
+      host: { kind: string; scope?: string; workspaceId?: string; nodeId?: string; serverId?: string };
       targetKey: string;
       revision: number;
+    };
+    provisioningHostBinding?: {
+      host: { kind: string; scope?: string; workspaceId?: string; nodeId?: string; serverId?: string };
+      targetKey: string;
+      revision: number;
+    };
+    sshTarget?: {
+      kind: string;
+      host: string;
+      port: number;
+      username: string;
+      credentialConfigured: boolean;
+      password?: string;
     };
     serverSettings?: {
       agent: Record<string, unknown>;
@@ -190,6 +203,75 @@ describe("Provisioning API integration", () => {
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
   });
 
+  test("keeps the provisioning host separate from the Devbox SSH execution target", async () => {
+    const sshServer = await createServer();
+    const executor = new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/workspaces/isolated-example",
+        sshHost: "devbox.example.com",
+        sshPort: 6022,
+        sshUser: "workspace-user",
+        password: "workspace-secret",
+      }),
+    });
+
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Isolated Workspace",
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        repoUrl: "https://github.com/octocat/isolated.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+    expect(completed.workspace).toMatchObject({
+      directory: "/workspaces/isolated-example",
+      executionHostBinding: {
+        host: {
+          kind: "ssh",
+          scope: "workspace",
+        },
+      },
+      provisioningHostBinding: {
+        host: {
+          kind: "ssh",
+          serverId: sshServer.config.id,
+        },
+      },
+      sshTarget: {
+        kind: "ssh",
+        host: "devbox.example.com",
+        port: 6022,
+        username: "workspace-user",
+        credentialConfigured: true,
+      },
+    });
+    expect(completed.workspace?.executionHostBinding?.host).toMatchObject({
+      workspaceId: completed.workspace!.id,
+    });
+    expect(completed.workspace?.sshTarget?.password).toBeUndefined();
+
+    const { getWorkspaceSshTarget } = await import(
+      "../../src/persistence/workspace-execution-targets"
+    );
+    const storedTarget = await getWorkspaceSshTarget(completed.workspace!.id);
+    expect(storedTarget?.password).toBe("workspace-secret");
+  });
+
   test("keeps jobs independent across targets and rejects duplicate work", async () => {
     const sshServer = await createServer();
     sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
@@ -287,7 +369,7 @@ describe("Provisioning API integration", () => {
 
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.workspace).toMatchObject({
-      directory: "/workspaces/mesh-example",
+      directory: "/devbox/workspaces/mesh-example",
       executionHostBinding: {
         host: {
           kind: "mesh",
