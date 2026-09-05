@@ -21,11 +21,13 @@ function createReasoningLog(id: string, timestamp: string, content: string): Log
 }
 
 describe("reasoning display helpers", () => {
-  test("formats whole-second and whole-minute thought durations", () => {
+  test("uses a short label below ten seconds and preserves duration boundaries", () => {
     const start = "2026-09-05T00:00:00.000Z";
 
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:00.999Z")).toBe("0 seconds");
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:01.000Z")).toBe("1 second");
+    expect(formatThoughtDuration(start, "2026-09-05T00:00:00.999Z")).toBe("a bit");
+    expect(formatThoughtDuration(start, "2026-09-05T00:00:01.000Z")).toBe("a bit");
+    expect(formatThoughtDuration(start, "2026-09-05T00:00:09.999Z")).toBe("a bit");
+    expect(formatThoughtDuration(start, "2026-09-05T00:00:10.000Z")).toBe("10 seconds");
     expect(formatThoughtDuration(start, "2026-09-05T00:00:59.999Z")).toBe("59 seconds");
     expect(formatThoughtDuration(start, "2026-09-05T00:01:00.000Z")).toBe("1 minute");
     expect(formatThoughtDuration(start, "2026-09-05T00:02:00.000Z")).toBe("2 minutes");
@@ -189,10 +191,10 @@ describe("reasoning display helpers", () => {
 
     expect(firstGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-first"]);
     expect(firstGroup.endedAt).toBe(sharedEndTimestamp);
-    expect(formatThoughtDuration(firstGroup.timestamp, firstGroup.endedAt!)).toBe("5 seconds");
+    expect(formatThoughtDuration(firstGroup.timestamp, firstGroup.endedAt!)).toBe("a bit");
     expect(secondGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-second"]);
     expect(secondGroup.endedAt).toBe(sharedEndTimestamp);
-    expect(formatThoughtDuration(secondGroup.timestamp, secondGroup.endedAt!)).toBe("0 seconds");
+    expect(formatThoughtDuration(secondGroup.timestamp, secondGroup.endedAt!)).toBe("a bit");
   });
 
   test("keeps a trailing reasoning group active while the transcript is active", () => {
