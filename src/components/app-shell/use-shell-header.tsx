@@ -37,10 +37,6 @@ export interface HeaderModel {
   detailSubtitleMobileHidden?: boolean;
 }
 
-type HeaderNodeModel = HeaderModel & {
-  nodeSubtitle?: string;
-};
-
 export interface RegisteredHeaderActions {
   owner: symbol;
   actions: ReactNode;
@@ -130,7 +126,7 @@ function getChatScopeSubtitle(
   }
   const source = chat.config.source;
   if (source?.kind === "execution_host") {
-    return source.executionHost.targetKey;
+    return undefined;
   }
   return getWorkspaceScopeSubtitle(source?.workspaceId ?? chat.config.workspaceId, workspaces);
 }
@@ -146,7 +142,6 @@ function getTerminalSessionScopeSubtitle(
   const terminalSession = terminalSessions.find((session) => session.config.id === terminalSessionId);
   return terminalSession
     ? getWorkspaceScopeSubtitle(terminalSession.config.workspaceId, workspaces)
-      ?? terminalSession.config.executionHostBinding.targetKey
     : undefined;
 }
 
@@ -259,10 +254,9 @@ export function useShellHeader({
     [headerNodes, headerOwnerRoute],
   );
   const headerModel = useMemo<HeaderModel>(() => {
-    const nodeModel: HeaderNodeModel | null = headerNode
+    const nodeModel: HeaderModel | null = headerNode
       ? {
           title: headerNode.title,
-          nodeSubtitle: headerNode.subtitle,
           badge: headerNode.badge,
           badgeVariant: headerNode.badgeVariant,
         }
@@ -328,10 +322,7 @@ export function useShellHeader({
         if (!selectedWorkspace) {
           return { ...nodeModel };
         }
-        return {
-          ...nodeModel,
-          detailSubtitle: selectedWorkspace.executionHostBinding.targetKey,
-        };
+        return nodeModel;
       case "workspace-files":
         return nodeModel
           ? { title: nodeModel.title, detailSubtitle: "Files" }
@@ -406,7 +397,7 @@ export function useShellHeader({
         return {
           title: headerNode ? `${headerNode.title} code explorer` : "Code Explorer",
           scopeSubtitle,
-          detailSubtitle: explorerDirectory || nodeModel?.nodeSubtitle,
+          detailSubtitle: explorerDirectory,
         };
       }
       case "compose": {
@@ -427,9 +418,6 @@ export function useShellHeader({
                 ? `Start a new chat on ${composeServer.config.name}`
                 : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
             scopeSubtitle,
-            detailSubtitle: composeServer
-              ? `${composeServer.config.username}@${composeServer.config.address}`
-              : undefined,
           };
         }
         if (composeKind === "agent") {
