@@ -78,13 +78,19 @@ interface WorkerServiceResolutionInput {
   uid?: number;
 }
 
-interface ProcessResult {
+export interface WorkerServiceProcessResult {
   exitCode: number;
   stdout: string;
   stderr: string;
 }
 
-type ProcessRunner = (command: string, args: readonly string[]) => Promise<ProcessResult>;
+export type WorkerServiceProcessRunner = (
+  command: string,
+  args: readonly string[],
+) => Promise<WorkerServiceProcessResult>;
+
+type ProcessResult = WorkerServiceProcessResult;
+type ProcessRunner = WorkerServiceProcessRunner;
 
 function isNotFoundError(error: unknown): boolean {
   return Boolean(
@@ -661,11 +667,22 @@ async function uninstallService(
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
 }
 
-async function serviceStatus(
+export async function getWorkerServiceStatus(
   paths: WorkerServicePaths,
   runner: ProcessRunner,
 ): Promise<Record<string, unknown>> {
   const installed = await pathExists(paths.servicePath);
+  if (paths.platform === "darwin") {
+    const macStatus = await inspectMacService(paths, runner);
+    return {
+      platform: paths.platform,
+      service: paths.label,
+      installed,
+      loaded: macStatus.loaded,
+      running: macStatus.running,
+      path: paths.servicePath,
+    };
+  }
   if (!installed) {
     return {
       platform: paths.platform,
@@ -673,17 +690,6 @@ async function serviceStatus(
       installed: false,
       loaded: false,
       running: false,
-      path: paths.servicePath,
-    };
-  }
-  if (paths.platform === "darwin") {
-    const macStatus = await inspectMacService(paths, runner);
-    return {
-      platform: paths.platform,
-      service: paths.label,
-      installed: true,
-      loaded: macStatus.loaded,
-      running: macStatus.running,
       path: paths.servicePath,
     };
   }
@@ -735,7 +741,7 @@ async function runWorkerServiceOperation(
     };
   }
   if (command.operation === "status") {
-    return await serviceStatus(paths, runner);
+    return await getWorkerServiceStatus(paths, runner);
   }
   if (!await pathExists(paths.servicePath)) {
     throw new Error(`The worker service is not installed: ${paths.servicePath}`);

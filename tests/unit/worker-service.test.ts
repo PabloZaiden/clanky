@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   detectWorkerServicePlatform,
+  getWorkerServiceStatus,
   getWorkerServicePaths,
   isStandaloneClankyInvocation,
   parseWorkerServiceArgs,
@@ -96,5 +100,29 @@ describe("worker service definitions", () => {
     expect(unit).toContain("ExecStart=\"/home/alice/.local/bin/clanky\"");
     expect(unit).toContain("CLANKY_DATA_DIR=/home/alice/.clanky");
     expect(unit).not.toContain("CLANKY_API_KEY");
+  });
+
+  test("checks launchctl even when the macOS plist is missing", async () => {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-status-"));
+    try {
+      const paths = {
+        ...getWorkerServicePaths("darwin", "/Users/alice", 501),
+        servicePath: join(temporaryDirectory, "missing.plist"),
+      };
+      const status = await getWorkerServiceStatus(paths, async (_command, _args) => {
+        return {
+          exitCode: 0,
+          stdout: "state = running\n",
+          stderr: "",
+        };
+      });
+      expect(status).toMatchObject({
+        installed: false,
+        loaded: true,
+        running: true,
+      });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });
