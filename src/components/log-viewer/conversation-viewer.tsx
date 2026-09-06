@@ -153,9 +153,6 @@ export const ConversationViewer = memo(function ConversationViewer({
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const isEmpty = groupedEntries.length === 0;
-  const hasActiveWorkingGroup = visibleEntries.some(
-    (entry) => entry.type === "working-group" && entry.isActive,
-  );
   const { containerRef, contentRef } = useStickyBottomScroll([
     visibleEntries,
     isActive,
@@ -261,7 +258,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                 );
               }
             })}
-            {isActive && !isEmpty && !hasActiveWorkingGroup && (
+            {isActive && !isEmpty && (
               <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
                 <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
                 <span>{activeStateMessage}</span>
