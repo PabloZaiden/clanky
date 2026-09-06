@@ -12,7 +12,6 @@ import type {
   MeshHealthCheck,
   MeshHealthCheckResponse,
   MeshRevocationNotice,
-  MeshWorkerUpdateRequest,
 } from "@/contracts/schemas/mesh";
 import { MeshHealthCheckResponseSchema } from "@/contracts/schemas/mesh";
 import type {
@@ -21,7 +20,6 @@ import type {
   MeshNodeIdentity,
   MeshWorkerExecutionConfig,
   MeshWorkerStatus,
-  MeshWorkerUpdateStatus,
 } from "@/shared/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -56,7 +54,6 @@ import {
   buildMeshHealthCheckSigningPayload,
   buildMeshHealthCheckResponseSigningPayload,
   buildMeshRevocationNoticeSigningPayload,
-  buildMeshWorkerUpdateSigningPayload,
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
@@ -81,8 +78,6 @@ import {
 } from "./mesh-runtime";
 
 const log = createLogger("core:mesh-manager");
-const WORKER_UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
-const WORKER_UPDATE_POLL_INTERVAL_MS = 500;
 
 async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
   const identity = await ensureLocalMeshNodeIdentity();
@@ -401,83 +396,6 @@ export class MeshManager {
       { type: "mesh.changed", executionHostsChanged },
       { userId },
     );
-  }
-
-  async updateWorker(
-    userId: string,
-    workerNodeId: string,
-  ): Promise<MeshWorkerUpdateStatus> {
-    requireMeshRuntimeRole("controller");
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const registration = await getWorkerRegistration(workerNodeId, userId);
-    if (!registration || registration.grantStatus !== "active") {
-      throw new DomainError("mesh_worker_not_found", "The active Mesh worker was not found.");
-    }
-    const operationId = crypto.randomUUID();
-    const sendUpdateRequest = async (
-      action: "start" | "status",
-    ): Promise<MeshWorkerUpdateStatus> => {
-      const nonce = crypto.randomUUID();
-      const unsigned: Omit<MeshWorkerUpdateRequest, "signature"> = {
-        protocolVersion: 1,
-        action,
-        operationId,
-        controllerNodeId: identity.nodeId,
-        workerNodeId: registration.workerNodeId,
-        controllerPublicKey: identity.publicKey,
-        controllerFingerprint: identity.fingerprint,
-        nonce,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      };
-      const response = await postMeshControlMessage(
-        resolveMeshRoute(registration.workerEndpoint, "api/mesh/internal/update"),
-        {
-          ...unsigned,
-          signature: await signMeshPayload(buildMeshWorkerUpdateSigningPayload(unsigned)),
-        },
-        nonce,
-        {
-          "x-clanky-mesh-node-id": identity.nodeId,
-        },
-      );
-      return await response.json() as MeshWorkerUpdateStatus;
-    };
-    let update = await sendUpdateRequest("start");
-    const deadline = Date.now() + WORKER_UPDATE_TIMEOUT_MS;
-    while (update.state === "updating" || update.state === "handoff") {
-      if (Date.now() >= deadline) {
-        throw new DomainError(
-          "mesh_worker_update_timeout",
-          "Timed out waiting for the Mesh worker update to finish.",
-        );
-      }
-      await Bun.sleep(WORKER_UPDATE_POLL_INTERVAL_MS);
-      try {
-        update = await sendUpdateRequest("status");
-      } catch (error) {
-        if (
-          error instanceof DomainError
-          && (
-            error.code === "mesh_control_request_unreachable"
-            || (
-              error.code === "mesh_control_request_rejected"
-              && typeof error.details["status"] === "number"
-              && [502, 503, 504].includes(error.details["status"])
-            )
-          )
-        ) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    if (update.state === "failed") {
-      throw new DomainError(
-        "mesh_worker_update_failed",
-        update.error ?? "The Mesh worker update failed.",
-      );
-    }
-    return update;
   }
 
   // --- Worker: receive health check ---

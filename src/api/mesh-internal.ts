@@ -18,7 +18,6 @@ import {
   MeshExecutionFileWriteQuerySchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
-import { MeshWorkerUpdateRequestSchema } from "@/contracts/schemas/mesh";
 import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshManager } from "../core/mesh-manager";
@@ -30,13 +29,11 @@ import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 import { isDomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
-import { meshWorkerUpdate } from "../core/mesh-worker-update";
 
 function internalMeshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
     const status = error.code === "mesh_enrollment_expired"
       || error.code === "mesh_enrollment_token_invalid"
-      || error.code === "mesh_worker_update_expired"
       ? 410
       : error.code === "mesh_role_invalid"
         ? 404
@@ -44,14 +41,7 @@ function internalMeshErrorResponse(error: unknown): Response {
         ? 409
         : error.code === "mesh_peer_not_trusted"
           ? 403
-        : error.code === "mesh_worker_update_invalid_signature"
-          ? 401
-        : error.code === "mesh_worker_update_target_invalid"
-          ? 403
-        : error.code === "mesh_worker_update_in_progress"
-          || error.code === "mesh_worker_update_unsupported"
-          ? 409
-          : error.code === "mesh_peer_revoked"
+        : error.code === "mesh_peer_revoked"
             ? 403
           : error.code === "mesh_execution_caller_not_active"
             ? 409
@@ -162,28 +152,6 @@ export const meshInternalRoutes = defineRoutes({
         return Response.json(
           await meshManager.receiveHealthCheck(parsed.data),
         );
-      } catch (error) {
-        return internalMeshErrorResponse(error);
-      }
-    },
-  },
-  "/api/mesh/internal/update": {
-    auth: "public",
-    sameOrigin: "never",
-    description: "Start a signed self-update on this Mesh worker.",
-    tags: ["mesh", "internal", "update"],
-    async POST(req): Promise<Response> {
-      const parsed = await parseAndValidate(MeshWorkerUpdateRequestSchema, req);
-      if (!parsed.success) return parsed.response;
-      const nodeId = req.headers.get("x-clanky-mesh-node-id");
-      const requestId = req.headers.get("x-clanky-mesh-request-id");
-      if (nodeId !== parsed.data.controllerNodeId || requestId !== parsed.data.nonce) {
-        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed update request.", 400);
-      }
-      try {
-        return Response.json(await meshWorkerUpdate.request(parsed.data), {
-          status: parsed.data.action === "start" ? 202 : 200,
-        });
       } catch (error) {
         return internalMeshErrorResponse(error);
       }
@@ -479,7 +447,6 @@ export const meshControllerInternalRoutes = defineRoutes({
 export const meshWorkerInternalRoutes = defineRoutes({
   "/api/mesh/internal/revocation": meshInternalRoutes["/api/mesh/internal/revocation"]!,
   "/api/mesh/internal/health": meshInternalRoutes["/api/mesh/internal/health"]!,
-  "/api/mesh/internal/update": meshInternalRoutes["/api/mesh/internal/update"]!,
   "/api/mesh/internal/execution/session": meshInternalRoutes["/api/mesh/internal/execution/session"]!,
   "/api/mesh/internal/execution/rpc": meshInternalRoutes["/api/mesh/internal/execution/rpc"]!,
   "/api/mesh/internal/execution/file": meshInternalRoutes["/api/mesh/internal/execution/file"]!,

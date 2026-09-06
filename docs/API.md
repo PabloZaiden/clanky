@@ -200,10 +200,8 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/health` | Receive a signed health check from an enrolled controller and return the worker's signed execution-policy snapshot. |
 | POST | `/api/mesh/internal/revocation` | Receive a signed revocation from an enrolled controller. |
-| POST | `/api/mesh/internal/update` | Start a signed self-update on this Mesh worker. |
 | GET | `/api/mesh/status` | Get this controller's workers or this worker's local status. |
 | DELETE | `/api/mesh/workers/:workerNodeId` | Delete a revoked worker registration. |
-| POST | `/api/mesh/workers/:workerNodeId/update` | Update and restart an enrolled Mesh worker. |
 | POST | `/api/mesh/workers/revoke` | Revoke one controller-to-worker grant. |
 | GET | `/api/models` | List available AI models for a workspace. |
 | GET | `/api/models/variants` | List available model variants for a workspace. |

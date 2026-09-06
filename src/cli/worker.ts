@@ -10,6 +10,7 @@ import type {
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { getWebAppServer } from "../server";
 import type { ClankyCliContext } from "./mesh";
+import { createWorkerServiceCommand } from "./worker-service";
 
 interface WorkerBootstrapOptions {
   username: string;
@@ -107,10 +108,23 @@ async function bootstrapWorker(
   return { exitCode: 0 };
 }
 
+async function runWorkerCommand(
+  context: Parameters<NonNullable<WebAppCliCommandDefinition<ClankyCliContext>["handler"]>>[0],
+): Promise<CliCommandResult> {
+  const [operation, ...rest] = context.args;
+  if (operation === "service") {
+    return await createWorkerServiceCommand().handler({ ...context, args: rest });
+  }
+  if (operation === "bootstrap") {
+    return await bootstrapWorker(context);
+  }
+  throw new Error("Worker command must be bootstrap or service");
+}
+
 export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Bootstrap API-key-only Mesh worker access.",
-    usage: "worker bootstrap [--username NAME] [--name KEY_NAME] [--rotate]",
-    handler: bootstrapWorker,
+    description: "Bootstrap and manage a Mesh worker.",
+    usage: "worker <bootstrap|service> [options]",
+    handler: runWorkerCommand,
   };
 }

@@ -7,8 +7,7 @@ import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
 import { createWorkspaceCommand } from "./workspace";
 import { createWorkerCommand } from "./worker";
-import { connectWorkerHandoffFromEnvironment } from "../core/mesh-worker-handoff";
-import { getDataDir } from "../persistence/database";
+import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -48,32 +47,13 @@ export function createClankyCli() {
     routeCatalog: appContext.routeCatalog,
     update: CLANKY_UPDATER_CONFIG,
     serve: {
-      options: [
-        {
-          name: "mesh-worker",
-          type: "boolean",
-          description: "Run the restricted Mesh execution worker surface.",
-          defaultValue: false,
-        },
-        {
-          name: "worker-directory",
-          type: "string",
-          description: "Set the worker-owned default execution directory.",
-        },
-        {
-          name: "worker-execution-enabled",
-          type: "boolean",
-          description: "Allow enrolled controllers to execute on this worker.",
-          defaultValue: true,
-        },
-      ],
+      options: CLANKY_SERVE_OPTIONS,
       development: {
         build: async ({ sourcePath }) => await buildClankyFromSource(sourcePath),
         command: ({ sourcePath }) => [resolve(sourcePath, "dist", "clanky"), "serve"],
       },
     },
     start: async ({ options }) => {
-      const handoff = await connectWorkerHandoffFromEnvironment();
       const server = await getWebAppServer({
         meshWorker: options["mesh-worker"] === true,
         workerDirectory: typeof options["worker-directory"] === "string"
@@ -82,7 +62,6 @@ export function createClankyCli() {
         workerExecutionEnabled: options["worker-execution-enabled"] !== false,
       });
       await server.start();
-      await handoff?.started(getDataDir());
     },
     appContext,
     commands: {

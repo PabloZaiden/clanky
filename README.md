@@ -193,7 +193,7 @@ application constants in `src/core/ssh-reliability-policy.ts`.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
 - `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
-- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Start that installation with `clanky serve up --mesh-worker true`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
+- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Register that standalone installation with `clanky worker service install`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
 - Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
@@ -297,7 +297,7 @@ Bootstrap a dedicated worker installation before starting it:
 
 ```bash
 CLANKY_DATA_DIR=/app/data clanky worker bootstrap --username worker
-CLANKY_DATA_DIR=/app/data clanky serve up --mesh-worker true
+CLANKY_DATA_DIR=/app/data clanky worker service install
 ```
 
 The bootstrap command is idempotent: repeated runs report the existing key ID
@@ -315,10 +315,10 @@ Mesh-worker mode can be selected equivalently with the `--mesh-worker` flag,
 `CLANKY_MESH_WORKER`, or persisted configuration:
 
 ```bash
-clanky serve up --mesh-worker true
-CLANKY_MESH_WORKER=true clanky serve up
+clanky serve --mesh-worker true
+CLANKY_MESH_WORKER=true clanky serve
 clanky serve config set mesh-worker true
-clanky serve up
+clanky worker service install
 ```
 
 See the [Mesh worker guide](docs/mesh-worker.md) for node configuration,

@@ -36,7 +36,6 @@ export interface UseMeshResult {
   createEnrollmentToken: (name: string, ttlSeconds?: number) => Promise<CreatedMeshEnrollment | null>;
   revokeWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
   removeRevokedWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
-  updateWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
   checkHealth: () => Promise<MeshControllerStatus | null>;
 }
 
@@ -185,10 +184,6 @@ export function useMesh(): UseMeshResult {
     removeRevokedWorker: async (workerNodeId) => await mutate(
       `/api/mesh/workers/${encodeURIComponent(workerNodeId)}`,
       "DELETE",
-    ),
-    updateWorker: async (workerNodeId) => await mutate(
-      `/api/mesh/workers/${encodeURIComponent(workerNodeId)}/update`,
-      "POST",
     ),
     checkHealth: async () => await mutate("/api/mesh/health", "POST"),
   };

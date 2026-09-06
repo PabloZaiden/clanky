@@ -29,7 +29,6 @@ const OWNER_ROUTE_ALLOWLIST = [
   "/api/mesh/health",
   "/api/mesh/instance-name",
   "/api/mesh/workers/:workerNodeId",
-  "/api/mesh/workers/:workerNodeId/update",
   "/api/mesh/workers/revoke",
   "/api/settings/purge-terminal-tasks",
   "/api/settings/reset-all",

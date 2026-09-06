@@ -8,7 +8,6 @@ import {
   buildMeshEnrollmentRequestSigningPayload,
   buildMeshHealthCheckSigningPayload,
   buildMeshRevocationNoticeSigningPayload,
-  buildMeshWorkerUpdateSigningPayload,
 } from "../../src/core/mesh-protocol";
 import { configureMeshRuntime } from "../../src/core/mesh-runtime";
 import { meshManager } from "../../src/core/mesh-manager";
@@ -204,40 +203,6 @@ describe("Mesh internal controller-worker routes", () => {
       error: "mesh_peer_target_invalid",
     });
     expect((await meshManager.getWorkerStatus()).controllerCount).toBe(1);
-
-    const update = {
-      protocolVersion: 1 as const,
-      action: "status" as const,
-      operationId: crypto.randomUUID(),
-      controllerNodeId: "controller-1",
-      workerNodeId: `${worker.nodeId}-other`,
-      controllerPublicKey: controller.publicKey,
-      controllerFingerprint: controller.fingerprint,
-      nonce: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    };
-    const updateResponse = await meshInternalRoutes[
-      "/api/mesh/internal/update"
-    ]!.POST!(new Request("http://worker/api/mesh/internal/update", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": "controller-1",
-        "x-clanky-mesh-request-id": update.nonce,
-      },
-      body: JSON.stringify({
-        ...update,
-        signature: sign(
-          null,
-          Buffer.from(buildMeshWorkerUpdateSigningPayload(update)),
-          controller.privateKey,
-        ).toString("base64url"),
-      }),
-    }), undefined as never);
-    expect(updateResponse!.status).toBe(403);
-    expect(await readJson(updateResponse!)).toMatchObject({
-      error: "mesh_worker_update_target_invalid",
-    });
   });
 
   test("rejects execution requests whose identity headers do not match", async () => {
