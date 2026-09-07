@@ -5,7 +5,6 @@ import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "../ImageAttachmentControl";
-import { DictationControls, insertDictationText } from "../dictation";
 
 interface PromptFieldProps {
   prompt: string;
@@ -44,20 +43,6 @@ export function PromptField({
     }
   }
 
-  function handleDictationTranscript(transcript: string) {
-    const insertion = insertDictationText(
-      prompt,
-      transcript,
-      textareaRef.current?.selectionStart,
-      textareaRef.current?.selectionEnd,
-    );
-    handlePromptChange(insertion.value);
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(insertion.caretPosition, insertion.caretPosition);
-    });
-  }
-
   function handleClipboardText(text: string) {
     const textarea = textareaRef.current;
     const selectionStart = textarea?.selectionStart ?? prompt.length;
@@ -77,18 +62,12 @@ export function PromptField({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
-        <label
-          htmlFor="prompt"
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-        >
-          Prompt <span className="text-red-500">*</span>
-        </label>
-        <DictationControls
-          compact
-          onTranscript={handleDictationTranscript}
-        />
-      </div>
+      <label
+        htmlFor="prompt"
+        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      >
+        Prompt <span className="text-red-500">*</span>
+      </label>
       <textarea
         ref={textareaRef}
         id="prompt"

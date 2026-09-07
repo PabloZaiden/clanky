@@ -444,7 +444,6 @@ class MockAcpServer {
         loadSession: true,
         promptCapabilities: {
           image: true,
-          audio: true,
           embeddedContext: true,
         },
         mcpCapabilities: {

@@ -9,8 +9,6 @@ import {
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
-  type PointerEvent,
 } from "react";
 import {
   isModelEnabled,
@@ -23,7 +21,6 @@ import {
   useComposerSizing,
   useVisualViewport,
 } from "../common";
-import { insertDictationText } from "../dictation";
 import { useAvailableModels } from "../../hooks";
 import {
   MESSAGE_ATTACHMENT_LIMIT,
@@ -66,13 +63,9 @@ export function useChatComposer({
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showDictationPopover, setShowDictationPopover] = useState(false);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const dictationPopoverRef = useRef<HTMLDivElement | null>(null);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressActivatedRef = useRef(false);
   const visualViewport = useVisualViewport(true);
   const isKeyboardVisible = isVisualViewportReduced(
     visualViewport,
@@ -127,29 +120,6 @@ export function useChatComposer({
     chat.config.model.variant,
   );
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showDictationPopover) {
-      return;
-    }
-    function handleDocumentPointerDown(event: globalThis.PointerEvent): void {
-      const target = event.target;
-      if (!(target instanceof Node) || dictationPopoverRef.current?.contains(target)) {
-        return;
-      }
-      setShowDictationPopover(false);
-    }
-    document.addEventListener("pointerdown", handleDocumentPointerDown);
-    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown);
-  }, [showDictationPopover]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -282,7 +252,6 @@ export function useChatComposer({
   } = useComposerSizing(message);
   const composerInstanceId = useId();
   const hasQueueableInput = message.trim().length > 0 || attachments.length > 0;
-  const hasPendingInput = hasQueueableInput || (!isEmbedded && selectedModel.length > 0);
   const sendButtonClassName = "wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0";
   const interruptButtonClassName = sendButtonClassName;
   const modelSelectId = `${composerInstanceId}-chat-model`;
@@ -290,64 +259,6 @@ export function useChatComposer({
   const composerBusy = isSubmitting || isExternallyBusy;
   const secondaryActionsDisabled = composerBusy || needsSshCredentials;
   const attachmentLimitReached = attachments.length >= MESSAGE_ATTACHMENT_LIMIT;
-
-  function handleDictationTranscript(transcript: string): void {
-    const insertion = insertDictationText(
-      message,
-      transcript,
-      composerTextareaRef.current?.selectionStart,
-      composerTextareaRef.current?.selectionEnd,
-    );
-    setMessage(insertion.value);
-    setShowDictationPopover(false);
-    requestAnimationFrame(() => {
-      composerTextareaRef.current?.focus();
-      composerTextareaRef.current?.setSelectionRange(insertion.caretPosition, insertion.caretPosition);
-    });
-  }
-
-  function clearLongPressTimer(): void {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }
-
-  function handleSendPointerDown(event: PointerEvent<HTMLButtonElement>): void {
-    if (event.button !== 0 || composerBusy || needsSshCredentials) {
-      return;
-    }
-    longPressActivatedRef.current = false;
-    clearLongPressTimer();
-    longPressTimerRef.current = setTimeout(() => {
-      longPressActivatedRef.current = true;
-      setShowDictationPopover(true);
-    }, 450);
-  }
-
-  function handleSendPointerEnd(): void {
-    clearLongPressTimer();
-  }
-
-  function handleSendClick(event: MouseEvent<HTMLButtonElement>): void {
-    event.preventDefault();
-    if (composerBusy || needsSshCredentials) {
-      return;
-    }
-    if (longPressActivatedRef.current) {
-      event.stopPropagation();
-      longPressActivatedRef.current = false;
-      return;
-    }
-    if (
-      (isActive ? hasQueueableInput : hasPendingInput)
-      && (!isActive || selectedModel.length === 0 || selectedModelEnabled)
-    ) {
-      composerFormRef.current?.requestSubmit();
-      return;
-    }
-    setShowDictationPopover(true);
-  }
 
   function handleRemoveAttachment(attachmentId: string): void {
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
@@ -371,12 +282,9 @@ export function useChatComposer({
     setAttachmentError,
     isSubmitting,
     isComposerBusy: composerBusy,
-    showDictationPopover,
-    setShowDictationPopover,
     attachmentControlRef,
     composerFormRef,
     composerTextareaRef,
-    dictationPopoverRef,
     isKeyboardVisible,
     composerRef,
     composerRows,
@@ -385,7 +293,6 @@ export function useChatComposer({
     modelSelectId,
     messageInputId,
     hasQueueableInput,
-    hasPendingInput,
     secondaryActionsDisabled,
     attachmentLimitReached,
     sendButtonClassName,
@@ -394,11 +301,6 @@ export function useChatComposer({
     handleInterrupt,
     handlePaste,
     handleComposerKeyDown,
-    handleDictationTranscript,
-    handleDictationError: (error: string) => toast.error(error),
-    handleSendPointerDown,
-    handleSendPointerEnd,
-    handleSendClick,
     handleRemoveAttachment,
   };
 }

@@ -27,13 +27,11 @@ type CachedModels = {
 
 export interface AcpPromptCapabilities {
   image: boolean;
-  audio: boolean;
   embeddedContext: boolean;
 }
 
 const DEFAULT_PROMPT_CAPABILITIES: AcpPromptCapabilities = {
   image: false,
-  audio: false,
   embeddedContext: false,
 };
 
@@ -73,7 +71,6 @@ export class CapabilityService {
 
     this.promptCapabilities = {
       image: promptCapabilities?.["image"] === true,
-      audio: promptCapabilities?.["audio"] === true,
       embeddedContext: promptCapabilities?.["embeddedContext"] === true,
     };
   }

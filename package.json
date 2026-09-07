@@ -18,7 +18,6 @@
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
     "@pablozaiden/webapp": "1.10.2",
