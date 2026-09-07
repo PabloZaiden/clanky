@@ -196,10 +196,13 @@ function isMatchingReasoningEntry(
 
 type GroupingEntry = GroupedEntryBase | ResponseBoundaryEntryBase;
 
-function hasVisibleEntryAfter(entries: Array<{ type: string }>, startIndex: number): boolean {
+function hasVisibleEntryAfter(
+  entries: Array<{ type: string; hasResponseContent?: boolean }>,
+  startIndex: number,
+): boolean {
   return entries
     .slice(startIndex)
-    .some((entry) => entry.type !== "response-boundary");
+    .some((entry) => entry.type !== "response-boundary" || entry.hasResponseContent === true);
 }
 
 function isWorkingGroupChild(entry: GroupingEntry): entry is WorkingGroupChildEntry {
@@ -259,9 +262,7 @@ function groupMixedWorkingEntries(
     }
 
     const nextEntry = entries[cursor];
-    const active = isActive
-      && !hasVisibleEntryAfter(entries, cursor)
-      && consecutiveChildren.some((child) => child.isActive);
+    const active = isActive && !hasVisibleEntryAfter(entries, cursor);
     if (hasToolGroup && hasReasoningGroup) {
       groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, active));
     } else {

@@ -54,6 +54,8 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [fileLinkContext, imagePreview.openImagePreview]);
 
   const groupedEntries = useMemo(() => {
+    // Preserve all source events for reasoning boundaries; empty response
+    // placeholders are filtered from the visible grouping below.
     const sourceEntries: EntryBase[] = [];
     messages.forEach((msg) => {
       sourceEntries.push({ type: "message", data: msg, timestamp: msg.timestamp });
@@ -76,11 +78,15 @@ export const ConversationViewer = memo(function ConversationViewer({
     const result: EntryBase[] = [];
 
     messages.forEach((msg) => {
+      if (msg.role === "assistant" && msg.content.length === 0) {
+        return;
+      }
       if (msg.role === "assistant" && !showAssistantMessages) {
         result.push({
           type: "response-boundary",
           id: `assistant-response-${msg.id}`,
           timestamp: msg.timestamp,
+          hasResponseContent: true,
         });
         return;
       }
@@ -117,11 +123,15 @@ export const ConversationViewer = memo(function ConversationViewer({
 
       if (isResponseLogEntry(logEntry)) {
         const content = logEntry.details?.["responseContent"];
-        if (!showResponseLogs || typeof content !== "string" || content.length === 0) {
+        if (typeof content !== "string" || content.length === 0) {
+          return;
+        }
+        if (!showResponseLogs) {
           result.push({
             type: "response-boundary",
             id: `response-log-${logEntry.id}`,
             timestamp: logEntry.timestamp,
+            hasResponseContent: true,
           });
           return;
         }
