@@ -192,6 +192,12 @@ function isMatchingReasoningEntry(
 
 type GroupingEntry = GroupedEntryBase | ResponseBoundaryEntryBase;
 
+function hasVisibleEntryAfter(entries: Array<{ type: string }>, startIndex: number): boolean {
+  return entries
+    .slice(startIndex)
+    .some((entry) => entry.type !== "response-boundary");
+}
+
 function isWorkingGroupChild(entry: GroupingEntry): entry is WorkingGroupChildEntry {
   return entry.type === "tool-group" || entry.type === "reasoning-group";
 }
@@ -211,7 +217,7 @@ function createWorkingGroupEntry(
     timestamp: firstEntry.timestamp,
     lastTimestamp: lastEntry.lastTimestamp,
     endedAt: nextEntry?.timestamp,
-    isActive: isActive && nextEntry === undefined,
+    isActive,
   };
 }
 
@@ -249,8 +255,9 @@ function groupMixedWorkingEntries(
     }
 
     const nextEntry = entries[cursor];
+    const active = isActive && !hasVisibleEntryAfter(entries, cursor);
     if (hasToolGroup && hasReasoningGroup) {
-      groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, isActive));
+      groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, active));
     } else {
       groupedEntries.push(...consecutiveChildren);
     }
@@ -281,7 +288,10 @@ export function groupConsecutiveEntries(
         cursor += 1;
       }
 
-      groupedEntries.push(createToolGroupEntry(consecutiveTools, isActive && cursor === sorted.length));
+      groupedEntries.push(createToolGroupEntry(
+        consecutiveTools,
+        isActive && !hasVisibleEntryAfter(sorted, cursor),
+      ));
       index = cursor - 1;
       continue;
     }
@@ -302,7 +312,10 @@ export function groupConsecutiveEntries(
         cursor += 1;
       }
 
-      groupedEntries.push(createReasoningGroupEntry(consecutiveReasoning, isActive));
+      groupedEntries.push(createReasoningGroupEntry(
+        consecutiveReasoning,
+        isActive,
+      ));
       index = cursor - 1;
       continue;
     }

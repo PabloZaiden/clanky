@@ -118,7 +118,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
             className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-working-summary="true"
           >
-            {entry.isActive && <ActivitySpinner />}
+            {entry.isActive && <ActivitySpinner label="Working" />}
             {summary}
           </span>
         }

@@ -273,7 +273,7 @@ export const ToolEntry = memo(function ToolEntry({
 
   const inputSummary = (
     <span className={toolSummaryClassName} data-tool-summary="true">
-      {isActive && <ActivitySpinner />}
+      {isActive && <ActivitySpinner label="Working" />}
       {shouldShowStatus && (
         <>
           <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
@@ -391,7 +391,7 @@ export const ToolEntry = memo(function ToolEntry({
           />
         ) : (
           <span className={toolSummaryClassName}>
-            {isActive && <ActivitySpinner />}
+            {isActive && <ActivitySpinner label="Working" />}
             {shouldShowStatus && (
               <>
                 <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>

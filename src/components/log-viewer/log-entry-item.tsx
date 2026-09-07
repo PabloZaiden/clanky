@@ -6,14 +6,12 @@ import type { LogEntry, TranscriptFileLinkContext } from "./types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
-import { ActivitySpinner } from "./activity-spinner";
 
 interface LogEntryItemProps {
   data: LogEntry;
   showTimestamp: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
-  isActive?: boolean;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
 }
@@ -42,7 +40,6 @@ export const LogEntryItem = memo(function LogEntryItem({
   showTimestamp,
   showGroupHeader,
   spacingClass,
-  isActive = false,
   markdownEnabled,
   fileLinkContext,
 }: LogEntryItemProps) {
@@ -98,12 +95,6 @@ export const LogEntryItem = memo(function LogEntryItem({
         className={`${widthClassName} ${textColorClassName}`}
         data-log-tone={logTone}
       >
-        {isActive && isReasoning && (
-          <span className="mb-2 inline-flex items-center gap-2 text-xs text-gray-400 dark:text-white/48">
-            <ActivitySpinner />
-            <span>Thinking…</span>
-          </span>
-        )}
         {showMessageLabel && (
           <span className="break-words text-sm leading-7">{log.message}</span>
         )}

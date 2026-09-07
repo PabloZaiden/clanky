@@ -122,7 +122,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
-          {entry.isActive && showActivityIndicator && <ActivitySpinner />}
+          {entry.isActive && showActivityIndicator && <ActivitySpinner label="Working" />}
           <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
           <span className="min-w-0 truncate">- {groupSummary}</span>
         </button>

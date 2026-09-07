@@ -62,7 +62,7 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
             className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-reasoning-summary="true"
           >
-            {entry.isActive && showActivityIndicator && <ActivitySpinner />}
+            {entry.isActive && showActivityIndicator && <ActivitySpinner label="Thinking" />}
             {summary}
           </span>
         }

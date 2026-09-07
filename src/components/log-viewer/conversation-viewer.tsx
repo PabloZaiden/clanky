@@ -254,7 +254,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                     showTimestamp={entry.showTimestamp}
                     showGroupHeader={entry.showGroupHeader}
                     spacingClass={spacingClass}
-                    isActive={isActive && index === visibleEntries.length - 1}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                   />
