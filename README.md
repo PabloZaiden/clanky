@@ -386,7 +386,10 @@ The PKCS#12 container uses the Keychain-compatible Apple export profile
 (SHA-1/3DES) and is imported directly into a temporary Keychain. Its
 legacy-compatible encryption protects only the transport artifact; it does not
 change the self-signed certificate's identity or make it trusted by Gatekeeper.
-The build does not modify macOS trust settings.
+The signer selects the imported certificate by fingerprint because a
+self-signed certificate is not reported as a valid codesigning identity on a
+clean runner. Private-key access is limited to `/usr/bin/codesign`, and the
+build does not modify macOS trust settings.
 
 To repopulate local demo data for the UI, run:
 
