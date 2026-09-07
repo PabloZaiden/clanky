@@ -116,7 +116,7 @@ describe("worker service definitions", () => {
     expect(unit).toContain(
       'ExecStart="/home/alice/bin/$$clanky`worker" "serve" "--mesh-worker" "true" "--worker-directory" "/srv/$$clanky`workspace"',
     );
-    expect(unit).toContain('Environment=CLANKY_PUBLIC_BASE_URL="https://$host.example"');
+    expect(unit).toContain('Environment="CLANKY_PUBLIC_BASE_URL=https://$host.example"');
   });
 
   test("checks launchctl even when the macOS plist is missing", async () => {
