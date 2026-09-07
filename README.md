@@ -365,15 +365,22 @@ bun dev
 
 `bun run build` creates standalone executables in `dist/`.
 
-On macOS, `bun run build` creates `.clanky-dev/macos-signing.p12` and
-`.clanky-dev/macos-signing-password` on the first build when they are missing,
-then reuses that self-signed identity to sign later local binaries. The files
-are gitignored and must not be committed. This is an internal stable identity,
-not Apple Developer ID signing or notarization.
+Local builds are not signed. The release workflow delegates macOS signing to
+the reusable `pablozaiden/installer` workflow, which imports the configured
+certificate into a temporary keychain and signs each release binary before
+publishing it.
 
-The release workflow uses the same PKCS#12 and password through the GitHub
-secrets `CLANKY_MACOS_SIGNING_CERT_BASE64` and
-`CLANKY_MACOS_SIGNING_CERT_PASSWORD`. To populate them from a local identity:
+To generate the self-signed PKCS#12 certificate used by the release workflow,
+run this command on macOS. If the certificate already exists, the command
+validates and reuses it:
+
+```bash
+bun run generate:macos-signing-cert
+```
+
+The generated files are stored in `.clanky-dev/`, are gitignored, and must not
+be committed. Upload them to the repository secrets used by the release
+workflow:
 
 ```bash
 base64 -i .clanky-dev/macos-signing.p12 \
@@ -382,14 +389,10 @@ gh secret set CLANKY_MACOS_SIGNING_CERT_PASSWORD \
   < .clanky-dev/macos-signing-password
 ```
 
-The PKCS#12 container uses the Keychain-compatible Apple export profile
-(SHA-1/3DES) and is imported directly into a temporary Keychain. Its
-legacy-compatible encryption protects only the transport artifact; it does not
-change the self-signed certificate's identity or make it trusted by Gatekeeper.
-The signer selects the imported certificate by fingerprint because a
-self-signed certificate is not reported as a valid codesigning identity on a
-clean runner. Private-key access is limited to `/usr/bin/codesign`, and the
-build does not modify macOS trust settings.
+The certificate is self-signed and does not provide Apple Developer ID signing,
+notarization, or Gatekeeper trust. The PKCS#12 container uses the
+Keychain-compatible Apple export profile (SHA-1/3DES) only for transporting the
+certificate and private key to the release runner.
 
 To repopulate local demo data for the UI, run:
 
