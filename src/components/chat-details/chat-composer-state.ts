@@ -33,10 +33,12 @@ import {
 } from "../../lib/chat-composer-drafts";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import type { Chat, ComposerAttachment } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { getChatErrorMessage } from "./chat-lifecycle";
 import type { ChatComposerProps } from "./types";
 import { useToast } from "@pablozaiden/webapp/web";
 import { isAbortError } from "../../lib/request-lifecycle";
+import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 
 export function useChatComposer({
   chat,
@@ -179,12 +181,21 @@ export function useChatComposer({
         });
         onChatSnapshot(nextChat);
       } else {
+        const source = chat.config.source;
+        const serverId = source?.kind === "execution_host"
+          && source.executionHost.host.kind === "ssh"
+          ? getRegisteredSshServerId(source.executionHost.host)
+          : null;
+        const credentialToken = serverId
+          ? await getStoredSshCredentialToken(serverId)
+          : null;
         const data = await apiRequest<{ chat?: Chat }>(`/api/chats/${chatId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: trimmedMessage.length > 0 ? trimmedMessage : null,
             attachments: messageAttachments,
+            credentialToken,
           }),
           action: "Send chat message",
           fallbackMessage: "Failed to send chat message",

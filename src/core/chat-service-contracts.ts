@@ -90,6 +90,7 @@ export type ChatConfigUpdates = Partial<
 export interface ChatMessageOptions {
   message?: string;
   attachments?: MessageImageAttachment[];
+  credentialToken?: string | null;
 }
 
 export interface NormalizedChatMessageInput {
@@ -183,7 +184,10 @@ export interface ChatConversationPort {
   dispatchMessage(
     chat: Chat,
     input: NormalizedChatMessageInput,
-    options?: { clearQueuedMessages?: boolean },
+    options?: {
+      clearQueuedMessages?: boolean;
+      credentialToken?: string | null;
+    },
   ): Promise<Chat>;
   buildImportedReplayState(chat: Chat, events: SessionReplayEvent[], sessionId: string): ChatState;
   interruptChat(chatId: string, reason?: string): Promise<Chat | null>;

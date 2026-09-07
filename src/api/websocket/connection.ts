@@ -3,6 +3,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
 import {
   releaseTerminalSocket,
+  sendTerminalAuthError,
   startTerminalBridge,
 } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
@@ -143,6 +144,20 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   }
 
   if (terminalMode && terminalSessionId) {
+    if (ws.data.terminalCredentialRequired) {
+      ws.data.terminalCredentialTimeout = setTimeout(() => {
+        ws.data.terminalCredentialTimeout = undefined;
+        if (!ws.data.terminalBridge) {
+          sendTerminalAuthError(
+            ws,
+            "SSH credentials are required for direct SSH terminals",
+            "ssh_credentials_required",
+          );
+        }
+      }, 10_000);
+      ws.data.terminalCredentialTimeout.unref?.();
+      return;
+    }
     void startTerminalBridge(ws);
     return;
   }
@@ -196,6 +211,10 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     activeConnections: activeConnections.size,
   });
 
+  if (ws.data.terminalCredentialTimeout) {
+    clearTimeout(ws.data.terminalCredentialTimeout);
+    ws.data.terminalCredentialTimeout = undefined;
+  }
   if (ws.data.terminalBridge) {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
@@ -241,6 +260,10 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   });
   // Remove from active connections
   activeConnections.delete(ws);
+  if (ws.data.terminalCredentialTimeout) {
+    clearTimeout(ws.data.terminalCredentialTimeout);
+    ws.data.terminalCredentialTimeout = undefined;
+  }
   if (ws.data.terminalBridge) {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;

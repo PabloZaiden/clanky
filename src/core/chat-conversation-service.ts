@@ -149,7 +149,10 @@ export class ChatConversationService implements ChatConversationPort {
   async dispatchMessage(
     chat: Chat,
     input: NormalizedChatMessageInput,
-    options: { clearQueuedMessages?: boolean } = {},
+    options: {
+      clearQueuedMessages?: boolean;
+      credentialToken?: string | null;
+    } = {},
   ): Promise<Chat> {
     const timer = createChatLatencyTimer();
     this.assertChatIsAvailable(chat);
@@ -203,7 +206,11 @@ export class ChatConversationService implements ChatConversationPort {
       }
 
       const backend = await timer.measure("backend_connection", () =>
-        this.session.ensureBackendConnected(current, {}, workingDirectory)
+        this.session.ensureBackendConnected(
+          current,
+          { credentialToken: options.credentialToken },
+          workingDirectory,
+        )
       );
       current = await timer.measure("session_creation", () =>
         this.session.ensureSession(current, backend, {

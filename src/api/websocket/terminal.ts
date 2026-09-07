@@ -74,6 +74,10 @@ export async function startTerminalBridge(
   ws: ServerWebSocket<WebSocketData>,
   credentialToken?: string,
 ): Promise<void> {
+  if (ws.data.terminalCredentialTimeout) {
+    clearTimeout(ws.data.terminalCredentialTimeout);
+    ws.data.terminalCredentialTimeout = undefined;
+  }
   const terminalSessionId = ws.data.terminalSessionId;
   if (!terminalSessionId || ws.data.terminalBridge) {
     return;
@@ -90,6 +94,11 @@ export async function startTerminalBridge(
         async () => await resolveTerminal(terminalSessionId),
       );
       if (resolved.executionHostBinding.host.kind === "ssh" && !resolved.workspace) {
+        sendTerminalAuthError(
+          ws,
+          "SSH credentials are required for direct SSH terminals",
+          "ssh_credentials_required",
+        );
         return;
       }
     }
@@ -205,9 +214,14 @@ export function getTerminalErrorPayload(
 export function sendTerminalAuthError(
   ws: ServerWebSocket<WebSocketData>,
   message: string,
+  code?: string,
 ): void {
   try {
-    ws.send(JSON.stringify({ type: "terminal.error", message }));
+    ws.send(JSON.stringify({
+      type: "terminal.error",
+      ...(code ? { code } : {}),
+      message,
+    }));
   } catch (sendError) {
     log.trace("Failed to send terminal auth error", { error: String(sendError) });
   }

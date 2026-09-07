@@ -1,20 +1,23 @@
 /**
- * Workspace terminal session detail view.
+ * Terminal session detail view.
  * Reuses the shared xterm terminal infrastructure (renderer, keyboard, clipboard,
  * resize, focus mode) from the terminal module but fetches data through the
  * canonical terminal session API and connects via /api/terminal.
- *
- * No SSH password prompts or standalone credential flow. Connection is
- * immediate for workspace terminal sessions.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { Button } from "../common";
 import { useTerminalSession } from "../../hooks/useTerminalSession";
 import { useToast } from "@pablozaiden/webapp/web";
 import { writeTextToClipboard } from "../../utils";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
+import {
+  getStoredSshCredentialToken,
+  invalidateStoredSshCredentialToken,
+  storeSshServerPassword,
+} from "../../lib/ssh-browser-credentials";
 import {
   TERMINAL_PADDING_BOTTOM_PX,
   TERMINAL_PADDING_TOP_PX,
@@ -31,6 +34,7 @@ import { useTerminalRenderer } from "./use-terminal-renderer";
 import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
 import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
+import { ServerPasswordModal } from "../app-shell/server-password-modal";
 
 export interface TerminalSessionDetailsProps {
   terminalSessionId: string;
@@ -54,6 +58,14 @@ export function TerminalSessionDetails({
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [pendingStandaloneAction, setPendingStandaloneAction] = useState<
+    "terminal" | "delete" | null
+  >(null);
+  const [, setStandaloneCredentialToken] = useState<string | null>(null);
 
   const focusTerminal = useCallback(() => {
     terminalRef.current?.focus();
@@ -66,30 +78,111 @@ export function TerminalSessionDetails({
     return `/api/terminal?terminalSessionId=${encodeURIComponent(terminalSessionId)}`;
   }, [session, terminalSessionId]);
 
+  const registeredSshServerId = useMemo(
+    () => session
+      ? getRegisteredSshServerId(session.config.executionHostBinding.host)
+      : null,
+    [session],
+  );
+  const sessionKind = session
+    ? registeredSshServerId
+      ? "standalone" as const
+      : "workspace" as const
+    : null;
+
   const clipboard = useClipboard({ terminalRef, focusTerminal, showErrorToast, copyTextToClipboard: copyClipboardFn });
 
-  // Workspace terminal sessions do not need standalone credential handling.
-  // Provide no-op stubs so the connection hook works unchanged.
-  const noopLoadCredential = useCallback(async () => null, []);
-  const noopSetCredential = useCallback((_token: string | null) => {}, []);
-  const noopSetPendingAction = useCallback((_action: "terminal" | "delete" | null) => {}, []);
-  const noopSetShowPassword = useCallback((_show: boolean) => {}, []);
+  const loadStandaloneCredentialToken = useCallback(async (options?: {
+    forceRefresh?: boolean;
+    promptOnFailure?: boolean;
+  }): Promise<string | null> => {
+    if (!registeredSshServerId) {
+      return null;
+    }
+
+    if (options?.forceRefresh) {
+      invalidateStoredSshCredentialToken(registeredSshServerId);
+    }
+
+    try {
+      const token = await getStoredSshCredentialToken(registeredSshServerId);
+      setStandaloneCredentialToken(token);
+      if (!token && options?.promptOnFailure) {
+        setPendingStandaloneAction("terminal");
+        setPasswordError(null);
+        setPasswordPromptOpen(true);
+      }
+      return token;
+    } catch (credentialError) {
+      setStandaloneCredentialToken(null);
+      if (options?.promptOnFailure) {
+        setPendingStandaloneAction("terminal");
+        setPasswordError(String(credentialError));
+        setPasswordPromptOpen(true);
+      }
+      return null;
+    }
+  }, [registeredSshServerId]);
 
   const connection = useTerminalConnection({
     terminalUrl,
     terminalRef,
     fitAddonRef,
-    sessionKind: "workspace",
+    sessionKind,
     focusTerminal,
     refresh,
     showErrorToast,
     copyTerminalClipboardText: clipboard.copyTerminalClipboardText,
     clearSelectedTerminalText: clipboard.clearSelectedTerminalText,
-    loadStandaloneCredentialToken: noopLoadCredential,
-    setStandaloneCredentialToken: noopSetCredential,
-    setPendingStandaloneAction: noopSetPendingAction,
-    setShowPasswordPrompt: noopSetShowPassword,
+    loadStandaloneCredentialToken,
+    setStandaloneCredentialToken,
+    setPendingStandaloneAction,
+    setShowPasswordPrompt: setPasswordPromptOpen,
   });
+
+  const handlePasswordSubmit = useCallback(async (): Promise<void> => {
+    if (!registeredSshServerId) {
+      return;
+    }
+
+    if (!password.trim()) {
+      setPasswordError("Enter the SSH password for this server.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    setPasswordError(null);
+    try {
+      await storeSshServerPassword(registeredSshServerId, password);
+      const token = await getStoredSshCredentialToken(registeredSshServerId);
+      if (!token) {
+        throw new Error("Failed to exchange SSH credential.");
+      }
+      setStandaloneCredentialToken(token);
+      setPassword("");
+      setPasswordPromptOpen(false);
+      const action = pendingStandaloneAction;
+      setPendingStandaloneAction(null);
+      if (action === "terminal") {
+        await connection.connectTerminal({ standaloneCredentialToken: token });
+      }
+    } catch (credentialError) {
+      setPasswordError(String(credentialError));
+    } finally {
+      setPasswordSaving(false);
+    }
+  }, [
+    connection,
+    password,
+    pendingStandaloneAction,
+    registeredSshServerId,
+  ]);
+
+  const handlePasswordPromptClose = useCallback(() => {
+    setPasswordPromptOpen(false);
+    setPendingStandaloneAction(null);
+    setPasswordError(null);
+  }, []);
 
   const modifiers = useTerminalModifiers(focusTerminal);
 
@@ -240,6 +333,20 @@ export function TerminalSessionDetails({
         <FocusModeBar
           {...touchControlProps}
           onExitFocusMode={toggleFocusMode}
+        />
+      )}
+
+      {registeredSshServerId && (
+        <ServerPasswordModal
+          isOpen={passwordPromptOpen}
+          serverName={`SSH server ${registeredSshServerId}`}
+          description="Enter the SSH password before opening this terminal."
+          password={password}
+          error={passwordError}
+          submitting={passwordSaving}
+          onPasswordChange={setPassword}
+          onClose={handlePasswordPromptClose}
+          onSubmit={handlePasswordSubmit}
         />
       )}
     </div>

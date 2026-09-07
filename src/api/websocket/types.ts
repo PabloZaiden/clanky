@@ -17,6 +17,10 @@ export interface WebSocketData {
   vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
   terminalMode?: boolean;
+  /** Whether this terminal must receive a browser-held SSH credential token before starting */
+  terminalCredentialRequired?: boolean;
+  /** Timeout used while waiting for a direct SSH terminal credential */
+  terminalCredentialTimeout?: ReturnType<typeof setTimeout>;
   /** Whether this socket bridges noVNC RFB traffic to a local TCP tunnel */
   vncMode?: boolean;
   /** Whether this socket is the CLI live-preview bridge */

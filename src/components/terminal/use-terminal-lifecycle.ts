@@ -93,6 +93,7 @@ export function useTerminalLifecycle({
         if (!standaloneAuthToken) {
           standaloneAuthToken = await loadStandaloneCredentialToken({
             forceRefresh: options?.refreshStandaloneCredential ?? false,
+            promptOnFailure: true,
           });
         }
         if (!standaloneAuthToken) {
@@ -143,7 +144,10 @@ export function useTerminalLifecycle({
         }
         if (data.type === "terminal.error" && data.message) {
           terminalRef.current?.writeln(`\r\n${data.message}`);
-          if (sessionKind === "standalone" && data.code === "invalid_credential_token") {
+          if (
+            sessionKind === "standalone"
+            && (data.code === "invalid_credential_token" || data.code === "ssh_credentials_required")
+          ) {
             setStandaloneCredentialToken(null);
             if (standaloneTokenRecoveryAttemptedRef.current) {
               setPendingStandaloneAction("terminal");
