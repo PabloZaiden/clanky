@@ -12,6 +12,7 @@ import {
   DEFAULT_EXECUTION_HOST_CAPABILITIES,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
+  isPrivateMeshExecutionHostRef,
   isWorkspaceSshExecutionHostRef,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
@@ -268,6 +269,12 @@ export class ExecutionHostService {
     ref: ExecutionHostRef,
     userId: string = requireCurrentUserId(),
   ): ExecutionHostBinding {
+    if (isPrivateMeshExecutionHostRef(ref)) {
+      throw new DomainError(
+        "execution_host_private",
+        "This execution host is private to its workspace.",
+      );
+    }
     const host = getExecutionHostByRef(userId, ref);
     if (!host || host.revokedAt) {
       throw new DomainError(
@@ -332,7 +339,10 @@ export class ExecutionHostService {
         workspaceId: context.operationId,
         directory: context.directory,
         executionNodeId: host.nodeId,
-        provider: context.provider ?? await this.resolveAgentProvider(host, userId),
+        provider: context.provider
+          ?? (isPrivateMeshExecutionHostRef(host)
+            ? "copilot"
+            : await this.resolveAgentProvider(host, userId)),
         localUserId: userId,
       });
     }

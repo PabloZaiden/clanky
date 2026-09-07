@@ -49,6 +49,7 @@ export interface ProvisioningJobConfig {
   id: string;
   name: string;
   executionHostBinding: ExecutionHostBinding;
+  workspaceWorkerEnrollmentId?: string;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

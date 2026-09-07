@@ -39,6 +39,9 @@ export const CreateMeshEnrollmentTokenRequestSchema = z.object({
   ttlSeconds: z.number().int().min(60).max(86_400).default(900),
 });
 
+export const CreateWorkspaceWorkerEnrollmentRequestSchema =
+  CreateMeshEnrollmentTokenRequestSchema;
+
 // --- Controller-side identity and configuration ---
 
 export const UpdateMeshInstanceNameSchema = z.object({
@@ -145,6 +148,9 @@ export const MeshWorkerKillRequestSchema = z.object({
 });
 
 export type CreateMeshEnrollmentTokenRequest = z.infer<typeof CreateMeshEnrollmentTokenRequestSchema>;
+export type CreateWorkspaceWorkerEnrollmentRequest = z.infer<
+  typeof CreateWorkspaceWorkerEnrollmentRequestSchema
+>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
 export type RevokeMeshWorkerRequest = z.infer<typeof RevokeMeshWorkerRequestSchema>;

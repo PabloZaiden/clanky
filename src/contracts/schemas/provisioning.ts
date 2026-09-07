@@ -9,7 +9,8 @@ export const ProvisioningJobModeSchema = z.enum(["provision", "rebuild", "restar
 
 export const CreateProvisioningJobRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
-  executionHost: ExecutionHostRefSchema,
+  executionHost: ExecutionHostRefSchema.optional(),
+  workspaceWorkerEnrollmentId: RequiredTrimmedStringSchema.optional(),
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),
@@ -24,6 +25,13 @@ export const CreateProvisioningJobRequestSchema = z.object({
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
 }).refine((data) => {
+  const targetCount = [
+    Boolean(data.executionHost),
+    Boolean(data.workspaceWorkerEnrollmentId),
+  ].filter(Boolean).length;
+  if (targetCount !== 1) {
+    return false;
+  }
   if (data.mode === "provision") {
     if (data.createNewRepository) {
       return data.basePath.length > 0 && (data.devboxTemplate ?? "").length > 0;
@@ -36,7 +44,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   return (data.targetDirectory ?? "").length > 0
     && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "provision mode requires one execution host plus repoUrl and basePath, or basePath and devboxTemplate when createNewRepository is true; rebuild/restart mode requires one execution host, targetDirectory, and workspaceId; arise mode requires one execution host",
+  message: "Provisioning requires exactly one execution host or dedicated worker enrollment; provision mode also requires repoUrl and basePath, rebuild/restart requires targetDirectory and workspaceId, and arise requires a target",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

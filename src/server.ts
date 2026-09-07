@@ -143,7 +143,7 @@ async function reconcileStartupState(): Promise<void> {
   await runForEachActiveUser(async () => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
-    provisioningManager.reconcileStartupState();
+    await provisioningManager.reconcileDedicatedWorkerStartupState();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);

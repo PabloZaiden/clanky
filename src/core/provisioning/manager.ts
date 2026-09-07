@@ -4,7 +4,6 @@ import type { CommandExecutor } from "../command-executor";
 import { GitService } from "../git";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
-  deleteWorkspace,
   getWorkspace,
 } from "../../persistence/workspaces";
 import {
@@ -35,6 +34,8 @@ import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 import { executionHostService } from "../execution-host-service";
+import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
+import { meshManager } from "../mesh-manager";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 
@@ -48,7 +49,22 @@ function normalizeOptionalValue(value: string | undefined): string | undefined {
 async function resolveProvisioningExecutionHostBinding(
   userId: string,
   options: StartProvisioningJobOptions,
+  jobId: string,
 ): Promise<ExecutionHostBinding> {
+  if (options.workspaceWorkerEnrollmentId) {
+    if ((options.mode ?? "provision") !== "provision") {
+      throw new ProvisioningFailedError(
+        "invalid_execution_target",
+        "verify_devbox",
+        "Dedicated worker enrollments can only create a new workspace",
+      );
+    }
+    return workspaceWorkerEnrollmentService.claimForProvisioning(
+      userId,
+      options.workspaceWorkerEnrollmentId,
+      jobId,
+    );
+  }
   if (
     (options.mode === "rebuild" || options.mode === "restart")
     && options.workspaceId
@@ -58,6 +74,13 @@ async function resolveProvisioningExecutionHostBinding(
       executionHostService.validateBinding(workspace.provisioningHostBinding, userId);
       return workspace.provisioningHostBinding;
     }
+  }
+  if (!options.executionHost) {
+    throw new ProvisioningFailedError(
+      "missing_execution_host",
+      "verify_devbox",
+      "Provisioning requires an execution host",
+    );
   }
   await executionHostService.listHosts(userId);
   return executionHostService.getBinding(options.executionHost, userId);
@@ -163,12 +186,13 @@ export class ProvisioningManager {
 
   async startJob(options: StartProvisioningJobOptions): Promise<ProvisioningJobSnapshot> {
     const owner = requireCurrentUser();
+    const jobId = crypto.randomUUID();
     const executionHostBinding = await resolveProvisioningExecutionHostBinding(
       owner.id,
       options,
+      jobId,
     );
     const now = new Date().toISOString();
-    const jobId = crypto.randomUUID();
     const mode = options.mode ?? "provision";
     const record: ProvisioningJobRecord = {
       job: {
@@ -176,6 +200,9 @@ export class ProvisioningManager {
           id: jobId,
           name: options.name.trim(),
           executionHostBinding,
+          ...(options.workspaceWorkerEnrollmentId
+            ? { workspaceWorkerEnrollmentId: options.workspaceWorkerEnrollmentId }
+            : {}),
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -319,6 +346,59 @@ export class ProvisioningManager {
 
   reconcileStartupState(): number {
     return markProvisioningJobsInterrupted(requireCurrentUserId());
+  }
+
+  async reconcileDedicatedWorkerStartupState(): Promise<void> {
+    const userId = requireCurrentUserId();
+    const interruptedJobs = listProvisioningJobs(userId).filter(
+      (job) =>
+        (job.state.status === "pending" || job.state.status === "running")
+        && job.config.workspaceWorkerEnrollmentId,
+    );
+    this.reconcileStartupState();
+
+    for (const job of interruptedJobs) {
+      const enrollmentId = job.config.workspaceWorkerEnrollmentId;
+      if (!enrollmentId) {
+        continue;
+      }
+      let workspaceDeleted = false;
+      if (job.state.workspaceId) {
+        try {
+          const deletion = await workspaceManager.deleteWorkspace(job.state.workspaceId);
+          workspaceDeleted = deletion.success;
+          if (!deletion.success) {
+            log.warn("Failed to remove workspace from interrupted dedicated-worker provisioning", {
+              provisioningJobId: job.config.id,
+              workspaceId: job.state.workspaceId,
+              error: String(deletion.error),
+            });
+          }
+        } catch (error) {
+          log.warn("Failed to remove workspace from interrupted dedicated-worker provisioning", {
+            provisioningJobId: job.config.id,
+            workspaceId: job.state.workspaceId,
+            error: String(error),
+          });
+        }
+      }
+      if (!workspaceDeleted) {
+        try {
+          const workspaceStillExists = job.state.workspaceId
+            ? await workspaceManager.getWorkspace(job.state.workspaceId) !== null
+            : false;
+          await meshManager.cleanupDedicatedWorker(userId, enrollmentId, {
+            preserveRegistration: workspaceStillExists,
+          });
+        } catch (error) {
+          log.error("Failed to clean up dedicated worker after server restart", {
+            provisioningJobId: job.config.id,
+            enrollmentId,
+            error: String(error),
+          });
+        }
+      }
+    }
   }
 
   resetForTesting(): void {
@@ -540,7 +620,13 @@ export class ProvisioningManager {
         directory: resolvedDirectory,
         workspaceType: "git",
         serverSettings,
-        ...(sshTarget
+        ...(record.job.config.workspaceWorkerEnrollmentId
+          ? {
+              workspaceWorkerEnrollmentId: record.job.config.workspaceWorkerEnrollmentId,
+              workspaceWorkerEnrollmentClaimedBy: record.job.config.id,
+              provisioningHost: binding.host,
+            }
+          : sshTarget
           ? {
               sshTarget,
               provisioningHost: binding.host,
@@ -567,6 +653,8 @@ export class ProvisioningManager {
         serverSettings,
         resolvedDirectory,
         workspace.executionHostBinding.host,
+        undefined,
+        workspace.executionHostBinding,
       );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(
@@ -610,7 +698,10 @@ export class ProvisioningManager {
 
       if (createdWorkspaceId) {
         try {
-          await deleteWorkspace(createdWorkspaceId);
+          const deletion = await workspaceManager.deleteWorkspace(createdWorkspaceId);
+          if (!deletion.success) {
+            throw deletion.error;
+          }
           if (record.job.state.workspaceId === createdWorkspaceId) {
             this.updateState(record, {
               workspaceId: undefined,
@@ -627,6 +718,21 @@ export class ProvisioningManager {
           log.warn("Failed to remove partially created workspace after provisioning failure", {
             provisioningJobId: record.job.config.id,
             workspaceId: createdWorkspaceId,
+            error: String(cleanupError),
+          });
+        }
+      }
+
+      if (record.job.config.workspaceWorkerEnrollmentId && !createdWorkspaceId) {
+        try {
+          await meshManager.cleanupDedicatedWorker(
+            record.owner.id,
+            record.job.config.workspaceWorkerEnrollmentId,
+          );
+        } catch (cleanupError) {
+          log.error("Failed to clean up dedicated worker after provisioning failure", {
+            provisioningJobId: record.job.config.id,
+            enrollmentId: record.job.config.workspaceWorkerEnrollmentId,
             error: String(cleanupError),
           });
         }

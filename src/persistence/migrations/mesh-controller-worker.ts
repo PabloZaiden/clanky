@@ -177,6 +177,8 @@ export function migrateMeshControllerWorker(db: Database): void {
         name TEXT NOT NULL,
         controller_node_id TEXT NOT NULL,
         controller_fingerprint TEXT NOT NULL,
+        purpose TEXT NOT NULL DEFAULT 'global',
+        workspace_worker_enrollment_id TEXT,
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         consumed_at TEXT
@@ -211,6 +213,10 @@ export function migrateMeshControllerWorker(db: Database): void {
       worker_capabilities_json TEXT,
       worker_accept_remote_execution INTEGER NOT NULL DEFAULT 1,
       worker_config_revision INTEGER NOT NULL DEFAULT 1,
+      registration_scope TEXT NOT NULL DEFAULT 'global'
+        CHECK (registration_scope IN ('global', 'workspace')),
+      workspace_worker_enrollment_id TEXT,
+      workspace_id TEXT,
       grant_status TEXT NOT NULL DEFAULT 'active' CHECK (grant_status IN ('active', 'revoked')),
       last_seen_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

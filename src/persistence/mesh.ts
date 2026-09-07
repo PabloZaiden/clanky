@@ -13,13 +13,22 @@ import type {
   MeshTransport,
   MeshWorkerRegistration,
 } from "@/shared/mesh";
-import type { ExecutionHostCapabilities } from "@/shared/execution-host";
 import {
+  type ExecutionHostBinding,
+  type ExecutionHostCapabilities,
+  type ExecutionHostRef,
+} from "@/shared/execution-host";
+import {
+  deleteExecutionHost,
   ensureExecutionHost,
   getExecutionHostByRef,
   revokeExecutionHost,
 } from "./execution-hosts";
-import { buildMeshTargetKey } from "./workspace-target-key";
+import {
+  buildMeshEnrollmentTargetKey,
+  buildMeshTargetKey,
+  buildMeshWorkspaceTargetKey,
+} from "./workspace-target-key";
 import { getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh");
@@ -42,6 +51,56 @@ export interface SaveWorkerRegistrationInput {
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
+  registrationScope?: "global" | "workspace";
+  workspaceWorkerEnrollmentId?: string;
+  workspaceId?: string;
+}
+
+export function getWorkerRegistrationExecutionHostRef(
+  registration: Pick<
+    MeshWorkerRegistration,
+    "workerNodeId" | "registrationScope" | "workspaceWorkerEnrollmentId" | "workspaceId"
+  >,
+): ExecutionHostRef {
+  if (registration.registrationScope === "workspace") {
+    if (registration.workspaceId) {
+      return {
+        kind: "mesh",
+        scope: "workspace",
+        workspaceId: registration.workspaceId,
+        nodeId: registration.workerNodeId,
+      };
+    }
+    if (registration.workspaceWorkerEnrollmentId) {
+      return {
+        kind: "mesh",
+        scope: "enrollment",
+        enrollmentId: registration.workspaceWorkerEnrollmentId,
+        nodeId: registration.workerNodeId,
+      };
+    }
+  }
+  return { kind: "mesh", nodeId: registration.workerNodeId };
+}
+
+function getWorkerRegistrationTargetKey(
+  input: Pick<
+    SaveWorkerRegistrationInput,
+    "workerNodeId" | "registrationScope" | "workspaceWorkerEnrollmentId" | "workspaceId"
+  >,
+): string {
+  if (input.registrationScope === "workspace") {
+    if (input.workspaceId) {
+      return buildMeshWorkspaceTargetKey(input.workspaceId, input.workerNodeId);
+    }
+    if (input.workspaceWorkerEnrollmentId) {
+      return buildMeshEnrollmentTargetKey(
+        input.workspaceWorkerEnrollmentId,
+        input.workerNodeId,
+      );
+    }
+  }
+  return buildMeshTargetKey(input.workerNodeId);
 }
 
 export async function saveWorkerRegistration(
@@ -56,9 +115,10 @@ export async function saveWorkerRegistration(
       worker_endpoint, worker_transport,
       worker_public_key, worker_fingerprint, worker_encryption_public_key,
       worker_directory, worker_capabilities_json,
-      worker_accept_remote_execution, worker_config_revision,
+      worker_accept_remote_execution,       worker_config_revision, registration_scope,
+      workspace_worker_enrollment_id, workspace_id,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -70,6 +130,9 @@ export async function saveWorkerRegistration(
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
       worker_config_revision = excluded.worker_config_revision,
+      registration_scope = excluded.registration_scope,
+      workspace_worker_enrollment_id = excluded.workspace_worker_enrollment_id,
+      workspace_id = excluded.workspace_id,
       grant_status = 'active',
       updated_at = excluded.updated_at`,
     [
@@ -85,16 +148,30 @@ export async function saveWorkerRegistration(
       input.workerCapabilities ? JSON.stringify(input.workerCapabilities) : null,
       input.workerAcceptRemoteExecution ? 1 : 0,
       input.workerConfigRevision,
+      input.registrationScope ?? "global",
+      input.workspaceWorkerEnrollmentId ?? null,
+      input.workspaceId ?? null,
       now,
       now,
     ],
   );
 
-  // Ensure execution host record exists for the worker
+  // Ensure the worker's canonical host exists, but keep dedicated hosts
+  // scoped to their enrollment or workspace instead of global discovery.
   ensureExecutionHost(
     input.localUserId,
-    { kind: "mesh", nodeId: input.workerNodeId },
-    buildMeshTargetKey(input.workerNodeId),
+    getWorkerRegistrationExecutionHostRef({
+      workerNodeId: input.workerNodeId,
+      registrationScope: input.registrationScope ?? "global",
+      workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId ?? null,
+      workspaceId: input.workspaceId ?? null,
+    }),
+    getWorkerRegistrationTargetKey({
+      workerNodeId: input.workerNodeId,
+      registrationScope: input.registrationScope ?? "global",
+      workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId,
+      workspaceId: input.workspaceId,
+    }),
   );
 
   const reg = await getWorkerRegistration(input.workerNodeId, input.localUserId);
@@ -110,10 +187,10 @@ export async function saveWorkerRegistration(
   return reg;
 }
 
-export async function getWorkerRegistration(
+export function getWorkerRegistration(
   workerNodeId: string,
   localUserId: string,
-): Promise<MeshWorkerRegistration | null> {
+): MeshWorkerRegistration | null {
   const db = getDatabase();
   const row = db
     .query("SELECT * FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ?")
@@ -139,7 +216,7 @@ export async function listActiveWorkerRegistrations(
   const db = getDatabase();
   const rows = db
     .query(
-      "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' ORDER BY created_at ASC",
+      "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' AND registration_scope = 'global' ORDER BY created_at ASC",
     )
     .all(localUserId) as WorkerRegistrationRow[];
   return rows.map(mapWorkerRegistrationRow);
@@ -162,10 +239,12 @@ export async function revokeWorkerRegistration(
     }
 
     // Revoke the associated execution host
-    const host = getExecutionHostByRef(
-      localUserId,
-      { kind: "mesh", nodeId: workerNodeId },
-    );
+    const row = db
+      .query("SELECT * FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ?")
+      .get(workerNodeId, localUserId) as WorkerRegistrationRow | null;
+    const host = row
+      ? getExecutionHostByRef(localUserId, getWorkerRegistrationExecutionHostRef(mapWorkerRegistrationRow(row)))
+      : null;
     if (host) {
       revokeExecutionHost(localUserId, host.id);
     }
@@ -180,14 +259,105 @@ export async function deleteRevokedWorkerRegistration(
   localUserId: string,
 ): Promise<void> {
   const db = getDatabase();
+  const row = db
+    .query(
+      "SELECT * FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ? AND grant_status = 'revoked'",
+    )
+    .get(workerNodeId, localUserId) as WorkerRegistrationRow | null;
+  if (!row) {
+    throw new Error(`Revoked worker registration not found: ${workerNodeId}`);
+  }
+  const host = getExecutionHostByRef(
+    localUserId,
+    getWorkerRegistrationExecutionHostRef(mapWorkerRegistrationRow(row)),
+  );
   const result = db.run(
     "DELETE FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ? AND grant_status = 'revoked'",
     [workerNodeId, localUserId],
   );
-  if (result.changes === 0) {
-    throw new Error(`Revoked worker registration not found: ${workerNodeId}`);
+  if (result.changes > 0 && row.registration_scope === "workspace" && host) {
+    deleteExecutionHost(localUserId, host.id);
   }
   log.info("Deleted revoked worker registration", { workerNodeId });
+}
+
+export function getWorkerRegistrationByEnrollment(
+  enrollmentId: string,
+  localUserId: string,
+): MeshWorkerRegistration | null {
+  const row = getDatabase()
+    .query(
+      "SELECT * FROM mesh_worker_registrations WHERE workspace_worker_enrollment_id = ? AND local_user_id = ?",
+    )
+    .get(enrollmentId, localUserId) as WorkerRegistrationRow | null;
+  return row ? mapWorkerRegistrationRow(row) : null;
+}
+
+export function getWorkerRegistrationByWorkspace(
+  workspaceId: string,
+  localUserId: string,
+): MeshWorkerRegistration | null {
+  const row = getDatabase()
+    .query(
+      "SELECT * FROM mesh_worker_registrations WHERE workspace_id = ? AND local_user_id = ?",
+    )
+    .get(workspaceId, localUserId) as WorkerRegistrationRow | null;
+  return row ? mapWorkerRegistrationRow(row) : null;
+}
+
+export function moveDedicatedWorkerToWorkspace(input: {
+  workerNodeId: string;
+  localUserId: string;
+  enrollmentId: string;
+  workspaceId: string;
+}): ExecutionHostBinding {
+  const db = getDatabase();
+  const registration = getWorkerRegistration(
+    input.workerNodeId,
+    input.localUserId,
+  );
+  if (!registration
+    || registration.registrationScope !== "workspace"
+    || registration.workspaceWorkerEnrollmentId !== input.enrollmentId
+    || registration.grantStatus !== "active") {
+    throw new Error(`Dedicated worker registration not found: ${input.workerNodeId}`);
+  }
+
+  const enrollmentRef = getWorkerRegistrationExecutionHostRef(registration);
+  const workspaceRef: ExecutionHostRef = {
+    kind: "mesh",
+    scope: "workspace",
+    workspaceId: input.workspaceId,
+    nodeId: input.workerNodeId,
+  };
+  const workspaceHost = ensureExecutionHost(
+    input.localUserId,
+    workspaceRef,
+    buildMeshWorkspaceTargetKey(input.workspaceId, input.workerNodeId),
+  );
+  const oldHost = getExecutionHostByRef(input.localUserId, enrollmentRef);
+  const txn = db.transaction(() => {
+    db.run(
+      `UPDATE mesh_worker_registrations
+       SET workspace_id = ?, updated_at = ?
+       WHERE worker_node_id = ? AND local_user_id = ?`,
+      [
+        input.workspaceId,
+        new Date().toISOString(),
+        input.workerNodeId,
+        input.localUserId,
+      ],
+    );
+    if (oldHost && oldHost.id !== workspaceHost.id) {
+      revokeExecutionHost(input.localUserId, oldHost.id);
+    }
+  });
+  txn();
+  return {
+    host: workspaceHost.ref,
+    targetKey: workspaceHost.targetKey,
+    revision: workspaceHost.revision,
+  };
 }
 
 export async function updateWorkerHealthSnapshot(input: {
@@ -399,6 +569,9 @@ interface WorkerRegistrationRow {
   worker_capabilities_json: string | null;
   worker_accept_remote_execution: number;
   worker_config_revision: number;
+  registration_scope: string;
+  workspace_worker_enrollment_id: string | null;
+  workspace_id: string | null;
   grant_status: string;
   last_seen_at: string | null;
   created_at: string;
@@ -432,6 +605,9 @@ function mapWorkerRegistrationRow(
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,
     workerConfigRevision: row.worker_config_revision,
+    registrationScope: row.registration_scope === "workspace" ? "workspace" : "global",
+    workspaceWorkerEnrollmentId: row.workspace_worker_enrollment_id,
+    workspaceId: row.workspace_id,
     grantStatus: row.grant_status as MeshGrantStatus,
     lastSeenAt: row.last_seen_at,
     createdAt: row.created_at,

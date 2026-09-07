@@ -24,7 +24,8 @@ type ProvisioningStreamEvent = Extract<
 
 export interface StartProvisioningJobRequest {
   name: string;
-  executionHost: ExecutionHostRef;
+  executionHost?: ExecutionHostRef;
+  workspaceWorkerEnrollmentId?: string;
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
@@ -320,7 +321,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     try {
       setStarting(true);
       setError(null);
-      const serverId = getRegisteredSshServerId(request.executionHost);
+      const serverId = request.executionHost
+        ? getRegisteredSshServerId(request.executionHost)
+        : null;
       const credentialToken = serverId
         ? await resolveProvisioningCredentialToken(serverId, request.password)
         : undefined;
@@ -330,7 +333,10 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: request.name.trim(),
-          executionHost: request.executionHost,
+          ...(request.executionHost ? { executionHost: request.executionHost } : {}),
+          ...(request.workspaceWorkerEnrollmentId
+            ? { workspaceWorkerEnrollmentId: request.workspaceWorkerEnrollmentId }
+            : {}),
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
           devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,

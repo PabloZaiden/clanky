@@ -182,6 +182,13 @@ export function revokeExecutionHost(userId: string, hostId: string): boolean {
   return result.changes > 0;
 }
 
+export function deleteExecutionHost(userId: string, hostId: string): boolean {
+  const result = getDatabase().query(
+    "DELETE FROM execution_hosts WHERE id = ? AND user_id = ?",
+  ).run(hostId, userId);
+  return result.changes > 0;
+}
+
 export function executionHostBindingFromRow(
   row: Record<string, unknown>,
   prefix = "execution_host",

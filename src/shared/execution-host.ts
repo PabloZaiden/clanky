@@ -17,10 +17,23 @@ export const EXECUTION_HOST_KINDS = ["local", "mesh", "ssh"] as const;
 export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 
 export const WORKSPACE_SSH_TARGET_SOURCE_PREFIX = "workspace-target:";
+const SCOPED_MESH_SOURCE_PREFIX = "mesh-scoped:";
 
 export type ExecutionHostRef =
   | { kind: "local"; nodeId: string }
   | { kind: "mesh"; nodeId: string }
+  | {
+      kind: "mesh";
+      scope: "enrollment";
+      enrollmentId: string;
+      nodeId: string;
+    }
+  | {
+      kind: "mesh";
+      scope: "workspace";
+      workspaceId: string;
+      nodeId: string;
+    }
   | { kind: "ssh"; serverId: string; scope?: "server" }
   | { kind: "ssh"; scope: "workspace"; workspaceId: string };
 
@@ -100,6 +113,28 @@ export function isWorkspaceSshExecutionHostRef(
   return ref.kind === "ssh" && ref.scope === "workspace";
 }
 
+export function isEnrollmentMeshExecutionHostRef(
+  ref: ExecutionHostRef,
+): ref is Extract<ExecutionHostRef, { kind: "mesh"; scope: "enrollment" }> {
+  return ref.kind === "mesh"
+    && "scope" in ref
+    && ref.scope === "enrollment";
+}
+
+export function isWorkspaceMeshExecutionHostRef(
+  ref: ExecutionHostRef,
+): ref is Extract<ExecutionHostRef, { kind: "mesh"; scope: "workspace" }> {
+  return ref.kind === "mesh"
+    && "scope" in ref
+    && ref.scope === "workspace";
+}
+
+export function isPrivateMeshExecutionHostRef(
+  ref: ExecutionHostRef,
+): ref is Extract<ExecutionHostRef, { kind: "mesh"; scope: "enrollment" | "workspace" }> {
+  return isEnrollmentMeshExecutionHostRef(ref) || isWorkspaceMeshExecutionHostRef(ref);
+}
+
 export function getRegisteredSshServerId(
   ref: ExecutionHostRef,
 ): string | null {
@@ -140,6 +175,20 @@ export function getExecutionHostAgentProvider(
 }
 
 export function getExecutionHostSourceId(ref: ExecutionHostRef): string {
+  if (isEnrollmentMeshExecutionHostRef(ref)) {
+    return `${SCOPED_MESH_SOURCE_PREFIX}${encodeURIComponent(JSON.stringify({
+      scope: ref.scope,
+      enrollmentId: ref.enrollmentId,
+      nodeId: ref.nodeId,
+    }))}`;
+  }
+  if (isWorkspaceMeshExecutionHostRef(ref)) {
+    return `${SCOPED_MESH_SOURCE_PREFIX}${encodeURIComponent(JSON.stringify({
+      scope: ref.scope,
+      workspaceId: ref.workspaceId,
+      nodeId: ref.nodeId,
+    }))}`;
+  }
   if (ref.kind === "ssh") {
     return isWorkspaceSshExecutionHostRef(ref)
       ? `${WORKSPACE_SSH_TARGET_SOURCE_PREFIX}${ref.workspaceId}`
@@ -152,8 +201,45 @@ export function executionHostRefFromParts(
   kind: string,
   sourceId: string,
 ): ExecutionHostRef | null {
-  if (kind === "local" || kind === "mesh") {
+  if (kind === "local") {
     return { kind, nodeId: sourceId };
+  }
+  if (kind === "mesh") {
+    if (!sourceId.startsWith(SCOPED_MESH_SOURCE_PREFIX)) {
+      return { kind, nodeId: sourceId };
+    }
+    try {
+      const value = JSON.parse(
+        decodeURIComponent(sourceId.slice(SCOPED_MESH_SOURCE_PREFIX.length)),
+      ) as Record<string, unknown>;
+      if (value["scope"] === "enrollment"
+        && typeof value["enrollmentId"] === "string"
+        && typeof value["nodeId"] === "string"
+        && value["enrollmentId"].trim()
+        && value["nodeId"].trim()) {
+        return {
+          kind,
+          scope: "enrollment",
+          enrollmentId: value["enrollmentId"],
+          nodeId: value["nodeId"],
+        };
+      }
+      if (value["scope"] === "workspace"
+        && typeof value["workspaceId"] === "string"
+        && typeof value["nodeId"] === "string"
+        && value["workspaceId"].trim()
+        && value["nodeId"].trim()) {
+        return {
+          kind,
+          scope: "workspace",
+          workspaceId: value["workspaceId"],
+          nodeId: value["nodeId"],
+        };
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
   if (kind === "ssh") {
     if (sourceId.startsWith(WORKSPACE_SSH_TARGET_SOURCE_PREFIX)) {

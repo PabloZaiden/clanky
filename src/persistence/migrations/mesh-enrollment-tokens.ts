@@ -10,6 +10,8 @@ export function migrateMeshEnrollmentTokens(db: Database): void {
       link_id TEXT,
       controller_node_id TEXT NOT NULL,
       controller_fingerprint TEXT NOT NULL,
+      purpose TEXT NOT NULL DEFAULT 'global',
+      workspace_worker_enrollment_id TEXT,
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       consumed_at TEXT

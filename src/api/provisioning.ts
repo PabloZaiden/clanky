@@ -71,8 +71,13 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const sshServerId = getRegisteredSshServerId(validation.data.executionHost);
-        if (validation.data.executionHost.kind === "ssh" && !sshServerId) {
+        const sshServerId = validation.data.executionHost
+          ? getRegisteredSshServerId(validation.data.executionHost)
+          : null;
+        if (
+          validation.data.executionHost?.kind === "ssh"
+          && !sshServerId
+        ) {
           return errorResponse(
             "invalid_execution_host",
             "Provisioning requires a registered SSH server.",
@@ -93,7 +98,12 @@ export const provisioningRoutes = defineRoutes({
 
         const snapshot = await provisioningManager.startJob({
           name: validation.data.name,
-          executionHost: validation.data.executionHost,
+          ...(validation.data.executionHost
+            ? { executionHost: validation.data.executionHost }
+            : {}),
+          ...(validation.data.workspaceWorkerEnrollmentId
+            ? { workspaceWorkerEnrollmentId: validation.data.workspaceWorkerEnrollmentId }
+            : {}),
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,
