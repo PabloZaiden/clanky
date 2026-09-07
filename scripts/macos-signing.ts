@@ -11,9 +11,6 @@ const PASSWORD_FILENAME = "macos-signing-password";
 const CERTIFICATE_VALIDITY_DAYS = 7305;
 const CERTIFICATE_SUBJECT = "/CN=Clanky macOS Signing/O=Clanky";
 const KEYCHAIN_TIMEOUT_SECONDS = "21600";
-const PKCS12_KEY_ENCRYPTION = "AES-256-CBC";
-const PKCS12_CERTIFICATE_ENCRYPTION = "AES-256-CBC";
-const PKCS12_MAC_ALGORITHM = "SHA256";
 
 export const MACOS_SIGNING_IDENTITY = "Clanky macOS Signing";
 
@@ -62,17 +59,6 @@ async function runCommand(
   return stdout.trim();
 }
 
-async function commandSucceeded(
-  command: string,
-  args: readonly string[],
-): Promise<boolean> {
-  const process = Bun.spawn([command, ...args], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  return (await process.exited) === 0;
-}
-
 async function readUserKeychains(): Promise<string[]> {
   const output = await runCommand(
     SECURITY_COMMAND,
@@ -92,6 +78,22 @@ async function readPassword(passwordPath: string): Promise<string> {
     throw new Error(`The macOS signing password file is empty: ${passwordPath}`);
   }
   return password;
+}
+
+async function readSigningCertificateHash(keychainPath: string): Promise<string> {
+  const output = await runCommand(
+    SECURITY_COMMAND,
+    ["find-certificate", "-a", "-Z", keychainPath],
+    "Finding the imported macOS signing certificate",
+  );
+  const match = output.match(/^SHA-1 hash: ([0-9A-Fa-f]{40})$/m);
+  const fingerprint = match?.[1];
+  if (!fingerprint) {
+    throw new Error(
+      "The imported macOS signing certificate does not have a usable fingerprint.",
+    );
+  }
+  return fingerprint;
 }
 
 async function createCertificate(
@@ -145,11 +147,11 @@ async function createCertificate(
         "-name",
         MACOS_SIGNING_IDENTITY,
         "-keypbe",
-        PKCS12_KEY_ENCRYPTION,
+        "PBE-SHA1-3DES",
         "-certpbe",
-        PKCS12_CERTIFICATE_ENCRYPTION,
+        "PBE-SHA1-3DES",
         "-macalg",
-        PKCS12_MAC_ALGORITHM,
+        "sha1",
         "-passout",
         `file:${passwordPath}`,
       ],
@@ -205,20 +207,12 @@ export async function signMacOSBinary(
   options: MacOSSigningOptions = {},
 ): Promise<void> {
   const files = await ensureMacOSSigningCertificate(options);
-  await readPassword(files.passwordPath);
+  const certificatePassword = await readPassword(files.passwordPath);
   const keychainPath = join(
     tmpdir(),
     `clanky-signing-${crypto.randomUUID()}.keychain-db`,
   );
   const keychainPassword = generateKeychainPassword();
-  const certificatePemPath = join(
-    tmpdir(),
-    `clanky-signing-${crypto.randomUUID()}.pem`,
-  );
-  const privateKeyPemPath = join(
-    tmpdir(),
-    `clanky-signing-${crypto.randomUUID()}.key.pem`,
-  );
   let keychainCreated = false;
   let keychainListChanged = false;
   const originalKeychains = await readUserKeychains();
@@ -241,66 +235,19 @@ export async function signMacOSBinary(
       "Unlocking the temporary macOS signing keychain",
     );
     await runCommand(
-      OPENSSL_COMMAND,
-      [
-        "pkcs12",
-        "-in",
-        files.certificatePath,
-        "-clcerts",
-        "-nokeys",
-        "-passin",
-        `file:${files.passwordPath}`,
-        "-out",
-        certificatePemPath,
-      ],
-      "Extracting the macOS signing certificate",
-    );
-    await chmod(certificatePemPath, 0o600);
-    await runCommand(
-      OPENSSL_COMMAND,
-      [
-        "pkcs12",
-        "-in",
-        files.certificatePath,
-        "-nocerts",
-        "-nodes",
-        "-passin",
-        `file:${files.passwordPath}`,
-        "-out",
-        privateKeyPemPath,
-      ],
-      "Extracting the macOS signing private key",
-    );
-    await chmod(privateKeyPemPath, 0o600);
-    // Import the PEM pair separately because macOS Security may reject the
-    // modern AES-encrypted PKCS#12 container even though OpenSSL can read it.
-    await runCommand(
       SECURITY_COMMAND,
       [
         "import",
-        privateKeyPemPath,
+        files.certificatePath,
         "-k",
         keychainPath,
+        "-P",
+        certificatePassword,
         "-T",
         CODESIGN_COMMAND,
       ],
-      "Importing the macOS signing private key",
-    );
-    await runCommand(
-      SECURITY_COMMAND,
-      ["import", certificatePemPath, "-k", keychainPath],
       "Importing the macOS signing certificate",
     );
-    if (!(await commandSucceeded(
-      SECURITY_COMMAND,
-      ["verify-cert", "-c", certificatePemPath, "-p", "codeSign"],
-    ))) {
-      await runCommand(
-        SECURITY_COMMAND,
-        ["add-trusted-cert", "-r", "trustRoot", "-p", "codeSign", certificatePemPath],
-        "Trusting the self-signed macOS signing certificate",
-      );
-    }
     await runCommand(
       SECURITY_COMMAND,
       [
@@ -314,6 +261,7 @@ export async function signMacOSBinary(
       ],
       "Allowing codesign to use the macOS signing key",
     );
+    const signingCertificateHash = await readSigningCertificateHash(keychainPath);
     await runCommand(
       SECURITY_COMMAND,
       [
@@ -332,7 +280,7 @@ export async function signMacOSBinary(
       [
         "--force",
         "--sign",
-        MACOS_SIGNING_IDENTITY,
+        signingCertificateHash,
         "--keychain",
         keychainPath,
         "--timestamp=none",
@@ -363,16 +311,6 @@ export async function signMacOSBinary(
       } catch (error) {
         cleanupErrors.push(error);
       }
-    }
-    try {
-      await rm(certificatePemPath, { force: true });
-    } catch (error) {
-      cleanupErrors.push(error);
-    }
-    try {
-      await rm(privateKeyPemPath, { force: true });
-    } catch (error) {
-      cleanupErrors.push(error);
     }
     if (cleanupErrors.length > 0) {
       throw new Error("Cleaning up the macOS signing resources failed.", {
