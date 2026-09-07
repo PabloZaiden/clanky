@@ -528,6 +528,7 @@ export const chatsRoutes = defineRoutes({
         const updated = await chatManager.sendMessage(ctx.params["id"]!, {
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
+          credentialToken: validation.data.credentialToken,
         });
         return successResponse({
           chatId: ctx.params["id"]!,

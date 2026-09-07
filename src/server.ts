@@ -256,6 +256,8 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
               terminalSessionId,
               terminalTransport: resolved.executionHostBinding.host.kind,
               terminalMode: true,
+              terminalCredentialRequired: resolved.executionHostBinding.host.kind === "ssh"
+                && !resolved.workspace,
               user,
             },
           });

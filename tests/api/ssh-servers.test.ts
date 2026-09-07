@@ -5,10 +5,12 @@ import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { testOwnerUser } from "../setup";
 
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
+import { startTerminalBridge } from "../../src/api/websocket/terminal";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend } from "../mocks/mock-backend";
 
@@ -328,6 +330,58 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.useTmux).toBe(false);
   });
 
+  test("reports missing credentials instead of leaving a direct SSH terminal silent", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Silent terminal host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: null,
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
+        name: "Direct shell",
+        directory: "/",
+        connectionMode: "direct",
+      }),
+    });
+    const session = await createSessionResponse.json() as { config: { id: string } };
+    const messages: string[] = [];
+    let closeReason: string | undefined;
+    const ws = {
+      data: {
+        terminalMode: true,
+        terminalSessionId: session.config.id,
+        user: testOwnerUser,
+      },
+      send(message: string) {
+        messages.push(message);
+      },
+      close(_code?: number, reason?: string) {
+        closeReason = reason;
+      },
+    } as unknown as Parameters<typeof startTerminalBridge>[0];
+
+    await startTerminalBridge(ws);
+
+    expect(messages.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "terminal.error",
+        code: "ssh_credentials_required",
+        message: "SSH credentials are required for direct SSH terminals",
+      },
+    ]);
+    expect(closeReason).toBe("SSH credentials are required for direct SSH terminals");
+  });
+
   test("deletes a persistent SSH terminal without requiring credentials", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
@@ -467,6 +521,60 @@ describe("Standalone SSH servers API integration", () => {
     };
     expect(reconnectFailedChat.state.connectionStatus).toBe("needs_credentials");
     expect(reconnectFailedChat.state.error?.code).toBe("ssh_credentials_required");
+  });
+
+  test("uses the browser SSH credential when sending the first direct chat message", async () => {
+    const mockBackend = new MockAcpBackend();
+    backendManager.setBackendForTesting(mockBackend);
+
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Message host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id, "remote-secret")),
+    });
+    const exchange = await credentialResponse.json() as { credentialToken: string };
+
+    const createChatResponse = await fetch(`${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Remote message",
+        directory: "/workspaces/project",
+        model: { providerID: "copilot", modelID: "gpt-5.5", variant: "" },
+        autoApprovePermissions: true,
+        credentialToken: exchange.credentialToken,
+      }),
+    });
+    expect(createChatResponse.status).toBe(201);
+    const chat = await createChatResponse.json() as { config: { id: string } };
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chat.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Start the remote chat",
+        credentialToken: exchange.credentialToken,
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    expect(mockBackend.getConnectionConfigs().at(-1)).toMatchObject({
+      transport: "ssh",
+      hostname: "ssh.example.com",
+      username: "deploy",
+      password: "remote-secret",
+    });
   });
 
   test("discovers SSH-server chat models through shared ACP settings for the selected provider", async () => {

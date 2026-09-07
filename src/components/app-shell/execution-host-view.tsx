@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CodeValue,
   ErrorState,
@@ -22,6 +22,7 @@ import {
   getExecutionHostAgentProvider,
   getExecutionHostDefaultDirectory,
   getExecutionHostSourceId,
+  getRegisteredSshServerId,
 } from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
@@ -40,6 +41,12 @@ import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { useShellHeaderActions } from "./shell-header-actions";
 import { ClankyListRow } from "./clanky-list-row";
+import {
+  getStoredSshCredentialToken,
+  invalidateStoredSshCredentialToken,
+  storeSshServerPassword,
+} from "../../lib/ssh-browser-credentials";
+import { ServerPasswordModal } from "./server-password-modal";
 import {
   formatStatusLabel,
   getChatStatusBadgeVariant,
@@ -108,10 +115,35 @@ export function ExecutionHostView({
   const [vncSession, setVncSession] = useState<VncSession | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sshServerId = getRegisteredSshServerId(host.ref);
+  const [sshCredential, setSshCredential] = useState<{
+    serverId: string;
+    token: string | null;
+  } | null>(null);
+  const credentialToken = sshServerId && sshCredential?.serverId === sshServerId
+    ? sshCredential.token
+    : null;
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [sshFormValid, setSshFormValid] = useState(false);
   const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
   const hostUsable = host.acceptRemoteExecution;
-  const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory);
+  const requestSshCredentials = useCallback(() => {
+    if (!sshServerId) {
+      return;
+    }
+    invalidateStoredSshCredentialToken(sshServerId);
+    setSshCredential({ serverId: sshServerId, token: null });
+    setPasswordModalOpen(true);
+  }, [sshServerId]);
+  const discovery = useExecutionHostModelDiscovery(
+    host,
+    discoveryDirectory,
+    undefined,
+    credentialToken,
+    requestSshCredentials,
+  );
   const prerequisites = useExecutionHostPrerequisites({
     executionHost: host.ref,
   });
@@ -129,17 +161,55 @@ export function ExecutionHostView({
   ) : null);
 
   useEffect(() => {
+    let cancelled = false;
+    setSshCredential(null);
+    setPassword("");
+    setPasswordModalOpen(false);
+    if (!sshServerId) {
+      return;
+    }
+    void (async () => {
+      try {
+        const token = await getStoredSshCredentialToken(sshServerId);
+        if (cancelled) {
+          return;
+        }
+        setSshCredential({ serverId: sshServerId, token });
+        if (!token) {
+          setPasswordModalOpen(true);
+        }
+      } catch (credentialError) {
+        if (!cancelled) {
+          setError(String(credentialError));
+          setSshCredential({ serverId: sshServerId, token: null });
+          setPasswordModalOpen(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sshServerId]);
+
+  useEffect(() => {
     const controller = new AbortController();
     setDirectory(host.repositoriesBasePath ?? "");
     setDiscoveryDirectory(host.repositoriesBasePath ?? "");
     setDirectoryConfigured(host.repositoriesBasePath !== null);
     setDirectoryLoading(host.repositoriesBasePath === null);
     setError(null);
+    if (sshServerId && !credentialToken) {
+      setDirectoryLoading(false);
+      return () => controller.abort();
+    }
     void (async () => {
       try {
         const resolved = await apiRequest<ExecutionHostWorkingDirectory>(
           `${apiPath}/working-directory`,
           {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credentialToken }),
             signal: controller.signal,
             action: "Resolve execution-host working directory",
             fallbackMessage: "Failed to resolve the server working directory",
@@ -162,7 +232,13 @@ export function ExecutionHostView({
       }
     })();
     return () => controller.abort();
-  }, [apiPath, host.configurationRevision, host.repositoriesBasePath]);
+  }, [
+    apiPath,
+    credentialToken,
+    host.configurationRevision,
+    host.repositoriesBasePath,
+    sshServerId,
+  ]);
 
   useEffect(() => {
     const preferred = host.preferredModel;
@@ -193,6 +269,37 @@ export function ExecutionHostView({
       setPendingAction(null);
     }
   }
+
+  const handlePasswordSubmit = useCallback(async () => {
+    if (!sshServerId) {
+      return;
+    }
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) {
+      setError("Enter the SSH password for this server.");
+      return;
+    }
+    setPasswordSaving(true);
+    setError(null);
+    try {
+      await storeSshServerPassword(sshServerId, trimmedPassword);
+      const token = await getStoredSshCredentialToken(sshServerId);
+      if (!token) {
+        throw new Error("Failed to exchange SSH credential.");
+      }
+      setSshCredential({ serverId: sshServerId, token });
+      setPassword("");
+      setPasswordModalOpen(false);
+    } catch (passwordError) {
+      setError(String(passwordError));
+    } finally {
+      setPasswordSaving(false);
+    }
+  }, [password, sshServerId]);
+
+  const handlePasswordModalClose = useCallback(() => {
+    setPasswordModalOpen(false);
+  }, []);
 
   async function createVncSession() {
     const remotePort = Number.parseInt(vncPort, 10);
@@ -514,6 +621,18 @@ export function ExecutionHostView({
       >
         Run Arise
       </Button>
+      {sshServerId && (
+        <ServerPasswordModal
+          isOpen={passwordModalOpen}
+          serverName={sshServer?.config.name ?? `SSH server ${sshServerId}`}
+          password={password}
+          error={error}
+          submitting={passwordSaving}
+          onPasswordChange={setPassword}
+          onClose={handlePasswordModalClose}
+          onSubmit={handlePasswordSubmit}
+        />
+      )}
     </div>
   );
 }

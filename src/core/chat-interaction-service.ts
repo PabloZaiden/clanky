@@ -56,7 +56,9 @@ export class ChatInteractionService implements ChatInteractionPort {
     }
 
     try {
-      return await this.conversation.dispatchMessage(activeChat, input);
+      return await this.conversation.dispatchMessage(activeChat, input, {
+        credentialToken: options.credentialToken,
+      });
     } catch (error) {
       if (!(error instanceof ChatBusyError)) {
         throw error;
