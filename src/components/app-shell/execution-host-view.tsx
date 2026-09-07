@@ -115,6 +115,7 @@ export function ExecutionHostView({
   const [vncSession, setVncSession] = useState<VncSession | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const sshServerId = getRegisteredSshServerId(host.ref);
   const [sshCredential, setSshCredential] = useState<{
     serverId: string;
@@ -135,6 +136,7 @@ export function ExecutionHostView({
     }
     invalidateStoredSshCredentialToken(sshServerId);
     setSshCredential({ serverId: sshServerId, token: null });
+    setPasswordError(null);
     setPasswordModalOpen(true);
   }, [sshServerId]);
   const discovery = useExecutionHostModelDiscovery(
@@ -164,6 +166,7 @@ export function ExecutionHostView({
     let cancelled = false;
     setSshCredential(null);
     setPassword("");
+    setPasswordError(null);
     setPasswordModalOpen(false);
     if (!sshServerId) {
       return;
@@ -180,7 +183,7 @@ export function ExecutionHostView({
         }
       } catch (credentialError) {
         if (!cancelled) {
-          setError(String(credentialError));
+          setPasswordError(String(credentialError));
           setSshCredential({ serverId: sshServerId, token: null });
           setPasswordModalOpen(true);
         }
@@ -275,11 +278,11 @@ export function ExecutionHostView({
       return;
     }
     if (!password.trim()) {
-      setError("Enter the SSH password for this server.");
+      setPasswordError("Enter the SSH password for this server.");
       return;
     }
     setPasswordSaving(true);
-    setError(null);
+    setPasswordError(null);
     try {
       await storeSshServerPassword(sshServerId, password);
       const token = await getStoredSshCredentialToken(sshServerId);
@@ -288,9 +291,10 @@ export function ExecutionHostView({
       }
       setSshCredential({ serverId: sshServerId, token });
       setPassword("");
+      setPasswordError(null);
       setPasswordModalOpen(false);
     } catch (passwordError) {
-      setError(String(passwordError));
+      setPasswordError(String(passwordError));
     } finally {
       setPasswordSaving(false);
     }
@@ -625,7 +629,7 @@ export function ExecutionHostView({
           isOpen={passwordModalOpen}
           serverName={sshServer?.config.name ?? `SSH server ${sshServerId}`}
           password={password}
-          error={error}
+          error={passwordError}
           submitting={passwordSaving}
           onPasswordChange={setPassword}
           onClose={handlePasswordModalClose}

@@ -11,6 +11,7 @@ import {
 const log = createLogger("api:websocket");
 const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
 const SAFE_TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed";
+export const SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE = "SSH credentials are required for this terminal";
 const KNOWN_TERMINAL_DOMAIN_ERROR_CODES = new Set([
   "invalid_credential_token",
   "ssh_server_not_found",
@@ -96,7 +97,7 @@ export async function startTerminalBridge(
       if (resolved.executionHostBinding.host.kind === "ssh" && !resolved.workspace) {
         sendTerminalAuthError(
           ws,
-          "SSH credentials are required for direct SSH terminals",
+          SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
           "ssh_credentials_required",
         );
         return;

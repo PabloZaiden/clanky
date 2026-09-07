@@ -5,6 +5,7 @@ import {
   WebAppRoot,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
+import { getExecutionHostDefaultDirectory, type ExecutionHostDescriptor } from "@/shared";
 import {
   buildShellRoutes,
   type ShellRouteCompositionContext,
@@ -23,6 +24,7 @@ import {
   type RegisteredHeaderActions,
 } from "./use-shell-header";
 import { useShellResources } from "./use-shell-resources";
+import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
 
 export function AppShell() {
   const toast = useToast();
@@ -111,6 +113,40 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
+  const [terminalModePromptHost, setTerminalModePromptHost] = useState<ExecutionHostDescriptor | null>(null);
+  const [terminalModePromptSubmitting, setTerminalModePromptSubmitting] = useState(false);
+  const openExecutionHostTerminalPrompt = useCallback((host: ExecutionHostDescriptor) => {
+    setTerminalModePromptHost(host);
+  }, []);
+  const handleTerminalModeSelection = useCallback(async (useTmux: boolean): Promise<void> => {
+    const host = terminalModePromptHost;
+    if (!host || terminalModePromptSubmitting) {
+      return;
+    }
+
+    setTerminalModePromptSubmitting(true);
+    try {
+      const session = await createTerminalSession({
+        executionHost: host.ref,
+        name: `${host.name} terminal`,
+        directory: getExecutionHostDefaultDirectory(host),
+        connectionMode: "dtach",
+        useTmux,
+      });
+      setTerminalModePromptHost(null);
+      navigateWithinShell({ view: "terminal", terminalSessionId: session.config.id });
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setTerminalModePromptSubmitting(false);
+    }
+  }, [
+    createTerminalSession,
+    navigateWithinShell,
+    terminalModePromptHost,
+    terminalModePromptSubmitting,
+    toast,
+  ]);
 
   const {
     workspaceCreate,
@@ -297,6 +333,7 @@ export function AppShell() {
       toggleWorkspacePrivate,
       toggleTerminalSessionPrivate,
       toggleSshServerPrivate,
+      openExecutionHostTerminalPrompt,
       stopSidebarTask,
       openRenameTerminalSession: dialogs.openRenameTerminalSession,
       openDeleteTerminalSession: dialogs.openDeleteTerminalSession,
@@ -336,6 +373,7 @@ export function AppShell() {
     dialogs.setEditingAgentId,
     dialogs.setPurgeAgentTarget,
     executionHosts,
+    openExecutionHostTerminalPrompt,
     sidebarWorkspaceGroups,
     stopSidebarTask,
     toast,
@@ -391,6 +429,12 @@ export function AppShell() {
         }}
         settings={{ sections: settingsSections }}
         version={dashboardData.version ?? undefined}
+      />
+      <TerminalSessionModeModal
+        isOpen={terminalModePromptHost !== null}
+        submitting={terminalModePromptSubmitting}
+        onClose={() => setTerminalModePromptHost(null)}
+        onSelect={handleTerminalModeSelection}
       />
       {dialogs.modals}
     </ShellHeaderActionsContext.Provider>
