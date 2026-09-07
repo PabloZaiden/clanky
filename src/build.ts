@@ -1,6 +1,5 @@
 import { buildWebAppBinary, getBunCompileTargetFromArgs } from "@pablozaiden/webapp/build";
 import { buildNoVncVendor } from "../scripts/novnc-vendor";
-import { signMacOSBinary } from "../scripts/macos-signing";
 
 await buildNoVncVendor();
 
@@ -19,9 +18,3 @@ await buildWebAppBinary({
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
 });
-
-const isMacOSBuild = target?.startsWith("bun-darwin-")
-  || (target === undefined && process.platform === "darwin");
-if (isMacOSBuild && process.env["CLANKY_MACOS_SIGNING_SKIP_LOCAL"] !== "1") {
-  await signMacOSBinary(outfile);
-}

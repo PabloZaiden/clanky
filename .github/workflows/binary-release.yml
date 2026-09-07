@@ -15,13 +15,13 @@ jobs:
       macos_signing_certificate_password: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_PASSWORD }}
     with:
       install_command: bun install --frozen-lockfile
-      prebuild_command: CLANKY_MACOS_SIGNING_SKIP_LOCAL=1 bun run build
+      prebuild_command: bun run build
       binaries: |
         [
           {
             "name": "clanky",
             "asset_prefix": "clanky",
-            "build_command": "CLANKY_MACOS_SIGNING_SKIP_LOCAL=1 bun src/build.ts --target=$BUN_TARGET",
+            "build_command": "bun src/build.ts --target=$BUN_TARGET",
             "output_path": "dist/clanky-$RELEASE_TARGET"
           }
         ]
