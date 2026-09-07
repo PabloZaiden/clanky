@@ -1,20 +1,16 @@
-import {
-  Badge,
-  formatStatusLabel,
-  type SidebarNode,
-} from "@pablozaiden/webapp/web";
+import type { SidebarNode } from "@pablozaiden/webapp/web";
 import { CloudIcon, MeshIcon, ServerIcon } from "../common";
 
 export type ServerTransportKind = "local" | "mesh" | "ssh";
 
-function getTransportLabel(transport: ServerTransportKind): string {
+export function getServerTransportLabel(transport: ServerTransportKind): string {
   switch (transport) {
     case "local":
-      return "Local transport";
+      return "Local";
     case "mesh":
-      return "Mesh transport";
+      return "Mesh";
     case "ssh":
-      return "SSH transport";
+      return "SSH";
   }
 }
 
@@ -25,7 +21,7 @@ export function ServerTransportIcon({
   transport: ServerTransportKind;
   size?: string;
 }) {
-  const label = getTransportLabel(transport);
+  const label = `${getServerTransportLabel(transport)} transport`;
   const icon = transport === "local"
     ? <ServerIcon size={size} />
     : transport === "mesh"
@@ -50,28 +46,13 @@ export function ServerSidebarItem({
   node: SidebarNode;
   transport: ServerTransportKind;
 }) {
-  const badgeLabel = node.badge ? formatStatusLabel(node.badge) : "";
-
   return (
     <>
       <span>
         <strong>{node.title}</strong>
         {node.subtitle ? <small>{node.subtitle}</small> : null}
       </span>
-      <span className="flex shrink-0 items-center gap-2">
-        <ServerTransportIcon transport={transport} />
-        {node.badge ? (
-          <Badge
-            variant={node.badgeVariant}
-            appearance="pill"
-            className="wapp-sidebar-badge"
-            title={badgeLabel}
-            aria-label={badgeLabel}
-          >
-            {" "}
-          </Badge>
-        ) : null}
-      </span>
+      <ServerTransportIcon transport={transport} />
     </>
   );
 }

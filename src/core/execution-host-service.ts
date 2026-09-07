@@ -111,7 +111,6 @@ export class ExecutionHostService {
         repositoriesBasePath: identity.execution?.repositoriesBasePath ?? null,
         preferredModel: identity.execution?.preferredModel ?? null,
         configurationRevision: identity.execution?.revision ?? 1,
-        availability: "local",
         accessRequirement: { kind: "none" },
         acceptRemoteExecution: true,
         capabilities: identity.execution?.capabilities ?? DIRECT_HOST_CAPABILITIES,
@@ -136,7 +135,6 @@ export class ExecutionHostService {
           repositoriesBasePath: worker.workerDirectory,
           preferredModel: null,
           configurationRevision: worker.workerConfigRevision,
-          availability: "available",
           accessRequirement: { kind: "none" },
           acceptRemoteExecution: true,
           capabilities: worker.workerCapabilities ?? DEFAULT_EXECUTION_HOST_CAPABILITIES,
@@ -158,7 +156,6 @@ export class ExecutionHostService {
         repositoriesBasePath: server.repositoriesBasePath,
         preferredModel: null,
         configurationRevision: host.revision,
-        availability: host.revokedAt ? "revoked" : "unavailable",
         accessRequirement: {
           kind: "sshCredentials",
           serverId: server.id,

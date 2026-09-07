@@ -28,7 +28,7 @@ function transportLabel(ref: ExecutionHostRef): string {
   if (ref.kind === "mesh") {
     return "Mesh";
   }
-  return "local";
+  return "Local";
 }
 
 export class ExecutionHostDiscoveryService {

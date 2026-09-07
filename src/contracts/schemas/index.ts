@@ -19,7 +19,6 @@ export {
   ExecutionHostCapabilityIdSchema,
   ExecutionHostCapabilitiesSchema,
   ExecutionNodeConfigurationSchema,
-  ExecutionHostAvailabilitySchema,
   ExecutionHostAccessRequirementSchema,
   ExecutionHostBindingSchema,
   ExecutionHostDescriptorSchema,

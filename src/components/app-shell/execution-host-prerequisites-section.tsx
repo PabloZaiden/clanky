@@ -3,7 +3,7 @@ import { Button, StatusBadge } from "../common";
 import type { SshServerPrerequisiteReport } from "@/shared";
 import { ErrorState, Panel } from "@pablozaiden/webapp/web";
 
-interface SshServerPrerequisitesSectionProps {
+interface ExecutionHostPrerequisitesSectionProps {
   checking: boolean;
   error: string | null;
   report: SshServerPrerequisiteReport | null;
@@ -59,12 +59,12 @@ function getCheckLabel(status: SshServerPrerequisiteReport["checks"][number]["st
   }
 }
 
-export function SshServerPrerequisitesSection({
+export function ExecutionHostPrerequisitesSection({
   checking,
   error,
   report,
   onCheck,
-}: SshServerPrerequisitesSectionProps) {
+}: ExecutionHostPrerequisitesSectionProps) {
   return (
     <Panel
       title="Server prerequisites"
