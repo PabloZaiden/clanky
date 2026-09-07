@@ -4,6 +4,7 @@ import type { WebSocketData } from "./types";
 import {
   releaseTerminalSocket,
   sendTerminalAuthError,
+  SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
   startTerminalBridge,
 } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
@@ -150,7 +151,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         if (!ws.data.terminalBridge) {
           sendTerminalAuthError(
             ws,
-            "SSH credentials are required for direct SSH terminals",
+            SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
             "ssh_credentials_required",
           );
         }

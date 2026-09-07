@@ -29,6 +29,7 @@ const log = createLogger("chat-interaction-service");
 
 export class ChatInteractionService implements ChatInteractionPort {
   private readonly queuedMessageDrains = new Set<string>();
+  private readonly queuedCredentialTokens = new Map<string, string>();
   private readonly state: ChatStatePort;
   private readonly conversation: ChatConversationPort;
   private readonly session: ChatSessionPort;
@@ -52,7 +53,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     const input = this.normalizeMessageInput(options);
     const activeChat = await this.reactivateDoneChat(chat);
     if (this.shouldQueueMessage(activeChat)) {
-      return this.enqueueMessage(activeChat, input);
+      return this.enqueueMessage(activeChat, input, options.credentialToken);
     }
 
     try {
@@ -66,7 +67,7 @@ export class ChatInteractionService implements ChatInteractionPort {
 
       const latest = await this.state.getChat(chatId);
       if (latest && this.shouldQueueMessage(latest)) {
-        return this.enqueueMessage(latest, input);
+        return this.enqueueMessage(latest, input, options.credentialToken);
       }
       throw error;
     }
@@ -82,6 +83,9 @@ export class ChatInteractionService implements ChatInteractionPort {
     const nextQueuedMessages = queuedMessages.filter((queuedMessage) => queuedMessage.id !== queuedMessageId);
     if (nextQueuedMessages.length === queuedMessages.length) {
       return chat;
+    }
+    if (nextQueuedMessages.length === 0) {
+      this.queuedCredentialTokens.delete(chatId);
     }
 
     const updated = await this.state.updateState(chat, {
@@ -231,7 +235,11 @@ export class ChatInteractionService implements ChatInteractionPort {
     });
   }
 
-  private async enqueueMessage(chat: Chat, input: NormalizedChatMessageInput): Promise<Chat> {
+  private async enqueueMessage(
+    chat: Chat,
+    input: NormalizedChatMessageInput,
+    credentialToken?: string | null,
+  ): Promise<Chat> {
     const now = createTimestamp();
     const queuedMessage = {
       id: `chat-queued-${crypto.randomUUID()}`,
@@ -244,6 +252,10 @@ export class ChatInteractionService implements ChatInteractionPort {
       queuedMessages: [...(chat.state.queuedMessages ?? []), queuedMessage],
       lastActivityAt: now,
     });
+    const normalizedCredentialToken = credentialToken?.trim();
+    if (normalizedCredentialToken) {
+      this.queuedCredentialTokens.set(chat.config.id, normalizedCredentialToken);
+    }
     this.state.emitChatUpdated(updated);
     return updated;
   }
@@ -269,6 +281,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       .join("\n");
     const attachments = queuedMessages.flatMap((queuedMessage) => queuedMessage.attachments ?? []);
     if (!message && attachments.length === 0) {
+      this.queuedCredentialTokens.delete(chatId);
       const updated = await this.state.updateState(chat, {
         ...chat.state,
         queuedMessages: [],
@@ -278,8 +291,13 @@ export class ChatInteractionService implements ChatInteractionPort {
       return;
     }
 
+    const credentialToken = this.queuedCredentialTokens.get(chatId);
     try {
-      await this.conversation.dispatchMessage(chat, { message, attachments }, { clearQueuedMessages: true });
+      await this.conversation.dispatchMessage(
+        chat,
+        { message, attachments },
+        { clearQueuedMessages: true, credentialToken },
+      );
     } catch (error) {
       const latestChat = await this.state.getChat(chatId);
       if (latestChat) {
@@ -287,6 +305,8 @@ export class ChatInteractionService implements ChatInteractionPort {
         log.error(message, { chatId });
         await this.state.markChatError(latestChat, message);
       }
+    } finally {
+      this.queuedCredentialTokens.delete(chatId);
     }
   }
 

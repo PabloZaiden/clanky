@@ -211,7 +211,7 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         if (!credentialToken) {
           helpers.sendTerminalAuthError(
             ws,
-            "credentialToken is required for direct SSH terminals",
+            "credentialToken is required for SSH terminal authentication",
           );
           return;
         }

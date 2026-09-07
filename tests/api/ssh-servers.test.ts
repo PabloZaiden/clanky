@@ -360,7 +360,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.useTmux).toBe(false);
   });
 
-  test("reports missing credentials instead of leaving a direct SSH terminal silent", async () => {
+  test("reports missing credentials instead of leaving an SSH terminal silent", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -380,7 +380,6 @@ describe("Standalone SSH servers API integration", () => {
         executionHost: { kind: "ssh", serverId: createdServer.config.id },
         name: "Direct shell",
         directory: "/",
-        connectionMode: "direct",
       }),
     });
     const session = await createSessionResponse.json() as { config: { id: string } };
@@ -406,10 +405,10 @@ describe("Standalone SSH servers API integration", () => {
       {
         type: "terminal.error",
         code: "ssh_credentials_required",
-        message: "SSH credentials are required for direct SSH terminals",
+        message: "SSH credentials are required for this terminal",
       },
     ]);
-    expect(closeReason).toBe("SSH credentials are required for direct SSH terminals");
+    expect(closeReason).toBe("SSH credentials are required for this terminal");
   });
 
   test("deletes a persistent SSH terminal without requiring credentials", async () => {
