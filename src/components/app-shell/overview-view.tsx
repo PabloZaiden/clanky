@@ -279,16 +279,7 @@ export function OverviewView({
                     title={host.name}
                     description={host.endpoint ?? "Endpoint unavailable"}
                     meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
-                    badge={(
-                      <span className="flex items-center gap-2">
-                        <ServerTransportIcon transport={host.ref.kind} />
-                        <StatusBadge
-                          variant={host.availability === "online" || host.availability === "available" ? "success" : "disabled"}
-                        >
-                          {host.availability}
-                        </StatusBadge>
-                      </span>
-                    )}
+                    badge={<ServerTransportIcon transport={host.ref.kind} />}
                     onClick={!privateHidden ? () => onNavigate(getExecutionHostRoute(host)) : undefined}
                     privateHidden={privateHidden}
                   />

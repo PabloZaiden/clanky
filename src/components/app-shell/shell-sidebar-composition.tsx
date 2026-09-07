@@ -48,6 +48,7 @@ import {
 } from "./active-work-sidebar-item";
 import {
   ServerSidebarItem,
+  getServerTransportLabel,
   type ServerTransportKind,
 } from "./server-sidebar-item";
 
@@ -599,10 +600,8 @@ function executionHostDirectory(host: ExecutionHostDescriptor): string {
   return getExecutionHostDefaultDirectory(host);
 }
 
-function executionHostAvailable(host: ExecutionHostDescriptor): boolean {
-  return host.availability === "local"
-    || host.availability === "available"
-    || host.availability === "online";
+function executionHostUsable(host: ExecutionHostDescriptor): boolean {
+  return host.acceptRemoteExecution;
 }
 
 function createExecutionHostWorkspace(
@@ -658,24 +657,24 @@ function getExecutionHostSidebarActions(
   host: ExecutionHostDescriptor,
   handlers: ShellSidebarActionHandlers,
 ): ActionMenuItem[] {
-  const available = executionHostAvailable(host);
+  const usable = executionHostUsable(host);
   return sidebarActionItems([
     {
       id: "new-workspace",
       label: "New Workspace",
-      disabled: !available || !host.capabilities.provisioning,
+      disabled: !usable || !host.capabilities.provisioning,
       onClick: () => createExecutionHostWorkspace(host, handlers),
     },
     {
       id: "new-terminal",
       label: "New Terminal",
-      disabled: !available || !host.capabilities.interactiveTerminal,
+      disabled: !usable || !host.capabilities.interactiveTerminal,
       onClick: () => createExecutionHostTerminal(host, handlers),
     },
     {
       id: "new-chat",
       label: "New Chat",
-      disabled: !available || !host.capabilities.acpRuntime,
+      disabled: !usable || !host.capabilities.acpRuntime,
       onClick: () => createExecutionHostChat(host, handlers),
     },
   ]);
@@ -1017,12 +1016,8 @@ function buildSidebarNodes(
         id: `execution-host:${host.ref.kind}:${hostId}`,
         title: host.name,
         subtitle,
-        badge: host.availability,
-        badgeVariant: host.availability === "online"
-          || host.availability === "available"
-          || host.availability === "local"
-          ? "success"
-          : "disabled",
+        badge: getServerTransportLabel(host.ref.kind),
+        badgeVariant: "default",
         render: renderServerSidebarItem(host.ref.kind),
         route: {
           view: "execution-host",
@@ -1051,7 +1046,7 @@ function buildSidebarNodes(
               id: "new-workspace",
               title: "New workspace",
               label: "New",
-              onAction: executionHostAvailable(host) && host.capabilities.provisioning
+              onAction: executionHostUsable(host) && host.capabilities.provisioning
                 ? () => createExecutionHostWorkspace(host, handlers)
                 : undefined,
             },
@@ -1072,7 +1067,7 @@ function buildSidebarNodes(
               id: "new-terminal",
               title: "New terminal",
               label: "New",
-              onAction: executionHostAvailable(host) && host.capabilities.interactiveTerminal
+              onAction: executionHostUsable(host) && host.capabilities.interactiveTerminal
                 ? () => void createExecutionHostTerminal(host, handlers)
                 : undefined,
             },
@@ -1104,7 +1099,7 @@ function buildSidebarNodes(
               id: "new-chat",
               title: "New chat",
               label: "New",
-              onAction: executionHostAvailable(host) && host.capabilities.acpRuntime
+              onAction: executionHostUsable(host) && host.capabilities.acpRuntime
                 ? () => createExecutionHostChat(host, handlers)
                 : undefined,
             },

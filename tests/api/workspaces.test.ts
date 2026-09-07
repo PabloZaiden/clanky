@@ -160,12 +160,12 @@ describe("Workspace API Integration", () => {
       expect(response.ok).toBe(true);
       const targets = await response.json() as Array<{
         ref: { kind: string; nodeId?: string };
-        availability: string;
+        acceptRemoteExecution: boolean;
       }>;
       expect(targets).toHaveLength(1);
       expect(targets[0]).toMatchObject({
         ref: { kind: "local" },
-        availability: "local",
+        acceptRemoteExecution: true,
       });
       expect(targets[0]!.ref.nodeId?.length).toBeGreaterThan(0);
     });

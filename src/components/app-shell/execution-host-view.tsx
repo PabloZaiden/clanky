@@ -35,7 +35,9 @@ import { VncViewer } from "./VncViewer";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 import { createOrResumeExecutionHostVncSessionApi } from "../../hooks/executionHostActions";
+import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisites-section";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
+import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { useShellHeaderActions } from "./shell-header-actions";
 import { ClankyListRow } from "./clanky-list-row";
 import {
@@ -108,10 +110,11 @@ export function ExecutionHostView({
   const [error, setError] = useState<string | null>(null);
   const [sshFormValid, setSshFormValid] = useState(false);
   const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
-  const available = host.availability === "local"
-    || host.availability === "available"
-    || host.availability === "online";
+  const hostUsable = host.acceptRemoteExecution;
   const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory);
+  const prerequisites = useExecutionHostPrerequisites({
+    executionHost: host.ref,
+  });
   const apiPath = hostApiPath(host);
   useShellHeaderActions(sshServer ? (
     <Button
@@ -261,22 +264,6 @@ export function ExecutionHostView({
   return (
     <div className="space-y-6">
       {error ? <ErrorState description={error} /> : null}
-      <Panel className="divide-y divide-gray-200 p-0 dark:divide-gray-800">
-        <div className="grid gap-2 p-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
-          <span className="text-sm font-medium">Transport</span>
-          <span className="text-sm sm:text-right">{host.ref.kind.toUpperCase()}</span>
-        </div>
-        <div className="grid gap-2 p-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
-          <span className="text-sm font-medium">Status</span>
-          <span className="text-sm capitalize sm:text-right">{host.availability}</span>
-        </div>
-        <div className="grid gap-2 p-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
-          <span className="text-sm font-medium">Target</span>
-          <div className="min-w-0 overflow-x-auto sm:text-right">
-            <CodeValue value={host.targetKey} />
-          </div>
-        </div>
-      </Panel>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel padding="compact">
@@ -442,7 +429,7 @@ export function ExecutionHostView({
               onClick={() => void saveDefaults(directory.trim())}
               loading={pendingAction === "defaults"}
               disabled={
-                !available
+                !hostUsable
                 || directoryLoading
                 || !directory.trim()
                 || discovery.providersLoading
@@ -464,18 +451,14 @@ export function ExecutionHostView({
         </Panel>
       )}
 
-      <FormGroup title="Arise">
-        <div>
-          <Button
-            variant="secondary"
-            onClick={() => void runArise()}
-            loading={provisioning.starting}
-            disabled={!available || !host.capabilities.devboxLifecycle}
-          >
-            Run Arise
-          </Button>
-        </div>
-      </FormGroup>
+      {!sshServer ? (
+        <ExecutionHostPrerequisitesSection
+          checking={prerequisites.checking}
+          error={prerequisites.error}
+          report={prerequisites.report}
+          onCheck={prerequisites.check}
+        />
+      ) : null}
 
       <FormGroup title="VNC">
         <div className="space-y-4">
@@ -505,7 +488,7 @@ export function ExecutionHostView({
             variant="secondary"
             onClick={() => void createVncSession()}
             loading={pendingAction === "vnc"}
-            disabled={!available || !host.capabilities.tcpTunnel}
+            disabled={!hostUsable || !host.capabilities.tcpTunnel}
           >
             {vncSession ? "Reconnect" : "Connect"}
           </Button>
@@ -522,6 +505,15 @@ export function ExecutionHostView({
           ) : null}
         </div>
       </FormGroup>
+
+      <Button
+        variant="secondary"
+        onClick={() => void runArise()}
+        loading={provisioning.starting}
+        disabled={!hostUsable || !host.capabilities.devboxLifecycle}
+      >
+        Run Arise
+      </Button>
     </div>
   );
 }

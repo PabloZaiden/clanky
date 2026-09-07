@@ -4,7 +4,6 @@
 
 import { z } from "zod";
 import {
-  EXECUTION_HOST_AVAILABILITIES,
   EXECUTION_HOST_CAPABILITY_IDS,
   EXECUTION_HOST_KINDS,
 } from "@/shared/execution-host";
@@ -65,10 +64,6 @@ export const ExecutionNodeConfigurationSchema = z.object({
   revision: z.number().int().min(1),
 }).strict();
 
-export const ExecutionHostAvailabilitySchema = z.enum(
-  EXECUTION_HOST_AVAILABILITIES,
-);
-
 export const ExecutionHostAccessRequirementSchema = z.discriminatedUnion(
   "kind",
   [
@@ -95,7 +90,6 @@ export const ExecutionHostDescriptorSchema = z.object({
   repositoriesBasePath: z.string().nullable(),
   preferredModel: ExecutionHostPreferredModelSchema.nullable(),
   configurationRevision: z.number().int().min(1),
-  availability: ExecutionHostAvailabilitySchema,
   accessRequirement: ExecutionHostAccessRequirementSchema,
   acceptRemoteExecution: z.boolean(),
   capabilities: ExecutionHostCapabilitiesSchema,

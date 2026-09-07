@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { SshServer, SshServerPrerequisiteReport } from "@/shared";
+import type { SshServer } from "@/shared";
 import type { UpdateSshServerRequest } from "@/contracts";
-import { checkExecutionHostPrerequisitesApi } from "../../hooks/executionHostActions";
 import { useToast } from "@pablozaiden/webapp/web";
 import { DeleteSshServerSection } from "./delete-ssh-server-section";
-import { SshServerPrerequisitesSection } from "./ssh-server-prerequisites-section";
+import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisites-section";
 import { SshServerFields } from "./ssh-server-fields";
+import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import {
   buildSshServerUpdateRequest,
   createSshServerFormValues,
@@ -43,17 +43,16 @@ export function SshServerSettingsForm({
   const toast = useToast();
   const [values, setValues] = useState<SshServerFormValues>(() => createSshServerFormValues(server));
   const [submitting, setSubmitting] = useState(false);
-  const [checkingPrerequisites, setCheckingPrerequisites] = useState(false);
-  const [prerequisiteReport, setPrerequisiteReport] = useState<SshServerPrerequisiteReport | null>(null);
-  const [prerequisiteError, setPrerequisiteError] = useState<string | null>(null);
+  const trimmedValues = trimSshServerFormValues(values);
+  const prerequisites = useExecutionHostPrerequisites({
+    executionHost: { kind: "ssh", serverId: server.config.id },
+    password: trimmedValues.password,
+  });
 
   useEffect(() => {
     setValues(createSshServerFormValues(server));
-    setPrerequisiteReport(null);
-    setPrerequisiteError(null);
   }, [server]);
 
-  const trimmedValues = trimSshServerFormValues(values);
   const isValid = Boolean(trimmedValues.name && trimmedValues.address && trimmedValues.username);
 
   useEffect(() => {
@@ -65,29 +64,11 @@ export function SshServerSettingsForm({
   }, [submitting, onSubmittingChange]);
 
   function handleChange(field: keyof SshServerFormValues, value: string) {
-    setPrerequisiteReport(null);
-    setPrerequisiteError(null);
+    prerequisites.reset();
     setValues((current) => ({
       ...current,
       [field]: value,
     }));
-  }
-
-  async function handleCheckPrerequisites() {
-    setCheckingPrerequisites(true);
-    setPrerequisiteError(null);
-    try {
-      const report = await checkExecutionHostPrerequisitesApi({
-        executionHost: { kind: "ssh", serverId: server.config.id },
-        password: trimSshServerFormValues(values).password,
-      });
-      setPrerequisiteReport(report);
-    } catch (error) {
-      setPrerequisiteReport(null);
-      setPrerequisiteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setCheckingPrerequisites(false);
-    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -135,11 +116,11 @@ export function SshServerSettingsForm({
         />
       </form>
 
-      <SshServerPrerequisitesSection
-        checking={checkingPrerequisites}
-        error={prerequisiteError}
-        report={prerequisiteReport}
-        onCheck={handleCheckPrerequisites}
+      <ExecutionHostPrerequisitesSection
+        checking={prerequisites.checking}
+        error={prerequisites.error}
+        report={prerequisites.report}
+        onCheck={prerequisites.check}
       />
 
       <DeleteSshServerSection

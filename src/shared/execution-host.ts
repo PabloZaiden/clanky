@@ -80,17 +80,6 @@ export function createDefaultExecutionNodeConfiguration(
   };
 }
 
-export const EXECUTION_HOST_AVAILABILITIES = [
-  "local",
-  "available",
-  "online",
-  "offline",
-  "unavailable",
-  "revoked",
-] as const;
-export type ExecutionHostAvailability =
-  typeof EXECUTION_HOST_AVAILABILITIES[number];
-
 export type ExecutionHostAccessRequirement =
   | { kind: "none" }
   | {
@@ -128,7 +117,6 @@ export interface ExecutionHostDescriptor {
   repositoriesBasePath: string | null;
   preferredModel: ExecutionHostModelConfig | null;
   configurationRevision: number;
-  availability: ExecutionHostAvailability;
   accessRequirement: ExecutionHostAccessRequirement;
   acceptRemoteExecution: boolean;
   capabilities: ExecutionHostCapabilities;
