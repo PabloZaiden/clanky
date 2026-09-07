@@ -384,6 +384,11 @@ gh secret set CLANKY_MACOS_SIGNING_CERT_PASSWORD \
   < .clanky-dev/macos-signing-password
 ```
 
+The PKCS#12 container uses explicit AES-256-CBC encryption and a SHA-256 MAC.
+The local signer extracts its certificate and private key before importing them
+because macOS Security can reject modern PKCS#12 encryption when importing the
+container directly.
+
 To repopulate local demo data for the UI, run:
 
 ```bash
