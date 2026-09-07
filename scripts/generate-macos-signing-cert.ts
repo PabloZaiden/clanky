@@ -24,14 +24,14 @@ async function runCommand(
   args: readonly string[],
   description: string,
 ): Promise<string> {
-  const process = Bun.spawn([command, ...args], {
+  const childProcess = Bun.spawn([command, ...args], {
     stdout: "pipe",
     stderr: "pipe",
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
+    new Response(childProcess.stdout).text(),
+    new Response(childProcess.stderr).text(),
+    childProcess.exited,
   ]);
   if (exitCode !== 0) {
     const details = stderr.trim() || stdout.trim();
