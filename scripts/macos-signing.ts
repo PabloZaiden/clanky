@@ -255,6 +255,7 @@ export async function signMacOSBinary(
       ],
       "Extracting the macOS signing certificate",
     );
+    await chmod(certificatePemPath, 0o600);
     await runCommand(
       OPENSSL_COMMAND,
       [
@@ -270,6 +271,7 @@ export async function signMacOSBinary(
       ],
       "Extracting the macOS signing private key",
     );
+    await chmod(privateKeyPemPath, 0o600);
     // Import the PEM pair separately because macOS Security may reject the
     // modern AES-encrypted PKCS#12 container even though OpenSSL can read it.
     await runCommand(
