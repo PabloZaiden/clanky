@@ -21,6 +21,7 @@ import { LargeFileWarningPanel } from "../workspace-files/large-file-warning-pan
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
 import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
+import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
 import {
   getFileExplorerDownloadUrl,
 } from "../../hooks/workspaceFileActions";
@@ -849,45 +850,12 @@ export function FileExplorerView({
         variant="danger"
       />
 
-      <Modal
+      <TerminalSessionModeModal
         isOpen={tmuxPromptOpen && canPromptForTerminalTmux}
+        submitting={creatingTerminal}
         onClose={() => setTmuxPromptOpen(false)}
-        title="Create terminal"
-        description="Choose how this terminal should start."
-        size="sm"
-        footer={(
-          <>
-            <Button variant="ghost" onClick={() => setTmuxPromptOpen(false)} disabled={creatingTerminal}>
-              Cancel
-            </Button>
-            <Button
-              variant="secondary"
-              loading={creatingTerminal}
-              onClick={() => {
-                void createTerminal({ useTmux: false });
-              }}
-            >
-              Without tmux
-            </Button>
-            <Button
-              variant="primary"
-              loading={creatingTerminal}
-              onClick={() => {
-                void createTerminal({ useTmux: true });
-              }}
-            >
-              With tmux
-            </Button>
-          </>
-        )}
-      >
-        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-          <p>Start this terminal in tmux when available?</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Choose without tmux if you want a normal interactive shell without trying tmux first.
-          </p>
-        </div>
-      </Modal>
+        onSelect={(useTmux) => createTerminal({ useTmux })}
+      />
 
       <WorkspaceFileConflictModal
         isOpen={conflictState?.kind === "save_conflict"}

@@ -72,6 +72,7 @@ export interface ShellSidebarActionHandlers {
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
   toggleSshServerPrivate: (server: SshServer) => void | Promise<void>;
+  openExecutionHostTerminalPrompt: (host: ExecutionHostDescriptor) => void;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
@@ -618,29 +619,6 @@ function createExecutionHostWorkspace(
   });
 }
 
-async function createExecutionHostTerminal(
-  host: ExecutionHostDescriptor,
-  handlers: ShellSidebarActionHandlers,
-): Promise<void> {
-  try {
-    const session = await apiRequest<TerminalSession>("/api/terminal-sessions", {
-      method: "POST",
-      body: JSON.stringify({
-        executionHost: host.ref,
-        name: `${host.name} terminal`,
-        directory: executionHostDirectory(host),
-        connectionMode: "direct",
-      }),
-      headers: { "Content-Type": "application/json" },
-      action: "Create terminal",
-      fallbackMessage: "Failed to create terminal",
-    });
-    handlers.navigateWithinShell({ view: "terminal", terminalSessionId: session.config.id });
-  } catch (error) {
-    handlers.onError(String(error));
-  }
-}
-
 function createExecutionHostChat(
   host: ExecutionHostDescriptor,
   handlers: ShellSidebarActionHandlers,
@@ -669,7 +647,7 @@ function getExecutionHostSidebarActions(
       id: "new-terminal",
       label: "New Terminal",
       disabled: !usable || !host.capabilities.interactiveTerminal,
-      onClick: () => createExecutionHostTerminal(host, handlers),
+      onClick: () => handlers.openExecutionHostTerminalPrompt(host),
     },
     {
       id: "new-chat",
@@ -1068,7 +1046,7 @@ function buildSidebarNodes(
               title: "New terminal",
               label: "New",
               onAction: executionHostUsable(host) && host.capabilities.interactiveTerminal
-                ? () => void createExecutionHostTerminal(host, handlers)
+                ? () => handlers.openExecutionHostTerminalPrompt(host)
                 : undefined,
             },
             children: hostTerminals.map((session): SidebarNode => {

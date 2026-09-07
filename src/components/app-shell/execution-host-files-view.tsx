@@ -61,7 +61,7 @@ export function ExecutionHostFilesView({
         executionHost: host.ref,
         name: `${host.name} terminal`,
         directory: startDirectory ?? getExecutionHostDefaultDirectory(host),
-        connectionMode: "direct",
+        connectionMode: "dtach",
         useTmux: options?.useTmux ?? false,
       })}
       canChooseTerminalTmux

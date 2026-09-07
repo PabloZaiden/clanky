@@ -330,6 +330,36 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.useTmux).toBe(false);
   });
 
+  test("defaults registered SSH terminals to persistent dtach sessions", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Persistent host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: null,
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const createSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        executionHost: { kind: "ssh", serverId: createdServer.config.id },
+        name: "Persistent shell",
+        directory: "/",
+      }),
+    });
+    expect(createSessionResponse.status).toBe(201);
+    const session = await createSessionResponse.json() as {
+      config: { connectionMode: string; useTmux: boolean };
+    };
+    expect(session.config.connectionMode).toBe("dtach");
+    expect(session.config.useTmux).toBe(false);
+  });
+
   test("reports missing credentials instead of leaving a direct SSH terminal silent", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
