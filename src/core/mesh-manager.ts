@@ -333,7 +333,9 @@ export class MeshManager {
     await postMeshControlMessage(route, {
       ...envelope,
       signature,
-    }, nonce);
+    }, nonce, {
+      "x-clanky-mesh-node-id": identity.nodeId,
+    });
   }
 
   async removeRevokedWorker(

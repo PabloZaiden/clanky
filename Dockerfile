@@ -13,6 +13,7 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts/novnc-vendor.ts ./scripts/novnc-vendor.ts
+COPY scripts/macos-signing.ts ./scripts/macos-signing.ts
 
 # The CI version is resolved outside the image build so package changes do not
 # invalidate the dependency layer on every image build.
