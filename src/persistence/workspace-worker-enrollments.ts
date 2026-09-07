@@ -222,13 +222,11 @@ export function claimWorkspaceWorkerEnrollment(input: {
     UPDATE workspace_worker_enrollments
     SET status = 'claimed', claimed_by = ?,
         workspace_id = COALESCE(?, workspace_id), updated_at = ?
-    WHERE id = ? AND user_id = ? AND expires_at > ?
+    WHERE id = ? AND user_id = ?
       AND (
-        status = 'connected'
-        OR (
-          status = 'claimed'
-          AND claimed_by = ?
-        )
+        (status = 'connected' AND expires_at > ?)
+        OR (status = 'claimed' AND claimed_by = ?)
+        OR (status = 'claimed' AND claimed_by = ?)
       )
   `).run(
     input.claimedBy,
@@ -237,6 +235,7 @@ export function claimWorkspaceWorkerEnrollment(input: {
     input.enrollmentId,
     input.userId,
     now,
+    input.claimedBy,
     input.previousClaimedBy ?? input.claimedBy,
   );
   if (result.changes === 0) {

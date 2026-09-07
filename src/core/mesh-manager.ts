@@ -173,7 +173,7 @@ export class MeshManager {
     const statuses = workspaceWorkerEnrollmentService.list(userId);
     for (const status of statuses) {
       if (
-        !["pending", "connected", "claimed"].includes(status.enrollment.status)
+        !["pending", "connected"].includes(status.enrollment.status)
         || Date.parse(status.enrollment.expiresAt) > Date.now()
       ) {
         continue;
@@ -203,18 +203,7 @@ export class MeshManager {
         "The workspace worker enrollment is already attached to a workspace.",
       );
     }
-    if (status.enrollment.workerNodeId && status.worker?.grantStatus === "active") {
-      await this.revokeDedicatedWorker(userId, enrollmentId);
-      await deleteRevokedWorkerRegistration(status.enrollment.workerNodeId, userId);
-    } else {
-      workspaceWorkerEnrollmentService.markFailed(
-        userId,
-        enrollmentId,
-        "enrollment_cancelled",
-        "The workspace worker enrollment was cancelled.",
-        "cancelled",
-      );
-    }
+    await this.cleanupDedicatedWorker(userId, enrollmentId);
   }
 
   async listEnrollmentTokens(userId: string) {
@@ -510,7 +499,10 @@ export class MeshManager {
   ): Promise<void> {
     requireMeshRuntimeRole("controller");
     const registration = await getWorkerRegistration(workerNodeId, userId);
-    if (!registration || registration.registrationScope !== "workspace") {
+    if (!registration) {
+      return;
+    }
+    if (registration.registrationScope !== "workspace") {
       throw new DomainError(
         "mesh_worker_not_found",
         "The dedicated worker registration was not found.",

@@ -23,7 +23,7 @@ import {
   type PersistedExecutionHost,
 } from "../persistence/execution-hosts";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import { listActiveWorkerRegistrations } from "../persistence/mesh";
+import { listGloballyDiscoverableWorkerRegistrations } from "../persistence/mesh";
 import {
   listSshServerConfigs,
 } from "../persistence/ssh-servers";
@@ -119,7 +119,7 @@ export class ExecutionHostService {
       });
     }
 
-    for (const worker of await listActiveWorkerRegistrations(userId)) {
+    for (const worker of await listGloballyDiscoverableWorkerRegistrations(userId)) {
       if (worker.workerNodeId === identity.nodeId || !worker.workerAcceptRemoteExecution) {
         continue;
       }

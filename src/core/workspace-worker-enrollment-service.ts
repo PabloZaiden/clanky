@@ -90,7 +90,7 @@ export class WorkspaceWorkerEnrollmentService {
     let enrollment = requireEnrollment(userId, enrollmentId);
     if (
       isExpired(enrollment)
-      && !["attached", "cancelled", "expired", "failed"].includes(enrollment.status)
+      && ["pending", "connected"].includes(enrollment.status)
     ) {
       failWorkspaceWorkerEnrollment({
         userId,
@@ -144,7 +144,7 @@ export class WorkspaceWorkerEnrollmentService {
     enrollmentId: string,
   ): ExecutionHostBinding {
     const enrollment = requireEnrollment(userId, enrollmentId);
-    if (isExpired(enrollment)) {
+    if (isExpired(enrollment) && !["claimed", "attached"].includes(enrollment.status)) {
       throw new DomainError(
         "workspace_worker_enrollment_expired",
         "The workspace worker enrollment expired.",

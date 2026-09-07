@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService, type WebAppRoute } from "@pablozaiden/webapp/web";
 import {
   getRegisteredSshServerId,
   type ExecutionHostRef,
@@ -23,6 +23,10 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getRouteString } from "./route-fields";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isAbortError } from "../../lib/request-lifecycle";
+
+const log = createLogger("useWorkspaceCreate");
 
 export interface UseWorkspaceCreateResult {
   workspaceCreateMode: "manual" | "automatic";
@@ -145,6 +149,10 @@ export function useWorkspaceCreate({
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
   const prefilledRetryJobIdRef = useRef<string | null>(null);
+  const enrollmentRefreshControllerRef = useRef<AbortController | null>(null);
+  const enrollmentRefreshCoordinatorRef = useRef(
+    createRefreshCoordinator<WorkspaceWorkerEnrollmentState>(),
+  );
 
   useEffect(() => {
     const isOnComposeWorkspace = route.view === "compose" && getRouteString(route, "kind") === "workspace";
@@ -279,27 +287,44 @@ export function useWorkspaceCreate({
       return;
     }
     let disposed = false;
-    const refresh = async () => {
+    const refresh = () => enrollmentRefreshCoordinatorRef.current.run(async () => {
+      const controller = new AbortController();
+      enrollmentRefreshControllerRef.current = controller;
       try {
         const status = await apiRequest<WorkspaceWorkerEnrollmentState>(
           `/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`,
-          { action: "Refresh dedicated worker enrollment" },
+          {
+            signal: controller.signal,
+            action: "Refresh dedicated worker enrollment",
+          },
         );
-        if (!disposed) {
+        if (!disposed && !controller.signal.aborted) {
           setWorkspaceWorkerEnrollment((current) => ({
             ...status,
             workerJoinCommand: current?.workerJoinCommand,
           }));
         }
-      } catch {
-        // The enrollment remains visible locally so the user can retry or cancel it.
+        return status;
+      } finally {
+        if (enrollmentRefreshControllerRef.current === controller) {
+          enrollmentRefreshControllerRef.current = null;
+        }
       }
-    };
+    });
     const timer = setInterval(() => {
-      void refresh();
+      void refresh().catch((error) => {
+        if (!isAbortError(error)) {
+          log.debug("Keeping the last known dedicated worker enrollment state after refresh failure", {
+            error: String(error),
+          });
+        }
+      });
     }, 1500);
     return () => {
       disposed = true;
+      enrollmentRefreshControllerRef.current?.abort();
+      enrollmentRefreshControllerRef.current = null;
+      enrollmentRefreshCoordinatorRef.current.reset();
       clearInterval(timer);
     };
   }, [workspaceWorkerEnrollment?.enrollment.id]);
@@ -386,6 +411,8 @@ export function useWorkspaceCreate({
       setAutomaticExecutionHost(null);
       setWorkspaceWorkerEnrollmentSelected(true);
       setWorkspaceWorkerEnrollment({ ...created, worker: null });
+    } catch (error) {
+      toast.error(String(error));
     } finally {
       setWorkspaceWorkerEnrollmentLoading(false);
     }
@@ -397,13 +424,17 @@ export function useWorkspaceCreate({
       setWorkspaceWorkerEnrollmentSelected(false);
       return;
     }
-    await apiRequest(`/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`, {
-      method: "DELETE",
-      action: "Cancel dedicated worker enrollment",
-      fallbackMessage: "Failed to cancel dedicated worker enrollment",
-    });
-    setWorkspaceWorkerEnrollment(null);
-    setWorkspaceWorkerEnrollmentSelected(false);
+    try {
+      await apiRequest(`/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`, {
+        method: "DELETE",
+        action: "Cancel dedicated worker enrollment",
+        fallbackMessage: "Failed to cancel dedicated worker enrollment",
+      });
+      setWorkspaceWorkerEnrollment(null);
+      setWorkspaceWorkerEnrollmentSelected(false);
+    } catch (error) {
+      toast.error(String(error));
+    }
   }
 
   function handleBackToAutomaticWorkspaceForm() {

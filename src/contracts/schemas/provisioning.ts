@@ -32,6 +32,9 @@ export const CreateProvisioningJobRequestSchema = z.object({
   if (targetCount !== 1) {
     return false;
   }
+  if (data.workspaceWorkerEnrollmentId && data.mode !== "provision") {
+    return false;
+  }
   if (data.mode === "provision") {
     if (data.createNewRepository) {
       return data.basePath.length > 0 && (data.devboxTemplate ?? "").length > 0;
@@ -44,7 +47,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   return (data.targetDirectory ?? "").length > 0
     && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "Provisioning requires exactly one execution host or dedicated worker enrollment; provision mode also requires repoUrl and basePath, rebuild/restart requires targetDirectory and workspaceId, and arise requires a target",
+  message: "Provisioning requires exactly one execution host or dedicated worker enrollment; dedicated worker enrollments only support provision mode; provision mode also requires repoUrl and basePath, rebuild/restart requires targetDirectory and workspaceId, and arise requires a target",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

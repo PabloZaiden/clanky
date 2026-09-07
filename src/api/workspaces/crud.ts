@@ -125,6 +125,9 @@ export const crudRoutes = defineRoutes({
               workspace_worker_not_connected: {
                 status: 409,
               },
+              workspace_worker_enrollment_unavailable: {
+                status: 409,
+              },
               workspace_execution_target_in_use: {
                 status: 409,
               },

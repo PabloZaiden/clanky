@@ -176,10 +176,18 @@ async function deleteWorkspaceWithOptionsUnlocked(
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {
       if (dedicatedWorker?.enrollment.workerNodeId) {
-        await meshManager.removeDedicatedWorker(
-          requireCurrentUserId(),
-          dedicatedWorker.enrollment.workerNodeId,
-        );
+        try {
+          await meshManager.removeDedicatedWorker(
+            requireCurrentUserId(),
+            dedicatedWorker.enrollment.workerNodeId,
+          );
+        } catch (error) {
+          log.error("Failed to remove dedicated worker after workspace deletion", {
+            workspaceId: id,
+            workerNodeId: dedicatedWorker.enrollment.workerNodeId,
+            error: String(error),
+          });
+        }
       }
       return { success: true };
     }

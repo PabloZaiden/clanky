@@ -216,6 +216,18 @@ export async function listActiveWorkerRegistrations(
   const db = getDatabase();
   const rows = db
     .query(
+      "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' ORDER BY created_at ASC",
+    )
+    .all(localUserId) as WorkerRegistrationRow[];
+  return rows.map(mapWorkerRegistrationRow);
+}
+
+export async function listGloballyDiscoverableWorkerRegistrations(
+  localUserId: string,
+): Promise<MeshWorkerRegistration[]> {
+  const db = getDatabase();
+  const rows = db
+    .query(
       "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' AND registration_scope = 'global' ORDER BY created_at ASC",
     )
     .all(localUserId) as WorkerRegistrationRow[];
@@ -265,7 +277,8 @@ export async function deleteRevokedWorkerRegistration(
     )
     .get(workerNodeId, localUserId) as WorkerRegistrationRow | null;
   if (!row) {
-    throw new Error(`Revoked worker registration not found: ${workerNodeId}`);
+    log.debug("Revoked worker registration was already removed", { workerNodeId });
+    return;
   }
   const host = getExecutionHostByRef(
     localUserId,
