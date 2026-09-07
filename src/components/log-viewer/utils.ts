@@ -1,5 +1,5 @@
 import { getToolMeta } from "./tool-inference";
-import type { LogLevel } from "@/shared";
+import type { LogLevel, ToolCallDisplayData } from "@/shared";
 import type {
   EntryBase,
   GroupedEntryBase,
@@ -26,6 +26,10 @@ export function truncateToolSummary(summary: string): string {
   return summary.length > MAX_TOOL_DETAIL_SUMMARY_LENGTH
     ? `${summary.slice(0, MAX_TOOL_DETAIL_SUMMARY_LENGTH - suffix.length)}${suffix}`
     : summary;
+}
+
+export function isToolCallInProgress(tool: ToolCallDisplayData): boolean {
+  return tool.status === "pending" || tool.status === "running";
 }
 
 export function getWorkingGroupToolSummary(
@@ -156,7 +160,7 @@ function createToolGroupEntry(
     tools,
     timestamp: firstTool.timestamp,
     lastTimestamp: lastTool.timestamp,
-    isActive,
+    isActive: isActive && tools.some(isToolCallInProgress),
   };
 }
 
@@ -255,7 +259,9 @@ function groupMixedWorkingEntries(
     }
 
     const nextEntry = entries[cursor];
-    const active = isActive && !hasVisibleEntryAfter(entries, cursor);
+    const active = isActive
+      && !hasVisibleEntryAfter(entries, cursor)
+      && consecutiveChildren.some((child) => child.isActive);
     if (hasToolGroup && hasReasoningGroup) {
       groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, active));
     } else {
@@ -356,6 +362,22 @@ export function isReasoningLogEntry(logEntry: LogEntry): boolean {
 export function isResponseLogEntry(logEntry: LogEntry): boolean {
   const logKind = logEntry.details?.["logKind"] as string | undefined;
   return logKind === "response" || (!logKind && logEntry.message === "AI generating response...");
+}
+
+export function hasActiveWorkEntry(entries: DisplayEntry[]): boolean {
+  const lastIndex = entries.length - 1;
+  return entries.some((entry, index) => {
+    switch (entry.type) {
+      case "tool":
+        return index === lastIndex && isToolCallInProgress(entry.data);
+      case "tool-group":
+      case "reasoning-group":
+      case "working-group":
+        return entry.isActive;
+      default:
+        return false;
+    }
+  });
 }
 
 /**

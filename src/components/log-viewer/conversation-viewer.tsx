@@ -6,8 +6,10 @@ import {
   annotateDisplayEntries,
   getEntrySpacingClass,
   groupConsecutiveEntries,
+  hasActiveWorkEntry,
   isReasoningLogEntry,
   isResponseLogEntry,
+  isToolCallInProgress,
 } from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
@@ -154,10 +156,13 @@ export const ConversationViewer = memo(function ConversationViewer({
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const isEmpty = groupedEntries.length === 0;
+  const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
+  const shouldShowWorkingIndicator = isActive && !isEmpty && !hasActiveWorkRow;
   const { containerRef, contentRef } = useStickyBottomScroll([
     visibleEntries,
     isActive,
     isEmpty,
+    shouldShowWorkingIndicator,
     activeStateMessage,
     emptyStateMessage,
     markdownEnabled,
@@ -209,7 +214,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     timestamp={entry.timestamp}
                     showTimestamp={entry.showTimestamp}
                     spacingClass={spacingClass}
-                    isActive={isActive && index === visibleEntries.length - 1}
+                    isActive={isActive && index === visibleEntries.length - 1 && isToolCallInProgress(entry.data)}
                     toolPathDisplayRoot={toolPathDisplayRoot}
                     onLoadToolDetails={onLoadToolDetails}
                   />
@@ -260,6 +265,12 @@ export const ConversationViewer = memo(function ConversationViewer({
                 );
               }
             })}
+            {shouldShowWorkingIndicator && (
+              <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
+                <ActivitySpinner />
+                <span>{activeStateMessage}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
