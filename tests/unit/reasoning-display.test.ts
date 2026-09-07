@@ -3,9 +3,11 @@ import type { ToolCallDisplayData } from "../../src/shared";
 import type { EntryBase, LogEntry } from "../../src/components/log-viewer/types";
 import {
   annotateReasoningBoundaries,
+  annotateDisplayEntries,
   formatThoughtDuration,
   getWorkingGroupToolSummary,
   groupConsecutiveEntries,
+  hasActiveWorkEntry,
   isReasoningLogEntry,
 } from "../../src/components/log-viewer/utils";
 
@@ -40,12 +42,13 @@ function createToolEntry(
   id: string,
   timestamp: string,
   summary?: string,
+  status: ToolCallDisplayData["status"] = "completed",
 ): Extract<EntryBase, { type: "tool" }> {
   const tool: ToolCallDisplayData = summary
     ? {
         id,
         name: "view",
-        status: "completed",
+        status,
         timestamp,
         summary,
         kind: "view",
@@ -58,7 +61,7 @@ function createToolEntry(
     : {
         id,
         name: "read",
-        status: "completed",
+        status,
         timestamp,
       };
   return {
@@ -133,8 +136,8 @@ describe("reasoning display helpers", () => {
 
   test("keeps consecutive tools unwrapped while wrapping mixed activity", () => {
     const pureTools = groupConsecutiveEntries([
-      createToolEntry("tool-only-1", "2026-09-05T00:00:00.000Z"),
-      createToolEntry("tool-only-2", "2026-09-05T00:00:01.000Z"),
+      createToolEntry("tool-only-1", "2026-09-05T00:00:00.000Z", undefined, "running"),
+      createToolEntry("tool-only-2", "2026-09-05T00:00:01.000Z", undefined, "running"),
     ], true);
 
     expect(pureTools).toHaveLength(1);
@@ -144,8 +147,19 @@ describe("reasoning display helpers", () => {
       expect(pureToolGroup.isActive).toBe(true);
     }
 
+    const completedTools = groupConsecutiveEntries([
+      createToolEntry("tool-completed-1", "2026-09-05T00:00:00.000Z"),
+      createToolEntry("tool-completed-2", "2026-09-05T00:00:01.000Z"),
+    ], true);
+    const completedToolGroup = completedTools[0];
+    expect(completedToolGroup?.type).toBe("tool-group");
+    if (completedToolGroup?.type === "tool-group") {
+      expect(completedToolGroup.isActive).toBe(false);
+    }
+    expect(hasActiveWorkEntry(annotateDisplayEntries(completedTools))).toBe(false);
+
     const pureToolsWithTrailingBoundary = groupConsecutiveEntries([
-      createToolEntry("tool-only-trailing", "2026-09-05T00:00:00.000Z"),
+      createToolEntry("tool-only-trailing", "2026-09-05T00:00:00.000Z", undefined, "running"),
       {
         type: "response-boundary" as const,
         id: "trailing-response-boundary",
@@ -190,6 +204,7 @@ describe("reasoning display helpers", () => {
       ]);
       expect(toolGroup.isActive).toBe(false);
     }
+    expect(hasActiveWorkEntry(annotateDisplayEntries(mixed))).toBe(true);
 
     const mixedWithTrailingBoundary = groupConsecutiveEntries([
       createReasoningEntry(
@@ -197,7 +212,7 @@ describe("reasoning display helpers", () => {
         "2026-09-05T00:00:00.000Z",
         "2026-09-05T00:00:01.000Z",
       ),
-      createToolEntry("tool-trailing-boundary", "2026-09-05T00:00:01.000Z"),
+      createToolEntry("tool-trailing-boundary", "2026-09-05T00:00:01.000Z", undefined, "running"),
       {
         type: "response-boundary" as const,
         id: "mixed-trailing-response-boundary",
@@ -325,7 +340,7 @@ describe("reasoning display helpers", () => {
         "2026-09-05T00:00:03.000Z",
         "2026-09-05T00:00:04.000Z",
       ),
-      createToolEntry("tool-after-response", "2026-09-05T00:00:04.000Z"),
+      createToolEntry("tool-after-response", "2026-09-05T00:00:04.000Z", undefined, "running"),
     ], true);
 
     expect(grouped).toHaveLength(2);

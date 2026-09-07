@@ -96,7 +96,7 @@ export interface LogViewerProps {
   showTools?: boolean;
   /** Whether to render response log content as markdown (default: false) */
   markdownEnabled?: boolean;
-  /** Whether the task is actively working (shows a spinner at the bottom). Default: false */
+  /** Whether the task is actively working; active work rows own the spinner when available. Default: false */
   isActive?: boolean;
   /** ID for the root element (for accessibility) */
   id?: string;
@@ -152,7 +152,7 @@ export interface ToolGroupEntryBase {
   timestamp: string;
   /** Timestamp of the last tool call in the run. */
   lastTimestamp: string;
-  /** Whether this is the trailing tool activity while the transcript is active. */
+  /** Whether this is the trailing tool activity with an in-progress call. */
   isActive: boolean;
 }
 
