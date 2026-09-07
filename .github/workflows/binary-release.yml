@@ -7,7 +7,7 @@ on:
 
 jobs:
   binaries:
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@773e70d30e93db7f324a27c5fb1850a783fa581a # installer v0.0.8
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@58ca37217b3d83cde8062db0a771a6f9581157d6 # installer v0.0.9
     permissions:
       contents: write
     secrets:
