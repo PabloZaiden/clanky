@@ -521,6 +521,57 @@ describe("reasoning display helpers", () => {
     expect(formatThoughtDuration(secondGroup.timestamp, secondGroup.endedAt!)).toBe("a bit");
   });
 
+  test("keeps empty response placeholders in reasoning boundary annotations", () => {
+    const firstReasoning = createReasoningLog(
+      "reasoning-before-empty-response",
+      "2026-09-05T00:00:00.000Z",
+      "first run",
+    );
+    const emptyResponse = {
+      id: "empty-response-placeholder",
+      level: "agent" as const,
+      message: "AI generating response...",
+      details: {
+        logKind: "response",
+        responseContent: "",
+      },
+      timestamp: "2026-09-05T00:00:01.000Z",
+    };
+    const secondReasoning = createReasoningLog(
+      "reasoning-after-empty-response",
+      "2026-09-05T00:00:02.000Z",
+      "second run",
+    );
+
+    const annotatedEntries = annotateReasoningBoundaries([
+      {
+        type: "log",
+        data: firstReasoning,
+        timestamp: firstReasoning.timestamp,
+      },
+      {
+        type: "log",
+        data: emptyResponse,
+        timestamp: emptyResponse.timestamp,
+      },
+      {
+        type: "log",
+        data: secondReasoning,
+        timestamp: secondReasoning.timestamp,
+      },
+    ]);
+
+    const firstAnnotated = annotatedEntries[0];
+    const secondAnnotated = annotatedEntries[2];
+    expect(firstAnnotated?.type).toBe("log");
+    expect(secondAnnotated?.type).toBe("log");
+    if (firstAnnotated?.type !== "log" || secondAnnotated?.type !== "log") {
+      return;
+    }
+    expect(firstAnnotated.reasoningEndTimestamp).toBe(emptyResponse.timestamp);
+    expect(secondAnnotated.reasoningEndTimestamp).toBeUndefined();
+  });
+
   test("keeps a trailing reasoning group active while the transcript is active", () => {
     const reasoning = createReasoningLog(
       "reasoning-active",

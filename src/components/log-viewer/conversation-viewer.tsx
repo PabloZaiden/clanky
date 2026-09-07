@@ -54,23 +54,16 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [fileLinkContext, imagePreview.openImagePreview]);
 
   const groupedEntries = useMemo(() => {
+    // Preserve all source events for reasoning boundaries; empty response
+    // placeholders are filtered from the visible grouping below.
     const sourceEntries: EntryBase[] = [];
     messages.forEach((msg) => {
-      if (msg.role === "assistant" && msg.content.length === 0) {
-        return;
-      }
       sourceEntries.push({ type: "message", data: msg, timestamp: msg.timestamp });
     });
     toolCalls.forEach((tool) => {
       sourceEntries.push({ type: "tool", data: tool, timestamp: tool.timestamp });
     });
     logs.forEach((logEntry) => {
-      if (isResponseLogEntry(logEntry)) {
-        const content = logEntry.details?.["responseContent"];
-        if (typeof content !== "string" || content.length === 0) {
-          return;
-        }
-      }
       sourceEntries.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
     sourceEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
