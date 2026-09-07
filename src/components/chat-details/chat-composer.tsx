@@ -10,7 +10,6 @@ import {
 } from "../ComposerActionsMenu";
 import { ChatTemplateSelector } from "../chat-template-selector";
 import { Button, FocusPreservingButton } from "../common";
-import { DictationControls } from "../dictation";
 import { useChatComposer } from "./chat-composer-state";
 import type { ChatComposerProps } from "./types";
 import { CHAT_STARTUP_STAGE_LABELS } from "@/shared/chat";
@@ -48,11 +47,9 @@ export function ChatComposer(props: ChatComposerProps) {
     attachmentError,
     setAttachmentError,
     isComposerBusy,
-    showDictationPopover,
     attachmentControlRef,
     composerFormRef,
     composerTextareaRef,
-    dictationPopoverRef,
     isKeyboardVisible,
     composerRef,
     composerRows,
@@ -69,11 +66,6 @@ export function ChatComposer(props: ChatComposerProps) {
     handleInterrupt,
     handlePaste,
     handleComposerKeyDown,
-    handleDictationTranscript,
-    handleDictationError,
-    handleSendPointerDown,
-    handleSendPointerEnd,
-    handleSendClick,
     handleRemoveAttachment,
   } = useChatComposer(props);
 
@@ -201,35 +193,19 @@ export function ChatComposer(props: ChatComposerProps) {
                 )}
               </button>
             ) : (
-              <div ref={dictationPopoverRef} className="relative flex-shrink-0">
-                {showDictationPopover && (
-                  <div className="clanky-composer-panel absolute bottom-full right-0 z-20 mb-2 w-max max-w-[calc(100vw-2rem)] rounded-lg p-2">
-                    <DictationControls
-                      onTranscript={handleDictationTranscript}
-                      onError={handleDictationError}
-                      disabled={isComposerBusy || needsSshCredentials}
-                    />
-                  </div>
+              <FocusPreservingButton
+                type="submit"
+                disabled={isComposerBusy || needsSshCredentials || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
+                className={sendButtonClassName}
+                aria-label={isActive ? "Queue message" : "Send"}
+                title={isActive ? "Queue message" : "Send"}
+              >
+                {isComposerBusy ? (
+                  <ThinkingSpinner />
+                ) : (
+                  <span className="text-lg leading-none" aria-hidden="true">↑</span>
                 )}
-                <FocusPreservingButton
-                  type="button"
-                  disabled={isComposerBusy || needsSshCredentials || (!isActive && selectedModel.length > 0 && !selectedModelEnabled)}
-                  className={sendButtonClassName}
-                  aria-label={isActive ? "Queue message" : "Send"}
-                  title={`${isActive ? "Queue message" : "Send"} (hold for dictation)`}
-                  onPointerDown={handleSendPointerDown}
-                  onPointerUp={handleSendPointerEnd}
-                  onPointerCancel={handleSendPointerEnd}
-                  onPointerLeave={handleSendPointerEnd}
-                  onClick={handleSendClick}
-                >
-                  {isComposerBusy ? (
-                    <ThinkingSpinner />
-                  ) : (
-                    <span className="text-lg leading-none" aria-hidden="true">↑</span>
-                  )}
-                </FocusPreservingButton>
-              </div>
+              </FocusPreservingButton>
             )}
           </div>
         </div>
