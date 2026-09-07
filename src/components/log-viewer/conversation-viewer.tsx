@@ -17,6 +17,7 @@ import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
+import { ActivitySpinner } from "./activity-spinner";
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -177,7 +178,7 @@ export const ConversationViewer = memo(function ConversationViewer({
           <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
             {isActive ? (
               <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
+                <ActivitySpinner className="h-4 w-4" />
                 <span>{activeStateMessage}</span>
               </div>
             ) : (
@@ -208,6 +209,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     timestamp={entry.timestamp}
                     showTimestamp={entry.showTimestamp}
                     spacingClass={spacingClass}
+                    isActive={isActive && index === visibleEntries.length - 1}
                     toolPathDisplayRoot={toolPathDisplayRoot}
                     onLoadToolDetails={onLoadToolDetails}
                   />
@@ -252,18 +254,13 @@ export const ConversationViewer = memo(function ConversationViewer({
                     showTimestamp={entry.showTimestamp}
                     showGroupHeader={entry.showGroupHeader}
                     spacingClass={spacingClass}
+                    isActive={isActive && index === visibleEntries.length - 1}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                   />
                 );
               }
             })}
-            {isActive && !isEmpty && (
-              <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
-                <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
-                <span>{activeStateMessage}</span>
-              </div>
-            )}
           </div>
         )}
       </div>

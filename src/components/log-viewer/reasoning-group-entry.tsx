@@ -3,6 +3,7 @@ import { LazyDetails } from "./lazy-details";
 import { LogEntryItem } from "./log-entry-item";
 import { formatThoughtDuration, formatTime } from "./utils";
 import type { ReasoningGroupEntryBase, TranscriptFileLinkContext } from "./types";
+import { ActivitySpinner } from "./activity-spinner";
 
 interface ReasoningGroupEntryProps {
   entry: ReasoningGroupEntryBase & {
@@ -10,6 +11,7 @@ interface ReasoningGroupEntryProps {
     showGroupHeader: boolean;
   };
   spacingClass: string;
+  showActivityIndicator?: boolean;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
 }
@@ -17,6 +19,7 @@ interface ReasoningGroupEntryProps {
 export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
   entry,
   spacingClass,
+  showActivityIndicator = true,
   markdownEnabled,
   fileLinkContext,
 }: ReasoningGroupEntryProps) {
@@ -59,6 +62,7 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
             className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-reasoning-summary="true"
           >
+            {entry.isActive && showActivityIndicator && <ActivitySpinner />}
             {summary}
           </span>
         }

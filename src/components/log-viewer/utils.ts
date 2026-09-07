@@ -144,7 +144,10 @@ export function getEntryGroupKey(entry: GroupedEntryBase): string {
   }
 }
 
-function createToolGroupEntry(tools: ToolGroupEntryBase["tools"]): ToolGroupEntryBase {
+function createToolGroupEntry(
+  tools: ToolGroupEntryBase["tools"],
+  isActive: boolean,
+): ToolGroupEntryBase {
   const firstTool = tools[0]!;
   const lastTool = tools[tools.length - 1]!;
   return {
@@ -153,6 +156,7 @@ function createToolGroupEntry(tools: ToolGroupEntryBase["tools"]): ToolGroupEntr
     tools,
     timestamp: firstTool.timestamp,
     lastTimestamp: lastTool.timestamp,
+    isActive,
   };
 }
 
@@ -277,7 +281,7 @@ export function groupConsecutiveEntries(
         cursor += 1;
       }
 
-      groupedEntries.push(createToolGroupEntry(consecutiveTools));
+      groupedEntries.push(createToolGroupEntry(consecutiveTools, isActive && cursor === sorted.length));
       index = cursor - 1;
       continue;
     }

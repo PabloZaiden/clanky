@@ -139,6 +139,10 @@ describe("reasoning display helpers", () => {
 
     expect(pureTools).toHaveLength(1);
     expect(pureTools[0]?.type).toBe("tool-group");
+    const pureToolGroup = pureTools[0];
+    if (pureToolGroup?.type === "tool-group") {
+      expect(pureToolGroup.isActive).toBe(true);
+    }
 
     const mixed = groupConsecutiveEntries([
       createReasoningEntry(
@@ -170,6 +174,7 @@ describe("reasoning display helpers", () => {
         "tool-mixed-1",
         "tool-mixed-2",
       ]);
+      expect(toolGroup.isActive).toBe(false);
     }
   });
 

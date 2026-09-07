@@ -7,6 +7,7 @@ import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
 import { HighlightedJsonBlock } from "./highlighted-json-block";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";
+import { ActivitySpinner } from "./activity-spinner";
 import {
   formatToolValue,
   getStructuredToolDetails,
@@ -20,6 +21,7 @@ interface ToolEntryProps {
   timestamp: string;
   showTimestamp: boolean;
   spacingClass: string;
+  isActive?: boolean;
   toolPathDisplayRoot?: string;
   fullWidth?: boolean;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
@@ -223,6 +225,7 @@ export const ToolEntry = memo(function ToolEntry({
   timestamp,
   showTimestamp,
   spacingClass,
+  isActive = false,
   toolPathDisplayRoot,
   fullWidth = false,
   onLoadToolDetails,
@@ -270,6 +273,7 @@ export const ToolEntry = memo(function ToolEntry({
 
   const inputSummary = (
     <span className={toolSummaryClassName} data-tool-summary="true">
+      {isActive && <ActivitySpinner />}
       {shouldShowStatus && (
         <>
           <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
@@ -387,6 +391,7 @@ export const ToolEntry = memo(function ToolEntry({
           />
         ) : (
           <span className={toolSummaryClassName}>
+            {isActive && <ActivitySpinner />}
             {shouldShowStatus && (
               <>
                 <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>

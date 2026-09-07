@@ -152,6 +152,8 @@ export interface ToolGroupEntryBase {
   timestamp: string;
   /** Timestamp of the last tool call in the run. */
   lastTimestamp: string;
+  /** Whether this is the trailing tool activity while the transcript is active. */
+  isActive: boolean;
 }
 
 export interface ReasoningGroupEntryBase {
