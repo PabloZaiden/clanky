@@ -1656,7 +1656,7 @@ describe("database schema", () => {
         type: string;
         notnull: number;
       }>;
-      expect(columns).toEqual([
+      expect(columns.map(({ name, type, notnull }) => ({ name, type, notnull }))).toEqual([
         { name: "nonce", type: "TEXT", notnull: 0 },
         { name: "expires_at", type: "TEXT", notnull: 1 },
       ]);
