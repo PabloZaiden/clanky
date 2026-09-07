@@ -367,11 +367,9 @@ bun dev
 
 On macOS, `bun run build` creates `.clanky-dev/macos-signing.p12` and
 `.clanky-dev/macos-signing-password` on the first build when they are missing,
-then reuses that self-signed identity to sign later local binaries. macOS may
-ask once to trust the certificate for code signing; the trust is intentionally
-kept so subsequent builds do not ask again. The files are gitignored and must
-not be committed. This is an internal stable identity, not Apple Developer ID
-signing or notarization.
+then reuses that self-signed identity to sign later local binaries. The files
+are gitignored and must not be committed. This is an internal stable identity,
+not Apple Developer ID signing or notarization.
 
 The release workflow uses the same PKCS#12 and password through the GitHub
 secrets `CLANKY_MACOS_SIGNING_CERT_BASE64` and
@@ -384,10 +382,11 @@ gh secret set CLANKY_MACOS_SIGNING_CERT_PASSWORD \
   < .clanky-dev/macos-signing-password
 ```
 
-The PKCS#12 container uses explicit AES-256-CBC encryption and a SHA-256 MAC.
-The local signer extracts its certificate and private key before importing them
-because macOS Security can reject modern PKCS#12 encryption when importing the
-container directly.
+The PKCS#12 container uses the Keychain-compatible Apple export profile
+(SHA-1/3DES) and is imported directly into a temporary Keychain. Its
+legacy-compatible encryption protects only the transport artifact; it does not
+change the self-signed certificate's identity or make it trusted by Gatekeeper.
+The build does not modify macOS trust settings.
 
 To repopulate local demo data for the UI, run:
 
