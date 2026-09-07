@@ -80,6 +80,22 @@ async function readPassword(passwordPath: string): Promise<string> {
   return password;
 }
 
+async function readSigningCertificateHash(keychainPath: string): Promise<string> {
+  const output = await runCommand(
+    SECURITY_COMMAND,
+    ["find-certificate", "-a", "-Z", keychainPath],
+    "Finding the imported macOS signing certificate",
+  );
+  const match = output.match(/^SHA-1 hash: ([0-9A-Fa-f]{40})$/m);
+  const fingerprint = match?.[1];
+  if (!fingerprint) {
+    throw new Error(
+      "The imported macOS signing certificate does not have a usable fingerprint.",
+    );
+  }
+  return fingerprint;
+}
+
 async function createCertificate(
   certificatePath: string,
   passwordPath: string,
@@ -244,6 +260,7 @@ export async function signMacOSBinary(
       ],
       "Allowing codesign to use the macOS signing key",
     );
+    const signingCertificateHash = await readSigningCertificateHash(keychainPath);
     await runCommand(
       SECURITY_COMMAND,
       [
@@ -262,7 +279,7 @@ export async function signMacOSBinary(
       [
         "--force",
         "--sign",
-        MACOS_SIGNING_IDENTITY,
+        signingCertificateHash,
         "--keychain",
         keychainPath,
         "--timestamp=none",
