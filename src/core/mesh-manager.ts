@@ -12,6 +12,7 @@ import type {
   MeshHealthCheck,
   MeshHealthCheckResponse,
   MeshRevocationNotice,
+  MeshWorkerKillRequest,
 } from "@/contracts/schemas/mesh";
 import { MeshHealthCheckResponseSchema } from "@/contracts/schemas/mesh";
 import type {
@@ -43,6 +44,7 @@ import {
 } from "../persistence/mesh-enrollment-tokens";
 import {
   ensureLocalMeshNodeIdentity,
+  requireMeshInstanceName,
   setLocalMeshEndpoint,
   setLocalMeshInstanceName,
   signMeshPayload,
@@ -54,6 +56,7 @@ import {
   buildMeshHealthCheckSigningPayload,
   buildMeshHealthCheckResponseSigningPayload,
   buildMeshRevocationNoticeSigningPayload,
+  buildMeshWorkerKillRequestSigningPayload,
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
@@ -69,6 +72,7 @@ import {
   decideRevokeWorker,
   decideAcceptEnrollment,
 } from "../domain/mesh-transitions";
+import { buildWorkerJoinCommand } from "./mesh-join-command";
 import { meshStateEventEmitter } from "./event-emitter";
 import {
   getMeshRuntimeRole,
@@ -78,6 +82,8 @@ import {
 } from "./mesh-runtime";
 
 const log = createLogger("core:mesh-manager");
+const MESH_WORKER_KILL_DELAY_MS = 100;
+const MESH_WORKER_KILL_EXIT_CODE = 1;
 
 async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
   const identity = await ensureLocalMeshNodeIdentity();
@@ -102,10 +108,19 @@ export class MeshManager {
   ) {
     requireMeshRuntimeRole("controller");
     const identity = await ensureLocalMeshIdentityWithEndpoint();
-    return createMeshEnrollmentToken(userId, name, ttlSeconds, {
+    const controllerEndpoint = identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint();
+    const created = createMeshEnrollmentToken(userId, name, ttlSeconds, {
       nodeId: identity.nodeId,
       fingerprint: identity.fingerprint,
     });
+    return {
+      ...created,
+      workerJoinCommand: buildWorkerJoinCommand({
+        controllerEndpoint,
+        enrollmentToken: created.token,
+        controllerFingerprint: identity.fingerprint,
+      }),
+    };
   }
 
   async listEnrollmentTokens(userId: string) {
@@ -275,6 +290,50 @@ export class MeshManager {
       { type: "mesh.changed", executionHostsChanged: true },
       { userId },
     );
+  }
+
+  async killWorker(
+    userId: string,
+    workerNodeId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const registration = await getWorkerRegistration(workerNodeId, userId);
+    if (!registration) {
+      throw new DomainError(
+        "mesh_worker_not_found",
+        "The worker registration was not found.",
+      );
+    }
+    if (registration.grantStatus !== "active") {
+      throw new DomainError(
+        "mesh_peer_revoked",
+        "The worker grant is revoked.",
+      );
+    }
+
+    const identity = await ensureLocalMeshNodeIdentity();
+    const nonce = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const envelope: Omit<MeshWorkerKillRequest, "signature"> = {
+      protocolVersion: 1,
+      controllerNodeId: identity.nodeId,
+      workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce,
+      expiresAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshWorkerKillRequestSigningPayload(envelope),
+    );
+    const route = resolveMeshRoute(
+      registration.workerEndpoint,
+      "api/mesh/internal/kill",
+    );
+    await postMeshControlMessage(route, {
+      ...envelope,
+      signature,
+    }, nonce);
   }
 
   async removeRevokedWorker(
@@ -471,6 +530,7 @@ export class MeshManager {
     requireMeshRuntimeRole("worker");
     assertMeshEndpointAllowed(input.controllerEndpoint);
     const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const instanceName = requireMeshInstanceName(identity);
 
     if (!identity.meshEndpoint) {
       throw new DomainError(
@@ -485,7 +545,7 @@ export class MeshManager {
     const envelope: Omit<MeshEnrollmentRequest, "signature"> = {
       protocolVersion: 1,
       workerNodeId: identity.nodeId,
-      workerInstanceName: identity.instanceName,
+      workerInstanceName: instanceName,
       workerEndpoint: identity.meshEndpoint,
       workerTransport: getMeshTransport(identity.meshEndpoint),
       workerPublicKey: identity.publicKey,
@@ -624,6 +684,67 @@ export class MeshManager {
         controllerNodeId: envelope.controllerNodeId,
       });
     }
+  }
+
+  async receiveWorkerKillRequest(
+    envelope: MeshWorkerKillRequest,
+  ): Promise<void> {
+    requireMeshRuntimeRole("worker");
+    assertMeshPeerIdentity(
+      envelope.controllerPublicKey,
+      envelope.controllerFingerprint,
+      "killing controller",
+    );
+    const signingPayload = buildMeshWorkerKillRequestSigningPayload(envelope);
+    const valid = await verifyMeshPayloadSignature(
+      signingPayload,
+      envelope.signature,
+      envelope.controllerPublicKey,
+    );
+    if (!valid) {
+      throw new DomainError(
+        "mesh_worker_kill_invalid_signature",
+        "The worker kill signature is invalid.",
+      );
+    }
+    if (Date.parse(envelope.expiresAt) <= Date.now()) {
+      throw new DomainError(
+        "mesh_worker_kill_expired",
+        "The worker kill request has expired.",
+      );
+    }
+    const identity = await ensureLocalMeshNodeIdentity();
+    if (envelope.workerNodeId !== identity.nodeId) {
+      throw new DomainError(
+        "mesh_peer_target_invalid",
+        "The worker kill request targets a different Mesh worker.",
+      );
+    }
+
+    const grant = await getControllerGrant(envelope.controllerNodeId);
+    if (!grant || grant.grantStatus !== "active") {
+      throw new DomainError(
+        "mesh_peer_not_trusted",
+        "The worker kill sender does not have an active grant.",
+      );
+    }
+    if (
+      grant.controllerPublicKey !== envelope.controllerPublicKey
+      || grant.controllerFingerprint !== envelope.controllerFingerprint
+    ) {
+      throw new DomainError(
+        "mesh_peer_not_trusted",
+        "The worker kill sender identity does not match the stored grant.",
+      );
+    }
+
+    log.info("Received worker kill command", {
+      controllerNodeId: envelope.controllerNodeId,
+    });
+    setTimeout(
+      () => process.exit(MESH_WORKER_KILL_EXIT_CODE),
+      MESH_WORKER_KILL_DELAY_MS,
+    );
   }
 
   // --- Worker: get status ---

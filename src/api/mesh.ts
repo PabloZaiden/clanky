@@ -29,6 +29,8 @@ export function meshErrorResponse(error: unknown): Response {
             ? 404
             : error.code === "mesh_peer_not_trusted"
               ? 403
+              : error.code === "mesh_peer_revoked"
+                ? 403
               : error.code === "mesh_control_request_unreachable"
                 ? 503
                 : error.code === "mesh_control_request_rejected"
@@ -133,6 +135,32 @@ export const meshRoutes = defineRoutes({
       if (!parsed.success) return parsed.response;
       try {
         await meshManager.revokeWorker(ctx.requireOwner().id, parsed.data.workerNodeId);
+        return successResponse({
+          status: await meshManager.getControllerStatus(ctx.requireOwner().id),
+        });
+      } catch (error) {
+        return meshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/workers/:workerNodeId/kill": {
+    auth: "owner",
+    sameOrigin: "mutations",
+    description: "Ask an enrolled worker to terminate so its service supervisor can restart it.",
+    tags: ["mesh", "workers", "lifecycle"],
+    async POST(_req, ctx): Promise<Response> {
+      const workerNodeId = ctx.params["workerNodeId"];
+      if (!workerNodeId) {
+        return domainErrorResponse(new Error("Worker node ID is required."), {
+          fallback: {
+            error: "mesh_worker_id_required",
+            message: "Worker node ID is required.",
+            status: 400,
+          },
+        });
+      }
+      try {
+        await meshManager.killWorker(ctx.requireOwner().id, workerNodeId);
         return successResponse({
           status: await meshManager.getControllerStatus(ctx.requireOwner().id),
         });

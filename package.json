@@ -11,6 +11,7 @@
     "start:server": "bun run start",
     "build": "bun scripts/run-build.ts",
     "build:novnc": "bun scripts/novnc-vendor.ts",
+    "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:changed": "bun scripts/run-tests.ts all --changed=HEAD",

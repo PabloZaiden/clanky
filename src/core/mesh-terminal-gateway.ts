@@ -29,6 +29,7 @@ import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
 import { assertMeshExecutionCwd } from "./mesh-execution-gateway";
+import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
 import { LocalTerminalConnection } from "./terminal";
@@ -162,7 +163,12 @@ export class MeshTerminalGateway {
         throw new DomainError("mesh_peer_signature_invalid", "The Mesh terminal session signature is invalid.");
       }
       await this.assertTrustedCaller(request);
-      const directory = assertMeshExecutionCwd(request.executionRoot, request.directory);
+      const executionRoot = assertMeshExecutionCwd(
+        getMeshWorkerDirectory(),
+        request.executionRoot,
+      );
+      const directory = assertMeshExecutionCwd(executionRoot, request.directory);
+      request.executionRoot = executionRoot;
       request.directory = directory;
       const decryptedEnvironment = request.encryptedEnvironment === undefined
         ? undefined
