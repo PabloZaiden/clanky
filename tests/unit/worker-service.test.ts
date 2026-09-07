@@ -102,6 +102,23 @@ describe("worker service definitions", () => {
     expect(unit).not.toContain("CLANKY_API_KEY");
   });
 
+  test("escapes ExecStart dollars without escaping environment dollars or backticks", () => {
+    const base = configuration("linux");
+    const unit = renderSystemdUnit({
+      ...base,
+      binaryPath: "/home/alice/bin/$clanky`worker",
+      workerDirectory: "/srv/$clanky`workspace",
+      environment: {
+        ...base.environment,
+        CLANKY_PUBLIC_BASE_URL: "https://$host.example",
+      },
+    });
+    expect(unit).toContain(
+      'ExecStart="/home/alice/bin/$$clanky`worker" "serve" "--mesh-worker" "true" "--worker-directory" "/srv/$$clanky`workspace"',
+    );
+    expect(unit).toContain('Environment=CLANKY_PUBLIC_BASE_URL="https://$host.example"');
+  });
+
   test("checks launchctl even when the macOS plist is missing", async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-status-"));
     try {
@@ -121,6 +138,35 @@ describe("worker service definitions", () => {
         loaded: true,
         running: true,
       });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("checks systemctl even when the Linux unit file is missing", async () => {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-status-"));
+    const calls: string[][] = [];
+    try {
+      const paths = {
+        ...getWorkerServicePaths("linux", "/home/alice"),
+        servicePath: join(temporaryDirectory, "missing.service"),
+      };
+      const status = await getWorkerServiceStatus(paths, async (_command, args) => {
+        calls.push([...args]);
+        if (args[1] === "is-active") {
+          return { exitCode: 0, stdout: "active\n", stderr: "" };
+        }
+        return { exitCode: 1, stdout: "not-found\n", stderr: "" };
+      });
+      expect(status).toMatchObject({
+        installed: false,
+        loaded: false,
+        running: true,
+      });
+      expect(calls).toEqual([
+        ["systemctl", "is-active", "clanky-worker.service"],
+        ["systemctl", "is-enabled", "clanky-worker.service"],
+      ]);
     } finally {
       await rm(temporaryDirectory, { recursive: true, force: true });
     }

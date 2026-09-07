@@ -2,20 +2,15 @@ import { chmod, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
-  readRuntimeConfig,
-  readWebAppConfig,
-  resolveAppDataDir,
   type RuntimeEnvironment,
 } from "@pablozaiden/webapp/server";
 import {
-  resolveServeOptionValues,
   type CliCommandResult,
   type WebAppCliCommandContext,
   type WebAppCliCommandDefinition,
-  type WebAppServeOptionValue,
 } from "@pablozaiden/webapp/cli";
 import type { ClankyCliContext } from "./mesh";
-import { CLANKY_SERVE_OPTIONS } from "./serve-options";
+import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
 
 const MACOS_LABEL = "com.pablozaiden.clanky.worker";
 const LINUX_UNIT_NAME = "clanky-worker.service";
@@ -210,14 +205,6 @@ function assertNonRootUser(platform: WorkerServicePlatform, uid: number | undefi
   }
 }
 
-function readWorkerDirectory(
-  values: Readonly<Record<string, WebAppServeOptionValue | undefined>>,
-  cwd: string,
-): string {
-  const configured = values["worker-directory"];
-  return resolve(cwd, typeof configured === "string" && configured.trim() ? configured.trim() : ".");
-}
-
 async function assertDirectory(path: string, description: string): Promise<void> {
   let directory;
   try {
@@ -292,28 +279,15 @@ export async function resolveWorkerServiceConfiguration(
   const uid = resolveUid(input.uid);
   assertNonRootUser(platform, uid);
   const paths = getWorkerServicePaths(platform, homeDirectory, uid);
-  const dataDir = resolveAppDataDir({
-    envPrefix: "CLANKY",
-    appDirectoryName: ".clanky",
+  const runtimeConfiguration = resolveWorkerRuntimeConfiguration({
     environment,
+    cwd: input.cwd,
   });
-  const runtime = readRuntimeConfig({
-    appName: "Clanky",
-    envPrefix: "CLANKY",
-    appDirectoryName: ".clanky",
-    environment,
-  });
+  const dataDir = runtimeConfiguration.dataDir;
   if (!await pathExists(join(dataDir, "clanky.db"))) {
     throw new Error(`The worker data directory is not initialized: ${dataDir}`);
   }
-  const persisted = readWebAppConfig(dataDir);
-  const values = resolveServeOptionValues({
-    definitions: CLANKY_SERVE_OPTIONS,
-    envPrefix: "CLANKY",
-    environment,
-    persisted,
-  });
-  const workerDirectory = readWorkerDirectory(values, input.cwd ?? process.cwd());
+  const workerDirectory = runtimeConfiguration.workerDirectory;
   await assertDirectory(workerDirectory, "The Mesh worker directory");
   const binaryPath = resolve(input.executablePath ?? process.execPath);
   await assertStandaloneBinary(binaryPath, input.mainPath ?? currentMainPath());
@@ -327,17 +301,17 @@ export async function resolveWorkerServiceConfiguration(
     binaryPath,
     dataDir,
     workerDirectory,
-    workerExecutionEnabled: values["worker-execution-enabled"] !== false,
-    host: runtime.host,
-    port: runtime.port,
+    workerExecutionEnabled: runtimeConfiguration.workerExecutionEnabled,
+    host: runtimeConfiguration.host,
+    port: runtimeConfiguration.port,
     homeDirectory,
     userName,
     environment: buildServiceEnvironment({
       environment,
       dataDir,
       homeDirectory,
-      host: runtime.host,
-      port: runtime.port,
+      host: runtimeConfiguration.host,
+      port: runtimeConfiguration.port,
       platform,
     }),
   };
@@ -428,20 +402,22 @@ export function renderLaunchAgent(configuration: WorkerServiceConfiguration): st
   ].join("\n");
 }
 
-function systemdQuote(value: string): string {
+function systemdValueQuote(value: string): string {
   const escaped = value
     .replaceAll("\\", "\\\\")
     .replaceAll("\"", "\\\"")
-    .replaceAll("$", "\\$")
-    .replaceAll("`", "\\`")
     .replaceAll("%", "%%");
   return `"${escaped}"`;
 }
 
+function systemdExecStartQuote(value: string): string {
+  return systemdValueQuote(value).replaceAll("$", () => "$$");
+}
+
 export function renderSystemdUnit(configuration: WorkerServiceConfiguration): string {
-  const command = workerCommand(configuration).map(systemdQuote).join(" ");
+  const command = workerCommand(configuration).map(systemdExecStartQuote).join(" ");
   const environment = Object.entries(configuration.environment)
-    .map(([key, value]) => `Environment=${systemdQuote(`${key}=${value}`)}`);
+    .map(([key, value]) => `Environment=${systemdValueQuote(`${key}=${value}`)}`);
   return [
     "[Unit]",
     "Description=Clanky Mesh worker",
@@ -450,8 +426,8 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
     "",
     "[Service]",
     "Type=simple",
-    `User=${systemdQuote(configuration.userName)}`,
-    `WorkingDirectory=${systemdQuote(configuration.workerDirectory)}`,
+    `User=${systemdValueQuote(configuration.userName)}`,
+    `WorkingDirectory=${systemdValueQuote(configuration.workerDirectory)}`,
     ...environment,
     `ExecStart=${command}`,
     "Restart=on-failure",
@@ -661,7 +637,6 @@ async function uninstallService(
     await rm(paths.servicePath, { force: true });
     return;
   }
-  if (!await pathExists(paths.servicePath)) return;
   await stopLinuxService(paths, runner);
   await runRequired(runner, "sudo", ["rm", "-f", paths.servicePath]);
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
@@ -683,16 +658,6 @@ export async function getWorkerServiceStatus(
       path: paths.servicePath,
     };
   }
-  if (!installed) {
-    return {
-      platform: paths.platform,
-      service: paths.label,
-      installed: false,
-      loaded: false,
-      running: false,
-      path: paths.servicePath,
-    };
-  }
   const active = await runSystemctl(runner, ["is-active", paths.label]);
   const enabled = await runSystemctl(runner, ["is-enabled", paths.label]);
   assertSystemctlStatusResult(active, ["is-active", paths.label]);
@@ -700,7 +665,7 @@ export async function getWorkerServiceStatus(
   return {
     platform: paths.platform,
     service: paths.label,
-    installed: true,
+    installed,
     loaded: enabled.exitCode === 0,
     running: active.exitCode === 0 && active.stdout.trim() === "active",
     path: paths.servicePath,
@@ -722,7 +687,11 @@ async function runWorkerServiceOperation(
       environment,
       homeDirectory,
     });
-    await installService(configuration, command.noStart, runner);
+    await installService(
+      configuration,
+      command.noStart,
+      runner,
+    );
     return {
       platform,
       service: paths.label,
@@ -774,7 +743,8 @@ export async function runWorkerServiceCommand(
 
 export function createWorkerServiceCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Install and manage the native worker service.",
+    description:
+      "Install and manage the native worker service; macOS worker startup requests permissions.",
     usage: "worker service <install|uninstall|status|start|stop|restart> [--no-start]",
     handler: runWorkerServiceCommand,
   };
