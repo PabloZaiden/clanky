@@ -243,7 +243,8 @@ export async function signMacOSBinary(
         keychainPath,
         "-P",
         certificatePassword,
-        "-A",
+        "-T",
+        CODESIGN_COMMAND,
       ],
       "Importing the macOS signing certificate",
     );
