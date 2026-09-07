@@ -139,6 +139,24 @@ describe("reasoning display helpers", () => {
 
     expect(pureTools).toHaveLength(1);
     expect(pureTools[0]?.type).toBe("tool-group");
+    const pureToolGroup = pureTools[0];
+    if (pureToolGroup?.type === "tool-group") {
+      expect(pureToolGroup.isActive).toBe(true);
+    }
+
+    const pureToolsWithTrailingBoundary = groupConsecutiveEntries([
+      createToolEntry("tool-only-trailing", "2026-09-05T00:00:00.000Z"),
+      {
+        type: "response-boundary" as const,
+        id: "trailing-response-boundary",
+        timestamp: "2026-09-05T00:00:01.000Z",
+      },
+    ], true);
+    const trailingToolGroup = pureToolsWithTrailingBoundary[0];
+    expect(trailingToolGroup?.type).toBe("tool-group");
+    if (trailingToolGroup?.type === "tool-group") {
+      expect(trailingToolGroup.isActive).toBe(true);
+    }
 
     const mixed = groupConsecutiveEntries([
       createReasoningEntry(
@@ -170,6 +188,26 @@ describe("reasoning display helpers", () => {
         "tool-mixed-1",
         "tool-mixed-2",
       ]);
+      expect(toolGroup.isActive).toBe(false);
+    }
+
+    const mixedWithTrailingBoundary = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-trailing-boundary",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-trailing-boundary", "2026-09-05T00:00:01.000Z"),
+      {
+        type: "response-boundary" as const,
+        id: "mixed-trailing-response-boundary",
+        timestamp: "2026-09-05T00:00:02.000Z",
+      },
+    ], true);
+    const trailingWorkingGroup = mixedWithTrailingBoundary[0];
+    expect(trailingWorkingGroup?.type).toBe("working-group");
+    if (trailingWorkingGroup?.type === "working-group") {
+      expect(trailingWorkingGroup.isActive).toBe(true);
     }
   });
 

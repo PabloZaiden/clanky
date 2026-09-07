@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from "react";
 import { LazyDetails } from "./lazy-details";
 import { ReasoningGroupEntry } from "./reasoning-group-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
+import { ActivitySpinner } from "./activity-spinner";
 import type { ToolCallData } from "@/shared";
 import {
   annotateDisplayEntries,
@@ -71,6 +72,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
                 key={`working-tool-group-${childEntryForRender.id}`}
                 entry={childEntryForRender}
                 spacingClass={spacingClass}
+                showActivityIndicator={false}
                 toolPathDisplayRoot={toolPathDisplayRoot}
                 onLoadToolDetails={onLoadToolDetails}
               />
@@ -82,6 +84,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
               key={`working-reasoning-group-${childEntryForRender.id}`}
               entry={childEntryForRender}
               spacingClass={spacingClass}
+              showActivityIndicator={false}
               markdownEnabled={markdownEnabled}
               fileLinkContext={fileLinkContext}
             />
@@ -115,6 +118,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
             className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-working-summary="true"
           >
+            {entry.isActive && <ActivitySpinner label="Working" />}
             {summary}
           </span>
         }

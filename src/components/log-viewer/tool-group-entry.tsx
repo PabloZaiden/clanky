@@ -9,6 +9,7 @@ import {
 } from "./utils";
 import { ToolEntry } from "./tool-entry";
 import { getToolMeta, type InferredToolKind } from "./tool-inference";
+import { ActivitySpinner } from "./activity-spinner";
 
 interface ToolGroupEntryProps {
   entry: ToolGroupEntryBase & {
@@ -16,6 +17,7 @@ interface ToolGroupEntryProps {
     showGroupHeader: boolean;
   };
   spacingClass: string;
+  showActivityIndicator?: boolean;
   toolPathDisplayRoot?: string;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
@@ -79,6 +81,7 @@ function getToolGroupSummary(entry: ToolGroupEntryBase, toolPathDisplayRoot?: st
 export const ToolGroupEntry = memo(function ToolGroupEntry({
   entry,
   spacingClass,
+  showActivityIndicator = true,
   toolPathDisplayRoot,
   onLoadToolDetails,
 }: ToolGroupEntryProps) {
@@ -119,6 +122,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
+          {entry.isActive && showActivityIndicator && <ActivitySpinner label="Working" />}
           <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
           <span className="min-w-0 truncate">- {groupSummary}</span>
         </button>
