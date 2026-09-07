@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { isAbortError } from "./request-lifecycle";
 
 export type PreferenceOperation = "load" | "save";
@@ -46,44 +47,46 @@ export function usePreferenceLifecycle<T>({
   const isMountedRef = useRef(true);
   const loadControllerRef = useRef<AbortController | null>(null);
   const loadRequestIdRef = useRef(0);
+  const loadRefreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   const saveControllerRef = useRef<AbortController | null>(null);
   const saveRequestIdRef = useRef(0);
 
-  const refresh = useCallback(async () => {
-    if (!isMountedRef.current) {
-      return;
-    }
-
-    const requestId = ++loadRequestIdRef.current;
-    loadControllerRef.current?.abort();
-    const controller = new AbortController();
-    loadControllerRef.current = controller;
-    const isActiveRequest = () =>
-      isMountedRef.current
-      && loadControllerRef.current === controller
-      && loadRequestIdRef.current === requestId;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const nextValue = await load(controller.signal);
-      if (!isActiveRequest() || controller.signal.aborted) {
+  const refresh = useCallback(() => {
+    return loadRefreshCoordinatorRef.current.run(async () => {
+      if (!isMountedRef.current) {
         return;
       }
-      setValue(nextValue);
-    } catch (refreshError) {
-      if (controller.signal.aborted || isAbortError(refreshError) || !isActiveRequest()) {
-        return;
+
+      const requestId = ++loadRequestIdRef.current;
+      const controller = new AbortController();
+      loadControllerRef.current = controller;
+      const isActiveRequest = () =>
+        isMountedRef.current
+        && loadControllerRef.current === controller
+        && loadRequestIdRef.current === requestId;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const nextValue = await load(controller.signal);
+        if (!isActiveRequest() || controller.signal.aborted) {
+          return;
+        }
+        setValue(nextValue);
+      } catch (refreshError) {
+        if (controller.signal.aborted || isAbortError(refreshError) || !isActiveRequest()) {
+          return;
+        }
+        setError(String(refreshError));
+        onError?.({ operation: "load", error: refreshError });
+      } finally {
+        if (isActiveRequest()) {
+          loadControllerRef.current = null;
+          setLoading(false);
+        }
       }
-      setError(String(refreshError));
-      onError?.({ operation: "load", error: refreshError });
-    } finally {
-      if (isActiveRequest()) {
-        loadControllerRef.current = null;
-        setLoading(false);
-      }
-    }
+    });
   }, [load, onError]);
 
   const saveValue = useCallback(async (
@@ -141,6 +144,7 @@ export function usePreferenceLifecycle<T>({
       saveControllerRef.current?.abort();
       loadControllerRef.current = null;
       saveControllerRef.current = null;
+      loadRefreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
 
