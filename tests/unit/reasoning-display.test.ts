@@ -224,6 +224,26 @@ describe("reasoning display helpers", () => {
     if (trailingWorkingGroup?.type === "working-group") {
       expect(trailingWorkingGroup.isActive).toBe(true);
     }
+
+    const mixedWithCompletedHiddenResponse = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-completed-hidden-response",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-completed-hidden-response", "2026-09-05T00:00:01.000Z"),
+      {
+        type: "response-boundary" as const,
+        id: "completed-hidden-response",
+        timestamp: "2026-09-05T00:00:02.000Z",
+        hasResponseContent: true,
+      },
+    ], true);
+    const completedHiddenResponseGroup = mixedWithCompletedHiddenResponse[0];
+    expect(completedHiddenResponseGroup?.type).toBe("working-group");
+    if (completedHiddenResponseGroup?.type === "working-group") {
+      expect(completedHiddenResponseGroup.isActive).toBe(false);
+    }
   });
 
   test("shows individual tool details for short mixed working groups", () => {
@@ -255,6 +275,38 @@ describe("reasoning display helpers", () => {
     expect(getWorkingGroupToolSummary(workingGroup.entries)).toBe(
       "2 tools: View src/one.ts, Edit src/two.ts",
     );
+  });
+
+  test("keeps repeated completed thinking and tool cycles active until response text arrives", () => {
+    const grouped = groupConsecutiveEntries([
+      createReasoningEntry(
+        "reasoning-cycle-1",
+        "2026-09-05T00:00:00.000Z",
+        "2026-09-05T00:00:01.000Z",
+      ),
+      createToolEntry("tool-cycle-1", "2026-09-05T00:00:01.000Z"),
+      createReasoningEntry(
+        "reasoning-cycle-2",
+        "2026-09-05T00:00:02.000Z",
+        "2026-09-05T00:00:03.000Z",
+      ),
+      createToolEntry("tool-cycle-2", "2026-09-05T00:00:03.000Z"),
+    ], true);
+
+    expect(grouped).toHaveLength(1);
+    const workingGroup = grouped[0];
+    expect(workingGroup?.type).toBe("working-group");
+    if (workingGroup?.type !== "working-group") {
+      return;
+    }
+
+    expect(workingGroup.isActive).toBe(true);
+    expect(workingGroup.entries.map((entry) => entry.type)).toEqual([
+      "reasoning-group",
+      "tool-group",
+      "reasoning-group",
+      "tool-group",
+    ]);
   });
 
   test("uses the total call count for larger mixed working groups", () => {

@@ -56,12 +56,21 @@ export const ConversationViewer = memo(function ConversationViewer({
   const groupedEntries = useMemo(() => {
     const sourceEntries: EntryBase[] = [];
     messages.forEach((msg) => {
+      if (msg.role === "assistant" && msg.content.length === 0) {
+        return;
+      }
       sourceEntries.push({ type: "message", data: msg, timestamp: msg.timestamp });
     });
     toolCalls.forEach((tool) => {
       sourceEntries.push({ type: "tool", data: tool, timestamp: tool.timestamp });
     });
     logs.forEach((logEntry) => {
+      if (isResponseLogEntry(logEntry)) {
+        const content = logEntry.details?.["responseContent"];
+        if (typeof content !== "string" || content.length === 0) {
+          return;
+        }
+      }
       sourceEntries.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
     sourceEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -76,11 +85,15 @@ export const ConversationViewer = memo(function ConversationViewer({
     const result: EntryBase[] = [];
 
     messages.forEach((msg) => {
+      if (msg.role === "assistant" && msg.content.length === 0) {
+        return;
+      }
       if (msg.role === "assistant" && !showAssistantMessages) {
         result.push({
           type: "response-boundary",
           id: `assistant-response-${msg.id}`,
           timestamp: msg.timestamp,
+          hasResponseContent: true,
         });
         return;
       }
@@ -117,11 +130,15 @@ export const ConversationViewer = memo(function ConversationViewer({
 
       if (isResponseLogEntry(logEntry)) {
         const content = logEntry.details?.["responseContent"];
-        if (!showResponseLogs || typeof content !== "string" || content.length === 0) {
+        if (typeof content !== "string" || content.length === 0) {
+          return;
+        }
+        if (!showResponseLogs) {
           result.push({
             type: "response-boundary",
             id: `response-log-${logEntry.id}`,
             timestamp: logEntry.timestamp,
+            hasResponseContent: true,
           });
           return;
         }

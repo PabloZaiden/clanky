@@ -68,13 +68,15 @@ export interface TranscriptFileLinkContext {
 
 /**
  * Internal marker used to preserve separation whenever a response is hidden
- * or filtered, including assistant messages, response logs, and response logs
- * with missing or empty response content.
+ * or filtered, including assistant messages and response logs with actual
+ * response content. Empty response entries do not end the active work group.
  */
 export interface ResponseBoundaryEntryBase {
   type: "response-boundary";
   id: string;
   timestamp: string;
+  /** Whether the hidden response contained actual assistant text. */
+  hasResponseContent?: boolean;
 }
 
 export interface LogViewerProps {
