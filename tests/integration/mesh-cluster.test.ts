@@ -47,7 +47,22 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
   } else {
     delete env["CLANKY_DISABLE_PASSKEY"];
     const bootstrap = Bun.spawnSync(
-      [process.execPath, "src/index.ts", "worker", "bootstrap"],
+      [
+        process.execPath,
+        "src/index.ts",
+        "worker",
+        "bootstrap",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--worker-directory",
+        dataDir,
+        "--mesh-endpoint",
+        baseUrl,
+        "--instance-name",
+        "worker-1",
+      ],
       { cwd: process.cwd(), env, stdout: "pipe", stderr: "pipe" },
     );
     if (bootstrap.exitCode !== 0) {
@@ -148,16 +163,34 @@ async function enroll(controller: MeshProcess, worker: MeshProcess): Promise<voi
   const enrollment = created.body as {
     token: string;
     enrollment: { controllerFingerprint: string };
+    workerJoinCommand: string;
   };
-  const result = await jsonRequest(worker, "/api/mesh/enroll", {
-    method: "POST",
-    body: {
-      controllerEndpoint: controller.baseUrl,
-      enrollmentToken: enrollment.token,
-      expectedControllerFingerprint: enrollment.enrollment.controllerFingerprint,
+  expect(enrollment.workerJoinCommand).toBe(
+    `clanky worker join --controller '${controller.baseUrl}' --token '${enrollment.token}' --fingerprint '${enrollment.enrollment.controllerFingerprint}'`,
+  );
+  const join = Bun.spawnSync([
+    process.execPath,
+    "src/index.ts",
+    "worker",
+    "join",
+    "--controller",
+    controller.baseUrl,
+    "--token",
+    enrollment.token,
+    "--fingerprint",
+    enrollment.enrollment.controllerFingerprint,
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: worker.dataDir,
+      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_DISABLE_PASSKEY: undefined,
     },
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  expect(result.status).toBe(200);
+  expect(join.exitCode).toBe(0);
 }
 
 afterEach(async () => {
@@ -186,6 +219,7 @@ describe("controller-worker Mesh", () => {
     ]);
     expect(statusA.body.workers).toHaveLength(1);
     expect(statusB.body.workers).toHaveLength(1);
+    expect(statusA.body.workers[0].workerInstanceName).toBe("worker-1");
     expect(workerStatus.body).toMatchObject({
       controllerCount: 2,
       execution: { directory: worker.dataDir, acceptRemoteExecution: true },
@@ -260,5 +294,24 @@ describe("controller-worker Mesh", () => {
       .body.workers[0].grantStatus).toBe("revoked");
     expect((await jsonRequest(worker, "/api/mesh/status"))
       .body.controllerCount).toBe(0);
+  }, 30_000);
+
+  test("controller can terminate an enrolled worker through the signed Mesh command", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    await enroll(controller, worker);
+    const status = await jsonRequest(controller, "/api/mesh/status");
+    const workerNodeId = status.body.workers[0].workerNodeId as string;
+
+    const kill = await jsonRequest(
+      controller,
+      `/api/mesh/workers/${encodeURIComponent(workerNodeId)}/kill`,
+      { method: "POST" },
+    );
+
+    expect(kill.status).toBe(200);
+    expect(await worker.child.exited).toBe(1);
   }, 30_000);
 });

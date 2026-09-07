@@ -19,6 +19,7 @@ import type {
 export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = (typeof MESH_TRANSPORTS)[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
+export const MESH_WORKER_KILL_REQUEST_TTL_MS = 60_000;
 
 export const MESH_GRANT_STATUSES = ["active", "revoked"] as const;
 export type MeshGrantStatus = (typeof MESH_GRANT_STATUSES)[number];

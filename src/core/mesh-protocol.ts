@@ -11,6 +11,7 @@ import type {
   MeshHealthCheck,
   MeshHealthCheckResponse,
   MeshRevocationNotice,
+  MeshWorkerKillRequest,
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
@@ -19,6 +20,7 @@ type UnsignedEnrollmentResponse = Omit<MeshEnrollmentResponse, "signature">;
 type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
 type UnsignedHealthCheckResponse = Omit<MeshHealthCheckResponse, "signature">;
 type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
+type UnsignedWorkerKillRequest = Omit<MeshWorkerKillRequest, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 
 export function buildMeshEnrollmentRequestSigningPayload(
@@ -95,6 +97,21 @@ export function buildMeshRevocationNoticeSigningPayload(
 ): string {
   return JSON.stringify([
     "clanky-mesh-revocation-notice-v1",
+    envelope.protocolVersion,
+    envelope.controllerNodeId,
+    envelope.workerNodeId,
+    envelope.controllerPublicKey,
+    envelope.controllerFingerprint,
+    envelope.nonce,
+    envelope.expiresAt,
+  ]);
+}
+
+export function buildMeshWorkerKillRequestSigningPayload(
+  envelope: UnsignedWorkerKillRequest,
+): string {
+  return JSON.stringify([
+    "clanky-mesh-worker-kill-request-v1",
     envelope.protocolVersion,
     envelope.controllerNodeId,
     envelope.workerNodeId,

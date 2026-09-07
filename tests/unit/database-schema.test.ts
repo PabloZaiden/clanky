@@ -1639,4 +1639,33 @@ describe("database schema", () => {
       db.close();
     }
   });
+
+  test("migration v48 creates the expiring worker kill nonce ledger idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 48);
+    if (!migration) {
+      throw new Error("Migration v48 was not found");
+    }
+
+    const db = new Database(":memory:");
+    try {
+      migration.up(db);
+      migration.up(db);
+
+      const columns = db.query("PRAGMA table_info(mesh_worker_kill_nonces)").all() as Array<{
+        name: string;
+        type: string;
+        notnull: number;
+      }>;
+      expect(columns.map(({ name, type, notnull }) => ({ name, type, notnull }))).toEqual([
+        { name: "nonce", type: "TEXT", notnull: 0 },
+        { name: "expires_at", type: "TEXT", notnull: 1 },
+      ]);
+      expect(
+        db.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+          .get("idx_mesh_worker_kill_nonces_expires_at"),
+      ).toEqual({ name: "idx_mesh_worker_kill_nonces_expires_at" });
+    } finally {
+      db.close();
+    }
+  });
 });

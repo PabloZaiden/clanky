@@ -53,6 +53,7 @@ import { migrateMeshEnrollmentTokens } from "./mesh-enrollment-tokens";
 import { migrateMeshControllerWorker } from "./mesh-controller-worker";
 import { migrateCanonicalExecutionHosts } from "./canonical-execution-hosts";
 import { migrateWorkspaceExecutionTargets } from "./workspace-execution-targets";
+import { migrateMeshWorkerKillNonces } from "./mesh-worker-kill-nonces";
 
 const log = createLogger("persistence:migrations");
 
@@ -107,6 +108,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "mesh_sync_cursors",
   "mesh_sync_conflicts",
   "mesh_link_claims",
+  "mesh_worker_kill_nonces",
   "provisioning_jobs",
   "provisioning_job_logs",
   "execution_hosts",
@@ -1542,6 +1544,11 @@ export const migrations: Migration[] = [
     version: 47,
     name: "workspace_execution_targets",
     up: migrateWorkspaceExecutionTargets,
+  },
+  {
+    version: 48,
+    name: "mesh_worker_kill_nonces",
+    up: migrateMeshWorkerKillNonces,
   },
 ];
 

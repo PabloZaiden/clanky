@@ -7,18 +7,21 @@ on:
 
 jobs:
   binaries:
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # v0.0.7
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@773e70d30e93db7f324a27c5fb1850a783fa581a # installer v0.0.8
     permissions:
       contents: write
+    secrets:
+      macos_signing_certificate_base64: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_BASE64 }}
+      macos_signing_certificate_password: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_PASSWORD }}
     with:
       install_command: bun install --frozen-lockfile
-      prebuild_command: bun run build
+      prebuild_command: CLANKY_MACOS_SIGNING_SKIP_LOCAL=1 bun run build
       binaries: |
         [
           {
             "name": "clanky",
             "asset_prefix": "clanky",
-            "build_command": "bun src/build.ts --target=$BUN_TARGET",
+            "build_command": "CLANKY_MACOS_SIGNING_SKIP_LOCAL=1 bun src/build.ts --target=$BUN_TARGET",
             "output_path": "dist/clanky-$RELEASE_TARGET"
           }
         ]

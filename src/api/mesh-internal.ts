@@ -12,6 +12,7 @@ import {
   MeshEnrollmentRequestSchema,
   MeshHealthCheckSchema,
   MeshRevocationNoticeSchema,
+  MeshWorkerKillRequestSchema,
 } from "@/contracts/schemas/mesh";
 import {
   MeshExecutionRpcRequestSchema,
@@ -40,9 +41,14 @@ function internalMeshErrorResponse(error: unknown): Response {
         : error.code === "mesh_enrollment_controller_mismatch"
         ? 409
         : error.code === "mesh_peer_not_trusted"
-          ? 403
+        ? 403
         : error.code === "mesh_peer_revoked"
-            ? 403
+          ? 403
+          : error.code === "mesh_worker_kill_expired"
+            ? 410
+          : error.code === "mesh_worker_kill_invalid_signature"
+            || error.code === "mesh_peer_target_invalid"
+            ? 400
           : error.code === "mesh_execution_caller_not_active"
             ? 409
           : error.code === "mesh_execution_context_changed"
@@ -127,6 +133,30 @@ export const meshInternalRoutes = defineRoutes({
         requireMeshRuntimeRole("worker");
         await meshManager.receiveRevocationNotice(parsed.data);
         return Response.json({ success: true });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/kill": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Receive a signed worker termination request from an enrolled controller.",
+    tags: ["mesh", "internal", "lifecycle"],
+    async POST(req): Promise<Response> {
+      const parsed = await parseAndValidate(MeshWorkerKillRequestSchema, req);
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      const nodeId = req.headers.get("x-clanky-mesh-node-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (nodeId !== parsed.data.controllerNodeId || requestId !== parsed.data.nonce) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the worker kill request.", 400);
+      }
+      try {
+        requireMeshRuntimeRole("worker");
+        await meshManager.receiveWorkerKillRequest(parsed.data);
+        return Response.json({ success: true, message: "Worker is shutting down." });
       } catch (error) {
         return internalMeshErrorResponse(error);
       }
@@ -446,6 +476,7 @@ export const meshControllerInternalRoutes = defineRoutes({
 
 export const meshWorkerInternalRoutes = defineRoutes({
   "/api/mesh/internal/revocation": meshInternalRoutes["/api/mesh/internal/revocation"]!,
+  "/api/mesh/internal/kill": meshInternalRoutes["/api/mesh/internal/kill"]!,
   "/api/mesh/internal/health": meshInternalRoutes["/api/mesh/internal/health"]!,
   "/api/mesh/internal/execution/session": meshInternalRoutes["/api/mesh/internal/execution/session"]!,
   "/api/mesh/internal/execution/rpc": meshInternalRoutes["/api/mesh/internal/execution/rpc"]!,

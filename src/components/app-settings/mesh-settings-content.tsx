@@ -4,6 +4,8 @@ import type { UseMeshResult } from "../../hooks";
 import { Badge, Button } from "../common";
 import { SettingsError, SettingsInput } from "./settings-row-controls";
 
+const WORKER_KILL_COUNTDOWN_SECONDS = 15;
+
 interface MeshSettingsContentProps {
   mesh: UseMeshResult;
 }
@@ -40,10 +42,32 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [revokeWorkerNodeId, setRevokeWorkerNodeId] = useState<string | null>(null);
   const [removeWorkerNodeId, setRemoveWorkerNodeId] = useState<string | null>(null);
+  const [killWorkerNodeId, setKillWorkerNodeId] = useState<string | null>(null);
+  const [killingWorkerNodeId, setKillingWorkerNodeId] = useState<string | null>(null);
+  const [killCountdown, setKillCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     if (mesh.mutationError) toast.error(mesh.mutationError);
   }, [mesh.mutationError, toast]);
+
+  useEffect(() => {
+    if (!killingWorkerNodeId) {
+      setKillCountdown(null);
+      return;
+    }
+    setKillCountdown(WORKER_KILL_COUNTDOWN_SECONDS);
+    const interval = window.setInterval(() => {
+      setKillCountdown((current) => current === null ? null : Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [killingWorkerNodeId]);
+
+  useEffect(() => {
+    if (!killingWorkerNodeId || killCountdown !== 0) return;
+    setKillingWorkerNodeId(null);
+    setKillCountdown(null);
+    void mesh.refresh({ showLoading: false });
+  }, [killCountdown, killingWorkerNodeId, mesh.refresh]);
 
   useEffect(() => {
     setInstanceName(mesh.status?.node.instanceName ?? "");
@@ -106,14 +130,42 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             </div>
             {worker.grantStatus === "active" ? (
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="danger"
-                  onClick={() => setRevokeWorkerNodeId(worker.workerNodeId)}
-                >
-                  Revoke
-                </Button>
+                {killingWorkerNodeId === worker.workerNodeId ? (
+                  <div className="wapp-shutdown-countdown min-w-56" aria-live="polite">
+                    <div className="wapp-shutdown-message">
+                      Worker is shutting down... refreshing status in {killCountdown ?? 0}s
+                    </div>
+                    <div className="wapp-shutdown-progress" aria-hidden="true">
+                      <div
+                        className="wapp-shutdown-progress-bar"
+                        style={{
+                          width: `${((killCountdown ?? 0) / WORKER_KILL_COUNTDOWN_SECONDS) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      disabled={mesh.saving || killingWorkerNodeId !== null}
+                      onClick={() => setKillWorkerNodeId(worker.workerNodeId)}
+                    >
+                      Kill
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      disabled={mesh.saving || killingWorkerNodeId !== null}
+                      onClick={() => setRevokeWorkerNodeId(worker.workerNodeId)}
+                    >
+                      Revoke
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
               <Button
@@ -193,6 +245,24 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         </form>
       </details>
 
+      <ConfirmModal
+        isOpen={killWorkerNodeId !== null}
+        onClose={() => setKillWorkerNodeId(null)}
+        onConfirm={async () => {
+          if (!killWorkerNodeId) return;
+          const result = await mesh.killWorker(killWorkerNodeId);
+          if (result) {
+            toast.success("Worker kill command sent.");
+            setKillWorkerNodeId(null);
+            setKillingWorkerNodeId(killWorkerNodeId);
+          }
+        }}
+        title="Kill worker"
+        message="The worker process will exit after acknowledging this command. Its service supervisor should restart it."
+        confirmLabel="Kill worker"
+        loading={mesh.saving}
+        variant="danger"
+      />
       <ConfirmModal
         isOpen={revokeWorkerNodeId !== null}
         onClose={() => setRevokeWorkerNodeId(null)}

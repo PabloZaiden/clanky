@@ -197,6 +197,7 @@ export {
   MeshHealthCheckSchema,
   MeshHealthCheckResponseSchema,
   MeshRevocationNoticeSchema,
+  MeshWorkerKillRequestSchema,
   type CreateMeshEnrollmentTokenRequest,
   type EnrollMeshWorkerRequest,
   type RevokeMeshWorkerRequest,
@@ -205,6 +206,7 @@ export {
   type MeshHealthCheck,
   type MeshHealthCheckResponse,
   type MeshRevocationNotice,
+  type MeshWorkerKillRequest,
   type UpdateMeshEndpointRequest,
   type UpdateMeshInstanceNameRequest,
 } from "./mesh";

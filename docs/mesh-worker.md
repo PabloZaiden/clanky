@@ -11,40 +11,66 @@ host by design.
 
 ## Bootstrap
 
-Create the worker owner and its API key in an empty data directory:
+Run this on the host that will execute workspaces. The data directory defaults
+to `$HOME/.clanky`; set `CLANKY_DATA_DIR` only when the worker should use a
+different location:
 
 ```bash
-CLANKY_DATA_DIR=/app/data \
-clanky worker bootstrap --username worker
+clanky worker bootstrap \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --worker-directory /workspaces \
+  --instance-name worker-1 \
+  --mesh-endpoint https://worker.example.com
 ```
 
-The plaintext `apiKey` is returned only on creation. Use `--rotate` to replace
-the managed key.
-
-## Start manually
+`--host` controls the local interface where the worker listens. For a worker
+that production reaches directly, use `0.0.0.0` (or the host's reachable
+interface), allow or forward the selected port through the firewall/NAT, and
+set `--mesh-endpoint` to a public DNS name or a stable reachable IP. If there
+is no public DNS name, include the port in the endpoint, which is the common
+direct-worker setup:
 
 ```bash
-CLANKY_DATA_DIR=/app/data \
-clanky serve --mesh-worker true --worker-directory /workspaces
+clanky worker bootstrap \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --worker-directory /workspaces \
+  --instance-name worker-1 \
+  --mesh-endpoint http://203.0.113.10:3000
 ```
 
-`worker-directory` is worker-owned and is never remotely configurable. Its
-precedence is startup flag, `CLANKY_WORKER_DIRECTORY`, persisted serve config,
-then the process working directory. Both options can be persisted:
+Do not use `127.0.0.1`, `localhost`, or a private address that production
+cannot route to. Use HTTPS when the endpoint crosses an untrusted network; use
+HTTP only on a trusted private network.
+
+The bootstrap persists the host, port, worker directory, Mesh endpoint, worker
+mode, instance name, and worker identity. The worker username is fixed
+internally. The plaintext `apiKey` is returned only on creation or rotation;
+keep it on the worker if administrative API access is needed, but the join
+command does not need it.
+Mesh execution resolves relative directories and paths against the configured
+worker directory; absolute paths are used directly.
+
+To replace a lost key, repeat the same command with `--rotate`. The old key is
+revoked and the new plaintext key is printed once.
 
 ```bash
-CLANKY_DATA_DIR=/app/data clanky serve config set mesh-worker true
-CLANKY_DATA_DIR=/app/data clanky serve config set worker-directory /workspaces
+CLANKY_DATA_DIR=/srv/clanky-worker \
+clanky worker bootstrap \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --worker-directory /workspaces \
+  --instance-name worker-1 \
+  --mesh-endpoint https://worker.example.com
 ```
 
 Remote execution is enabled by default. Disable this worker as an execution
-target without revoking its controller grants with
-`--worker-execution-enabled false`,
-`CLANKY_WORKER_EXECUTION_ENABLED=false`, or the equivalent persisted serve
-option. The worker advances its persisted configuration revision whenever its
-resolved directory or execution policy changes. Each controller health probe
-verifies the worker's signed response and synchronizes the newer snapshot into
-that controller's execution-host registration.
+target without revoking its controller grants through the worker's persisted
+serve configuration. The worker advances its persisted configuration revision
+whenever its resolved directory or execution policy changes. Each controller
+health probe verifies the worker's signed response and synchronizes the newer
+snapshot into that controller's execution-host registration.
 
 ## Register as an operating-system service
 
@@ -53,15 +79,29 @@ initialized worker data directory. It does not bootstrap, enroll, move, or
 delete worker data.
 
 ```bash
-CLANKY_DATA_DIR=/app/data clanky worker service install
+clanky worker service install
 clanky worker service status
 ```
 
-On macOS this installs a per-user LaunchAgent that starts at login through
-`/bin/zsh -lic`, so the worker inherits the user's normal Terminal setup,
-including PATH, SSH agent, Keychain-backed tools, GitHub CLI, and Copilot
-configuration. On Linux this installs a systemd service that starts at boot
-as the current user and waits for the network.
+If `CLANKY_DATA_DIR` was used for bootstrap, use the same value for the service
+command:
+
+```bash
+CLANKY_DATA_DIR=/srv/clanky-worker clanky worker service install
+```
+
+On macOS, the per-user LaunchAgent starts at login through `/bin/zsh -lic`.
+The worker process starts its permission preflight asynchronously: it requests
+Accessibility, Screen Recording, and direct screen capture access for
+screenshots. The preflight also performs one non-interactive `screencapture`
+probe so macOS can show its screen/audio capture consent before an agent needs
+a screenshot, then probes Desktop, Documents, and Downloads for Files and
+Folders access. Mesh starts serving immediately and continues working if a
+prompt is denied, ignored, or times out; failures are logged. This keeps the
+consent associated with the service process rather than the terminal used to
+install it. Full Disk Access is not requested by this command. On Linux this
+installs a systemd service that starts at boot as the current user and waits
+for the network.
 
 To regenerate the service configuration without starting it immediately, use
 `clanky worker service install --no-start`. The lifecycle commands are:
@@ -73,39 +113,45 @@ clanky worker service restart
 clanky worker service uninstall
 ```
 
-Set the public endpoint and optional display name using the bootstrap API key:
-
-```bash
-export CLANKY_BASE_URL=https://worker.example.com
-export CLANKY_API_KEY=<worker-api-key>
-
-clanky api mesh/endpoint --method POST \
-  --payload '{"meshEndpoint":"https://worker.example.com"}'
-clanky api mesh/instance-name --method POST \
-  --payload '{"instanceName":"worker-1"}'
-```
+When `--no-start` is used on macOS, run `clanky worker service start` from the
+logged-in user session to start the worker and trigger its non-blocking
+permission preflight.
 
 ## Enroll with a controller
 
 Create a single-use token on the controller:
 
 ```bash
-CLANKY_BASE_URL=https://controller.example.com \
-CLANKY_API_KEY=<controller-api-key> \
 clanky mesh enrollment-token create --name worker-1
 ```
 
-Then enroll from the worker:
+The JSON response includes `response.workerJoinCommand`. Copy that complete
+one-line string and run it on the worker:
 
 ```bash
-clanky mesh enroll https://controller.example.com \
-  --token <single-use-token> \
-  --fingerprint <controller-fingerprint>
+clanky worker join --controller 'https://controller.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
 ```
 
-Repeat these two steps for every controller that should use the worker.
+The generated command uses the worker's local identity and does not require
+copying the worker API key, `CLANKY_BASE_URL`, or other local environment
+variables. Repeat token creation and the generated join command for every
+controller that should use the worker. The controller endpoint must be
+configured and reachable by the worker before creating the token.
+
+Verify the enrollment on the controller:
+
+```bash
+clanky mesh status
+```
+
 Controllers do not learn about each other, and the worker status reports only
 the number of active controller grants.
+
+From the controller's **Settings > Mesh > Workers** list, use **Kill** to send
+a signed termination command to an active worker. The worker acknowledges the
+request, exits its process, and leaves the LaunchAgent or systemd supervisor
+to restart it. Killing a worker does not revoke its Mesh grant; use **Revoke**
+when the controller should stop trusting that worker.
 
 ## Operations
 

@@ -23,6 +23,7 @@ import { buildMeshTargetKey } from "./workspace-target-key";
 import { getDatabase } from "./database";
 
 const log = createLogger("persistence:mesh");
+const MAX_MESH_WORKER_KILL_NONCES = 256;
 
 // ---------------------------------------------------------------------------
 // Worker registrations (controller side)
@@ -340,6 +341,45 @@ export async function deleteRevokedControllerGrant(
     );
   }
   log.info("Deleted revoked controller grant", { controllerNodeId });
+}
+
+/**
+ * Atomically claim a worker-kill nonce until its signed request expires.
+ *
+ * The ledger is persisted on workers so a supervisor restart cannot make a
+ * captured, still-valid kill envelope usable a second time.
+ */
+export type MeshWorkerKillNonceClaim = "claimed" | "replay" | "capacity";
+
+export function claimMeshWorkerKillNonce(
+  nonce: string,
+  expiresAt: string,
+): MeshWorkerKillNonceClaim {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const claim = db.transaction(() => {
+    db.run(
+      "DELETE FROM mesh_worker_kill_nonces WHERE expires_at <= ?",
+      [now],
+    );
+    if (db.query("SELECT 1 FROM mesh_worker_kill_nonces WHERE nonce = ?").get(nonce)) {
+      return "replay" as const;
+    }
+    const count = db
+      .query("SELECT COUNT(*) AS count FROM mesh_worker_kill_nonces")
+      .get() as { count: number };
+    if (count.count >= MAX_MESH_WORKER_KILL_NONCES) {
+      return "capacity" as const;
+    }
+    const result = db.run(
+      `INSERT INTO mesh_worker_kill_nonces (nonce, expires_at)
+       VALUES (?, ?)
+       ON CONFLICT(nonce) DO NOTHING`,
+      [nonce, expiresAt],
+    );
+    return result.changes === 1 ? "claimed" as const : "replay" as const;
+  });
+  return claim();
 }
 
 // ---------------------------------------------------------------------------

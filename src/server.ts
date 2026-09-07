@@ -3,6 +3,7 @@
  */
 
 import type { Server } from "bun";
+import { homedir } from "node:os";
 import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
@@ -152,7 +153,25 @@ async function reconcileStartupState(): Promise<void> {
   }
 }
 
+function startMacWorkerPermissionPreflight(): void {
+  // Permission dialogs and user decisions can take minutes; Mesh must bind and
+  // serve requests regardless of whether the user grants them.
+  void import("./core/macos-worker-permissions")
+    .then(({ runMacWorkerPermissionPreflight }) => runMacWorkerPermissionPreflight({
+      homeDirectory: process.env["HOME"]?.trim() || homedir(),
+      output: (message) => log.info(message),
+    }))
+    .catch((error) => {
+      log.error("macOS worker permission preflight failed", {
+        error: String(error),
+      });
+    });
+}
+
 async function initializeMeshWorkerRuntime(): Promise<void> {
+  if (process.platform === "darwin") {
+    startMacWorkerPermissionPreflight();
+  }
   await backendManager.initialize();
 }
 

@@ -2,10 +2,10 @@
  * Authenticated gateway for direct CommandExecutor operations on this host.
  *
  * This module is deliberately independent from BackendManager. The signed
- * caller supplies the absolute execution root, provider, and channel. The
- * controller grant is the host-level trust boundary: the receiving host does not
- * load replicated workspace or user data or apply a per-workspace filesystem
- * sandbox.
+ * caller supplies the execution root, provider, and channel. Relative paths
+ * are resolved against the worker's configured directory. The controller grant
+ * is the host-level trust boundary: the receiving host does not load replicated
+ * workspace or user data or apply a per-workspace filesystem sandbox.
  */
 
 import { randomBytes } from "node:crypto";
@@ -29,6 +29,7 @@ import {
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
+import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import {
   isCommandOutputLimitError,
@@ -104,18 +105,22 @@ function assertStringSize(value: string, field: string): void {
   }
 }
 
-export function assertMeshExecutionPath(_root: string, requested: string): string {
+export function assertMeshExecutionPath(root: string, requested: string): string {
   if (
-    !requested.startsWith("/")
+    !root.startsWith("/")
     || requested.includes("\0")
+    || root.includes("\0")
   ) {
-    throw new DomainError("mesh_execution_path_invalid", "The execution path must be an absolute path without NUL bytes.");
+    throw new DomainError(
+      "mesh_execution_path_invalid",
+      "The execution root must be absolute and paths must not contain NUL bytes.",
+    );
   }
-  return posix.resolve(requested);
+  return posix.resolve(root, requested);
 }
 
-export function assertMeshExecutionCwd(_root: string, cwd: string): string {
-  return assertMeshExecutionPath(_root, cwd);
+export function assertMeshExecutionCwd(root: string, cwd: string): string {
+  return assertMeshExecutionPath(root, cwd);
 }
 
 interface SessionOperation {
@@ -123,7 +128,7 @@ interface SessionOperation {
   cleanup: () => void;
 }
 
-async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<void> {
+async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<string> {
   const identity = await ensureLocalMeshNodeIdentity();
   if (request.targetNodeId !== identity.nodeId) {
     throw new DomainError("mesh_execution_target_invalid", "The execution request targets another mesh node.");
@@ -137,7 +142,7 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
     requireEncryptionKey: false,
     context: "execution caller",
   });
-  assertMeshExecutionCwd(request.directory, request.directory);
+  return assertMeshExecutionCwd(getMeshWorkerDirectory(), request.directory);
 }
 
 export class MeshExecutionGateway {
@@ -242,7 +247,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_peer_signature_invalid", "The execution session signature is invalid.");
     }
 
-    await assertTrustedCaller(request);
+    const executionRoot = await assertTrustedCaller(request);
     this.usedNonces.set(request.nonce, new Date(request.expiresAt).getTime());
     const sessionId = crypto.randomUUID();
     const sessionToken = randomBytes(32).toString("base64url");
@@ -254,15 +259,15 @@ export class MeshExecutionGateway {
       sessionId,
       sessionToken,
       callerNodeId: request.callerNodeId,
-      executionRoot: request.directory,
-      directory: assertMeshExecutionCwd(request.directory, request.directory),
+      executionRoot,
+      directory: executionRoot,
       provider: request.provider,
       channel: request.channel,
       expiresAt,
       callerEncryptionPublicKey: request.callerEncryptionPublicKey,
       executor: new CommandExecutorImpl({
         provider: "local",
-        directory: request.directory,
+        directory: executionRoot,
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
       }),
       requestIds: new Set(),

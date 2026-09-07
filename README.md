@@ -194,7 +194,7 @@ application constants in `src/core/ssh-reliability-policy.ts`.
 - `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
 - `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Register that standalone installation with `clanky worker service install`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
-- Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
+- Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport and lifecycle routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
@@ -252,6 +252,13 @@ yet, Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and persists that
 value. Later changes to the public base URL do not change the saved Mesh
 endpoint. Do not expose an HTTP Mesh endpoint to an untrusted network.
 
+For a direct worker without a public DNS name, use a stable IP address that the
+controller can reach and include the worker port in `--mesh-endpoint`, for
+example `http://203.0.113.10:3000`. Bind the worker with
+`--host 0.0.0.0` (or a reachable interface) and allow or forward that port
+through the worker host's firewall/NAT. `127.0.0.1`, `localhost`, and an
+unroutable private address cannot be used as a remote worker endpoint.
+
 Mesh provides enrollment, health checks, and trusted controller-to-worker
 transport. A worker may grant access to multiple independent controllers;
 controllers do not join each other. A workspace may use local `stdio`, remote
@@ -264,9 +271,11 @@ target preselected, browse files, open a chat or terminal, run Arise, and
 connect through VNC when the advertised capabilities permit it. Automatic
 workspace template discovery runs on the selected host.
 An enrolled controller is a host-level trust boundary: it may request a remote
-execution session rooted at any absolute path on the receiving host, so Mesh
-does not provide per-workspace sandboxing or a host-side root allowlist. Pair
-only controllers that are trusted with command and file access to that host.
+execution session rooted at any path on the receiving host. Relative paths are
+resolved against the worker's configured `--worker-directory`; absolute paths
+are used directly. Mesh does not provide per-workspace sandboxing or a
+host-side root allowlist. Pair only controllers that are trusted with command
+and file access to that host.
 Keep Mesh workers on a trusted network and use HTTPS (including WebSocket
 upgrades) when prompts, environment values, or file contents could cross an
 untrusted network. SSH-backed workspaces keep their existing routing.
@@ -279,47 +288,55 @@ registration changes update connected browsers through realtime resource
 invalidation.
 
 For unattended enrollment, create a short-lived single-use token on an
-existing owner instance and consume it from the new node:
+existing owner instance. The JSON response includes a copyable
+`response.workerJoinCommand` containing the complete command for the worker:
 
 ```bash
 # Existing owner instance
 clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
 
-# New instance, after setting its instance name and advertised endpoint
-CLANKY_BASE_URL=http://localhost:3000 \
-CLANKY_API_KEY=<worker-api-key> \
-CLANKY_MESH_ENROLLMENT_TOKEN=<single-use-token> \
-CLANKY_MESH_CONTROLLER_FINGERPRINT=<controller-fingerprint> \
-clanky mesh enroll https://coordinator.example.com
+# New instance
+clanky worker join --controller 'https://coordinator.example.com' \
+  --token '<single-use-token>' \
+  --fingerprint '<controller-fingerprint>'
 ```
 
-Bootstrap a dedicated worker installation before starting it:
+The generated command is a single line in the JSON output, so it can be copied
+without moving the worker API key or local `CLANKY_BASE_URL` variables between
+machines. Bootstrap a dedicated worker installation before starting it:
 
 ```bash
-CLANKY_DATA_DIR=/app/data clanky worker bootstrap --username worker
-CLANKY_DATA_DIR=/app/data clanky worker service install
+clanky worker bootstrap \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --worker-directory /workspaces \
+  --instance-name worker-1 \
+  --mesh-endpoint https://worker.example.com
+clanky worker service install
 ```
 
-The bootstrap command is idempotent: repeated runs report the existing key ID
-without printing its secret. Use `--rotate` to revoke that key and issue a new
-plaintext key once. Enrollment tokens are stored only as hashes, expire after
-15 minutes by default, and are consumed atomically.
+On macOS, the worker process starts an asynchronous permission preflight when
+the LaunchAgent starts it. It requests Accessibility, Screen Recording, and
+direct screen capture access for screenshots. The preflight also performs one
+non-interactive `screencapture` probe so macOS can show its screen/audio
+capture consent before an agent needs a screenshot. It then probes Desktop,
+Documents, and Downloads for Files and Folders access. Mesh serves immediately
+and keeps working if a prompt is denied, ignored, or times out; failures are
+logged. This keeps consent associated with the service process rather than the
+terminal used to install it. Full Disk Access is not requested.
+
+The bootstrap command uses `$HOME/.clanky` by default. Override it only when
+needed with `CLANKY_DATA_DIR`. Repeated runs report the existing key ID without
+printing its secret; use `--rotate` to revoke that key and issue a new
+plaintext key once, repeating the bootstrap arguments. Enrollment tokens are
+stored only as hashes, expire after 15 minutes by default, and are consumed
+atomically.
 
 The controller-worker schema is an intentional clean break from the previous
 peer Mesh. Migration 45 deletes legacy Mesh identities, hosts, and all
 dependent workspaces, tasks, chats, agents, sessions, terminals, provisioning
 jobs, VNC resources, and transcripts rather than remapping them. Unrelated SSH
 data is preserved.
-
-Mesh-worker mode can be selected equivalently with the `--mesh-worker` flag,
-`CLANKY_MESH_WORKER`, or persisted configuration:
-
-```bash
-clanky serve --mesh-worker true
-CLANKY_MESH_WORKER=true clanky serve
-clanky serve config set mesh-worker true
-clanky worker service install
-```
 
 See the [Mesh worker guide](docs/mesh-worker.md) for node configuration,
 headless enrollment, verification, and common errors.
@@ -347,6 +364,25 @@ bun dev
 ```
 
 `bun run build` creates standalone executables in `dist/`.
+
+On macOS, `bun run build` creates `.clanky-dev/macos-signing.p12` and
+`.clanky-dev/macos-signing-password` on the first build when they are missing,
+then reuses that self-signed identity to sign later local binaries. macOS may
+ask once to trust the certificate for code signing; the trust is intentionally
+kept so subsequent builds do not ask again. The files are gitignored and must
+not be committed. This is an internal stable identity, not Apple Developer ID
+signing or notarization.
+
+The release workflow uses the same PKCS#12 and password through the GitHub
+secrets `CLANKY_MACOS_SIGNING_CERT_BASE64` and
+`CLANKY_MACOS_SIGNING_CERT_PASSWORD`. To populate them from a local identity:
+
+```bash
+base64 -i .clanky-dev/macos-signing.p12 \
+  | gh secret set CLANKY_MACOS_SIGNING_CERT_BASE64
+gh secret set CLANKY_MACOS_SIGNING_CERT_PASSWORD \
+  < .clanky-dev/macos-signing-password
+```
 
 To repopulate local demo data for the UI, run:
 

@@ -42,3 +42,6 @@ data/*
 
 # Clanky planning directory
 .clanky-planning/*
+
+# Local macOS signing identity and password
+.clanky-dev/
