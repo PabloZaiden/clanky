@@ -133,7 +133,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                 {killingWorkerNodeId === worker.workerNodeId ? (
                   <div className="wapp-shutdown-countdown min-w-56" aria-live="polite">
                     <div className="wapp-shutdown-message">
-                      Worker is shutting down... restarting in {killCountdown ?? 0}s
+                      Worker is shutting down... refreshing status in {killCountdown ?? 0}s
                     </div>
                     <div className="wapp-shutdown-progress" aria-hidden="true">
                       <div

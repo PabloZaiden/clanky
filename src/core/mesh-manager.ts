@@ -22,6 +22,7 @@ import type {
   MeshWorkerExecutionConfig,
   MeshWorkerStatus,
 } from "@/shared/mesh";
+import { MESH_WORKER_KILL_REQUEST_TTL_MS } from "@/shared/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -33,6 +34,7 @@ import {
   revokeControllerGrant,
   revokeWorkerRegistration,
   deleteRevokedWorkerRegistration,
+  claimMeshWorkerKillNonce,
   saveControllerGrant,
   saveWorkerRegistration,
   updateWorkerHealthSnapshot,
@@ -313,7 +315,9 @@ export class MeshManager {
 
     const identity = await ensureLocalMeshNodeIdentity();
     const nonce = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const expiresAt = new Date(
+      Date.now() + MESH_WORKER_KILL_REQUEST_TTL_MS,
+    ).toISOString();
     const envelope: Omit<MeshWorkerKillRequest, "signature"> = {
       protocolVersion: 1,
       controllerNodeId: identity.nodeId,
@@ -709,10 +713,18 @@ export class MeshManager {
         "The worker kill signature is invalid.",
       );
     }
-    if (Date.parse(envelope.expiresAt) <= Date.now()) {
+    const now = Date.now();
+    const expiresAt = Date.parse(envelope.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) {
       throw new DomainError(
         "mesh_worker_kill_expired",
         "The worker kill request has expired.",
+      );
+    }
+    if (expiresAt > now + MESH_WORKER_KILL_REQUEST_TTL_MS) {
+      throw new DomainError(
+        "mesh_worker_kill_expiry_invalid",
+        "The worker kill request expiry is too far in the future.",
       );
     }
     const identity = await ensureLocalMeshNodeIdentity();
@@ -737,6 +749,22 @@ export class MeshManager {
       throw new DomainError(
         "mesh_peer_not_trusted",
         "The worker kill sender identity does not match the stored grant.",
+      );
+    }
+    const nonceClaim = claimMeshWorkerKillNonce(
+      envelope.nonce,
+      new Date(expiresAt).toISOString(),
+    );
+    if (nonceClaim === "replay") {
+      throw new DomainError(
+        "mesh_worker_kill_replay",
+        "The worker kill request has already been used.",
+      );
+    }
+    if (nonceClaim === "capacity") {
+      throw new DomainError(
+        "mesh_worker_kill_capacity",
+        "The worker kill request capacity has been reached.",
       );
     }
 

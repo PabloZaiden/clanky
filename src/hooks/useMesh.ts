@@ -21,6 +21,7 @@ export interface MeshEnrollmentTokenSummary {
 export interface CreatedMeshEnrollment {
   token: string;
   enrollment: MeshEnrollmentTokenSummary;
+  workerJoinCommand: string;
 }
 
 export interface UseMeshResult {
