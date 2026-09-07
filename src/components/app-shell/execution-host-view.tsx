@@ -274,15 +274,14 @@ export function ExecutionHostView({
     if (!sshServerId) {
       return;
     }
-    const trimmedPassword = password.trim();
-    if (!trimmedPassword) {
+    if (!password.trim()) {
       setError("Enter the SSH password for this server.");
       return;
     }
     setPasswordSaving(true);
     setError(null);
     try {
-      await storeSshServerPassword(sshServerId, trimmedPassword);
+      await storeSshServerPassword(sshServerId, password);
       const token = await getStoredSshCredentialToken(sshServerId);
       if (!token) {
         throw new Error("Failed to exchange SSH credential.");

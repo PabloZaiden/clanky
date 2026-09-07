@@ -145,8 +145,7 @@ export function TerminalSessionDetails({
       return;
     }
 
-    const trimmedPassword = password.trim();
-    if (!trimmedPassword) {
+    if (!password.trim()) {
       setPasswordError("Enter the SSH password for this server.");
       return;
     }
@@ -154,7 +153,7 @@ export function TerminalSessionDetails({
     setPasswordSaving(true);
     setPasswordError(null);
     try {
-      await storeSshServerPassword(registeredSshServerId, trimmedPassword);
+      await storeSshServerPassword(registeredSshServerId, password);
       const token = await getStoredSshCredentialToken(registeredSshServerId);
       if (!token) {
         throw new Error("Failed to exchange SSH credential.");
