@@ -131,19 +131,6 @@ export const MeshRevocationNoticeSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshWorkerUpdateRequestSchema = z.object({
-  protocolVersion: z.literal(1),
-  action: z.enum(["start", "status"]),
-  operationId: z.string().uuid(),
-  controllerNodeId: z.string().trim().min(1),
-  workerNodeId: z.string().trim().min(1),
-  controllerPublicKey: z.string().min(1),
-  controllerFingerprint: z.string().trim().min(1),
-  nonce: z.string().uuid(),
-  expiresAt: z.string().datetime(),
-  signature: z.string().trim().min(1),
-});
-
 export type CreateMeshEnrollmentTokenRequest = z.infer<typeof CreateMeshEnrollmentTokenRequestSchema>;
 export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNameSchema>;
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
@@ -154,4 +141,3 @@ export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema
 export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
 export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseSchema>;
 export type MeshRevocationNotice = z.infer<typeof MeshRevocationNoticeSchema>;
-export type MeshWorkerUpdateRequest = z.infer<typeof MeshWorkerUpdateRequestSchema>;

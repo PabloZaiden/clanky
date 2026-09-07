@@ -31,10 +31,6 @@ export function meshErrorResponse(error: unknown): Response {
               ? 403
               : error.code === "mesh_control_request_unreachable"
                 ? 503
-                : error.code === "mesh_worker_update_timeout"
-                  ? 504
-                  : error.code === "mesh_worker_update_failed"
-                    ? 502
                 : error.code === "mesh_control_request_rejected"
                   ? 502
                   : error.code.startsWith("mesh_")
@@ -169,32 +165,6 @@ export const meshRoutes = defineRoutes({
       } catch (error) {
         return meshErrorResponse(error);
       }
-    },
-  },
-  "/api/mesh/workers/:workerNodeId/update": {
-      auth: "owner",
-      sameOrigin: "mutations",
-      description: "Update and restart an enrolled Mesh worker.",
-      tags: ["mesh", "workers", "update"],
-      async POST(_req, ctx): Promise<Response> {
-        const workerNodeId = ctx.params["workerNodeId"];
-        if (!workerNodeId) {
-          return domainErrorResponse(new Error("Worker node ID is required."), {
-            fallback: {
-              error: "mesh_worker_id_required",
-              message: "Worker node ID is required.",
-              status: 400,
-            },
-          });
-        }
-        try {
-          return Response.json({
-            success: true,
-            update: await meshManager.updateWorker(ctx.requireOwner().id, workerNodeId),
-          });
-        } catch (error) {
-          return meshErrorResponse(error);
-        }
     },
   },
   "/api/mesh/health": {

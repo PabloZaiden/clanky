@@ -56,7 +56,6 @@ import {
   getMeshWorkerDirectory,
 } from "./core/mesh-runtime";
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
-import { configureMeshWorkerShutdown } from "./core/mesh-worker-update";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -393,11 +392,6 @@ export async function getWebAppServer(
     },
   });
   appMeshWorkerMode = meshWorker;
-  if (meshWorker) {
-    configureMeshWorkerShutdown(async () => {
-      await app?.stop(true);
-    });
-  }
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),

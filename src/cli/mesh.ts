@@ -14,8 +14,7 @@ export type MeshOperation =
   | "status"
   | "enroll"
   | "enrollment-token-create"
-  | "revoke"
-  | "update-worker";
+  | "revoke";
 
 export interface MeshCommand {
   operation: MeshOperation;
@@ -83,13 +82,6 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
       workerNodeId: requireSinglePositional(positionals, "Mesh revoke requires one worker node ID"),
     };
   }
-  if (operation === "update-worker") {
-    const { positionals } = parseOptions(operationArgs, []);
-    return {
-      operation,
-      workerNodeId: requireSinglePositional(positionals, "Mesh update-worker requires one worker node ID"),
-    };
-  }
   if (operation === "enroll") {
     const { positionals, options } = parseOptions(operationArgs, ["--token", "--fingerprint"]);
     const token = options["--token"] ?? process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
@@ -124,7 +116,7 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
       ttlSeconds,
     };
   }
-  throw usageError("Mesh command must be status, enroll, enrollment-token, revoke, or update-worker");
+  throw usageError("Mesh command must be status, enroll, enrollment-token, or revoke");
 }
 
 export function buildMeshRequest(command: MeshCommand): {
@@ -160,11 +152,6 @@ export function buildMeshRequest(command: MeshCommand): {
         method: "POST",
         payload: JSON.stringify({ workerNodeId: command.workerNodeId }),
       };
-    case "update-worker":
-      return {
-        endpoint: `/api/mesh/workers/${encodeURIComponent(command.workerNodeId!)}/update`,
-        method: "POST",
-      };
   }
 }
 
@@ -190,7 +177,7 @@ export async function runMeshCommand(
 export function createMeshCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Enroll and manage Mesh workers.",
-    usage: "mesh <status|enroll|enrollment-token|revoke|update-worker> [options]",
+    usage: "mesh <status|enroll|enrollment-token|revoke> [options]",
     handler: runMeshCommand,
   };
 }

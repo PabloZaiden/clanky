@@ -99,25 +99,6 @@ export interface MeshWorkerStatus {
   controllerCount: number;
 }
 
-export const MESH_WORKER_UPDATE_STATES = [
-  "idle",
-  "updating",
-  "handoff",
-  "succeeded",
-  "failed",
-] as const;
-export type MeshWorkerUpdateState = (typeof MESH_WORKER_UPDATE_STATES)[number];
-
-export interface MeshWorkerUpdateStatus {
-  operationId: string | null;
-  state: MeshWorkerUpdateState;
-  fromVersion: string;
-  targetVersion: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  error: string | null;
-}
-
 export type MeshStatusRecord = MeshControllerStatus | MeshWorkerStatus;
 
 export function isMeshWorkerStatus(

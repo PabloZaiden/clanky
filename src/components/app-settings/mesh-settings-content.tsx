@@ -40,7 +40,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [revokeWorkerNodeId, setRevokeWorkerNodeId] = useState<string | null>(null);
   const [removeWorkerNodeId, setRemoveWorkerNodeId] = useState<string | null>(null);
-  const [updateWorkerNodeId, setUpdateWorkerNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (mesh.mutationError) toast.error(mesh.mutationError);
@@ -107,14 +106,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             </div>
             {worker.grantStatus === "active" ? (
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setUpdateWorkerNodeId(worker.workerNodeId)}
-                >
-                  Update
-                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -202,22 +193,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         </form>
       </details>
 
-      <ConfirmModal
-        isOpen={updateWorkerNodeId !== null}
-        onClose={() => setUpdateWorkerNodeId(null)}
-        onConfirm={async () => {
-          if (!updateWorkerNodeId) return;
-          const result = await mesh.updateWorker(updateWorkerNodeId);
-          if (result) {
-            toast.success("Worker updated.");
-            setUpdateWorkerNodeId(null);
-          }
-        }}
-        title="Update worker"
-        message="The worker will run clanky update and restart with the same arguments, environment, and working directory."
-        confirmLabel="Update worker"
-        loading={mesh.saving}
-      />
       <ConfirmModal
         isOpen={revokeWorkerNodeId !== null}
         onClose={() => setRevokeWorkerNodeId(null)}
