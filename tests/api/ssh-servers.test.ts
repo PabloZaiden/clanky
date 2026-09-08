@@ -136,12 +136,12 @@ class SshServerApiExecutor extends TestCommandExecutor {
         stdout: this.options.devboxTemplatesOutput ?? JSON.stringify([
           {
             name: "python",
-            description: "Python 3.14 on Ubuntu noble.",
+            description: "Python workflows on Ubuntu noble via the uv feature.",
             source: "built-in",
             base: "noble",
-            image: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
-            pinnedReference: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
-            runtimeVersion: "Python 3.14",
+            image: "mcr.microsoft.com/devcontainers/base:noble",
+            pinnedReference: "mcr.microsoft.com/devcontainers/base:noble + ghcr.io/devcontainers/features/docker-in-docker:4 + ghcr.io/devcontainers-extra/features/uv:1",
+            runtimeVersion: "Python via uv",
             languages: ["python"],
             runnerCompatible: true,
           },
@@ -826,13 +826,13 @@ describe("Standalone SSH servers API integration", () => {
     }>;
     expect(templates).toHaveLength(1);
     expect(templates[0]).toEqual({
-      description: "Python 3.14 on Ubuntu noble.",
+      description: "Python workflows on Ubuntu noble via the uv feature.",
       source: "built-in",
       base: "noble",
-      image: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
-      pinnedReference: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
+      image: "mcr.microsoft.com/devcontainers/base:noble",
+      pinnedReference: "mcr.microsoft.com/devcontainers/base:noble + ghcr.io/devcontainers/features/docker-in-docker:4 + ghcr.io/devcontainers-extra/features/uv:1",
       name: "python",
-      runtimeVersion: "Python 3.14",
+      runtimeVersion: "Python via uv",
       languages: ["python"],
       runnerCompatible: true,
     });
