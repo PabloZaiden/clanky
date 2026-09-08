@@ -21,7 +21,8 @@ class SshServerApiExecutor extends TestCommandExecutor {
       bashAvailable?: boolean;
         dtachAvailable?: boolean;
         devboxAvailable?: boolean;
-        devboxTemplatesOutput?: string;
+      devboxVersion?: string;
+      devboxTemplatesOutput?: string;
         failDevboxTemplates?: boolean;
         dockerAvailable?: boolean;
         devcontainerAvailable?: boolean;
@@ -59,11 +60,11 @@ class SshServerApiExecutor extends TestCommandExecutor {
         exitCode: available ? 0 : 127,
       };
     }
-    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v devbox")) {
+    if (command === "devbox" && args[0] === "--help") {
       const available = this.options.devboxAvailable ?? true;
       return {
         success: available,
-        stdout: available ? "/usr/bin/devbox\n" : "",
+        stdout: available ? `devbox v${this.options.devboxVersion ?? "1.2.0"}\nUsage: devbox [command]\n` : "",
         stderr: available ? "" : "devbox missing",
         exitCode: available ? 0 : 127,
       };
@@ -135,11 +136,11 @@ class SshServerApiExecutor extends TestCommandExecutor {
         stdout: this.options.devboxTemplatesOutput ?? JSON.stringify([
           {
             name: "python",
-            description: "Python 3.14 on Debian bookworm.",
+            description: "Python 3.14 on Ubuntu noble.",
             source: "built-in",
-            base: "bookworm",
-            image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
-            pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+            base: "noble",
+            image: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
+            pinnedReference: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
             runtimeVersion: "Python 3.14",
             languages: ["python"],
             runnerCompatible: true,
@@ -825,11 +826,11 @@ describe("Standalone SSH servers API integration", () => {
     }>;
     expect(templates).toHaveLength(1);
     expect(templates[0]).toEqual({
-      description: "Python 3.14 on Debian bookworm.",
+      description: "Python 3.14 on Ubuntu noble.",
       source: "built-in",
-      base: "bookworm",
-      image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
-      pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      base: "noble",
+      image: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
+      pinnedReference: "mcr.microsoft.com/devcontainers/python:1-3.14-bookworm",
       name: "python",
       runtimeVersion: "Python 3.14",
       languages: ["python"],

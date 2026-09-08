@@ -14,6 +14,7 @@ import {
   type ExecutionHostCommandContext,
 } from "./execution-host-service";
 import { checkExecutionHostPrerequisites } from "./ssh-server-prerequisites";
+import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "./devbox-version";
 import { DomainError } from "./domain-error";
 
 export interface ExecutionHostDiscoveryContext extends ExecutionHostCommandContext {
@@ -49,6 +50,22 @@ export class ExecutionHostDiscoveryService {
     context: ExecutionHostCommandContext,
   ): Promise<DevboxTemplateSummary[]> {
     const executor = await executionHostService.getCommandExecutorForRef(ref, context);
+    const versionResult = await executor.exec("devbox", ["--help"], { cwd: "/" });
+    const version = parseDevboxVersion(versionResult.stdout);
+    if (!versionResult.success || version !== DEVBOX_REQUIRED_VERSION) {
+      throw new DomainError(
+        "execution_host_templates_failed",
+        "Failed to list Devbox templates on the execution host.",
+        {
+          details: {
+            executionHost: serializeExecutionHostRef(ref),
+            devboxVersion: version ?? "unknown",
+            requiredDevboxVersion: DEVBOX_REQUIRED_VERSION,
+          },
+        },
+      );
+    }
+
     const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
     if (!result.success) {
       throw new DomainError(

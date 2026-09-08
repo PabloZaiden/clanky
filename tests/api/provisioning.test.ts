@@ -230,7 +230,7 @@ describe("Provisioning API integration", () => {
     expect(completed.job.state.workspaceId).toBeTruthy();
     expect(completed.workspace?.directory).toBe("/workspaces/example");
     const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
-    expect(devboxUpCall?.args).toEqual(["up", "--template", "python", "--gh-user", "work-account"]);
+    expect(devboxUpCall?.args).toEqual(["up", "--ssh", "--template", "python", "--gh-user", "work-account"]);
 
     const logsResponse = await fetch(`${baseUrl}/api/provisioning-jobs/${started.job.config.id}/logs`);
     expect(logsResponse.ok).toBe(true);
@@ -244,7 +244,6 @@ describe("Provisioning API integration", () => {
     const executor = new ProvisioningTestExecutor({
       devboxStatusOutput: createDevboxStatusOutput({
         workdir: "/workspaces/isolated-example",
-        sshHost: "devbox.example.com",
         sshPort: 6022,
         sshUser: "workspace-user",
         password: "workspace-secret",
@@ -290,7 +289,7 @@ describe("Provisioning API integration", () => {
       },
       sshTarget: {
         kind: "ssh",
-        host: "devbox.example.com",
+        host: "ssh.example.com",
         port: 6022,
         username: "workspace-user",
         credentialConfigured: true,
