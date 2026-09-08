@@ -205,10 +205,15 @@ export function useAgents(): UseAgentsResult {
     const link = document.createElement("a");
     link.href = url;
     link.download = getDownloadFilename(response);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    link.rel = "noopener noreferrer";
+    link.referrerPolicy = "no-referrer";
+    try {
+      document.body.appendChild(link);
+      link.click();
+    } finally {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
   }, []);
 
   const importAgent = useCallback(async (
