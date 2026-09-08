@@ -301,6 +301,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
+                initialSshTarget={workspaceSshTarget}
                 allowWorkspaceSshTarget
                 dedicatedWorkerSelected={
                   workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
@@ -321,7 +322,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     setWorkspaceWorkerEnrollmentSelected(false);
                   }
                   setWorkspaceExecutionHost(executionHost);
-                  setWorkspaceSshTarget(sshTarget ?? null);
+                  const nextSshTarget = sshTarget ?? null;
+                  if (!areWorkspaceSshTargetsEqual(workspaceSshTarget, nextSshTarget)) {
+                    setWorkspaceSshTarget(nextSshTarget);
+                  }
                   setWorkspaceServerSettingsValid(isValid);
                 }}
                 onTest={handleTestWorkspaceConnection}
@@ -566,4 +570,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       </form>
     </div>
   );
+}
+
+function areWorkspaceSshTargetsEqual(
+  left: WorkspaceSshTargetRequest | null,
+  right: WorkspaceSshTargetRequest | null,
+): boolean {
+  return left?.host === right?.host
+    && left?.port === right?.port
+    && left?.username === right?.username
+    && left?.password === right?.password;
 }

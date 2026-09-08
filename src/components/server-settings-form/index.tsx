@@ -23,9 +23,7 @@ import { TestConnection } from "./test-connection";
 export interface ServerSettingsFormProps {
   initialSettings?: ServerSettings;
   initialExecutionHost?: ExecutionHostRef | null;
-  initialSshTarget?: Pick<WorkspaceSshTargetRequest, "host" | "port" | "username"> & {
-    credentialConfigured?: boolean;
-  } | null;
+  initialSshTarget?: InitialSshTarget | null;
   onChange: (
     settings: ServerSettings,
     isValid: boolean,
@@ -70,11 +68,7 @@ export function ServerSettingsForm({
   );
   const [sshTarget, setSshTarget] = useState<WorkspaceSshTargetRequest | null>(
     initialSshTarget
-      ? {
-        host: initialSshTarget.host,
-        port: initialSshTarget.port,
-        username: initialSshTarget.username,
-      }
+      ? toSshTargetRequest(initialSshTarget)
       : null,
   );
   const [clearStoredPassword, setClearStoredPassword] = useState(false);
@@ -98,11 +92,7 @@ export function ServerSettingsForm({
       ? null
       : initialExecutionHost;
     const nextSshTarget = initialSshTarget
-      ? {
-        host: initialSshTarget.host,
-        port: initialSshTarget.port,
-        username: initialSshTarget.username,
-      }
+      ? toSshTargetRequest(initialSshTarget)
       : workspaceSshRef
         ? {
           host: "",
@@ -425,4 +415,20 @@ function isSshTargetValid(
     && Number.isInteger(target.port)
     && target.port >= 1
     && target.port <= 65535;
+}
+
+type InitialSshTarget = Pick<
+  WorkspaceSshTargetRequest,
+  "host" | "port" | "username" | "password"
+> & {
+  credentialConfigured?: boolean;
+};
+
+function toSshTargetRequest(target: InitialSshTarget): WorkspaceSshTargetRequest {
+  return {
+    host: target.host,
+    port: target.port,
+    username: target.username,
+    ...(target.password !== undefined ? { password: target.password } : {}),
+  };
 }
