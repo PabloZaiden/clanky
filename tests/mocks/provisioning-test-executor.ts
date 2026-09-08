@@ -40,14 +40,15 @@ async function waitWithSignal(signal: AbortSignal | undefined, durationMs: numbe
 export function createDevboxStatusOutput(overrides: Partial<DevboxStatusResult> = {}): string {
   return JSON.stringify({
     running: true,
-    port: 5005,
+    ports: [5005],
+    sshEnabled: true,
     password: "devbox-password",
     workdir: "/workspaces/devbox",
     sshUser: "vscode",
     sshPort: 5005,
     remoteUser: "vscode",
     hasCredentialFile: false,
-    credentialPath: null,
+    credentialPath: "/tmp/devbox/.sshcred",
     publishedPorts: {
       "5005/tcp": [
         {
@@ -90,7 +91,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
       };
     }
 
-    if (command === "bash" && args[0] === "-lc" && args[1]?.includes("command -v devbox")) {
+    if (command === "devbox" && args[0] === "--help") {
       if (this.options.failDevboxVersion) {
         return {
           success: false,
@@ -99,7 +100,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
           exitCode: 127,
         };
       }
-      const stdout = "/usr/bin/devbox\n";
+      const stdout = "devbox v1.2.0\nUsage: devbox [command]\n";
       return { success: true, stdout, stderr: "", exitCode: 0 };
     }
 
