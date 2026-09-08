@@ -571,6 +571,7 @@ class BackendManager {
     directory: string,
     executionHost?: ExecutionHostRef,
     sshTarget?: WorkspaceSshTargetInput,
+    bindingOverride?: ExecutionHostBinding,
   ): Promise<{ success: boolean; error?: string }> {
     const directSshTarget: SshConnectionTarget | undefined = sshTarget
       ? {
@@ -580,9 +581,10 @@ class BackendManager {
           ...(sshTarget.password ? { password: sshTarget.password } : {}),
         }
       : undefined;
-    const binding = executionHost
-      ? executionHostService.getBinding(executionHost)
-      : undefined;
+    const binding = bindingOverride
+      ?? (executionHost
+        ? executionHostService.getBinding(executionHost)
+        : undefined);
     if (!binding && !directSshTarget) {
       return { success: false, error: "An execution host or SSH target is required" };
     }
@@ -659,6 +661,7 @@ class BackendManager {
     directory: string,
     executionHost?: ExecutionHostRef,
     sshTarget?: WorkspaceSshTargetInput,
+    bindingOverride?: ExecutionHostBinding,
   ): Promise<{ success: boolean; isGitRepo?: boolean; directoryExists?: boolean; error?: string }> {
     log.debug("Validating remote directory", {
       directory,
@@ -684,9 +687,10 @@ class BackendManager {
     }
 
     try {
-      const binding = executionHost
-        ? executionHostService.getBinding(executionHost)
-        : undefined;
+      const binding = bindingOverride
+        ?? (executionHost
+          ? executionHostService.getBinding(executionHost)
+          : undefined);
       const executor = sshTarget
         ? await executionHostService.getCommandExecutorForSshTarget(
             {

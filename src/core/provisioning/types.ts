@@ -9,7 +9,8 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 export interface StartProvisioningJobOptions {
   name: string;
-  executionHost: ExecutionHostRef;
+  executionHost?: ExecutionHostRef;
+  workspaceWorkerEnrollmentId?: string;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

@@ -182,6 +182,21 @@ export function revokeExecutionHost(userId: string, hostId: string): boolean {
   return result.changes > 0;
 }
 
+export function deleteExecutionHost(userId: string, hostId: string): boolean {
+  const db = getDatabase();
+  const hasProvisioningHistory = db.query(
+    "SELECT 1 FROM provisioning_jobs WHERE execution_host_id = ? AND user_id = ? LIMIT 1",
+  ).get(hostId, userId) !== null;
+  if (hasProvisioningHistory) {
+    revokeExecutionHost(userId, hostId);
+    return false;
+  }
+  const result = db.query(
+    "DELETE FROM execution_hosts WHERE id = ? AND user_id = ?",
+  ).run(hostId, userId);
+  return result.changes > 0;
+}
+
 export function executionHostBindingFromRow(
   row: Record<string, unknown>,
   prefix = "execution_host",

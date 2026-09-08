@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService, type WebAppRoute } from "@pablozaiden/webapp/web";
 import {
   getRegisteredSshServerId,
   type ExecutionHostRef,
@@ -23,6 +23,10 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getRouteString } from "./route-fields";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isAbortError } from "../../lib/request-lifecycle";
+
+const log = createLogger("useWorkspaceCreate");
 
 export interface UseWorkspaceCreateResult {
   workspaceCreateMode: "manual" | "automatic";
@@ -38,6 +42,12 @@ export interface UseWorkspaceCreateResult {
   setWorkspaceExecutionHost: (host: ExecutionHostRef | null) => void;
   workspaceSshTarget: WorkspaceSshTargetRequest | null;
   setWorkspaceSshTarget: (target: WorkspaceSshTargetRequest | null) => void;
+  workspaceWorkerEnrollment: WorkspaceWorkerEnrollmentState | null;
+  workspaceWorkerEnrollmentSelected: boolean;
+  setWorkspaceWorkerEnrollmentSelected: (selected: boolean) => void;
+  workspaceWorkerEnrollmentLoading: boolean;
+  startWorkspaceWorkerEnrollment: () => Promise<void>;
+  cancelWorkspaceWorkerEnrollment: () => Promise<void>;
   setWorkspaceServerSettings: (settings: ServerSettings | ((current: ServerSettings) => ServerSettings)) => void;
   workspaceServerSettingsValid: boolean;
   setWorkspaceServerSettingsValid: (valid: boolean) => void;
@@ -72,6 +82,23 @@ export interface UseWorkspaceCreateResult {
   handleBackToAutomaticWorkspaceForm: () => void;
 }
 
+export interface WorkspaceWorkerEnrollmentState {
+  enrollment: {
+    id: string;
+    name: string;
+    status: string;
+    workerNodeId: string | null;
+    workspaceId: string | null;
+  };
+  worker: {
+    workerNodeId: string;
+    workerInstanceName: string | null;
+    workerEndpoint: string;
+  } | null;
+  token?: string;
+  workerJoinCommand?: string;
+}
+
 interface UseWorkspaceCreateOptions {
   route: WebAppRoute;
   servers: SshServer[];
@@ -100,6 +127,10 @@ export function useWorkspaceCreate({
   );
   const [workspaceExecutionHost, setWorkspaceExecutionHost] = useState<ExecutionHostRef | null>(null);
   const [workspaceSshTarget, setWorkspaceSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
+  const [workspaceWorkerEnrollment, setWorkspaceWorkerEnrollment] =
+    useState<WorkspaceWorkerEnrollmentState | null>(null);
+  const [workspaceWorkerEnrollmentSelected, setWorkspaceWorkerEnrollmentSelected] = useState(false);
+  const [workspaceWorkerEnrollmentLoading, setWorkspaceWorkerEnrollmentLoading] = useState(false);
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
@@ -118,6 +149,10 @@ export function useWorkspaceCreate({
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
   const prefilledRetryJobIdRef = useRef<string | null>(null);
+  const enrollmentRefreshControllerRef = useRef<AbortController | null>(null);
+  const enrollmentRefreshCoordinatorRef = useRef(
+    createRefreshCoordinator<WorkspaceWorkerEnrollmentState>(),
+  );
 
   useEffect(() => {
     const isOnComposeWorkspace = route.view === "compose" && getRouteString(route, "kind") === "workspace";
@@ -146,10 +181,15 @@ export function useWorkspaceCreate({
       const retryStatus = retrySnapshot.job.state.status;
       if (retryStatus === "failed" || retryStatus === "cancelled" || retryStatus === "interrupted") {
         const config = retrySnapshot.job.config;
-        const executionHost = config.executionHostBinding.host;
         setWorkspaceCreateMode("automatic");
         setWorkspaceName(config.name);
-        setAutomaticExecutionHost(executionHost);
+        setWorkspaceWorkerEnrollment(null);
+        setWorkspaceWorkerEnrollmentSelected(false);
+        setAutomaticExecutionHost(
+          config.workspaceWorkerEnrollmentId
+            ? null
+            : config.executionHostBinding.host,
+        );
         setAutomaticRepoUrl(config.repoUrl ?? "");
         setAutomaticCreateNewRepository(config.createNewRepository ?? false);
         setAutomaticBasePath(config.basePath);
@@ -161,6 +201,26 @@ export function useWorkspaceCreate({
         setAutomaticPassword("");
         prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
+        if (config.workspaceWorkerEnrollmentId) {
+          void (async () => {
+            try {
+              const status = await apiRequest<WorkspaceWorkerEnrollmentState>(
+                `/api/workspace-worker-enrollments/${encodeURIComponent(config.workspaceWorkerEnrollmentId!)}`,
+                { action: "Restore dedicated worker enrollment" },
+              );
+              if (status.enrollment.status === "connected") {
+                setWorkspaceWorkerEnrollment(status);
+                setWorkspaceWorkerEnrollmentSelected(true);
+                return;
+              }
+              toast.error(
+                "The dedicated worker enrollment is no longer available. Enroll the worker again before retrying.",
+              );
+            } catch (error) {
+              toast.error(`Failed to restore the dedicated worker enrollment: ${String(error)}`);
+            }
+          })();
+        }
         return;
       }
     }
@@ -176,6 +236,8 @@ export function useWorkspaceCreate({
     setWorkspaceServerSettings(getCreateWorkspaceDefaultServerSettings());
     setWorkspaceExecutionHost(null);
     setWorkspaceSshTarget(null);
+    setWorkspaceWorkerEnrollment(null);
+    setWorkspaceWorkerEnrollmentSelected(false);
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
@@ -186,7 +248,9 @@ export function useWorkspaceCreate({
       ? requestedExecutionHostKind === "ssh"
         ? { kind: "ssh", serverId: requestedExecutionHostId }
         : requestedExecutionHostKind === "local" || requestedExecutionHostKind === "mesh"
-          ? { kind: requestedExecutionHostKind, nodeId: requestedExecutionHostId }
+          ? requestedExecutionHostKind === "local"
+            ? { kind: "local", nodeId: requestedExecutionHostId }
+            : { kind: "mesh", nodeId: requestedExecutionHostId }
           : null
       : null;
     const defaultExecutionHost: ExecutionHostRef | null = defaultAutomaticServer
@@ -218,9 +282,58 @@ export function useWorkspaceCreate({
   ]);
 
   useEffect(() => {
+    const enrollmentId = workspaceWorkerEnrollment?.enrollment.id;
+    if (!enrollmentId) {
+      return;
+    }
+    let disposed = false;
+    const refresh = () => enrollmentRefreshCoordinatorRef.current.run(async () => {
+      const controller = new AbortController();
+      enrollmentRefreshControllerRef.current = controller;
+      try {
+        const status = await apiRequest<WorkspaceWorkerEnrollmentState>(
+          `/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`,
+          {
+            signal: controller.signal,
+            action: "Refresh dedicated worker enrollment",
+          },
+        );
+        if (!disposed && !controller.signal.aborted) {
+          setWorkspaceWorkerEnrollment((current) => ({
+            ...status,
+            workerJoinCommand: current?.workerJoinCommand,
+          }));
+        }
+        return status;
+      } finally {
+        if (enrollmentRefreshControllerRef.current === controller) {
+          enrollmentRefreshControllerRef.current = null;
+        }
+      }
+    });
+    const timer = setInterval(() => {
+      void refresh().catch((error) => {
+        if (!isAbortError(error)) {
+          log.debug("Keeping the last known dedicated worker enrollment state after refresh failure", {
+            error: String(error),
+          });
+        }
+      });
+    }, 1500);
+    return () => {
+      disposed = true;
+      enrollmentRefreshControllerRef.current?.abort();
+      enrollmentRefreshControllerRef.current = null;
+      enrollmentRefreshCoordinatorRef.current.reset();
+      clearInterval(timer);
+    };
+  }, [workspaceWorkerEnrollment?.enrollment.id]);
+
+  useEffect(() => {
     if (
       route.view !== "compose"
       || getRouteString(route, "kind") !== "workspace"
+      || workspaceWorkerEnrollmentSelected
       || automaticExecutionHost
       || servers.length === 0
     ) {
@@ -231,7 +344,7 @@ export function useWorkspaceCreate({
       ? { kind: "ssh", serverId: defaultAutomaticServer.config.id }
       : null);
     setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
-  }, [automaticExecutionHost, route, servers]);
+  }, [automaticExecutionHost, route, servers, workspaceWorkerEnrollmentSelected]);
 
   useEffect(() => {
     const jobId = provisioning.snapshot?.job.config.id ?? null;
@@ -265,6 +378,9 @@ export function useWorkspaceCreate({
           directory: trimmedDirectory,
           ...(executionHost ? { executionHost } : {}),
           ...(sshTarget ? { sshTarget } : {}),
+          ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
+            ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
+            : {}),
         }),
         action: "Test server connection",
         fallbackMessage: "Failed to test server connection",
@@ -273,6 +389,51 @@ export function useWorkspaceCreate({
       return { success: false, error: String(error) };
     } finally {
       setWorkspaceTesting(false);
+    }
+  }
+
+  async function startWorkspaceWorkerEnrollment(): Promise<void> {
+    setWorkspaceWorkerEnrollmentLoading(true);
+    try {
+      const created = await apiRequest<{
+        enrollment: WorkspaceWorkerEnrollmentState["enrollment"];
+        token: string;
+        workerJoinCommand: string;
+      }>("/api/workspace-worker-enrollments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: workspaceName.trim() || "Workspace worker" }),
+        action: "Create dedicated worker enrollment",
+        fallbackMessage: "Failed to create dedicated worker enrollment",
+      });
+      setWorkspaceExecutionHost(null);
+      setWorkspaceSshTarget(null);
+      setAutomaticExecutionHost(null);
+      setWorkspaceWorkerEnrollmentSelected(true);
+      setWorkspaceWorkerEnrollment({ ...created, worker: null });
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setWorkspaceWorkerEnrollmentLoading(false);
+    }
+  }
+
+  async function cancelWorkspaceWorkerEnrollment(): Promise<void> {
+    const enrollmentId = workspaceWorkerEnrollment?.enrollment.id;
+    if (!enrollmentId) {
+      setWorkspaceWorkerEnrollmentSelected(false);
+      return;
+    }
+    try {
+      await apiRequest(`/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`, {
+        method: "DELETE",
+        action: "Cancel dedicated worker enrollment",
+        fallbackMessage: "Failed to cancel dedicated worker enrollment",
+      });
+      setWorkspaceWorkerEnrollment(null);
+      setWorkspaceWorkerEnrollmentSelected(false);
+    } catch (error) {
+      toast.error(String(error));
     }
   }
 
@@ -285,7 +446,13 @@ export function useWorkspaceCreate({
 
     setWorkspaceCreateMode("automatic");
     setWorkspaceName(config.name);
-    setAutomaticExecutionHost(config.executionHostBinding.host);
+    setWorkspaceWorkerEnrollment(null);
+    setWorkspaceWorkerEnrollmentSelected(Boolean(config.workspaceWorkerEnrollmentId));
+    setAutomaticExecutionHost(
+      config.workspaceWorkerEnrollmentId
+        ? null
+        : config.executionHostBinding.host,
+    );
     setAutomaticRepoUrl(config.repoUrl ?? "");
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
@@ -308,8 +475,12 @@ export function useWorkspaceCreate({
       }
 
       if (workspaceCreateMode === "automatic") {
-        if (!automaticExecutionHost || !automaticBasePath.trim()) {
-          toast.error("An execution host and base path are required.");
+        if (
+          (!automaticExecutionHost
+            && !(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment))
+          || !automaticBasePath.trim()
+        ) {
+          toast.error("An execution host or connected dedicated worker and base path are required.");
           return;
         }
         if (!automaticCreateNewRepository && !automaticRepoUrl.trim()) {
@@ -322,7 +493,10 @@ export function useWorkspaceCreate({
         }
         const snapshot = await provisioning.startJob({
           name,
-          executionHost: automaticExecutionHost,
+          ...(automaticExecutionHost ? { executionHost: automaticExecutionHost } : {}),
+          ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
+            ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
+            : {}),
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
           devcontainerSubpath: automaticDevboxTemplate.trim()
@@ -353,7 +527,9 @@ export function useWorkspaceCreate({
       if (
         !directory
         || !workspaceServerSettingsValid
-        || (!workspaceExecutionHost && !workspaceSshTarget)
+        || (!workspaceExecutionHost
+          && !workspaceSshTarget
+          && !(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment))
       ) {
         toast.error("Directory and valid connection settings are required.");
         return;
@@ -368,6 +544,9 @@ export function useWorkspaceCreate({
           serverSettings: workspaceServerSettings,
           ...(workspaceExecutionHost ? { executionHost: workspaceExecutionHost } : {}),
           ...(workspaceSshTarget ? { sshTarget: workspaceSshTarget } : {}),
+          ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
+            ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
+            : {}),
         };
         const workspace = await createWorkspace(request);
         if (!workspace) {
@@ -395,6 +574,12 @@ export function useWorkspaceCreate({
     setWorkspaceExecutionHost,
     workspaceSshTarget,
     setWorkspaceSshTarget,
+    workspaceWorkerEnrollment,
+    workspaceWorkerEnrollmentSelected,
+    setWorkspaceWorkerEnrollmentSelected,
+    workspaceWorkerEnrollmentLoading,
+    startWorkspaceWorkerEnrollment,
+    cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,

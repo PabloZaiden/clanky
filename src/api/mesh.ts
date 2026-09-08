@@ -18,12 +18,19 @@ import { parseAndValidate } from "./validation";
 export function meshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
     const status = error.code === "mesh_worker_not_found"
-      ? 404
-      : error.code === "mesh_enrollment_token_invalid"
-        || error.code === "mesh_enrollment_expired"
-        ? 410
+        || error.code === "workspace_worker_enrollment_not_found"
+          ? 404
+        : error.code === "mesh_enrollment_token_invalid"
+          || error.code === "mesh_enrollment_expired"
+          || error.code === "workspace_worker_enrollment_expired"
+          ? 410
         : error.code === "mesh_enrollment_controller_mismatch"
           || error.code === "mesh_enrollment_self"
+          || error.code === "workspace_worker_enrollment_claimed"
+          || error.code === "workspace_worker_already_attached"
+          || error.code === "workspace_worker_already_registered"
+          || error.code === "workspace_worker_workspace_scoped"
+          || error.code === "workspace_worker_enrollment_invalid"
           ? 409
           : error.code === "mesh_role_invalid"
             ? 404

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
+import { workspaceWorkerEnrollmentService } from "../../src/core/workspace-worker-enrollment-service";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
@@ -153,6 +154,41 @@ describe("Provisioning API integration", () => {
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
+  }
+
+  async function seedDedicatedMeshExecutionTarget(): Promise<string> {
+    seedTestOwnerUser();
+    const workerNodeId = `dedicated-mesh-node-${crypto.randomUUID()}`;
+    const enrollment = workspaceWorkerEnrollmentService.create("admin", {
+      name: "Dedicated provisioning worker",
+      ttlSeconds: 900,
+      controller: {
+        nodeId: "controller-node",
+        fingerprint: "controller-fingerprint",
+      },
+    });
+    await saveWorkerRegistration({
+      workerNodeId,
+      localUserId: "admin",
+      workerInstanceName: "Dedicated provisioning worker",
+      workerEndpoint: "http://127.0.0.1:4100",
+      workerTransport: "http",
+      workerPublicKey: `${workerNodeId}-public-key`,
+      workerFingerprint: `${workerNodeId}-fingerprint`,
+      workerEncryptionPublicKey: null,
+      workerDirectory: "/devbox/workspaces",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      registrationScope: "workspace",
+      workspaceWorkerEnrollmentId: enrollment.enrollment.id,
+    });
+    workspaceWorkerEnrollmentService.markConnected(
+      "admin",
+      enrollment.enrollment.id,
+      workerNodeId,
+    );
+    return enrollment.enrollment.id;
   }
 
   test("creates a provisioning job and completes with a workspace snapshot", async () => {
@@ -382,6 +418,64 @@ describe("Provisioning API integration", () => {
         },
       },
     });
+  });
+
+  test("provisions through a workspace-dedicated mesh execution node", async () => {
+    const workspaceWorkerEnrollmentId = await seedDedicatedMeshExecutionTarget();
+    const executor = new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/devbox/workspaces/dedicated-example",
+      }),
+    });
+    backendManager.setExecutorFactoryForTesting(() => executor);
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Dedicated Mesh Example",
+        workspaceWorkerEnrollmentId,
+        repoUrl: "https://github.com/octocat/dedicated-example.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        githubUser: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        createNewRepository: false,
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+    expect(completed.workspace).toMatchObject({
+      directory: "/devbox/workspaces/dedicated-example",
+      executionHostBinding: {
+        host: {
+          kind: "mesh",
+          scope: "workspace",
+          nodeId: expect.any(String),
+        },
+      },
+      provisioningHostBinding: {
+        host: {
+          kind: "mesh",
+          scope: "workspace",
+          nodeId: expect.any(String),
+        },
+      },
+    });
+
+    expect(completed.workspace?.id).toBeTruthy();
+    const deleted = await fetch(
+      `${baseUrl}/api/workspaces/${completed.workspace?.id}`,
+      { method: "DELETE", body: JSON.stringify({}) },
+    );
+    expect(deleted.status).toBe(200);
   });
 
   test("never persists provisioning SSH secrets", async () => {

@@ -58,6 +58,7 @@ export async function postMeshControlMessage(
     if (!response.ok) {
       const body = await response.clone().json().catch(() => null) as {
         error?: unknown;
+        message?: unknown;
       } | null;
       const peerError = typeof body?.error === "string"
         ? recognizedPeerErrors.get(body.error)
@@ -69,9 +70,14 @@ export async function postMeshControlMessage(
           details: { status: response.status, requestId },
         });
       }
-      throw new DomainError("mesh_control_request_rejected", "The peer rejected the mesh control request.", {
-        details: { status: response.status, requestId },
-      });
+      const peerMessage = typeof body?.message === "string"
+        ? ` ${body.message}`
+        : "";
+      throw new DomainError(
+        "mesh_control_request_rejected",
+        `The peer rejected the mesh control request.${peerMessage}`,
+        { details: { status: response.status, requestId } },
+      );
     }
     return response;
   } catch (error) {

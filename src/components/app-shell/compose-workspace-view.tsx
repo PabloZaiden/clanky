@@ -42,6 +42,60 @@ interface ComposeWorkspaceViewProps {
 
 const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
 
+function DedicatedWorkerEnrollment({
+  enrollment,
+  loading,
+  onStart,
+  onCancel,
+}: {
+  enrollment: UseWorkspaceCreateResult["workspaceWorkerEnrollment"];
+  loading: boolean;
+  onStart: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Dedicated worker</p>
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            Enroll one Mesh worker for this workspace only. It will not appear as a general server.
+          </p>
+        </div>
+        {enrollment ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            Cancel enrollment
+          </Button>
+        ) : (
+          <Button type="button" size="sm" variant="secondary" loading={loading} onClick={onStart}>
+            Enroll dedicated worker
+          </Button>
+        )}
+      </div>
+      {enrollment ? (
+        <div className="mt-3 space-y-2 text-xs">
+          <p>
+            Status: <span className="font-medium">{enrollment.enrollment.status}</span>
+          </p>
+          {enrollment.workerJoinCommand ? (
+            <>
+              <p>Run this command on the worker, then wait for it to connect:</p>
+              <code className="block overflow-x-auto rounded bg-gray-50 p-2 dark:bg-neutral-800">
+                {enrollment.workerJoinCommand}
+              </code>
+            </>
+          ) : null}
+          {enrollment.enrollment.status === "connected" ? (
+            <p className="text-green-700 dark:text-green-400">
+              Connected. This workspace can use the dedicated worker.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
     servers,
@@ -65,6 +119,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setWorkspaceExecutionHost,
     workspaceSshTarget,
     setWorkspaceSshTarget,
+    workspaceWorkerEnrollment,
+    workspaceWorkerEnrollmentSelected,
+    setWorkspaceWorkerEnrollmentSelected,
+    workspaceWorkerEnrollmentLoading,
+    startWorkspaceWorkerEnrollment,
+    cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
     setWorkspaceServerSettingsValid,
@@ -124,14 +184,23 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
   const automaticFormValid =
     workspaceName.trim().length > 0 &&
-    automaticExecutionHost !== null &&
+    (automaticExecutionHost !== null
+      || (
+        workspaceWorkerEnrollmentSelected
+        && workspaceWorkerEnrollment?.enrollment.status === "connected"
+      )) &&
     (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0) &&
     automaticBasePath.trim().length > 0 &&
     (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
   const manualFormValid =
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
-    (workspaceExecutionHost !== null || workspaceSshTarget !== null) &&
+    (workspaceExecutionHost !== null
+      || workspaceSshTarget !== null
+      || (
+        workspaceWorkerEnrollmentSelected
+        && workspaceWorkerEnrollment?.enrollment.status === "connected"
+      )) &&
     workspaceServerSettingsValid;
   const createActionLabel =
     workspaceCreateMode === "automatic" ? "Start Provisioning" : "Create Workspace";
@@ -223,10 +292,19 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   <span className="block font-medium">Enable task features</span>
                 </span>
               </label>
-              <ServerSettingsForm
+                  <DedicatedWorkerEnrollment
+                    enrollment={workspaceWorkerEnrollment}
+                    loading={workspaceWorkerEnrollmentLoading}
+                    onStart={() => void startWorkspaceWorkerEnrollment()}
+                    onCancel={() => void cancelWorkspaceWorkerEnrollment()}
+                  />
+                  <ServerSettingsForm
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
                 allowWorkspaceSshTarget
+                dedicatedWorkerSelected={
+                  workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
+                }
                 onChange={(
                   settings: ServerSettings,
                   isValid: boolean,
@@ -236,6 +314,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   setWorkspaceServerSettings((current: ServerSettings) => {
                     return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
                   });
+                  if (executionHost || sshTarget) {
+                    if (workspaceWorkerEnrollment) {
+                      void cancelWorkspaceWorkerEnrollment();
+                    }
+                    setWorkspaceWorkerEnrollmentSelected(false);
+                  }
                   setWorkspaceExecutionHost(executionHost);
                   setWorkspaceSshTarget(sshTarget ?? null);
                   setWorkspaceServerSettingsValid(isValid);
@@ -252,9 +336,23 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 label="Provisioning and execution host"
                 value={automaticExecutionHost
                   ? serializeExecutionHostRef(automaticExecutionHost)
-                  : ""}
+                          : workspaceWorkerEnrollmentSelected
+                            && workspaceWorkerEnrollment?.enrollment.status === "connected"
+                            ? "workspace-worker"
+                            : ""}
                 onChange={(event) => {
                   const value = event.target.value;
+                  if (value === "workspace-worker") {
+                    setWorkspaceWorkerEnrollmentSelected(true);
+                    setAutomaticExecutionHost(null);
+                    setAutomaticBasePath("/workspaces");
+                    setAutomaticDevboxTemplate("");
+                    return;
+                  }
+                  if (workspaceWorkerEnrollment) {
+                    void cancelWorkspaceWorkerEnrollment();
+                  }
+                  setWorkspaceWorkerEnrollmentSelected(false);
                   const host = value ? parseExecutionHostRef(value) : null;
                   setAutomaticExecutionHost(host);
                   setAutomaticDevboxTemplate("");
@@ -275,6 +373,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 }}
               >
                 <option value="">Select an execution host</option>
+                {workspaceWorkerEnrollment && (
+                  <option
+                    value="workspace-worker"
+                    disabled={workspaceWorkerEnrollment.enrollment.status !== "connected"}
+                  >
+                    Dedicated worker ({workspaceWorkerEnrollment.enrollment.status})
+                  </option>
+                )}
                 {executionTargets
                   .filter((target) =>
                     !dashboardData.remoteOnly || target.ref.kind !== "local"
@@ -303,6 +409,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 placeholder="git@github.com:owner/repo.git"
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
+              />
+              <DedicatedWorkerEnrollment
+                enrollment={workspaceWorkerEnrollment}
+                loading={workspaceWorkerEnrollmentLoading}
+                onStart={() => void startWorkspaceWorkerEnrollment()}
+                onCancel={() => void cancelWorkspaceWorkerEnrollment()}
               />
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
@@ -389,26 +501,37 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         </Button>
                       )}
                     >
-                      <SelectField
-                        id="automatic-devbox-template"
-                        label="Template"
-                        value={automaticDevboxTemplate}
-                        onChange={(event) => {
-                          autoSelectedDevboxTemplateRef.current = null;
-                          setAutomaticDevboxTemplate(event.target.value);
-                        }}
-                        disabled={!automaticExecutionHost || templatesLoading}
-                      >
-                        {!automaticCreateNewRepository && (
-                          <option value="">Use repository devcontainer (default)</option>
-                        )}
-                        {templatesLoading && <option value="" disabled>Loading templates...</option>}
-                        {!templatesLoading && templates.map((template) => (
-                          <option key={template.name} value={template.name}>
-                            {template.name} - {template.runtimeVersion}
-                          </option>
-                        ))}
-                      </SelectField>
+                      {!automaticExecutionHost && workspaceWorkerEnrollment ? (
+                        <TextField
+                          id="automatic-devbox-template"
+                          label="Devbox template"
+                          value={automaticDevboxTemplate}
+                          onChange={(event) => setAutomaticDevboxTemplate(event.target.value)}
+                          placeholder="community"
+                          required={automaticCreateNewRepository}
+                        />
+                      ) : (
+                        <SelectField
+                          id="automatic-devbox-template"
+                          label="Template"
+                          value={automaticDevboxTemplate}
+                          onChange={(event) => {
+                            autoSelectedDevboxTemplateRef.current = null;
+                            setAutomaticDevboxTemplate(event.target.value);
+                          }}
+                          disabled={!automaticExecutionHost || templatesLoading}
+                        >
+                          {!automaticCreateNewRepository && (
+                            <option value="">Use repository devcontainer (default)</option>
+                          )}
+                          {templatesLoading && <option value="" disabled>Loading templates...</option>}
+                          {!templatesLoading && templates.map((template) => (
+                            <option key={template.name} value={template.name}>
+                              {template.name} - {template.runtimeVersion}
+                            </option>
+                          ))}
+                        </SelectField>
+                      )}
                       {templatesError && (
                         <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
                       )}

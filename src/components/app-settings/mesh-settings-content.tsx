@@ -117,6 +117,9 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                 >
                   {worker.grantStatus}
                 </Badge>
+                {worker.registrationScope === "workspace" ? (
+                  <Badge variant="info" appearance="text">Dedicated</Badge>
+                ) : null}
               </div>
               <p className="break-all text-xs text-gray-500 dark:text-gray-400">
                 {worker.workerEndpoint}
@@ -128,7 +131,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                 </p>
               ) : null}
             </div>
-            {worker.grantStatus === "active" ? (
+            {worker.grantStatus === "active" && worker.registrationScope !== "workspace" ? (
               <div className="flex items-center gap-2">
                 {killingWorkerNodeId === worker.workerNodeId ? (
                   <div className="wapp-shutdown-countdown min-w-56" aria-live="polite">
@@ -167,6 +170,10 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                   </>
                 )}
               </div>
+            ) : worker.registrationScope === "workspace" ? (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Removed with its workspace
+              </span>
             ) : (
               <Button
                 type="button"

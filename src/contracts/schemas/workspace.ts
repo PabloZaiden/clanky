@@ -55,12 +55,17 @@ export const CreateWorkspaceRequestSchema = z.object({
   serverSettings: ServerSettingsSchema,
   executionHost: ExecutionHostRefSchema.optional(),
   sshTarget: WorkspaceSshTargetSchema.optional(),
+  workspaceWorkerEnrollmentId: z.string().trim().min(1).optional(),
   allowClankyContext: z.boolean().optional(),
   workspaceType: WorkspaceTypeSchema.default("git"),
 }).refine(
-  (value) => Boolean(value.executionHost) !== Boolean(value.sshTarget),
+  (value) => [
+    Boolean(value.executionHost),
+    Boolean(value.sshTarget),
+    Boolean(value.workspaceWorkerEnrollmentId),
+  ].filter(Boolean).length === 1,
   {
-    message: "Exactly one execution host or SSH target is required",
+    message: "Exactly one execution host, SSH target, or dedicated worker enrollment is required",
     path: ["executionHost"],
   },
 );
@@ -97,10 +102,15 @@ export const TestConnectionRequestSchema = z.object({
   directory: z.string().min(1, "directory is required"),
   executionHost: ExecutionHostRefSchema.optional(),
   sshTarget: WorkspaceSshTargetSchema.optional(),
+  workspaceWorkerEnrollmentId: z.string().trim().min(1).optional(),
 }).refine(
-  (value) => Boolean(value.executionHost) !== Boolean(value.sshTarget),
+  (value) => [
+    Boolean(value.executionHost),
+    Boolean(value.sshTarget),
+    Boolean(value.workspaceWorkerEnrollmentId),
+  ].filter(Boolean).length === 1,
   {
-    message: "Exactly one execution host or SSH target is required",
+    message: "Exactly one execution host, SSH target, or dedicated worker enrollment is required",
     path: ["executionHost"],
   },
 );

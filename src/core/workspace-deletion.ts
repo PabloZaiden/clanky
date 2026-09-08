@@ -9,6 +9,9 @@ import { managedCredentialService } from "./managed-credential-service";
 import { terminalSessionManager } from "./terminal-session-manager";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { meshManager } from "./mesh-manager";
+import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
+import { requireCurrentUserId } from "./user-context";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -159,8 +162,33 @@ async function deleteWorkspaceWithOptionsUnlocked(
 
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);
+    const dedicatedWorker = workspaceWorkerEnrollmentService.getByWorkspace(
+      requireCurrentUserId(),
+      id,
+    );
+    if (dedicatedWorker) {
+      await meshManager.cleanupDedicatedWorker(
+        requireCurrentUserId(),
+        dedicatedWorker.enrollment.id,
+        { preserveRegistration: true },
+      );
+    }
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {
+      if (dedicatedWorker?.enrollment.workerNodeId) {
+        try {
+          await meshManager.removeDedicatedWorker(
+            requireCurrentUserId(),
+            dedicatedWorker.enrollment.workerNodeId,
+          );
+        } catch (error) {
+          log.error("Failed to remove dedicated worker after workspace deletion", {
+            workspaceId: id,
+            workerNodeId: dedicatedWorker.enrollment.workerNodeId,
+            error: String(error),
+          });
+        }
+      }
       return { success: true };
     }
 

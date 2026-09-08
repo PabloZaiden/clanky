@@ -36,6 +36,27 @@ function mapProvisioningError(error: unknown): Response {
       provisioning_cancelled: {
         status: 409,
       },
+      workspace_worker_enrollment_not_found: {
+        status: 404,
+      },
+      workspace_worker_enrollment_expired: {
+        status: 410,
+      },
+      workspace_worker_enrollment_claimed: {
+        status: 409,
+      },
+      workspace_worker_already_attached: {
+        status: 409,
+      },
+      workspace_worker_enrollment_unavailable: {
+        status: 409,
+      },
+      workspace_worker_not_connected: {
+        status: 409,
+      },
+      execution_host_unavailable: {
+        status: 409,
+      },
     },
     fallback: {
       error: "provisioning_error",
@@ -71,8 +92,13 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const sshServerId = getRegisteredSshServerId(validation.data.executionHost);
-        if (validation.data.executionHost.kind === "ssh" && !sshServerId) {
+        const sshServerId = validation.data.executionHost
+          ? getRegisteredSshServerId(validation.data.executionHost)
+          : null;
+        if (
+          validation.data.executionHost?.kind === "ssh"
+          && !sshServerId
+        ) {
           return errorResponse(
             "invalid_execution_host",
             "Provisioning requires a registered SSH server.",
@@ -93,7 +119,12 @@ export const provisioningRoutes = defineRoutes({
 
         const snapshot = await provisioningManager.startJob({
           name: validation.data.name,
-          executionHost: validation.data.executionHost,
+          ...(validation.data.executionHost
+            ? { executionHost: validation.data.executionHost }
+            : {}),
+          ...(validation.data.workspaceWorkerEnrollmentId
+            ? { workspaceWorkerEnrollmentId: validation.data.workspaceWorkerEnrollmentId }
+            : {}),
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,

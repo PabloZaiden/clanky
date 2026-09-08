@@ -17,6 +17,9 @@ import {
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import {
   executionHostBindingsEqual,
+  executionHostRefsEqual,
+  isPrivateMeshExecutionHostRef,
+  type ExecutionHostBinding,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
   type Workspace,
@@ -34,6 +37,9 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { executionHostService } from "./execution-host-service";
+import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
+import { meshManager } from "./mesh-manager";
+import { requireCurrentUserId } from "./user-context";
 import {
   captureWorkspaceSshTargetState,
   ensureWorkspaceSshTarget,
@@ -52,6 +58,8 @@ export interface CreateWorkspaceInput {
   serverSettings?: ServerSettings;
   executionHost?: ExecutionHostRef;
   sshTarget?: WorkspaceSshTargetInput;
+  workspaceWorkerEnrollmentId?: string;
+  workspaceWorkerEnrollmentClaimedBy?: string;
   provisioningHost?: ExecutionHostRef;
   skipValidation?: boolean;
   archived?: boolean;
@@ -82,6 +90,8 @@ interface NormalizedCreateWorkspaceInput {
   serverSettings: ServerSettings;
   executionHost?: ExecutionHostRef;
   sshTarget?: WorkspaceSshTargetInput;
+  workspaceWorkerEnrollmentId?: string;
+  workspaceWorkerEnrollmentClaimedBy?: string;
   provisioningHost?: ExecutionHostRef;
   skipValidation: boolean;
   archived?: boolean;
@@ -101,6 +111,8 @@ function normalizeCreateInput(input: CreateWorkspaceInput): NormalizedCreateWork
     serverSettings: input.serverSettings ?? getDefaultServerSettings(),
     executionHost: input.executionHost,
     sshTarget: input.sshTarget,
+    workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId,
+    workspaceWorkerEnrollmentClaimedBy: input.workspaceWorkerEnrollmentClaimedBy,
     provisioningHost: input.provisioningHost,
     skipValidation: input.skipValidation === true,
     archived: input.archived,
@@ -111,6 +123,21 @@ function normalizeCreateInput(input: CreateWorkspaceInput): NormalizedCreateWork
     basePath: input.basePath,
     devcontainerSubpath: input.devcontainerSubpath,
   };
+}
+
+function resolveWorkspaceExecutionHostBinding(
+  workspace: Workspace,
+  ref: ExecutionHostRef,
+  userId: string,
+): ExecutionHostBinding {
+  if (
+    isPrivateMeshExecutionHostRef(ref)
+    && executionHostRefsEqual(ref, workspace.executionHostBinding.host)
+  ) {
+    executionHostService.validateBinding(workspace.executionHostBinding, userId);
+    return workspace.executionHostBinding;
+  }
+  return executionHostService.getBinding(ref);
 }
 
 function getValidationFailure(
@@ -195,12 +222,14 @@ export class WorkspaceManager {
     executionHost: ExecutionHostRef | undefined,
     directory: string,
     sshTarget?: WorkspaceSshTargetInput,
+    bindingOverride?: ExecutionHostBinding,
   ): Promise<WorkspaceDirectoryValidation> {
     return await backendManager.validateRemoteDirectory(
       serverSettings,
       directory,
       executionHost,
       sshTarget,
+      bindingOverride,
     );
   }
 
@@ -210,13 +239,23 @@ export class WorkspaceManager {
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
     const normalized = normalizeCreateInput(input);
-    if (!normalized.executionHost && !normalized.sshTarget) {
+    if (
+      !normalized.executionHost
+      && !normalized.sshTarget
+      && !normalized.workspaceWorkerEnrollmentId
+    ) {
       throw new DomainError(
         "execution_target_required",
         "A registered execution host or an ad hoc SSH target is required.",
       );
     }
-    if (normalized.executionHost && normalized.sshTarget) {
+    if (
+      [
+        Boolean(normalized.executionHost),
+        Boolean(normalized.sshTarget),
+        Boolean(normalized.workspaceWorkerEnrollmentId),
+      ].filter(Boolean).length > 1
+    ) {
       throw new DomainError(
         "execution_target_ambiguous",
         "Choose either a registered execution host or an ad hoc SSH target.",
@@ -226,16 +265,29 @@ export class WorkspaceManager {
       name: normalized.name,
       directory: normalized.directory,
       provider: normalized.serverSettings.agent.provider,
-      transport: normalized.sshTarget ? "ssh" : normalized.executionHost?.kind,
+      transport: normalized.sshTarget
+        ? "ssh"
+        : normalized.workspaceWorkerEnrollmentId
+          ? "mesh-dedicated"
+          : normalized.executionHost?.kind,
     });
 
+    const enrollmentBinding = normalized.workspaceWorkerEnrollmentId
+      ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
+          requireCurrentUserId(),
+          normalized.workspaceWorkerEnrollmentId,
+        )
+      : undefined;
+    const validationExecutionHost = normalized.executionHost
+      ?? enrollmentBinding?.host;
     const validation = normalized.skipValidation
       ? { success: true, directoryExists: true, isGitRepo: true }
       : await this.validateRemoteDirectory(
         normalized.serverSettings,
-        normalized.executionHost,
+        validationExecutionHost,
         normalized.directory,
         normalized.sshTarget,
+        enrollmentBinding,
       );
     const failure = getValidationFailure(validation, normalized.workspaceType);
     if (failure) {
@@ -252,6 +304,7 @@ export class WorkspaceManager {
     let sshTarget: Workspace["sshTarget"];
     let provisioningHostBinding: Workspace["provisioningHostBinding"];
     let workspaceCreated = false;
+    let dedicatedWorkerClaimed = false;
     try {
       if (normalized.sshTarget) {
         const target = prepareWorkspaceSshTarget(workspaceId, normalized.sshTarget);
@@ -266,10 +319,23 @@ export class WorkspaceManager {
           revision: target.target.revision,
         };
       } else {
-        executionHostBinding = executionHostService.getBinding(normalized.executionHost!);
+        if (normalized.workspaceWorkerEnrollmentId) {
+          executionHostBinding = workspaceWorkerEnrollmentService.claimForWorkspace(
+            requireCurrentUserId(),
+            normalized.workspaceWorkerEnrollmentId,
+            workspaceId,
+            workspaceId,
+            normalized.workspaceWorkerEnrollmentClaimedBy,
+          );
+          dedicatedWorkerClaimed = true;
+        } else {
+          executionHostBinding = executionHostService.getBinding(normalized.executionHost!);
+        }
       }
       if (normalized.provisioningHost) {
-        provisioningHostBinding = executionHostService.getBinding(normalized.provisioningHost);
+        provisioningHostBinding = normalized.workspaceWorkerEnrollmentId
+          ? executionHostBinding
+          : executionHostService.getBinding(normalized.provisioningHost);
       }
       const workspace = createWorkspaceRecordFromInput(
         normalized,
@@ -283,6 +349,13 @@ export class WorkspaceManager {
       if (normalized.sshTarget) {
         await ensureWorkspaceSshTarget(workspaceId, normalized.sshTarget);
       }
+      if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
+        workspaceWorkerEnrollmentService.attach(
+          requireCurrentUserId(),
+          normalized.workspaceWorkerEnrollmentId,
+          workspaceId,
+        );
+      }
       log.info("Workspace created", {
         workspaceId: workspace.id,
         name: workspace.name,
@@ -295,6 +368,29 @@ export class WorkspaceManager {
       }
       if (normalized.sshTarget) {
         await removeWorkspaceSshTarget(workspaceId);
+      }
+      if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
+        try {
+          await meshManager.revokeDedicatedWorker(
+            requireCurrentUserId(),
+            normalized.workspaceWorkerEnrollmentId,
+          );
+          const status = workspaceWorkerEnrollmentService.getStatus(
+            requireCurrentUserId(),
+            normalized.workspaceWorkerEnrollmentId,
+          );
+          if (status.enrollment.workerNodeId) {
+            await meshManager.removeDedicatedWorker(
+              requireCurrentUserId(),
+              status.enrollment.workerNodeId,
+            );
+          }
+        } catch (cleanupError) {
+          log.error("Failed to clean up dedicated worker enrollment", {
+            enrollmentId: normalized.workspaceWorkerEnrollmentId,
+            error: String(cleanupError),
+          });
+        }
       }
       throw error;
     }
@@ -358,7 +454,11 @@ export class WorkspaceManager {
               "A registered execution host is required when clearing the SSH target.",
             );
           }
-          nextExecutionHostBinding = executionHostService.getBinding(updates.executionHost);
+          nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+            current,
+            updates.executionHost,
+            requireCurrentUserId(),
+          );
           nextSshTarget = undefined;
           removeSshTarget = true;
         } else {
@@ -376,7 +476,11 @@ export class WorkspaceManager {
           };
         }
       } else if (updates.executionHost !== undefined) {
-        nextExecutionHostBinding = executionHostService.getBinding(updates.executionHost);
+        nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+          current,
+          updates.executionHost,
+          requireCurrentUserId(),
+        );
         nextSshTarget = undefined;
         removeSshTarget = current.sshTarget !== undefined;
       }
@@ -505,17 +609,51 @@ export class WorkspaceManager {
     directory: string,
     executionHost?: ExecutionHostRef,
     sshTarget?: WorkspaceSshTargetInput,
+    workspaceWorkerEnrollmentId?: string,
+    bindingOverride?: ExecutionHostBinding,
   ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
     try {
+      const binding = bindingOverride
+        ?? (workspaceWorkerEnrollmentId
+          ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
+              requireCurrentUserId(),
+              workspaceWorkerEnrollmentId,
+            )
+          : undefined);
       return await backendManager.testConnection(
         serverSettings,
         directory,
         executionHost,
         sshTarget,
+        binding,
       );
     } catch (error) {
       return { success: false, error: String(error) };
     }
+  }
+
+  async testWorkspaceConnection(
+    workspaceId: string,
+    serverSettings: ServerSettings,
+    directory: string,
+    executionHost?: ExecutionHostRef,
+    sshTarget?: WorkspaceSshTargetInput,
+    workspaceWorkerEnrollmentId?: string,
+  ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
+    const workspace = await this.requireWorkspace(workspaceId);
+    const bindingOverride = executionHost
+      && isPrivateMeshExecutionHostRef(executionHost)
+      && executionHostRefsEqual(executionHost, workspace.executionHostBinding.host)
+      ? workspace.executionHostBinding
+      : undefined;
+    return await this.testConnection(
+      serverSettings,
+      directory,
+      executionHost,
+      sshTarget,
+      workspaceWorkerEnrollmentId,
+      bindingOverride,
+    );
   }
 }
 

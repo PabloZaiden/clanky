@@ -28,6 +28,18 @@ export const ExecutionHostRefSchema = z.union([
     nodeId: RequiredIdSchema,
   }).strict(),
   z.object({
+    kind: z.literal("mesh"),
+    scope: z.literal("enrollment"),
+    enrollmentId: RequiredIdSchema,
+    nodeId: RequiredIdSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("mesh"),
+    scope: z.literal("workspace"),
+    workspaceId: RequiredIdSchema,
+    nodeId: RequiredIdSchema,
+  }).strict(),
+  z.object({
     kind: z.literal("ssh"),
     serverId: RequiredIdSchema,
   }).strict(),

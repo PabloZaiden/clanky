@@ -28,6 +28,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import {
   getControllerGrant,
   getWorkerRegistration,
+  getWorkerRegistrationByEnrollment,
+  getWorkerRegistrationByWorkspace,
   listActiveWorkerRegistrations,
   listControllerGrants,
   listWorkerRegistrations,
@@ -40,10 +42,15 @@ import {
   updateWorkerHealthSnapshot,
 } from "../persistence/mesh";
 import {
+  deleteExecutionHost,
+  getExecutionHostByRef,
+} from "../persistence/execution-hosts";
+import {
   consumeMeshEnrollmentToken,
   createMeshEnrollmentToken,
   listMeshEnrollmentTokens,
 } from "../persistence/mesh-enrollment-tokens";
+import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
@@ -125,6 +132,92 @@ export class MeshManager {
     };
   }
 
+  async createWorkspaceWorkerEnrollment(
+    userId: string,
+    name: string,
+    ttlSeconds: number,
+  ) {
+    requireMeshRuntimeRole("controller");
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const controllerEndpoint = identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint();
+    const created = workspaceWorkerEnrollmentService.create(userId, {
+      name,
+      ttlSeconds,
+      controller: {
+        nodeId: identity.nodeId,
+        fingerprint: identity.fingerprint,
+      },
+    });
+    return {
+      ...created,
+      workerJoinCommand: buildWorkerJoinCommand({
+        controllerEndpoint,
+        enrollmentToken: created.token,
+        controllerFingerprint: identity.fingerprint,
+      }),
+    };
+  }
+
+  async getWorkspaceWorkerEnrollment(userId: string, enrollmentId: string) {
+    requireMeshRuntimeRole("controller");
+    const status = workspaceWorkerEnrollmentService.getStatus(userId, enrollmentId);
+    if (status.enrollment.status === "expired") {
+      await this.cleanupDedicatedWorker(userId, enrollmentId);
+      return workspaceWorkerEnrollmentService.getStatus(userId, enrollmentId);
+    }
+    return status;
+  }
+
+  async reconcileWorkspaceWorkerEnrollments(userId: string): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const now = Date.now();
+    for (const status of workspaceWorkerEnrollmentService.list(userId)) {
+      if (
+        !["pending", "connected"].includes(status.enrollment.status)
+        || Date.parse(status.enrollment.expiresAt) > now
+      ) {
+        continue;
+      }
+      try {
+        workspaceWorkerEnrollmentService.markFailed(
+          userId,
+          status.enrollment.id,
+          "enrollment_expired",
+          "The workspace worker enrollment expired.",
+          "expired",
+          true,
+        );
+        await this.cleanupDedicatedWorker(userId, status.enrollment.id);
+      } catch (error) {
+        log.error("Failed to reconcile expired workspace worker enrollment", {
+          enrollmentId: status.enrollment.id,
+          error: String(error),
+        });
+      }
+    }
+  }
+
+  async listWorkspaceWorkerEnrollments(userId: string) {
+    requireMeshRuntimeRole("controller");
+    await this.reconcileWorkspaceWorkerEnrollments(userId);
+    return workspaceWorkerEnrollmentService.list(userId);
+  }
+
+  async cancelWorkspaceWorkerEnrollment(
+    userId: string,
+    enrollmentId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const status = workspaceWorkerEnrollmentService.getStatus(userId, enrollmentId);
+    if (status.enrollment.status === "attached") {
+      throw new DomainError(
+        "workspace_worker_already_attached",
+        "The workspace worker enrollment is already attached to a workspace.",
+      );
+    }
+    await this.cleanupDedicatedWorker(userId, enrollmentId);
+  }
+
   async listEnrollmentTokens(userId: string) {
     requireMeshRuntimeRole("controller");
     return listMeshEnrollmentTokens(userId);
@@ -193,6 +286,38 @@ export class MeshManager {
       envelope.workerNodeId,
       tokenResult.userId,
     );
+    if (
+      tokenResult.purpose === "workspace-worker"
+      && !tokenResult.workspaceWorkerEnrollmentId
+    ) {
+      throw new DomainError(
+        "workspace_worker_enrollment_invalid",
+        "The dedicated worker enrollment token is not linked to a reservation.",
+      );
+    }
+    if (
+      tokenResult.purpose === "workspace-worker"
+      && existingRegistration
+      && (
+        existingRegistration.grantStatus === "active"
+        || existingRegistration.registrationScope === "global"
+      )
+    ) {
+      throw new DomainError(
+        "workspace_worker_already_registered",
+        "This worker is already registered as a general Mesh worker.",
+      );
+    }
+    if (
+      tokenResult.purpose === "global"
+      && existingRegistration?.registrationScope === "workspace"
+      && existingRegistration.grantStatus === "active"
+    ) {
+      throw new DomainError(
+        "workspace_worker_workspace_scoped",
+        "A workspace-dedicated worker cannot be used as a general server.",
+      );
+    }
     const decision = decideEnrollWorker({
       existingRegistration,
       workerNodeId: envelope.workerNodeId,
@@ -200,20 +325,81 @@ export class MeshManager {
     });
 
     if (decision.kind === "apply") {
-      await saveWorkerRegistration({
-        workerNodeId: envelope.workerNodeId,
-        localUserId: tokenResult.userId,
-        workerInstanceName: envelope.workerInstanceName ?? null,
-        workerEndpoint: envelope.workerEndpoint,
-        workerTransport: envelope.workerTransport,
-        workerPublicKey: envelope.workerPublicKey,
-        workerFingerprint: envelope.workerFingerprint,
-        workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
-        workerDirectory: envelope.workerDirectory,
-        workerCapabilities: envelope.workerCapabilities,
-        workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
-        workerConfigRevision: envelope.workerConfigRevision,
-      });
+      const workspaceWorkerEnrollmentId = tokenResult.purpose === "workspace-worker"
+        ? tokenResult.workspaceWorkerEnrollmentId!
+        : undefined;
+      try {
+        await saveWorkerRegistration({
+          workerNodeId: envelope.workerNodeId,
+          localUserId: tokenResult.userId,
+          workerInstanceName: envelope.workerInstanceName ?? null,
+          workerEndpoint: envelope.workerEndpoint,
+          workerTransport: envelope.workerTransport,
+          workerPublicKey: envelope.workerPublicKey,
+          workerFingerprint: envelope.workerFingerprint,
+          workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
+          workerDirectory: envelope.workerDirectory,
+          workerCapabilities: envelope.workerCapabilities,
+          workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
+          workerConfigRevision: envelope.workerConfigRevision,
+          ...(workspaceWorkerEnrollmentId
+            ? {
+                registrationScope: "workspace" as const,
+                workspaceWorkerEnrollmentId,
+              }
+            : {}),
+        });
+        if (workspaceWorkerEnrollmentId) {
+          workspaceWorkerEnrollmentService.markConnected(
+            tokenResult.userId,
+            workspaceWorkerEnrollmentId,
+            envelope.workerNodeId,
+          );
+        }
+      } catch (error) {
+        if (workspaceWorkerEnrollmentId) {
+          try {
+            const savedRegistration = await getWorkerRegistration(
+              envelope.workerNodeId,
+              tokenResult.userId,
+            );
+            if (
+              savedRegistration?.registrationScope === "workspace"
+              && savedRegistration.workspaceWorkerEnrollmentId === workspaceWorkerEnrollmentId
+            ) {
+              await revokeWorkerRegistration(
+                envelope.workerNodeId,
+                tokenResult.userId,
+              );
+              await deleteRevokedWorkerRegistration(
+                envelope.workerNodeId,
+                tokenResult.userId,
+              );
+            }
+          } catch (cleanupError) {
+            log.error("Failed to clean up a partially enrolled workspace worker", {
+              workerNodeId: envelope.workerNodeId,
+              enrollmentId: workspaceWorkerEnrollmentId,
+              error: String(cleanupError),
+            });
+          }
+          try {
+            workspaceWorkerEnrollmentService.markFailed(
+              tokenResult.userId,
+              workspaceWorkerEnrollmentId,
+              "workspace_worker_connection_failed",
+              "The workspace worker could not complete enrollment.",
+            );
+          } catch (statusError) {
+            log.error("Failed to mark workspace worker enrollment as failed", {
+              workerNodeId: envelope.workerNodeId,
+              enrollmentId: workspaceWorkerEnrollmentId,
+              error: String(statusError),
+            });
+          }
+        }
+        throw error;
+      }
     }
 
     meshStateEventEmitter.emit(
@@ -256,6 +442,12 @@ export class MeshManager {
     const decision = decideRevokeWorker({ registration });
 
     const target = registration!;
+    if (target.registrationScope === "workspace") {
+      throw new DomainError(
+        "workspace_worker_workspace_scoped",
+        "Workspace-dedicated workers are revoked with their workspace.",
+      );
+    }
     const identity = await ensureLocalMeshNodeIdentity();
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(
@@ -346,11 +538,169 @@ export class MeshManager {
     userId: string,
     workerNodeId: string,
   ): Promise<void> {
+    const registration = await getWorkerRegistration(workerNodeId, userId);
+    if (registration?.registrationScope === "workspace") {
+      throw new DomainError(
+        "workspace_worker_workspace_scoped",
+        "Workspace-dedicated workers are removed with their workspace.",
+      );
+    }
+
     await deleteRevokedWorkerRegistration(workerNodeId, userId);
     meshStateEventEmitter.emit(
       { type: "mesh.changed", executionHostsChanged: true },
       { userId },
     );
+  }
+
+  async removeDedicatedWorker(
+    userId: string,
+    workerNodeId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const registration = await getWorkerRegistration(workerNodeId, userId);
+    if (!registration) {
+      return;
+    }
+    if (registration.registrationScope !== "workspace") {
+      throw new DomainError(
+        "mesh_worker_not_found",
+        "The dedicated worker registration was not found.",
+      );
+    }
+    if (registration.grantStatus !== "revoked") {
+      throw new DomainError(
+        "mesh_peer_revoked",
+        "The dedicated worker must be revoked before it is removed.",
+      );
+    }
+    await deleteRevokedWorkerRegistration(workerNodeId, userId);
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId },
+    );
+  }
+
+  async revokeDedicatedWorker(
+    userId: string,
+    enrollmentOrWorkspaceId: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const registration = await getWorkerRegistrationByEnrollment(
+      enrollmentOrWorkspaceId,
+      userId,
+    ) ?? await getWorkerRegistrationByWorkspace(enrollmentOrWorkspaceId, userId);
+    if (!registration) {
+      throw new DomainError(
+        "mesh_worker_not_found",
+        "The dedicated worker registration was not found.",
+      );
+    }
+    if (registration.registrationScope !== "workspace") {
+      throw new DomainError(
+        "workspace_worker_workspace_scoped",
+        "The selected worker is not workspace-dedicated.",
+      );
+    }
+
+    const identity = await ensureLocalMeshNodeIdentity();
+    const envelope: Omit<MeshRevocationNotice, "signature"> = {
+      protocolVersion: 1,
+      controllerNodeId: identity.nodeId,
+      workerNodeId: registration.workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    try {
+      const signature = await signMeshPayload(
+        buildMeshRevocationNoticeSigningPayload(envelope),
+      );
+      const route = resolveMeshRoute(
+        registration.workerEndpoint,
+        "api/mesh/internal/revocation",
+      );
+      await postMeshControlMessage(route, {
+        ...envelope,
+        signature,
+      }, identity.nodeId, {
+        "x-clanky-mesh-node-id": identity.nodeId,
+      });
+    } catch (error) {
+      log.warn("Dedicated worker remote revocation could not be delivered", {
+        workerNodeId: registration.workerNodeId,
+        error: String(error),
+      });
+    } finally {
+      await revokeWorkerRegistration(registration.workerNodeId, userId);
+      if (registration.workspaceWorkerEnrollmentId) {
+        workspaceWorkerEnrollmentService.markFailed(
+          userId,
+          registration.workspaceWorkerEnrollmentId,
+          "workspace_deleted",
+          "The workspace-dedicated worker was detached.",
+          "cancelled",
+          true,
+        );
+      }
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", executionHostsChanged: true },
+        { userId },
+      );
+    }
+  }
+
+  async cleanupDedicatedWorker(
+    userId: string,
+    enrollmentId: string,
+    options: { preserveRegistration?: boolean } = {},
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    let status = workspaceWorkerEnrollmentService.getStatus(userId, enrollmentId);
+    const workerNodeId = status.enrollment.workerNodeId;
+    if (!workerNodeId) {
+      workspaceWorkerEnrollmentService.markFailed(
+        userId,
+        enrollmentId,
+        "enrollment_cancelled",
+        "The workspace-dedicated worker was detached.",
+        "cancelled",
+        true,
+      );
+      return;
+    }
+
+    if (!status.worker) {
+      const host = getExecutionHostByRef(userId, {
+        kind: "mesh",
+        scope: status.enrollment.workspaceId ? "workspace" : "enrollment",
+        ...(status.enrollment.workspaceId
+          ? { workspaceId: status.enrollment.workspaceId }
+          : { enrollmentId }),
+        nodeId: workerNodeId,
+      });
+      if (host) {
+        deleteExecutionHost(userId, host.id);
+      }
+      workspaceWorkerEnrollmentService.markFailed(
+        userId,
+        enrollmentId,
+        "worker_registration_missing",
+        "The workspace-dedicated worker registration was already removed.",
+        "cancelled",
+        true,
+      );
+      return;
+    }
+
+    if (status.worker?.grantStatus === "active") {
+      await this.revokeDedicatedWorker(userId, enrollmentId);
+      status = workspaceWorkerEnrollmentService.getStatus(userId, enrollmentId);
+    }
+    if (status.worker?.grantStatus === "revoked" && options.preserveRegistration !== true) {
+      await this.removeDedicatedWorker(userId, workerNodeId);
+    }
   }
 
   // --- Controller: health check ---

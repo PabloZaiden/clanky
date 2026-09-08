@@ -107,6 +107,27 @@ export const crudRoutes = defineRoutes({
               execution_host_unavailable: {
                 status: 400,
               },
+              execution_host_private: {
+                status: 400,
+              },
+              workspace_worker_enrollment_not_found: {
+                status: 404,
+              },
+              workspace_worker_enrollment_expired: {
+                status: 410,
+              },
+              workspace_worker_enrollment_claimed: {
+                status: 409,
+              },
+              workspace_worker_already_attached: {
+                status: 409,
+              },
+              workspace_worker_not_connected: {
+                status: 409,
+              },
+              workspace_worker_enrollment_unavailable: {
+                status: 409,
+              },
               workspace_execution_target_in_use: {
                 status: 409,
               },

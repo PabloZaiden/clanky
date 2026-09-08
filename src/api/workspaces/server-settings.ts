@@ -139,6 +139,7 @@ export const serverSettingsRoutes = defineRoutes({
         let executionHost: typeof workspace.executionHostBinding.host | undefined =
           workspace.executionHostBinding.host;
         let sshTarget = undefined;
+        let workspaceWorkerEnrollmentId: string | undefined;
 
         const bodyText = await req.text();
         if (bodyText.trim()) {
@@ -166,6 +167,7 @@ export const serverSettingsRoutes = defineRoutes({
               settings = proposed.data.settings;
               executionHost = proposed.data.executionHost;
               sshTarget = proposed.data.sshTarget;
+              workspaceWorkerEnrollmentId = proposed.data.workspaceWorkerEnrollmentId;
             } else {
               const parsedSettings = ServerSettingsSchema.safeParse(bodyJson);
               if (!parsedSettings.success) {
@@ -179,11 +181,13 @@ export const serverSettingsRoutes = defineRoutes({
           }
         }
 
-        const result = await workspaceManager.testConnection(
+        const result = await workspaceManager.testWorkspaceConnection(
+          id,
           settings,
           workspace.directory,
           executionHost,
           sshTarget,
+          workspaceWorkerEnrollmentId,
         );
         return Response.json(result);
       } catch (error) {
@@ -213,7 +217,13 @@ export const serverSettingsRoutes = defineRoutes({
         return result.response;
       }
 
-      const { settings, directory, executionHost, sshTarget } = result.data;
+      const {
+        settings,
+        directory,
+        executionHost,
+        sshTarget,
+        workspaceWorkerEnrollmentId,
+      } = result.data;
 
       try {
         const testResult = await workspaceManager.testConnection(
@@ -221,6 +231,7 @@ export const serverSettingsRoutes = defineRoutes({
           directory,
           executionHost,
           sshTarget,
+          workspaceWorkerEnrollmentId,
         );
         return Response.json(testResult);
       } catch (error) {

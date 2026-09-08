@@ -23,6 +23,8 @@ export const MESH_WORKER_KILL_REQUEST_TTL_MS = 60_000;
 
 export const MESH_GRANT_STATUSES = ["active", "revoked"] as const;
 export type MeshGrantStatus = (typeof MESH_GRANT_STATUSES)[number];
+export const MESH_WORKER_REGISTRATION_SCOPES = ["global", "workspace"] as const;
+export type MeshWorkerRegistrationScope = (typeof MESH_WORKER_REGISTRATION_SCOPES)[number];
 
 /** Public identity of a mesh node (controller or worker). */
 export interface MeshNodeIdentity {
@@ -64,6 +66,9 @@ export interface MeshWorkerRegistration {
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
+  registrationScope?: MeshWorkerRegistrationScope;
+  workspaceWorkerEnrollmentId?: string | null;
+  workspaceId?: string | null;
   grantStatus: MeshGrantStatus;
   localUserId: string;
   lastSeenAt: string | null;

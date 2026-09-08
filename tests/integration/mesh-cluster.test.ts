@@ -168,7 +168,7 @@ async function enroll(controller: MeshProcess, worker: MeshProcess): Promise<voi
   expect(enrollment.workerJoinCommand).toBe(
     `clanky worker join --controller '${controller.baseUrl}' --token '${enrollment.token}' --fingerprint '${enrollment.enrollment.controllerFingerprint}'`,
   );
-  const join = Bun.spawnSync([
+  const joinResult = Bun.spawnSync([
     process.execPath,
     "src/index.ts",
     "worker",
@@ -190,7 +190,9 @@ async function enroll(controller: MeshProcess, worker: MeshProcess): Promise<voi
     stdout: "pipe",
     stderr: "pipe",
   });
-  expect(join.exitCode).toBe(0);
+  if (joinResult.exitCode !== 0) {
+    throw new Error(joinResult.stderr.toString());
+  }
 }
 
 afterEach(async () => {
@@ -313,5 +315,139 @@ describe("controller-worker Mesh", () => {
 
     expect(kill.status).toBe(200);
     expect(await worker.child.exited).toBe(1);
+  }, 30_000);
+
+  test("keeps a dedicated worker out of global hosts and removes it with its workspace", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    const workspaceDirectory = join(worker.dataDir, "workspace");
+    await mkdir(workspaceDirectory, { recursive: true });
+
+    const created = await jsonRequest(controller, "/api/workspace-worker-enrollments", {
+      method: "POST",
+      body: { name: "Dedicated integration worker", ttlSeconds: 900 },
+    });
+    expect(created.status).toBe(201);
+    const enrollmentId = created.body.enrollment.id as string;
+    const enrollment = created.body as {
+      token: string;
+      tokenSummary: { controllerFingerprint: string };
+      workerJoinCommand: string;
+    };
+    expect(enrollment.workerJoinCommand).toContain("clanky worker join");
+
+    const joinResult = Bun.spawnSync([
+      process.execPath,
+      "src/index.ts",
+      "worker",
+      "join",
+      "--controller",
+      controller.baseUrl,
+      "--token",
+      enrollment.token,
+      "--fingerprint",
+      enrollment.tokenSummary.controllerFingerprint,
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        CLANKY_DATA_DIR: worker.dataDir,
+        CLANKY_LOG_LEVEL: "fatal",
+        CLANKY_DISABLE_PASSKEY: undefined,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (joinResult.exitCode !== 0) {
+      const controllerLog = await Bun.file(join(controller.dataDir, "logs/server.log")).text().catch(() => "");
+      throw new Error(`${joinResult.stderr.toString()}\n${controllerLog}`);
+    }
+
+    await pollUntil(
+      async () => {
+        const status = await jsonRequest(
+          controller,
+          `/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`,
+        );
+        return status.body.enrollment.status;
+      },
+      (status) => status === "connected",
+      { description: "dedicated worker to connect", timeoutMs: 10_000 },
+    );
+
+    const meshStatus = await jsonRequest(controller, "/api/mesh/status");
+    const workerNodeId = meshStatus.body.workers[0].workerNodeId as string;
+    const globalHosts = await jsonRequest(controller, "/api/execution-hosts");
+    expect(globalHosts.body.some(
+      (host: { ref: { kind: string; nodeId?: string } }) =>
+        host.ref.kind === "mesh" && host.ref.nodeId === workerNodeId,
+    )).toBe(false);
+
+    const workspace = await jsonRequest(controller, "/api/workspaces", {
+      method: "POST",
+      body: {
+        name: "Dedicated workspace",
+        directory: workspaceDirectory,
+        workspaceType: "directory",
+        serverSettings: { agent: { provider: "opencode" } },
+        workspaceWorkerEnrollmentId: enrollmentId,
+      },
+    });
+    expect(workspace.status).toBe(201);
+    expect(workspace.body.executionHostBinding.host).toMatchObject({
+      kind: "mesh",
+      scope: "workspace",
+      workspaceId: workspace.body.id,
+      nodeId: workerNodeId,
+    });
+
+    const updated = await jsonRequest(
+      controller,
+      `/api/workspaces/${encodeURIComponent(workspace.body.id)}`,
+      {
+        method: "PUT",
+        body: {
+          name: "Dedicated workspace updated",
+          directory: workspace.body.directory,
+          executionHost: workspace.body.executionHostBinding.host,
+        },
+      },
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.body.name).toBe("Dedicated workspace updated");
+
+    const secondWorkspace = await jsonRequest(controller, "/api/workspaces", {
+      method: "POST",
+      body: {
+        name: "Second dedicated workspace",
+        directory: workspaceDirectory,
+        workspaceType: "directory",
+        serverSettings: { agent: { provider: "opencode" } },
+        workspaceWorkerEnrollmentId: enrollmentId,
+      },
+    });
+    if (secondWorkspace.status !== 409) {
+      throw new Error(JSON.stringify(secondWorkspace.body));
+    }
+
+    const deleted = await jsonRequest(
+      controller,
+      `/api/workspaces/${encodeURIComponent(workspace.body.id)}`,
+      { method: "DELETE", body: {} },
+    );
+    expect(deleted.status).toBe(200);
+    const finalEnrollment = await jsonRequest(
+      controller,
+      `/api/workspace-worker-enrollments/${encodeURIComponent(enrollmentId)}`,
+    );
+    expect(finalEnrollment.body.enrollment.status).toBe("cancelled");
+    expect((await jsonRequest(controller, "/api/mesh/status")).body.workers).toHaveLength(0);
+    expect((await jsonRequest(controller, "/api/execution-hosts")).body.some(
+      (host: { ref: { kind: string; nodeId?: string } }) =>
+        host.ref.kind === "mesh" && host.ref.nodeId === workerNodeId,
+    )).toBe(false);
+    expect((await jsonRequest(worker, "/api/health")).status).toBe(200);
   }, 30_000);
 });

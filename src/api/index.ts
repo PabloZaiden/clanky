@@ -42,6 +42,7 @@ import { agentsRoutes } from "./agents";
 import { vncSessionRoutes } from "./vnc-sessions";
 import { previewRoutes } from "./previews";
 import { meshRoutes } from "./mesh";
+import { workspaceWorkerEnrollmentRoutes } from "./workspace-worker-enrollments";
 import { executionHostRoutes } from "./execution-hosts";
 import { executionHostFilesRoutes } from "./execution-host-files";
 
@@ -66,6 +67,7 @@ const nativeApiRoutes = {
   ...vncSessionRoutes,
   ...previewRoutes,
   ...meshRoutes,
+  ...workspaceWorkerEnrollmentRoutes,
   ...executionHostRoutes,
   ...executionHostFilesRoutes,
   ...agentPromptBridgeRoutes,
@@ -112,5 +114,6 @@ export * from "./vnc-sessions";
 export * from "./previews";
 export * from "./agent-prompt-bridge";
 export * from "./mesh";
+export * from "./workspace-worker-enrollments";
 export * from "./execution-hosts";
 export * from "./execution-host-files";
