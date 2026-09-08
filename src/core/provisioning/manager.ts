@@ -36,6 +36,7 @@ import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "..
 import { executionHostService } from "../execution-host-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { meshManager } from "../mesh-manager";
+import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 
@@ -89,20 +90,28 @@ async function resolveProvisioningExecutionHostBinding(
 async function buildWorkspaceSshTarget(
   binding: ExecutionHostBinding,
   status: DevboxStatusResult,
-  credential: { username?: string; password?: string },
+  credential: { password?: string },
 ): Promise<WorkspaceSshTargetInput | null> {
   const registeredServerId = getRegisteredSshServerId(binding.host);
-  const server = registeredServerId
-    ? await getSshServerConfig(registeredServerId)
-    : null;
-  const host = status.sshHost?.trim() || server?.address.trim();
+  if (!registeredServerId) {
+    return null;
+  }
+
+  const server = await getSshServerConfig(registeredServerId);
+  const host = server?.address.trim();
   if (!host) {
     return null;
   }
-  const username = status.sshUser?.trim()
-    || credential.username?.trim()
-    || server?.username.trim()
-    || status.remoteUser?.trim();
+
+  if (!status.sshEnabled) {
+    throw new ProvisioningFailedError(
+      "invalid_devbox_status",
+      "devbox_status",
+      "devbox status reported that the bundled SSH server is disabled",
+    );
+  }
+
+  const username = status.sshUser?.trim();
   if (!username) {
     throw new ProvisioningFailedError(
       "invalid_devbox_status",
@@ -110,7 +119,14 @@ async function buildWorkspaceSshTarget(
       "devbox status did not include an SSH username for the workspace execution target",
     );
   }
-  const port = status.sshPort ?? server?.port ?? 22;
+  const port = status.sshPort;
+  if (port === null) {
+    throw new ProvisioningFailedError(
+      "invalid_devbox_status",
+      "devbox_status",
+      "devbox status did not include an SSH port for the workspace execution target",
+    );
+  }
   const password = status.password?.trim() || credential.password?.trim();
   return {
     host,
@@ -165,7 +181,7 @@ function buildDevboxArgs(
     githubUser?: string;
   },
 ): string[] {
-  const args: string[] = [command];
+  const args: string[] = [command, "--ssh"];
   if (command === "up" && options.devboxTemplate) {
     args.push("--template", options.devboxTemplate);
   } else if (options.devcontainerSubpath) {
@@ -435,15 +451,7 @@ export class ProvisioningManager {
       const git = GitService.withExecutor(executor);
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.runCmd(record, executor, {
-        step: "verify_devbox",
-        label: "Checking devbox availability",
-        command: "bash",
-        args: ["-lc", "command -v devbox >/dev/null 2>&1"],
-        errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
-        captureStdout: false,
-      });
+      await this.verifyDevbox(record, executor);
 
       setStep(record, this.maxLogEntries, "prepare_directory", "Preparing remote base directory");
       await this.runCmd(record, executor, {
@@ -587,7 +595,7 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = status.workdir?.trim() || targetDirectory;
+      const resolvedDirectory = status.workdir.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -831,15 +839,7 @@ export class ProvisioningManager {
       });
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.runCmd(record, executor, {
-        step: "verify_devbox",
-        label: "Checking devbox availability",
-        command: "bash",
-        args: ["-lc", "command -v devbox >/dev/null 2>&1"],
-        errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
-        captureStdout: false,
-      });
+      await this.verifyDevbox(record, executor);
 
       setStep(record, this.maxLogEntries, "prepare_directory", "Verifying target directory");
       const targetExists = await executor.directoryExists(targetDirectory);
@@ -896,7 +896,7 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = status.workdir?.trim() || targetDirectory;
+      const resolvedDirectory = status.workdir.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
@@ -1031,15 +1031,7 @@ export class ProvisioningManager {
       });
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.runCmd(record, executor, {
-        step: "verify_devbox",
-        label: "Checking devbox availability",
-        command: "bash",
-        args: ["-lc", "command -v devbox >/dev/null 2>&1"],
-        errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
-        captureStdout: false,
-      });
+      await this.verifyDevbox(record, executor);
 
       setStep(record, this.maxLogEntries, "devbox_arise", "Running devbox arise");
       await this.runCmd(record, executor, {
@@ -1160,6 +1152,29 @@ export class ProvisioningManager {
   private throwIfCancelled(record: ProvisioningJobRecord): void {
     if (record.abortController.signal.aborted) {
       throw new ProvisioningCancelledError("Provisioning job was cancelled");
+    }
+  }
+
+  private async verifyDevbox(
+    record: ProvisioningJobRecord,
+    executor: CommandExecutor,
+  ): Promise<void> {
+    const result = await this.runCmd(record, executor, {
+      step: "verify_devbox",
+      label: `Checking Devbox ${DEVBOX_REQUIRED_VERSION} availability`,
+      command: "devbox",
+      args: ["--help"],
+      errorCode: "devbox_not_found",
+      errorMessage: "Devbox is not installed or not available on PATH",
+      captureStdout: false,
+    });
+    const version = parseDevboxVersion(result.stdout);
+    if (version !== DEVBOX_REQUIRED_VERSION) {
+      throw new ProvisioningFailedError(
+        "devbox_version_unsupported",
+        "verify_devbox",
+        `Devbox ${DEVBOX_REQUIRED_VERSION} is required for automatic workspaces (found ${version ?? "unknown"})`,
+      );
     }
   }
 

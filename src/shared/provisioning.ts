@@ -104,22 +104,22 @@ export interface PublicProvisioningJobSnapshot extends Omit<ProvisioningJobSnaps
 }
 
 export interface DevboxPublishedPort {
-  hostIp: string;
-  hostPort: number;
+  hostIp: string | null;
+  hostPort: number | null;
 }
 
 export interface DevboxStatusResult {
   running: boolean;
-  port?: number | null;
-  password?: string | null;
-  workdir?: string | null;
-  sshHost?: string | null;
-  sshUser?: string | null;
-  sshPort?: number | null;
-  remoteUser?: string | null;
-  hasCredentialFile?: boolean;
-  credentialPath?: string | null;
-  publishedPorts?: Record<string, DevboxPublishedPort[]>;
+  ports: number[];
+  sshEnabled: boolean;
+  password: string | null;
+  workdir: string;
+  sshUser: string | null;
+  sshPort: number | null;
+  remoteUser: string | null;
+  hasCredentialFile: boolean;
+  credentialPath: string;
+  publishedPorts: Record<string, DevboxPublishedPort[]>;
 }
 
 export interface ProvisioningStartedEvent {
