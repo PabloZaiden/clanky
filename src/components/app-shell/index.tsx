@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
   useToast,
   WebAppRoot,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { getExecutionHostDefaultDirectory, type ExecutionHostDescriptor } from "@/shared";
+import { getExecutionHostDefaultDirectory, type Agent, type ExecutionHostDescriptor } from "@/shared";
 import {
   buildShellRoutes,
   type ShellRouteCompositionContext,
@@ -145,6 +145,56 @@ export function AppShell() {
     navigateWithinShell,
     terminalModePromptHost,
     terminalModePromptSubmitting,
+    toast,
+  ]);
+
+  const agentImportInputRef = useRef<HTMLInputElement>(null);
+  const [agentImportWorkspaceId, setAgentImportWorkspaceId] = useState<string | null>(null);
+  const startAgentImport = useCallback((workspaceId: string): void => {
+    const input = agentImportInputRef.current;
+    if (!input) {
+      toast.error("Agent import is not available yet");
+      return;
+    }
+    setAgentImportWorkspaceId(workspaceId);
+    input.value = "";
+    input.click();
+  }, [toast]);
+  const exportAgent = useCallback(async (agent: Agent): Promise<void> => {
+    try {
+      await agents.exportAgent(agent.config.id);
+      toast.success(`Exported agent "${agent.config.name}".`);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [agents.exportAgent, toast]);
+  const handleAgentImportFile = useCallback(async (
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> => {
+    const file = event.currentTarget.files?.[0];
+    const workspaceId = agentImportWorkspaceId;
+    event.currentTarget.value = "";
+    setAgentImportWorkspaceId(null);
+    if (!file || !workspaceId) {
+      return;
+    }
+
+    try {
+      const payload: unknown = JSON.parse(await file.text());
+      const imported = await agents.importAgent(workspaceId, payload);
+      if (!imported) {
+        toast.error("Failed to import agent");
+        return;
+      }
+      toast.success(`Imported agent "${imported.config.name}".`);
+      navigateWithinShell({ view: "agent", agentId: imported.config.id });
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [
+    agentImportWorkspaceId,
+    agents.importAgent,
+    navigateWithinShell,
     toast,
   ]);
 
@@ -344,6 +394,8 @@ export function AppShell() {
       setEditingAgentId: dialogs.setEditingAgentId,
       setDeleteAgentTarget: dialogs.setDeleteAgentTarget,
       setPurgeAgentTarget: dialogs.setPurgeAgentTarget,
+      exportAgent,
+      startAgentImport,
       agents,
       showPrivateItems: privateItemsPreference.showPrivateItems,
     } satisfies ShellSidebarActionHandlers,
@@ -372,10 +424,12 @@ export function AppShell() {
     dialogs.setDeleteAgentTarget,
     dialogs.setEditingAgentId,
     dialogs.setPurgeAgentTarget,
+    exportAgent,
     executionHosts,
     openExecutionHostTerminalPrompt,
     sidebarWorkspaceGroups,
     stopSidebarTask,
+    startAgentImport,
     toast,
     toggleAgentPrivate,
     toggleChatPrivate,
@@ -437,6 +491,13 @@ export function AppShell() {
         onSelect={handleTerminalModeSelection}
       />
       {dialogs.modals}
+      <input
+        ref={agentImportInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={(event) => void handleAgentImportFile(event)}
+      />
     </ShellHeaderActionsContext.Provider>
   );
 }

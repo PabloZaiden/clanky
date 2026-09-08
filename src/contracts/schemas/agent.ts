@@ -28,6 +28,26 @@ export const AgentScheduleSchema = z.object({
   nextRunAt: z.string().datetime().optional(),
 });
 
+export const AgentTransferScheduleSchema = AgentScheduleSchema.omit({
+  nextRunAt: true,
+});
+
+export const AgentTransferConfigSchema = z.object({
+  name: TaskNameSchema,
+  prompt: z.string().trim().min(1, "prompt is required"),
+  code: z.string().nullable().optional(),
+  model: ModelConfigSchema,
+  baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").optional(),
+  useWorktree: z.boolean(),
+  schedule: AgentTransferScheduleSchema,
+});
+
+export const AgentTransferPayloadSchema = z.object({
+  format: z.literal("clanky-agent"),
+  version: z.literal(1),
+  agent: AgentTransferConfigSchema,
+});
+
 export const CreateAgentRequestSchema = z.object({
   name: TaskNameSchema,
   workspaceId: z.string().min(1, "workspaceId is required"),
@@ -110,6 +130,8 @@ export const SchedulerTimezoneRequestSchema = z.object({
 
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type UpdateAgentRequest = z.infer<typeof UpdateAgentRequestSchema>;
+export type AgentTransferConfig = z.infer<typeof AgentTransferConfigSchema>;
+export type AgentTransferPayload = z.infer<typeof AgentTransferPayloadSchema>;
 export type GenerateAgentCodeRequest = z.infer<typeof GenerateAgentCodeRequestSchema>;
 export type PrepareGenerateAgentCodeRequest = z.infer<typeof PrepareGenerateAgentCodeRequestSchema>;
 export type TestAgentCodeRequest = z.infer<typeof TestAgentCodeRequestSchema>;
