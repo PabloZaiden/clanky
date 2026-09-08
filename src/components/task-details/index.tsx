@@ -94,6 +94,11 @@ export function TaskDetails({
          disabled: actions.terminalConnecting,
          onAction: () => void actions.handleConnectTerminal(),
        },
+       {
+         id: "open-code-explorer",
+         label: "Open code explorer",
+         onAction: () => actions.handleOpenTaskFiles(),
+       },
     ];
 
     if (state.status === "planning") {

@@ -59,7 +59,7 @@ export function EmptyWorkspacesSection({
                 </div>
               </div>
               <ActionMenu
-                ariaLabel={`Actions for ${workspace.name}`}
+                ariaLabel={privateHidden ? "Workspace actions" : `Actions for ${workspace.name}`}
                 triggerVariant="ghost"
                 triggerSize="compact"
                 items={[
