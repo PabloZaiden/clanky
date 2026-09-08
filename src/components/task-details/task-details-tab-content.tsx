@@ -17,7 +17,7 @@ import type { TranscriptFileLinkTarget } from "../log-viewer";
 import { InfoTab } from "./info-tab";
 import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
-import { ActionsTab } from "./actions-tab";
+import { ReviewTab } from "./review-tab";
 import { ChatTab } from "./chat-tab";
 
 interface TaskDetailsTabContentProps {
@@ -67,8 +67,8 @@ export function TaskDetailsTabContent({
   actions,
   onFileOpenError,
 }: TaskDetailsTabContentProps) {
-  const { config, state } = task;
-  const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
+  const { config } = task;
+  const toolPathDisplayRoot = task.state.git?.worktreePath ?? config.directory;
   const [hasVisitedChatTab, setHasVisitedChatTab] = useState(activeTab === "chat");
 
   useEffect(() => {
@@ -139,9 +139,6 @@ export function TaskDetailsTabContent({
         <InfoTab
           task={task}
           labels={labels}
-          onOpenTaskFiles={actions.handleOpenTaskFiles}
-          terminalConnecting={actions.terminalConnecting}
-          onConnectTerminal={actions.handleConnectTerminal}
           planningSettingsSubmitting={actions.planningSettingsSubmitting}
           onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />
@@ -176,33 +173,11 @@ export function TaskDetailsTabContent({
         />
       </TabPanel>
       <TabPanel
-        id="task-details-tab-panel-actions"
-        active={activeTab === "actions"}
+        id="task-details-tab-panel-review"
+        active={activeTab === "review"}
         className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
       >
-        <ActionsTab
-          isPlanning={isPlanning}
-          isPlanReady={isPlanReady}
-          planContent={content.planContent}
-          planActionSubmitting={actions.planActionSubmitting}
-          onAcceptPlan={actions.handleAcceptPlan}
-          onDiscardPlanModal={() => actions.setDiscardPlanModal(true)}
-          state={state}
-          loadingPullRequestDestination={content.loadingPullRequestDestination}
-          pullRequestDestination={content.pullRequestDestination}
-          onOpenPullRequest={() => actions.handleOpenPullRequest(content.pullRequestDestination)}
-          onEnablePullRequestAutoMerge={actions.handleEnablePullRequestAutoMerge}
-          pullRequestAutoMergeSubmitting={actions.pullRequestAutoMergeSubmitting}
-          onStartAutomaticPrFlowModal={() => actions.setStartAutomaticPrFlowModal(true)}
-          onStopAutomaticPrFlowModal={() => actions.setStopAutomaticPrFlowModal(true)}
-          onAddressCommentsModal={() => actions.setAddressCommentsModal(true)}
-          onUpdateBranchModal={() => actions.setUpdateBranchModal(true)}
-          onMarkMergedModal={() => actions.setMarkMergedModal(true)}
-          onCloseLocalModal={() => actions.setCloseLocalModal(true)}
-          onManualCompleteModal={() => actions.setManualCompleteModal(true)}
-          onPurgeModal={() => actions.setPurgeModal(true)}
-          onAcceptModal={() => actions.setAcceptModal(true)}
-          onDeleteModal={() => actions.setDeleteModal(true)}
+        <ReviewTab
           labels={labels}
           task={task}
           loadingComments={content.loadingComments}

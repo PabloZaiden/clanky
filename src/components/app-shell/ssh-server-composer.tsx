@@ -1,10 +1,9 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
-import { Badge, Button } from "../common";
-import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
+import { useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerFields } from "./ssh-server-fields";
-import { useShellHeaderActions } from "./shell-header-actions";
 import {
   buildSshServerUpdateRequest,
   createSshServerFormValues,
@@ -14,7 +13,6 @@ import {
 
 interface SshServerComposerProps {
   initialServer?: SshServer | null;
-  onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
   onCreateServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   onUpdateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
@@ -22,7 +20,6 @@ interface SshServerComposerProps {
 
 export function SshServerComposer({
   initialServer,
-  onCancel,
   onNavigate,
   onCreateServer,
   onUpdateServer,
@@ -106,17 +103,13 @@ export function SshServerComposer({
     }
   }
 
-  useShellHeaderActions(
-    <>
-      <Badge variant="info" size="sm">SSH</Badge>
-      <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
-        Cancel
-      </Button>
+  useHeaderActions({
+    primary: (
       <Button type="submit" form={formId} size="sm" loading={submitting}>
-        {isEditing ? "Save Changes" : "Create SSH Server"}
+        {isEditing ? "Save" : "Create"}
       </Button>
-    </>,
-  );
+    ),
+  });
 
   return (
     <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>

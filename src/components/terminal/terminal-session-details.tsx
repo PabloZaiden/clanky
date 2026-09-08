@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { Button } from "../common";
 import { useTerminalSession } from "../../hooks/useTerminalSession";
 import { useToast } from "@pablozaiden/webapp/web";
 import { writeTextToClipboard } from "../../utils";
@@ -38,16 +37,12 @@ import { ServerPasswordModal } from "../app-shell/server-password-modal";
 
 export interface TerminalSessionDetailsProps {
   terminalSessionId: string;
-  onBack?: () => void;
-  showBackButton?: boolean;
   copyTextToClipboard?: (text: string) => Promise<void>;
   forcedFocusMode?: boolean;
 }
 
 export function TerminalSessionDetails({
   terminalSessionId,
-  onBack,
-  showBackButton = true,
   copyTextToClipboard: copyClipboardFn = writeTextToClipboard,
   forcedFocusMode = false,
 }: TerminalSessionDetailsProps) {
@@ -248,7 +243,6 @@ export function TerminalSessionDetails({
   if (!session) {
     return (
       <div className="p-6">
-        {showBackButton && onBack && <Button variant="ghost" onClick={onBack}>← Back</Button>}
         <p className="mt-4 text-red-600 dark:text-red-400">{error || "Terminal session not found."}</p>
       </div>
     );

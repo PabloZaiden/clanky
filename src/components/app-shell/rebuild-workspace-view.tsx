@@ -1,13 +1,12 @@
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, SelectField, TextField, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, SelectField, TextField, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
-import { useShellHeaderActions } from "./shell-header-actions";
 
 interface RebuildWorkspaceViewProps {
   mode: Extract<ProvisioningJobMode, "rebuild" | "restart">;
@@ -67,27 +66,17 @@ export function RebuildWorkspaceView({
   }
 
   const headerActions = (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => navigateWithinShell({ view: "workspace", workspaceId: workspace.id })}
-      >
-        Cancel
-      </Button>
-      <Button
-        type="submit"
-        form={formId}
-        size="sm"
-        loading={provisioning.starting}
-        disabled={executionHost.kind === "ssh" && !selectedServer}
-      >
-        {`${actionLabel} Devbox`}
-      </Button>
-    </>
+    <Button
+      type="submit"
+      form={formId}
+      size="sm"
+      loading={provisioning.starting}
+      disabled={executionHost.kind === "ssh" && !selectedServer}
+    >
+      {actionLabel}
+    </Button>
   );
-  useShellHeaderActions(headerActions);
+  useHeaderActions({ primary: headerActions });
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
+import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { UseMeshResult } from "../../hooks";
 import { Badge, Button } from "../common";
 import { SettingsError, SettingsInput } from "./settings-row-controls";
@@ -97,9 +97,17 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h4 className="text-sm font-medium">Workers</h4>
-          <Button type="button" size="sm" variant="ghost" onClick={() => void mesh.checkHealth()}>
-            Probe workers
-          </Button>
+          <ActionMenu
+            ariaLabel="Worker actions"
+            triggerVariant="ghost"
+            triggerSize="compact"
+            items={[{
+              id: "probe",
+              label: "Probe",
+              disabled: mesh.saving,
+              onAction: () => void mesh.checkHealth(),
+            }]}
+          />
         </div>
         {mesh.status?.workers.length ? mesh.status.workers.map((worker) => (
           <div
@@ -148,26 +156,28 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                     </div>
                   </div>
                 ) : (
-                  <>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      disabled={mesh.saving || killingWorkerNodeId !== null}
-                      onClick={() => setKillWorkerNodeId(worker.workerNodeId)}
-                    >
-                      Kill
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      disabled={mesh.saving || killingWorkerNodeId !== null}
-                      onClick={() => setRevokeWorkerNodeId(worker.workerNodeId)}
-                    >
-                      Revoke
-                    </Button>
-                  </>
+                  <ActionMenu
+                    ariaLabel="Worker actions"
+                    triggerVariant="ghost"
+                    triggerSize="compact"
+                    disabled={mesh.saving || killingWorkerNodeId !== null}
+                    items={[
+                      {
+                        id: "kill",
+                        label: "Kill",
+                        destructive: true,
+                        disabled: mesh.saving || killingWorkerNodeId !== null,
+                        onAction: () => setKillWorkerNodeId(worker.workerNodeId),
+                      },
+                      {
+                        id: "revoke",
+                        label: "Revoke",
+                        destructive: true,
+                        disabled: mesh.saving || killingWorkerNodeId !== null,
+                        onAction: () => setRevokeWorkerNodeId(worker.workerNodeId),
+                      },
+                    ]}
+                  />
                 )}
               </div>
             ) : worker.registrationScope === "workspace" ? (
@@ -175,14 +185,19 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                 Removed with its workspace
               </span>
             ) : (
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                onClick={() => setRemoveWorkerNodeId(worker.workerNodeId)}
-              >
-                Delete
-              </Button>
+              <ActionMenu
+                ariaLabel="Worker actions"
+                triggerVariant="ghost"
+                triggerSize="compact"
+                disabled={mesh.saving}
+                items={[{
+                  id: "delete",
+                  label: "Delete",
+                  destructive: true,
+                  disabled: mesh.saving,
+                  onAction: () => setRemoveWorkerNodeId(worker.workerNodeId),
+                }]}
+              />
             )}
           </div>
         )) : (
@@ -205,7 +220,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             disabled={mesh.saving}
           />
         </MeshFormField>
-        <Button type="submit" size="sm" loading={mesh.saving}>Create token</Button>
+        <Button type="submit" size="sm" loading={mesh.saving}>Create</Button>
         {createdToken ? (
           <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-neutral-800">
             <p className="font-medium">Copy this token now</p>
@@ -245,7 +260,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
               disabled={mesh.saving}
             />
           </MeshFormField>
-          <Button type="submit" size="sm" loading={mesh.saving}>Save identity</Button>
+          <Button type="submit" size="sm" loading={mesh.saving}>Save</Button>
           <p className="break-all text-xs text-gray-500 dark:text-gray-400">
             Fingerprint: {mesh.status?.node.fingerprint ?? "Loading..."}
           </p>

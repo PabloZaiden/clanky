@@ -4,7 +4,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/shared";
-import { isFinalState, canAccept } from "../../utils";
 import type { TabId } from "./types";
 
 interface UseTabStateOptions {
@@ -35,7 +34,6 @@ export function useTabState({
   const prevMessagesCount = useRef(0);
   const prevToolCallsCount = useRef(0);
   const prevLogsCount = useRef(0);
-  const prevActionsState = useRef<string | null>(null);
   const initialTabSet = useRef(false);
 
   function handleTabChange(tabId: TabId) {
@@ -65,22 +63,6 @@ export function useTabState({
     prevToolCallsCount.current = toolCallsCount;
     prevLogsCount.current = logsCount;
   }, [messagesCount, toolCallsCount, logsCount, activeTab]);
-
-  // Detect changes in available actions
-  useEffect(() => {
-    if (!task) return;
-
-    const isFinal = isFinalState(task.state.status);
-    const hasAddressable = task.state.reviewMode?.addressable ?? false;
-    const hasAccept = canAccept(task.state.status) && !!task.state.git;
-    const planReady = task.state.planMode?.isPlanReady ?? false;
-    const currentActionsState = `${isFinal}-${hasAddressable}-${hasAccept}-${task.state.status}-${planReady}`;
-
-    if (prevActionsState.current !== null && currentActionsState !== prevActionsState.current && activeTab !== "actions") {
-      setTabsWithUpdates((prev) => new Set(prev).add("actions"));
-    }
-    prevActionsState.current = currentActionsState;
-  }, [task?.state.status, task?.state.reviewMode?.addressable, task?.state.git, task?.state.planMode?.isPlanReady, activeTab, task]);
 
   // Default to "plan" tab when in planning mode on initial load
   const isCurrentlyPlanning = task?.state.status === "planning";

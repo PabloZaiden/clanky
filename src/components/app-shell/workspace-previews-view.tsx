@@ -3,7 +3,15 @@ import type { Workspace } from "@/shared";
 import { useWorkspacePreviews } from "../../hooks";
 import { buildPreviewCliCommand, writeTextToClipboard } from "../../utils";
 import { Button, StatusBadge } from "../common";
-import { EmptyState, ErrorState, LoadingState, TextField, useToast } from "@pablozaiden/webapp/web";
+import {
+  ActionMenu,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  TextField,
+  useToast,
+  type ActionMenuItem,
+} from "@pablozaiden/webapp/web";
 
 function formatDateTime(value?: string): string {
   if (!value) {
@@ -67,7 +75,16 @@ export function WorkspacePreviewsView({
           <code className="min-w-0 basis-full flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 sm:basis-0 dark:bg-neutral-900 dark:text-gray-100">
             {command}
           </code>
-          <Button size="sm" onClick={copyCommand}>Copy</Button>
+          <ActionMenu
+            ariaLabel="Preview command actions"
+            triggerVariant="ghost"
+            triggerSize="compact"
+            items={[{
+              id: "copy-command",
+              label: "Copy",
+              onAction: () => void copyCommand(),
+            }]}
+          />
         </div>
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Add <code>--host 0.0.0.0</code> for LAN/mobile testing. The CLI will print a network exposure warning.
@@ -118,12 +135,24 @@ export function WorkspacePreviewsView({
                     <Button size="sm" onClick={() => window.open(preview.config.localUrl, "_blank", "noopener,noreferrer")}>
                       Open
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => void copyUrl(preview.config.localUrl)}>
-                      Copy URL
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={() => void closePreview(preview.config.id)}>
-                      Close
-                    </Button>
+                    <ActionMenu
+                      ariaLabel="Preview actions"
+                      triggerVariant="ghost"
+                      triggerSize="compact"
+                      items={[
+                        {
+                          id: "copy-url",
+                          label: "Copy URL",
+                          onAction: () => void copyUrl(preview.config.localUrl),
+                        },
+                        {
+                          id: "close",
+                          label: "Close",
+                          destructive: true,
+                          onAction: () => void closePreview(preview.config.id),
+                        },
+                      ] satisfies ActionMenuItem[]}
+                    />
                   </div>
                 </div>
               </div>

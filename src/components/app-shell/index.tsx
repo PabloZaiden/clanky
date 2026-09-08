@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
   useToast,
@@ -15,13 +15,11 @@ import {
   type ShellSidebarActionHandlers,
 } from "./shell-sidebar-composition";
 import { buildShellSettingsSections } from "./shell-settings-composition";
-import { ShellHeaderActionsContext } from "./shell-header-actions";
 import { useShellActions } from "./use-shell-actions";
 import { HOME_ROUTE, useShellNavigation } from "./use-shell-navigation";
 import {
   RouteHeaderTitle,
   useShellHeader,
-  type RegisteredHeaderActions,
 } from "./use-shell-header";
 import { useShellResources } from "./use-shell-resources";
 import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
@@ -29,17 +27,6 @@ import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
 export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
-  const [registeredHeaderActions, setRegisteredHeaderActions] = useState<RegisteredHeaderActions | null>(null);
-  const registerHeaderActions = useCallback((owner: symbol, actions: ReactNode) => {
-    setRegisteredHeaderActions({ owner, actions });
-  }, []);
-  const unregisterHeaderActions = useCallback((owner: symbol) => {
-    setRegisteredHeaderActions((current) => current?.owner === owner ? null : current);
-  }, []);
-  const shellHeaderActionsContextValue = useMemo(
-    () => ({ register: registerHeaderActions, unregister: unregisterHeaderActions }),
-    [registerHeaderActions, unregisterHeaderActions],
-  );
   const {
     chats,
     chatsLoading,
@@ -278,7 +265,6 @@ export function AppShell() {
     schedulerTimezone: schedulerTimezone.timezone,
     agents,
     editingAgentId: dialogs.editingAgentId,
-    onCancelAgentEdit: dialogs.cancelAgentEdit,
     onSavedAgentEdit: dialogs.handleAgentSaved,
     composeActionState: composeState.composeActionState,
     setComposeActionState: composeState.setComposeActionState,
@@ -292,7 +278,6 @@ export function AppShell() {
     showPrivateItems: privateItemsPreference.showPrivateItems,
   } satisfies ShellRouteCompositionContext), [
     agents,
-    dialogs.cancelAgentEdit,
     chats,
     composeState.composeActionState,
     composeState.handleTaskSubmit,
@@ -444,8 +429,6 @@ export function AppShell() {
   const header = useShellHeader({
     route,
     headerNodes: sidebarComposition.headerNodes,
-    registeredHeaderActions,
-    navigateWithinShell,
     taskId,
     chatId,
     composeKind,
@@ -467,7 +450,7 @@ export function AppShell() {
   });
 
   return (
-    <ShellHeaderActionsContext.Provider value={shellHeaderActionsContextValue}>
+    <>
       <WebAppRoot
         ref={webAppRootRef}
         appName="Clanky"
@@ -478,8 +461,10 @@ export function AppShell() {
         onRouteChange={handleWebRouteChange}
         header={{
           renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={header.headerModel} defaultTitle={defaultTitle} />,
-          renderActions: () => header.directHeaderActions,
-          getActions: () => header.headerActions,
+          getHeaderActions: () => ({
+            primary: header.directHeaderActions,
+            overflow: header.headerActions,
+          }),
         }}
         settings={{ sections: settingsSections }}
         version={dashboardData.version ?? undefined}
@@ -498,7 +483,7 @@ export function AppShell() {
         className="hidden"
         onChange={(event) => void handleAgentImportFile(event)}
       />
-    </ShellHeaderActionsContext.Provider>
+    </>
   );
 }
 

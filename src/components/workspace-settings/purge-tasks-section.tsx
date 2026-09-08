@@ -3,11 +3,10 @@
  */
 
 import { useState } from "react";
-import { ConfirmModal } from "@pablozaiden/webapp/web";
-import { Button, Badge } from "../common";
+import { ActionMenu, ConfirmModal } from "@pablozaiden/webapp/web";
+import { Badge } from "../common";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { Workspace } from "@/shared/workspace";
-import { TrashIcon } from "./icons";
 
 interface PurgeTasksSectionProps {
   workspace: Workspace;
@@ -87,17 +86,19 @@ export function PurgeTasksSection({
           </div>
         )}
 
-        <Button
-          type="button"
-          variant="danger"
-          size="sm"
-          onClick={() => setShowConfirm(true)}
+        <ActionMenu
+          ariaLabel="Terminal-state task actions"
+          triggerVariant="ghost"
+          triggerSize="compact"
           disabled={purgingPurgeableTasks || purgeableTaskCount === 0}
-          loading={purgingPurgeableTasks}
-        >
-          <TrashIcon className="w-4 h-4 mr-2" />
-          Purge Terminal-State Tasks
-        </Button>
+          items={[{
+            id: "purge",
+            label: "Purge",
+            destructive: true,
+            disabled: purgingPurgeableTasks || purgeableTaskCount === 0,
+            onAction: () => setShowConfirm(true),
+          }]}
+        />
       </div>
 
       <ConfirmModal

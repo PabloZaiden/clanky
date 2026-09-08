@@ -4,14 +4,12 @@ import { useDashboardData } from "../../hooks";
 import {
   CreateTaskForm,
   getComposeDraftActionLabel,
-  getComposeSubmitActionLabel,
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { ConfirmModal, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ConfirmModal, useHeaderActions, useToast, type ActionMenuItem, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";
-import { useShellHeaderActions } from "./shell-header-actions";
 
 export function DraftTaskComposer({
   task,
@@ -167,36 +165,23 @@ export function DraftTaskComposer({
     }
   }
 
-  const headerActions = useMemo(() => (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={actionState?.onCancel ?? handleCancel}
-        disabled={deleteSubmitting || actionState?.isSubmitting}
-      >
-        Cancel
-      </Button>
-      <Button
-        type="button"
-        variant="danger"
-        size="sm"
-        onClick={() => setDeleteConfirmOpen(true)}
-        disabled={deleteSubmitting || actionState?.isSubmitting}
-      >
-        Delete
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        onClick={actionState?.onSaveAsDraft}
-        disabled={deleteSubmitting || !actionState?.canSaveDraft}
-        loading={actionState?.isSubmitting ?? false}
-      >
-        {getComposeDraftActionLabel(true)}
-      </Button>
+  const headerMenuActions = useMemo<ActionMenuItem[]>(() => [
+    ...(actionState ? [{
+      id: "save-draft",
+      label: getComposeDraftActionLabel(true),
+      disabled: deleteSubmitting || !actionState.canSaveDraft || actionState.isSubmitting,
+      onAction: actionState.onSaveAsDraft,
+    }] : []),
+    {
+      id: "delete",
+      label: "Delete",
+      destructive: true,
+      disabled: deleteSubmitting || actionState?.isSubmitting === true,
+      onAction: () => setDeleteConfirmOpen(true),
+    },
+  ], [actionState, deleteSubmitting]);
+  useHeaderActions({
+    primary: (
       <Button
         type="button"
         size="sm"
@@ -204,11 +189,11 @@ export function DraftTaskComposer({
         disabled={deleteSubmitting || !actionState?.canSubmit}
         loading={actionState?.isSubmitting ?? false}
       >
-        {getComposeSubmitActionLabel({ isEditing: true })}
+        Start
       </Button>
-    </>
-  ), [actionState, deleteSubmitting, handleCancel]);
-  useShellHeaderActions(headerActions);
+    ),
+    overflow: headerMenuActions,
+  });
 
   return (
     <>

@@ -20,6 +20,7 @@ import {
   FormGroup,
   SelectField,
   TextField,
+  useHeaderActions,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
@@ -28,7 +29,6 @@ import {
   getAutomaticWorkspaceBasePath,
   saveLastAutomaticWorkspaceSshServerId,
 } from "../../lib/automatic-workspace-preferences";
-import { useShellHeaderActions } from "./shell-header-actions";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 
 interface ComposeWorkspaceViewProps {
@@ -203,7 +203,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       )) &&
     workspaceServerSettingsValid;
   const createActionLabel =
-    workspaceCreateMode === "automatic" ? "Start Provisioning" : "Create Workspace";
+    workspaceCreateMode === "automatic" ? "Start provisioning" : "Create";
   const createActionLoading =
     workspaceCreateMode === "automatic"
       ? provisioning.starting
@@ -248,7 +248,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     createActionLoading,
     workspaceCreateFormId,
   ]);
-  useShellHeaderActions(headerActions);
+  useHeaderActions({ primary: headerActions });
 
   return (
     <div className="space-y-6">

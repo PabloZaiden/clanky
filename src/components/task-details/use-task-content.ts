@@ -231,7 +231,7 @@ export function useTaskContent({
 
   // Refetch comments when task state changes (comment submitted or task completes)
   useEffect(() => {
-    if (task?.state.reviewMode && activeTab === "actions") {
+    if (task?.state.reviewMode && activeTab === "review") {
       fetchReviewComments();
     }
   }, [

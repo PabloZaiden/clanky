@@ -2,11 +2,15 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { replaceWebAppRoute, Tabs, useToast } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, Tabs, useHeaderActions, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { useMemo } from "react";
 import { useTask, useMarkdownPreference } from "../../hooks";
-import { Button } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
+  canAccept,
+  canManualComplete,
+  canMarkMerged,
+  isFinalState,
   isTaskActive,
   isTaskGenerating,
   canSendTerminalFollowUp,
@@ -28,8 +32,6 @@ export interface TaskDetailsProps {
   taskId: string;
   /** Callback to go back to dashboard */
   onBack?: () => void;
-  /** Whether to render the back button in shell layouts */
-  showBackButton?: boolean;
   /** Navigate to the terminal session details view */
   onSelectTerminalSession?: (terminalSessionId: string) => void;
   /** Navigate to the task-scoped code explorer view */
@@ -39,7 +41,6 @@ export interface TaskDetailsProps {
 export function TaskDetails({
   taskId,
   onBack,
-  showBackButton = true,
   onSelectTerminalSession,
   onOpenTaskFiles,
 }: TaskDetailsProps) {
@@ -82,6 +83,145 @@ export function TaskDetails({
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectTerminal, update,
       fetchReviewComments: content.fetchReviewComments,
     });
+  const taskMenuActions = useMemo<ActionMenuItem[]>(() => {
+    if (!task) return [];
+
+    const { state } = task;
+    const menuActions: ActionMenuItem[] = [
+       {
+         id: "open-terminal",
+         label: actions.terminalConnecting ? "Connecting..." : "Open terminal",
+         disabled: actions.terminalConnecting,
+         onAction: () => void actions.handleConnectTerminal(),
+       },
+    ];
+
+    if (state.status === "planning") {
+       const planReady = Boolean(state.planMode?.isPlanReady)
+         && Boolean(content.planContent?.content?.trim());
+       menuActions.unshift(
+         {
+           id: "accept-plan-start",
+           label: "Accept plan & start",
+           disabled: actions.planActionSubmitting || !planReady,
+           onAction: () => void actions.handleAcceptPlan("start_task"),
+         },
+         {
+           id: "accept-plan-terminal",
+           label: "Accept plan & open terminal",
+           disabled: actions.planActionSubmitting || !planReady,
+           onAction: () => void actions.handleAcceptPlan("open_terminal"),
+         },
+         {
+           id: "discard-plan",
+           label: "Discard plan",
+           disabled: actions.planActionSubmitting,
+           destructive: true,
+           onAction: () => actions.setDiscardPlanModal(true),
+         },
+       );
+       return menuActions;
+    }
+
+    if (isFinalState(state.status)) {
+       const automaticPrFlowEnabled = state.automaticPrFlow?.enabled === true;
+       const hasExistingPullRequest = content.pullRequestDestination?.enabled === true
+         && content.pullRequestDestination.destinationType === "existing_pr";
+       const showPullRequestAutoMerge = hasExistingPullRequest || actions.pullRequestAutoMergeSubmitting;
+
+       if (state.status === "pushed" && state.reviewMode?.addressable) {
+         menuActions.push(
+           {
+             id: "open-pull-request",
+             label: "Go to PR",
+             disabled: content.loadingPullRequestDestination || !content.pullRequestDestination?.enabled,
+             onAction: () => actions.handleOpenPullRequest(content.pullRequestDestination),
+           },
+           {
+             id: automaticPrFlowEnabled ? "stop-automatic-pr-flow" : "start-automatic-pr-flow",
+             label: automaticPrFlowEnabled ? "Stop automatic PR flow" : "Start automatic PR flow",
+             onAction: () => automaticPrFlowEnabled
+               ? actions.setStopAutomaticPrFlowModal(true)
+               : actions.setStartAutomaticPrFlowModal(true),
+           },
+         );
+         if (showPullRequestAutoMerge) {
+           menuActions.push({
+             id: "enable-pull-request-auto-merge",
+             label: "Enable auto-merge",
+             disabled: content.loadingPullRequestDestination
+               || actions.pullRequestAutoMergeSubmitting
+               || !hasExistingPullRequest,
+             onAction: () => void actions.handleEnablePullRequestAutoMerge(),
+           });
+         }
+       }
+       if (state.reviewMode?.addressable && state.status !== "deleted") {
+         menuActions.push({
+           id: "address-comments",
+           label: "Address comments",
+           onAction: () => actions.setAddressCommentsModal(true),
+         });
+       }
+       if (state.status === "pushed" && state.git) {
+         menuActions.push({
+           id: "update-branch",
+           label: "Update branch",
+           onAction: () => actions.setUpdateBranchModal(true),
+         });
+       }
+       if (canMarkMerged(state.status, Boolean(state.git))) {
+         menuActions.push({
+           id: "mark-merged",
+           label: "Mark as merged",
+           onAction: () => actions.setMarkMergedModal(true),
+         });
+       }
+       if (state.status === "accepted_local" && state.reviewMode?.addressable) {
+         menuActions.push({
+           id: "close-local",
+           label: "Close locally",
+           onAction: () => actions.setCloseLocalModal(true),
+         });
+       }
+       menuActions.push({
+         id: "purge",
+         label: "Purge",
+         destructive: true,
+         onAction: () => actions.setPurgeModal(true),
+       });
+       return menuActions;
+    }
+
+    if (canAccept(state.status) && state.git) {
+       menuActions.push({
+         id: "accept",
+         label: "Accept",
+         onAction: () => actions.setAcceptModal(true),
+       });
+    }
+    if (canManualComplete(state.status, Boolean(state.git))) {
+       menuActions.push({
+         id: "complete-manually",
+         label: "Complete manually",
+         onAction: () => actions.setManualCompleteModal(true),
+       });
+    }
+    menuActions.push({
+       id: "delete",
+       label: "Delete",
+       destructive: true,
+       onAction: () => actions.setDeleteModal(true),
+    });
+    return menuActions;
+  }, [
+    content.loadingPullRequestDestination,
+    content.planContent,
+    content.pullRequestDestination,
+    task,
+    actions,
+  ]);
+  useHeaderActions({ overflow: taskMenuActions });
   const { models, modelsLoading } = useAvailableModels({ workspaceId: task?.config.workspaceId });
   const remoteStatus = useTaskRemoteStatus({
     workspaceId: task?.config.workspaceId,
@@ -98,7 +238,6 @@ export function TaskDetails({
     return (
       <div className="min-h-screen p-8">
         <div className="w-full">
-          {showBackButton && onBack && <Button variant="ghost" onClick={onBack}>← Back</Button>}
           <div className="mt-8 text-center">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Not found</h2>
             <p className="mt-2 text-gray-500 dark:text-gray-400">{error || "The requested item does not exist."}</p>

@@ -1,13 +1,11 @@
 import type { BadgeVariant } from "../common";
-import { Button, StatusBadge } from "../common";
+import { StatusBadge } from "../common";
 import type { SshServerPrerequisiteReport } from "@/shared";
 import { ErrorState, Panel } from "@pablozaiden/webapp/web";
 
 interface ExecutionHostPrerequisitesSectionProps {
-  checking: boolean;
   error: string | null;
   report: SshServerPrerequisiteReport | null;
-  onCheck: () => Promise<void>;
 }
 
 function getSummaryVariant(status: SshServerPrerequisiteReport["summary"]["status"]): BadgeVariant {
@@ -60,19 +58,12 @@ function getCheckLabel(status: SshServerPrerequisiteReport["checks"][number]["st
 }
 
 export function ExecutionHostPrerequisitesSection({
-  checking,
   error,
   report,
-  onCheck,
 }: ExecutionHostPrerequisitesSectionProps) {
   return (
     <Panel
       title="Server prerequisites"
-      actions={(
-        <Button type="button" size="sm" variant="secondary" loading={checking} onClick={() => void onCheck()}>
-          Check prerequisites
-        </Button>
-      )}
     >
 
       {error && (

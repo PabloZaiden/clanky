@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { type TranscriptFileLinkTarget } from "./LogViewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
-import { Button } from "./common";
 import { appAbsoluteUrl } from "../lib/public-path";
 import { replaceWebAppRoute, routeToHash, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
@@ -15,16 +14,12 @@ import type { ChatComposerProps } from "./chat-details/types";
 
 export function ChatDetails({
   chatId,
-  onBack,
-  showBackButton = true,
   embeddedTaskId,
   embedded = false,
   isExternallyBusy = false,
   onSendMessage,
 }: {
   chatId: string;
-  onBack?: () => void;
-  showBackButton?: boolean;
   embeddedTaskId?: string;
   embedded?: boolean;
   isExternallyBusy?: boolean;
@@ -119,12 +114,7 @@ export function ChatDetails({
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="p-6">
-          {showBackButton && onBack && (
-            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-              ← Back
-            </Button>
-          )}
-          <div className="mt-4 min-w-0">
+          <div className="min-w-0">
             <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Not found</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Chat not found"}</p>
           </div>

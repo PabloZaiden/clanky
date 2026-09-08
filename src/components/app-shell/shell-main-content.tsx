@@ -1,5 +1,14 @@
-import { useEffect, useState } from "react";
-import { ConfirmModal, ErrorState, LoadingState, Page, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ConfirmModal,
+  ErrorState,
+  LoadingState,
+  Page,
+  Panel,
+  useHeaderActions,
+  type ActionMenuItem,
+  type WebAppRoute,
+} from "@pablozaiden/webapp/web";
 import { getExecutionHostSourceId, type Chat, type ExecutionHostDescriptor, type Task, type Workspace } from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
@@ -20,7 +29,6 @@ import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
 import { ProvisioningJobView } from "../ProvisioningJobView";
-import { Button } from "../common";
 import type {
   CodeExplorerTarget,
   SidebarExecutionHostNode,
@@ -88,7 +96,6 @@ export interface ShellMainContentProps {
   schedulerTimezone: string;
   agents: UseAgentsResult;
   editingAgentId: string | null;
-  onCancelAgentEdit: () => void;
   onSavedAgentEdit: (agent: import("@/shared").Agent) => void;
 
   // Compose state
@@ -204,6 +211,68 @@ function ProvisioningJobRouteView({
     }
   }
 
+  const headerMenuActions = useMemo<ActionMenuItem[]>(() => {
+    if (!snapshot || !provisioningJobId) {
+      return [];
+    }
+
+    return [
+      ...((status === "pending" || status === "running") ? [{
+        id: "cancel",
+        label: "Cancel",
+        destructive: true,
+        disabled: provisioning.loading,
+        onAction: () => void provisioning.cancelJob(),
+      }] : []),
+      ...(status === "completed" && snapshot.job.state.workspaceId ? [{
+        id: "open-workspace",
+        label: "Open workspace",
+        onAction: () => navigateWithinShell({
+          view: "workspace",
+          workspaceId: snapshot.job.state.workspaceId!,
+        }),
+      }] : []),
+      ...(status === "completed"
+        && snapshot.job.config.executionHostBinding.host.kind === "ssh"
+        && snapshot.job.config.mode === "arise" ? [{
+          id: "open-server",
+          label: "Open server",
+          onAction: () => navigateWithinShell({
+            view: "execution-host",
+            hostKind: "ssh",
+            hostId: getExecutionHostSourceId(snapshot.job.config.executionHostBinding.host),
+          }),
+        }] : []),
+      ...(isTerminal
+        && snapshot.job.config.mode === "provision"
+        && (status === "failed" || status === "cancelled" || status === "interrupted") ? [{
+          id: "retry",
+          label: "Retry",
+          onAction: () => navigateWithinShell({
+            view: "compose",
+            kind: "workspace",
+            retryProvisioningJobId: provisioningJobId,
+          }),
+        }] : []),
+      ...(isTerminal ? [{
+        id: "dismiss",
+        label: "Dismiss",
+        destructive: true,
+        disabled: dismissing,
+        onAction: () => setDismissConfirmOpen(true),
+      }] : []),
+    ];
+  }, [
+    dismissing,
+    isTerminal,
+    navigateWithinShell,
+    provisioning,
+    provisioningJobId,
+    snapshot,
+    status,
+  ]);
+  useHeaderActions({ overflow: headerMenuActions });
+
   return (
     <>
       <div className="space-y-4">
@@ -215,75 +284,6 @@ function ProvisioningJobRouteView({
             loading={provisioning.loading}
             error={provisioning.error}
           />
-          {snapshot && (
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {(status === "pending" || status === "running") && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => void provisioning.cancelJob()}
-                  loading={provisioning.loading}
-                >
-                  Cancel
-                </Button>
-              )}
-              {status === "completed" && snapshot.job.state.workspaceId && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => navigateWithinShell({
-                    view: "workspace",
-                    workspaceId: snapshot.job.state.workspaceId!,
-                  })}
-                >
-                  Open workspace
-                </Button>
-              )}
-              {status === "completed"
-                && snapshot.job.config.executionHostBinding.host.kind === "ssh"
-                && snapshot.job.config.mode === "arise" && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => navigateWithinShell({
-                    view: "execution-host",
-                    hostKind: "ssh",
-                    hostId: getExecutionHostSourceId(snapshot.job.config.executionHostBinding.host),
-                  })}
-                >
-                  Open server
-                </Button>
-              )}
-              {isTerminal
-                && snapshot.job.config.mode === "provision"
-                && (status === "failed" || status === "cancelled" || status === "interrupted") && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => navigateWithinShell({
-                      view: "compose",
-                      kind: "workspace",
-                      retryProvisioningJobId: provisioningJobId,
-                    })}
-                  >
-                    Retry with this configuration
-                  </Button>
-                )}
-              {isTerminal && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setDismissConfirmOpen(true)}
-                  loading={dismissing}
-                >
-                  Dismiss
-                </Button>
-              )}
-            </div>
-          )}
         </Panel>
       </div>
       <ConfirmModal
@@ -324,7 +324,6 @@ function renderMainContent(props: ShellMainContentProps) {
     selectedChat,
     selectedWorkspace,
     refreshTasks,
-    refreshChats,
     refreshWorkspaces,
     purgeTask,
     deleteWorkspace,
@@ -355,7 +354,6 @@ function renderMainContent(props: ShellMainContentProps) {
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
         schedulerTimezone={schedulerTimezone}
         editingAgentId={props.editingAgentId}
-        onCancelAgentEdit={props.onCancelAgentEdit}
         onSavedAgentEdit={props.onSavedAgentEdit}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onUpdateAgent={agents.updateAgent}
@@ -430,7 +428,6 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           void refreshTasks();
         }}
-        showBackButton={false}
         onSelectTerminalSession={(terminalSessionId) => navigateWithinShell({ view: "terminal", terminalSessionId })}
         onOpenTaskFiles={(selectedTaskId) => navigateWithinShell({
           view: "code-explorer",
@@ -483,11 +480,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <ChatDetails
         key={`chat:${chatId}`}
         chatId={chatId}
-        onBack={() => {
-          navigateWithinShell({ view: "home" });
-          void refreshChats();
-        }}
-        showBackButton={false}
       />
     );
   }
@@ -501,10 +493,6 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <TerminalSessionDetails
         terminalSessionId={terminalSessionId}
-        onBack={() => {
-          navigateWithinShell({ view: "home" });
-        }}
-        showBackButton={false}
       />
     );
   }

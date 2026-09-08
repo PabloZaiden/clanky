@@ -3,10 +3,11 @@
  */
 
 import { useState, useEffect } from "react";
-import { Button, StatusBadge } from "../common";
+import { StatusBadge } from "../common";
+import { ActionMenu } from "@pablozaiden/webapp/web";
 import { useAgentsMdOptimizer } from "../../hooks/useAgentsMdOptimizer";
 import type { Workspace } from "@/shared/workspace";
-import { LoadingSpinner, DocumentIcon, OptimizeIcon } from "./icons";
+import { LoadingSpinner, DocumentIcon } from "./icons";
 
 interface AgentsMdSectionProps {
   workspace: Workspace;
@@ -64,14 +65,17 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
       {optimizerError && (
         <div className="mb-3 p-3 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900">
           <p className="text-sm text-red-700 dark:text-red-300">{optimizerError}</p>
-          <button
-            type="button"
-            onClick={() => void fetchOptimizerStatus(workspace.id)}
-            disabled={optimizerLoading}
-            className="mt-2 text-xs font-medium text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-200 underline disabled:opacity-50"
-          >
-            Retry
-          </button>
+          <ActionMenu
+            ariaLabel="AGENTS.md actions"
+            triggerVariant="ghost"
+            triggerSize="compact"
+            items={[{
+              id: "retry",
+              label: "Retry",
+              disabled: optimizerLoading,
+              onAction: () => void fetchOptimizerStatus(workspace.id),
+            }]}
+          />
         </div>
       )}
 
@@ -104,23 +108,21 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
         </div>
       )}
 
-      <div className="flex gap-2">
-        {(!optimizerStatus?.analysis.isOptimized || optimizerStatus?.analysis.updateAvailable) && !optimizerError && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleOptimize}
-            loading={optimizerLoading}
-            disabled={optimizerLoading || !optimizerStatus}
-          >
-            <OptimizeIcon className="w-4 h-4 mr-2" />
-            {optimizerStatus?.analysis.updateAvailable && optimizerStatus.analysis.isOptimized
-              ? "Update AGENTS.md"
-              : "Optimize AGENTS.md"}
-          </Button>
-        )}
-      </div>
+      {(!optimizerStatus?.analysis.isOptimized || optimizerStatus?.analysis.updateAvailable) && !optimizerError && (
+        <ActionMenu
+          ariaLabel="AGENTS.md actions"
+          triggerVariant="ghost"
+          triggerSize="compact"
+          items={[{
+            id: "optimize",
+            label: optimizerStatus?.analysis.updateAvailable && optimizerStatus.analysis.isOptimized
+              ? "Update"
+              : "Optimize",
+            disabled: optimizerLoading || !optimizerStatus,
+            onAction: () => void handleOptimize(),
+          }]}
+        />
+      )}
     </div>
   );
 }

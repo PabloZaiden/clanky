@@ -23,12 +23,14 @@ import {
   ErrorState,
   LoadingState,
   Panel,
+  ActionMenu,
+  useHeaderActions,
   useToast,
+  type ActionMenuItem,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
 import { getRouteString } from "./route-fields";
-import { useShellHeaderActions } from "./shell-header-actions";
 import { ClankyListRow } from "./clanky-list-row";
 import { AgentDeterministicMode } from "./agent-deterministic-mode";
 import { AgentFormFields } from "./agent-form-fields";
@@ -86,7 +88,6 @@ function AgentForm({
   onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
-  onCancel,
   onSaved,
 }: {
   mode: "create" | "edit";
@@ -115,7 +116,6 @@ function AgentForm({
   onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
-  onCancel: () => void;
   onSaved: (agent: Agent) => void;
 }) {
   const resetTestOutputRef = useRef<() => void>(() => {});
@@ -186,22 +186,49 @@ function AgentForm({
     void form.submit(generation.code);
   }, [form.submit, generation.code]);
   const headerActions = useMemo(() => (
-    <>
-      <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={form.isSubmitting}>
-        Cancel
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={handleSubmit}
-        disabled={!canSubmit}
-        loading={form.isSubmitting}
-      >
-        {mode === "edit" ? "Save agent" : "Create agent"}
-      </Button>
-    </>
-  ), [canSubmit, form.isSubmitting, handleSubmit, mode, onCancel]);
-  useShellHeaderActions(headerActions);
+    <Button
+      type="button"
+      size="sm"
+      onClick={handleSubmit}
+      disabled={!canSubmit}
+      loading={form.isSubmitting}
+    >
+      {mode === "edit" ? "Save" : "Create"}
+    </Button>
+  ), [canSubmit, form.isSubmitting, handleSubmit, mode]);
+  const headerMenuActions = useMemo<ActionMenuItem[]>(() => [
+    {
+      id: "generate-code",
+      label: generation.isGeneratingCode ? "Generating..." : "Generate",
+      disabled: !canGenerateCode || form.isSubmitting,
+      onAction: () => void generation.generateCode(),
+    },
+    ...(generation.isGeneratingCode ? [{
+      id: "cancel-generation",
+      label: "Cancel generation",
+      destructive: true,
+      onAction: generation.cancelGeneration,
+    }] : []),
+    {
+      id: "test-code",
+      label: testing.isTestingCode ? "Testing..." : "Test",
+      disabled: !canTestCode || form.isSubmitting,
+      onAction: () => void testing.testCode(),
+    },
+    ...(testing.isTestingCode ? [{
+      id: "cancel-test",
+      label: "Cancel test",
+      destructive: true,
+      onAction: testing.cancelTest,
+    }] : []),
+  ], [
+    canGenerateCode,
+    canTestCode,
+    generation,
+    form.isSubmitting,
+    testing,
+  ]);
+  useHeaderActions({ primary: headerActions, overflow: headerMenuActions });
 
   return (
     <div className="space-y-5">
@@ -232,9 +259,6 @@ function AgentForm({
       <AgentDeterministicMode
         mode={mode}
         agent={agent}
-        isSubmitting={form.isSubmitting}
-        canGenerateCode={canGenerateCode}
-        canTestCode={canTestCode}
         generation={generation}
         testing={testing}
       />
@@ -306,9 +330,18 @@ function AgentRunsList({
                 <p className="mt-1 truncate text-xs text-red-600 dark:text-red-300">{run.error.message}</p>
               )}
             </button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteRun(run)}>
-              Delete
-            </Button>
+            <ActionMenu
+              ariaLabel={`Actions for run ${run.id}`}
+              triggerVariant="ghost"
+              triggerSize="compact"
+              items={[{
+                id: "delete",
+                label: "Delete",
+                destructive: true,
+                disabled: deletePending,
+                onAction: () => setDeleteRun(run),
+              }]}
+            />
           </div>
         ))}
       </div>
@@ -385,7 +418,6 @@ function AgentDetail({
   onTestAgentCode,
   onDeleteRun,
   onRefreshRuns,
-  onCancelEdit,
   onSavedEdit,
   onNavigate,
 }: {
@@ -412,7 +444,6 @@ function AgentDetail({
   onTestAgentCode: UseAgentsResult["testAgentCode"];
   onDeleteRun: UseAgentsResult["deleteRun"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
-  onCancelEdit: () => void;
   onSavedEdit: (agent: Agent) => void;
   onNavigate: (route: WebAppRoute) => void;
 }) {
@@ -447,7 +478,6 @@ function AgentDetail({
         onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
         onGenerateAgentCode={onGenerateAgentCode}
         onTestAgentCode={onTestAgentCode}
-        onCancel={onCancelEdit}
         onSaved={(savedAgent) => {
           onSavedEdit(savedAgent);
         }}
@@ -767,7 +797,6 @@ export function AgentComposer({
       onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
       onGenerateAgentCode={onGenerateAgentCode}
       onTestAgentCode={onTestAgentCode}
-      onCancel={() => navigateWithinShell(composeWorkspace ? { view: "agents", workspaceId: composeWorkspace.id } : { view: "home" })}
       onSaved={(savedAgent) => navigateWithinShell({ view: "agent", agentId: savedAgent.config.id })}
     />
   );
@@ -800,7 +829,6 @@ export function AgentsView({
   loading,
   error,
   editingAgentId,
-  onCancelAgentEdit,
   onSavedAgentEdit,
 }: {
   agents: Agent[];
@@ -829,7 +857,6 @@ export function AgentsView({
   loading: boolean;
   error: string | null;
   editingAgentId: string | null;
-  onCancelAgentEdit: () => void;
   onSavedAgentEdit: (agent: Agent) => void;
 }) {
   if (route.view === "agent") {
@@ -875,7 +902,6 @@ export function AgentsView({
         onTestAgentCode={onTestAgentCode}
         onDeleteRun={onDeleteRun}
         onRefreshRuns={onRefreshRuns}
-        onCancelEdit={onCancelAgentEdit}
         onSavedEdit={onSavedAgentEdit}
         onNavigate={navigateWithinShell}
       />

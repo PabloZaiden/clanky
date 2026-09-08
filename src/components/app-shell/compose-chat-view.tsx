@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, Workspace } from "@/shared";
 import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -18,11 +18,11 @@ import {
   ErrorState,
   SelectField,
   TextField,
+  useHeaderActions,
   useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
-import { useShellHeaderActions } from "./shell-header-actions";
 
 interface ImportableChatSession {
   id: string;
@@ -304,12 +304,6 @@ export function ComposeChatView({
     }
   }
 
-  const handleCancel = useCallback(() => {
-    navigateWithinShell(
-      composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : { view: "home" },
-    );
-  }, [composeWorkspace, navigateWithinShell]);
-
   const modelOptions = models;
   const modelOptionsLoading = modelsLoading;
   const effectiveSelectedModel = selectedModel || (
@@ -325,22 +319,17 @@ export function ComposeChatView({
     && Boolean(effectiveSelectedModel)
     && (importExistingSession ? Boolean(selectedImportSessionId.trim()) : true);
   const headerActions = useMemo(() => (
-    <>
-      <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={isSubmitting}>
-        Cancel
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => void handleSubmit()}
-        disabled={!canSubmit}
-        loading={isSubmitting}
-      >
-        {importExistingSession ? "Import chat" : "Create chat"}
-      </Button>
-    </>
-  ), [canSubmit, handleCancel, handleSubmit, importExistingSession, isSubmitting]);
-  useShellHeaderActions(headerActions);
+    <Button
+      type="button"
+      size="sm"
+      onClick={() => void handleSubmit()}
+      disabled={!canSubmit}
+      loading={isSubmitting}
+    >
+      {importExistingSession ? "Import" : "Create"}
+    </Button>
+  ), [canSubmit, handleSubmit, importExistingSession, isSubmitting]);
+  useHeaderActions({ primary: headerActions });
 
   return (
     <>

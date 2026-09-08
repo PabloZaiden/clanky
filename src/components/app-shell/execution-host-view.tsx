@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  type ActionMenuItem,
   CodeValue,
   ErrorState,
   FormActions,
@@ -7,6 +8,7 @@ import {
   Panel,
   SelectField,
   TextField,
+  useHeaderActions,
   type WebAppRoute,
   useToast,
 } from "@pablozaiden/webapp/web";
@@ -39,7 +41,6 @@ import { createOrResumeExecutionHostVncSessionApi } from "../../hooks/executionH
 import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisites-section";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
-import { useShellHeaderActions } from "./shell-header-actions";
 import { ClankyListRow } from "./clanky-list-row";
 import {
   getStoredSshCredentialToken,
@@ -129,6 +130,10 @@ export function ExecutionHostView({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [sshFormValid, setSshFormValid] = useState(false);
   const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
+  const [sshPrerequisites, setSshPrerequisites] = useState<{
+    checking: boolean;
+    check: () => Promise<void>;
+  } | null>(null);
   const hostUsable = host.acceptRemoteExecution;
   const requestSshCredentials = useCallback(() => {
     if (!sshServerId) {
@@ -150,17 +155,41 @@ export function ExecutionHostView({
     executionHost: host.ref,
   });
   const apiPath = hostApiPath(host);
-  useShellHeaderActions(sshServer ? (
-    <Button
-      type="submit"
-      form="execution-host-ssh-settings"
-      size="sm"
-      loading={sshFormSubmitting}
-      disabled={!sshFormValid || sshFormSubmitting}
-    >
-      Save
-    </Button>
-  ) : null);
+  const headerMenuActions = useMemo<ActionMenuItem[]>(() => [
+    {
+      id: "run-arise",
+      label: "Run Arise",
+      disabled: !hostUsable || !host.capabilities.devboxLifecycle || provisioning.starting,
+      onAction: () => void runArise(),
+    },
+    {
+      id: "check-prerequisites",
+      label: "Check prerequisites",
+      disabled: !hostUsable || (sshServer ? !sshPrerequisites || sshPrerequisites.checking : prerequisites.checking),
+      onAction: () => void (sshServer ? sshPrerequisites?.check() : prerequisites.check()),
+    },
+  ], [
+    host.capabilities.devboxLifecycle,
+    hostUsable,
+    prerequisites,
+    provisioning.starting,
+    sshServer,
+    sshPrerequisites,
+  ]);
+  useHeaderActions({
+    primary: sshServer ? (
+      <Button
+        type="submit"
+        form="execution-host-ssh-settings"
+        size="sm"
+        loading={sshFormSubmitting}
+        disabled={!sshFormValid || sshFormSubmitting}
+      >
+        Save
+      </Button>
+    ) : null,
+    overflow: headerMenuActions,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -462,6 +491,7 @@ export function ExecutionHostView({
           onDeleted={() => onNavigate({ view: "home" })}
           onValidityChange={setSshFormValid}
           onSubmittingChange={setSshFormSubmitting}
+          onPrerequisitesChange={setSshPrerequisites}
         />
       ) : host.ref.kind === "local" ? <Panel>
         <div className="space-y-4">
@@ -563,10 +593,8 @@ export function ExecutionHostView({
 
       {!sshServer ? (
         <ExecutionHostPrerequisitesSection
-          checking={prerequisites.checking}
           error={prerequisites.error}
           report={prerequisites.report}
-          onCheck={prerequisites.check}
         />
       ) : null}
 
@@ -616,14 +644,6 @@ export function ExecutionHostView({
         </div>
       </FormGroup>
 
-      <Button
-        variant="secondary"
-        onClick={() => void runArise()}
-        loading={provisioning.starting}
-        disabled={!hostUsable || !host.capabilities.devboxLifecycle}
-      >
-        Run Arise
-      </Button>
       {sshServerId && (
         <ServerPasswordModal
           isOpen={passwordModalOpen}
