@@ -11,6 +11,7 @@ export * from "./task-creation-service";
 export * from "./settings-maintenance-service";
 export * from "./chat-manager";
 export * from "./agent-manager";
+export * from "./agent-transfer-service";
 export * from "./agent-runner";
 export * from "./agent-stream-controller";
 export * from "./agent-event-transcript-interpreter";

@@ -38,6 +38,7 @@ describe("Agents API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let workspaceId: string;
+  let destinationWorkDir: string;
   let mockBackend: MockAcpBackend;
   const generatedCode = `export default async function run(ctx) {
   ctx.stdout.write("generated from temporary file\\n");
@@ -169,7 +170,15 @@ describe("Agents API Integration", () => {
     await initializeDatabase();
     seedTestOwnerUser();
 
-    await initializeGitRepository(testWorkDir, { initialCommit: "readme" });
+    await initializeGitRepository(testWorkDir, {
+      initialBranch: "portable-agent",
+      initialCommit: "readme",
+    });
+    destinationWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-agents-import-work-"));
+    await initializeGitRepository(destinationWorkDir, {
+      initialBranch: "portable-agent",
+      initialCommit: "readme",
+    });
 
     mockBackend = new MockAcpBackend({
       responses: ["```typescript\nexport default async function run(ctx) {\n  ctx.stdout.write(\"Agent run completed\");"],
@@ -220,6 +229,7 @@ describe("Agents API Integration", () => {
     delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
     await rm(testWorkDir, { recursive: true, force: true });
+    await rm(destinationWorkDir, { recursive: true, force: true });
   });
 
   test("creates an agent and run now executes without creating tasks or visible chats", async () => {
@@ -383,6 +393,139 @@ describe("Agents API Integration", () => {
     // Command output must NOT appear in logs.
     expect(completedRun.logs.every((entry) => !entry.message.includes("command stdout"))).toBe(true);
     expect(completedRun.logs.every((entry) => !entry.message.includes("command stderr"))).toBe(true);
+  });
+
+  test("exports an agent and imports its portable configuration into another workspace", async () => {
+    const sourceCode = `export default async function run(ctx) {
+  ctx.stdout.write("portable agent");
+}`;
+    const sourceResponse = await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Portable agent",
+        workspaceId,
+        prompt: "Run the portable prompt",
+        code: sourceCode,
+        model: testModel,
+        baseBranch: "portable-agent",
+        useWorktree: true,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "America/Argentina/Buenos_Aires",
+          interval: {
+            value: 2,
+            unit: "days",
+          },
+        },
+        enabled: true,
+      }),
+    });
+    expect(sourceResponse.status).toBe(201);
+    const source = await sourceResponse.json() as {
+      config: { id: string };
+    };
+
+    const exportResponse = await fetch(`${baseUrl}/api/agents/${source.config.id}/export`);
+    expect(exportResponse.status).toBe(200);
+    expect(exportResponse.headers.get("Content-Disposition")).toContain("Portable-agent.clanky-agent.json");
+    const payload = await exportResponse.json() as {
+      format: string;
+      version: number;
+      agent: {
+        name: string;
+        prompt: string;
+        code?: string;
+        model: typeof testModel;
+        baseBranch?: string;
+        useWorktree: boolean;
+        schedule: {
+          startAtLocal: string;
+          timezone: string;
+          interval: { value: number; unit: string };
+          nextRunAt?: string;
+        };
+        workspaceId?: string;
+        enabled?: boolean;
+      };
+    };
+    expect(payload).toMatchObject({
+      format: "clanky-agent",
+      version: 1,
+      agent: {
+        name: "Portable agent",
+        prompt: "Run the portable prompt",
+        code: sourceCode,
+        model: testModel,
+        baseBranch: "portable-agent",
+        useWorktree: true,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "America/Argentina/Buenos_Aires",
+          interval: { value: 2, unit: "days" },
+        },
+      },
+    });
+    expect(payload.agent.schedule.nextRunAt).toBeUndefined();
+    expect(payload.agent.workspaceId).toBeUndefined();
+    expect(payload.agent.enabled).toBeUndefined();
+
+    const destinationWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Agent Import Destination",
+        directory: destinationWorkDir,
+        executionHost: await fetchTestLocalExecutionHost(baseUrl),
+        serverSettings: { agent: { provider: "opencode" } },
+      }),
+    });
+    expect(destinationWorkspaceResponse.status).toBe(201);
+    const destinationWorkspace = await destinationWorkspaceResponse.json() as { id: string };
+
+    const importResponse = await fetch(
+      `${baseUrl}/api/workspaces/${destinationWorkspace.id}/agents/import`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    expect(importResponse.status).toBe(201);
+    const imported = await importResponse.json() as {
+      config: {
+        id: string;
+        name: string;
+        workspaceId: string;
+        prompt: string;
+        code?: string;
+        model: typeof testModel;
+        baseBranch?: string;
+        useWorktree: boolean;
+        enabled: boolean;
+        generationChatId?: string;
+        schedule: {
+          startAtLocal: string;
+          timezone: string;
+          interval: { value: number; unit: string };
+          nextRunAt: string;
+        };
+      };
+      state: { status: string };
+    };
+    expect(imported.config.id).not.toBe(source.config.id);
+    expect(imported.config.workspaceId).toBe(destinationWorkspace.id);
+    expect(imported.config.name).toBe("Portable agent");
+    expect(imported.config.prompt).toBe("Run the portable prompt");
+    expect(imported.config.code).toBe(sourceCode);
+    expect(imported.config.model).toEqual(testModel);
+    expect(imported.config.baseBranch).toBe("portable-agent");
+    expect(imported.config.useWorktree).toBe(true);
+    expect(imported.config.enabled).toBe(false);
+    expect(imported.state.status).toBe("paused");
+    expect(imported.config.generationChatId).toBeUndefined();
+    expect(imported.config.schedule).toMatchObject(payload.agent.schedule);
+    expect(imported.config.schedule.nextRunAt).toBeTruthy();
   });
 
   test("generates an editable draft in the persistent hidden agent chat", async () => {

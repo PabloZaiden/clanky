@@ -34,6 +34,12 @@ function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   return sortRuns([...runs.filter((item) => item.id !== run.id), run]);
 }
 
+function getDownloadFilename(response: Response): string {
+  const disposition = response.headers.get("Content-Disposition");
+  const filename = disposition?.match(/filename="([^"]+)"/i)?.[1];
+  return filename || "clanky-agent.json";
+}
+
 export interface UseAgentsResult {
   agents: Agent[];
   runsByAgentId: Record<string, AgentRun[]>;
@@ -42,6 +48,8 @@ export interface UseAgentsResult {
   refresh: () => Promise<void>;
   refreshRuns: (agentId: string) => Promise<void>;
   createAgent: (request: CreateAgentRequest) => Promise<Agent | null>;
+  exportAgent: (id: string) => Promise<void>;
+  importAgent: (workspaceId: string, payload: unknown) => Promise<Agent | null>;
   updateAgent: (id: string, request: UpdateAgentRequest) => Promise<Agent | null>;
   prepareGenerateAgentCode: (
     id: string,
@@ -181,6 +189,41 @@ export function useAgents(): UseAgentsResult {
       method: "POST",
       body: JSON.stringify(request),
     }, "Failed to create agent");
+    if (agent) {
+      setAgents((prev) => upsertAgent(prev, agent));
+    }
+    return agent;
+  }, [requestAgent]);
+
+  const exportAgent = useCallback(async (id: string): Promise<void> => {
+    const response = await requestApiResponse(`/api/agents/${id}/export`, {
+      action: "Export agent",
+      fallbackMessage: "Failed to export agent",
+    });
+    const blob = await readApiResponse(response, "blob");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = getDownloadFilename(response);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const importAgent = useCallback(async (
+    workspaceId: string,
+    payload: unknown,
+  ): Promise<Agent | null> => {
+    const agent = await requestAgent<Agent>(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/import`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      "Failed to import agent",
+      { rethrowErrors: true },
+    );
     if (agent) {
       setAgents((prev) => upsertAgent(prev, agent));
     }
@@ -454,6 +497,8 @@ export function useAgents(): UseAgentsResult {
     refresh,
     refreshRuns,
     createAgent,
+    exportAgent,
+    importAgent,
     updateAgent,
     prepareGenerateAgentCode,
     generateAgentCode,

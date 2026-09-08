@@ -84,6 +84,8 @@ export interface ShellSidebarActionHandlers {
   setEditingAgentId: (agentId: string) => void;
   setDeleteAgentTarget: (agent: Agent) => void;
   setPurgeAgentTarget: (agent: Agent) => void;
+  exportAgent: (agent: Agent) => void | Promise<void>;
+  startAgentImport: (workspaceId: string) => void;
   agents: Pick<UseAgentsResult, "pauseAgent" | "resumeAgent" | "interruptAgent" | "runAgent">;
   showPrivateItems: boolean;
 }
@@ -428,6 +430,11 @@ function getWorkspaceSidebarActions(
         }),
       },
       {
+        id: "import-agent",
+        label: "Import Agent",
+        onClick: () => handlers.startAgentImport(workspaceId),
+      },
+      {
         id: "open-code-explorer",
         label: "Open code explorer",
         onClick: () => handlers.navigateWithinShell({
@@ -526,6 +533,11 @@ function getAgentSidebarActions(
         id: "edit-agent",
         label: "Edit",
         onClick: () => handlers.setEditingAgentId(agent.config.id),
+      },
+      {
+        id: "export-agent",
+        label: "Export",
+        onClick: () => void handlers.exportAgent(agent),
       },
       {
         id: "toggle-agent-paused",
