@@ -27,6 +27,10 @@ interface SshServerSettingsFormProps {
   onDeleted?: () => void;
   onValidityChange?: (isValid: boolean) => void;
   onSubmittingChange?: (isSubmitting: boolean) => void;
+  onPrerequisitesChange?: (state: {
+    checking: boolean;
+    check: () => Promise<void>;
+  } | null) => void;
 }
 
 export function SshServerSettingsForm({
@@ -39,6 +43,7 @@ export function SshServerSettingsForm({
   onDeleted,
   onValidityChange,
   onSubmittingChange,
+  onPrerequisitesChange,
 }: SshServerSettingsFormProps) {
   const toast = useToast();
   const [values, setValues] = useState<SshServerFormValues>(() => createSshServerFormValues(server));
@@ -62,6 +67,14 @@ export function SshServerSettingsForm({
   useEffect(() => {
     onSubmittingChange?.(submitting);
   }, [submitting, onSubmittingChange]);
+
+  useEffect(() => {
+    onPrerequisitesChange?.({
+      checking: prerequisites.checking,
+      check: prerequisites.check,
+    });
+    return () => onPrerequisitesChange?.(null);
+  }, [onPrerequisitesChange, prerequisites.check, prerequisites.checking]);
 
   function handleChange(field: keyof SshServerFormValues, value: string) {
     prerequisites.reset();
@@ -117,10 +130,8 @@ export function SshServerSettingsForm({
       </form>
 
       <ExecutionHostPrerequisitesSection
-        checking={prerequisites.checking}
         error={prerequisites.error}
         report={prerequisites.report}
-        onCheck={prerequisites.check}
       />
 
       <DeleteSshServerSection

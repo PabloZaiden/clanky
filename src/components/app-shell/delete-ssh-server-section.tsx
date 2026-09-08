@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
+import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { SshServer } from "@/shared";
-import { TrashIcon } from "../workspace-settings";
 
 interface DeleteSshServerSectionProps {
   server: SshServer;
@@ -56,17 +54,18 @@ export function DeleteSshServerSection({
             : `This also removes ${relatedSessionCount} standalone session${relatedSessionCount === 1 ? "" : "s"} associated with this server.`}
           {" "}Any saved browser credential for this server is cleared as part of deletion.
         </p>
-        <Button
-          type="button"
-          variant="danger"
-          size="sm"
-          onClick={() => setShowConfirm(true)}
-          loading={deleting}
-          disabled={disabled || deleting}
-        >
-          <TrashIcon className="mr-2 h-4 w-4" />
-          Delete SSH Server
-        </Button>
+        <ActionMenu
+          ariaLabel="Server actions"
+          triggerVariant="ghost"
+          triggerSize="compact"
+          items={[{
+            id: "delete",
+            label: deleting ? "Deleting..." : "Delete",
+            destructive: true,
+            disabled: disabled || deleting,
+            onAction: () => setShowConfirm(true),
+          }]}
+        />
       </div>
 
       <ConfirmModal

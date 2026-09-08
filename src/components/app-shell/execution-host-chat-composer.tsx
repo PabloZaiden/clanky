@@ -4,6 +4,7 @@ import {
   Modal,
   SelectField,
   TextField,
+  useHeaderActions,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type {
@@ -33,7 +34,6 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
-import { useShellHeaderActions } from "./shell-header-actions";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
@@ -209,15 +209,6 @@ export function ExecutionHostChatComposer({
       : "");
   }, [discovery.models, discovery.provider, host.preferredModel, storedModel]);
 
-  const handleCancel = useCallback(() => {
-    const id = getExecutionHostSourceId(host.ref);
-    navigateWithinShell({
-      view: "execution-host",
-      hostKind: host.ref.kind,
-      hostId: id,
-    });
-  }, [host.ref, navigateWithinShell]);
-
   const handleSubmit = useCallback(async () => {
     const model = parseModelKey(selectedModel);
     if (
@@ -308,22 +299,17 @@ export function ExecutionHostChatComposer({
     && Boolean(directory.trim())
     && Boolean(selectedModel);
   const headerActions = useMemo(() => (
-    <>
-      <Button type="button" variant="ghost" size="sm" onClick={handleCancel} disabled={submitting}>
-        Cancel
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => void handleSubmit()}
-        disabled={!canSubmit}
-        loading={submitting}
-      >
-        Create chat
-      </Button>
-    </>
-  ), [canSubmit, handleCancel, handleSubmit, submitting]);
-  useShellHeaderActions(headerActions);
+    <Button
+      type="button"
+      size="sm"
+      onClick={() => void handleSubmit()}
+      disabled={!canSubmit}
+      loading={submitting}
+    >
+      Create
+    </Button>
+  ), [canSubmit, handleSubmit, submitting]);
+  useHeaderActions({ primary: headerActions });
 
   return (
     <>

@@ -3,8 +3,7 @@ import type { Workspace, TerminalSession, TerminalConnectionMode } from "@/share
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Button } from "../common";
-import { Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { useShellHeaderActions } from "./shell-header-actions";
+import { Panel, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const TERMINAL_USE_TMUX_STORAGE_KEY = "clanky.terminalSession.useTmux";
 
@@ -25,13 +24,11 @@ function storeUseTmuxPreference(useTmux: boolean): void {
 export function TerminalSessionComposer({
   workspaces,
   initialWorkspaceId,
-  onCancel,
   onNavigate,
   onCreateTerminalSession,
 }: {
   workspaces: Workspace[];
   initialWorkspaceId?: string;
-  onCancel: () => void;
   onNavigate: (route: WebAppRoute) => void;
   onCreateTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
 }) {
@@ -49,14 +46,13 @@ export function TerminalSessionComposer({
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
 
-  useShellHeaderActions(
-    <>
-      <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+  useHeaderActions({
+    primary: (
       <Button variant="primary" size="sm" type="submit" form={formId} disabled={submitting || !selectedWorkspace}>
-        {submitting ? "Creating…" : "Create terminal"}
+        {submitting ? "Creating…" : "Create"}
       </Button>
-    </>,
-  );
+    ),
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

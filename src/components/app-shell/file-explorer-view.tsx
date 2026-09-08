@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ActionMenu, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry, TerminalSession } from "@/shared";
 import {
   useFileExplorer,
@@ -752,21 +752,23 @@ export function FileExplorerView({
                       </option>
                     ))}
                   </select>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCreateTerminal}
-                    disabled={!hasTerminal || creatingTerminal}
-                  >
-                    New terminal
-                  </Button>
+                  <ActionMenu
+                    ariaLabel="Terminal actions"
+                    triggerVariant="ghost"
+                    triggerSize="compact"
+                    items={[{
+                      id: "new-terminal",
+                      label: "New terminal",
+                      disabled: !hasTerminal || creatingTerminal,
+                      onAction: () => void handleCreateTerminal(),
+                    }]}
+                  />
                 </div>
               </div>
               <div className="flex min-h-0 flex-1 overflow-hidden">
                 {selectedSession ? (
                   <TerminalSessionDetails
                     terminalSessionId={selectedSessionId}
-                    showBackButton={false}
                     forcedFocusMode={true}
                   />
                 ) : (

@@ -1,6 +1,6 @@
 import type { ModelConfig } from "@/shared/task";
 
-export type TabId = "log" | "chat" | "info" | "plan" | "diff" | "actions";
+export type TabId = "log" | "chat" | "info" | "plan" | "diff" | "review";
 
 export const tabs: { id: TabId; label: string }[] = [
   { id: "log", label: "Log" },
@@ -8,7 +8,7 @@ export const tabs: { id: TabId; label: string }[] = [
   { id: "info", label: "Info" },
   { id: "plan", label: "Plan" },
   { id: "diff", label: "Diff" },
-  { id: "actions", label: "Actions" },
+  { id: "review", label: "Review" },
 ];
 
 /**

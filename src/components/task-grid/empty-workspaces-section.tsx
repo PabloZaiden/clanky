@@ -4,10 +4,9 @@ import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
-import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
+import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
-import { GearIcon } from "../common";
 import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 
 export interface EmptyWorkspacesSectionProps {
@@ -59,26 +58,27 @@ export function EmptyWorkspacesSection({
                   {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenWorkspaceSettings(workspace.id)}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-                title="Workspace Settings"
-              >
-                <GearIcon />
-              </button>
-              <button
-                onClick={() => {
-                  setDeleteWorkspace(workspace);
-                  setDeleteServerDirectory(true);
-                }}
-                className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
-                title="Delete empty workspace"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <ActionMenu
+                ariaLabel={privateHidden ? "Workspace actions" : `Actions for ${workspace.name}`}
+                triggerVariant="ghost"
+                triggerSize="compact"
+                items={[
+                  {
+                    id: "settings",
+                    label: "Settings",
+                    onAction: () => onOpenWorkspaceSettings(workspace.id),
+                  },
+                  {
+                    id: "delete",
+                    label: "Delete",
+                    destructive: true,
+                    onAction: () => {
+                      setDeleteWorkspace(workspace);
+                      setDeleteServerDirectory(true);
+                    },
+                  },
+                ]}
+              />
             </div>
           );
         })}

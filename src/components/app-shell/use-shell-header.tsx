@@ -11,12 +11,11 @@ import {
   getChatCodeExplorerRootDirectory,
   getTaskCodeExplorerRootDirectory,
 } from "./code-explorer-targets";
-import { getProvisioningReturnRoute, getRouteString } from "./route-fields";
+import { getRouteString } from "./route-fields";
 import {
   getHeaderOwnerRoute,
   sidebarNodeMatchesRoute,
 } from "./shell-sidebar-composition";
-import { HOME_ROUTE } from "./use-shell-navigation";
 import type {
   Agent,
   Chat,
@@ -37,16 +36,9 @@ export interface HeaderModel {
   detailSubtitleMobileHidden?: boolean;
 }
 
-export interface RegisteredHeaderActions {
-  owner: symbol;
-  actions: ReactNode;
-}
-
 interface UseShellHeaderOptions {
   route: WebAppRoute;
   headerNodes: SidebarNode[];
-  registeredHeaderActions: RegisteredHeaderActions | null;
-  navigateWithinShell: (route: WebAppRoute) => void;
   taskId: string | undefined;
   chatId: string | undefined;
   composeKind: string | undefined;
@@ -223,8 +215,6 @@ function getHeaderScopeSubtitle({
 export function useShellHeader({
   route,
   headerNodes,
-  registeredHeaderActions,
-  navigateWithinShell,
   taskId,
   chatId,
   composeKind,
@@ -461,116 +451,53 @@ export function useShellHeader({
   ]);
   const headerActions = useMemo<ActionMenuItem[]>(() => {
     const ownerActions = headerNode?.actions ?? [];
-    if (route.view === "code-explorer" || route.view === "agent-run") {
-      return [];
-    }
-    if (headerOwnerRoute && headerNode && !sidebarNodeMatchesRoute(headerNode, route)) {
-      return ownerActions;
-    }
-    return [];
-  }, [headerNode, headerOwnerRoute, route]);
-  const directHeaderActions = useMemo<ReactNode>(() => {
-    if (route.view === "agent-run") {
-      const agentId = getRouteString(route, "agentId");
-      return (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => navigateWithinShell(agentId ? { view: "agent", agentId } : HOME_ROUTE)}
-        >
-          Back
-        </Button>
-      );
-    }
-
-    if (route.view === "provisioning-job") {
-      return (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => navigateWithinShell(getProvisioningReturnRoute(route))}
-        >
-          Back
-        </Button>
-      );
-    }
-
-    if (route.view === "code-explorer") {
-      if (!headerOwnerRoute) {
-        return null;
-      }
-      const contentType = getRouteString(route, "contentType");
-      const backLabel = contentType === "task"
-        ? "Back to task"
-        : contentType === "chat"
-          ? "Back to chat"
-          : contentType === "server" || contentType === "execution-host"
-            ? "Back to server"
-            : "Back to workspace";
-      return (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => navigateWithinShell(headerOwnerRoute ?? HOME_ROUTE)}
-        >
-          {backLabel}
-        </Button>
-      );
-    }
-
-    if (route.view === "compose" && composeKind === "task") {
-      return (
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={composeActionState?.onCancel ?? (() => navigateWithinShell(
-              composeWorkspace ? { view: "workspace", workspaceId: composeWorkspace.id } : HOME_ROUTE,
-            ))}
-            disabled={composeActionState?.isSubmitting}
-          >
-            Cancel
-          </Button>
-          {composeActionState
-            && (!composeActionState.isEditing || composeActionState.isEditingDraft) && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={composeActionState.onSaveAsDraft}
-                disabled={!composeActionState.canSaveDraft}
-                loading={composeActionState.isSubmitting}
-              >
-                {composeActionState.isEditingDraft ? "Update" : "Save as Draft"}
-              </Button>
-            )}
-          {composeActionState ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={composeActionState.onSubmit}
-              disabled={!composeActionState.canSubmit}
-              loading={composeActionState.isSubmitting}
-            >
-              {composeActionState.isEditing ? "Start" : "Create"}
-            </Button>
-          ) : null}
-        </>
-      );
-    }
-
-    return registeredHeaderActions?.actions ?? null;
+    const entityActions = route.view !== "code-explorer" && route.view !== "agent-run"
+      && headerOwnerRoute
+      && headerNode
+      && !sidebarNodeMatchesRoute(headerNode, route)
+      ? ownerActions
+      : [];
+    const draftAction = route.view === "compose"
+      && composeKind === "task"
+      && composeActionState
+      && (!composeActionState.isEditing || composeActionState.isEditingDraft)
+      ? [{
+          id: "save-as-draft",
+          label: composeActionState.isEditingDraft ? "Update" : "Save as Draft",
+          disabled: !composeActionState.canSaveDraft || composeActionState.isSubmitting,
+          onAction: composeActionState.onSaveAsDraft,
+        }]
+      : [];
+    return [
+      ...draftAction,
+      ...entityActions,
+    ];
   }, [
     composeActionState,
     composeKind,
-    composeWorkspace,
+    headerNode,
     headerOwnerRoute,
-    navigateWithinShell,
-    registeredHeaderActions,
+    route,
+  ]);
+  const directHeaderActions = useMemo<ReactNode>(() => {
+    if (route.view === "compose" && composeKind === "task") {
+      return composeActionState ? (
+        <Button
+          type="button"
+          size="sm"
+          onClick={composeActionState.onSubmit}
+          disabled={!composeActionState.canSubmit}
+          loading={composeActionState.isSubmitting}
+        >
+          {composeActionState.isEditing ? "Start" : "Create"}
+        </Button>
+      ) : null;
+    }
+
+    return null;
+  }, [
+    composeActionState,
+    composeKind,
     route,
   ]);
 

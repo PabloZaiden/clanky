@@ -5,7 +5,7 @@ import type {
 } from "@/shared";
 import { DETERMINISTIC_AGENT_CODE_CONTRACT } from "@/shared/deterministic-agent";
 import type { TaskLogEntry } from "@/shared/task";
-import { Button, StatusBadge } from "../common";
+import { StatusBadge } from "../common";
 import { ChatDetails } from "../ChatDetails";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
 import type { UseAgentCodeGenerationResult } from "./use-agent-code-generation";
@@ -16,9 +16,6 @@ import { DeterministicOutputStreams } from "./deterministic-output-streams";
 export interface AgentDeterministicModeProps {
   mode: AgentFormMode;
   agent: Agent | null;
-  isSubmitting: boolean;
-  canGenerateCode: boolean;
-  canTestCode: boolean;
   generation: UseAgentCodeGenerationResult;
   testing: UseAgentCodeTestResult;
 }
@@ -26,9 +23,6 @@ export interface AgentDeterministicModeProps {
 export function AgentDeterministicMode({
   mode,
   agent,
-  isSubmitting,
-  canGenerateCode,
-  canTestCode,
   generation,
   testing,
 }: AgentDeterministicModeProps) {
@@ -100,57 +94,12 @@ export function AgentDeterministicMode({
           </div>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="w-28"
-          onClick={() => void generation.generateCode()}
-          disabled={isSubmitting || !canGenerateCode}
-          loading={generation.isGeneratingCode}
-        >
-          Generate
-        </Button>
-        {generation.isGeneratingCode && (
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={generation.cancelGeneration}
-          >
-            Cancel generation
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="w-28"
-          onClick={() => void testing.testCode()}
-          disabled={isSubmitting || !canTestCode}
-          loading={testing.isTestingCode}
-        >
-          Test
-        </Button>
-        {testing.isTestingCode && (
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={testing.cancelTest}
-          >
-            Cancel test
-          </Button>
-        )}
-      </div>
       {mode === "edit" && agent && generation.generationChatId ? (
         <div className="h-[min(38rem,70vh)] min-h-[24rem] overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
           <ChatDetails
             key={generation.generationChatId}
             chatId={generation.generationChatId}
             embedded
-            showBackButton={false}
             isExternallyBusy={generation.isGeneratingCode}
             onSendMessage={generation.sendGenerationMessage}
           />

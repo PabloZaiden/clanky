@@ -174,13 +174,6 @@ export function ComposeView(props: ComposeViewProps) {
       <TerminalSessionComposer
         workspaces={workspaces}
         initialWorkspaceId={composeWorkspace?.id}
-        onCancel={() =>
-          navigateWithinShell(
-            composeWorkspace
-              ? { view: "workspace", workspaceId: composeWorkspace.id }
-              : { view: "home" },
-          )
-        }
         onNavigate={navigateWithinShell}
         onCreateTerminalSession={createTerminalSession}
       />
@@ -190,17 +183,6 @@ export function ComposeView(props: ComposeViewProps) {
   return (
     <SshServerComposer
       initialServer={composeServer}
-      onCancel={() =>
-        navigateWithinShell(
-          composeServer
-            ? {
-                view: "execution-host",
-                hostKind: "ssh",
-                hostId: composeServer.config.id,
-              }
-            : { view: "home" },
-        )
-      }
       onNavigate={navigateWithinShell}
       onCreateServer={createServer}
       onUpdateServer={updateServer}

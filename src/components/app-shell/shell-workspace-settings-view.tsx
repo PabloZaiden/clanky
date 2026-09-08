@@ -3,9 +3,8 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../workspace-settings";
 import { ProvisioningActionsSection } from "../workspace-settings";
-import { ErrorState, LoadingState, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
-import { useShellHeaderActions } from "./shell-header-actions";
 
 interface WorkspaceSettingsViewProps {
   selectedWorkspace: Workspace;
@@ -42,18 +41,19 @@ export function WorkspaceSettingsView({
     selectedWorkspaceTaskCount,
   } = workspaceSettings;
 
-  useShellHeaderActions(
-    <Button
-      type="submit"
-      form="workspace-settings-shell-form"
-      size="sm"
-      loading={workspaceSettingsSaving}
-      disabled={!workspaceSettingsFormValid || workspaceSettingsLoading || !workspaceFromHook}
-    >
-      <span className="sm:hidden">Save</span>
-      <span className="hidden sm:inline">Save Changes</span>
-    </Button>,
-  );
+  useHeaderActions({
+    primary: (
+      <Button
+        type="submit"
+        form="workspace-settings-shell-form"
+        size="sm"
+        loading={workspaceSettingsSaving}
+        disabled={!workspaceSettingsFormValid || workspaceSettingsLoading || !workspaceFromHook}
+      >
+        Save
+      </Button>
+    ),
+  });
 
   return (
     <div className="space-y-6">

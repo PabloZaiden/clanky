@@ -1,6 +1,7 @@
 import type { WorkspaceFileEntry } from "@/shared";
 import { formatFileSize } from "../../utils";
 import { Button } from "../common";
+import { ActionMenu } from "@pablozaiden/webapp/web";
 
 interface LargeFileWarningPanelProps {
   file: WorkspaceFileEntry;
@@ -40,15 +41,18 @@ export function LargeFileWarningPanel({
           >
             Download
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={opening}
-            disabled={downloading}
-            onClick={() => void onOpenInCodeExplorer()}
-          >
-            Open with code explorer
-          </Button>
+          <ActionMenu
+            ariaLabel="Large file actions"
+            triggerVariant="ghost"
+            triggerSize="compact"
+            disabled={downloading || opening}
+            items={[{
+              id: "open-code-explorer",
+              label: opening ? "Opening..." : "Open code explorer",
+              disabled: downloading || opening,
+              onAction: () => void onOpenInCodeExplorer(),
+            }]}
+          />
         </div>
       </div>
     </section>

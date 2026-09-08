@@ -3,14 +3,12 @@
  */
 
 import { useState } from "react";
-import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
+import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
-import { TrashIcon } from "./icons";
 
 interface DeleteWorkspaceSectionProps {
   workspace: Workspace;
@@ -74,20 +72,22 @@ export function DeleteWorkspaceSection({
             ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
             : "This only removes the workspace record and does not delete files on disk."}
         </p>
-        <Button
-          type="button"
-          variant="danger"
-          size="sm"
-          onClick={() => {
-            setDeleteServerDirectory(true);
-            setShowConfirm(true);
-          }}
-          loading={deleting}
+        <ActionMenu
+          ariaLabel="Workspace actions"
+          triggerVariant="ghost"
+          triggerSize="compact"
           disabled={disabled}
-        >
-          <TrashIcon className="w-4 h-4 mr-2" />
-          Delete Workspace
-        </Button>
+          items={[{
+            id: "delete",
+            label: "Delete",
+            destructive: true,
+            disabled,
+            onAction: () => {
+              setDeleteServerDirectory(true);
+              setShowConfirm(true);
+            },
+          }]}
+        />
       </div>
 
       <ConfirmModal

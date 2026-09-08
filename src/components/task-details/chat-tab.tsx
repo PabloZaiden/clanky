@@ -59,5 +59,5 @@ export function ChatTab({ taskId }: { taskId: string }) {
     );
   }
 
-  return <ChatDetails chatId={chatId} embeddedTaskId={taskId} showBackButton={false} />;
+  return <ChatDetails chatId={chatId} embeddedTaskId={taskId} />;
 }
