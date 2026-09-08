@@ -17,6 +17,8 @@ import {
 import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings } from "@/shared/settings";
 import {
   executionHostBindingsEqual,
+  executionHostRefsEqual,
+  isPrivateMeshExecutionHostRef,
   type ExecutionHostBinding,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
@@ -121,6 +123,21 @@ function normalizeCreateInput(input: CreateWorkspaceInput): NormalizedCreateWork
     basePath: input.basePath,
     devcontainerSubpath: input.devcontainerSubpath,
   };
+}
+
+function resolveWorkspaceExecutionHostBinding(
+  workspace: Workspace,
+  ref: ExecutionHostRef,
+  userId: string,
+): ExecutionHostBinding {
+  if (
+    isPrivateMeshExecutionHostRef(ref)
+    && executionHostRefsEqual(ref, workspace.executionHostBinding.host)
+  ) {
+    executionHostService.validateBinding(workspace.executionHostBinding, userId);
+    return workspace.executionHostBinding;
+  }
+  return executionHostService.getBinding(ref);
 }
 
 function getValidationFailure(
@@ -316,7 +333,9 @@ export class WorkspaceManager {
         }
       }
       if (normalized.provisioningHost) {
-        provisioningHostBinding = executionHostService.getBinding(normalized.provisioningHost);
+        provisioningHostBinding = normalized.workspaceWorkerEnrollmentId
+          ? executionHostBinding
+          : executionHostService.getBinding(normalized.provisioningHost);
       }
       const workspace = createWorkspaceRecordFromInput(
         normalized,
@@ -435,7 +454,11 @@ export class WorkspaceManager {
               "A registered execution host is required when clearing the SSH target.",
             );
           }
-          nextExecutionHostBinding = executionHostService.getBinding(updates.executionHost);
+          nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+            current,
+            updates.executionHost,
+            requireCurrentUserId(),
+          );
           nextSshTarget = undefined;
           removeSshTarget = true;
         } else {
@@ -453,7 +476,11 @@ export class WorkspaceManager {
           };
         }
       } else if (updates.executionHost !== undefined) {
-        nextExecutionHostBinding = executionHostService.getBinding(updates.executionHost);
+        nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+          current,
+          updates.executionHost,
+          requireCurrentUserId(),
+        );
         nextSshTarget = undefined;
         removeSshTarget = current.sshTarget !== undefined;
       }
@@ -583,14 +610,16 @@ export class WorkspaceManager {
     executionHost?: ExecutionHostRef,
     sshTarget?: WorkspaceSshTargetInput,
     workspaceWorkerEnrollmentId?: string,
+    bindingOverride?: ExecutionHostBinding,
   ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
     try {
-      const binding = workspaceWorkerEnrollmentId
-        ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
-            requireCurrentUserId(),
-            workspaceWorkerEnrollmentId,
-          )
-        : undefined;
+      const binding = bindingOverride
+        ?? (workspaceWorkerEnrollmentId
+          ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
+              requireCurrentUserId(),
+              workspaceWorkerEnrollmentId,
+            )
+          : undefined);
       return await backendManager.testConnection(
         serverSettings,
         directory,
@@ -601,6 +630,30 @@ export class WorkspaceManager {
     } catch (error) {
       return { success: false, error: String(error) };
     }
+  }
+
+  async testWorkspaceConnection(
+    workspaceId: string,
+    serverSettings: ServerSettings,
+    directory: string,
+    executionHost?: ExecutionHostRef,
+    sshTarget?: WorkspaceSshTargetInput,
+    workspaceWorkerEnrollmentId?: string,
+  ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
+    const workspace = await this.requireWorkspace(workspaceId);
+    const bindingOverride = executionHost
+      && isPrivateMeshExecutionHostRef(executionHost)
+      && executionHostRefsEqual(executionHost, workspace.executionHostBinding.host)
+      ? workspace.executionHostBinding
+      : undefined;
+    return await this.testConnection(
+      serverSettings,
+      directory,
+      executionHost,
+      sshTarget,
+      workspaceWorkerEnrollmentId,
+      bindingOverride,
+    );
   }
 }
 

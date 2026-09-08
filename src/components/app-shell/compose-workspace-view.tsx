@@ -302,6 +302,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
                 allowWorkspaceSshTarget
+                dedicatedWorkerSelected={
+                  workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
+                }
                 onChange={(
                   settings: ServerSettings,
                   isValid: boolean,

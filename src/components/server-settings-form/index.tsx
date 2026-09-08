@@ -11,7 +11,10 @@ import {
   type ExecutionHostRef,
   type ServerSettings,
 } from "@/shared";
-import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
+import {
+  isPrivateMeshExecutionHostRef,
+  isWorkspaceSshExecutionHostRef,
+} from "@/shared/execution-host";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
@@ -37,6 +40,7 @@ export interface ServerSettingsFormProps {
   testing?: boolean;
   remoteOnly?: boolean;
   allowWorkspaceSshTarget?: boolean;
+  dedicatedWorkerSelected?: boolean;
 }
 
 export function ServerSettingsForm({
@@ -48,6 +52,7 @@ export function ServerSettingsForm({
   testing = false,
   remoteOnly = false,
   allowWorkspaceSshTarget = false,
+  dedicatedWorkerSelected = false,
 }: ServerSettingsFormProps) {
   const { targets, loading } = useWorkspaceExecutionTargets();
   const selectableTargets = useMemo(
@@ -79,13 +84,19 @@ export function ServerSettingsForm({
     success: boolean;
     error?: string;
   } | null>(null);
+  const initialDedicatedWorker = Boolean(
+    initialExecutionHost && isPrivateMeshExecutionHostRef(initialExecutionHost),
+  );
+  const dedicatedWorkerActive = dedicatedWorkerSelected || initialDedicatedWorker;
 
   useEffect(() => {
     const nextProvider =
       initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
     const workspaceSshRef = initialExecutionHost
       && isWorkspaceSshExecutionHostRef(initialExecutionHost);
-    const nextExecutionHost = workspaceSshRef ? null : initialExecutionHost;
+    const nextExecutionHost = dedicatedWorkerSelected || workspaceSshRef
+      ? null
+      : initialExecutionHost;
     const nextSshTarget = initialSshTarget
       ? {
         host: initialSshTarget.host,
@@ -106,33 +117,56 @@ export function ServerSettingsForm({
     setTestResult(null);
     onChangeRef.current(
       { agent: { provider: nextProvider } },
-      nextExecutionHost !== null || isSshTargetValid(nextSshTarget),
+      dedicatedWorkerSelected
+        || nextExecutionHost !== null
+        || isSshTargetValid(nextSshTarget),
       nextExecutionHost,
       nextSshTarget,
     );
-  }, [initialExecutionHost, initialSshTarget, initialSettings]);
+  }, [dedicatedWorkerSelected, initialExecutionHost, initialSshTarget, initialSettings]);
 
   useEffect(() => {
-    if (loading || executionHost || sshTarget || selectableTargets.length === 0) {
+    if (
+      loading
+      || executionHost
+      || sshTarget
+      || dedicatedWorkerActive
+      || selectableTargets.length === 0
+    ) {
       return;
     }
     const nextHost = selectableTargets[0]!.ref;
     setExecutionHost(nextHost);
     onChangeRef.current({ agent: { provider } }, true, nextHost);
-  }, [executionHost, loading, provider, selectableTargets, sshTarget]);
+  }, [
+    dedicatedWorkerActive,
+    executionHost,
+    loading,
+    provider,
+    selectableTargets,
+    sshTarget,
+  ]);
 
   function updateProvider(nextProvider: AgentProvider): void {
     setProvider(nextProvider);
     setTestResult(null);
     onChangeRef.current(
       { agent: { provider: nextProvider } },
-      executionHost !== null || isSshTargetValid(sshTarget),
+      dedicatedWorkerActive || executionHost !== null || isSshTargetValid(sshTarget),
       executionHost,
       sshTarget,
     );
   }
 
   function updateExecutionHost(serialized: string): void {
+    if (serialized === "workspace-worker") {
+      setExecutionHost(null);
+      setSshTarget(null);
+      setClearStoredPassword(false);
+      setTestResult(null);
+      onChangeRef.current({ agent: { provider } }, true, null, null);
+      return;
+    }
     if (serialized === "workspace-ssh-target") {
       const nextTarget = sshTarget ?? {
         host: "",
@@ -197,7 +231,14 @@ export function ServerSettingsForm({
   }
 
   async function handleTest(): Promise<void> {
-    if (!onTest || (!executionHost && !isSshTargetValid(sshTarget))) {
+    if (
+      !onTest
+      || (
+        !executionHost
+        && !isSshTargetValid(sshTarget)
+        && !dedicatedWorkerActive
+      )
+    ) {
       return;
     }
     setTestResult(null);
@@ -244,7 +285,9 @@ export function ServerSettingsForm({
                 ? "workspace-ssh-target"
                 : executionHost
                   ? serializeExecutionHostRef(executionHost)
-                  : ""}
+                  : dedicatedWorkerActive
+                    ? "workspace-worker"
+                    : ""}
               disabled={loading}
               onChange={(event) => updateExecutionHost(event.target.value)}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
@@ -254,6 +297,16 @@ export function ServerSettingsForm({
               </option>
               {allowWorkspaceSshTarget && (
                 <option value="workspace-ssh-target">Direct SSH target</option>
+              )}
+              {dedicatedWorkerSelected && !initialDedicatedWorker && (
+                <option value="workspace-worker">Dedicated worker</option>
+              )}
+              {initialDedicatedWorker && initialExecutionHost && (
+                <option
+                  value={serializeExecutionHostRef(initialExecutionHost)}
+                >
+                  Dedicated worker
+                </option>
               )}
               {selectableTargets.map((target) => (
                 <option
@@ -355,7 +408,7 @@ export function ServerSettingsForm({
         <TestConnection
           onTest={handleTest}
           testing={testing}
-          disabled={!executionHost && !sshTargetValid}
+          disabled={!executionHost && !sshTargetValid && !dedicatedWorkerActive}
           testResult={testResult}
         />
       )}

@@ -28,6 +28,7 @@ import { agentScheduler } from "./core/agent-scheduler";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import { provisioningManager } from "./core/provisioning-manager";
+import { meshManager } from "./core/mesh-manager";
 import {
   agentEventEmitter,
   chatEventEmitter,
@@ -59,6 +60,7 @@ import {
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
+const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 const MESH_WORKER_CONTROL_ROUTE_METHODS = {
   "/api/mesh/status": ["GET"],
@@ -71,6 +73,8 @@ let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let appMeshWorkerMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 let realtimeHeartbeatCleanup: (() => void) | undefined;
+let workspaceWorkerReconcileTimer: Timer | undefined;
+let workspaceWorkerReconcileRunning = false;
 
 function normalizeLocalManagedCredentialHost(host: string): string | undefined {
   const normalizedHost = host.trim().toLowerCase();
@@ -140,9 +144,10 @@ async function reconcileStartupState(): Promise<void> {
 
   let staleTasksReset = 0;
   let staleManagedContextsRevoked = 0;
-  await runForEachActiveUser(async () => {
+  await runForEachActiveUser(async (user) => {
     staleTasksReset += await resetStaleTasks();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
+    await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
     await provisioningManager.reconcileDedicatedWorkerStartupState();
   });
   if (staleTasksReset > 0) {
@@ -151,6 +156,42 @@ async function reconcileStartupState(): Promise<void> {
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
   }
+}
+
+async function reconcileWorkspaceWorkerEnrollments(): Promise<void> {
+  if (workspaceWorkerReconcileRunning) {
+    return;
+  }
+  workspaceWorkerReconcileRunning = true;
+  try {
+    await runForEachActiveUser(async (user) => {
+      await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
+    });
+  } catch (error) {
+    log.error("Workspace worker enrollment reconciliation failed", {
+      error: String(error),
+    });
+  } finally {
+    workspaceWorkerReconcileRunning = false;
+  }
+}
+
+function startWorkspaceWorkerReconciliation(): void {
+  if (workspaceWorkerReconcileTimer) {
+    return;
+  }
+  workspaceWorkerReconcileTimer = setInterval(() => {
+    void reconcileWorkspaceWorkerEnrollments();
+  }, WORKSPACE_WORKER_RECONCILE_INTERVAL_MS);
+  workspaceWorkerReconcileTimer.unref?.();
+}
+
+function stopWorkspaceWorkerReconciliation(): void {
+  if (!workspaceWorkerReconcileTimer) {
+    return;
+  }
+  clearInterval(workspaceWorkerReconcileTimer);
+  workspaceWorkerReconcileTimer = undefined;
 }
 
 function startMacWorkerPermissionPreflight(): void {
@@ -196,6 +237,7 @@ async function completeStartup(
   if (options.startBackgroundWorkers !== false) {
     pushedTaskMonitor.start();
     agentScheduler.start();
+    startWorkspaceWorkerReconciliation();
   }
 
   for (const message of getServerStartupMessages({
@@ -212,6 +254,7 @@ async function completeStartup(
 function stopBackgroundWorkers(): void {
   pushedTaskMonitor.stop();
   agentScheduler.stop();
+  stopWorkspaceWorkerReconciliation();
 }
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({

@@ -403,6 +403,21 @@ describe("controller-worker Mesh", () => {
       nodeId: workerNodeId,
     });
 
+    const updated = await jsonRequest(
+      controller,
+      `/api/workspaces/${encodeURIComponent(workspace.body.id)}`,
+      {
+        method: "PUT",
+        body: {
+          name: "Dedicated workspace updated",
+          directory: workspace.body.directory,
+          executionHost: workspace.body.executionHostBinding.host,
+        },
+      },
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.body.name).toBe("Dedicated workspace updated");
+
     const secondWorkspace = await jsonRequest(controller, "/api/workspaces", {
       method: "POST",
       body: {

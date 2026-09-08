@@ -168,26 +168,38 @@ export class MeshManager {
     return status;
   }
 
-  async listWorkspaceWorkerEnrollments(userId: string) {
+  async reconcileWorkspaceWorkerEnrollments(userId: string): Promise<void> {
     requireMeshRuntimeRole("controller");
-    const statuses = workspaceWorkerEnrollmentService.list(userId);
-    for (const status of statuses) {
+    const now = Date.now();
+    for (const status of workspaceWorkerEnrollmentService.list(userId)) {
       if (
         !["pending", "connected"].includes(status.enrollment.status)
-        || Date.parse(status.enrollment.expiresAt) > Date.now()
+        || Date.parse(status.enrollment.expiresAt) > now
       ) {
         continue;
       }
-      workspaceWorkerEnrollmentService.markFailed(
-        userId,
-        status.enrollment.id,
-        "enrollment_expired",
-        "The workspace worker enrollment expired.",
-        "expired",
-        true,
-      );
-      await this.cleanupDedicatedWorker(userId, status.enrollment.id);
+      try {
+        workspaceWorkerEnrollmentService.markFailed(
+          userId,
+          status.enrollment.id,
+          "enrollment_expired",
+          "The workspace worker enrollment expired.",
+          "expired",
+          true,
+        );
+        await this.cleanupDedicatedWorker(userId, status.enrollment.id);
+      } catch (error) {
+        log.error("Failed to reconcile expired workspace worker enrollment", {
+          enrollmentId: status.enrollment.id,
+          error: String(error),
+        });
+      }
     }
+  }
+
+  async listWorkspaceWorkerEnrollments(userId: string) {
+    requireMeshRuntimeRole("controller");
+    await this.reconcileWorkspaceWorkerEnrollments(userId);
     return workspaceWorkerEnrollmentService.list(userId);
   }
 
@@ -313,32 +325,80 @@ export class MeshManager {
     });
 
     if (decision.kind === "apply") {
-      await saveWorkerRegistration({
-        workerNodeId: envelope.workerNodeId,
-        localUserId: tokenResult.userId,
-        workerInstanceName: envelope.workerInstanceName ?? null,
-        workerEndpoint: envelope.workerEndpoint,
-        workerTransport: envelope.workerTransport,
-        workerPublicKey: envelope.workerPublicKey,
-        workerFingerprint: envelope.workerFingerprint,
-        workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
-        workerDirectory: envelope.workerDirectory,
-        workerCapabilities: envelope.workerCapabilities,
-        workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
-        workerConfigRevision: envelope.workerConfigRevision,
-        ...(tokenResult.purpose === "workspace-worker"
-          ? {
-              registrationScope: "workspace" as const,
-              workspaceWorkerEnrollmentId: tokenResult.workspaceWorkerEnrollmentId!,
+      const workspaceWorkerEnrollmentId = tokenResult.purpose === "workspace-worker"
+        ? tokenResult.workspaceWorkerEnrollmentId!
+        : undefined;
+      try {
+        await saveWorkerRegistration({
+          workerNodeId: envelope.workerNodeId,
+          localUserId: tokenResult.userId,
+          workerInstanceName: envelope.workerInstanceName ?? null,
+          workerEndpoint: envelope.workerEndpoint,
+          workerTransport: envelope.workerTransport,
+          workerPublicKey: envelope.workerPublicKey,
+          workerFingerprint: envelope.workerFingerprint,
+          workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
+          workerDirectory: envelope.workerDirectory,
+          workerCapabilities: envelope.workerCapabilities,
+          workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
+          workerConfigRevision: envelope.workerConfigRevision,
+          ...(workspaceWorkerEnrollmentId
+            ? {
+                registrationScope: "workspace" as const,
+                workspaceWorkerEnrollmentId,
+              }
+            : {}),
+        });
+        if (workspaceWorkerEnrollmentId) {
+          workspaceWorkerEnrollmentService.markConnected(
+            tokenResult.userId,
+            workspaceWorkerEnrollmentId,
+            envelope.workerNodeId,
+          );
+        }
+      } catch (error) {
+        if (workspaceWorkerEnrollmentId) {
+          try {
+            const savedRegistration = await getWorkerRegistration(
+              envelope.workerNodeId,
+              tokenResult.userId,
+            );
+            if (
+              savedRegistration?.registrationScope === "workspace"
+              && savedRegistration.workspaceWorkerEnrollmentId === workspaceWorkerEnrollmentId
+            ) {
+              await revokeWorkerRegistration(
+                envelope.workerNodeId,
+                tokenResult.userId,
+              );
+              await deleteRevokedWorkerRegistration(
+                envelope.workerNodeId,
+                tokenResult.userId,
+              );
             }
-          : {}),
-      });
-      if (tokenResult.purpose === "workspace-worker") {
-        workspaceWorkerEnrollmentService.markConnected(
-          tokenResult.userId,
-          tokenResult.workspaceWorkerEnrollmentId!,
-          envelope.workerNodeId,
-        );
+          } catch (cleanupError) {
+            log.error("Failed to clean up a partially enrolled workspace worker", {
+              workerNodeId: envelope.workerNodeId,
+              enrollmentId: workspaceWorkerEnrollmentId,
+              error: String(cleanupError),
+            });
+          }
+          try {
+            workspaceWorkerEnrollmentService.markFailed(
+              tokenResult.userId,
+              workspaceWorkerEnrollmentId,
+              "workspace_worker_connection_failed",
+              "The workspace worker could not complete enrollment.",
+            );
+          } catch (statusError) {
+            log.error("Failed to mark workspace worker enrollment as failed", {
+              workerNodeId: envelope.workerNodeId,
+              enrollmentId: workspaceWorkerEnrollmentId,
+              error: String(statusError),
+            });
+          }
+        }
+        throw error;
       }
     }
 

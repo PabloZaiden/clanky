@@ -181,7 +181,8 @@ export const serverSettingsRoutes = defineRoutes({
           }
         }
 
-        const result = await workspaceManager.testConnection(
+        const result = await workspaceManager.testWorkspaceConnection(
+          id,
           settings,
           workspace.directory,
           executionHost,
