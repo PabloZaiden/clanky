@@ -1,4 +1,4 @@
-export const DEVBOX_REQUIRED_VERSION = "1.2.0";
+export const DEVBOX_REQUIRED_VERSION = "1.2.1";
 
 export function parseDevboxVersion(output: string): string | null {
   const match = output.match(/^devbox v(\d+\.\d+\.\d+)(?=\s|$)/m);

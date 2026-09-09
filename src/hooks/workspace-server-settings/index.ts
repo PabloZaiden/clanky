@@ -12,6 +12,7 @@ import { useWorkspaceMutations } from "./use-mutations";
 import { useWorkspaceConnection } from "./use-connection";
 export type { UseWorkspaceServerSettingsResult } from "./types";
 export { useWorkspaceExecutionTargets } from "./use-execution-targets";
+export { useExecutionHostAddresses } from "./use-execution-host-addresses";
 
 /**
  * Hook for managing workspace-specific server settings.

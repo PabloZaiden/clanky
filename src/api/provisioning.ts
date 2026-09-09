@@ -27,6 +27,12 @@ function mapProvisioningError(error: unknown): Response {
       invalid_credential_token: {
         status: 400,
       },
+      invalid_worker_host_address: {
+        status: 400,
+      },
+      invalid_execution_target: {
+        status: 400,
+      },
       job_not_terminal: {
         status: 409,
       },
@@ -52,6 +58,13 @@ function mapProvisioningError(error: unknown): Response {
         status: 409,
       },
       workspace_worker_not_connected: {
+        status: 409,
+      },
+      mesh_public_base_url_not_configured: {
+        status: 400,
+        message: "Configure CLANKY_PUBLIC_BASE_URL before using worker provisioning.",
+      },
+      execution_host_addresses_unavailable: {
         status: 409,
       },
       execution_host_unavailable: {
@@ -124,6 +137,10 @@ export const provisioningRoutes = defineRoutes({
             : {}),
           ...(validation.data.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: validation.data.workspaceWorkerEnrollmentId }
+            : {}),
+          transport: validation.data.transport,
+          ...(validation.data.workerHostAddress
+            ? { workerHostAddress: validation.data.workerHostAddress }
             : {}),
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,

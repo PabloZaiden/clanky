@@ -3,6 +3,7 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
+import { useExecutionHostAddresses } from "../../hooks/workspace-server-settings";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
@@ -132,6 +133,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceCreateSubmitting,
     automaticExecutionHost,
     setAutomaticExecutionHost,
+    automaticTransport,
+    setAutomaticTransport,
+    automaticWorkerHostAddress,
+    setAutomaticWorkerHostAddress,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -154,7 +159,37 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     handleTestWorkspaceConnection,
   } = workspaceCreate;
   const { targets: executionTargets } = useWorkspaceExecutionTargets();
+  const {
+    addresses: workerHostAddresses,
+    loading: workerHostAddressesLoading,
+    error: workerHostAddressesError,
+  } = useExecutionHostAddresses(
+    automaticTransport === "worker" ? automaticExecutionHost : null,
+    automaticPassword,
+  );
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      automaticTransport !== "worker"
+      || !automaticExecutionHost
+      || workerHostAddresses.length === 0
+    ) {
+      if (automaticTransport !== "worker" || !automaticExecutionHost) {
+        setAutomaticWorkerHostAddress("");
+      }
+      return;
+    }
+    if (!workerHostAddresses.includes(automaticWorkerHostAddress)) {
+      setAutomaticWorkerHostAddress(workerHostAddresses[0]!);
+    }
+  }, [
+    automaticExecutionHost,
+    automaticTransport,
+    automaticWorkerHostAddress,
+    setAutomaticWorkerHostAddress,
+    workerHostAddresses,
+  ]);
 
   const workspaceCreateFormId = "workspace-create-form";
   const automaticSshServerId = automaticExecutionHost
@@ -191,7 +226,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       )) &&
     (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0) &&
     automaticBasePath.trim().length > 0 &&
-    (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
+    (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0) &&
+    (
+      workspaceWorkerEnrollmentSelected
+      || automaticTransport !== "worker"
+      || (
+        automaticWorkerHostAddress.trim().length > 0
+        && workerHostAddresses.includes(automaticWorkerHostAddress)
+      )
+    );
   const manualFormValid =
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
@@ -349,6 +392,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   if (value === "workspace-worker") {
                     setWorkspaceWorkerEnrollmentSelected(true);
                     setAutomaticExecutionHost(null);
+                    setAutomaticTransport("ssh");
+                    setAutomaticWorkerHostAddress("");
                     setAutomaticBasePath("/workspaces");
                     setAutomaticDevboxTemplate("");
                     return;
@@ -398,6 +443,49 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     </option>
                   ))}
               </SelectField>
+
+              {automaticExecutionHost && !workspaceWorkerEnrollmentSelected && (
+                  <>
+                    <SelectField
+                      id="automatic-transport"
+                      label="Devbox transport"
+                      value={automaticTransport}
+                      onChange={(event) => {
+                        const transport = event.target.value as "ssh" | "worker";
+                        setAutomaticTransport(transport);
+                        if (transport !== "worker") {
+                          setAutomaticWorkerHostAddress("");
+                        }
+                      }}
+                    >
+                      <option value="worker">Dedicated worker (HTTPS)</option>
+                      <option value="ssh">SSH</option>
+                    </SelectField>
+
+                    {automaticTransport === "worker" && (
+                      <SelectField
+                        id="automatic-worker-host-address"
+                        label="Worker host address"
+                        value={automaticWorkerHostAddress}
+                        onChange={(event) => setAutomaticWorkerHostAddress(event.target.value)}
+                        disabled={workerHostAddressesLoading}
+                        required
+                      >
+                        <option value="">
+                          {workerHostAddressesLoading ? "Discovering addresses..." : "Select an address"}
+                        </option>
+                        {workerHostAddresses.map((address) => (
+                          <option key={address} value={address}>{address}</option>
+                        ))}
+                      </SelectField>
+                    )}
+                    {automaticTransport === "worker" && workerHostAddressesError && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        {workerHostAddressesError}
+                      </p>
+                    )}
+                  </>
+              )}
 
               {executionTargets.length === 0 && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">

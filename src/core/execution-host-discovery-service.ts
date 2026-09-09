@@ -7,6 +7,7 @@ import type {
   ExecutionHostRef,
   SshServerPrerequisiteReport,
 } from "@/shared";
+import { isIPv4 } from "node:net";
 import { serializeExecutionHostRef } from "@/shared/execution-host";
 import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
 import {
@@ -26,10 +27,51 @@ function transportLabel(ref: ExecutionHostRef): string {
   if (ref.kind === "ssh") {
     return "SSH";
   }
-  if (ref.kind === "mesh") {
-    return "Mesh";
+  return ref.kind === "mesh" ? "Mesh" : "Local";
+}
+
+function isExcludedInterface(interfaceName: string): boolean {
+  const baseName = interfaceName.split("@", 1)[0] ?? interfaceName;
+  return /^(veth.+|virbr\d*|cni\d*|flannel.+|cali.+|tun\d*|tap\d*|wg\d*|tailscale\d*)$/i.test(baseName);
+}
+
+function isExcludedAddress(address: string): boolean {
+  const octets = address.split(".").map(Number);
+  return octets[0] === 127
+    || (octets[0] === 169 && octets[1] === 254);
+}
+
+export function parseAccessibleIpv4Addresses(output: string): string[] {
+  const addresses = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(
+      /^\d+:\s+([^\s]+)\s+inet\s+([0-9.]+)\/\d+\s+.*?\bscope\s+([^\s]+)/,
+    );
+    if (!match || match[3] === "host" || match[3] === "link") {
+      continue;
+    }
+    const interfaceName = match[1]!;
+    const address = match[2]!;
+    if (
+      isExcludedInterface(interfaceName)
+      || !isIPv4(address)
+      || isExcludedAddress(address)
+    ) {
+      continue;
+    }
+    addresses.add(address);
   }
-  return "Local";
+  return [...addresses].sort();
+}
+
+function parseFallbackIpv4Addresses(output: string): string[] {
+  const addresses = new Set<string>();
+  for (const value of output.split(/\s+/)) {
+    if (isIPv4(value) && !isExcludedAddress(value)) {
+      addresses.add(value);
+    }
+  }
+  return [...addresses].sort();
 }
 
 export class ExecutionHostDiscoveryService {
@@ -80,6 +122,44 @@ export class ExecutionHostDiscoveryService {
       );
     }
     return parseDevboxTemplatesOutput(result.stdout);
+  }
+
+  async listAccessibleIpv4Addresses(
+    ref: ExecutionHostRef,
+    context: ExecutionHostCommandContext,
+  ): Promise<string[]> {
+    const executor = await executionHostService.getCommandExecutorForRef(ref, context);
+    const result = await executor.exec(
+      "ip",
+      ["-4", "-o", "addr", "show", "up"],
+      { cwd: "/" },
+    );
+    const addresses = result.success
+      ? parseAccessibleIpv4Addresses(result.stdout)
+      : [];
+    if (addresses.length > 0) {
+      return addresses;
+    }
+
+    const fallback = await executor.exec("hostname", ["-I"], { cwd: "/" });
+    const fallbackAddresses = fallback.success
+      ? parseFallbackIpv4Addresses(fallback.stdout)
+      : [];
+    if (fallbackAddresses.length > 0) {
+      return fallbackAddresses;
+    }
+
+    throw new DomainError(
+      "execution_host_addresses_unavailable",
+      "No accessible IPv4 address was found on the execution host.",
+      {
+        details: {
+          executionHost: serializeExecutionHostRef(ref),
+          ipExitCode: result.exitCode,
+          hostnameExitCode: fallback.exitCode,
+        },
+      },
+    );
   }
 }
 

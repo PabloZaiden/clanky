@@ -100,7 +100,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
           exitCode: 127,
         };
       }
-      const stdout = "devbox v1.2.0\nUsage: devbox [command]\n";
+      const stdout = "devbox v1.2.1\nUsage: devbox [command]\n";
       return { success: true, stdout, stderr: "", exitCode: 0 };
     }
 
@@ -222,6 +222,14 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     if (command === "devbox" && args[0] === "status") {
       const stdout = this.options.devboxStatusOutput ?? createDevboxStatusOutput();
       return { success: true, stdout, stderr: "", exitCode: 0 };
+    }
+
+    if (command === "chmod") {
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
+    }
+
+    if (command === "devbox" && args[0] === "exec") {
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
     }
 
     return {

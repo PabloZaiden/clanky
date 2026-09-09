@@ -10,6 +10,7 @@ import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { workspaceWorkerEnrollmentService } from "../../src/core/workspace-worker-enrollment-service";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
+import { ensureMeshWorkerTlsIdentity } from "../../src/persistence/mesh-worker-tls";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -29,6 +30,8 @@ interface ProvisioningSnapshotResponse {
           targetKey: string;
           revision: number;
         };
+        transport?: string;
+        workerEnrollmentId?: string;
         devcontainerSubpath?: string;
         devboxTemplate?: string;
         githubUser?: string;
@@ -211,6 +214,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Example Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
@@ -243,6 +247,142 @@ describe("Provisioning API integration", () => {
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
   });
 
+  test("provisions an automatic workspace through a dedicated HTTPS worker", async () => {
+    const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
+    try {
+      const sshServer = await createServer();
+      const executor = new ProvisioningTestExecutor({
+        devboxStatusOutput: createDevboxStatusOutput({
+          running: true,
+          sshEnabled: false,
+          password: null,
+          sshUser: null,
+          sshPort: null,
+          workdir: "/workspaces/worker-example",
+          ports: [5001],
+          publishedPorts: {
+            "5001/tcp": [
+              {
+                hostIp: "0.0.0.0",
+                hostPort: 5001,
+              },
+            ],
+          },
+        }),
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+      const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Worker Workspace",
+          executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          workerHostAddress: "192.168.1.20",
+          repoUrl: "https://github.com/octocat/worker-example.git",
+          basePath: "/workspaces",
+          devcontainerSubpath: null,
+          devboxTemplate: null,
+          provider: "copilot",
+          credentialToken: null,
+          mode: "provision",
+          targetDirectory: null,
+          workspaceId: null,
+        }),
+      });
+      expect(response.status).toBe(201);
+      const started = await response.json() as ProvisioningSnapshotResponse;
+      expect(started.job.config.transport).toBe("worker");
+      const enrollmentId = started.job.config.workerEnrollmentId;
+      expect(enrollmentId).toBeTruthy();
+
+      const workerNodeId = `automatic-worker-${crypto.randomUUID()}`;
+      const workerTlsIdentity = await ensureMeshWorkerTlsIdentity("https://192.168.1.20:5001");
+      await saveWorkerRegistration({
+        workerNodeId,
+        localUserId: "admin",
+        workerInstanceName: "Worker Workspace worker",
+        workerEndpoint: "https://192.168.1.20:5001",
+        workerTransport: "https",
+        workerPublicKey: `${workerNodeId}-public-key`,
+        workerFingerprint: `${workerNodeId}-fingerprint`,
+        workerEncryptionPublicKey: null,
+        workerTlsCertificate: workerTlsIdentity.certificate,
+        workerTlsFingerprint: workerTlsIdentity.fingerprint,
+        workerDirectory: "/workspaces/worker-example",
+        workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+        workerAcceptRemoteExecution: true,
+        workerConfigRevision: 1,
+        registrationScope: "workspace",
+        workspaceWorkerEnrollmentId: enrollmentId,
+      });
+      workspaceWorkerEnrollmentService.markConnected("admin", enrollmentId!, workerNodeId);
+
+      const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+      expect(completed.workspace?.executionHostBinding?.host).toMatchObject({
+        kind: "mesh",
+        scope: "workspace",
+        workspaceId: completed.workspace?.id,
+      });
+      expect(completed.workspace?.provisioningHostBinding?.host).toMatchObject({
+        kind: "ssh",
+        serverId: sshServer.config.id,
+      });
+      expect(executor.calls.some((call) =>
+        call.command === "devbox"
+        && call.args[0] === "up"
+        && call.args.includes("--no-ssh")
+        && call.args.includes("--ports")
+        && call.args.includes("1")
+        && call.args.includes("--no-startup-command"),
+      )).toBe(true);
+      expect(executor.calls.some((call) =>
+        call.command === "devbox"
+        && call.args[0] === "up"
+        && call.args.includes("--no-ssh")
+        && call.args.includes("--ports")
+        && call.args.includes("1")
+        && call.args.includes("--startup-command")
+        && call.args.some((arg) =>
+          arg.includes("/workspaces/worker-example/.devbox/clanky-worker/launcher.sh"),
+        ),
+      )).toBe(true);
+      expect(executor.calls.some((call) =>
+        call.command === "chmod"
+        && call.args[0] === "1777"
+        && call.args.some((arg) => arg.endsWith("/.devbox/clanky-worker")),
+      )).toBe(true);
+      expect(executor.calls.some((call) =>
+        call.command === "chmod"
+        && call.args[0] === "755"
+        && call.args.some((arg) => arg.endsWith("/.devbox/clanky-worker/launcher.sh")),
+      )).toBe(true);
+      expect(executor.calls.some((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.includes("bootstrap"),
+      )).toBe(true);
+      expect(executor.calls.some((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.some((arg) => arg.includes("worker join")),
+      )).toBe(true);
+
+      const deleted = await fetch(
+        `${baseUrl}/api/workspaces/${completed.workspace?.id}`,
+        { method: "DELETE", body: JSON.stringify({}) },
+      );
+      expect(deleted.status).toBe(200);
+    } finally {
+      if (previousPublicBaseUrl === undefined) {
+        delete process.env["CLANKY_PUBLIC_BASE_URL"];
+      } else {
+        process.env["CLANKY_PUBLIC_BASE_URL"] = previousPublicBaseUrl;
+      }
+    }
+  });
+
   test("keeps the provisioning host separate from the Devbox SSH execution target", async () => {
     const sshServer = await createServer();
     const executor = new ProvisioningTestExecutor({
@@ -262,6 +402,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Isolated Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/isolated.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -323,6 +464,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name,
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl,
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -385,6 +527,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Mesh Example",
         executionHost: { kind: "mesh", nodeId: "paired-mesh-node" },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/mesh-example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -438,6 +581,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Dedicated Mesh Example",
         workspaceWorkerEnrollmentId,
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/dedicated-example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -496,6 +640,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Secure Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -544,6 +689,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Bad Token Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -573,6 +719,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Slow Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -610,6 +757,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Broken Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
@@ -639,6 +787,7 @@ describe("Provisioning API integration", () => {
     const requestBody = {
       name: "Retry Workspace",
       executionHost: { kind: "ssh", serverId: sshServer.config.id },
+      transport: "ssh",
       repoUrl: "https://github.com/octocat/retry.git",
       basePath: "/workspaces",
       devcontainerSubpath: null,
@@ -722,6 +871,7 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: "Owned Workspace",
         executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
         repoUrl: "https://github.com/octocat/owned.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,

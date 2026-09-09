@@ -3,6 +3,7 @@ import type {
   ExecutionHostRef,
   ProvisioningJob,
   ProvisioningJobMode,
+  ProvisioningTransport,
   ProvisioningLogEntry,
 } from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
@@ -11,6 +12,8 @@ export interface StartProvisioningJobOptions {
   name: string;
   executionHost?: ExecutionHostRef;
   workspaceWorkerEnrollmentId?: string;
+  transport?: ProvisioningTransport;
+  workerHostAddress?: string;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
@@ -33,4 +36,6 @@ export interface ProvisioningJobRecord {
   owner: CurrentUser;
   runnerActive: boolean;
   secretValues: string[];
+  workerEnrollmentToken?: string;
+  workerJoinCommand?: string;
 }

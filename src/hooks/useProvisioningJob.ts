@@ -12,6 +12,7 @@ import type {
   PublicProvisioningJob,
   PublicProvisioningJobSnapshot,
   ExecutionHostRef,
+  ProvisioningTransport,
 } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
@@ -26,6 +27,8 @@ export interface StartProvisioningJobRequest {
   name: string;
   executionHost?: ExecutionHostRef;
   workspaceWorkerEnrollmentId?: string;
+  transport?: ProvisioningTransport;
+  workerHostAddress?: string;
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
@@ -336,6 +339,10 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           ...(request.executionHost ? { executionHost: request.executionHost } : {}),
           ...(request.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: request.workspaceWorkerEnrollmentId }
+            : {}),
+          ...(request.transport ? { transport: request.transport } : {}),
+          ...(request.workerHostAddress
+            ? { workerHostAddress: request.workerHostAddress.trim() }
             : {}),
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),

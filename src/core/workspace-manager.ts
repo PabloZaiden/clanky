@@ -299,10 +299,13 @@ export class WorkspaceManager {
       });
     }
 
+    let provisioningHostBinding: Workspace["provisioningHostBinding"];
+    if (normalized.provisioningHost && !isPrivateMeshExecutionHostRef(normalized.provisioningHost)) {
+      provisioningHostBinding = executionHostService.getBinding(normalized.provisioningHost);
+    }
     const workspaceId = crypto.randomUUID();
     let executionHostBinding: Workspace["executionHostBinding"];
     let sshTarget: Workspace["sshTarget"];
-    let provisioningHostBinding: Workspace["provisioningHostBinding"];
     let workspaceCreated = false;
     let dedicatedWorkerClaimed = false;
     try {
@@ -332,10 +335,8 @@ export class WorkspaceManager {
           executionHostBinding = executionHostService.getBinding(normalized.executionHost!);
         }
       }
-      if (normalized.provisioningHost) {
-        provisioningHostBinding = normalized.workspaceWorkerEnrollmentId
-          ? executionHostBinding
-          : executionHostService.getBinding(normalized.provisioningHost);
+      if (normalized.provisioningHost && !provisioningHostBinding) {
+        provisioningHostBinding = executionHostBinding;
       }
       const workspace = createWorkspaceRecordFromInput(
         normalized,

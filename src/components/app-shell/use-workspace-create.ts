@@ -16,6 +16,7 @@ import type {
   WorkspaceSshTargetRequest,
 } from "@/contracts/schemas/workspace";
 import type { SshServer } from "@/shared/ssh-server";
+import type { ProvisioningTransport } from "@/shared/provisioning";
 import { apiRequest } from "../../lib/api-client";
 import {
   getAutomaticWorkspaceBasePath,
@@ -55,6 +56,10 @@ export interface UseWorkspaceCreateResult {
   workspaceCreateSubmitting: boolean;
   automaticExecutionHost: ExecutionHostRef | null;
   setAutomaticExecutionHost: (host: ExecutionHostRef | null) => void;
+  automaticTransport: ProvisioningTransport;
+  setAutomaticTransport: (transport: ProvisioningTransport) => void;
+  automaticWorkerHostAddress: string;
+  setAutomaticWorkerHostAddress: (address: string) => void;
   automaticRepoUrl: string;
   setAutomaticRepoUrl: (url: string) => void;
   automaticCreateNewRepository: boolean;
@@ -135,6 +140,8 @@ export function useWorkspaceCreate({
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
   const [automaticExecutionHost, setAutomaticExecutionHost] = useState<ExecutionHostRef | null>(null);
+  const [automaticTransport, setAutomaticTransport] = useState<ProvisioningTransport>("worker");
+  const [automaticWorkerHostAddress, setAutomaticWorkerHostAddress] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
@@ -190,6 +197,8 @@ export function useWorkspaceCreate({
             ? null
             : config.executionHostBinding.host,
         );
+        setAutomaticTransport(config.transport ?? "ssh");
+        setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
         setAutomaticRepoUrl(config.repoUrl ?? "");
         setAutomaticCreateNewRepository(config.createNewRepository ?? false);
         setAutomaticBasePath(config.basePath);
@@ -257,6 +266,8 @@ export function useWorkspaceCreate({
       ? { kind: "ssh", serverId: defaultAutomaticServer.config.id }
       : null;
     setAutomaticExecutionHost(requestedExecutionHost ?? defaultExecutionHost);
+    setAutomaticTransport("worker");
+    setAutomaticWorkerHostAddress("");
     setAutomaticRepoUrl("");
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(
@@ -343,6 +354,8 @@ export function useWorkspaceCreate({
     setAutomaticExecutionHost(defaultAutomaticServer
       ? { kind: "ssh", serverId: defaultAutomaticServer.config.id }
       : null);
+    setAutomaticTransport("worker");
+    setAutomaticWorkerHostAddress("");
     setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
   }, [automaticExecutionHost, route, servers, workspaceWorkerEnrollmentSelected]);
 
@@ -409,6 +422,8 @@ export function useWorkspaceCreate({
       setWorkspaceExecutionHost(null);
       setWorkspaceSshTarget(null);
       setAutomaticExecutionHost(null);
+      setAutomaticTransport("ssh");
+      setAutomaticWorkerHostAddress("");
       setWorkspaceWorkerEnrollmentSelected(true);
       setWorkspaceWorkerEnrollment({ ...created, worker: null });
     } catch (error) {
@@ -453,6 +468,8 @@ export function useWorkspaceCreate({
         ? null
         : config.executionHostBinding.host,
     );
+    setAutomaticTransport(config.transport ?? "ssh");
+    setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
     setAutomaticRepoUrl(config.repoUrl ?? "");
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
@@ -496,6 +513,10 @@ export function useWorkspaceCreate({
           ...(automaticExecutionHost ? { executionHost: automaticExecutionHost } : {}),
           ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
             ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
+            : {}),
+          transport: workspaceWorkerEnrollmentSelected ? "ssh" : automaticTransport,
+          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+            ? { workerHostAddress: automaticWorkerHostAddress }
             : {}),
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
@@ -587,6 +608,10 @@ export function useWorkspaceCreate({
     workspaceCreateSubmitting,
     automaticExecutionHost,
     setAutomaticExecutionHost,
+    automaticTransport,
+    setAutomaticTransport,
+    automaticWorkerHostAddress,
+    setAutomaticWorkerHostAddress,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,

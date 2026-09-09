@@ -8,6 +8,7 @@ import { chatManager } from "../core/chat-manager";
 import { CreateExecutionHostChatRequestSchema } from "@/contracts/schemas";
 import {
   CheckSshServerPrerequisitesRequestSchema,
+  DiscoverExecutionHostAddressesRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
   GetDevboxTemplatesRequestSchema,
@@ -129,6 +130,61 @@ export const executionHostRoutes = defineRoutes({
         ctx.requireUser().id,
         validation.data.credentialToken ?? null,
       );
+    },
+  },
+  "/api/execution-hosts/:kind/:id/addresses": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "List accessible IPv4 addresses on an execution host.",
+    requestSchema: DiscoverExecutionHostAddressesRequestSchema,
+    async POST(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        DiscoverExecutionHostAddressesRequestSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Execution host kind must be local, mesh, or ssh.",
+          400,
+        );
+      }
+      try {
+        executionHostService.getBinding(ref);
+        const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(ref, {
+          operationId: `execution-host-addresses:${ctx.params["id"]!}`,
+          directory: "/",
+          sshPassword: resolveSshPassword(
+            ref,
+            validation.data.credentialToken ?? null,
+          ),
+        });
+        return Response.json({ addresses });
+      } catch (error) {
+        log.error("Failed to discover execution-host addresses", {
+          kind: ref.kind,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_addresses_failed",
+            message: "Failed to discover execution-host addresses.",
+            status: 500,
+          },
+          mappings: {
+            invalid_credential_token: {
+              status: 400,
+            },
+            execution_host_addresses_unavailable: {
+              status: 409,
+            },
+          },
+        });
+      }
     },
   },
   "/api/execution-hosts/:kind/:id/configuration": {
