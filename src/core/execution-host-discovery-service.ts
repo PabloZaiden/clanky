@@ -32,7 +32,7 @@ function transportLabel(ref: ExecutionHostRef): string {
 
 function isExcludedInterface(interfaceName: string): boolean {
   const baseName = interfaceName.split("@", 1)[0] ?? interfaceName;
-  return /^(veth.+|virbr\d*|cni\d*|flannel.+|cali.+|tun\d*|tap\d*|wg\d*|tailscale\d*)$/i.test(baseName);
+  return /^(veth.+|virbr\d*|cni\d*|flannel.+|cali.+)$/i.test(baseName);
 }
 
 function isExcludedAddress(address: string): boolean {

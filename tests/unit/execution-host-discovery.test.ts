@@ -9,9 +9,13 @@ describe("Execution host address discovery", () => {
       "3: docker0 inet 172.18.0.1/16 scope global docker0",
       "4: veth1234@if5 inet 172.18.0.2/16 scope global veth1234",
       "5: eth0  inet 169.254.1.10/16 scope link eth0",
+      "6: wg0   inet 10.8.0.1/24 scope global wg0",
+      "7: tun0  inet 100.64.0.1/32 scope global tun0",
     ].join("\n");
 
     expect(parseAccessibleIpv4Addresses(output)).toEqual([
+      "10.8.0.1",
+      "100.64.0.1",
       "172.18.0.1",
       "192.0.2.10",
     ]);

@@ -65,7 +65,7 @@ export function getSinglePublishedPort(
 ): DevboxPublishedPortMapping {
   const mappings = new Map<number, Set<number>>();
   for (const [containerPortKey, entries] of Object.entries(status.publishedPorts)) {
-    const match = containerPortKey.match(/^(\d+)\/(?:tcp|udp)$/i);
+    const match = containerPortKey.match(/^(\d+)\/tcp$/i);
     const containerPort = match ? Number(match[1]) : undefined;
     if (!containerPort || containerPort < 1 || containerPort > 65535) {
       continue;

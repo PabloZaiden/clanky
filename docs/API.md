@@ -2722,9 +2722,13 @@ Returns the created provisioning job snapshot with status `201 Created`.
     "config": {
       "id": "prov-uuid",
       "name": "clanky-demo",
-      "executionHost": {
-        "kind": "local",
-        "nodeId": "execution-host-node-uuid"
+      "executionHostBinding": {
+        "host": {
+          "kind": "local",
+          "nodeId": "execution-host-node-uuid"
+        },
+        "targetKey": "local:execution-host-node-uuid",
+        "revision": 1
       },
       "transport": "worker",
       "workerHostAddress": "192.0.2.10",

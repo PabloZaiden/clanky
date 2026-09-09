@@ -24,6 +24,7 @@ export function useExecutionHostAddresses(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const credentialWriteRef = useRef<Promise<void>>(Promise.resolve());
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
 
@@ -40,13 +41,28 @@ export function useExecutionHostAddresses(
     const controller = new AbortController();
     controllerRef.current = controller;
     const requestId = ++requestIdRef.current;
+    setAddresses([]);
     setLoading(true);
     setError(null);
 
     try {
       const serverId = getRegisteredSshServerId(host);
       if (serverId && password?.trim()) {
-        await storeSshServerPassword(serverId, password.trim());
+        const passwordToStore = password.trim();
+        const previousWrite = credentialWriteRef.current;
+        const nextWrite = previousWrite
+          .catch(() => undefined)
+          .then(async () => {
+            if (
+              controller.signal.aborted
+              || requestId !== requestIdRef.current
+            ) {
+              return;
+            }
+            await storeSshServerPassword(serverId, passwordToStore);
+          });
+        credentialWriteRef.current = nextWrite.catch(() => undefined);
+        await nextWrite;
       }
       const credentialToken = serverId
         ? await getStoredSshCredentialToken(serverId)

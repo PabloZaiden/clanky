@@ -41,7 +41,9 @@ export const CreateProvisioningJobRequestSchema = z.object({
   if (data.transport === "worker" && data.workspaceWorkerEnrollmentId) {
     return false;
   }
-  if (data.transport === "worker" && data.mode === "provision" && !data.workerHostAddress) {
+  const effectiveTransport = data.transport
+    ?? (data.mode === "provision" && !data.workspaceWorkerEnrollmentId ? "worker" : "ssh");
+  if (effectiveTransport === "worker" && data.mode === "provision" && !data.workerHostAddress) {
     return false;
   }
   if (data.mode === "provision") {

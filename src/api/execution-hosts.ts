@@ -182,6 +182,14 @@ export const executionHostRoutes = defineRoutes({
             execution_host_addresses_unavailable: {
               status: 409,
             },
+            execution_host_unavailable: {
+              status: 404,
+              message: "Execution host not found or unavailable.",
+            },
+            execution_host_private: {
+              status: 400,
+              message: "This execution host is private to its workspace.",
+            },
           },
         });
       }

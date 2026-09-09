@@ -173,15 +173,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     if (
       automaticTransport !== "worker"
       || !automaticExecutionHost
-      || workerHostAddresses.length === 0
     ) {
-      if (automaticTransport !== "worker" || !automaticExecutionHost) {
-        setAutomaticWorkerHostAddress("");
-      }
+      setAutomaticWorkerHostAddress("");
       return;
     }
     if (!workerHostAddresses.includes(automaticWorkerHostAddress)) {
-      setAutomaticWorkerHostAddress(workerHostAddresses[0]!);
+      setAutomaticWorkerHostAddress("");
     }
   }, [
     automaticExecutionHost,

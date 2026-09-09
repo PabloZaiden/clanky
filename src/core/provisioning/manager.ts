@@ -21,6 +21,7 @@ import type {
   ProvisioningJob,
   ProvisioningJobSnapshot,
   ProvisioningLogEntry,
+  ProvisioningStep,
   ProvisioningTransport,
   ServerSettings,
   DevboxStatusResult,
@@ -41,6 +42,7 @@ import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 import { executionHostService } from "../execution-host-service";
+import { executionHostDiscoveryService } from "../execution-host-discovery-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { meshManager } from "../mesh-manager";
 import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
@@ -105,14 +107,25 @@ bin_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin"))}
 data_dir=${shellQuote(paths.containerData)}
 binary=${shellQuote(paths.containerBinary)}
 installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh"))}
-installed_binary="$HOME/.local/bin/clanky"
+install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
+install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
+installed_binary="$install_home/.local/bin/clanky"
 log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 
-mkdir -p "$bin_dir" "$data_dir"
+mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh -o "$installer"
-sh "$installer" pablozaiden/clanky --install-dir "$bin_dir"
-cp "$installed_binary" "$binary"
+HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir"
+if [ -x "$install_dir/clanky" ]; then
+  source_binary="$install_dir/clanky"
+elif [ -x "$installed_binary" ]; then
+  source_binary="$installed_binary"
+else
+  echo "The Clanky installer did not produce an executable binary." >&2
+  exit 1
+fi
+cp "$source_binary" "$binary"
+rm -rf "$install_dir" "$install_home"
 rm -f "$installer"
 
 if [ ! -f "$data_dir/config.json" ]; then
@@ -337,6 +350,33 @@ export class ProvisioningManager {
     }
   }
 
+  private async resolveWorkerHostAddress(
+    userId: string,
+    binding: ExecutionHostBinding,
+    options: StartProvisioningJobOptions,
+    jobId: string,
+  ): Promise<string> {
+    const address = validateWorkerHostAddress(options.workerHostAddress);
+    const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(
+      binding.host,
+      {
+        operationId: `provisioning-addresses:${jobId}`,
+        directory: "/",
+        provider: options.provider,
+        localUserId: userId,
+        sshPassword: options.password,
+      },
+    );
+    if (!addresses.includes(address)) {
+      throw new ProvisioningFailedError(
+        "invalid_worker_host_address",
+        "verify_devbox",
+        "The worker host address must be one of the addresses discovered on the selected execution host.",
+      );
+    }
+    return address;
+  }
+
   async startJob(options: StartProvisioningJobOptions): Promise<ProvisioningJobSnapshot> {
     const owner = requireCurrentUser();
     const jobId = crypto.randomUUID();
@@ -349,14 +389,19 @@ export class ProvisioningManager {
         "Worker transport cannot use an existing dedicated worker enrollment as its provisioning target",
       );
     }
-    const workerHostAddress = transport === "worker" && mode === "provision"
-      ? validateWorkerHostAddress(options.workerHostAddress)
-      : undefined;
     const executionHostBinding = await resolveProvisioningExecutionHostBinding(
       owner.id,
       options,
       jobId,
     );
+    const workerHostAddress = transport === "worker" && mode === "provision"
+      ? await this.resolveWorkerHostAddress(
+          owner.id,
+          executionHostBinding,
+          options,
+          jobId,
+        )
+      : undefined;
     const existingWorkerEnrollment = transport === "worker" && options.workspaceId
       ? workspaceWorkerEnrollmentService.getByWorkspace(owner.id, options.workspaceId)
       : null;
@@ -551,6 +596,7 @@ export class ProvisioningManager {
     const interruptedJobs = listProvisioningJobs(userId).filter(
       (job) =>
         (job.state.status === "pending" || job.state.status === "running")
+        && (job.config.mode ?? "provision") === "provision"
         && (job.config.workspaceWorkerEnrollmentId || job.config.workerEnrollmentId),
     );
     this.reconcileStartupState();
@@ -651,6 +697,7 @@ export class ProvisioningManager {
     cwd: string,
     args: string[],
     options: {
+      step: ProvisioningStep;
       label: string;
       errorCode: string;
       errorMessage: string;
@@ -658,7 +705,7 @@ export class ProvisioningManager {
     },
   ) {
     return await this.runCmd(record, executor, {
-      step: "devbox_status",
+      step: options.step,
       label: options.label,
       command: "devbox",
       args: ["exec", "--", ...args],
@@ -680,7 +727,10 @@ export class ProvisioningManager {
         record.owner.id,
         enrollmentId,
       );
-      if (status.enrollment.status === "connected" && status.worker) {
+      if (
+        ["connected", "attached"].includes(status.enrollment.status)
+        && status.worker?.grantStatus === "active"
+      ) {
         return;
       }
       if (["failed", "expired", "cancelled"].includes(status.enrollment.status)) {
@@ -998,6 +1048,7 @@ export class ProvisioningManager {
             workerEndpoint,
           ],
           {
+            step: "devbox_up",
             label: "Bootstrapping the workspace worker",
             errorCode: "worker_bootstrap_failed",
             errorMessage: "Failed to bootstrap the workspace worker",
@@ -1010,6 +1061,7 @@ export class ProvisioningManager {
           targetDirectory,
           ["sh", workerPaths.containerLauncher],
           {
+            step: "devbox_up",
             label: "Starting the workspace worker",
             errorCode: "worker_start_failed",
             errorMessage: "Failed to start the workspace worker",
@@ -1033,6 +1085,7 @@ export class ProvisioningManager {
           targetDirectory,
           ["sh", "-lc", `CLANKY_DATA_DIR=${shellQuote(workerData)} ${joinCommand}`],
           {
+            step: "devbox_up",
             label: "Registering the workspace worker",
             errorCode: "worker_join_failed",
             errorMessage: "Failed to register the workspace worker",
@@ -1302,10 +1355,6 @@ export class ProvisioningManager {
           );
         }
       }
-      const workerLauncherPaths = workerTransport
-        ? await this.prepareWorkerLauncher(record, executor, targetDirectory, workspace.directory)
-        : undefined;
-
       this.updateState(record, {
         targetDirectory,
         workspaceId,
@@ -1325,6 +1374,9 @@ export class ProvisioningManager {
         );
       }
       appendSystemLog(record, this.maxLogEntries, `Target directory verified: ${targetDirectory}`, "prepare_directory");
+      const workerLauncherPaths = workerTransport
+        ? await this.prepareWorkerLauncher(record, executor, targetDirectory, workspace.directory)
+        : undefined;
 
       setStep(record, this.maxLogEntries, action.step, action.progressLabel);
       await this.runCmd(record, executor, {
@@ -1425,6 +1477,7 @@ export class ProvisioningManager {
             `if [ -s ${shellQuote(paths.containerPid)} ]; then kill "$(cat ${shellQuote(paths.containerPid)})" 2>/dev/null || true; rm -f ${shellQuote(paths.containerPid)}; fi`,
           ],
           {
+            step: action.step,
             label: "Restarting the workspace worker",
             errorCode: "worker_stop_failed",
             errorMessage: "Failed to stop the previous workspace worker",
@@ -1453,6 +1506,7 @@ export class ProvisioningManager {
             workerEndpoint,
           ],
           {
+            step: action.step,
             label: "Refreshing the workspace worker configuration",
             errorCode: "worker_bootstrap_failed",
             errorMessage: "Failed to refresh the workspace worker configuration",
@@ -1465,6 +1519,7 @@ export class ProvisioningManager {
           targetDirectory,
           ["sh", paths.containerLauncher],
           {
+            step: action.step,
             label: "Starting the workspace worker",
             errorCode: "worker_start_failed",
             errorMessage: "Failed to start the workspace worker",
