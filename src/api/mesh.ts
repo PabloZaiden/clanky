@@ -142,9 +142,7 @@ export const meshRoutes = defineRoutes({
       if (!parsed.success) return parsed.response;
       try {
         await meshManager.revokeWorker(ctx.requireOwner().id, parsed.data.workerNodeId);
-        return successResponse({
-          status: await meshManager.getControllerStatus(ctx.requireOwner().id),
-        });
+        return successResponse();
       } catch (error) {
         return meshErrorResponse(error);
       }
