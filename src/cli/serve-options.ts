@@ -18,4 +18,10 @@ export const CLANKY_SERVE_OPTIONS = [
     description: "Allow enrolled controllers to execute on this worker.",
     defaultValue: true,
   },
+  {
+    name: "insecure",
+    type: "boolean",
+    description: "Run a Mesh worker over HTTP instead of HTTPS.",
+    defaultValue: false,
+  },
 ] satisfies readonly WebAppServeOptionDefinition[];

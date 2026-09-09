@@ -23,6 +23,7 @@ import {
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { resolveMeshRoute } from "./mesh-transport-config";
+import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { DomainError } from "./domain-error";
 import { requireCurrentUserId } from "./user-context";
 import type {
@@ -49,6 +50,7 @@ export interface MeshExecutionSessionConnection {
   endpoint: string;
   sessionId: string;
   sessionToken: string;
+  tls?: Bun.TLSOptions;
 }
 
 interface MeshExecutionSession {
@@ -105,6 +107,7 @@ export class MeshCommandExecutorClient {
   private readonly sessionTtlMs: number;
   private session: MeshExecutionSession | null = null;
   private endpoint: string | null = null;
+  private workerTls: Bun.TLSOptions | undefined;
   private readonly activeStreamControllers = new Set<AbortController>();
   private readonly activeRequestControllers = new Set<AbortController>();
 
@@ -144,6 +147,7 @@ export class MeshCommandExecutorClient {
         "The selected worker has no active registration or usable Mesh endpoint.",
       );
     }
+    this.workerTls = getMeshWorkerTlsOptions(registration);
 
     const channel = this.channel;
     const expiresAt = new Date(Date.now() + this.sessionTtlMs).toISOString();
@@ -210,6 +214,7 @@ export class MeshCommandExecutorClient {
       endpoint: this.endpoint,
       sessionId: this.session.sessionId,
       sessionToken: this.session.sessionToken,
+      tls: this.workerTls,
     };
   }
 
@@ -307,6 +312,7 @@ export class MeshCommandExecutorClient {
         },
         body: stream,
         signal: controller.signal,
+        tls: this.workerTls,
       });
       if (!response.ok) {
         throw await this.readErrorResponse(response);
@@ -399,6 +405,7 @@ export class MeshCommandExecutorClient {
             "x-clanky-mesh-session-token": session.sessionToken,
           },
           signal: controller.signal,
+          tls: this.workerTls,
         });
         clearTimeout(timeoutId);
         signal?.removeEventListener("abort", abortHandler);
@@ -620,6 +627,7 @@ export class MeshCommandExecutorClient {
     this.activeRequestControllers.clear();
     this.session = null;
     this.endpoint = null;
+    this.workerTls = undefined;
   }
 
   private async ensureSession(): Promise<void> {
@@ -655,6 +663,7 @@ export class MeshCommandExecutorClient {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
+        tls: this.workerTls,
       });
       if (!response.ok) {
         let payload: unknown = null;

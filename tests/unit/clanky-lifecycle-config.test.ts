@@ -135,7 +135,7 @@ describe("Clanky lifecycle state configuration", () => {
 
     resetWebAppServerForTests();
     closeDatabase();
-    const workerServer = await getWebAppServer({ meshWorker: true });
+    const workerServer = await getWebAppServer({ meshWorker: true, insecure: true });
     expect(await getWebAppServer({ meshWorker: true })).toBe(workerServer);
   });
 });

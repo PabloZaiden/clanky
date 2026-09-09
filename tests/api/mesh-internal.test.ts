@@ -68,6 +68,8 @@ describe("Mesh internal controller-worker routes", () => {
       workerTransport: "http" as const,
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
       workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true as const,
@@ -86,6 +88,19 @@ describe("Mesh internal controller-worker routes", () => {
       ).toString("base64url"),
     };
     const route = meshInternalRoutes["/api/mesh/internal/enrollment"]!.POST!;
+    const mismatchedTransport = await route(new Request("http://controller/api/mesh/internal/enrollment", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "worker-1",
+        "x-clanky-mesh-request-id": "worker-1",
+      },
+      body: JSON.stringify({
+        ...body,
+        workerTransport: "https",
+      }),
+    }), undefined as never);
+    expect(mismatchedTransport!.status).toBe(400);
     const response = await route(new Request("http://controller/api/mesh/internal/enrollment", {
       method: "POST",
       headers: {

@@ -47,6 +47,8 @@ export interface SaveWorkerRegistrationInput {
   workerPublicKey: string;
   workerFingerprint: string;
   workerEncryptionPublicKey: string | null;
+  workerTlsCertificate: string | null;
+  workerTlsFingerprint: string | null;
   workerDirectory: string | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
@@ -114,11 +116,12 @@ export async function saveWorkerRegistration(
       worker_node_id, local_user_id, worker_instance_name,
       worker_endpoint, worker_transport,
       worker_public_key, worker_fingerprint, worker_encryption_public_key,
+      worker_tls_certificate, worker_tls_fingerprint,
       worker_directory, worker_capabilities_json,
       worker_accept_remote_execution,       worker_config_revision, registration_scope,
       workspace_worker_enrollment_id, workspace_id,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -126,6 +129,8 @@ export async function saveWorkerRegistration(
       worker_public_key = excluded.worker_public_key,
       worker_fingerprint = excluded.worker_fingerprint,
       worker_encryption_public_key = excluded.worker_encryption_public_key,
+      worker_tls_certificate = excluded.worker_tls_certificate,
+      worker_tls_fingerprint = excluded.worker_tls_fingerprint,
       worker_directory = excluded.worker_directory,
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
@@ -144,6 +149,8 @@ export async function saveWorkerRegistration(
       input.workerPublicKey,
       input.workerFingerprint,
       input.workerEncryptionPublicKey,
+      input.workerTlsCertificate,
+      input.workerTlsFingerprint,
       input.workerDirectory,
       input.workerCapabilities ? JSON.stringify(input.workerCapabilities) : null,
       input.workerAcceptRemoteExecution ? 1 : 0,
@@ -578,6 +585,8 @@ interface WorkerRegistrationRow {
   worker_public_key: string;
   worker_fingerprint: string;
   worker_encryption_public_key: string | null;
+  worker_tls_certificate: string | null;
+  worker_tls_fingerprint: string | null;
   worker_directory: string | null;
   worker_capabilities_json: string | null;
   worker_accept_remote_execution: number;
@@ -614,6 +623,8 @@ function mapWorkerRegistrationRow(
     workerPublicKey: row.worker_public_key,
     workerFingerprint: row.worker_fingerprint,
     workerEncryptionPublicKey: row.worker_encryption_public_key,
+    workerTlsCertificate: row.worker_tls_certificate,
+    workerTlsFingerprint: row.worker_tls_fingerprint,
     workerDirectory: row.worker_directory,
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,

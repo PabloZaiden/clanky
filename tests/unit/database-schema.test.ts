@@ -745,6 +745,27 @@ describe("database schema", () => {
     }
   });
 
+  test("migration v50 adds worker TLS identity columns idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 50);
+    if (!migration) {
+      throw new Error("Migration v50 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE mesh_worker_registrations (worker_node_id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      expect(
+        (db.query("PRAGMA table_info(mesh_worker_registrations)").all() as Array<{ name: string }>)
+          .map((column) => column.name),
+      ).toEqual(["worker_node_id", "worker_tls_certificate", "worker_tls_fingerprint"]);
+    } finally {
+      db.close();
+    }
+  });
+
   test("migration v10 converts legacy settings and task modes idempotently", () => {
     const migration = migrations.find((candidate) => candidate.version === 10);
     if (!migration) {

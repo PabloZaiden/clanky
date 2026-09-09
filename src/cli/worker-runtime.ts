@@ -14,6 +14,7 @@ export interface WorkerRuntimeConfiguration {
   dataDir: string;
   workerDirectory: string;
   workerExecutionEnabled: boolean;
+  insecure: boolean;
   host: string;
   port: number;
 }
@@ -53,6 +54,7 @@ export function resolveWorkerRuntimeConfiguration(input: {
     dataDir,
     workerDirectory,
     workerExecutionEnabled: values["worker-execution-enabled"] !== false,
+    insecure: values["insecure"] === true,
     host: runtime.host,
     port: runtime.port,
   };

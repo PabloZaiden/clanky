@@ -18,6 +18,8 @@ const registration: MeshWorkerRegistration = {
   workerPublicKey: "public",
   workerFingerprint: "fingerprint",
   workerEncryptionPublicKey: null,
+  workerTlsCertificate: null,
+  workerTlsFingerprint: null,
   workerDirectory: "/srv/worker",
   workerCapabilities: {},
   workerAcceptRemoteExecution: true,

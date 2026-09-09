@@ -1,9 +1,8 @@
 /**
  * Mesh endpoint and transport policy.
  *
- * Mesh endpoints may use HTTP or HTTPS. HTTP is intended for trusted private
- * networks, while HTTPS remains available for deployments that need transport
- * confidentiality.
+ * Mesh endpoints may use HTTP or HTTPS. Workers use HTTPS by default; HTTP is
+ * reserved for the explicit insecure opt-out on trusted private networks.
  */
 
 import { DomainError } from "./domain-error";

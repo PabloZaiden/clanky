@@ -10,6 +10,7 @@ interface MeshProcess {
   dataDir: string;
   child: ReturnType<typeof Bun.spawn>;
   apiKey?: string;
+  tlsCertificate?: string;
 }
 
 let processes: MeshProcess[] = [];
@@ -32,7 +33,7 @@ async function availablePort(): Promise<number> {
 async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
   const dataDir = await mkdtemp(join(tmpdir(), `clanky-mesh-${role}-`));
   const port = await availablePort();
-  const baseUrl = `http://127.0.0.1:${String(port)}`;
+  const baseUrl = `${role === "worker" ? "https" : "http"}://127.0.0.1:${String(port)}`;
   const env: Record<string, string | undefined> = {
     ...process.env,
     CLANKY_DATA_DIR: dataDir,
@@ -73,6 +74,11 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
     }).apiKey;
   }
 
+  const tlsCertificate = role === "worker"
+    ? (JSON.parse(await Bun.file(join(dataDir, "mesh", "worker-tls.json")).text()) as {
+        certificate: string;
+      }).certificate
+    : undefined;
   const child = Bun.spawn([
     process.execPath,
     "src/index.ts",
@@ -85,10 +91,12 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  const node = { baseUrl, dataDir, child, apiKey };
+  const node = { baseUrl, dataDir, child, apiKey, tlsCertificate };
   processes.push(node);
   await pollUntil(
-    async () => fetch(`${baseUrl}/api/health`).then((response) => response.ok).catch(() => false),
+    async () => fetch(`${baseUrl}/api/health`, {
+      tls: tlsCertificate ? { ca: tlsCertificate } : undefined,
+    }).then((response) => response.ok).catch(() => false),
     (ready) => ready,
     { description: `${role} to become healthy`, timeoutMs: 10_000 },
   );
@@ -128,7 +136,9 @@ async function restartWorker(
     stderr: "ignore",
   });
   await pollUntil(
-    async () => fetch(`${node.baseUrl}/api/health`).then(
+    async () => fetch(`${node.baseUrl}/api/health`, {
+      tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
+    }).then(
       (response) => response.ok,
     ).catch(() => false),
     (ready) => ready,
@@ -150,6 +160,7 @@ async function jsonRequest(
       ...(options.body === undefined ? {} : { "content-type": "application/json" }),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
   });
   return { status: response.status, body: await response.json() };
 }
@@ -229,12 +240,14 @@ describe("controller-worker Mesh", () => {
     expect(workerStatus.body.controllers).toBeUndefined();
 
     const workerNodeId = statusA.body.workers[0].workerNodeId as string;
+    const originalTlsCertificate = worker.tlsCertificate;
     const initialRevision = statusA.body.workers[0].workerConfigRevision as number;
     const nextDirectory = join(worker.dataDir, "next-directory");
     await restartWorker(worker, {
       directory: nextDirectory,
       executionEnabled: false,
     });
+    expect(worker.tlsCertificate).toBe(originalTlsCertificate);
     expect((await jsonRequest(controllerA, "/api/mesh/health", {
       method: "POST",
     })).status).toBe(200);

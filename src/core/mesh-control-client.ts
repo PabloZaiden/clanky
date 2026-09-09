@@ -12,6 +12,11 @@ const recognizedPeerErrors = new Map<string, string>([
   ],
 ]);
 
+export interface MeshControlRequestOptions {
+  headers?: Record<string, string>;
+  tls?: Bun.TLSOptions;
+}
+
 function getSenderNodeId(payload: unknown): string {
   if (typeof payload !== "object" || payload === null) {
     return "";
@@ -39,7 +44,7 @@ export async function postMeshControlMessage(
   endpoint: string,
   payload: unknown,
   requestId: string,
-  headers?: Record<string, string>,
+  options: MeshControlRequestOptions = {},
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), MESH_CONTROL_REQUEST_TIMEOUT_MS);
@@ -50,10 +55,11 @@ export async function postMeshControlMessage(
         "content-type": "application/json",
         "x-clanky-mesh-node-id": getSenderNodeId(payload),
         "x-clanky-mesh-request-id": requestId,
-        ...headers,
+        ...options.headers,
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      tls: options.tls,
     });
     if (!response.ok) {
       const body = await response.clone().json().catch(() => null) as {

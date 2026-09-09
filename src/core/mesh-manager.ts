@@ -60,6 +60,10 @@ import {
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import {
+  assertMeshWorkerTlsCertificate,
+  getMeshWorkerTlsIdentity,
+} from "../persistence/mesh-worker-tls";
+import {
   buildMeshEnrollmentRequestSigningPayload,
   buildMeshEnrollmentResponseSigningPayload,
   buildMeshHealthCheckSigningPayload,
@@ -75,6 +79,7 @@ import {
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
+import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import {
   decideEnrollWorker,
@@ -265,6 +270,24 @@ export class MeshManager {
         "The enrollment request has expired.",
       );
     }
+    if (envelope.workerTransport === "https") {
+      if (!envelope.workerTlsCertificate || !envelope.workerTlsFingerprint) {
+        throw new DomainError(
+          "mesh_enrollment_tls_identity_missing",
+          "HTTPS workers must provide a TLS certificate and fingerprint.",
+        );
+      }
+      assertMeshWorkerTlsCertificate(
+        envelope.workerTlsCertificate,
+        envelope.workerEndpoint,
+        envelope.workerTlsFingerprint,
+      );
+    } else if (envelope.workerTlsCertificate || envelope.workerTlsFingerprint) {
+      throw new DomainError(
+        "mesh_enrollment_tls_identity_unexpected",
+        "HTTP workers must not provide TLS trust material.",
+      );
+    }
 
     // Consume the enrollment token atomically
     const tokenResult = consumeMeshEnrollmentToken(
@@ -338,6 +361,8 @@ export class MeshManager {
           workerPublicKey: envelope.workerPublicKey,
           workerFingerprint: envelope.workerFingerprint,
           workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
+          workerTlsCertificate: envelope.workerTlsCertificate,
+          workerTlsFingerprint: envelope.workerTlsFingerprint,
           workerDirectory: envelope.workerDirectory,
           workerCapabilities: envelope.workerCapabilities,
           workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
@@ -481,7 +506,10 @@ export class MeshManager {
         ...envelope,
         signature,
       }, identity.nodeId, {
-        "x-clanky-mesh-node-id": identity.nodeId,
+        headers: {
+          "x-clanky-mesh-node-id": identity.nodeId,
+        },
+        tls: getMeshWorkerTlsOptions(target),
       });
     } catch (error) {
       if (isDomainError(error)) {
@@ -549,7 +577,10 @@ export class MeshManager {
       ...envelope,
       signature,
     }, nonce, {
-      "x-clanky-mesh-node-id": identity.nodeId,
+      headers: {
+        "x-clanky-mesh-node-id": identity.nodeId,
+      },
+      tls: getMeshWorkerTlsOptions(registration),
     });
   }
 
@@ -644,7 +675,10 @@ export class MeshManager {
         ...envelope,
         signature,
       }, identity.nodeId, {
-        "x-clanky-mesh-node-id": identity.nodeId,
+        headers: {
+          "x-clanky-mesh-node-id": identity.nodeId,
+        },
+        tls: getMeshWorkerTlsOptions(registration),
       });
     } catch (error) {
       log.warn("Dedicated worker remote revocation could not be delivered", {
@@ -754,7 +788,9 @@ export class MeshManager {
         const response = await postMeshControlMessage(route, {
           ...envelope,
           signature,
-        }, nonce);
+        }, nonce, {
+          tls: getMeshWorkerTlsOptions(worker),
+        });
         const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
           await response.json(),
         );
@@ -915,6 +951,15 @@ export class MeshManager {
     }
 
     const execution = await getWorkerExecutionConfig();
+    const workerTlsIdentity = getMeshTransport(identity.meshEndpoint) === "https"
+      ? await getMeshWorkerTlsIdentity()
+      : null;
+    if (getMeshTransport(identity.meshEndpoint) === "https" && !workerTlsIdentity) {
+      throw new DomainError(
+        "mesh_worker_tls_identity_missing",
+        "The HTTPS worker TLS identity is missing from the data directory.",
+      );
+    }
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const envelope: Omit<MeshEnrollmentRequest, "signature"> = {
@@ -926,6 +971,8 @@ export class MeshManager {
       workerPublicKey: identity.publicKey,
       workerFingerprint: identity.fingerprint,
       workerEncryptionPublicKey: identity.encryptionPublicKey,
+      workerTlsCertificate: workerTlsIdentity?.certificate ?? null,
+      workerTlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
       workerDirectory: execution.directory,
       workerCapabilities: execution.capabilities,
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,

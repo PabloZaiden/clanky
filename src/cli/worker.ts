@@ -20,6 +20,7 @@ import {
 } from "../persistence/mesh-node-identity";
 import {
   assertMeshEndpointAllowed,
+  getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "../core/mesh-transport-config";
 import { meshManager } from "../core/mesh-manager";
@@ -35,6 +36,7 @@ interface WorkerBootstrapOptions {
   instanceName: string;
   keyName: string;
   rotate: boolean;
+  insecure: boolean;
 }
 
 function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptions {
@@ -49,10 +51,15 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
   let meshEndpoint: string | undefined;
   let instanceName: string | undefined;
   let rotate = false;
+  let insecure = false;
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--rotate") {
       rotate = true;
+      continue;
+    }
+    if (arg === "--insecure") {
+      insecure = true;
       continue;
     }
     if (
@@ -96,6 +103,12 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
   if (!workerDirectory) throw new Error("worker bootstrap requires --worker-directory");
   if (!meshEndpoint) throw new Error("worker bootstrap requires --mesh-endpoint");
   if (!instanceName) throw new Error("worker bootstrap requires --instance-name");
+  const expectedTransport = insecure ? "http" : "https";
+  if (getMeshTransport(meshEndpoint) !== expectedTransport) {
+    throw new Error(
+      `worker bootstrap requires an ${expectedTransport.toUpperCase()} --mesh-endpoint${insecure ? "" : " (or pass --insecure for HTTP)"}`,
+    );
+  }
   return {
     host,
     port,
@@ -104,6 +117,7 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
     instanceName,
     keyName,
     rotate,
+    insecure,
   };
 }
 
@@ -126,6 +140,7 @@ async function persistWorkerBootstrapConfiguration(
         "mesh-worker": true,
         "worker-directory": options.workerDirectory,
         "worker-execution-enabled": true,
+        insecure: options.insecure,
       },
     },
   };
@@ -140,6 +155,9 @@ async function bootstrapWorker(
     meshWorker: true,
     workerDirectory: options.workerDirectory,
     workerExecutionEnabled: true,
+    insecure: options.insecure,
+    workerEndpoint: options.meshEndpoint,
+    rotateWorkerTls: options.rotate,
   });
   await persistWorkerBootstrapConfiguration(options);
   await setLocalMeshEndpoint(options.meshEndpoint);
@@ -251,6 +269,7 @@ async function joinWorker(
     meshWorker: true,
     workerDirectory: runtime.workerDirectory,
     workerExecutionEnabled: runtime.workerExecutionEnabled,
+    insecure: runtime.insecure,
   });
   const grant = await meshManager.enrollWithController({
     controllerEndpoint: options.controllerEndpoint,

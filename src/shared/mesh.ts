@@ -62,6 +62,8 @@ export interface MeshWorkerRegistration {
   workerPublicKey: string;
   workerFingerprint: string;
   workerEncryptionPublicKey: string | null;
+  workerTlsCertificate: string | null;
+  workerTlsFingerprint: string | null;
   workerDirectory: string | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;

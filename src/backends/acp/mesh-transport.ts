@@ -119,7 +119,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     const socket = createWebSocket(websocketUrl, {
       "x-clanky-mesh-session-id": session.sessionId,
       "x-clanky-mesh-session-token": session.sessionToken,
-    });
+    }, session.tls);
     this.socket = socket;
     this.session = { id: crypto.randomUUID(), kind: "remote" };
     this.connectionInfo = { baseUrl: websocketUrl, authHeaders: {} };
@@ -220,11 +220,18 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
   }
 }
 
-function createWebSocket(url: string, headers: Record<string, string>): WebSocket {
+function createWebSocket(
+  url: string,
+  headers: Record<string, string>,
+  tls?: Bun.TLSOptions,
+): WebSocket {
   const BunWebSocket = WebSocket as unknown as {
-    new (url: string | URL, options?: { headers?: Record<string, string> }): WebSocket;
+    new (
+      url: string | URL,
+      options?: { headers?: Record<string, string>; tls?: Bun.TLSOptions },
+    ): WebSocket;
   };
-  return new BunWebSocket(url, { headers });
+  return new BunWebSocket(url, { headers, tls });
 }
 
 function toWebSocketUrl(url: string): string {

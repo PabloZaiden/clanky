@@ -37,12 +37,25 @@ clanky worker bootstrap \
   --port 3000 \
   --worker-directory /workspaces \
   --instance-name worker-1 \
-  --mesh-endpoint http://203.0.113.10:3000
+  --mesh-endpoint https://203.0.113.10:3000
 ```
 
 Do not use `127.0.0.1`, `localhost`, or a private address that production
-cannot route to. Use HTTPS when the endpoint crosses an untrusted network; use
-HTTP only on a trusted private network.
+cannot route to. Workers use HTTPS by default and generate a durable
+self-signed certificate in their data directory. The controller pins that
+certificate during enrollment, including for HTTP and WebSocket requests.
+
+HTTP is available only as an explicit opt-out for a trusted private network:
+
+```bash
+clanky worker bootstrap \
+  --host 0.0.0.0 \
+  --port 3000 \
+  --worker-directory /workspaces \
+  --instance-name worker-1 \
+  --mesh-endpoint http://203.0.113.10:3000 \
+  --insecure
+```
 
 The bootstrap persists the host, port, worker directory, Mesh endpoint, worker
 mode, instance name, and worker identity. The worker username is fixed
@@ -52,8 +65,10 @@ command does not need it.
 Mesh execution resolves relative directories and paths against the configured
 worker directory; absolute paths are used directly.
 
-To replace a lost key, repeat the same command with `--rotate`. The old key is
-revoked and the new plaintext key is printed once.
+To replace a lost key or intentionally rotate the worker certificate, repeat
+the same command with `--rotate`. The old key is revoked and the new plaintext
+key is printed once. Certificate rotation changes the worker's pinned identity,
+so enroll the worker again with each controller after rotating it.
 
 ```bash
 CLANKY_DATA_DIR=/srv/clanky-worker \

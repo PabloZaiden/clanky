@@ -246,16 +246,19 @@ For a public deployment, configure the reverse proxy to:
   a path, query, or fragment, as shown above;
 - mount a durable volume for all of `/app/data` and back it up.
 
-For Mesh connections between trusted private-network instances, configure each
-worker's Mesh endpoint to the absolute HTTP(S) origin reachable by its
-controllers, such as `http://192.168.1.20:3000`. If no endpoint has been saved
-yet, Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and persists that
-value. Later changes to the public base URL do not change the saved Mesh
-endpoint. Do not expose an HTTP Mesh endpoint to an untrusted network.
+For Mesh connections, configure each worker's Mesh endpoint to the absolute
+HTTPS origin reachable by its controllers, such as
+`https://192.168.1.20:3000`. Worker bootstrap generates a durable self-signed
+certificate and controllers pin that exact certificate during enrollment,
+including for HTTP and WebSocket requests. If no endpoint has been saved yet,
+Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and persists that value.
+Later changes to the public base URL do not change the saved Mesh endpoint.
+Use `--insecure` with an `http://` endpoint only for a deliberately trusted
+private network.
 
 For a direct worker without a public DNS name, use a stable IP address that the
 controller can reach and include the worker port in `--mesh-endpoint`, for
-example `http://203.0.113.10:3000`. Bind the worker with
+example `https://203.0.113.10:3000`. Bind the worker with
 `--host 0.0.0.0` (or a reachable interface) and allow or forward that port
 through the worker host's firewall/NAT. `127.0.0.1`, `localhost`, and an
 unroutable private address cannot be used as a remote worker endpoint.

@@ -58,6 +58,7 @@ test("Mesh worker exposes only its transport and authenticated control surface",
       baseUrl,
       "--instance-name",
       "worker-surface",
+      "--insecure",
     ],
     { cwd: process.cwd(), env, stdout: "pipe", stderr: "pipe" },
   );
