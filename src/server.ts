@@ -57,7 +57,12 @@ import {
   configureMeshRuntime,
   getMeshWorkerDirectory,
 } from "./core/mesh-runtime";
+import { getMeshTransport } from "./core/mesh-transport-config";
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
+import {
+  ensureMeshWorkerTlsIdentity,
+  getMeshWorkerServerTls,
+} from "./persistence/mesh-worker-tls";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -243,6 +248,7 @@ async function completeStartup(
   for (const message of getServerStartupMessages({
     host: appServer.config.host,
     port: appServer.config.port,
+    protocol: serverUrl.protocol === "https:" ? "https" : "http",
     hostSource: process.env["CLANKY_HOST"]?.trim() ? "CLANKY_HOST" : "default",
     sameOriginProtection: { disabled: appServer.config.sameOriginDisabled },
   })) {
@@ -375,6 +381,9 @@ export async function getWebAppServer(
     meshWorker?: boolean;
     workerDirectory?: string;
     workerExecutionEnabled?: boolean;
+    insecure?: boolean;
+    workerEndpoint?: string;
+    rotateWorkerTls?: boolean;
   } = {},
 ): Promise<WebAppServer<ClankyRealtimeEvent>> {
   const meshWorker = options.meshWorker ?? false;
@@ -392,8 +401,30 @@ export async function getWebAppServer(
     workerExecutionEnabled: options.workerExecutionEnabled,
   });
   await initializeDatabase();
-  await ensureLocalMeshNodeIdentity();
+  const identity = await ensureLocalMeshNodeIdentity();
+  let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {
+    const workerEndpoint = options.workerEndpoint ?? identity.meshEndpoint;
+    if (options.insecure === true) {
+      if (workerEndpoint && getMeshTransport(workerEndpoint) !== "http") {
+        throw new Error("An insecure Mesh worker requires an HTTP Mesh endpoint.");
+      }
+    } else {
+      if (!workerEndpoint) {
+        throw new Error(
+          "A secure Mesh worker requires a configured Mesh endpoint before the server starts.",
+        );
+      }
+      if (getMeshTransport(workerEndpoint) !== "https") {
+        throw new Error(
+          "A secure Mesh worker requires an HTTPS Mesh endpoint; use --insecure for HTTP.",
+        );
+      }
+      const tlsIdentity = await ensureMeshWorkerTlsIdentity(workerEndpoint, {
+        rotate: options.rotateWorkerTls,
+      });
+      workerTls = getMeshWorkerServerTls(tlsIdentity);
+    }
     await setLocalMeshExecutionConfiguration({
       acceptRemoteExecution: options.workerExecutionEnabled ?? true,
       repositoriesBasePath: getMeshWorkerDirectory(),
@@ -421,6 +452,7 @@ export async function getWebAppServer(
       },
     },
     ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
+    ...(workerTls ? { server: { tls: workerTls } } : {}),
     version: CLANKY_VERSION,
     store,
     auth: meshWorker

@@ -36,6 +36,8 @@ export function buildMeshEnrollmentRequestSigningPayload(
     envelope.workerPublicKey,
     envelope.workerFingerprint,
     envelope.workerEncryptionPublicKey ?? null,
+    envelope.workerTlsCertificate,
+    envelope.workerTlsFingerprint,
     envelope.workerDirectory,
     envelope.workerCapabilities,
     envelope.workerAcceptRemoteExecution,

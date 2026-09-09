@@ -7,7 +7,8 @@
       "dependencies": {
         "@monaco-editor/react": "4.7.0",
         "@novnc/novnc": "1.7.0",
-        "@pablozaiden/webapp": "1.10.3",
+        "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.10.4",
+        "@peculiar/x509": "1.14.3",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-webgl": "0.19.0",
@@ -67,7 +68,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@0.0.7", "", { "peerDependencies": { "typescript": "^7.0.0" } }, "sha512-ZIcBfkxatiMYajviF8TKu6Yt7aUMWOLp2DufTLFqOJqQQzv8p8TNt5IesHirfFy9R2vIFnz1gRsUk5CBm+5eaw=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.10.3", "", { "dependencies": { "@pablozaiden/installer": "0.0.7", "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.5.4" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "sha512-Qg+xGb2dcu6Vn4a47u4ns1aaF3wwEb0BzsZdfgW2ioAKu0xGKlSjscGW0HjadFpXiq6DpMz5yKJrvi9VSv0pWw=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#28bb8bb", { "dependencies": { "@pablozaiden/installer": "0.0.7", "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.5.4" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "PabloZaiden-webapp-28bb8bb", "sha512-sWUPnSchWwUjpZGUgXz0nkTWmI5SuNcvuy/ZEdR5X68JsfwPZkeHEC0jLnHTmMaqNnrGeG6Gyw9nibpO4aM0Tw=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.6.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.6.0", "asn1js": "^3.0.6", "tslib": "^2.8.1" } }, "sha512-cBRCKtYPF7vJGN76/yG8VbxRcHLPF3HnkoHhKOZeHpoVtbMYfY9ROKtH3DtYUY9m8uI1Mh47PRhHf2hSK3xcSQ=="],
 

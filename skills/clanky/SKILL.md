@@ -91,10 +91,12 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    configured worker directory; absolute paths are used directly.
    `--mesh-endpoint` must be a public DNS name or a stable IP reachable from
    the controller. For the common direct-worker case without DNS, include the
-   port, for example `--mesh-endpoint http://203.0.113.10:3000`, bind with
+   port, for example `--mesh-endpoint https://203.0.113.10:3000`, bind with
    `--host 0.0.0.0`, and allow or forward that port through the firewall/NAT.
-   Do not use `127.0.0.1` or an unroutable private address. Use HTTPS across
-   untrusted networks.
+   Workers use HTTPS by default with a durable self-signed certificate pinned
+   during enrollment. Do not use `127.0.0.1` or an unroutable private address.
+   For a deliberately trusted private network only, use an `http://` endpoint
+   together with the explicit `--insecure` flag.
    The worker username is fixed internally. The bootstrap API key is printed
    only when first created or rotated and is not needed for enrollment.
    To replace a lost API key, repeat the same command with `--rotate`.

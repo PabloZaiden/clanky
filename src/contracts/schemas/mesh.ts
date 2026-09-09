@@ -75,6 +75,8 @@ export const MeshEnrollmentRequestSchema = z.object({
   workerPublicKey: z.string().min(1),
   workerFingerprint: z.string().trim().min(1),
   workerEncryptionPublicKey: z.string().min(1).optional(),
+  workerTlsCertificate: z.string().trim().min(1).nullable(),
+  workerTlsFingerprint: z.string().trim().min(1).nullable(),
   workerDirectory: z.string().trim().min(1).max(16_384),
   workerCapabilities: ExecutionHostCapabilitiesSchema,
   workerAcceptRemoteExecution: z.boolean(),
@@ -84,6 +86,33 @@ export const MeshEnrollmentRequestSchema = z.object({
   nonce: z.string().trim().min(1),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1),
+}).superRefine((value, context) => {
+  const endpointTransport = new URL(value.workerEndpoint).protocol === "https:"
+    ? "https"
+    : "http";
+  if (value.workerTransport !== endpointTransport) {
+    context.addIssue({
+      code: "custom",
+      path: ["workerTransport"],
+      message: "Worker transport must match the worker endpoint protocol.",
+    });
+  }
+  const hasCertificate = value.workerTlsCertificate !== null;
+  const hasFingerprint = value.workerTlsFingerprint !== null;
+  if (value.workerTransport === "https" && (!hasCertificate || !hasFingerprint)) {
+    context.addIssue({
+      code: "custom",
+      path: ["workerTlsCertificate"],
+      message: "HTTPS workers must provide a TLS certificate and fingerprint.",
+    });
+  }
+  if (value.workerTransport === "http" && (hasCertificate || hasFingerprint)) {
+    context.addIssue({
+      code: "custom",
+      path: ["workerTlsCertificate"],
+      message: "HTTP workers must not provide TLS trust material.",
+    });
+  }
 });
 
 export const MeshEnrollmentResponseSchema = z.object({

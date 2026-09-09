@@ -135,7 +135,20 @@ describe("Clanky lifecycle state configuration", () => {
 
     resetWebAppServerForTests();
     closeDatabase();
-    const workerServer = await getWebAppServer({ meshWorker: true });
+    const workerServer = await getWebAppServer({ meshWorker: true, insecure: true });
     expect(await getWebAppServer({ meshWorker: true })).toBe(workerServer);
+  });
+
+  test("requires an HTTPS endpoint for secure Mesh workers", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clanky-secure-worker-endpoint-test-"));
+    temporaryRoots.push(dataDir);
+    process.env["CLANKY_DATA_DIR"] = dataDir;
+
+    await expect(getWebAppServer({
+      meshWorker: true,
+      workerEndpoint: "http://127.0.0.1:3000",
+    })).rejects.toThrow(
+      "A secure Mesh worker requires an HTTPS Mesh endpoint; use --insecure for HTTP.",
+    );
   });
 });

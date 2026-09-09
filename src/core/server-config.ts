@@ -16,6 +16,7 @@ const SAME_ORIGIN_DISABLED_MESSAGE =
 export interface ServerRuntimeConfig {
   host: string;
   port: number;
+  protocol: "http" | "https";
   hostSource: "CLANKY_HOST" | "default";
   sameOriginProtection: {
     disabled: boolean;
@@ -56,6 +57,7 @@ export function getServerRuntimeConfig(): ServerRuntimeConfig {
   return {
     host: hostFromEnv || DEFAULT_HOST,
     port,
+    protocol: "http",
     hostSource: hostFromEnv ? "CLANKY_HOST" : "default",
     sameOriginProtection: {
       disabled: isSameOriginCheckDisabled(),
@@ -78,8 +80,8 @@ export function getServerDevelopmentConfig(
 
 export function getServerStartupMessages(config: ServerRuntimeConfig): string[] {
   const listenMessage = config.hostSource === "CLANKY_HOST"
-    ? `Listening on http://${config.host}:${String(config.port)} from CLANKY_HOST. Change CLANKY_HOST to choose which interfaces accept requests.`
-    : `Listening on http://${config.host}:${String(config.port)} using the default host because CLANKY_HOST was not set. Set CLANKY_HOST to the interface you want to bind (e.g. CLANKY_HOST=0.0.0.0 to listen on all interfaces).`;
+    ? `Listening on ${config.protocol}://${config.host}:${String(config.port)} from CLANKY_HOST. Change CLANKY_HOST to choose which interfaces accept requests.`
+    : `Listening on ${config.protocol}://${config.host}:${String(config.port)} using the default host because CLANKY_HOST was not set. Set CLANKY_HOST to the interface you want to bind (e.g. CLANKY_HOST=0.0.0.0 to listen on all interfaces).`;
 
   const messages = [listenMessage];
 

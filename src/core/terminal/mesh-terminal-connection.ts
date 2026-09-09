@@ -25,6 +25,7 @@ import {
 } from "../../persistence/mesh-node-identity";
 import { encryptMeshPayload, decryptMeshPayload } from "../mesh-payload-crypto";
 import { buildMeshTerminalSessionSigningPayload } from "../mesh-terminal-protocol";
+import { getMeshWorkerTlsOptions } from "../mesh-peer-tls";
 import { resolveMeshRoute } from "../mesh-transport-config";
 import { requireCurrentUserId } from "../user-context";
 import { DomainError } from "../domain-error";
@@ -69,6 +70,7 @@ interface OpenMeshTerminalSession {
   sessionId: string;
   sessionToken: string;
   expiresAt: number;
+  tls?: Bun.TLSOptions;
 }
 
 const activeMeshTerminalConnections = new Set<MeshInteractiveTerminalConnection>();
@@ -90,11 +92,18 @@ function toWebSocketUrl(url: string): string {
   return url.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 }
 
-function createWebSocket(url: string, headers: Record<string, string>): WebSocket {
+function createWebSocket(
+  url: string,
+  headers: Record<string, string>,
+  tls?: Bun.TLSOptions,
+): WebSocket {
   const BunWebSocket = WebSocket as unknown as {
-    new (url: string | URL, options?: { headers?: Record<string, string> }): WebSocket;
+    new (
+      url: string | URL,
+      options?: { headers?: Record<string, string>; tls?: Bun.TLSOptions },
+    ): WebSocket;
   };
-  return new BunWebSocket(url, { headers });
+  return new BunWebSocket(url, { headers, tls });
 }
 
 export class MeshInteractiveTerminalConnection implements InteractiveTerminalConnection {
@@ -112,6 +121,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
   private runtimeEnvironment?: Record<string, string>;
   private allowPersistentSessionCreate: boolean;
   private persistentAttachRetried = false;
+  private workerTls: Bun.TLSOptions | undefined;
 
   constructor(private readonly config: MeshTerminalConnectionConfig) {
     this.fetchImpl = config.fetch ?? globalThis.fetch;
@@ -191,7 +201,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const socket = createWebSocket(websocketUrl, {
       "x-clanky-mesh-session-id": session.sessionId,
       "x-clanky-mesh-session-token": session.sessionToken,
-    });
+    }, session.tls);
     this.socket = socket;
     const readyPromise = new Promise<InteractiveTerminalConnectResult>((resolve, reject) => {
       this.readyResolve = resolve;
@@ -329,6 +339,8 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         "The selected workspace execution peer cannot accept terminal sessions.",
       );
     }
+    const workerTls = getMeshWorkerTlsOptions(registration);
+    this.workerTls = workerTls;
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
     const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
       protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
@@ -388,6 +400,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       sessionId: response.sessionId,
       sessionToken,
       expiresAt: expiresAtMs,
+      tls: workerTls,
     };
   }
 
@@ -409,6 +422,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         },
         body: JSON.stringify(body),
         signal: controller.signal,
+        tls: this.workerTls,
       });
       const payload = await response.json().catch(() => null) as unknown;
       if (!response.ok) {

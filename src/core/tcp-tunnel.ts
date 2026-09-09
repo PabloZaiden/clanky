@@ -18,6 +18,7 @@ import {
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
 import { resolveMeshRoute } from "./mesh-transport-config";
+import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { executionHostService } from "./execution-host-service";
 import { requireCurrentUserId } from "./user-context";
 import { DomainError } from "./domain-error";
@@ -55,6 +56,7 @@ class DirectTcpTunnel extends EventEmitter implements TcpTunnel {
 class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
   private socket: WebSocket | null = null;
   private closed = false;
+  private workerTls: Bun.TLSOptions | undefined;
 
   constructor(
     private readonly binding: ExecutionHostBinding,
@@ -82,6 +84,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     if (!registration || registration.grantStatus !== "active") {
       throw new DomainError("mesh_tunnel_target_unavailable", "The Mesh tunnel target is unavailable.");
     }
+    this.workerTls = getMeshWorkerTlsOptions(registration);
     if (!identity.encryptionPublicKey) {
       throw new DomainError(
         "mesh_tunnel_identity_invalid",
@@ -125,7 +128,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     const BunWebSocket = WebSocket as unknown as {
       new (
         url: string,
-        options: { headers: Record<string, string> },
+        options: { headers: Record<string, string>; tls?: Bun.TLSOptions },
       ): WebSocket;
     };
     const socket = new BunWebSocket(
@@ -135,6 +138,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
           "x-clanky-mesh-session-id": response.sessionId,
           "x-clanky-mesh-session-token": token,
         },
+        tls: this.workerTls,
       },
     );
     socket.binaryType = "arraybuffer";
@@ -196,6 +200,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
+        tls: this.workerTls,
       });
       const payload = await response.json() as Record<string, unknown>;
       if (!response.ok || typeof payload["sessionId"] !== "string") {

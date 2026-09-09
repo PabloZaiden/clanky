@@ -60,6 +60,7 @@ export function createClankyCli() {
           ? options["worker-directory"]
           : undefined,
         workerExecutionEnabled: options["worker-execution-enabled"] !== false,
+        insecure: options["insecure"] === true,
       });
       await server.start();
     },

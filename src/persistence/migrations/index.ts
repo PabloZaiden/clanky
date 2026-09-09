@@ -1559,6 +1559,19 @@ export const migrations: Migration[] = [
     name: "workspace_worker_enrollments",
     up: migrateWorkspaceWorkerEnrollments,
   },
+  {
+    version: 50,
+    name: "add_mesh_worker_tls_identity",
+    up: (db) => {
+      const columns = getTableColumns(db, "mesh_worker_registrations");
+      if (!columns.includes("worker_tls_certificate")) {
+        db.run("ALTER TABLE mesh_worker_registrations ADD COLUMN worker_tls_certificate TEXT");
+      }
+      if (!columns.includes("worker_tls_fingerprint")) {
+        db.run("ALTER TABLE mesh_worker_registrations ADD COLUMN worker_tls_fingerprint TEXT");
+      }
+    },
+  },
 ];
 
 const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());

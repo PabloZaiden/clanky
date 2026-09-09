@@ -29,6 +29,7 @@ function configuration(
     dataDir: platform === "darwin" ? "/Users/alice/.clanky" : "/home/alice/.clanky",
     workerDirectory: platform === "darwin" ? "/Users/alice/Work Spaces" : "/srv/workspaces",
     workerExecutionEnabled: true,
+    insecure: false,
     host: "127.0.0.1",
     port: 4180,
     homeDirectory: platform === "darwin" ? "/Users/alice" : "/home/alice",
