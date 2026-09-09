@@ -142,6 +142,9 @@ export const provisioningRoutes = defineRoutes({
           ...(validation.data.workerHostAddress
             ? { workerHostAddress: validation.data.workerHostAddress }
             : {}),
+          ...(validation.data.workerHostAddressManual
+            ? { workerHostAddressManual: true }
+            : {}),
           repoUrl: validation.data.repoUrl || undefined,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,

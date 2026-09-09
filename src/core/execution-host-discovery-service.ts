@@ -74,6 +74,32 @@ function parseFallbackIpv4Addresses(output: string): string[] {
   return [...addresses].sort();
 }
 
+export function parseIfconfigAccessibleIpv4Addresses(output: string): string[] {
+  const addresses = new Set<string>();
+  let interfaceName = "";
+  for (const line of output.split(/\r?\n/)) {
+    const interfaceMatch = line.match(/^([^\s:]+):\s/);
+    if (interfaceMatch) {
+      interfaceName = interfaceMatch[1]!;
+      continue;
+    }
+    const addressMatch = line.match(/^\s+inet\s+([0-9.]+)\b/);
+    if (!addressMatch) {
+      continue;
+    }
+    const address = addressMatch[1]!;
+    if (
+      isExcludedInterface(interfaceName)
+      || !isIPv4(address)
+      || isExcludedAddress(address)
+    ) {
+      continue;
+    }
+    addresses.add(address);
+  }
+  return [...addresses].sort();
+}
+
 export class ExecutionHostDiscoveryService {
   async checkPrerequisites(
     ref: ExecutionHostRef,
@@ -149,6 +175,14 @@ export class ExecutionHostDiscoveryService {
       return fallbackAddresses;
     }
 
+    const ifconfig = await executor.exec("ifconfig", [], { cwd: "/" });
+    const ifconfigAddresses = ifconfig.success
+      ? parseIfconfigAccessibleIpv4Addresses(ifconfig.stdout)
+      : [];
+    if (ifconfigAddresses.length > 0) {
+      return ifconfigAddresses;
+    }
+
     throw new DomainError(
       "execution_host_addresses_unavailable",
       "No accessible IPv4 address was found on the execution host.",
@@ -157,6 +191,7 @@ export class ExecutionHostDiscoveryService {
           executionHost: serializeExecutionHostRef(ref),
           ipExitCode: result.exitCode,
           hostnameExitCode: fallback.exitCode,
+          ifconfigExitCode: ifconfig.exitCode,
         },
       },
     );

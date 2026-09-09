@@ -2669,7 +2669,8 @@ Create a provisioning job.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
 | `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
-| `workerHostAddress` | string \| null | Required for worker `provision` | IPv4 address on the provisioning host that the controller can reach |
+| `workerHostAddress` | string \| null | Required for worker `provision` | Reachable IPv4 address or hostname without spaces |
+| `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
 | `basePath` | string | Yes | Parent path used by `provision` mode |
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
@@ -2690,7 +2691,8 @@ Create a provisioning job.
     "nodeId": "execution-host-node-uuid"
   },
   "transport": "worker",
-  "workerHostAddress": "192.0.2.10",
+  "workerHostAddress": "worker.example.com",
+  "workerHostAddressManual": true,
   "repoUrl": "https://github.com/example/repo.git",
   "basePath": "/workspaces",
   "devcontainerSubpath": null,
@@ -2704,11 +2706,12 @@ Create a provisioning job.
 ```
 
 `provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or `"grok"`.
-For worker provisioning, `workerHostAddress` must be one of the IPv4
-addresses discovered on the selected execution host and the controller must
-have `CLANKY_PUBLIC_BASE_URL` configured. Devbox publishes one dynamically
-assigned port; Clanky reads that port from `devbox status` and builds the
-worker endpoint from the selected address.
+For worker provisioning, a discovered IPv4 address must be one of the
+addresses returned by the selected execution host. Set
+`workerHostAddressManual` to `true` for a manually entered hostname or host
+value. The controller must have `CLANKY_PUBLIC_BASE_URL` configured. Devbox
+publishes one dynamically assigned port; Clanky reads that port from
+`devbox status` and builds the worker endpoint from the selected host value.
 For `rebuild` and `restart`, provide `targetDirectory` and `workspaceId`;
 `arise` only needs the server context and mode-specific fields may be `null`.
 

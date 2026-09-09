@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseAccessibleIpv4Addresses } from "../../src/core/execution-host-discovery-service";
+import {
+  parseAccessibleIpv4Addresses,
+  parseIfconfigAccessibleIpv4Addresses,
+} from "../../src/core/execution-host-discovery-service";
 
 describe("Execution host address discovery", () => {
   test("keeps Docker bridge addresses available for published container ports", () => {
@@ -17,6 +20,24 @@ describe("Execution host address discovery", () => {
       "10.8.0.1",
       "100.64.0.1",
       "172.18.0.1",
+      "192.0.2.10",
+    ]);
+  });
+
+  test("parses macOS ifconfig output and keeps routable tunnel addresses", () => {
+    const output = [
+      "lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384",
+      "\tinet 127.0.0.1 netmask 0xff000000",
+      "en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500",
+      "\tinet 192.0.2.10 netmask 0xffffff00 broadcast 192.0.2.255",
+      "utun4: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380",
+      "\tinet 100.64.0.1 --> 100.64.0.2 netmask 0xffffffff",
+      "veth0: flags=4099<UP,BROADCAST,MULTICAST> mtu 1500",
+      "\tinet 172.18.0.2 netmask 0xffff0000 broadcast 172.18.255.255",
+    ].join("\n");
+
+    expect(parseIfconfigAccessibleIpv4Addresses(output)).toEqual([
+      "100.64.0.1",
       "192.0.2.10",
     ]);
   });

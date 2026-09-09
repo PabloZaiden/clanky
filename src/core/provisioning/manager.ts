@@ -1,5 +1,4 @@
 import { posix as pathPosix } from "node:path";
-import { isIPv4 } from "node:net";
 import { backendManager } from "../backend-manager";
 import type { CommandExecutor } from "../command-executor";
 import { GitService } from "../git";
@@ -26,6 +25,7 @@ import type {
   ServerSettings,
   DevboxStatusResult,
 } from "@/shared";
+import { isValidWorkerHostAddress } from "@/shared";
 import { getRegisteredSshServerId, isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
 import {
@@ -48,6 +48,7 @@ import { meshManager } from "../mesh-manager";
 import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
+import { CLANKY_VERSION } from "../../version";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -62,11 +63,11 @@ function shellQuote(value: string): string {
 
 function validateWorkerHostAddress(value: string | undefined): string {
   const address = value?.trim() ?? "";
-  if (!isIPv4(address)) {
+  if (!isValidWorkerHostAddress(address)) {
     throw new ProvisioningFailedError(
       "invalid_worker_host_address",
       "devbox_status",
-      "A valid IPv4 address is required for worker provisioning.",
+      "A valid worker host address without spaces is required for worker provisioning.",
     );
   }
   return address;
@@ -110,10 +111,18 @@ installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh
 install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
 install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
 installed_binary="$install_home/.local/bin/clanky"
+expected_version=${shellQuote(CLANKY_VERSION)}
 log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 
 mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
+case "$expected_version" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *)
+    echo "Automatic worker provisioning requires a published Clanky release (controller version $expected_version)." >&2
+    exit 1
+    ;;
+esac
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh -o "$installer"
 HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir"
 if [ -x "$install_dir/clanky" ]; then
@@ -124,7 +133,12 @@ else
   echo "The Clanky installer did not produce an executable binary." >&2
   exit 1
 fi
-cp "$source_binary" "$binary"
+installed_version=$("$source_binary" version 2>/dev/null | sed -n 's/.*\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p' || true)
+if [ "$installed_version" != "$expected_version" ]; then
+  echo "The latest published Clanky release ($installed_version) does not match the controller release ($expected_version)." >&2
+  exit 1
+fi
+mv -f "$source_binary" "$binary"
 rm -rf "$install_dir" "$install_home"
 rm -f "$installer"
 
@@ -268,6 +282,24 @@ function resolveProvisioningTransport(
   options: StartProvisioningJobOptions,
   mode: ProvisioningJob["config"]["mode"],
 ): ProvisioningTransport {
+  if (
+    (mode === "rebuild" || mode === "restart")
+    && options.workspaceId
+  ) {
+    const existingWorker = workspaceWorkerEnrollmentService.getByWorkspace(
+      userId,
+      options.workspaceId,
+    );
+    const existingTransport = existingWorker ? "worker" : "ssh";
+    if (options.transport && options.transport !== existingTransport) {
+      throw new ProvisioningFailedError(
+        "provisioning_transport_mismatch",
+        "verify_devbox",
+        "Workspace lifecycle jobs must keep the transport already attached to the workspace.",
+      );
+    }
+    return existingTransport;
+  }
   if (options.transport) {
     return options.transport;
   }
@@ -355,8 +387,12 @@ export class ProvisioningManager {
     binding: ExecutionHostBinding,
     options: StartProvisioningJobOptions,
     jobId: string,
+    manual: boolean,
   ): Promise<string> {
     const address = validateWorkerHostAddress(options.workerHostAddress);
+    if (manual) {
+      return address;
+    }
     const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(
       binding.host,
       {
@@ -400,19 +436,14 @@ export class ProvisioningManager {
           executionHostBinding,
           options,
           jobId,
+          options.workerHostAddressManual === true,
         )
       : undefined;
-    const existingWorkerEnrollment = transport === "worker" && options.workspaceId
+    const existingWorkerEnrollment = transport === "worker"
+      && (mode === "rebuild" || mode === "restart")
+      && options.workspaceId
       ? workspaceWorkerEnrollmentService.getByWorkspace(owner.id, options.workspaceId)
       : null;
-    let workerEnrollment: Awaited<ReturnType<typeof meshManager.createWorkspaceWorkerEnrollment>> | undefined;
-    if (transport === "worker" && mode === "provision") {
-      workerEnrollment = await meshManager.createWorkspaceWorkerEnrollment(
-        owner.id,
-        `${options.name.trim()} worker`,
-        900,
-      );
-    }
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
       job: {
@@ -424,13 +455,11 @@ export class ProvisioningManager {
           ...(options.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: options.workspaceWorkerEnrollmentId }
             : {}),
-          ...(workerEnrollment
-            ? { workerEnrollmentId: workerEnrollment.enrollment.id }
-            : {}),
           ...(existingWorkerEnrollment
             ? { workerEnrollmentId: existingWorkerEnrollment.enrollment.id }
             : {}),
           ...(workerHostAddress ? { workerHostAddress } : {}),
+          ...(options.workerHostAddressManual ? { workerHostAddressManual: true } : {}),
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -452,23 +481,11 @@ export class ProvisioningManager {
       abortController: new AbortController(),
       owner,
       runnerActive: true,
-      secretValues: [
-        ...(options.password?.trim() ? [options.password.trim()] : []),
-        ...(workerEnrollment ? [workerEnrollment.token] : []),
-      ],
-      ...(workerEnrollment
-        ? {
-            workerEnrollmentToken: workerEnrollment.token,
-            workerJoinCommand: workerEnrollment.workerJoinCommand,
-          }
-        : {}),
+      secretValues: options.password?.trim() ? [options.password.trim()] : [],
     };
 
     const targetKey = getProvisioningTargetKey(record.job.config);
     if (targetKey && this.hasActiveTarget(owner.id, targetKey)) {
-      if (workerEnrollment) {
-        await this.cleanupWorkerEnrollment(owner.id, workerEnrollment.enrollment.id, jobId);
-      }
       throw new ProvisioningFailedError(
         "provisioning_target_busy",
         "verify_devbox",
@@ -481,9 +498,6 @@ export class ProvisioningManager {
       createProvisioningJob(owner.id, record.job);
     } catch (error) {
       this.jobs.delete(jobId);
-      if (workerEnrollment) {
-        await this.cleanupWorkerEnrollment(owner.id, workerEnrollment.enrollment.id, jobId);
-      }
       throw error;
     }
     emitJobStarted(record.job);
@@ -689,6 +703,35 @@ export class ProvisioningManager {
       args: ["755", pathPosix.join(paths.hostRoot, "launcher.sh")],
     });
     return paths;
+  }
+
+  private async createWorkerEnrollment(
+    record: ProvisioningJobRecord,
+  ): Promise<void> {
+    if (record.job.config.workerEnrollmentId) {
+      return;
+    }
+    const created = await meshManager.createWorkspaceWorkerEnrollment(
+      record.owner.id,
+      `${record.job.config.name} worker`,
+      900,
+    );
+    record.job.config.workerEnrollmentId = created.enrollment.id;
+    record.workerEnrollmentToken = created.token;
+    record.workerJoinCommand = created.workerJoinCommand;
+    if (!record.secretValues.includes(created.token)) {
+      record.secretValues.push(created.token);
+    }
+    try {
+      updateProvisioningJob(record.owner.id, record.job);
+    } catch (error) {
+      await this.cleanupWorkerEnrollment(
+        record.owner.id,
+        created.enrollment.id,
+        record.job.config.id,
+      );
+      throw error;
+    }
   }
 
   private async runDevboxExec(
@@ -1003,15 +1046,7 @@ export class ProvisioningManager {
 
       let workerPaths: WorkerPaths | undefined;
       if (workerTransport) {
-        const enrollmentId = record.job.config.workerEnrollmentId;
         const workerHostAddress = validateWorkerHostAddress(record.job.config.workerHostAddress);
-        if (!enrollmentId) {
-          throw new ProvisioningFailedError(
-            "missing_worker_enrollment",
-            "devbox_status",
-            "Automatic worker provisioning did not create an enrollment.",
-          );
-        }
         let publishedPort;
         try {
           publishedPort = getSinglePublishedPort(status);
@@ -1026,6 +1061,19 @@ export class ProvisioningManager {
         const workerEndpoint = `https://${workerHostAddress}:${publishedPort.hostPort}`;
         const workerBinary = workerPaths.containerBinary;
         const workerData = workerPaths.containerData;
+        await this.createWorkerEnrollment(record);
+        const enrollmentId = record.job.config.workerEnrollmentId;
+        const joinCommand = record.workerJoinCommand?.replace(
+          /^clanky(?=\s)/,
+          () => shellQuote(workerBinary),
+        );
+        if (!enrollmentId || !joinCommand) {
+          throw new ProvisioningFailedError(
+            "missing_worker_enrollment",
+            "devbox_up",
+            "Automatic worker provisioning did not create an enrollment.",
+          );
+        }
         await this.runDevboxExec(
           record,
           executor,
@@ -1068,17 +1116,6 @@ export class ProvisioningManager {
             captureStdout: false,
           },
         );
-        const joinCommand = record.workerJoinCommand?.replace(
-          /^clanky(?=\s)/,
-          () => shellQuote(workerBinary),
-        );
-        if (!joinCommand) {
-          throw new ProvisioningFailedError(
-            "missing_worker_join_command",
-            "devbox_status",
-            "Automatic worker provisioning did not create a join command.",
-          );
-        }
         await this.runDevboxExec(
           record,
           executor,
@@ -1526,6 +1563,19 @@ export class ProvisioningManager {
             captureStdout: false,
           },
         );
+        try {
+          await meshManager.updateWorkspaceWorkerEndpoint(
+            record.owner.id,
+            enrollmentId,
+            workerEndpoint,
+          );
+        } catch (error) {
+          throw new ProvisioningFailedError(
+            "workspace_worker_endpoint_update_failed",
+            action.step,
+            `Failed to update the workspace worker endpoint: ${String(error)}`,
+          );
+        }
         await this.waitForWorkerEnrollment(record, enrollmentId);
       }
 
@@ -1571,7 +1621,9 @@ export class ProvisioningManager {
       const connectionResult = await backendManager.testConnection(
         serverSettings,
         resolvedDirectory,
-        updatedWorkspace.executionHostBinding.host,
+        undefined,
+        undefined,
+        updatedWorkspace.executionHostBinding,
       );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(

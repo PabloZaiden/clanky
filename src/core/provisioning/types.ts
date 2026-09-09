@@ -14,6 +14,7 @@ export interface StartProvisioningJobOptions {
   workspaceWorkerEnrollmentId?: string;
   transport?: ProvisioningTransport;
   workerHostAddress?: string;
+  workerHostAddressManual?: boolean;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

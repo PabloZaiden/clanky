@@ -54,6 +54,7 @@ export interface ProvisioningJobConfig {
   workspaceWorkerEnrollmentId?: string;
   workerEnrollmentId?: string;
   workerHostAddress?: string;
+  workerHostAddressManual?: boolean;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;

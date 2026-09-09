@@ -29,6 +29,7 @@ export interface StartProvisioningJobRequest {
   workspaceWorkerEnrollmentId?: string;
   transport?: ProvisioningTransport;
   workerHostAddress?: string;
+  workerHostAddressManual?: boolean;
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
@@ -343,6 +344,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           ...(request.transport ? { transport: request.transport } : {}),
           ...(request.workerHostAddress
             ? { workerHostAddress: request.workerHostAddress.trim() }
+            : {}),
+          ...(request.workerHostAddressManual
+            ? { workerHostAddressManual: true }
             : {}),
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),

@@ -9,7 +9,10 @@ import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { workspaceWorkerEnrollmentService } from "../../src/core/workspace-worker-enrollment-service";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
-import { saveWorkerRegistration } from "../../src/persistence/mesh";
+import {
+  getWorkerRegistrationByWorkspace,
+  saveWorkerRegistration,
+} from "../../src/persistence/mesh";
 import { ensureMeshWorkerTlsIdentity } from "../../src/persistence/mesh-worker-tls";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
@@ -32,6 +35,8 @@ interface ProvisioningSnapshotResponse {
         };
         transport?: string;
         workerEnrollmentId?: string;
+        workerHostAddress?: string;
+        workerHostAddressManual?: boolean;
         devcontainerSubpath?: string;
         devboxTemplate?: string;
         githubUser?: string;
@@ -298,11 +303,38 @@ describe("Provisioning API integration", () => {
     expect((await response.json() as { error: string }).error).toBe("invalid_worker_host_address");
   });
 
+  test("rejects a manually entered worker host containing spaces", async () => {
+    const sshServer = await createServer();
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid Worker Host",
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "worker",
+        workerHostAddress: "worker host.example.test",
+        workerHostAddressManual: true,
+        repoUrl: "https://github.com/octocat/invalid-worker-host.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   test("provisions an automatic workspace through a dedicated HTTPS worker", async () => {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
     try {
       const sshServer = await createServer();
+      const manualWorkerHost = "worker.example.test";
       const executor = new ProvisioningTestExecutor({
         devboxStatusOutput: createDevboxStatusOutput({
           running: true,
@@ -326,12 +358,13 @@ describe("Provisioning API integration", () => {
             .find((candidate) => candidate.enrollment.name === "Worker Workspace worker");
           expect(enrollment).toBeTruthy();
           const workerNodeId = `automatic-worker-${crypto.randomUUID()}`;
-          const workerTlsIdentity = await ensureMeshWorkerTlsIdentity("https://192.168.1.20:5001");
+          const workerEndpoint = `https://${manualWorkerHost}:5001`;
+          const workerTlsIdentity = await ensureMeshWorkerTlsIdentity(workerEndpoint);
           await saveWorkerRegistration({
             workerNodeId,
             localUserId: "admin",
             workerInstanceName: "Worker Workspace worker",
-            workerEndpoint: "https://192.168.1.20:5001",
+            workerEndpoint,
             workerTransport: "https",
             workerPublicKey: `${workerNodeId}-public-key`,
             workerFingerprint: `${workerNodeId}-fingerprint`,
@@ -360,7 +393,8 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({
           name: "Worker Workspace",
           executionHost: { kind: "ssh", serverId: sshServer.config.id },
-          workerHostAddress: "192.168.1.20",
+          workerHostAddress: manualWorkerHost,
+          workerHostAddressManual: true,
           repoUrl: "https://github.com/octocat/worker-example.git",
           basePath: "/workspaces",
           devcontainerSubpath: null,
@@ -375,10 +409,11 @@ describe("Provisioning API integration", () => {
       expect(response.status).toBe(201);
       const started = await response.json() as ProvisioningSnapshotResponse;
       expect(started.job.config.transport).toBe("worker");
-      const enrollmentId = started.job.config.workerEnrollmentId;
-      expect(enrollmentId).toBeTruthy();
+      expect(started.job.config.workerHostAddress).toBe(manualWorkerHost);
+      expect(started.job.config.workerHostAddressManual).toBe(true);
 
       const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+      expect(completed.job.config.workerEnrollmentId).toBeTruthy();
       expect(
         completed.logs.find((entry) => entry.text.includes("Bootstrapping the workspace worker"))?.step,
       ).toBe("devbox_up");
@@ -430,6 +465,67 @@ describe("Provisioning API integration", () => {
         && call.args[0] === "exec"
         && call.args.some((arg) => arg.includes("worker join")),
       )).toBe(true);
+
+      const registrationBeforeRestart = getWorkerRegistrationByWorkspace(
+        completed.workspace!.id,
+        "admin",
+      );
+      expect(registrationBeforeRestart?.workerEndpoint).toBe("https://worker.example.test:5001");
+
+      const restartExecutor = new ProvisioningTestExecutor({
+        existingDirectories: ["/workspaces/worker-example"],
+        devboxStatusOutput: createDevboxStatusOutput({
+          sshEnabled: false,
+          password: null,
+          sshUser: null,
+          sshPort: null,
+          workdir: "/workspaces/worker-example",
+          ports: [5002],
+          publishedPorts: {
+            "5002/tcp": [
+              {
+                hostIp: "0.0.0.0",
+                hostPort: 5002,
+              },
+            ],
+          },
+        }),
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => restartExecutor);
+
+      const restartResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Worker Workspace",
+          executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          repoUrl: "",
+          basePath: "/workspaces",
+          devcontainerSubpath: null,
+          devboxTemplate: null,
+          githubUser: null,
+          provider: "copilot",
+          credentialToken: null,
+          mode: "restart",
+          targetDirectory: "/workspaces/worker-example",
+          workspaceId: completed.workspace!.id,
+        }),
+      });
+      expect(restartResponse.status).toBe(201);
+      const startedRestart = await restartResponse.json() as ProvisioningSnapshotResponse;
+      expect(startedRestart.job.config.transport).toBe("worker");
+      const completedRestart = await waitForJobStatus(
+        baseUrl,
+        startedRestart.job.config.id,
+        ["completed"],
+      );
+      expect(completedRestart.workspace?.executionHostBinding?.host).toMatchObject({
+        kind: "mesh",
+        scope: "workspace",
+        workspaceId: completed.workspace!.id,
+      });
+      expect(getWorkerRegistrationByWorkspace(completed.workspace!.id, "admin")?.workerEndpoint)
+        .toBe("https://worker.example.test:5002");
 
       const deleted = await fetch(
         `${baseUrl}/api/workspaces/${completed.workspace?.id}`,

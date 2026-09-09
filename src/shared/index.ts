@@ -25,3 +25,4 @@ export * from "./tool-call-presentation";
 export * from "./preview";
 export * from "./workspace";
 export * from "./workspace-files";
+export * from "./worker-host";

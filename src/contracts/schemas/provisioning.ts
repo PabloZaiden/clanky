@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AgentProviderSchema } from "./workspace";
 import { SshCredentialTokenSchema } from "./ssh-server";
 import { ExecutionHostRefSchema } from "./execution-host";
+import { isValidWorkerHostAddress } from "@/shared";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
@@ -13,7 +14,14 @@ export const CreateProvisioningJobRequestSchema = z.object({
   executionHost: ExecutionHostRefSchema.optional(),
   workspaceWorkerEnrollmentId: RequiredTrimmedStringSchema.optional(),
   transport: ProvisioningTransportSchema.optional(),
-  workerHostAddress: z.string().trim().nullable().optional(),
+  workerHostAddress: z.string()
+    .trim()
+    .nullable()
+    .optional()
+    .refine((value) => value === null || value === undefined || isValidWorkerHostAddress(value), {
+      message: "worker host address must not contain spaces and must be a valid host value",
+    }),
+  workerHostAddressManual: z.boolean().default(false),
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),

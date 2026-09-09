@@ -9,6 +9,7 @@ import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
   getRegisteredSshServerId,
+  isValidWorkerHostAddress,
   parseExecutionHostRef,
   serializeExecutionHostRef,
   type ExecutionHostRef,
@@ -42,6 +43,7 @@ interface ComposeWorkspaceViewProps {
 }
 
 const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
+const MANUAL_WORKER_HOST_ADDRESS_OPTION = "__manual_worker_host_address__";
 
 function DedicatedWorkerEnrollment({
   enrollment,
@@ -137,6 +139,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticTransport,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
+    automaticWorkerHostAddressMode,
+    setAutomaticWorkerHostAddressMode,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -174,7 +178,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       automaticTransport !== "worker"
       || !automaticExecutionHost
     ) {
+      setAutomaticWorkerHostAddressMode("discovered");
       setAutomaticWorkerHostAddress("");
+      return;
+    }
+    if (automaticWorkerHostAddressMode === "manual") {
       return;
     }
     if (!workerHostAddresses.includes(automaticWorkerHostAddress)) {
@@ -184,7 +192,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     automaticExecutionHost,
     automaticTransport,
     automaticWorkerHostAddress,
+    automaticWorkerHostAddressMode,
     setAutomaticWorkerHostAddress,
+    setAutomaticWorkerHostAddressMode,
     workerHostAddresses,
   ]);
 
@@ -227,10 +237,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     (
       workspaceWorkerEnrollmentSelected
       || automaticTransport !== "worker"
-      || (
-        automaticWorkerHostAddress.trim().length > 0
-        && workerHostAddresses.includes(automaticWorkerHostAddress)
-      )
+      || (automaticWorkerHostAddressMode === "manual"
+        ? isValidWorkerHostAddress(automaticWorkerHostAddress)
+        : (
+          automaticWorkerHostAddress.trim().length > 0
+          && workerHostAddresses.includes(automaticWorkerHostAddress)
+        ))
     );
   const manualFormValid =
     workspaceName.trim().length > 0 &&
@@ -451,6 +463,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         const transport = event.target.value as "ssh" | "worker";
                         setAutomaticTransport(transport);
                         if (transport !== "worker") {
+                          setAutomaticWorkerHostAddressMode("discovered");
                           setAutomaticWorkerHostAddress("");
                         }
                       }}
@@ -463,9 +476,21 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       <SelectField
                         id="automatic-worker-host-address"
                         label="Worker host address"
-                        value={automaticWorkerHostAddress}
-                        onChange={(event) => setAutomaticWorkerHostAddress(event.target.value)}
-                        disabled={workerHostAddressesLoading}
+                        value={
+                          automaticWorkerHostAddressMode === "manual"
+                            ? MANUAL_WORKER_HOST_ADDRESS_OPTION
+                            : automaticWorkerHostAddress
+                        }
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value === MANUAL_WORKER_HOST_ADDRESS_OPTION) {
+                            setAutomaticWorkerHostAddressMode("manual");
+                            setAutomaticWorkerHostAddress("");
+                            return;
+                          }
+                          setAutomaticWorkerHostAddressMode("discovered");
+                          setAutomaticWorkerHostAddress(value);
+                        }}
                         required
                       >
                         <option value="">
@@ -474,7 +499,22 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         {workerHostAddresses.map((address) => (
                           <option key={address} value={address}>{address}</option>
                         ))}
+                        <option value={MANUAL_WORKER_HOST_ADDRESS_OPTION}>Enter manually</option>
                       </SelectField>
+                    )}
+                    {automaticTransport === "worker"
+                      && automaticWorkerHostAddressMode === "manual" && (
+                      <TextField
+                        id="automatic-worker-host-address-manual"
+                        label="Manual worker host"
+                        value={automaticWorkerHostAddress}
+                        onChange={(event) =>
+                          setAutomaticWorkerHostAddress(event.target.value.replace(/\s/g, ""))
+                        }
+                        placeholder="worker.example.com"
+                        pattern="\S+"
+                        required
+                      />
                     )}
                     {automaticTransport === "worker" && workerHostAddressesError && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">

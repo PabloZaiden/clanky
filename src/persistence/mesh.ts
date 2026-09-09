@@ -325,6 +325,35 @@ export function getWorkerRegistrationByWorkspace(
   return row ? mapWorkerRegistrationRow(row) : null;
 }
 
+export function updateWorkerRegistrationEndpoint(input: {
+  workerNodeId: string;
+  localUserId: string;
+  workerEndpoint: string;
+}): MeshWorkerRegistration {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const result = db.run(
+    `UPDATE mesh_worker_registrations
+     SET worker_endpoint = ?, updated_at = ?
+     WHERE worker_node_id = ? AND local_user_id = ?
+       AND registration_scope = 'workspace' AND grant_status = 'active'`,
+    [
+      input.workerEndpoint,
+      now,
+      input.workerNodeId,
+      input.localUserId,
+    ],
+  );
+  if (result.changes === 0) {
+    throw new Error(`Active workspace worker registration not found: ${input.workerNodeId}`);
+  }
+  const registration = getWorkerRegistration(input.workerNodeId, input.localUserId);
+  if (!registration) {
+    throw new Error(`Worker registration not found after endpoint update: ${input.workerNodeId}`);
+  }
+  return registration;
+}
+
 export function moveDedicatedWorkerToWorkspace(input: {
   workerNodeId: string;
   localUserId: string;
