@@ -631,6 +631,23 @@ export class MeshManager {
     );
   }
 
+  async updateWorkspaceWorkerEndpoint(
+    userId: string,
+    enrollmentId: string,
+    workerEndpoint: string,
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    workspaceWorkerEnrollmentService.updateWorkerEndpoint(
+      userId,
+      enrollmentId,
+      workerEndpoint,
+    );
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId },
+    );
+  }
+
   async revokeDedicatedWorker(
     userId: string,
     enrollmentOrWorkspaceId: string,

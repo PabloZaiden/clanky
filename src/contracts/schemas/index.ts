@@ -25,6 +25,7 @@ export {
   UpdateExecutionHostConfigurationSchema,
   ExecutionHostWorkingDirectorySchema,
   ResolveExecutionHostWorkingDirectoryRequestSchema,
+  DiscoverExecutionHostAddressesRequestSchema,
   type ExecutionHostRefInput,
   type ExecutionNodeConfigurationInput,
   type ExecutionHostBindingInput,

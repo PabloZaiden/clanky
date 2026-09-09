@@ -2651,7 +2651,11 @@ Delete a standalone SSH server session.
 
 ### Provisioning
 
-Provisioning jobs create or reuse a remote workspace by cloning a repository onto a registered standalone SSH server, preparing the environment, and creating the resulting workspace in Clanky.
+Provisioning jobs create or reuse a remote workspace by cloning a repository
+onto a selected execution host, preparing the environment, and creating the
+resulting workspace in Clanky. New automatic workspaces use a dedicated HTTPS
+Mesh worker by default; SSH remains available by setting `transport` to
+`"ssh"`.
 
 #### POST /api/provisioning-jobs
 
@@ -2662,7 +2666,11 @@ Create a provisioning job.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Provisioning job name |
-| `sshServerId` | string | Yes | Registered standalone SSH server ID |
+| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
+| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
+| `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
+| `workerHostAddress` | string \| null | Required for worker `provision` | Reachable IPv4 address or hostname without spaces |
+| `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
 | `basePath` | string | Yes | Parent path used by `provision` mode |
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
@@ -2678,7 +2686,13 @@ Create a provisioning job.
 ```json
 {
   "name": "clanky-demo",
-  "sshServerId": "ssh-server-uuid",
+  "executionHost": {
+    "kind": "local",
+    "nodeId": "execution-host-node-uuid"
+  },
+  "transport": "worker",
+  "workerHostAddress": "worker.example.com",
+  "workerHostAddressManual": true,
   "repoUrl": "https://github.com/example/repo.git",
   "basePath": "/workspaces",
   "devcontainerSubpath": null,
@@ -2692,6 +2706,12 @@ Create a provisioning job.
 ```
 
 `provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or `"grok"`.
+For worker provisioning, a discovered IPv4 address must be one of the
+addresses returned by the selected execution host. Set
+`workerHostAddressManual` to `true` for a manually entered hostname or host
+value. The controller must have `CLANKY_PUBLIC_BASE_URL` configured. Devbox
+publishes one dynamically assigned port; Clanky reads that port from
+`devbox status` and builds the worker endpoint from the selected host value.
 For `rebuild` and `restart`, provide `targetDirectory` and `workspaceId`;
 `arise` only needs the server context and mode-specific fields may be `null`.
 
@@ -2705,7 +2725,16 @@ Returns the created provisioning job snapshot with status `201 Created`.
     "config": {
       "id": "prov-uuid",
       "name": "clanky-demo",
-      "sshServerId": "ssh-server-uuid",
+      "executionHostBinding": {
+        "host": {
+          "kind": "local",
+          "nodeId": "execution-host-node-uuid"
+        },
+        "targetKey": "local:execution-host-node-uuid",
+        "revision": 1
+      },
+      "transport": "worker",
+      "workerHostAddress": "192.0.2.10",
       "repoUrl": "https://github.com/example/repo.git",
       "basePath": "/workspaces",
       "provider": "copilot",

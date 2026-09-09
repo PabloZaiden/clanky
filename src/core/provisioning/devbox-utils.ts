@@ -55,6 +55,51 @@ export function getPublishedPortFallback(status: DevboxStatusResult): number | u
   return undefined;
 }
 
+export interface DevboxPublishedPortMapping {
+  containerPort: number;
+  hostPort: number;
+}
+
+export function getSinglePublishedPort(
+  status: DevboxStatusResult,
+): DevboxPublishedPortMapping {
+  const mappings = new Map<number, Set<number>>();
+  for (const [containerPortKey, entries] of Object.entries(status.publishedPorts)) {
+    const match = containerPortKey.match(/^(\d+)\/tcp$/i);
+    const containerPort = match ? Number(match[1]) : undefined;
+    if (!containerPort || containerPort < 1 || containerPort > 65535) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (
+        typeof entry.hostPort !== "number"
+        || !Number.isInteger(entry.hostPort)
+        || entry.hostPort < 1
+        || entry.hostPort > 65535
+      ) {
+        continue;
+      }
+      const hostPorts = mappings.get(containerPort) ?? new Set<number>();
+      hostPorts.add(entry.hostPort);
+      mappings.set(containerPort, hostPorts);
+    }
+  }
+
+  if (mappings.size !== 1) {
+    throw new Error("Devbox must publish exactly one port for worker provisioning.");
+  }
+
+  const [containerPort, hostPorts] = [...mappings.entries()][0]!;
+  if (hostPorts.size !== 1) {
+    throw new Error("Devbox must publish exactly one host port for worker provisioning.");
+  }
+
+  return {
+    containerPort,
+    hostPort: [...hostPorts][0]!,
+  };
+}
+
 export function buildError(code: string, step: ProvisioningStep, message: string): ProvisioningJobError {
   return { code, step, message };
 }

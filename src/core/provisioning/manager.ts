@@ -20,12 +20,20 @@ import type {
   ProvisioningJob,
   ProvisioningJobSnapshot,
   ProvisioningLogEntry,
+  ProvisioningStep,
+  ProvisioningTransport,
   ServerSettings,
   DevboxStatusResult,
 } from "@/shared";
+import { isValidWorkerHostAddress } from "@/shared";
 import { getRegisteredSshServerId, isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
-import { buildError, parseDevboxCredentialContent, parseDevboxStatusOutput } from "./devbox-utils";
+import {
+  buildError,
+  getSinglePublishedPort,
+  parseDevboxCredentialContent,
+  parseDevboxStatusOutput,
+} from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { emitJobCancelled, emitJobCompleted, emitJobDismissed, emitJobFailed, emitJobStarted } from "./job-events";
 import { appendSystemLog, setStep } from "./job-logger";
@@ -34,6 +42,7 @@ import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 import { executionHostService } from "../execution-host-service";
+import { executionHostDiscoveryService } from "../execution-host-discovery-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { meshManager } from "../mesh-manager";
 import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
@@ -45,6 +54,103 @@ const log = createLogger("core:provisioning-manager");
 function normalizeOptionalValue(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function validateWorkerHostAddress(value: string | undefined): string {
+  const address = value?.trim() ?? "";
+  if (!isValidWorkerHostAddress(address)) {
+    throw new ProvisioningFailedError(
+      "invalid_worker_host_address",
+      "devbox_status",
+      "A valid worker host address without spaces is required for worker provisioning.",
+    );
+  }
+  return address;
+}
+
+interface WorkerPaths {
+  hostRoot: string;
+  containerRoot: string;
+  containerBinary: string;
+  containerData: string;
+  containerLauncher: string;
+  containerLog: string;
+  containerPid: string;
+}
+
+function getWorkerPaths(
+  targetDirectory: string,
+  containerWorkdir: string,
+): WorkerPaths {
+  const hostRoot = pathPosix.join(targetDirectory, ".devbox", "clanky-worker");
+  const containerRoot = pathPosix.join(containerWorkdir, ".devbox", "clanky-worker");
+  return {
+    hostRoot,
+    containerRoot,
+    containerBinary: pathPosix.join(containerRoot, "bin", "clanky"),
+    containerData: pathPosix.join(containerRoot, "data"),
+    containerLauncher: pathPosix.join(containerRoot, "launcher.sh"),
+    containerLog: pathPosix.join(containerRoot, "worker.log"),
+    containerPid: pathPosix.join(containerRoot, "worker.pid"),
+  };
+}
+
+function buildWorkerLauncher(paths: WorkerPaths): string {
+  return `#!/bin/sh
+set -eu
+
+bin_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin"))}
+data_dir=${shellQuote(paths.containerData)}
+binary=${shellQuote(paths.containerBinary)}
+installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh"))}
+install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
+install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
+installed_binary="$install_home/.local/bin/clanky"
+log_file=${shellQuote(paths.containerLog)}
+pid_file=${shellQuote(paths.containerPid)}
+
+mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh -o "$installer"
+HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir"
+if [ -x "$install_dir/clanky" ]; then
+  source_binary="$install_dir/clanky"
+elif [ -x "$installed_binary" ]; then
+  source_binary="$installed_binary"
+else
+  echo "The Clanky installer did not produce an executable binary." >&2
+  exit 1
+fi
+mv -f "$source_binary" "$binary"
+rm -rf "$install_dir" "$install_home"
+rm -f "$installer"
+
+if [ ! -f "$data_dir/config.json" ]; then
+  exit 0
+fi
+
+if [ -s "$pid_file" ]; then
+  worker_pid=$(cat "$pid_file")
+  if kill -0 "$worker_pid" 2>/dev/null; then
+    if [ -r "/proc/$worker_pid/cmdline" ]; then
+      worker_command=$(tr '\\000' ' ' <"/proc/$worker_pid/cmdline" 2>/dev/null || true)
+      case "$worker_command" in
+        *"$binary"*) exit 0 ;;
+      esac
+    else
+      exit 0
+    fi
+  fi
+  rm -f "$pid_file"
+fi
+
+nohup env CLANKY_DATA_DIR="$data_dir" "$binary" serve </dev/null >>"$log_file" 2>&1 &
+worker_pid=$!
+printf '%s\\n' "$worker_pid" >"$pid_file"
+`;
 }
 
 async function resolveProvisioningExecutionHostBinding(
@@ -141,6 +247,7 @@ function getProvisioningTargetKey(config: ProvisioningJob["config"]): string | n
   if (config.mode === "arise") {
     return `arise:${hostKey}`;
   }
+
   if (config.workspaceId) {
     return `workspace:${config.workspaceId}`;
   }
@@ -154,6 +261,41 @@ function getProvisioningTargetKey(config: ProvisioningJob["config"]): string | n
     return `directory:${hostKey}:${pathPosix.join(config.basePath, repositoryName)}`;
   }
   return null;
+}
+
+function resolveProvisioningTransport(
+  userId: string,
+  options: StartProvisioningJobOptions,
+  mode: ProvisioningJob["config"]["mode"],
+): ProvisioningTransport {
+  if (
+    (mode === "rebuild" || mode === "restart")
+    && options.workspaceId
+  ) {
+    const existingWorker = workspaceWorkerEnrollmentService.getByWorkspace(
+      userId,
+      options.workspaceId,
+    );
+    const existingTransport = existingWorker ? "worker" : "ssh";
+    if (options.transport && options.transport !== existingTransport) {
+      throw new ProvisioningFailedError(
+        "provisioning_transport_mismatch",
+        "verify_devbox",
+        "Workspace lifecycle jobs must keep the transport already attached to the workspace.",
+      );
+    }
+    return existingTransport;
+  }
+  if (options.transport) {
+    return options.transport;
+  }
+  if (mode === "provision" && !options.workspaceWorkerEnrollmentId) {
+    return "worker";
+  }
+  if (options.workspaceId && workspaceWorkerEnrollmentService.getByWorkspace(userId, options.workspaceId)) {
+    return "worker";
+  }
+  return "ssh";
 }
 
 function validateNewRepositoryFolderName(name: string): void {
@@ -176,12 +318,17 @@ function validateNewRepositoryFolderName(name: string): void {
 function buildDevboxArgs(
   command: "up" | "rebuild",
   options: {
+    transport: ProvisioningTransport;
     devcontainerSubpath?: string;
     devboxTemplate?: string;
     githubUser?: string;
+    startupCommand?: string;
+    clearStartupCommand?: boolean;
   },
 ): string[] {
-  const args: string[] = [command, "--ssh"];
+  const args: string[] = options.transport === "worker"
+    ? [command, "--no-ssh", "--allow-missing-ssh", "--ports", "1"]
+    : [command, "--ssh"];
   if (command === "up" && options.devboxTemplate) {
     args.push("--template", options.devboxTemplate);
   } else if (options.devcontainerSubpath) {
@@ -189,6 +336,11 @@ function buildDevboxArgs(
   }
   if (options.githubUser) {
     args.push("--gh-user", options.githubUser);
+  }
+  if (options.clearStartupCommand) {
+    args.push("--no-startup-command");
+  } else if (options.startupCommand) {
+    args.push("--startup-command", options.startupCommand);
   }
   return args;
 }
@@ -200,25 +352,100 @@ export class ProvisioningManager {
     private readonly maxLogEntries: number = DEFAULT_MAX_LOG_ENTRIES,
   ) {}
 
+  private async cleanupWorkerEnrollment(
+    userId: string,
+    enrollmentId: string,
+    jobId: string,
+  ): Promise<void> {
+    try {
+      await meshManager.cleanupDedicatedWorker(userId, enrollmentId);
+    } catch (error) {
+      log.error("Failed to clean up automatic workspace worker enrollment", {
+        enrollmentId,
+        jobId,
+        error: String(error),
+      });
+    }
+  }
+
+  private async resolveWorkerHostAddress(
+    userId: string,
+    binding: ExecutionHostBinding,
+    options: StartProvisioningJobOptions,
+    jobId: string,
+    manual: boolean,
+  ): Promise<string> {
+    const address = validateWorkerHostAddress(options.workerHostAddress);
+    if (manual) {
+      return address;
+    }
+    const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(
+      binding.host,
+      {
+        operationId: `provisioning-addresses:${jobId}`,
+        directory: "/",
+        provider: options.provider,
+        localUserId: userId,
+        sshPassword: options.password,
+      },
+    );
+    if (!addresses.includes(address)) {
+      throw new ProvisioningFailedError(
+        "invalid_worker_host_address",
+        "verify_devbox",
+        "The worker host address must be one of the addresses discovered on the selected execution host.",
+      );
+    }
+    return address;
+  }
+
   async startJob(options: StartProvisioningJobOptions): Promise<ProvisioningJobSnapshot> {
     const owner = requireCurrentUser();
     const jobId = crypto.randomUUID();
+    const mode = options.mode ?? "provision";
+    const transport = resolveProvisioningTransport(owner.id, options, mode);
+    if (transport === "worker" && options.workspaceWorkerEnrollmentId) {
+      throw new ProvisioningFailedError(
+        "invalid_execution_target",
+        "verify_devbox",
+        "Worker transport cannot use an existing dedicated worker enrollment as its provisioning target",
+      );
+    }
     const executionHostBinding = await resolveProvisioningExecutionHostBinding(
       owner.id,
       options,
       jobId,
     );
+    const workerHostAddress = transport === "worker" && mode === "provision"
+      ? await this.resolveWorkerHostAddress(
+          owner.id,
+          executionHostBinding,
+          options,
+          jobId,
+          options.workerHostAddressManual === true,
+        )
+      : undefined;
+    const existingWorkerEnrollment = transport === "worker"
+      && (mode === "rebuild" || mode === "restart")
+      && options.workspaceId
+      ? workspaceWorkerEnrollmentService.getByWorkspace(owner.id, options.workspaceId)
+      : null;
     const now = new Date().toISOString();
-    const mode = options.mode ?? "provision";
     const record: ProvisioningJobRecord = {
       job: {
         config: {
           id: jobId,
           name: options.name.trim(),
           executionHostBinding,
+          transport,
           ...(options.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: options.workspaceWorkerEnrollmentId }
             : {}),
+          ...(existingWorkerEnrollment
+            ? { workerEnrollmentId: existingWorkerEnrollment.enrollment.id }
+            : {}),
+          ...(workerHostAddress ? { workerHostAddress } : {}),
+          ...(options.workerHostAddressManual ? { workerHostAddressManual: true } : {}),
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -252,8 +479,8 @@ export class ProvisioningManager {
       );
     }
 
-    this.jobs.set(jobId, record);
     try {
+      this.jobs.set(jobId, record);
       createProvisioningJob(owner.id, record.job);
     } catch (error) {
       this.jobs.delete(jobId);
@@ -369,12 +596,13 @@ export class ProvisioningManager {
     const interruptedJobs = listProvisioningJobs(userId).filter(
       (job) =>
         (job.state.status === "pending" || job.state.status === "running")
-        && job.config.workspaceWorkerEnrollmentId,
+        && (job.config.mode ?? "provision") === "provision"
+        && (job.config.workspaceWorkerEnrollmentId || job.config.workerEnrollmentId),
     );
     this.reconcileStartupState();
 
     for (const job of interruptedJobs) {
-      const enrollmentId = job.config.workspaceWorkerEnrollmentId;
+      const enrollmentId = job.config.workerEnrollmentId ?? job.config.workspaceWorkerEnrollmentId;
       if (!enrollmentId) {
         continue;
       }
@@ -422,6 +650,132 @@ export class ProvisioningManager {
       record.abortController.abort();
     }
     this.jobs.clear();
+  }
+
+  private async prepareWorkerLauncher(
+    record: ProvisioningJobRecord,
+    executor: CommandExecutor,
+    targetDirectory: string,
+    containerWorkdir: string,
+  ): Promise<WorkerPaths> {
+    const paths = getWorkerPaths(targetDirectory, containerWorkdir);
+    await this.runCmd(record, executor, {
+      step: "prepare_directory",
+      label: "Preparing persistent worker launcher",
+      command: "mkdir",
+      args: ["-p", paths.hostRoot],
+    });
+    await this.runCmd(record, executor, {
+      step: "prepare_directory",
+      label: "Allowing the workspace user to persist worker state",
+      command: "chmod",
+      args: ["1777", paths.hostRoot],
+    });
+    const written = await executor.writeFile(
+      pathPosix.join(paths.hostRoot, "launcher.sh"),
+      buildWorkerLauncher(paths),
+    );
+    if (!written) {
+      throw new ProvisioningFailedError(
+        "worker_launcher_write_failed",
+        "prepare_directory",
+        "Failed to write the persistent worker launcher.",
+      );
+    }
+    await this.runCmd(record, executor, {
+      step: "prepare_directory",
+      label: "Making the worker launcher executable",
+      command: "chmod",
+      args: ["755", pathPosix.join(paths.hostRoot, "launcher.sh")],
+    });
+    return paths;
+  }
+
+  private async createWorkerEnrollment(
+    record: ProvisioningJobRecord,
+  ): Promise<void> {
+    if (record.job.config.workerEnrollmentId) {
+      return;
+    }
+    const created = await meshManager.createWorkspaceWorkerEnrollment(
+      record.owner.id,
+      `${record.job.config.name} worker`,
+      900,
+    );
+    record.job.config.workerEnrollmentId = created.enrollment.id;
+    record.workerEnrollmentToken = created.token;
+    record.workerJoinCommand = created.workerJoinCommand;
+    if (!record.secretValues.includes(created.token)) {
+      record.secretValues.push(created.token);
+    }
+    try {
+      updateProvisioningJob(record.owner.id, record.job);
+    } catch (error) {
+      await this.cleanupWorkerEnrollment(
+        record.owner.id,
+        created.enrollment.id,
+        record.job.config.id,
+      );
+      throw error;
+    }
+  }
+
+  private async runDevboxExec(
+    record: ProvisioningJobRecord,
+    executor: CommandExecutor,
+    cwd: string,
+    args: string[],
+    options: {
+      step: ProvisioningStep;
+      label: string;
+      errorCode: string;
+      errorMessage: string;
+      captureStdout?: boolean;
+    },
+  ) {
+    return await this.runCmd(record, executor, {
+      step: options.step,
+      label: options.label,
+      command: "devbox",
+      args: ["exec", "--", ...args],
+      cwd,
+      errorCode: options.errorCode,
+      errorMessage: options.errorMessage,
+      captureStdout: options.captureStdout,
+    });
+  }
+
+  private async waitForWorkerEnrollment(
+    record: ProvisioningJobRecord,
+    enrollmentId: string,
+  ): Promise<void> {
+    const timeoutAt = Date.now() + 120_000;
+    while (Date.now() < timeoutAt) {
+      this.throwIfCancelled(record);
+      const status = workspaceWorkerEnrollmentService.getStatus(
+        record.owner.id,
+        enrollmentId,
+      );
+      if (
+        ["connected", "attached"].includes(status.enrollment.status)
+        && status.worker?.grantStatus === "active"
+      ) {
+        return;
+      }
+      if (["failed", "expired", "cancelled"].includes(status.enrollment.status)) {
+        throw new ProvisioningFailedError(
+          "workspace_worker_connection_failed",
+          "test_connection",
+          status.enrollment.errorMessage ?? "The workspace worker failed to connect.",
+        );
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+    throw new ProvisioningFailedError(
+      "workspace_worker_connection_timeout",
+      "test_connection",
+      "Timed out waiting for the workspace worker to connect.",
+    );
   }
 
   private async runJob(record: ProvisioningJobRecord, password?: string): Promise<void> {
@@ -550,15 +904,23 @@ export class ProvisioningManager {
         appendSystemLog(record, this.maxLogEntries, `Reusing existing checkout at ${targetDirectory}`, "clone_repo");
       }
 
+      const workerTransport = record.job.config.transport === "worker";
+      let workerLauncherPaths: WorkerPaths | undefined;
+      const devboxOptions = {
+        transport: workerTransport ? "worker" as const : "ssh" as const,
+        devcontainerSubpath: record.job.config.devcontainerSubpath,
+        devboxTemplate: record.job.config.devboxTemplate,
+        githubUser: record.job.config.githubUser,
+      };
+
       setStep(record, this.maxLogEntries, "devbox_up", "Starting devbox");
       await this.runCmd(record, executor, {
         step: "devbox_up",
         label: "Running devbox up",
         command: "devbox",
         args: buildDevboxArgs("up", {
-          devcontainerSubpath: record.job.config.devcontainerSubpath,
-          devboxTemplate: record.job.config.devboxTemplate,
-          githubUser: record.job.config.githubUser,
+          ...devboxOptions,
+          ...(workerTransport ? { clearStartupCommand: true } : {}),
         }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
@@ -578,13 +940,78 @@ export class ProvisioningManager {
         errorMessage: "Failed to read devbox status",
         captureStdout: false,
       });
-      const status = parseDevboxStatusOutput(statusResult.stdout);
+      let status = parseDevboxStatusOutput(statusResult.stdout);
       if (!status.running) {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
           "devbox status reported that the environment is not running",
         );
+      }
+
+      let resolvedDirectory = status.workdir.trim() || targetDirectory;
+      if (!resolvedDirectory) {
+        throw new ProvisioningFailedError(
+          "invalid_devbox_status",
+          "devbox_status",
+          "devbox status did not include a workdir value",
+        );
+      }
+
+      if (workerTransport) {
+        if (!status.workdir.trim()) {
+          throw new ProvisioningFailedError(
+            "invalid_devbox_status",
+            "devbox_status",
+            "devbox status did not include a container workdir for the workspace worker",
+          );
+        }
+        workerLauncherPaths = await this.prepareWorkerLauncher(
+          record,
+          executor,
+          targetDirectory,
+          resolvedDirectory,
+        );
+        await this.runCmd(record, executor, {
+          step: "devbox_up",
+          label: "Persisting the workspace worker startup hook",
+          command: "devbox",
+          args: buildDevboxArgs("up", {
+            ...devboxOptions,
+            startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)}`,
+          }),
+          cwd: targetDirectory,
+          timeout: DEVBOX_UP_TIMEOUT_MS,
+          streamOutput: true,
+          errorCode: "devbox_up_failed",
+          errorMessage: "Failed to persist the workspace worker startup hook",
+        });
+        const finalStatusResult = await this.runCmd(record, executor, {
+          step: "devbox_status",
+          label: "Reading devbox status after configuring the worker",
+          command: "devbox",
+          args: ["status"],
+          cwd: targetDirectory,
+          errorCode: "invalid_devbox_status",
+          errorMessage: "Failed to read devbox status after configuring the worker",
+          captureStdout: false,
+        });
+        status = parseDevboxStatusOutput(finalStatusResult.stdout);
+        if (!status.running) {
+          throw new ProvisioningFailedError(
+            "invalid_devbox_status",
+            "devbox_status",
+            "devbox status reported that the environment is not running after configuring the worker",
+          );
+        }
+        const finalWorkdir = status.workdir.trim();
+        if (finalWorkdir && finalWorkdir !== resolvedDirectory) {
+          throw new ProvisioningFailedError(
+            "invalid_devbox_status",
+            "devbox_status",
+            "devbox workdir changed while configuring the workspace worker",
+          );
+        }
       }
 
       let devboxCredential = parseDevboxCredentialContent("");
@@ -595,20 +1022,101 @@ export class ProvisioningManager {
         }
       }
 
-      const resolvedDirectory = status.workdir.trim() || targetDirectory;
-      if (!resolvedDirectory) {
-        throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
-          "devbox status did not include a workdir value",
-        );
-      }
-
       const resolvedPassword = status.password?.trim() || devboxCredential.password?.trim();
       if (resolvedPassword && !record.secretValues.includes(resolvedPassword)) {
         record.secretValues.push(resolvedPassword);
       }
-      const sshTarget = await buildWorkspaceSshTarget(binding, status, devboxCredential);
+      const sshTarget = workerTransport
+        ? undefined
+        : await buildWorkspaceSshTarget(binding, status, devboxCredential);
+
+      let workerPaths: WorkerPaths | undefined;
+      if (workerTransport) {
+        const workerHostAddress = validateWorkerHostAddress(record.job.config.workerHostAddress);
+        let publishedPort;
+        try {
+          publishedPort = getSinglePublishedPort(status);
+        } catch (error) {
+          throw new ProvisioningFailedError(
+            "invalid_devbox_status",
+            "devbox_status",
+            String(error),
+          );
+        }
+        workerPaths = workerLauncherPaths ?? getWorkerPaths(targetDirectory, resolvedDirectory);
+        const workerEndpoint = `https://${workerHostAddress}:${publishedPort.hostPort}`;
+        const workerBinary = workerPaths.containerBinary;
+        const workerData = workerPaths.containerData;
+        await this.createWorkerEnrollment(record);
+        const enrollmentId = record.job.config.workerEnrollmentId;
+        const joinCommand = record.workerJoinCommand?.replace(
+          /^clanky(?=\s)/,
+          () => shellQuote(workerBinary),
+        );
+        if (!enrollmentId || !joinCommand) {
+          throw new ProvisioningFailedError(
+            "missing_worker_enrollment",
+            "devbox_up",
+            "Automatic worker provisioning did not create an enrollment.",
+          );
+        }
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          [
+            "env",
+            `CLANKY_DATA_DIR=${workerData}`,
+            workerBinary,
+            "worker",
+            "bootstrap",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            String(publishedPort.containerPort),
+            "--worker-directory",
+            resolvedDirectory,
+            "--instance-name",
+            record.job.config.name,
+            "--mesh-endpoint",
+            workerEndpoint,
+          ],
+          {
+            step: "devbox_up",
+            label: "Bootstrapping the workspace worker",
+            errorCode: "worker_bootstrap_failed",
+            errorMessage: "Failed to bootstrap the workspace worker",
+            captureStdout: false,
+          },
+        );
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          ["sh", workerPaths.containerLauncher],
+          {
+            step: "devbox_up",
+            label: "Starting the workspace worker",
+            errorCode: "worker_start_failed",
+            errorMessage: "Failed to start the workspace worker",
+            captureStdout: false,
+          },
+        );
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          ["sh", "-lc", `CLANKY_DATA_DIR=${shellQuote(workerData)} ${joinCommand}`],
+          {
+            step: "devbox_up",
+            label: "Registering the workspace worker",
+            errorCode: "worker_join_failed",
+            errorMessage: "Failed to register the workspace worker",
+            captureStdout: false,
+          },
+        );
+        await this.waitForWorkerEnrollment(record, enrollmentId);
+      }
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
@@ -628,7 +1136,13 @@ export class ProvisioningManager {
         directory: resolvedDirectory,
         workspaceType: "git",
         serverSettings,
-        ...(record.job.config.workspaceWorkerEnrollmentId
+        ...(record.job.config.workerEnrollmentId
+          ? {
+              workspaceWorkerEnrollmentId: record.job.config.workerEnrollmentId,
+              workspaceWorkerEnrollmentClaimedBy: record.job.config.id,
+              provisioningHost: binding.host,
+            }
+          : record.job.config.workspaceWorkerEnrollmentId
           ? {
               workspaceWorkerEnrollmentId: record.job.config.workspaceWorkerEnrollmentId,
               workspaceWorkerEnrollmentClaimedBy: record.job.config.id,
@@ -731,16 +1245,18 @@ export class ProvisioningManager {
         }
       }
 
-      if (record.job.config.workspaceWorkerEnrollmentId && !createdWorkspaceId) {
+      const enrollmentToCleanUp = record.job.config.workerEnrollmentId
+        ?? record.job.config.workspaceWorkerEnrollmentId;
+      if (enrollmentToCleanUp && !createdWorkspaceId) {
         try {
           await meshManager.cleanupDedicatedWorker(
             record.owner.id,
-            record.job.config.workspaceWorkerEnrollmentId,
+            enrollmentToCleanUp,
           );
         } catch (cleanupError) {
           log.error("Failed to clean up dedicated worker after provisioning failure", {
             provisioningJobId: record.job.config.id,
-            enrollmentId: record.job.config.workspaceWorkerEnrollmentId,
+            enrollmentId: enrollmentToCleanUp,
             error: String(cleanupError),
           });
         }
@@ -831,7 +1347,37 @@ export class ProvisioningManager {
         localUserId: record.owner.id,
         sshPassword: password,
       });
-
+      const workerTransport = record.job.config.transport === "worker";
+      const workerEnrollment = workerTransport && record.job.config.workerEnrollmentId
+        ? workspaceWorkerEnrollmentService.getStatus(
+            record.owner.id,
+            record.job.config.workerEnrollmentId,
+          )
+        : null;
+      let workerHostAddress: string | undefined;
+      if (workerTransport) {
+        const workerEndpoint = workerEnrollment?.worker?.workerEndpoint;
+        if (!workerEndpoint) {
+          throw new ProvisioningFailedError(
+            "workspace_worker_not_connected",
+            "verify_devbox",
+            "The workspace worker is not connected.",
+          );
+        }
+        try {
+          const parsedEndpoint = new URL(workerEndpoint);
+          workerHostAddress = validateWorkerHostAddress(parsedEndpoint.hostname);
+        } catch (error) {
+          if (error instanceof ProvisioningFailedError) {
+            throw error;
+          }
+          throw new ProvisioningFailedError(
+            "invalid_worker_endpoint",
+            "verify_devbox",
+            "The workspace worker endpoint is invalid.",
+          );
+        }
+      }
       this.updateState(record, {
         targetDirectory,
         workspaceId,
@@ -851,6 +1397,9 @@ export class ProvisioningManager {
         );
       }
       appendSystemLog(record, this.maxLogEntries, `Target directory verified: ${targetDirectory}`, "prepare_directory");
+      const workerLauncherPaths = workerTransport
+        ? await this.prepareWorkerLauncher(record, executor, targetDirectory, workspace.directory)
+        : undefined;
 
       setStep(record, this.maxLogEntries, action.step, action.progressLabel);
       await this.runCmd(record, executor, {
@@ -858,8 +1407,14 @@ export class ProvisioningManager {
         label: action.commandLabel,
         command: "devbox",
         args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
+          transport: workerTransport ? "worker" : "ssh",
           devcontainerSubpath,
           githubUser: record.job.config.githubUser,
+          ...(workerLauncherPaths
+            ? {
+                startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)}`,
+              }
+            : {}),
         }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
@@ -910,7 +1465,105 @@ export class ProvisioningManager {
           provider: record.job.config.provider,
         },
       };
-      const sshTarget = await buildWorkspaceSshTarget(binding, status, devboxCredential);
+      const sshTarget = workerTransport
+        ? undefined
+        : await buildWorkspaceSshTarget(binding, status, devboxCredential);
+
+      if (workerTransport) {
+        const enrollmentId = record.job.config.workerEnrollmentId;
+        if (!enrollmentId || !workerHostAddress) {
+          throw new ProvisioningFailedError(
+            "missing_worker_enrollment",
+            "devbox_status",
+            "The workspace worker enrollment is unavailable.",
+          );
+        }
+        let publishedPort;
+        try {
+          publishedPort = getSinglePublishedPort(status);
+        } catch (error) {
+          throw new ProvisioningFailedError(
+            "invalid_devbox_status",
+            "devbox_status",
+            String(error),
+          );
+        }
+        const paths = getWorkerPaths(targetDirectory, resolvedDirectory);
+        const workerEndpoint = `https://${workerHostAddress}:${publishedPort.hostPort}`;
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          [
+            "sh",
+            "-lc",
+            `if [ -s ${shellQuote(paths.containerPid)} ]; then kill "$(cat ${shellQuote(paths.containerPid)})" 2>/dev/null || true; rm -f ${shellQuote(paths.containerPid)}; fi`,
+          ],
+          {
+            step: action.step,
+            label: "Restarting the workspace worker",
+            errorCode: "worker_stop_failed",
+            errorMessage: "Failed to stop the previous workspace worker",
+            captureStdout: false,
+          },
+        );
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          [
+            "env",
+            `CLANKY_DATA_DIR=${paths.containerData}`,
+            paths.containerBinary,
+            "worker",
+            "bootstrap",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            String(publishedPort.containerPort),
+            "--worker-directory",
+            resolvedDirectory,
+            "--instance-name",
+            record.job.config.name,
+            "--mesh-endpoint",
+            workerEndpoint,
+          ],
+          {
+            step: action.step,
+            label: "Refreshing the workspace worker configuration",
+            errorCode: "worker_bootstrap_failed",
+            errorMessage: "Failed to refresh the workspace worker configuration",
+            captureStdout: false,
+          },
+        );
+        await this.runDevboxExec(
+          record,
+          executor,
+          targetDirectory,
+          ["sh", paths.containerLauncher],
+          {
+            step: action.step,
+            label: "Starting the workspace worker",
+            errorCode: "worker_start_failed",
+            errorMessage: "Failed to start the workspace worker",
+            captureStdout: false,
+          },
+        );
+        try {
+          await meshManager.updateWorkspaceWorkerEndpoint(
+            record.owner.id,
+            enrollmentId,
+            workerEndpoint,
+          );
+        } catch (error) {
+          throw new ProvisioningFailedError(
+            "workspace_worker_endpoint_update_failed",
+            action.step,
+            `Failed to update the workspace worker endpoint: ${String(error)}`,
+          );
+        }
+        await this.waitForWorkerEnrollment(record, enrollmentId);
+      }
 
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
@@ -954,7 +1607,9 @@ export class ProvisioningManager {
       const connectionResult = await backendManager.testConnection(
         serverSettings,
         resolvedDirectory,
-        updatedWorkspace.executionHostBinding.host,
+        undefined,
+        undefined,
+        updatedWorkspace.executionHostBinding,
       );
       if (!connectionResult.success) {
         throw new ProvisioningFailedError(

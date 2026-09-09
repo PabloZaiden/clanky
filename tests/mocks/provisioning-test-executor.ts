@@ -18,6 +18,8 @@ export interface ProvisioningTestExecutorOptions {
   credentialFileContent?: string;
   /** Pre-populate these directories as existing */
   existingDirectories?: string[];
+  /** Simulate the worker's controller callback after the join command runs. */
+  onWorkerJoin?: () => Promise<void>;
 }
 
 async function waitWithSignal(signal: AbortSignal | undefined, durationMs: number): Promise<boolean> {
@@ -100,8 +102,17 @@ export class ProvisioningTestExecutor implements CommandExecutor {
           exitCode: 127,
         };
       }
-      const stdout = "devbox v1.2.0\nUsage: devbox [command]\n";
+      const stdout = "devbox v1.2.1\nUsage: devbox [command]\n";
       return { success: true, stdout, stderr: "", exitCode: 0 };
+    }
+
+    if (command === "ip" && args[0] === "-4") {
+      return {
+        success: true,
+        stdout: "2: eth0    inet 192.168.1.20/24 scope global eth0\n",
+        stderr: "",
+        exitCode: 0,
+      };
     }
 
     if (command === "mkdir" && args[0] === "-p" && args[1]) {
@@ -222,6 +233,17 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     if (command === "devbox" && args[0] === "status") {
       const stdout = this.options.devboxStatusOutput ?? createDevboxStatusOutput();
       return { success: true, stdout, stderr: "", exitCode: 0 };
+    }
+
+    if (command === "chmod") {
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
+    }
+
+    if (command === "devbox" && args[0] === "exec") {
+      if (args.some((arg) => arg.includes("worker join"))) {
+        await this.options.onWorkerJoin?.();
+      }
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
     }
 
     return {

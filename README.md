@@ -15,14 +15,15 @@ Shared foundations such as passkey/API-key/device auth, users, settings, app she
 
 ## Best way to use Clanky
 
-While Clanky can be used locally, accessing code repositories and running agents on the same machine, it really shines when it is used with SSH-backed workspaces. This allows you to keep your local machine free of agent processes and dependencies while still managing everything through the Clanky dashboard.
+While Clanky can be used locally, accessing code repositories and running agents on the same machine, it really shines when it is used with remote execution hosts. Dedicated Mesh workers are the default transport for automatic workspaces, while SSH remains available as an explicit fallback.
 
-The recommended workflow is to treat Clanky as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
+The recommended workflow is to treat Clanky as a controller for isolated Devbox environments on a local or remote execution host.
 
-1. Register an `ssh` server in Clanky. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
-2. Install Devbox **1.2.0** on the selected execution host (`devbox --help` must report `devbox v1.2.0`).
-3. Create an automatic workspace for each project you want to work on, and let that workspace use your `@pablozaiden/devbox`-managed environment so tools and dependencies are ready inside the project context. Automatic workspaces are Docker containers created with [`@pablozaiden/devbox`](https://github.com/pablozaiden/devbox) and exposed over the bundled SSH server. Clanky starts and rebuilds them with SSH enabled; older Devbox status formats are not supported.
-4. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
+1. Register or select an execution host in Clanky. Use a local host, a Mesh worker, or a registered SSH server.
+2. Install Devbox **1.2.1** on the selected execution host (`devbox --help` must report `devbox v1.2.1`).
+3. Set `CLANKY_PUBLIC_BASE_URL` to the controller origin reachable from the Devbox container when automatic workspaces use workers.
+4. Create an automatic workspace for each project you want to work on. Clanky starts a [`@pablozaiden/devbox`](https://github.com/PabloZaiden/devbox) container without SSH, publishes one dynamically assigned port, installs the latest Clanky binary, and registers a dedicated HTTPS worker. Select the host address that the controller can reach from the discovered addresses in the form. Choose SSH when the environment requires the legacy transport.
+5. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
 
 **[Download the latest release](https://github.com/pablozaiden/clanky/releases/latest)**
 
@@ -151,7 +152,7 @@ clanky ws
 - **Plan mode:** review and refine a generated plan before code changes begin.
 - **Review cycles:** continue completed, pushed, or locally accepted work with follow-up prompts; pushed and locally accepted work can also receive review comments.
 - **Live observability:** stream logs, inspect diffs, and track task state.
-- **Execution servers:** use local, Mesh, or SSH hosts for workspaces, chats, terminals, files, provisioning, and VNC.
+- **Execution servers:** use local, Mesh, or SSH hosts for workspaces, chats, terminals, files, provisioning, and VNC. Automatic Devbox workspaces default to dedicated HTTPS Mesh workers and retain SSH as an option.
 
 ## Configuration and deployment
 

@@ -64,7 +64,7 @@ class SshServerApiExecutor extends TestCommandExecutor {
       const available = this.options.devboxAvailable ?? true;
       return {
         success: available,
-        stdout: available ? `devbox v${this.options.devboxVersion ?? "1.2.0"}\nUsage: devbox [command]\n` : "",
+        stdout: available ? `devbox v${this.options.devboxVersion ?? "1.2.1"}\nUsage: devbox [command]\n` : "",
         stderr: available ? "" : "devbox missing",
         exitCode: available ? 0 : 127,
       };

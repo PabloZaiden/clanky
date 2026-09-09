@@ -12,6 +12,7 @@ import {
   getWorkerRegistrationByWorkspace,
   getWorkerRegistrationExecutionHostRef,
   moveDedicatedWorkerToWorkspace,
+  updateWorkerRegistrationEndpoint,
 } from "../persistence/mesh";
 import {
   getExecutionHostByRef,
@@ -30,6 +31,7 @@ import {
   type WorkspaceWorkerEnrollment,
 } from "../persistence/workspace-worker-enrollments";
 import { DomainError } from "./domain-error";
+import { assertMeshEndpointAllowed } from "./mesh-transport-config";
 
 function isExpired(enrollment: WorkspaceWorkerEnrollment): boolean {
   return Date.parse(enrollment.expiresAt) <= Date.now();
@@ -282,6 +284,38 @@ export class WorkspaceWorkerEnrollmentService {
       enrollment,
       worker: getWorkerRegistrationByWorkspace(workspaceId, userId),
     };
+  }
+
+  updateWorkerEndpoint(
+    userId: string,
+    enrollmentId: string,
+    workerEndpoint: string,
+  ): MeshWorkerRegistration {
+    const enrollment = requireEnrollment(userId, enrollmentId);
+    const registration = requireRegistration(
+      enrollment,
+      enrollment.workerNodeId
+        ? getWorkerRegistrationByEnrollment(enrollmentId, userId)
+        : null,
+    );
+    if (
+      registration.registrationScope !== "workspace"
+      || registration.workspaceWorkerEnrollmentId !== enrollmentId
+    ) {
+      throw new DomainError(
+        "workspace_worker_enrollment_mismatch",
+        "The worker registration does not belong to this workspace enrollment.",
+      );
+    }
+    const endpoint = assertMeshEndpointAllowed(
+      workerEndpoint,
+      registration.workerTransport,
+    ).origin;
+    return updateWorkerRegistrationEndpoint({
+      workerNodeId: registration.workerNodeId,
+      localUserId: userId,
+      workerEndpoint: endpoint,
+    });
   }
 
   markFailed(

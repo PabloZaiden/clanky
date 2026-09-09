@@ -15,6 +15,7 @@ export type ProvisioningJobStatus =
   | "interrupted";
 
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
+export type ProvisioningTransport = "ssh" | "worker";
 
 export type ProvisioningStep =
   | "verify_devbox"
@@ -49,7 +50,11 @@ export interface ProvisioningJobConfig {
   id: string;
   name: string;
   executionHostBinding: ExecutionHostBinding;
+  transport?: ProvisioningTransport;
   workspaceWorkerEnrollmentId?: string;
+  workerEnrollmentId?: string;
+  workerHostAddress?: string;
+  workerHostAddressManual?: boolean;
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
