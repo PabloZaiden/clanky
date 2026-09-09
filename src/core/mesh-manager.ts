@@ -73,7 +73,7 @@ import {
   resolveAdvertisedMeshEndpoint,
   resolveMeshRoute,
 } from "./mesh-transport-config";
-import { DomainError } from "./domain-error";
+import { DomainError, isDomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import {
@@ -448,36 +448,55 @@ export class MeshManager {
         "Workspace-dedicated workers are revoked with their workspace.",
       );
     }
-    const identity = await ensureLocalMeshNodeIdentity();
-    const nonce = crypto.randomUUID();
-    const expiresAt = new Date(
-      Date.now() + 60_000,
-    ).toISOString();
-    const envelope: Omit<MeshRevocationNotice, "signature"> = {
-      protocolVersion: 1,
-      controllerNodeId: identity.nodeId,
-      workerNodeId,
-      controllerPublicKey: identity.publicKey,
-      controllerFingerprint: identity.fingerprint,
-      nonce,
-      expiresAt,
-    };
-    const signature = await signMeshPayload(
-      buildMeshRevocationNoticeSigningPayload(envelope),
-    );
-    const route = resolveMeshRoute(
-      target.workerEndpoint,
-      "api/mesh/internal/revocation",
-    );
-    await postMeshControlMessage(route, {
-      ...envelope,
-      signature,
-    }, identity.nodeId, {
-      "x-clanky-mesh-node-id": identity.nodeId,
-    });
 
     if (decision.kind === "apply") {
       await revokeWorkerRegistration(workerNodeId, userId);
+    }
+
+    // The controller is authoritative. A worker may be offline, so failure to
+    // prepare or deliver the signed notice must not undo the local revocation.
+    try {
+      const identity = await ensureLocalMeshNodeIdentity();
+      const nonce = crypto.randomUUID();
+      const expiresAt = new Date(
+        Date.now() + 60_000,
+      ).toISOString();
+      const envelope: Omit<MeshRevocationNotice, "signature"> = {
+        protocolVersion: 1,
+        controllerNodeId: identity.nodeId,
+        workerNodeId,
+        controllerPublicKey: identity.publicKey,
+        controllerFingerprint: identity.fingerprint,
+        nonce,
+        expiresAt,
+      };
+      const signature = await signMeshPayload(
+        buildMeshRevocationNoticeSigningPayload(envelope),
+      );
+      const route = resolveMeshRoute(
+        target.workerEndpoint,
+        "api/mesh/internal/revocation",
+      );
+      await postMeshControlMessage(route, {
+        ...envelope,
+        signature,
+      }, identity.nodeId, {
+        "x-clanky-mesh-node-id": identity.nodeId,
+      });
+    } catch (error) {
+      if (isDomainError(error)) {
+        log.warn("Worker remote revocation notice could not be prepared or delivered", {
+          workerNodeId,
+          errorCode: error.code,
+          errorMessage: error.message,
+          errorDetails: error.details,
+        });
+      } else {
+        log.error("Unexpected worker remote revocation notice failure", {
+          workerNodeId,
+          error: String(error),
+        });
+      }
     }
 
     meshStateEventEmitter.emit(

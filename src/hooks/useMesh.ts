@@ -8,6 +8,11 @@ interface MeshResponse {
   status?: MeshControllerStatus;
 }
 
+interface MeshMutationResult {
+  succeeded: boolean;
+  status: MeshControllerStatus | null;
+}
+
 export interface MeshEnrollmentTokenSummary {
   id: string;
   name: string;
@@ -35,7 +40,7 @@ export interface UseMeshResult {
   updateInstanceName: (instanceName: string) => Promise<MeshControllerStatus | null>;
   updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshControllerStatus | null>;
   createEnrollmentToken: (name: string, ttlSeconds?: number) => Promise<CreatedMeshEnrollment | null>;
-  revokeWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
+  revokeWorker: (workerNodeId: string) => Promise<boolean>;
   killWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
   removeRevokedWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
   checkHealth: () => Promise<MeshControllerStatus | null>;
@@ -100,7 +105,7 @@ export function useMesh(): UseMeshResult {
     path: string,
     method: "POST" | "DELETE",
     body?: Record<string, unknown>,
-  ): Promise<MeshControllerStatus | null> => {
+  ): Promise<MeshMutationResult> => {
     setSaving(true);
     setMutationError(null);
     try {
@@ -113,13 +118,16 @@ export function useMesh(): UseMeshResult {
       });
       if (response.status) {
         setStatus(response.status);
-        return response.status;
+        return { succeeded: true, status: response.status };
       }
-      return await refresh({ showLoading: false });
+      return {
+        succeeded: true,
+        status: await refresh({ showLoading: false }),
+      };
     } catch (mutationError) {
       const message = mutationError instanceof Error ? mutationError.message : String(mutationError);
       setMutationError(message);
-      return null;
+      return { succeeded: false, status: null };
     } finally {
       setSaving(false);
     }
@@ -167,30 +175,22 @@ export function useMesh(): UseMeshResult {
     error,
     mutationError,
     refresh,
-    updateInstanceName: async (instanceName) => await mutate(
-      "/api/mesh/instance-name",
-      "POST",
-      { instanceName },
-    ),
-    updateMeshEndpoint: async (meshEndpoint) => await mutate(
-      "/api/mesh/endpoint",
-      "POST",
-      { meshEndpoint },
-    ),
+    updateInstanceName: async (instanceName) => (
+      await mutate("/api/mesh/instance-name", "POST", { instanceName })
+    ).status,
+    updateMeshEndpoint: async (meshEndpoint) => (
+      await mutate("/api/mesh/endpoint", "POST", { meshEndpoint })
+    ).status,
     createEnrollmentToken,
-    revokeWorker: async (workerNodeId) => await mutate(
-      "/api/mesh/workers/revoke",
-      "POST",
-      { workerNodeId },
-    ),
-    killWorker: async (workerNodeId) => await mutate(
-      `/api/mesh/workers/${encodeURIComponent(workerNodeId)}/kill`,
-      "POST",
-    ),
-    removeRevokedWorker: async (workerNodeId) => await mutate(
-      `/api/mesh/workers/${encodeURIComponent(workerNodeId)}`,
-      "DELETE",
-    ),
-    checkHealth: async () => await mutate("/api/mesh/health", "POST"),
+    revokeWorker: async (workerNodeId) => (
+      await mutate("/api/mesh/workers/revoke", "POST", { workerNodeId })
+    ).succeeded,
+    killWorker: async (workerNodeId) => (
+      await mutate(`/api/mesh/workers/${encodeURIComponent(workerNodeId)}/kill`, "POST")
+    ).status,
+    removeRevokedWorker: async (workerNodeId) => (
+      await mutate(`/api/mesh/workers/${encodeURIComponent(workerNodeId)}`, "DELETE")
+    ).status,
+    checkHealth: async () => (await mutate("/api/mesh/health", "POST")).status,
   };
 }
