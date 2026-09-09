@@ -73,7 +73,7 @@ import {
   resolveAdvertisedMeshEndpoint,
   resolveMeshRoute,
 } from "./mesh-transport-config";
-import { DomainError } from "./domain-error";
+import { DomainError, isDomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import {
@@ -453,26 +453,27 @@ export class MeshManager {
       await revokeWorkerRegistration(workerNodeId, userId);
     }
 
+    const identity = await ensureLocalMeshNodeIdentity();
+    const nonce = crypto.randomUUID();
+    const expiresAt = new Date(
+      Date.now() + 60_000,
+    ).toISOString();
+    const envelope: Omit<MeshRevocationNotice, "signature"> = {
+      protocolVersion: 1,
+      controllerNodeId: identity.nodeId,
+      workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce,
+      expiresAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshRevocationNoticeSigningPayload(envelope),
+    );
+
     // The controller is authoritative. A worker may be offline, so failure to
     // deliver the signed notice must not undo the local revocation.
     try {
-      const identity = await ensureLocalMeshNodeIdentity();
-      const nonce = crypto.randomUUID();
-      const expiresAt = new Date(
-        Date.now() + 60_000,
-      ).toISOString();
-      const envelope: Omit<MeshRevocationNotice, "signature"> = {
-        protocolVersion: 1,
-        controllerNodeId: identity.nodeId,
-        workerNodeId,
-        controllerPublicKey: identity.publicKey,
-        controllerFingerprint: identity.fingerprint,
-        nonce,
-        expiresAt,
-      };
-      const signature = await signMeshPayload(
-        buildMeshRevocationNoticeSigningPayload(envelope),
-      );
       const route = resolveMeshRoute(
         target.workerEndpoint,
         "api/mesh/internal/revocation",
@@ -486,7 +487,15 @@ export class MeshManager {
     } catch (error) {
       log.warn("Worker remote revocation could not be delivered", {
         workerNodeId,
-        error: String(error),
+        ...(isDomainError(error)
+          ? {
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorDetails: error.details,
+          }
+          : {
+            error: String(error),
+          }),
       });
     }
 
