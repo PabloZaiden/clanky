@@ -261,7 +261,7 @@ describe("controller-worker Mesh", () => {
     expect((await jsonRequest(controllerB, "/api/mesh/status")).body.workers[0].grantStatus).toBe("active");
   }, 30_000);
 
-  test("keeps a registration active until the worker acknowledges revocation", async () => {
+  test("revokes the controller registration when the worker is offline", async () => {
     const [controller, worker] = await Promise.all([
       startNode("controller"),
       startNode("worker"),
@@ -272,7 +272,7 @@ describe("controller-worker Mesh", () => {
 
     worker.child.kill();
     await worker.child.exited;
-    const unavailableRevocation = await jsonRequest(
+    const offlineRevocation = await jsonRequest(
       controller,
       "/api/mesh/workers/revoke",
       {
@@ -280,9 +280,9 @@ describe("controller-worker Mesh", () => {
         body: { workerNodeId },
       },
     );
-    expect(unavailableRevocation.status).toBe(503);
+    expect(offlineRevocation.status).toBe(200);
     expect((await jsonRequest(controller, "/api/mesh/status"))
-      .body.workers[0].grantStatus).toBe("active");
+      .body.workers[0].grantStatus).toBe("revoked");
 
     await restartWorker(worker, {
       directory: worker.dataDir,
