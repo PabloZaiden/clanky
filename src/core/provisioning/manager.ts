@@ -48,7 +48,6 @@ import { meshManager } from "../mesh-manager";
 import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
-import { CLANKY_VERSION } from "../../version";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -111,18 +110,10 @@ installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh
 install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
 install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
 installed_binary="$install_home/.local/bin/clanky"
-expected_version=${shellQuote(CLANKY_VERSION)}
 log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 
 mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
-case "$expected_version" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *)
-    echo "Automatic worker provisioning requires a published Clanky release (controller version $expected_version)." >&2
-    exit 1
-    ;;
-esac
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh -o "$installer"
 HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir"
 if [ -x "$install_dir/clanky" ]; then
@@ -131,11 +122,6 @@ elif [ -x "$installed_binary" ]; then
   source_binary="$installed_binary"
 else
   echo "The Clanky installer did not produce an executable binary." >&2
-  exit 1
-fi
-installed_version=$("$source_binary" version 2>/dev/null | sed -n 's/.*\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p' || true)
-if [ "$installed_version" != "$expected_version" ]; then
-  echo "The latest published Clanky release ($installed_version) does not match the controller release ($expected_version)." >&2
   exit 1
 fi
 mv -f "$source_binary" "$binary"
