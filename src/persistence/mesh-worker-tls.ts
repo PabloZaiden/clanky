@@ -182,8 +182,8 @@ function validateTlsIdentity(identity: StoredMeshWorkerTlsIdentity): StoredMeshW
       throw error;
     }
     throw new DomainError(
-      "mesh_worker_tls_certificate_invalid",
-      "The stored Mesh worker TLS certificate does not match its endpoint.",
+      "mesh_worker_tls_private_key_invalid",
+      "The stored Mesh worker TLS private key is invalid or does not match the certificate.",
       { cause: error },
     );
   }

@@ -415,6 +415,11 @@ export async function getWebAppServer(
           "A secure Mesh worker requires a configured Mesh endpoint before the server starts.",
         );
       }
+      if (getMeshTransport(workerEndpoint) !== "https") {
+        throw new Error(
+          "A secure Mesh worker requires an HTTPS Mesh endpoint; use --insecure for HTTP.",
+        );
+      }
       const tlsIdentity = await ensureMeshWorkerTlsIdentity(workerEndpoint, {
         rotate: options.rotateWorkerTls,
       });
