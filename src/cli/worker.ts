@@ -26,6 +26,10 @@ import {
 import { meshManager } from "../core/mesh-manager";
 import type { ClankyCliContext } from "./mesh";
 import { createWorkerServiceCommand } from "./worker-service";
+import {
+  resolveWorkerSshAgentConfiguration,
+  runWorkerSshAgentCommand,
+} from "./worker-ssh-agent";
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
 
 interface WorkerBootstrapOptions {
@@ -300,13 +304,26 @@ async function runWorkerCommand(
   if (operation === "join") {
     return await joinWorker({ ...context, args: [operation, ...rest] });
   }
-  throw new Error("Worker command must be bootstrap, join, or service");
+  if (operation === "ssh-agent") {
+    if (process.platform !== "linux") {
+      throw new Error("The worker SSH-agent command is supported on Linux only.");
+    }
+    const configuration = resolveWorkerSshAgentConfiguration({
+      environment: context.environment,
+      binaryPath: process.execPath,
+    });
+    return await runWorkerSshAgentCommand(
+      { ...context, args: rest },
+      configuration,
+    );
+  }
+  throw new Error("Worker command must be bootstrap, join, service, or ssh-agent");
 }
 
 export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Bootstrap and manage a Mesh worker.",
-    usage: "worker <bootstrap|join|service> [options]",
+    usage: "worker <bootstrap|join|service|ssh-agent> [options]",
     handler: runWorkerCommand,
   };
 }

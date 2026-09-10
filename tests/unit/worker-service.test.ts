@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,6 +12,17 @@ import {
   renderSystemdUnit,
   type WorkerServiceConfiguration,
 } from "../../src/cli/worker-service";
+import {
+  getWorkerSshAgentPaths,
+  parseWorkerSshAgentArgs,
+  renderShellStartupBlock,
+  renderSshAgentShellHelper,
+  renderSshAgentSystemdUnit,
+  removeShellStartupBlock,
+  unlockWorkerSshAgent,
+  upsertShellStartupBlock,
+  type WorkerSshAgentConfiguration,
+} from "../../src/cli/worker-ssh-agent";
 
 function configuration(
   platform: "darwin" | "linux",
@@ -43,6 +54,141 @@ function configuration(
     },
   };
 }
+
+function sshAgentConfiguration(): WorkerSshAgentConfiguration {
+  return {
+    paths: getWorkerSshAgentPaths("/home/alice"),
+    homeDirectory: "/home/alice",
+    userName: "alice",
+    binaryPath: "/home/alice/.local/bin/clanky",
+    sshAgentPath: "/usr/bin/ssh-agent",
+    sshAddPath: "/usr/bin/ssh-add",
+  };
+}
+
+describe("worker SSH-agent command and shell integration", () => {
+  test("parses unlock and status operations", () => {
+    expect(parseWorkerSshAgentArgs(["unlock", "--if-needed"])).toEqual({
+      operation: "unlock",
+      ifNeeded: true,
+    });
+    expect(parseWorkerSshAgentArgs(["status"])).toEqual({
+      operation: "status",
+      ifNeeded: false,
+    });
+    expect(() => parseWorkerSshAgentArgs(["status", "--if-needed"])).toThrow(
+      "Unknown worker ssh-agent option",
+    );
+  });
+
+  test("renders a per-user systemd agent without private key material", () => {
+    const unit = renderSshAgentSystemdUnit(sshAgentConfiguration());
+    expect(unit).toContain("User=alice");
+    expect(unit).toContain("RuntimeDirectory=clanky-worker-ssh-agent");
+    expect(unit).toContain("RuntimeDirectoryMode=0700");
+    expect(unit).toContain(
+      "ExecStart=/usr/bin/ssh-agent -D -a /run/clanky-worker-ssh-agent/agent.sock",
+    );
+    expect(unit).not.toContain("ssh-add");
+    expect(unit).not.toContain("passphrase");
+    expect(unit).not.toContain("id_ed25519");
+  });
+
+  test("uses systemd escaping for agent executable and socket paths", () => {
+    const base = sshAgentConfiguration();
+    const unit = renderSshAgentSystemdUnit({
+      ...base,
+      sshAgentPath: "/usr/bin/ssh$agent",
+      paths: {
+        ...base.paths,
+        socketPath: "/run/$agent.sock",
+      },
+    });
+    expect(unit).toContain(
+      'ExecStart="/usr/bin/ssh$$agent" -D -a "/run/$$agent.sock"',
+    );
+  });
+
+  test("renders the worker dependency and stable SSH_AUTH_SOCK", () => {
+    const unit = renderSystemdUnit(configuration("linux"));
+    expect(unit).toContain("Requires=clanky-worker-ssh-agent.service");
+    expect(unit).toContain("PartOf=clanky-worker-ssh-agent.service");
+    expect(unit).toContain("After=network-online.target clanky-worker-ssh-agent.service");
+    expect(unit).toContain(
+      "Environment=SSH_AUTH_SOCK=/run/clanky-worker-ssh-agent/agent.sock",
+    );
+  });
+
+  test("renders an unlock helper and interactive shell block", () => {
+    const agent = sshAgentConfiguration();
+    const helper = renderSshAgentShellHelper(agent);
+    const block = renderShellStartupBlock(agent.paths.helperPath);
+    expect(helper).toContain("export SSH_AUTH_SOCK=/run/clanky-worker-ssh-agent/agent.sock");
+    expect(helper).toContain(
+      "/home/alice/.local/bin/clanky worker ssh-agent unlock --if-needed",
+    );
+    expect(helper).not.toContain("ssh-add -p");
+    expect(block).toContain("*i*)");
+    expect(block).toContain(". /home/alice/.clanky/worker-ssh-agent.sh");
+    expect(agent.paths.bashProfilePath).toBe("/home/alice/.bash_profile");
+    expect(agent.paths.bashLoginPath).toBe("/home/alice/.bash_login");
+    expect(agent.paths.profilePath).toBe("/home/alice/.profile");
+    expect(agent.paths.zshProfilePath).toBe("/home/alice/.zprofile");
+  });
+
+  test("updates one managed block without duplicating it and removes it cleanly", () => {
+    const helperPath = "/home/alice/.clanky/worker-ssh-agent.sh";
+    const initial = "export EDITOR=vim\n";
+    const once = upsertShellStartupBlock(initial, helperPath);
+    const twice = upsertShellStartupBlock(once, helperPath);
+    expect(twice).toBe(once);
+    expect(twice.match(/# >>> clanky worker ssh-agent >>>/g)?.length).toBe(1);
+    expect(removeShellStartupBlock(twice)).toBe(initial);
+  });
+
+  test("unlocks an empty agent once and skips ssh-add when identities are loaded", async () => {
+    const homeDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-ssh-agent-"));
+    const sshAddPath = join(homeDirectory, "fake-ssh-add");
+    await writeFile(
+      sshAddPath,
+      [
+        "#!/bin/sh",
+        "state=\"$HOME/.fake-agent-unlocked\"",
+        "if [ \"$1\" = \"-l\" ]; then",
+        "  if [ -f \"$state\" ]; then",
+        "    printf '%s\\n' '256 SHA256:test clanky@test (ED25519)'",
+        "    exit 0",
+        "  fi",
+        "  exit 1",
+        "fi",
+        "printf '%s\\n' loaded > \"$state\"",
+        "exit 0",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(sshAddPath, 0o700);
+    try {
+      const configuration = {
+        ...sshAgentConfiguration(),
+        homeDirectory,
+        paths: getWorkerSshAgentPaths(homeDirectory),
+        sshAddPath,
+      };
+      await expect(unlockWorkerSshAgent(configuration)).resolves.toEqual({
+        changed: true,
+        identities: 1,
+      });
+      await expect(unlockWorkerSshAgent(configuration)).resolves.toEqual({
+        changed: false,
+        identities: 1,
+      });
+      expect(await readFile(join(homeDirectory, ".fake-agent-unlocked"), "utf8")).toBe("loaded\n");
+    } finally {
+      await rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("worker service command parsing", () => {
   test("accepts lifecycle operations and the no-start install flag", () => {
