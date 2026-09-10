@@ -72,6 +72,7 @@ describe("managed runtime environment propagation", () => {
     );
     expect(stdio.env?.["CLANKY_BASE_URL"]).toBe("https://clanky.example");
     expect(stdio.env?.["CLANKY_API_KEY"]).toBe("wapp_test_secret");
+    expect(stdio.managedEnvironment).toEqual(managedEnvironment);
 
     const remote = buildConnectionConfig(
       {
@@ -91,6 +92,7 @@ describe("managed runtime environment propagation", () => {
     expect(remote.args?.join(" ")).toContain("CLANKY_API_KEY");
     expect(remote.args?.join(" ")).not.toContain("wapp_test_secret");
     expect(remote.startupStdin).toBe("https://clanky.example\nwapp_test_secret\n");
+    expect(remote.managedEnvironment).toEqual(managedEnvironment);
   });
 
   test("exports managed values for direct and persistent SSH runtime creation", () => {

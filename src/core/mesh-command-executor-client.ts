@@ -20,7 +20,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
-import { decryptMeshPayload } from "./mesh-payload-crypto";
+import { decryptMeshPayload, encryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { resolveMeshRoute } from "./mesh-transport-config";
 import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
@@ -44,6 +44,7 @@ export interface MeshCommandExecutorClientConfig {
   fetch?: typeof globalThis.fetch;
   channel?: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
   sessionTtlMs?: number;
+  managedEnvironment?: Record<string, string>;
 }
 
 export interface MeshExecutionSessionConnection {
@@ -105,9 +106,12 @@ export class MeshCommandExecutorClient {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
   private readonly sessionTtlMs: number;
+  private readonly managedEnvironment?: Record<string, string>;
   private session: MeshExecutionSession | null = null;
   private endpoint: string | null = null;
   private workerTls: Bun.TLSOptions | undefined;
+  private openingSession: Promise<void> | null = null;
+  private sessionGeneration = 0;
   private readonly activeStreamControllers = new Set<AbortController>();
   private readonly activeRequestControllers = new Set<AbortController>();
 
@@ -124,10 +128,35 @@ export class MeshCommandExecutorClient {
       ?? (this.channel === MESH_ACP_CHANNEL
         ? MESH_ACP_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
+    this.managedEnvironment = config.managedEnvironment;
   }
 
   async openSession(): Promise<void> {
+    if (this.openingSession) {
+      await this.openingSession;
+      return;
+    }
     this.closeSession();
+    const generation = this.sessionGeneration;
+    const opening = this.openSessionInternal(generation);
+    this.openingSession = opening;
+    try {
+      await opening;
+    } catch (error) {
+      if (generation === this.sessionGeneration) {
+        this.session = null;
+        this.endpoint = null;
+        this.workerTls = undefined;
+      }
+      throw error;
+    } finally {
+      if (this.openingSession === opening) {
+        this.openingSession = null;
+      }
+    }
+  }
+
+  private async openSessionInternal(generation: number): Promise<void> {
     const identity = await ensureLocalMeshNodeIdentity();
     if (
       typeof identity.encryptionPublicKey !== "string"
@@ -151,6 +180,19 @@ export class MeshCommandExecutorClient {
 
     const channel = this.channel;
     const expiresAt = new Date(Date.now() + this.sessionTtlMs).toISOString();
+    let encryptedEnvironment: unknown;
+    if (this.managedEnvironment !== undefined) {
+      if (!registration.workerEncryptionPublicKey) {
+        throw new DomainError(
+          "mesh_execution_environment_unavailable",
+          "The selected Mesh worker cannot receive the managed runtime environment.",
+        );
+      }
+      encryptedEnvironment = encryptMeshPayload(
+        this.managedEnvironment,
+        registration.workerEncryptionPublicKey,
+      );
+    }
     const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
       protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
@@ -163,6 +205,7 @@ export class MeshCommandExecutorClient {
       directory: this.directory,
       provider: this.provider,
       channel,
+      ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
       nonce: crypto.randomUUID(),
       expiresAt,
     };
@@ -196,6 +239,9 @@ export class MeshCommandExecutorClient {
     const expiresAtMs = new Date(body.expiresAt).getTime();
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
       throw new DomainError("mesh_execution_session_expired", "The mesh execution session has expired.");
+    }
+    if (generation !== this.sessionGeneration) {
+      throw new DomainError("mesh_execution_session_invalid", "The mesh execution session opening was superseded.");
     }
     this.endpoint = endpoint;
     this.session = {
@@ -617,6 +663,7 @@ export class MeshCommandExecutorClient {
   }
 
   closeSession(): void {
+    this.sessionGeneration += 1;
     for (const controller of this.activeStreamControllers) {
       controller.abort();
     }
@@ -632,7 +679,6 @@ export class MeshCommandExecutorClient {
 
   private async ensureSession(): Promise<void> {
     if (!this.session || this.session.expiresAt <= Date.now()) {
-      this.closeSession();
       await this.openSession();
     }
   }

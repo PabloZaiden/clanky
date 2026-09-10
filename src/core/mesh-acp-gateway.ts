@@ -127,7 +127,11 @@ export class MeshAcpGateway {
         command: providerCommand.command,
         args: providerCommand.args,
         cwd: config.directory,
-        env: buildProviderSpawnEnvironment(providerCommand, globalThis.process.env),
+        env: buildProviderSpawnEnvironment(
+          providerCommand,
+          globalThis.process.env,
+          config.environment,
+        ),
         maxBufferedBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
         maxLineBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
         onLine: (source, line) => {

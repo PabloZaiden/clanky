@@ -32,6 +32,7 @@ import { assertMeshExecutionCwd } from "./mesh-execution-gateway";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
+import { parseManagedContextEnvironment } from "./managed-context-environment";
 import { LocalTerminalConnection } from "./terminal";
 import type { InteractiveTerminalConnection } from "./terminal";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
@@ -71,25 +72,6 @@ export interface MeshTerminalSessionResponse {
   sessionId: string;
   sessionToken: string;
   expiresAt: string;
-}
-
-function parseManagedEnvironment(value: unknown): Record<string, string> | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new DomainError("mesh_terminal_environment_invalid", "The terminal environment payload is invalid.");
-  }
-  const record = value as Record<string, unknown>;
-  const allowedKeys = new Set(["CLANKY_BASE_URL", "CLANKY_API_KEY"]);
-  const environment: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(record)) {
-    if (!allowedKeys.has(key) || typeof entry !== "string" || entry.length === 0) {
-      throw new DomainError("mesh_terminal_environment_invalid", "The terminal environment contains an unsupported value.");
-    }
-    environment[key] = entry;
-  }
-  return Object.keys(environment).length > 0 ? environment : undefined;
 }
 
 export function splitUtf8(value: string, maximumBytes: number): string[] {
@@ -173,7 +155,10 @@ export class MeshTerminalGateway {
       const decryptedEnvironment = request.encryptedEnvironment === undefined
         ? undefined
         : await decryptMeshPayload(request.encryptedEnvironment);
-      const environment = parseManagedEnvironment(decryptedEnvironment);
+      const environment = parseManagedContextEnvironment(
+        decryptedEnvironment,
+        "mesh_terminal_environment_invalid",
+      );
       const expiresAt = Math.min(expiresAtRequest, Date.now() + MESH_TERMINAL_SESSION_TTL_MS);
       const sessionId = crypto.randomUUID();
       const lease: MeshTerminalLease = {

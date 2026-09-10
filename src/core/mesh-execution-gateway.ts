@@ -20,6 +20,7 @@ import {
   MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
+  MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "@/shared/mesh-execution";
@@ -43,6 +44,8 @@ import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
+import { decryptMeshPayload } from "./mesh-payload-crypto";
+import { parseManagedContextEnvironment } from "./managed-context-environment";
 
 const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
@@ -58,6 +61,7 @@ interface MeshExecutionSession {
   channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
   expiresAt: number;
   callerEncryptionPublicKey: string;
+  environment?: Record<string, string>;
   executor: CommandExecutor;
   requestIds: Set<string>;
   activeControllers: Set<AbortController>;
@@ -78,6 +82,7 @@ export interface MeshAcpSessionConfig {
   provider: AgentProvider;
   directory: string;
   expiresAt: number;
+  environment?: Record<string, string>;
 }
 
 interface ValidatedExecutionSession {
@@ -217,6 +222,12 @@ export class MeshExecutionGateway {
     await requireLocalMeshExecutionCapability(
       request.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
     );
+    if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
+      throw new DomainError(
+        "mesh_execution_request_too_large",
+        "The mesh execution session request exceeds the size limit.",
+      );
+    }
     if (
       typeof request.callerEncryptionPublicKey !== "string"
       || request.callerEncryptionPublicKey.trim().length === 0
@@ -248,6 +259,10 @@ export class MeshExecutionGateway {
     }
 
     const executionRoot = await assertTrustedCaller(request);
+    const decryptedEnvironment = request.encryptedEnvironment === undefined
+      ? undefined
+      : await decryptMeshPayload(request.encryptedEnvironment);
+    const environment = parseManagedContextEnvironment(decryptedEnvironment);
     this.usedNonces.set(request.nonce, new Date(request.expiresAt).getTime());
     const sessionId = crypto.randomUUID();
     const sessionToken = randomBytes(32).toString("base64url");
@@ -265,6 +280,7 @@ export class MeshExecutionGateway {
       channel: request.channel,
       expiresAt,
       callerEncryptionPublicKey: request.callerEncryptionPublicKey,
+      environment,
       executor: new CommandExecutorImpl({
         provider: "local",
         directory: executionRoot,
@@ -302,6 +318,7 @@ export class MeshExecutionGateway {
       provider: session.provider,
       directory: session.directory,
       expiresAt: session.expiresAt,
+      environment: session.environment,
     };
   }
 
