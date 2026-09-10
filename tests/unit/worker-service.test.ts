@@ -84,10 +84,12 @@ describe("worker SSH-agent command and shell integration", () => {
   test("renders a per-user systemd agent without private key material", () => {
     const unit = renderSshAgentSystemdUnit(sshAgentConfiguration());
     expect(unit).toContain("User=alice");
-    expect(unit).toContain("RuntimeDirectory=clanky-worker-ssh-agent");
-    expect(unit).toContain("RuntimeDirectoryMode=0700");
+    expect(unit).toContain("ExecStartPre=/usr/bin/mkdir -p /home/alice/.clanky/worker-ssh-agent");
+    expect(unit).toContain("ExecStartPre=/usr/bin/chmod 0700 /home/alice/.clanky/worker-ssh-agent");
+    expect(unit).toContain("ExecStartPre=/usr/bin/rm -f /home/alice/.clanky/worker-ssh-agent/agent.sock");
+    expect(unit).not.toContain("RuntimeDirectory=");
     expect(unit).toContain(
-      "ExecStart=/usr/bin/ssh-agent -D -a /run/clanky-worker-ssh-agent/agent.sock",
+      "ExecStart=/usr/bin/ssh-agent -D -a /home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
     expect(unit).not.toContain("ssh-add");
     expect(unit).not.toContain("passphrase");
@@ -115,7 +117,7 @@ describe("worker SSH-agent command and shell integration", () => {
     expect(unit).toContain("PartOf=clanky-worker-ssh-agent.service");
     expect(unit).toContain("After=network-online.target clanky-worker-ssh-agent.service");
     expect(unit).toContain(
-      "Environment=SSH_AUTH_SOCK=/run/clanky-worker-ssh-agent/agent.sock",
+      "Environment=SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
   });
 
@@ -123,7 +125,9 @@ describe("worker SSH-agent command and shell integration", () => {
     const agent = sshAgentConfiguration();
     const helper = renderSshAgentShellHelper(agent);
     const block = renderShellStartupBlock(agent.paths.helperPath);
-    expect(helper).toContain("export SSH_AUTH_SOCK=/run/clanky-worker-ssh-agent/agent.sock");
+    expect(helper).toContain(
+      "export SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
+    );
     expect(helper).toContain(
       "/home/alice/.local/bin/clanky worker ssh-agent unlock --if-needed",
     );

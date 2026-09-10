@@ -9,8 +9,7 @@ import type { ClankyCliContext } from "./mesh";
 import { systemdToken } from "./systemd";
 
 export const LINUX_SSH_AGENT_UNIT_NAME = "clanky-worker-ssh-agent.service";
-export const LINUX_SSH_AGENT_RUNTIME_DIRECTORY = "clanky-worker-ssh-agent";
-export const LINUX_SSH_AGENT_SOCKET_PATH = `/run/${LINUX_SSH_AGENT_RUNTIME_DIRECTORY}/agent.sock`;
+export const LINUX_SSH_AGENT_DIRECTORY_NAME = "worker-ssh-agent";
 
 const SHELL_BLOCK_START = "# >>> clanky worker ssh-agent >>>";
 const SHELL_BLOCK_END = "# <<< clanky worker ssh-agent <<<";
@@ -18,7 +17,7 @@ const SHELL_BLOCK_END = "# <<< clanky worker ssh-agent <<<";
 export interface WorkerSshAgentPaths {
   label: string;
   servicePath: string;
-  runtimeDirectory: string;
+  agentDirectory: string;
   socketPath: string;
   helperPath: string;
   bashrcPath: string;
@@ -61,11 +60,12 @@ function resolveExecutable(command: string): string {
 }
 
 export function getWorkerSshAgentPaths(homeDirectory: string): WorkerSshAgentPaths {
+  const agentDirectory = resolve(homeDirectory, ".clanky", LINUX_SSH_AGENT_DIRECTORY_NAME);
   return {
     label: LINUX_SSH_AGENT_UNIT_NAME,
     servicePath: `/etc/systemd/system/${LINUX_SSH_AGENT_UNIT_NAME}`,
-    runtimeDirectory: LINUX_SSH_AGENT_RUNTIME_DIRECTORY,
-    socketPath: LINUX_SSH_AGENT_SOCKET_PATH,
+    agentDirectory,
+    socketPath: resolve(agentDirectory, "agent.sock"),
     helperPath: `${homeDirectory}/.clanky/worker-ssh-agent.sh`,
     bashrcPath: `${homeDirectory}/.bashrc`,
     bashProfilePath: `${homeDirectory}/.bash_profile`,
@@ -112,8 +112,9 @@ export function renderSshAgentSystemdUnit(
     "[Service]",
     "Type=simple",
     `User=${systemdToken(configuration.userName)}`,
-    `RuntimeDirectory=${systemdToken(configuration.paths.runtimeDirectory)}`,
-    "RuntimeDirectoryMode=0700",
+    `ExecStartPre=/usr/bin/mkdir -p ${systemdToken(configuration.paths.agentDirectory, true)}`,
+    `ExecStartPre=/usr/bin/chmod 0700 ${systemdToken(configuration.paths.agentDirectory, true)}`,
+    `ExecStartPre=/usr/bin/rm -f ${systemdToken(configuration.paths.socketPath, true)}`,
     `ExecStart=${systemdToken(configuration.sshAgentPath, true)} -D -a ${systemdToken(configuration.paths.socketPath, true)}`,
     "Restart=on-failure",
     "RestartSec=5",

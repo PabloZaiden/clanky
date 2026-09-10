@@ -126,9 +126,12 @@ retain systemd-compatible quoting and escaping.
 
 On Linux, service installation also creates a dedicated
 `clanky-worker-ssh-agent.service` for the current user. The worker receives its
-stable `SSH_AUTH_SOCK` path from systemd, so Git can use the user's SSH agent
-even though the worker starts outside an interactive login session. The agent
-does not write private keys or passphrases to its unit or to Clanky data.
+stable `SSH_AUTH_SOCK` path from systemd
+(`~/.clanky/worker-ssh-agent/agent.sock`), so Git can use the user's SSH agent
+even though the worker starts outside an interactive login session. Keeping
+the socket under the user's home also makes it visible to rootless Docker
+daemons used by automatic workspace provisioning. The agent does not write
+private keys or passphrases to its unit or to Clanky data.
 After the agent starts, a normal `clanky worker service install` invokes
 `ssh-add` interactively and prompts for the passphrase of each default SSH
 identity that needs unlocking. The passphrase is handled by `ssh-add` and is
