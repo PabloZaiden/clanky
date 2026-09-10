@@ -93,14 +93,37 @@ describe("worker service definitions", () => {
     expect(plist).not.toContain("CLANKY_API_KEY");
   });
 
-  test("renders a boot-time systemd service for the installing user", () => {
+  test("renders a boot-time systemd service with canonical unquoted simple values", () => {
     const unit = renderSystemdUnit(configuration("linux"));
     expect(unit).toContain("After=network-online.target");
-    expect(unit).toContain("User=\"alice\"");
+    expect(unit).toContain("User=alice");
+    expect(unit).not.toContain('User="alice"');
+    expect(unit).toContain("WorkingDirectory=/srv/workspaces");
     expect(unit).toContain("Restart=on-failure");
-    expect(unit).toContain("ExecStart=\"/home/alice/.local/bin/clanky\"");
+    expect(unit).toContain(
+      "ExecStart=/home/alice/.local/bin/clanky serve --mesh-worker true --worker-directory /srv/workspaces --worker-execution-enabled true --insecure false",
+    );
     expect(unit).toContain("CLANKY_DATA_DIR=/home/alice/.clanky");
+    expect(unit).not.toContain('"');
     expect(unit).not.toContain("CLANKY_API_KEY");
+  });
+
+  test("quotes only systemd values that require grouping or escaping", () => {
+    const base = configuration("linux");
+    const unit = renderSystemdUnit({
+      ...base,
+      binaryPath: "/home/alice/bin/clanky worker",
+      workerDirectory: "/srv/worker spaces",
+      environment: {
+        ...base.environment,
+        CLANKY_LABEL: "worker service",
+      },
+    });
+    expect(unit).toContain('WorkingDirectory="/srv/worker spaces"');
+    expect(unit).toContain('Environment="CLANKY_LABEL=worker service"');
+    expect(unit).toContain(
+      'ExecStart="/home/alice/bin/clanky worker" serve --mesh-worker true --worker-directory "/srv/worker spaces" --worker-execution-enabled true --insecure false',
+    );
   });
 
   test("escapes ExecStart dollars without escaping environment dollars or backticks", () => {
@@ -115,7 +138,7 @@ describe("worker service definitions", () => {
       },
     });
     expect(unit).toContain(
-      'ExecStart="/home/alice/bin/$$clanky`worker" "serve" "--mesh-worker" "true" "--worker-directory" "/srv/$$clanky`workspace"',
+      'ExecStart="/home/alice/bin/$$clanky`worker" serve --mesh-worker true --worker-directory "/srv/$$clanky`workspace" --worker-execution-enabled true --insecure false',
     );
     expect(unit).toContain('Environment="CLANKY_PUBLIC_BASE_URL=https://$host.example"');
   });

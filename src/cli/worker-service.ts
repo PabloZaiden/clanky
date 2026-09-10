@@ -406,22 +406,25 @@ export function renderLaunchAgent(configuration: WorkerServiceConfiguration): st
   ].join("\n");
 }
 
-function systemdValueQuote(value: string): string {
+const SYSTEMD_BARE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+function systemdToken(value: string, escapeDollar = false): string {
   const escaped = value
     .replaceAll("\\", "\\\\")
     .replaceAll("\"", "\\\"")
     .replaceAll("%", "%%");
-  return `"${escaped}"`;
-}
-
-function systemdExecStartQuote(value: string): string {
-  return systemdValueQuote(value).replaceAll("$", () => "$$");
+  const rendered = escapeDollar
+    ? escaped.replaceAll("$", () => "$$")
+    : escaped;
+  return SYSTEMD_BARE_TOKEN.test(value) ? rendered : `"${rendered}"`;
 }
 
 export function renderSystemdUnit(configuration: WorkerServiceConfiguration): string {
-  const command = workerCommand(configuration).map(systemdExecStartQuote).join(" ");
+  const command = workerCommand(configuration)
+    .map((value) => systemdToken(value, true))
+    .join(" ");
   const environment = Object.entries(configuration.environment)
-    .map(([key, value]) => `Environment=${systemdValueQuote(`${key}=${value}`)}`);
+    .map(([key, value]) => `Environment=${systemdToken(`${key}=${value}`)}`);
   return [
     "[Unit]",
     "Description=Clanky Mesh worker",
@@ -430,8 +433,8 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
     "",
     "[Service]",
     "Type=simple",
-    `User=${systemdValueQuote(configuration.userName)}`,
-    `WorkingDirectory=${systemdValueQuote(configuration.workerDirectory)}`,
+    `User=${systemdToken(configuration.userName)}`,
+    `WorkingDirectory=${systemdToken(configuration.workerDirectory)}`,
     ...environment,
     `ExecStart=${command}`,
     "Restart=on-failure",

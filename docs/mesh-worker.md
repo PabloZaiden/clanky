@@ -116,7 +116,10 @@ prompt is denied, ignored, or times out; failures are logged. This keeps the
 consent associated with the service process rather than the terminal used to
 install it. Full Disk Access is not requested by this command. On Linux this
 installs a systemd service that starts at boot as the current user and waits
-for the network.
+for the network. To validate the generated unit without starting it, run
+`sudo systemd-analyze verify /etc/systemd/system/clanky-worker.service`.
+Simple values are emitted without quotes; paths or values that need grouping
+retain systemd-compatible quoting and escaping.
 
 To regenerate the service configuration without starting it immediately, use
 `clanky worker service install --no-start`. The lifecycle commands are:
