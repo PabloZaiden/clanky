@@ -1,4 +1,4 @@
-import { chmod, mkdir, rename, rm, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -10,6 +10,18 @@ import {
   type WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { ClankyCliContext } from "./mesh";
+import {
+  getWorkerSshAgentPaths,
+  LINUX_SSH_AGENT_UNIT_NAME,
+  renderSshAgentShellHelper,
+  renderSshAgentSystemdUnit,
+  removeShellStartupBlock,
+  resolveWorkerSshAgentConfiguration,
+  unlockWorkerSshAgent,
+  upsertShellStartupBlock,
+  type WorkerSshAgentConfiguration,
+  type WorkerSshAgentPaths,
+} from "./worker-ssh-agent";
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
 
 const MACOS_LABEL = "com.pablozaiden.clanky.worker";
@@ -61,6 +73,7 @@ export interface WorkerServiceConfiguration {
   homeDirectory: string;
   userName: string;
   environment: Readonly<Record<string, string>>;
+  sshAgent?: WorkerSshAgentConfiguration;
 }
 
 interface WorkerServiceResolutionInput {
@@ -296,6 +309,14 @@ export async function resolveWorkerServiceConfiguration(
   if (!userName) {
     throw new Error("The worker service user name is unavailable.");
   }
+  const sshAgent = platform === "linux"
+    ? resolveWorkerSshAgentConfiguration({
+        environment,
+        homeDirectory,
+        userName,
+        binaryPath,
+      })
+    : undefined;
   return {
     platform,
     paths,
@@ -316,6 +337,7 @@ export async function resolveWorkerServiceConfiguration(
       port: runtimeConfiguration.port,
       platform,
     }),
+    sshAgent,
   };
 }
 
@@ -425,17 +447,22 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
     .join(" ");
   const environment = Object.entries(configuration.environment)
     .map(([key, value]) => `Environment=${systemdToken(`${key}=${value}`)}`);
+  const sshAgentService = configuration.sshAgent?.paths.label ?? LINUX_SSH_AGENT_UNIT_NAME;
+  const sshAgentSocket = configuration.sshAgent?.paths.socketPath
+    ?? getWorkerSshAgentPaths(configuration.homeDirectory).socketPath;
   return [
     "[Unit]",
     "Description=Clanky Mesh worker",
     "Wants=network-online.target",
-    "After=network-online.target",
+    `Requires=${sshAgentService}`,
+    `After=network-online.target ${sshAgentService}`,
     "",
     "[Service]",
     "Type=simple",
     `User=${systemdToken(configuration.userName)}`,
     `WorkingDirectory=${systemdToken(configuration.workerDirectory)}`,
     ...environment,
+    `Environment=SSH_AUTH_SOCK=${systemdToken(sshAgentSocket)}`,
     `ExecStart=${command}`,
     "Restart=on-failure",
     "RestartSec=5",
@@ -496,8 +523,108 @@ async function writeAtomic(path: string, content: string, mode: number): Promise
   }
 }
 
+async function readTextIfPresent(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw new Error(`Unable to read ${path}`, { cause: error });
+  }
+}
+
+async function shellConfigurationTarget(path: string): Promise<{
+  path: string;
+  mode: number;
+}> {
+  try {
+    const metadata = await lstat(path);
+    const targetPath = metadata.isSymbolicLink() ? await realpath(path) : path;
+    const targetMetadata = metadata.isSymbolicLink() ? await stat(targetPath) : metadata;
+    return {
+      path: targetPath,
+      mode: targetMetadata.mode & 0o777,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return { path, mode: 0o600 };
+    }
+    throw new Error(`Unable to inspect shell configuration: ${path}`, { cause: error });
+  }
+}
+
+async function shellIntegrationPaths(
+  paths: WorkerSshAgentPaths,
+): Promise<string[]> {
+  const result = [paths.bashrcPath, paths.zshrcPath];
+  const bashLoginPaths = [
+    paths.bashProfilePath,
+    paths.bashLoginPath,
+    paths.profilePath,
+  ];
+  const existingBashLoginPaths: string[] = [];
+  for (const path of bashLoginPaths) {
+    if (await pathExists(path)) existingBashLoginPaths.push(path);
+  }
+  if (existingBashLoginPaths.length > 0) {
+    result.push(...existingBashLoginPaths);
+  } else {
+    result.push(paths.profilePath);
+  }
+  if (await pathExists(paths.zshProfilePath)) {
+    result.push(paths.zshProfilePath);
+  }
+  return result;
+}
+
+async function installShellIntegration(
+  configuration: WorkerServiceConfiguration,
+): Promise<void> {
+  if (!configuration.sshAgent) {
+    throw new Error("Linux worker SSH-agent configuration is unavailable.");
+  }
+  const { paths } = configuration.sshAgent;
+  await writeAtomic(
+    paths.helperPath,
+    renderSshAgentShellHelper(configuration.sshAgent),
+    0o700,
+  );
+  for (const shellPath of await shellIntegrationPaths(paths)) {
+    const current = await readTextIfPresent(shellPath) ?? "";
+    const next = upsertShellStartupBlock(current, paths.helperPath);
+    const target = await shellConfigurationTarget(shellPath);
+    if (next !== current) {
+      await writeAtomic(target.path, next, target.mode);
+    }
+  }
+}
+
+async function uninstallShellIntegration(paths: WorkerSshAgentPaths): Promise<void> {
+  for (const shellPath of await shellIntegrationPaths(paths)) {
+    const current = await readTextIfPresent(shellPath);
+    if (current === null) continue;
+    const next = removeShellStartupBlock(current);
+    if (next !== current) {
+      const target = await shellConfigurationTarget(shellPath);
+      await writeAtomic(target.path, next, target.mode);
+    }
+  }
+  await rm(paths.helperPath, { force: true });
+}
+
 async function writeLinuxUnit(
   configuration: WorkerServiceConfiguration,
+  runner: ProcessRunner,
+): Promise<void> {
+  await writeLinuxUnitFile(
+    configuration.paths.servicePath,
+    renderSystemdUnit(configuration),
+    runner,
+  );
+}
+
+async function writeLinuxUnitFile(
+  path: string,
+  content: string,
   runner: ProcessRunner,
 ): Promise<void> {
   const temporaryPath = join(
@@ -505,17 +632,31 @@ async function writeLinuxUnit(
     `clanky-worker-${String(process.pid)}-${crypto.randomUUID()}.service`,
   );
   try {
-    await writeAtomic(temporaryPath, renderSystemdUnit(configuration), 0o600);
+    await writeAtomic(temporaryPath, content, 0o600);
     await runRequired(runner, "sudo", [
       "install",
       "-m",
       "0644",
       temporaryPath,
-      configuration.paths.servicePath,
+      path,
     ]);
   } finally {
     await rm(temporaryPath, { force: true });
   }
+}
+
+async function writeLinuxSshAgentUnit(
+  configuration: WorkerServiceConfiguration,
+  runner: ProcessRunner,
+): Promise<void> {
+  if (!configuration.sshAgent) {
+    throw new Error("Linux worker SSH-agent configuration is unavailable.");
+  }
+  await writeLinuxUnitFile(
+    configuration.sshAgent.paths.servicePath,
+    renderSshAgentSystemdUnit(configuration.sshAgent),
+    runner,
+  );
 }
 
 interface MacServiceStatus {
@@ -599,10 +740,10 @@ function assertSystemctlStatusResult(
 }
 
 async function stopLinuxService(
-  paths: WorkerServicePaths,
+  label: string,
   runner: ProcessRunner,
 ): Promise<void> {
-  const result = await runSystemctl(runner, ["disable", "--now", paths.label]);
+  const result = await runSystemctl(runner, ["disable", "--now", label]);
   if (
     result.exitCode !== 0
     && !/not loaded|does not exist|not found/i.test(`${result.stdout}\n${result.stderr}`)
@@ -610,7 +751,7 @@ async function stopLinuxService(
     throw commandFailure(result, "sudo", systemctlArgs([
       "disable",
       "--now",
-      paths.label,
+      label,
     ]));
   }
 }
@@ -627,16 +768,25 @@ async function installService(
     if (!noStart) await startMacService(configuration.paths, runner);
     return;
   }
+  await installShellIntegration(configuration);
+  await writeLinuxSshAgentUnit(configuration, runner);
   await writeLinuxUnit(configuration, runner);
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
+  await assertSystemctlSuccess(runner, ["enable", LINUX_SSH_AGENT_UNIT_NAME]);
   await assertSystemctlSuccess(runner, ["enable", configuration.paths.label]);
   if (!noStart) {
+    await assertSystemctlSuccess(runner, ["start", LINUX_SSH_AGENT_UNIT_NAME]);
+    if (!configuration.sshAgent) {
+      throw new Error("Linux worker SSH-agent configuration is unavailable.");
+    }
+    await unlockWorkerSshAgent(configuration.sshAgent);
     await assertSystemctlSuccess(runner, ["restart", configuration.paths.label]);
   }
 }
 
 async function uninstallService(
   paths: WorkerServicePaths,
+  sshAgentPaths: WorkerSshAgentPaths | undefined,
   runner: ProcessRunner,
 ): Promise<void> {
   if (paths.platform === "darwin") {
@@ -644,14 +794,22 @@ async function uninstallService(
     await rm(paths.servicePath, { force: true });
     return;
   }
-  await stopLinuxService(paths, runner);
+  await stopLinuxService(paths.label, runner);
+  if (sshAgentPaths) {
+    await stopLinuxService(sshAgentPaths.label, runner);
+  }
   await runRequired(runner, "sudo", ["rm", "-f", paths.servicePath]);
+  if (sshAgentPaths) {
+    await runRequired(runner, "sudo", ["rm", "-f", sshAgentPaths.servicePath]);
+    await uninstallShellIntegration(sshAgentPaths);
+  }
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
 }
 
 export async function getWorkerServiceStatus(
   paths: WorkerServicePaths,
   runner: ProcessRunner,
+  sshAgentPaths?: WorkerSshAgentPaths,
 ): Promise<Record<string, unknown>> {
   const installed = await pathExists(paths.servicePath);
   if (paths.platform === "darwin") {
@@ -669,6 +827,23 @@ export async function getWorkerServiceStatus(
   const enabled = await runSystemctl(runner, ["is-enabled", paths.label]);
   assertSystemctlStatusResult(active, ["is-active", paths.label]);
   assertSystemctlStatusResult(enabled, ["is-enabled", paths.label]);
+  const sshAgentActive = sshAgentPaths
+    ? await runSystemctl(runner, ["is-active", sshAgentPaths.label])
+    : undefined;
+  const sshAgentEnabled = sshAgentPaths
+    ? await runSystemctl(runner, ["is-enabled", sshAgentPaths.label])
+    : undefined;
+  const sshAgentStatus = sshAgentPaths && sshAgentActive && sshAgentEnabled
+    ? {
+        active: sshAgentActive,
+        enabled: sshAgentEnabled,
+        paths: sshAgentPaths,
+      }
+    : undefined;
+  if (sshAgentStatus) {
+    assertSystemctlStatusResult(sshAgentStatus.active, ["is-active", sshAgentStatus.paths.label]);
+    assertSystemctlStatusResult(sshAgentStatus.enabled, ["is-enabled", sshAgentStatus.paths.label]);
+  }
   return {
     platform: paths.platform,
     service: paths.label,
@@ -676,6 +851,18 @@ export async function getWorkerServiceStatus(
     loaded: enabled.exitCode === 0,
     running: active.exitCode === 0 && active.stdout.trim() === "active",
     path: paths.servicePath,
+    ...(sshAgentStatus
+      ? {
+          sshAgent: {
+            service: sshAgentStatus.paths.label,
+            installed: await pathExists(sshAgentStatus.paths.servicePath),
+            loaded: sshAgentStatus.enabled.exitCode === 0,
+            running: sshAgentStatus.active.exitCode === 0 && sshAgentStatus.active.stdout.trim() === "active",
+            path: sshAgentStatus.paths.servicePath,
+            socket: sshAgentStatus.paths.socketPath,
+          },
+        }
+      : {}),
   };
 }
 
@@ -687,6 +874,9 @@ async function runWorkerServiceOperation(
   const environment = context.environment;
   const homeDirectory = resolveHomeDirectory(environment);
   const paths = getWorkerServicePaths(platform, homeDirectory, resolveUid());
+  const sshAgentPaths = platform === "linux"
+    ? getWorkerSshAgentPaths(homeDirectory)
+    : undefined;
   const runner = defaultProcessRunner;
   if (command.operation === "install") {
     const configuration = await resolveWorkerServiceConfiguration({
@@ -705,10 +895,19 @@ async function runWorkerServiceOperation(
       installed: true,
       started: !command.noStart,
       path: paths.servicePath,
+      ...(configuration.sshAgent
+        ? {
+            sshAgent: {
+              service: configuration.sshAgent.paths.label,
+              socket: configuration.sshAgent.paths.socketPath,
+              unlocked: !command.noStart,
+            },
+          }
+        : {}),
     };
   }
   if (command.operation === "uninstall") {
-    await uninstallService(paths, runner);
+    await uninstallService(paths, sshAgentPaths, runner);
     return {
       platform,
       service: paths.label,
@@ -717,7 +916,7 @@ async function runWorkerServiceOperation(
     };
   }
   if (command.operation === "status") {
-    return await getWorkerServiceStatus(paths, runner);
+    return await getWorkerServiceStatus(paths, runner, sshAgentPaths);
   }
   if (!await pathExists(paths.servicePath)) {
     throw new Error(`The worker service is not installed: ${paths.servicePath}`);

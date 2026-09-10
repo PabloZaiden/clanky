@@ -121,6 +121,38 @@ for the network. To validate the generated unit without starting it, run
 Simple values are emitted without quotes; paths or values that need grouping
 retain systemd-compatible quoting and escaping.
 
+On Linux, service installation also creates a dedicated
+`clanky-worker-ssh-agent.service` for the current user. The worker receives its
+stable `SSH_AUTH_SOCK` path from systemd, so Git can use the user's SSH agent
+even though the worker starts outside an interactive login session. The agent
+does not write private keys or passphrases to its unit or to Clanky data.
+After the agent starts, a normal `clanky worker service install` invokes
+`ssh-add` interactively and prompts for the passphrase of each default SSH
+identity that needs unlocking. The passphrase is handled by `ssh-add` and is
+never read or stored by Clanky.
+
+Installation adds a managed, idempotent hook to `~/.bashrc` and `~/.zshrc`,
+plus the existing Bash/Zsh login profiles (`~/.bash_profile`,
+`~/.bash_login`, `~/.profile`, and `~/.zprofile`) when applicable. If no Bash
+login profile exists, Clanky creates the managed block in `~/.profile` so a
+login Bash session is covered without replacing any existing profile.
+Each interactive shell sets the worker's `SSH_AUTH_SOCK` and runs `clanky
+worker ssh-agent unlock --if-needed`; when the agent already has an identity,
+the command exits without prompting or printing output. After a machine
+reboot, the first interactive Bash or Zsh session unlocks the agent again. The
+commands can also be run manually:
+
+```bash
+clanky worker ssh-agent unlock
+clanky worker ssh-agent status
+```
+
+`--no-start` installs and enables both services and the shell hooks without
+starting the agent or prompting. Start the worker and run the unlock command
+from an interactive session when using that mode. Uninstalling the worker
+removes only Clanky's managed shell block and helper; it does not delete
+anything from `~/.ssh`.
+
 To regenerate the service configuration without starting it immediately, use
 `clanky worker service install --no-start`. The lifecycle commands are:
 
