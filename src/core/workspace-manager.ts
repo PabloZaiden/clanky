@@ -420,7 +420,11 @@ export class WorkspaceManager {
     const directoryChanged = updates.directory !== undefined && updates.directory !== current.directory;
     const serverSettingsChanged = updates.serverSettings !== undefined
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
-    if (updates.executionHost !== undefined && updates.sshTarget !== undefined) {
+    if (
+      updates.executionHost !== undefined
+      && updates.sshTarget !== undefined
+      && updates.sshTarget !== null
+    ) {
       throw new DomainError(
         "execution_target_ambiguous",
         "Choose either a registered execution host or an ad hoc SSH target.",
@@ -571,6 +575,7 @@ export class WorkspaceManager {
       }
       if (removeSshTarget) {
         await removeWorkspaceSshTarget(id);
+        workspace = await this.getWorkspace(id);
       }
     } catch (error) {
       if (previousSshTargetState && sshTargetMutationStarted) {

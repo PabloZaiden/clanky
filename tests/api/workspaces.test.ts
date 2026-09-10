@@ -196,7 +196,7 @@ describe("Workspace API Integration", () => {
       expect(data.workspaceType).toBe("git");
     });
 
-    test("creates and executes a workspace-owned SSH target without a registered server", async () => {
+    test("creates, updates, and switches a workspace-owned SSH target", async () => {
       const password = "workspace-only-secret";
       const response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -336,6 +336,26 @@ describe("Workspace API Integration", () => {
       };
       expect(cleared.sshTarget?.credentialConfigured).toBe(false);
       expect((await getWorkspaceSshTarget(created.id))?.password).toBeUndefined();
+
+      const switchToRegisteredHostResponse = await fetch(
+        `${baseUrl}/api/workspaces/${created.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            executionHost: localExecutionHost,
+            sshTarget: null,
+          }),
+        },
+      );
+      expect(switchToRegisteredHostResponse.status).toBe(200);
+      const switched = await switchToRegisteredHostResponse.json() as {
+        executionHostBinding: { host: ExecutionHostRef };
+        sshTarget?: unknown;
+      };
+      expect(switched.executionHostBinding.host).toEqual(localExecutionHost);
+      expect(switched.sshTarget).toBeUndefined();
+      expect(await getWorkspaceSshTarget(created.id)).toBeNull();
     });
 
     test("creates and persists a directory workspace without requiring Git", async () => {
