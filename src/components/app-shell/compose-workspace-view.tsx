@@ -539,12 +539,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
               />
-              <DedicatedWorkerEnrollment
-                enrollment={workspaceWorkerEnrollment}
-                loading={workspaceWorkerEnrollmentLoading}
-                onStart={() => void startWorkspaceWorkerEnrollment()}
-                onCancel={() => void cancelWorkspaceWorkerEnrollment()}
-              />
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
                   type="checkbox"
