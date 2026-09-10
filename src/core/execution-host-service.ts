@@ -34,6 +34,7 @@ import {
 } from "../persistence/workspace-target-key";
 import { ensureLocalInstallationId } from "../persistence/installation-identity";
 import type { CommandExecutor } from "./command-executor";
+import { isRemoteOnlyMode } from "./config";
 import { DomainError } from "./domain-error";
 import { MeshCommandExecutor } from "./mesh-command-executor";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -98,7 +99,7 @@ export class ExecutionHostService {
   async listHosts(userId: string = requireCurrentUserId()): Promise<ExecutionHostDescriptor[]> {
     const descriptors: ExecutionHostDescriptor[] = [];
     const identity = await ensureLocalMeshNodeIdentity();
-    if (identity.execution?.acceptRemoteExecution !== false) {
+    if (!isRemoteOnlyMode() && identity.execution?.acceptRemoteExecution !== false) {
       const localHost = ensureExecutionHost(
         userId,
         { kind: "local", nodeId: identity.nodeId },

@@ -225,6 +225,29 @@ describe("Execution hosts API", () => {
     expect(deleteChatResponse.status).toBe(200);
   });
 
+  test("omits the local host when remote-only mode is enabled", async () => {
+    const previousRemoteOnly = process.env["CLANKY_REMOTE_ONLY"];
+    process.env["CLANKY_REMOTE_ONLY"] = "true";
+
+    try {
+      const response = await fetch(`${baseUrl}/api/execution-hosts`);
+      expect(response.status).toBe(200);
+      const hosts = await response.json() as ExecutionHostDescriptor[];
+      expect(hosts.some((host) => host.ref.kind === "local")).toBe(false);
+
+      const targetsResponse = await fetch(`${baseUrl}/api/workspaces/execution-targets`);
+      expect(targetsResponse.status).toBe(200);
+      const targets = await targetsResponse.json() as ExecutionHostDescriptor[];
+      expect(targets.some((target) => target.ref.kind === "local")).toBe(false);
+    } finally {
+      if (previousRemoteOnly === undefined) {
+        delete process.env["CLANKY_REMOTE_ONLY"];
+      } else {
+        process.env["CLANKY_REMOTE_ONLY"] = previousRemoteOnly;
+      }
+    }
+  });
+
   test("does not let the native route harness supply a non-owner to owner handlers", async () => {
     const hosts = await fetch(`${baseUrl}/api/execution-hosts`)
       .then(async (response) => await response.json() as ExecutionHostDescriptor[]);
