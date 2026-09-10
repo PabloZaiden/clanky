@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import type { SshServer } from "@/shared";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import type { ExecutionHostRef, SshServer } from "@/shared";
 import type { UpdateSshServerRequest } from "@/contracts";
 import { useToast } from "@pablozaiden/webapp/web";
 import { DeleteSshServerSection } from "./delete-ssh-server-section";
@@ -49,8 +49,12 @@ export function SshServerSettingsForm({
   const [values, setValues] = useState<SshServerFormValues>(() => createSshServerFormValues(server));
   const [submitting, setSubmitting] = useState(false);
   const trimmedValues = trimSshServerFormValues(values);
+  const executionHost = useMemo<ExecutionHostRef>(() => ({
+    kind: "ssh",
+    serverId: server.config.id,
+  }), [server.config.id]);
   const prerequisites = useExecutionHostPrerequisites({
-    executionHost: { kind: "ssh", serverId: server.config.id },
+    executionHost,
     password: trimmedValues.password,
   });
 
