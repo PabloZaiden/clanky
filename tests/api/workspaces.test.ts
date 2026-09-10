@@ -196,7 +196,7 @@ describe("Workspace API Integration", () => {
       expect(data.workspaceType).toBe("git");
     });
 
-    test("creates and executes a workspace-owned SSH target without a registered server", async () => {
+    test("creates, updates, and switches a workspace-owned SSH target", async () => {
       const password = "workspace-only-secret";
       const response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -336,6 +336,26 @@ describe("Workspace API Integration", () => {
       };
       expect(cleared.sshTarget?.credentialConfigured).toBe(false);
       expect((await getWorkspaceSshTarget(created.id))?.password).toBeUndefined();
+
+      const switchToRegisteredHostResponse = await fetch(
+        `${baseUrl}/api/workspaces/${created.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            executionHost: localExecutionHost,
+            sshTarget: null,
+          }),
+        },
+      );
+      expect(switchToRegisteredHostResponse.status).toBe(200);
+      const switched = await switchToRegisteredHostResponse.json() as {
+        executionHostBinding: { host: ExecutionHostRef };
+        sshTarget?: unknown;
+      };
+      expect(switched.executionHostBinding.host).toEqual(localExecutionHost);
+      expect(switched.sshTarget).toBeUndefined();
+      expect(await getWorkspaceSshTarget(created.id)).toBeNull();
     });
 
     test("creates and persists a directory workspace without requiring Git", async () => {
@@ -620,6 +640,85 @@ describe("Workspace API Integration", () => {
       const persistedUnarchivedWorkspace = await getWorkspace(workspace.id);
       expect(persistedUnarchivedWorkspace?.archived).toBe(false);
       expect(persistedUnarchivedWorkspace?.allowClankyContext).toBe(false);
+    });
+
+    test("allows unchanged settings saves when a workspace terminal exists", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Workspace With Terminal",
+          directory: testWorkDir,
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const workspace = await createResponse.json() as {
+        id: string;
+        name: string;
+        serverSettings: ReturnType<typeof makeServerSettings>;
+        archived?: boolean;
+        allowClankyContext?: boolean;
+      };
+
+      const terminalResponse = await fetch(`${baseUrl}/api/terminal-sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          name: "Workspace terminal",
+          connectionMode: "direct",
+        }),
+      });
+      expect(terminalResponse.status).toBe(201);
+      const terminal = await terminalResponse.json() as { config: { id: string } };
+
+      try {
+        const unchangedSaveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: workspace.name,
+            serverSettings: workspace.serverSettings,
+            executionHost: localExecutionHost,
+            archived: workspace.archived,
+            allowClankyContext: workspace.allowClankyContext,
+          }),
+        });
+        expect(unchangedSaveResponse.status).toBe(200);
+
+        const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Target Change Test SSH Host",
+            address: "target-change.example",
+            username: "builder",
+            repositoriesBasePath: null,
+          }),
+        });
+        expect(createServerResponse.status).toBe(201);
+        const server = await createServerResponse.json() as { config: { id: string } };
+
+        const targetChangeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            executionHost: { kind: "ssh", serverId: server.config.id },
+          }),
+        });
+        expect(targetChangeResponse.status).toBe(409);
+        expect(await targetChangeResponse.json()).toMatchObject({
+          error: "workspace_execution_target_in_use",
+        });
+      } finally {
+        const deleteTerminalResponse = await fetch(
+          `${baseUrl}/api/terminal-sessions/${terminal.config.id}`,
+          { method: "DELETE" },
+        );
+        expect(deleteTerminalResponse.status).toBe(200);
+      }
     });
 
     test("refreshes the binding when the selected SSH host configuration changes", async () => {

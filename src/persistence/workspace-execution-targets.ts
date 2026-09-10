@@ -173,6 +173,18 @@ function normalizeInput(input: WorkspaceSshTargetInput): {
   return { host, port, username, password, passwordProvided };
 }
 
+export function workspaceSshTargetWouldChange(
+  current: WorkspaceSshTarget | undefined,
+  input: WorkspaceSshTargetInput,
+): boolean {
+  const normalized = normalizeInput(input);
+  return !current
+    || current.host !== normalized.host
+    || current.port !== normalized.port
+    || current.username !== normalized.username
+    || normalized.passwordProvided;
+}
+
 interface PreparedWorkspaceSshTarget {
   normalized: ReturnType<typeof normalizeInput>;
   existing: WorkspaceExecutionTargetRow | null;
