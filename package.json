@@ -21,7 +21,7 @@
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.10.4",
-    "@peculiar/x509": "1.14.3",
+    "@peculiar/x509": "2.1.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-webgl": "0.19.0",
