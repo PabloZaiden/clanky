@@ -3,6 +3,7 @@
  */
 
 import type { ManagedRuntimeCredential } from "./managed-credential-service";
+import { DomainError } from "./domain-error";
 
 export interface ManagedContextEnvironment extends Record<string, string> {
   CLANKY_BASE_URL: string;
@@ -13,6 +14,8 @@ const MANAGED_CONTEXT_ENVIRONMENT_KEYS = new Set([
   "CLANKY_BASE_URL",
   "CLANKY_API_KEY",
 ]);
+const MAX_MANAGED_CONTEXT_ENVIRONMENT_VALUE_BYTES = 32 * 1024;
+const MAX_MANAGED_CONTEXT_ENVIRONMENT_BYTES = 64 * 1024;
 
 export function buildManagedContextEnvironment(
   credential?: Pick<ManagedRuntimeCredential, "baseUrl" | "token">,
@@ -47,6 +50,45 @@ export function mergeRuntimeEnvironment(
     }
   }
   return merged;
+}
+
+export function parseManagedContextEnvironment(
+  value: unknown,
+  errorCode = "mesh_execution_environment_invalid",
+): Record<string, string> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new DomainError(errorCode, "The managed runtime environment payload is invalid.");
+  }
+
+  const environment: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      !MANAGED_CONTEXT_ENVIRONMENT_KEYS.has(key)
+      || typeof entry !== "string"
+      || entry.length === 0
+      || Buffer.byteLength(entry, "utf8") > MAX_MANAGED_CONTEXT_ENVIRONMENT_VALUE_BYTES
+    ) {
+      throw new DomainError(
+        errorCode,
+        "The managed runtime environment contains an unsupported value.",
+      );
+    }
+    environment[key] = entry;
+  }
+
+  if (
+    Buffer.byteLength(JSON.stringify(environment), "utf8")
+    > MAX_MANAGED_CONTEXT_ENVIRONMENT_BYTES
+  ) {
+    throw new DomainError(
+      errorCode,
+      "The managed runtime environment exceeds the size limit.",
+    );
+  }
+  return Object.keys(environment).length > 0 ? environment : undefined;
 }
 
 export function withoutManagedContextEnvironment(

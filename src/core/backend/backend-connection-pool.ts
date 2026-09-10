@@ -87,6 +87,7 @@ export function buildConnectionConfig(
     args: derivedCommand.args,
     env: derivedCommand.env,
     startupStdin: derivedCommand.startupStdin,
+    managedEnvironment: runtimeEnvironment,
     directory,
   };
 }

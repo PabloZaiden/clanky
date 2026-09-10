@@ -45,6 +45,8 @@ export interface BackendConnectionConfig {
   env?: NodeJS.ProcessEnv;
   /** Secret-free process bootstrap data written to the spawned runtime stdin */
   startupStdin?: string;
+  /** Managed Clanky runtime environment delivered separately to Mesh workers. */
+  managedEnvironment?: Record<string, string>;
   /** Working directory for the backend */
   directory: string;
   /** Mesh ownership metadata for remote stdio ACP transport. */

@@ -127,7 +127,7 @@ export function buildMeshWorkerKillRequestSigningPayload(
 export function buildMeshExecutionSessionSigningPayload(
   envelope: UnsignedExecutionSession,
 ): string {
-  return JSON.stringify([
+  const payload: unknown[] = [
     "clanky-mesh-execution-session-v1",
     envelope.protocolVersion,
     envelope.requestId,
@@ -140,7 +140,12 @@ export function buildMeshExecutionSessionSigningPayload(
     envelope.directory,
     envelope.provider,
     envelope.channel,
-    envelope.nonce,
-    envelope.expiresAt,
-  ]);
+  ];
+  // Keep the no-environment shape compatible with workers that predate the
+  // managed runtime environment field.
+  if (envelope.encryptedEnvironment !== undefined) {
+    payload.push(envelope.encryptedEnvironment);
+  }
+  payload.push(envelope.nonce, envelope.expiresAt);
+  return JSON.stringify(payload);
 }
