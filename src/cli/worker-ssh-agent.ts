@@ -6,6 +6,7 @@ import type {
 } from "@pablozaiden/webapp/cli";
 import type { RuntimeEnvironment } from "@pablozaiden/webapp/server";
 import type { ClankyCliContext } from "./mesh";
+import { systemdToken } from "./systemd";
 
 export const LINUX_SSH_AGENT_UNIT_NAME = "clanky-worker-ssh-agent.service";
 export const LINUX_SSH_AGENT_RUNTIME_DIRECTORY = "clanky-worker-ssh-agent";
@@ -97,19 +98,6 @@ export function resolveWorkerSshAgentConfiguration(input: {
     sshAgentPath: resolveExecutable("ssh-agent"),
     sshAddPath: resolveExecutable("ssh-add"),
   };
-}
-
-const SYSTEMD_BARE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-function systemdToken(value: string, escapeDollar = false): string {
-  const escaped = value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\"", "\\\"")
-    .replaceAll("%", "%%");
-  const rendered = escapeDollar
-    ? escaped.replaceAll("$", () => "$$")
-    : escaped;
-  return SYSTEMD_BARE_TOKEN.test(value) ? rendered : `"${rendered}"`;
 }
 
 export function renderSshAgentSystemdUnit(

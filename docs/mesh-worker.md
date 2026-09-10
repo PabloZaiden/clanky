@@ -98,6 +98,9 @@ clanky worker service install
 clanky worker service status
 ```
 
+Run service commands as the worker user, without prefixing the CLI with
+`sudo`; Clanky invokes `sudo` only for the system-level systemd operations.
+
 If `CLANKY_DATA_DIR` was used for bootstrap, use the same value for the service
 command:
 
@@ -217,12 +220,14 @@ After installing a newer standalone binary, run:
 
 ```bash
 clanky update
-clanky worker service restart
+clanky worker service install
 ```
 
-The service supervisor stops the current foreground worker and starts the new
-binary with the registered worker configuration. No worker data or Mesh
-identity is moved during an update.
+`worker service install` is idempotent and is also the migration step for a
+Linux worker registered before the managed SSH-agent service was introduced:
+it rewrites and enables both units, updates the shell hooks, unlocks the agent
+when needed, and restarts the worker with the registered configuration. No
+worker data or Mesh identity is moved during an update.
 
 Direct chats created on a Mesh server use the normal provider and model
 selection. Provider and model defaults are not stored on the worker.

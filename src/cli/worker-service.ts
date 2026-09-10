@@ -10,6 +10,7 @@ import {
   type WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { ClankyCliContext } from "./mesh";
+import { systemdToken } from "./systemd";
 import {
   getWorkerSshAgentPaths,
   LINUX_SSH_AGENT_UNIT_NAME,
@@ -214,7 +215,7 @@ function resolveUid(explicitUid?: number): number | undefined {
 function assertNonRootUser(platform: WorkerServicePlatform, uid: number | undefined): void {
   if (uid === 0) {
     throw new Error(
-      `Run worker service commands as the worker user, not root; ${platform} service installation invokes its own supervisor privileges.`,
+      `Run worker service commands as the worker user, not root; ${platform} service operations invoke their own supervisor privileges.`,
     );
   }
 }
@@ -428,19 +429,6 @@ export function renderLaunchAgent(configuration: WorkerServiceConfiguration): st
   ].join("\n");
 }
 
-const SYSTEMD_BARE_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-function systemdToken(value: string, escapeDollar = false): string {
-  const escaped = value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\"", "\\\"")
-    .replaceAll("%", "%%");
-  const rendered = escapeDollar
-    ? escaped.replaceAll("$", () => "$$")
-    : escaped;
-  return SYSTEMD_BARE_TOKEN.test(value) ? rendered : `"${rendered}"`;
-}
-
 export function renderSystemdUnit(configuration: WorkerServiceConfiguration): string {
   const command = workerCommand(configuration)
     .map((value) => systemdToken(value, true))
@@ -455,6 +443,7 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
     "Description=Clanky Mesh worker",
     "Wants=network-online.target",
     `Requires=${sshAgentService}`,
+    `PartOf=${sshAgentService}`,
     `After=network-online.target ${sshAgentService}`,
     "",
     "[Service]",
@@ -768,7 +757,6 @@ async function installService(
     if (!noStart) await startMacService(configuration.paths, runner);
     return;
   }
-  await installShellIntegration(configuration);
   await writeLinuxSshAgentUnit(configuration, runner);
   await writeLinuxUnit(configuration, runner);
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
@@ -782,6 +770,7 @@ async function installService(
     await unlockWorkerSshAgent(configuration.sshAgent);
     await assertSystemctlSuccess(runner, ["restart", configuration.paths.label]);
   }
+  await installShellIntegration(configuration);
 }
 
 async function uninstallService(
@@ -872,6 +861,7 @@ async function runWorkerServiceOperation(
 ): Promise<Record<string, unknown>> {
   const platform = detectWorkerServicePlatform();
   const environment = context.environment;
+  assertNonRootUser(platform, resolveUid());
   const homeDirectory = resolveHomeDirectory(environment);
   const paths = getWorkerServicePaths(platform, homeDirectory, resolveUid());
   const sshAgentPaths = platform === "linux"

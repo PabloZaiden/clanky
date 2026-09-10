@@ -94,9 +94,25 @@ describe("worker SSH-agent command and shell integration", () => {
     expect(unit).not.toContain("id_ed25519");
   });
 
+  test("uses systemd escaping for agent executable and socket paths", () => {
+    const base = sshAgentConfiguration();
+    const unit = renderSshAgentSystemdUnit({
+      ...base,
+      sshAgentPath: "/usr/bin/ssh$agent",
+      paths: {
+        ...base.paths,
+        socketPath: "/run/$agent.sock",
+      },
+    });
+    expect(unit).toContain(
+      'ExecStart="/usr/bin/ssh$$agent" -D -a "/run/$$agent.sock"',
+    );
+  });
+
   test("renders the worker dependency and stable SSH_AUTH_SOCK", () => {
     const unit = renderSystemdUnit(configuration("linux"));
     expect(unit).toContain("Requires=clanky-worker-ssh-agent.service");
+    expect(unit).toContain("PartOf=clanky-worker-ssh-agent.service");
     expect(unit).toContain("After=network-online.target clanky-worker-ssh-agent.service");
     expect(unit).toContain(
       "Environment=SSH_AUTH_SOCK=/run/clanky-worker-ssh-agent/agent.sock",
