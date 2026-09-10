@@ -219,6 +219,9 @@ export const crudRoutes = defineRoutes({
               execution_host_unavailable: {
                 status: 400,
               },
+              workspace_execution_target_in_use: {
+                status: 409,
+              },
             },
             fallback: {
               error: "update_failed",

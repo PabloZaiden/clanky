@@ -46,6 +46,7 @@ import {
   prepareWorkspaceSshTarget,
   removeWorkspaceSshTarget,
   restoreWorkspaceSshTargetState,
+  workspaceSshTargetWouldChange,
   type WorkspaceSshTargetInput,
 } from "../persistence/workspace-execution-targets";
 
@@ -425,9 +426,47 @@ export class WorkspaceManager {
         "Choose either a registered execution host or an ad hoc SSH target.",
       );
     }
-    const targetSelectionChanged = updates.executionHost !== undefined
-      || updates.sshTarget !== undefined;
-    if (targetSelectionChanged) {
+    let nextExecutionHostBinding = current.executionHostBinding;
+    let nextSshTarget = current.sshTarget;
+    let requestedExecutionTargetChange = false;
+    if (updates.sshTarget !== undefined) {
+      if (updates.sshTarget === null) {
+        if (!updates.executionHost) {
+          throw new DomainError(
+            "execution_target_required",
+            "A registered execution host is required when clearing the SSH target.",
+          );
+        }
+        nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+          current,
+          updates.executionHost,
+          requireCurrentUserId(),
+        );
+        nextSshTarget = undefined;
+        requestedExecutionTargetChange = current.sshTarget !== undefined
+          || !executionHostBindingsEqual(
+            current.executionHostBinding,
+            nextExecutionHostBinding,
+          );
+      } else {
+        requestedExecutionTargetChange = workspaceSshTargetWouldChange(
+          current.sshTarget,
+          updates.sshTarget,
+        );
+      }
+    } else if (updates.executionHost !== undefined) {
+      nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
+        current,
+        updates.executionHost,
+        requireCurrentUserId(),
+      );
+      nextSshTarget = undefined;
+      requestedExecutionTargetChange = !executionHostBindingsEqual(
+        current.executionHostBinding,
+        nextExecutionHostBinding,
+      );
+    }
+    if (requestedExecutionTargetChange) {
       const terminalCount = await countTerminalSessionsByWorkspace(id);
       if (terminalCount > 0 && updates.allowExecutionTargetChangeWithTerminals !== true) {
         throw new DomainError(
@@ -442,24 +481,11 @@ export class WorkspaceManager {
       : undefined;
     let sshTargetMutationStarted = false;
     let executionTargetChanged = false;
-    let nextExecutionHostBinding = current.executionHostBinding;
-    let nextSshTarget = current.sshTarget;
     let removeSshTarget = false;
     let workspace: Workspace | null;
     try {
       if (updates.sshTarget !== undefined) {
         if (updates.sshTarget === null) {
-          if (!updates.executionHost) {
-            throw new DomainError(
-              "execution_target_required",
-              "A registered execution host is required when clearing the SSH target.",
-            );
-          }
-          nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
-            current,
-            updates.executionHost,
-            requireCurrentUserId(),
-          );
           nextSshTarget = undefined;
           removeSshTarget = true;
         } else {
@@ -477,11 +503,6 @@ export class WorkspaceManager {
           };
         }
       } else if (updates.executionHost !== undefined) {
-        nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
-          current,
-          updates.executionHost,
-          requireCurrentUserId(),
-        );
         nextSshTarget = undefined;
         removeSshTarget = current.sshTarget !== undefined;
       }
