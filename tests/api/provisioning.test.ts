@@ -206,6 +206,7 @@ describe("Provisioning API integration", () => {
   test("creates a provisioning job and completes with a workspace snapshot", async () => {
     const sshServer = await createServer();
     const executor = new ProvisioningTestExecutor({
+      devboxVersion: "1.2.2",
       devboxStatusOutput: createDevboxStatusOutput({
         workdir: "/workspaces/example",
       }),

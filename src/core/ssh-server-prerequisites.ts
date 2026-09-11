@@ -4,7 +4,6 @@
 
 import type { SshServerConfig, SshServerPrerequisiteCheck, SshServerPrerequisiteReport, SshServerPrerequisiteStatus } from "@/shared";
 import type { CommandExecutor } from "./command-executor";
-import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "./devbox-version";
 import { buildPersistentSessionBackendInstallHint } from "./ssh-persistent-session";
 
 const automaticProvisioningDisabledDetail =
@@ -104,23 +103,11 @@ async function runCommandProbe(
       );
     }
 
-    const version = parseDevboxVersion(result.stdout);
-    if (version !== DEVBOX_REQUIRED_VERSION) {
-      return createCheck(
-        id,
-        label,
-        "missing",
-        `Devbox ${DEVBOX_REQUIRED_VERSION} is required, but ${version ?? "an unknown version"} was found.`,
-        requiredFor,
-        installHint,
-      );
-    }
-
     return createCheck(
       id,
       label,
       "available",
-      `Devbox ${DEVBOX_REQUIRED_VERSION} is available on the remote host.`,
+      `${label} is available on the remote host.`,
       requiredFor,
     );
   }

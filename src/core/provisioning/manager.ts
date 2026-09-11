@@ -45,7 +45,6 @@ import { executionHostService } from "../execution-host-service";
 import { executionHostDiscoveryService } from "../execution-host-discovery-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { meshManager } from "../mesh-manager";
-import { DEVBOX_REQUIRED_VERSION, parseDevboxVersion } from "../devbox-version";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 
@@ -1814,23 +1813,15 @@ export class ProvisioningManager {
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
   ): Promise<void> {
-    const result = await this.runCmd(record, executor, {
+    await this.runCmd(record, executor, {
       step: "verify_devbox",
-      label: `Checking Devbox ${DEVBOX_REQUIRED_VERSION} availability`,
+      label: "Checking Devbox availability",
       command: "devbox",
       args: ["--help"],
       errorCode: "devbox_not_found",
       errorMessage: "Devbox is not installed or not available on PATH",
       captureStdout: false,
     });
-    const version = parseDevboxVersion(result.stdout);
-    if (version !== DEVBOX_REQUIRED_VERSION) {
-      throw new ProvisioningFailedError(
-        "devbox_version_unsupported",
-        "verify_devbox",
-        `Devbox ${DEVBOX_REQUIRED_VERSION} is required for automatic workspaces (found ${version ?? "unknown"})`,
-      );
-    }
   }
 
   private updateState(

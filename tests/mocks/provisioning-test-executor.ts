@@ -9,6 +9,7 @@ interface ExecCall {
 
 export interface ProvisioningTestExecutorOptions {
   failDevboxVersion?: boolean;
+  devboxVersion?: string;
   failClone?: boolean;
   failDevboxUp?: boolean;
   failDevboxRebuild?: boolean;
@@ -102,7 +103,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
           exitCode: 127,
         };
       }
-      const stdout = "devbox v1.2.1\nUsage: devbox [command]\n";
+      const stdout = `devbox v${this.options.devboxVersion ?? "1.2.1"}\nUsage: devbox [command]\n`;
       return { success: true, stdout, stderr: "", exitCode: 0 };
     }
 
