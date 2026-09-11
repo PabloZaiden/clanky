@@ -34,6 +34,7 @@ import {
 } from "../persistence/workspace-target-key";
 import { ensureLocalInstallationId } from "../persistence/installation-identity";
 import type { CommandExecutor } from "./command-executor";
+import { isRemoteOnlyMode } from "./config";
 import { DomainError } from "./domain-error";
 import { MeshCommandExecutor } from "./mesh-command-executor";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -77,6 +78,15 @@ function assertCurrentBinding(
   }
 }
 
+function assertExecutionHostAllowedInCurrentMode(ref: ExecutionHostRef): void {
+  if (isRemoteOnlyMode() && ref.kind === "local") {
+    throw new DomainError(
+      "execution_host_unavailable",
+      "The local execution host is disabled in remote-only mode.",
+    );
+  }
+}
+
 export class ExecutionHostService {
   private testExecutorFactory: ((directory: string) => CommandExecutor) | null = null;
 
@@ -90,6 +100,7 @@ export class ExecutionHostService {
     binding: ExecutionHostBinding,
     userId: string = requireCurrentUserId(),
   ): PersistedExecutionHost {
+    assertExecutionHostAllowedInCurrentMode(binding.host);
     const persisted = getExecutionHostByRef(userId, binding.host);
     assertCurrentBinding(binding, persisted);
     return persisted!;
@@ -98,7 +109,7 @@ export class ExecutionHostService {
   async listHosts(userId: string = requireCurrentUserId()): Promise<ExecutionHostDescriptor[]> {
     const descriptors: ExecutionHostDescriptor[] = [];
     const identity = await ensureLocalMeshNodeIdentity();
-    if (identity.execution?.acceptRemoteExecution !== false) {
+    if (!isRemoteOnlyMode() && identity.execution?.acceptRemoteExecution !== false) {
       const localHost = ensureExecutionHost(
         userId,
         { kind: "local", nodeId: identity.nodeId },
@@ -269,6 +280,7 @@ export class ExecutionHostService {
     ref: ExecutionHostRef,
     userId: string = requireCurrentUserId(),
   ): ExecutionHostBinding {
+    assertExecutionHostAllowedInCurrentMode(ref);
     if (isPrivateMeshExecutionHostRef(ref)) {
       throw new DomainError(
         "execution_host_private",
@@ -305,6 +317,7 @@ export class ExecutionHostService {
     host: ExecutionHostRef,
     context: ExecutionHostCommandContext,
   ): Promise<CommandExecutor> {
+    assertExecutionHostAllowedInCurrentMode(host);
     const userId = context.localUserId ?? requireCurrentUserId();
     if (this.testExecutorFactory && host.kind !== "ssh") {
       return this.testExecutorFactory(context.directory);

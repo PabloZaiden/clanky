@@ -225,6 +225,85 @@ describe("Execution hosts API", () => {
     expect(deleteChatResponse.status).toBe(200);
   });
 
+  test("omits the local host when remote-only mode is enabled", async () => {
+    const availableHosts = await fetch(`${baseUrl}/api/execution-hosts`)
+      .then(async (response) => await response.json() as ExecutionHostDescriptor[]);
+    const knownLocalHost = availableHosts.find((host) => host.ref.kind === "local");
+    expect(knownLocalHost).toBeDefined();
+
+    const createRemoteServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Remote execution test host",
+        address: "ssh.example.com",
+        username: "test-user",
+        repositoriesBasePath: "/srv/workspaces",
+      }),
+    });
+    expect(createRemoteServerResponse.status).toBe(201);
+    const remoteServer = await createRemoteServerResponse.json() as {
+      config: { id: string };
+    };
+
+    const previousRemoteOnly = process.env["CLANKY_REMOTE_ONLY"];
+    process.env["CLANKY_REMOTE_ONLY"] = "true";
+
+    try {
+      const response = await fetch(`${baseUrl}/api/execution-hosts`);
+      expect(response.status).toBe(200);
+      const hosts = await response.json() as ExecutionHostDescriptor[];
+      expect(hosts.some((host) => host.ref.kind === "local")).toBe(false);
+      expect(hosts).toContainEqual(expect.objectContaining({
+        name: "Remote execution test host",
+        ref: { kind: "ssh", serverId: remoteServer.config.id },
+        acceptRemoteExecution: true,
+      }));
+
+      const targetsResponse = await fetch(`${baseUrl}/api/workspaces/execution-targets`);
+      expect(targetsResponse.status).toBe(200);
+      const targets = await targetsResponse.json() as ExecutionHostDescriptor[];
+      expect(targets.some((target) => target.ref.kind === "local")).toBe(false);
+      expect(targets).toContainEqual(expect.objectContaining({
+        name: "Remote execution test host",
+        ref: { kind: "ssh", serverId: remoteServer.config.id },
+        acceptRemoteExecution: true,
+      }));
+
+      const localChatResponse = await fetch(
+        `${baseUrl}/api/execution-hosts/local/${
+          knownLocalHost!.ref.kind === "local" ? knownLocalHost!.ref.nodeId : ""
+        }/chats`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Blocked local chat",
+            directory: testDataDir,
+            model: {
+              providerID: "copilot",
+              modelID: "default",
+              variant: "",
+            },
+            autoApprovePermissions: true,
+          }),
+        },
+      );
+      expect(localChatResponse.status).toBe(404);
+    } finally {
+      if (previousRemoteOnly === undefined) {
+        delete process.env["CLANKY_REMOTE_ONLY"];
+      } else {
+        process.env["CLANKY_REMOTE_ONLY"] = previousRemoteOnly;
+      }
+      const deleteRemoteServerResponse = await fetch(
+        `${baseUrl}/api/ssh-servers/${remoteServer.config.id}`,
+        { method: "DELETE" },
+      );
+      expect(deleteRemoteServerResponse.ok).toBe(true);
+    }
+  });
+
   test("does not let the native route harness supply a non-owner to owner handlers", async () => {
     const hosts = await fetch(`${baseUrl}/api/execution-hosts`)
       .then(async (response) => await response.json() as ExecutionHostDescriptor[]);
