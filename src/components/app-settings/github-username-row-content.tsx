@@ -23,17 +23,21 @@ export function GithubUsernameRowContent({
   }, [draft]);
 
   useEffect(() => {
-    if (saving) {
+    if (githubUsername === lastSavedValueRef.current) {
       return;
     }
     setDraft(githubUsername);
     draftRef.current = githubUsername;
     lastSavedValueRef.current = githubUsername;
-  }, [githubUsername, saving]);
+  }, [githubUsername]);
 
   const saveDraft = useCallback(async (): Promise<void> => {
     const normalized = draftRef.current.trim();
     if (normalized === lastSavedValueRef.current) {
+      if (draftRef.current !== normalized) {
+        setDraft(normalized);
+        draftRef.current = normalized;
+      }
       return;
     }
     const saved = await onUpdate(normalized);

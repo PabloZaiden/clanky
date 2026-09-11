@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AgentProviderSchema } from "./workspace";
 import { SshCredentialTokenSchema } from "./ssh-server";
 import { ExecutionHostRefSchema } from "./execution-host";
-import { isValidWorkerHostAddress } from "@/shared";
+import { isIncompleteGitHubRepositoryUrl, isValidWorkerHostAddress } from "@/shared";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
@@ -58,7 +58,9 @@ export const CreateProvisioningJobRequestSchema = z.object({
     if (data.createNewRepository) {
       return data.basePath.length > 0 && (data.devboxTemplate ?? "").length > 0;
     }
-    return data.repoUrl.length > 0 && data.basePath.length > 0;
+    return data.repoUrl.length > 0
+      && !isIncompleteGitHubRepositoryUrl(data.repoUrl)
+      && data.basePath.length > 0;
   }
   if (data.mode === "arise") {
     return true;

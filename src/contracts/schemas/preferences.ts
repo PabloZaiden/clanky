@@ -39,7 +39,13 @@ export const SetLastDirectoryRequestSchema = z.object({
  * An empty string clears the optional preference.
  */
 export const SetGithubUsernameRequestSchema = z.object({
-  githubUsername: z.string().trim(),
+  githubUsername: z.string().trim().refine(
+    (value) => value === ""
+      || /^(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(value),
+    {
+      message: "GitHub username must use GitHub login syntax and be at most 39 characters",
+    },
+  ),
 });
 
 /**
