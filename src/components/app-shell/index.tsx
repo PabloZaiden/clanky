@@ -67,6 +67,7 @@ export function AppShell() {
     pullLatestChanges,
     quickChatSettings,
     schedulerTimezone,
+    githubUsername,
     markdownPreference,
     mesh,
     fullTreePreference,
@@ -230,6 +231,7 @@ export function AppShell() {
     deleteTerminalSession,
     createChat,
     quickChatSettings,
+    githubUsername,
     quickChatWorkspace,
   });
 
@@ -324,6 +326,7 @@ export function AppShell() {
   const settingsSections = useMemo(() => buildShellSettingsSections({
     quickChatSettings,
     schedulerTimezone,
+    githubUsername,
     markdownPreference,
     fullTreePreference,
     privateItemsPreference,
@@ -335,6 +338,7 @@ export function AppShell() {
   }), [
     dashboardData,
     fullTreePreference,
+    githubUsername,
     markdownPreference,
     mesh,
     privateItemsPreference,

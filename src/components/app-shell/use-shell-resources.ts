@@ -7,6 +7,7 @@ import {
   useDashboardData,
   useFileExplorerFullTreePreference,
   useExecutionHosts,
+  useGithubUsername,
   useMarkdownPreference,
   useMesh,
   usePrivateItemsPreference,
@@ -92,6 +93,7 @@ export function useShellResources(route: WebAppRoute) {
   } = useWorkspaces();
   const quickChatSettings = useQuickChatSettings();
   const schedulerTimezone = useSchedulerTimezone();
+  const githubUsername = useGithubUsername();
   const markdownPreference = useMarkdownPreference();
   const mesh = useMesh();
   const fullTreePreference = useFileExplorerFullTreePreference();
@@ -223,6 +225,7 @@ export function useShellResources(route: WebAppRoute) {
     pullLatestChanges,
     quickChatSettings,
     schedulerTimezone,
+    githubUsername,
     markdownPreference,
     mesh,
     fullTreePreference,

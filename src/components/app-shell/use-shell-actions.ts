@@ -14,6 +14,7 @@ import {
   type UseAgentsResult,
   type UseChatsResult,
   type UseDashboardDataResult,
+  type UseGithubUsernameResult,
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
   type UseSshServersResult,
@@ -55,6 +56,7 @@ interface UseShellActionsOptions {
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
   quickChatSettings: UseQuickChatSettingsResult;
+  githubUsername: UseGithubUsernameResult;
   quickChatWorkspace: Workspace | null;
 }
 
@@ -85,6 +87,7 @@ export function useShellActions({
   deleteTerminalSession,
   createChat,
   quickChatSettings,
+  githubUsername,
   quickChatWorkspace,
 }: UseShellActionsOptions) {
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
@@ -100,6 +103,7 @@ export function useShellActions({
     refreshWorkspaces,
     toast,
     navigateWithinShell,
+    githubUsername,
   });
 
   const workspaceSettings = useWorkspaceSettingsShell({

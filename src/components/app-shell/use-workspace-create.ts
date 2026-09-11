@@ -21,7 +21,9 @@ import { apiRequest } from "../../lib/api-client";
 import {
   getAutomaticWorkspaceBasePath,
   getDefaultAutomaticWorkspaceServer,
+  getAutomaticWorkspaceRepositoryPrefix,
 } from "../../lib/automatic-workspace-preferences";
+import type { UseGithubUsernameResult } from "../../hooks/useGithubUsername";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getRouteString } from "./route-fields";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
@@ -116,6 +118,7 @@ interface UseWorkspaceCreateOptions {
   refreshWorkspaces: () => Promise<void>;
   toast: ToastService;
   navigateWithinShell: (route: WebAppRoute) => void;
+  githubUsername: UseGithubUsernameResult;
 }
 
 export function useWorkspaceCreate({
@@ -126,6 +129,7 @@ export function useWorkspaceCreate({
   refreshWorkspaces,
   toast,
   navigateWithinShell,
+  githubUsername,
 }: UseWorkspaceCreateOptions): UseWorkspaceCreateResult {
   const [workspaceCreateMode, setWorkspaceCreateMode] = useState<"manual" | "automatic">("manual");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -182,9 +186,9 @@ export function useWorkspaceCreate({
       ? "automatic"
       : "manual";
     const wasOnComposeWorkspace = wasOnComposeWorkspaceRef.current;
-    wasOnComposeWorkspaceRef.current = isOnComposeWorkspace;
 
     if (!isOnComposeWorkspace) {
+      wasOnComposeWorkspaceRef.current = false;
       prefilledRetryJobIdRef.current = null;
       return;
     }
@@ -199,6 +203,7 @@ export function useWorkspaceCreate({
       }
       const retryStatus = retrySnapshot.job.state.status;
       if (retryStatus === "failed" || retryStatus === "cancelled" || retryStatus === "interrupted") {
+        wasOnComposeWorkspaceRef.current = true;
         const config = retrySnapshot.job.config;
         setWorkspaceCreateMode("automatic");
         setWorkspaceName(config.name);
@@ -252,7 +257,11 @@ export function useWorkspaceCreate({
     if (wasOnComposeWorkspace) {
       return;
     }
+    if (githubUsername.loading) {
+      return;
+    }
 
+    wasOnComposeWorkspaceRef.current = true;
     setWorkspaceCreateMode(requestedWorkspaceMode);
     setWorkspaceName("");
     setWorkspaceDirectory("");
@@ -283,7 +292,7 @@ export function useWorkspaceCreate({
     setAutomaticExecutionHost(requestedExecutionHost ?? defaultExecutionHost);
     setAutomaticTransport("worker");
     setAutomaticWorkerHostAddress("");
-    setAutomaticRepoUrl("");
+    setAutomaticRepoUrl(getAutomaticWorkspaceRepositoryPrefix(githubUsername.githubUsername));
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(
       getRouteString(route, "basePath")
@@ -305,6 +314,8 @@ export function useWorkspaceCreate({
     provisioning.snapshot,
     route,
     servers,
+    githubUsername.githubUsername,
+    githubUsername.loading,
   ]);
 
   useEffect(() => {

@@ -35,6 +35,14 @@ export const SetLastDirectoryRequestSchema = z.object({
 });
 
 /**
+ * Schema for setting the user's GitHub username.
+ * An empty string clears the optional preference.
+ */
+export const SetGithubUsernameRequestSchema = z.object({
+  githubUsername: z.string().trim(),
+});
+
+/**
  * Schema for setting markdown rendering preference - PUT /api/preferences/markdown-rendering
  */
 export const SetMarkdownRenderingRequestSchema = z.object({

@@ -56,6 +56,8 @@ export interface UserPreferences {
   lastCheapModel?: CheapModelSelection;
   /** Last used working directory for task creation */
   lastDirectory?: string;
+  /** GitHub username used to prefill automatic workspace repository URLs */
+  githubUsername?: string;
   /** Whether markdown rendering is enabled (defaults to true) */
   markdownRenderingEnabled?: boolean;
   /** Whether the file explorer loads the entire tree in one request (defaults to true) */
@@ -94,6 +96,17 @@ function setPreference(key: string, value: string): void {
   `);
   stmt.run(key, requirePersistenceUserId(), value);
   log.trace("Preference set", { key });
+}
+
+/**
+ * Delete a preference value for the current user.
+ */
+function deletePreference(key: string): void {
+  log.debug("Deleting preference", { key });
+  const db = getDatabase();
+  const stmt = db.prepare("DELETE FROM preferences WHERE key = ? AND user_id = ?");
+  stmt.run(key, requirePersistenceUserId());
+  log.trace("Preference deleted", { key });
 }
 
 /**
@@ -182,6 +195,32 @@ export async function getLastDirectory(): Promise<string | undefined> {
 export async function setLastDirectory(directory: string): Promise<void> {
   log.debug("Setting last directory preference", { directory });
   setPreference("lastDirectory", directory);
+}
+
+/**
+ * Get the user's GitHub username used to prefill automatic workspace URLs.
+ */
+export async function getGithubUsername(): Promise<string | undefined> {
+  log.debug("Getting GitHub username preference");
+  const username = getPreference("githubUsername")?.trim();
+  if (!username) {
+    log.trace("GitHub username preference is not set");
+    return undefined;
+  }
+  return username;
+}
+
+/**
+ * Set or clear the user's GitHub username.
+ */
+export async function setGithubUsername(username: string | null | undefined): Promise<void> {
+  const normalized = username?.trim() ?? "";
+  log.debug("Setting GitHub username preference", { hasUsername: normalized.length > 0 });
+  if (!normalized) {
+    deletePreference("githubUsername");
+    return;
+  }
+  setPreference("githubUsername", normalized);
 }
 
 /**

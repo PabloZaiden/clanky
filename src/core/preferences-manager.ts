@@ -8,6 +8,7 @@
 import {
   getDashboardViewMode as getDashboardViewModeRecord,
   getFileExplorerFullTreeEnabled as getFileExplorerFullTreeEnabledRecord,
+  getGithubUsername as getGithubUsernameRecord,
   getLastCheapModel as getLastCheapModelRecord,
   getLastDirectory as getLastDirectoryRecord,
   getLastModel as getLastModelRecord,
@@ -16,6 +17,7 @@ import {
   getSchedulerTimezone as getSchedulerTimezoneRecord,
   setDashboardViewMode as setDashboardViewModeRecord,
   setFileExplorerFullTreeEnabled as setFileExplorerFullTreeEnabledRecord,
+  setGithubUsername as setGithubUsernameRecord,
   setLastCheapModel as setLastCheapModelRecord,
   setLastDirectory as setLastDirectoryRecord,
   setLastModel as setLastModelRecord,
@@ -66,6 +68,14 @@ export class PreferencesManager {
 
   async setLastDirectory(directory: string): Promise<void> {
     await setLastDirectoryRecord(directory);
+  }
+
+  async getGithubUsername(): Promise<string | undefined> {
+    return await getGithubUsernameRecord();
+  }
+
+  async setGithubUsername(username: string): Promise<void> {
+    await setGithubUsernameRecord(username);
   }
 
   async getMarkdownRenderingEnabled(): Promise<boolean> {
