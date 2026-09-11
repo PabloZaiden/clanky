@@ -27,7 +27,13 @@ import type {
 } from "@/shared";
 import { isValidWorkerHostAddress } from "@/shared";
 import { getRegisteredSshServerId, isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
-import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
+import {
+  DEFAULT_MAX_LOG_ENTRIES,
+  DEVBOX_UP_TIMEOUT_MS,
+  GIT_CLONE_TIMEOUT_MS,
+  WORKER_READINESS_POLL_INTERVAL_MS,
+  WORKER_READINESS_TIMEOUT_MS,
+} from "./constants";
 import {
   buildError,
   getSinglePublishedPort,
@@ -748,7 +754,8 @@ export class ProvisioningManager {
     record: ProvisioningJobRecord,
     enrollmentId: string,
   ): Promise<void> {
-    const timeoutAt = Date.now() + 120_000;
+    const timeoutAt = Date.now() + WORKER_READINESS_TIMEOUT_MS;
+    let lastHealthError: unknown;
     while (Date.now() < timeoutAt) {
       this.throwIfCancelled(record);
       const status = workspaceWorkerEnrollmentService.getStatus(
@@ -758,8 +765,21 @@ export class ProvisioningManager {
       if (
         ["connected", "attached"].includes(status.enrollment.status)
         && status.worker?.grantStatus === "active"
+        && status.worker.workerNodeId
       ) {
-        return;
+        try {
+          await meshManager.checkWorkerReachability(
+            record.owner.id,
+            status.worker.workerNodeId,
+            { signal: record.abortController.signal },
+          );
+          return;
+        } catch (error) {
+          if (record.abortController.signal.aborted) {
+            throw new ProvisioningCancelledError("Provisioning job was cancelled");
+          }
+          lastHealthError = error;
+        }
       }
       if (["failed", "expired", "cancelled"].includes(status.enrollment.status)) {
         throw new ProvisioningFailedError(
@@ -768,12 +788,16 @@ export class ProvisioningManager {
           status.enrollment.errorMessage ?? "The workspace worker failed to connect.",
         );
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, WORKER_READINESS_POLL_INTERVAL_MS));
     }
     throw new ProvisioningFailedError(
       "workspace_worker_connection_timeout",
       "test_connection",
-      "Timed out waiting for the workspace worker to connect.",
+      `Timed out waiting for the workspace worker to become reachable.${
+        lastHealthError ? ` Last health error: ${String(lastHealthError)}` : ""
+      }`,
+      { cause: lastHealthError },
     );
   }
 

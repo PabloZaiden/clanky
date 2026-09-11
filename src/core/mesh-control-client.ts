@@ -15,6 +15,7 @@ const recognizedPeerErrors = new Map<string, string>([
 export interface MeshControlRequestOptions {
   headers?: Record<string, string>;
   tls?: Bun.TLSOptions;
+  signal?: AbortSignal;
 }
 
 function getSenderNodeId(payload: unknown): string {
@@ -48,6 +49,12 @@ export async function postMeshControlMessage(
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), MESH_CONTROL_REQUEST_TIMEOUT_MS);
+  const abortListener = () => controller.abort();
+  if (options.signal?.aborted) {
+    controller.abort();
+  } else {
+    options.signal?.addEventListener("abort", abortListener, { once: true });
+  }
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -90,11 +97,19 @@ export async function postMeshControlMessage(
     if (error instanceof DomainError) {
       throw error;
     }
+    if (options.signal?.aborted) {
+      throw new DomainError(
+        "mesh_control_request_aborted",
+        "The Mesh control request was aborted.",
+        { cause: error, details: { requestId } },
+      );
+    }
     throw new DomainError("mesh_control_request_unreachable", "The mesh peer could not be reached.", {
       cause: error,
       details: { requestId },
     });
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortListener);
   }
 }
