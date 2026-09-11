@@ -79,7 +79,10 @@ import {
   resolveMeshRoute,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "./domain-error";
-import { postMeshControlMessage } from "./mesh-control-client";
+import {
+  postMeshControlMessage,
+  readMeshControlResponseJson,
+} from "./mesh-control-client";
 import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
@@ -811,7 +814,7 @@ export class MeshManager {
       signal: options.signal,
     });
     const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
-      await response.json(),
+      await readMeshControlResponseJson(response, { signal: options.signal }),
     );
     if (!parsedResponse.success) {
       throw new DomainError(
@@ -1057,7 +1060,9 @@ export class MeshManager {
       signature,
     }, identity.nodeId);
 
-    const body = await response.json() as MeshEnrollmentResponse;
+    const body = await readMeshControlResponseJson<MeshEnrollmentResponse>(
+      response,
+    );
 
     if (
       body.protocolVersion !== 1

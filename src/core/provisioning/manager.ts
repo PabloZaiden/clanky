@@ -77,6 +77,49 @@ function validateWorkerHostAddress(value: string | undefined): string {
   return address;
 }
 
+function createDeadlineSignal(
+  parentSignal: AbortSignal,
+  deadlineAt: number,
+): { signal: AbortSignal; dispose: () => void } {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  if (parentSignal.aborted) {
+    controller.abort();
+  } else {
+    parentSignal.addEventListener("abort", abortFromParent, { once: true });
+  }
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Math.max(0, deadlineAt - Date.now()),
+  );
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timeout);
+      parentSignal.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
+async function waitForReadinessPoll(
+  signal: AbortSignal,
+  delayMs: number,
+): Promise<void> {
+  if (delayMs <= 0 || signal.aborted) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(finish, delayMs);
+    const onAbort = () => finish();
+    function finish(): void {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 interface WorkerPaths {
   hostRoot: string;
   containerRoot: string;
@@ -767,11 +810,15 @@ export class ProvisioningManager {
         && status.worker?.grantStatus === "active"
         && status.worker.workerNodeId
       ) {
+        const probe = createDeadlineSignal(
+          record.abortController.signal,
+          timeoutAt,
+        );
         try {
           await meshManager.checkWorkerReachability(
             record.owner.id,
             status.worker.workerNodeId,
-            { signal: record.abortController.signal },
+            { signal: probe.signal },
           );
           return;
         } catch (error) {
@@ -779,6 +826,8 @@ export class ProvisioningManager {
             throw new ProvisioningCancelledError("Provisioning job was cancelled");
           }
           lastHealthError = error;
+        } finally {
+          probe.dispose();
         }
       }
       if (["failed", "expired", "cancelled"].includes(status.enrollment.status)) {
@@ -788,8 +837,14 @@ export class ProvisioningManager {
           status.enrollment.errorMessage ?? "The workspace worker failed to connect.",
         );
       }
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, WORKER_READINESS_POLL_INTERVAL_MS));
+      const remainingMs = timeoutAt - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+      await waitForReadinessPoll(
+        record.abortController.signal,
+        Math.min(WORKER_READINESS_POLL_INTERVAL_MS, remainingMs),
+      );
     }
     throw new ProvisioningFailedError(
       "workspace_worker_connection_timeout",

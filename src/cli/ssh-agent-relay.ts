@@ -123,10 +123,17 @@ async function relayClient(
 ): Promise<void> {
   client.pause();
   let upstream: net.Socket | undefined;
+  const handleClientBeforeUpstream = () => {
+    upstream?.destroy();
+  };
+  client.once("error", handleClientBeforeUpstream);
+  client.once("close", handleClientBeforeUpstream);
   try {
     upstream = net.createConnection({ path: upstreamSocketPath });
     trackSocket(upstream, sockets);
     await waitForConnection(upstream);
+    client.removeListener("error", handleClientBeforeUpstream);
+    client.removeListener("close", handleClientBeforeUpstream);
     if (client.destroyed) {
       upstream.destroy();
       return;
@@ -150,6 +157,9 @@ async function relayClient(
     if (!client.destroyed) client.destroy();
     upstream?.destroy();
     process.stderr.write(`Clanky SSH-agent relay upstream connection failed: ${formatError(error)}\n`);
+  } finally {
+    client.removeListener("error", handleClientBeforeUpstream);
+    client.removeListener("close", handleClientBeforeUpstream);
   }
 }
 
