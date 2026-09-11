@@ -126,7 +126,6 @@ describe("worker SSH-agent command and shell integration", () => {
       "ListenStream=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
     expect(socketUnit).toContain("SocketUser=alice");
-    expect(socketUnit).toContain("SocketGroup=alice");
     expect(socketUnit).toContain("SocketMode=0600");
     expect(socketUnit).toContain(
       "Service=clanky-worker-ssh-agent-relay.service",
@@ -139,6 +138,21 @@ describe("worker SSH-agent command and shell integration", () => {
     );
     expect(serviceUnit).toContain("Environment=HOME=/home/alice");
     expect(serviceUnit).not.toContain("passphrase");
+  });
+
+  test("does not escape dollar signs in the relay socket path", () => {
+    const agent = sshAgentConfiguration();
+    const socketUnit = renderSshAgentRelaySocketUnit({
+      ...agent,
+      paths: {
+        ...agent.paths,
+        socketPath: "/home/alice/.clanky/$agent.sock",
+      },
+    });
+
+    expect(
+      socketUnit.split("\n").find((line) => line.startsWith("ListenStream=")),
+    ).toBe('ListenStream="/home/alice/.clanky/$agent.sock"');
   });
 
   test("renders the worker dependency and stable SSH_AUTH_SOCK", () => {

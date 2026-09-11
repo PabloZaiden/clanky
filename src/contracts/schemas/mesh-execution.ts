@@ -61,6 +61,8 @@ export const MeshExecutionAsyncCommandRequestSchema = z.object({
   timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
   maxOutputBytes: z.number().int().min(1).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
+  stdoutOffset: z.number().int().min(0).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
+  stderrOffset: z.number().int().min(0).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
 }).superRefine((value, context) => {
   if (value.action === "start" && !value.command) {
     context.addIssue({

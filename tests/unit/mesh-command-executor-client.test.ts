@@ -159,23 +159,53 @@ describe("MeshCommandExecutorClient", () => {
           throw new Error(`Unexpected mesh route: ${url}`);
         }
 
-        const payload = request["action"] === "start"
-          ? {
-              jobId: "command-1",
-              status: "running",
-            }
-          : {
-              jobId: "command-1",
-              status: "completed",
-              result: {
-                success: true,
-                stdout: "devbox rebuilt\n",
-                stderr: "",
-                exitCode: 0,
-              },
-            };
-        if (request["action"] === "status") {
+        let payload: Record<string, unknown>;
+        if (request["action"] === "start") {
+          payload = {
+            jobId: "command-1",
+            status: "running",
+            output: {
+              stdout: "",
+              stderr: "",
+              stdoutOffset: 0,
+              stderrOffset: 0,
+              nextStdoutOffset: 0,
+              nextStderrOffset: 0,
+            },
+          };
+        } else {
           statusRequests += 1;
+          payload = statusRequests === 1
+            ? {
+                jobId: "command-1",
+                status: "running",
+                output: {
+                  stdout: "devbox ",
+                  stderr: "",
+                  stdoutOffset: 0,
+                  stderrOffset: 0,
+                  nextStdoutOffset: 7,
+                  nextStderrOffset: 0,
+                },
+              }
+            : {
+                jobId: "command-1",
+                status: "completed",
+                output: {
+                  stdout: "rebuilt\n",
+                  stderr: "",
+                  stdoutOffset: 7,
+                  stderrOffset: 0,
+                  nextStdoutOffset: 15,
+                  nextStderrOffset: 0,
+                },
+                result: {
+                  success: true,
+                  stdout: "devbox rebuilt\n",
+                  stderr: "",
+                  exitCode: 0,
+                },
+              };
         }
         return Response.json({
           protocolVersion: 1,
@@ -207,8 +237,8 @@ describe("MeshCommandExecutorClient", () => {
       stderr: "",
       exitCode: 0,
     });
-    expect(output).toEqual(["devbox rebuilt\n"]);
-    expect(statusRequests).toBe(1);
+    expect(output).toEqual(["devbox ", "rebuilt\n"]);
+    expect(statusRequests).toBe(2);
     client.closeSession();
   });
 

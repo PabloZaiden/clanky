@@ -284,12 +284,16 @@ export const meshInternalRoutes = defineRoutes({
                 parsed.data.sessionToken,
                 parsed.data.jobId ?? "",
                 parsed.data.requestId,
+                parsed.data.stdoutOffset,
+                parsed.data.stderrOffset,
               )
             : await meshExecutionGateway.cancelAsyncCommand(
                 parsed.data.sessionId,
                 parsed.data.sessionToken,
                 parsed.data.jobId ?? "",
                 parsed.data.requestId,
+                parsed.data.stdoutOffset,
+                parsed.data.stderrOffset,
               );
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,

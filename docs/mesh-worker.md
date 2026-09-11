@@ -90,9 +90,10 @@ snapshot into that controller's execution-host registration.
 Long-running provisioning commands use the authenticated asynchronous execution
 contract rather than holding one Mesh HTTP response open. The worker accepts
 the command, owns its process and cancellation signal, and returns bounded
-terminal results through encrypted polling. Short file and command operations
-continue to use the synchronous RPC path. This avoids the worker or an
-intermediate network idle timeout being mistaken for a peer outage.
+incremental output plus terminal results through encrypted polling. Short file
+and command operations continue to use the synchronous RPC path. This avoids
+the worker or an intermediate network idle timeout being mistaken for a peer
+outage.
 The start request is idempotent across a retried Mesh session, so losing the
 initial response does not launch a second command.
 

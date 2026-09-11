@@ -20,6 +20,7 @@ import {
   MESH_EXECUTION_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS,
+  MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES,
   MESH_EXECUTION_ASYNC_MAX_COMMANDS,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
@@ -29,6 +30,7 @@ import {
 } from "@/shared/mesh-execution";
 import type {
   MeshExecutionAsyncCommandError,
+  MeshExecutionAsyncCommandOutput,
   MeshExecutionAsyncCommandResult,
   MeshExecutionAsyncCommandSnapshot,
   MeshExecutionAsyncCommandStatus,
@@ -126,6 +128,8 @@ interface MeshExecutionAsyncCommand {
   timeout: number | null | undefined;
   maxOutputBytes: number;
   env?: Record<string, string>;
+  stdout: string;
+  stderr: string;
   controller: AbortController;
   status: MeshExecutionAsyncCommandStatus;
   result?: MeshExecutionAsyncCommandResult;
@@ -188,6 +192,7 @@ export class MeshExecutionGateway {
   private readonly asyncCommands = new Map<string, MeshExecutionAsyncCommand>();
   private readonly asyncCommandRequestIds = new Map<string, string>();
   private readonly usedNonces = new Map<string, number>();
+  private retainedAsyncOutputBytes = 0;
 
   private pruneExpired(): void {
     const now = Date.now();
@@ -215,24 +220,98 @@ export class MeshExecutionGateway {
         command.completedAt !== undefined
         && now - command.completedAt >= MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS
       ) {
-        this.asyncCommands.delete(jobId);
-        if (this.asyncCommandRequestIds.get(command.requestId) === jobId) {
-          this.asyncCommandRequestIds.delete(command.requestId);
-        }
+        this.removeAsyncCommand(jobId);
       }
     }
     while (this.asyncCommands.size > MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
-      const oldestTerminal = [...this.asyncCommands.values()]
-        .filter((command) => command.completedAt !== undefined)
-        .sort((left, right) => (left.completedAt ?? 0) - (right.completedAt ?? 0))[0];
-      if (!oldestTerminal) {
+      if (!this.removeOldestTerminalAsyncCommand()) {
         break;
       }
-      this.asyncCommands.delete(oldestTerminal.jobId);
-      if (this.asyncCommandRequestIds.get(oldestTerminal.requestId) === oldestTerminal.jobId) {
-        this.asyncCommandRequestIds.delete(oldestTerminal.requestId);
+    }
+  }
+
+  private removeOldestTerminalAsyncCommand(): boolean {
+    const oldestTerminal = [...this.asyncCommands.values()]
+      .filter((command) => command.completedAt !== undefined)
+      .sort((left, right) => (left.completedAt ?? 0) - (right.completedAt ?? 0))[0];
+    if (!oldestTerminal) {
+      return false;
+    }
+    this.removeAsyncCommand(oldestTerminal.jobId);
+    return true;
+  }
+
+  private removeAsyncCommand(jobId: string): void {
+    const command = this.asyncCommands.get(jobId);
+    if (!command) {
+      return;
+    }
+    this.asyncCommands.delete(jobId);
+    if (this.asyncCommandRequestIds.get(command.requestId) === jobId) {
+      this.asyncCommandRequestIds.delete(command.requestId);
+    }
+    this.retainedAsyncOutputBytes -= this.getAsyncCommandOutputBytes(command);
+    if (this.retainedAsyncOutputBytes < 0) {
+      this.retainedAsyncOutputBytes = 0;
+    }
+  }
+
+  private getAsyncCommandOutputBytes(command: MeshExecutionAsyncCommand): number {
+    return Buffer.byteLength(command.stdout, "utf8") + Buffer.byteLength(command.stderr, "utf8");
+  }
+
+  private ensureAsyncOutputCapacity(additionalBytes: number): boolean {
+    if (additionalBytes > MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES) {
+      return false;
+    }
+    while (
+      this.retainedAsyncOutputBytes + additionalBytes
+      > MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES
+    ) {
+      const removed = this.removeOldestTerminalAsyncCommand();
+      if (!removed) {
+        return false;
       }
     }
+    return this.retainedAsyncOutputBytes + additionalBytes
+      <= MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES;
+  }
+
+  private failAsyncCommand(
+    command: MeshExecutionAsyncCommand,
+    code: string,
+    message: string,
+  ): void {
+    if (command.status !== "running") {
+      return;
+    }
+    command.status = "failed";
+    command.error = { code, message };
+    command.completedAt = Date.now();
+    command.controller.abort();
+  }
+
+  private appendAsyncCommandOutput(
+    command: MeshExecutionAsyncCommand,
+    stream: "stdout" | "stderr",
+    chunk: string,
+  ): void {
+    if (command.status !== "running" || chunk.length === 0) {
+      return;
+    }
+    const current = command[stream];
+    const next = current + chunk;
+    const additionalBytes = Buffer.byteLength(next, "utf8") - Buffer.byteLength(current, "utf8");
+    if (!this.ensureAsyncOutputCapacity(additionalBytes)) {
+      this.failAsyncCommand(
+        command,
+        "mesh_execution_result_too_large",
+        "The worker output retention limit was exceeded.",
+      );
+      return;
+    }
+    command[stream] = next;
+    this.retainedAsyncOutputBytes += additionalBytes;
   }
 
   private requireSessionRecord(
@@ -264,6 +343,7 @@ export class MeshExecutionGateway {
     );
     const grant = await getControllerGrant(session.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
+      this.abortAsyncCommandsForCaller(session.callerNodeId);
       this.closeSession(session.sessionId);
       throw new DomainError(options.memberErrorCode, "The execution controller grant is no longer active.");
     }
@@ -403,6 +483,12 @@ export class MeshExecutionGateway {
     );
     await requireLocalMeshExecutionCapability("commandExecution");
     this.pruneAsyncCommands();
+    if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
+      throw new DomainError(
+        "mesh_execution_request_too_large",
+        "The asynchronous mesh execution request exceeds the size limit.",
+      );
+    }
 
     const existingJobId = this.asyncCommandRequestIds.get(request.requestId);
     if (existingJobId) {
@@ -422,6 +508,11 @@ export class MeshExecutionGateway {
     this.claimRequestId(session, request.requestId);
     if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    }
+    while (this.asyncCommands.size >= MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
+      if (!this.removeOldestTerminalAsyncCommand()) {
+        break;
+      }
     }
     if (this.asyncCommands.size >= MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution worker has too many asynchronous commands.");
@@ -447,6 +538,8 @@ export class MeshExecutionGateway {
       timeout: request.timeout,
       maxOutputBytes: request.maxOutputBytes ?? MESH_EXECUTION_MAX_RESULT_BYTES,
       env: request.env,
+      stdout: "",
+      stderr: "",
       controller: new AbortController(),
       status: "running",
       createdAt: Date.now(),
@@ -463,6 +556,8 @@ export class MeshExecutionGateway {
     sessionToken: string,
     jobId: string,
     requestId: string,
+    stdoutOffset?: number,
+    stderrOffset?: number,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
@@ -471,7 +566,7 @@ export class MeshExecutionGateway {
     );
     this.claimRequestId(session, requestId);
     const command = this.requireAsyncCommand(jobId, session);
-    return this.getAsyncCommandSnapshot(command);
+    return this.getAsyncCommandSnapshot(command, { stdoutOffset, stderrOffset });
   }
 
   async cancelAsyncCommand(
@@ -479,6 +574,8 @@ export class MeshExecutionGateway {
     sessionToken: string,
     jobId: string,
     requestId: string,
+    stdoutOffset?: number,
+    stderrOffset?: number,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
@@ -488,15 +585,36 @@ export class MeshExecutionGateway {
     this.claimRequestId(session, requestId);
     const command = this.requireAsyncCommand(jobId, session);
     if (command.status === "running") {
-      command.status = "cancelled";
-      command.error = {
+      this.markAsyncCommandCancelled(command, {
         code: "mesh_execution_aborted",
         message: "The asynchronous mesh command was cancelled.",
-      };
-      command.completedAt = Date.now();
-      command.controller.abort();
+      });
     }
-    return this.getAsyncCommandSnapshot(command);
+    return this.getAsyncCommandSnapshot(command, { stdoutOffset, stderrOffset });
+  }
+
+  abortAsyncCommandsForCaller(callerNodeId: string): void {
+    for (const command of this.asyncCommands.values()) {
+      if (command.callerNodeId === callerNodeId && command.status === "running") {
+        this.markAsyncCommandCancelled(command, {
+          code: "mesh_execution_aborted",
+          message: "The asynchronous mesh command was cancelled because its controller grant was revoked.",
+        });
+      }
+    }
+  }
+
+  private markAsyncCommandCancelled(
+    command: MeshExecutionAsyncCommand,
+    error: MeshExecutionAsyncCommandError,
+  ): void {
+    if (command.status !== "running") {
+      return;
+    }
+    command.status = "cancelled";
+    command.error = { ...error };
+    command.completedAt = Date.now();
+    command.controller.abort();
   }
 
   private claimRequestId(session: MeshExecutionSession, requestId: string): void {
@@ -549,13 +667,51 @@ export class MeshExecutionGateway {
 
   private getAsyncCommandSnapshot(
     command: MeshExecutionAsyncCommand,
+    offsets?: {
+      stdoutOffset?: number;
+      stderrOffset?: number;
+    },
   ): MeshExecutionAsyncCommandSnapshot {
+    const stdoutOffset = this.getAsyncOutputOffset(
+      command.stdout,
+      offsets?.stdoutOffset,
+      "stdout",
+    );
+    const stderrOffset = this.getAsyncOutputOffset(
+      command.stderr,
+      offsets?.stderrOffset,
+      "stderr",
+    );
+    const output: MeshExecutionAsyncCommandOutput = {
+      stdout: command.stdout.slice(stdoutOffset),
+      stderr: command.stderr.slice(stderrOffset),
+      stdoutOffset,
+      stderrOffset,
+      nextStdoutOffset: command.stdout.length,
+      nextStderrOffset: command.stderr.length,
+    };
     return {
       jobId: command.jobId,
       status: command.status,
+      output,
       ...(command.result ? { result: { ...command.result } } : {}),
       ...(command.error ? { error: { ...command.error } } : {}),
     };
+  }
+
+  private getAsyncOutputOffset(
+    output: string,
+    requestedOffset: number | undefined,
+    stream: "stdout" | "stderr",
+  ): number {
+    const offset = requestedOffset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > output.length) {
+      throw new DomainError(
+        "mesh_execution_output_offset_invalid",
+        `The ${stream} output offset is invalid.`,
+      );
+    }
+    return offset;
   }
 
   private async runAsyncCommand(command: MeshExecutionAsyncCommand): Promise<void> {
@@ -567,13 +723,29 @@ export class MeshExecutionGateway {
         env: command.env,
         signal: command.controller.signal,
         logFailures: false,
+        onStdoutChunk: (chunk) => this.appendAsyncCommandOutput(command, "stdout", chunk),
+        onStderrChunk: (chunk) => this.appendAsyncCommandOutput(command, "stderr", chunk),
       });
       if (command.status === "running") {
+        const previousOutputBytes = this.getAsyncCommandOutputBytes(command);
+        command.stdout = result.stdout;
+        command.stderr = result.stderr;
+        const outputBytes = this.getAsyncCommandOutputBytes(command);
+        const outputDelta = outputBytes - previousOutputBytes;
+        if (outputDelta > 0 && !this.ensureAsyncOutputCapacity(outputDelta)) {
+          this.failAsyncCommand(
+            command,
+            "mesh_execution_result_too_large",
+            "The worker output retention limit was exceeded.",
+          );
+          return;
+        }
+        this.retainedAsyncOutputBytes += outputDelta;
         command.status = "completed";
         command.result = {
           success: result.success,
-          stdout: result.stdout,
-          stderr: result.stderr,
+          stdout: command.stdout,
+          stderr: command.stderr,
           exitCode: result.exitCode,
         };
         command.completedAt = Date.now();
@@ -872,11 +1044,15 @@ export class MeshExecutionGateway {
     }
     for (const command of this.asyncCommands.values()) {
       if (command.status === "running") {
-        command.controller.abort();
+        this.markAsyncCommandCancelled(command, {
+          code: "mesh_execution_aborted",
+          message: "The asynchronous mesh command was cancelled because the execution gateway is closing.",
+        });
       }
     }
     this.asyncCommands.clear();
     this.asyncCommandRequestIds.clear();
+    this.retainedAsyncOutputBytes = 0;
     this.usedNonces.clear();
   }
 
