@@ -9,6 +9,7 @@ import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
   getRegisteredSshServerId,
+  isIncompleteGitHubRepositoryUrl,
   isValidWorkerHostAddress,
   parseExecutionHostRef,
   serializeExecutionHostRef,
@@ -231,7 +232,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
         workspaceWorkerEnrollmentSelected
         && workspaceWorkerEnrollment?.enrollment.status === "connected"
       )) &&
-    (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0) &&
+    (automaticCreateNewRepository || (
+      automaticRepoUrl.trim().length > 0
+      && !isIncompleteGitHubRepositoryUrl(automaticRepoUrl)
+    )) &&
     automaticBasePath.trim().length > 0 &&
     (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0) &&
     (
@@ -539,6 +543,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
               />
+              {!automaticCreateNewRepository && isIncompleteGitHubRepositoryUrl(automaticRepoUrl) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Enter a repository name after the GitHub username.
+                </p>
+              )}
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
                   type="checkbox"

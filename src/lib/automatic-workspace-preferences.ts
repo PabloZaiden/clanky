@@ -63,3 +63,10 @@ export function getDefaultAutomaticWorkspaceServer(servers: SshServer[]): SshSer
 export function getAutomaticWorkspaceBasePath(server: SshServer | null): string {
   return server?.config.repositoriesBasePath ?? DEFAULT_AUTOMATIC_WORKSPACE_BASE_PATH;
 }
+
+export function getAutomaticWorkspaceRepositoryPrefix(
+  githubUsername: string | null | undefined,
+): string {
+  const normalizedUsername = githubUsername?.trim() ?? "";
+  return normalizedUsername ? `git@github.com:${normalizedUsername}/` : "";
+}

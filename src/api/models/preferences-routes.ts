@@ -5,6 +5,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  * - GET/PUT /api/preferences/last-model
  * - GET/PUT /api/preferences/last-cheap-model
  * - GET/PUT /api/preferences/last-directory
+ * - GET/PUT /api/preferences/github-username
  * - GET/PUT /api/preferences/markdown-rendering
  * - GET/PUT /api/preferences/file-explorer-full-tree
  * - GET/PUT /api/preferences/dashboard-view-mode
@@ -19,7 +20,7 @@ import { isDomainError } from "../../core/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { errorResponse, internalErrorResponse } from "../helpers";
-import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
+import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetGithubUsernameRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
 
@@ -158,6 +159,40 @@ export const preferencesRoutes = defineRoutes({
         return internalErrorResponse(error, {
           error: "save_failed",
           message: "Failed to save the last directory preference",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/preferences/github-username": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Persist the user's optional GitHub username.",
+    requestSchema: SetGithubUsernameRequestSchema,
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
+      const githubUsername = await preferencesManager.getGithubUsername();
+      return Response.json({ githubUsername: githubUsername ?? null });
+    },
+
+    async PUT(req: Request, _ctx): Promise<Response> {
+      const result = await parseAndValidate(SetGithubUsernameRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await preferencesManager.setGithubUsername(result.data.githubUsername);
+        const githubUsername = await preferencesManager.getGithubUsername();
+        return Response.json({
+          success: true,
+          githubUsername: githubUsername ?? null,
+        });
+      } catch (error) {
+        logPreferenceSaveFailure("github-username", error);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save the GitHub username preference",
           status: 500,
         });
       }

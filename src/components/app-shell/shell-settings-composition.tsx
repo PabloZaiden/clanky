@@ -6,6 +6,7 @@ import {
   QuickChatModelRowContent,
   MeshSettingsContent,
   SchedulerTimezoneRowContent,
+  GithubUsernameRowContent,
   SettingsCheckbox,
   SettingsError,
   SettingsSelect,
@@ -14,6 +15,7 @@ import type {
   PrivateItemsPreference,
   UseDashboardDataResult,
   UseFileExplorerFullTreePreferenceResult,
+  UseGithubUsernameResult,
   UseMarkdownPreferenceResult,
   UseMeshResult,
   UseQuickChatSettingsResult,
@@ -23,6 +25,7 @@ import type {
 export interface ShellSettingsCompositionOptions {
   quickChatSettings: UseQuickChatSettingsResult;
   schedulerTimezone: UseSchedulerTimezoneResult;
+  githubUsername: UseGithubUsernameResult;
   markdownPreference: UseMarkdownPreferenceResult;
   fullTreePreference: UseFileExplorerFullTreePreferenceResult;
   privateItemsPreference: PrivateItemsPreference;
@@ -42,6 +45,7 @@ export type ShellSettingsSections =
 export function buildShellSettingsSections({
   quickChatSettings,
   schedulerTimezone,
+  githubUsername,
   markdownPreference,
   fullTreePreference,
   privateItemsPreference,
@@ -168,6 +172,25 @@ export function buildShellSettingsSections({
             saving={schedulerTimezone.saving}
             error={schedulerTimezone.error}
             onUpdate={schedulerTimezone.updateTimezone}
+          />
+        ),
+      }],
+    },
+    {
+      id: "github",
+      title: "GitHub",
+      scope: "user" as const,
+      rows: [{
+        id: "github-username",
+        title: "Username",
+        description: "Used to prefill automatic workspace Git URLs.",
+        content: (
+          <GithubUsernameRowContent
+            githubUsername={githubUsername.githubUsername}
+            loading={githubUsername.loading}
+            saving={githubUsername.saving}
+            error={githubUsername.error}
+            onUpdate={githubUsername.updateGithubUsername}
           />
         ),
       }],

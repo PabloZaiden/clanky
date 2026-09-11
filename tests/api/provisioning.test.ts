@@ -275,6 +275,31 @@ describe("Provisioning API integration", () => {
     expect(response.status).toBe(400);
   });
 
+  test("rejects a GitHub SSH URL that contains only the username prefix", async () => {
+    const sshServer = await createServer();
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Incomplete Repository",
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
+        repoUrl: "git@github.com:octocat/",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json() as { error: string }).error).toBe("validation_error");
+  });
+
   test("rejects a worker host address that is not discovered on the execution host", async () => {
     const sshServer = await createServer();
     sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor());

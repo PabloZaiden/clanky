@@ -128,6 +128,7 @@ export {
   SetLastModelRequestSchema,
   SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
+  SetGithubUsernameRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
   SetDashboardViewModeRequestSchema,
