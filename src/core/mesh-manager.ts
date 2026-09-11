@@ -20,6 +20,7 @@ import type {
   MeshControllerStatus,
   MeshNodeIdentity,
   MeshWorkerExecutionConfig,
+  MeshWorkerRegistration,
   MeshWorkerStatus,
 } from "@/shared/mesh";
 import { MESH_WORKER_KILL_REQUEST_TTL_MS } from "@/shared/mesh";
@@ -78,7 +79,10 @@ import {
   resolveMeshRoute,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "./domain-error";
-import { postMeshControlMessage } from "./mesh-control-client";
+import {
+  postMeshControlMessage,
+  readMeshControlResponseJson,
+} from "./mesh-control-client";
 import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
@@ -776,6 +780,128 @@ export class MeshManager {
 
   // --- Controller: health check ---
 
+  private async probeWorkerHealth(
+    options: {
+      userId: string;
+      identity: MeshNodeIdentity;
+      worker: MeshWorkerRegistration;
+      signal?: AbortSignal;
+    },
+  ): Promise<boolean> {
+    const { identity, worker } = options;
+    const nonce = crypto.randomUUID();
+    const sentAt = new Date().toISOString();
+    const envelope: Omit<MeshHealthCheck, "signature"> = {
+      protocolVersion: 1,
+      senderNodeId: identity.nodeId,
+      senderPublicKey: identity.publicKey,
+      senderFingerprint: identity.fingerprint,
+      nonce,
+      sentAt,
+    };
+    const signature = await signMeshPayload(
+      buildMeshHealthCheckSigningPayload(envelope),
+    );
+    const route = resolveMeshRoute(
+      worker.workerEndpoint,
+      "api/mesh/internal/health",
+    );
+    const response = await postMeshControlMessage(route, {
+      ...envelope,
+      signature,
+    }, nonce, {
+      tls: getMeshWorkerTlsOptions(worker),
+      signal: options.signal,
+    });
+    const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
+      await readMeshControlResponseJson(response, { signal: options.signal }),
+    );
+    if (!parsedResponse.success) {
+      throw new DomainError(
+        "mesh_health_check_response_invalid",
+        "The worker health response has an invalid shape.",
+      );
+    }
+    const health = parsedResponse.data;
+    if (
+      health.workerNodeId !== worker.workerNodeId
+      || health.controllerNodeId !== identity.nodeId
+      || health.requestNonce !== nonce
+    ) {
+      throw new DomainError(
+        "mesh_health_check_response_invalid",
+        "The worker health response does not match the request.",
+      );
+    }
+    const { signature: responseSignature, ...unsignedResponse } = health;
+    if (!await verifyMeshPayloadSignature(
+      buildMeshHealthCheckResponseSigningPayload(unsignedResponse),
+      responseSignature,
+      worker.workerPublicKey,
+    )) {
+      throw new DomainError(
+        "mesh_health_check_response_invalid",
+        "The worker health response signature is invalid.",
+      );
+    }
+    if (health.workerConfigRevision < worker.workerConfigRevision) {
+      throw new DomainError(
+        "mesh_health_check_response_invalid",
+        "The worker health response contains a stale configuration revision.",
+      );
+    }
+    const configurationChanged =
+      health.workerConfigRevision !== worker.workerConfigRevision
+      || health.workerDirectory !== worker.workerDirectory
+      || health.workerAcceptRemoteExecution !== worker.workerAcceptRemoteExecution
+      || JSON.stringify(health.workerCapabilities)
+        !== JSON.stringify(worker.workerCapabilities);
+    if (
+      health.workerConfigRevision === worker.workerConfigRevision
+      && configurationChanged
+    ) {
+      throw new DomainError(
+        "mesh_health_check_response_invalid",
+        "The worker changed configuration without advancing its revision.",
+      );
+    }
+    await updateWorkerHealthSnapshot({
+      workerNodeId: worker.workerNodeId,
+      localUserId: options.userId,
+      directory: health.workerDirectory,
+      capabilities: health.workerCapabilities,
+      acceptRemoteExecution: health.workerAcceptRemoteExecution,
+      configRevision: health.workerConfigRevision,
+    });
+    return configurationChanged;
+  }
+
+  async checkWorkerReachability(
+    userId: string,
+    workerNodeId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    requireMeshRuntimeRole("controller");
+    const worker = await getWorkerRegistration(workerNodeId, userId);
+    if (!worker || worker.grantStatus !== "active") {
+      throw new DomainError(
+        "mesh_worker_not_found",
+        "The selected Mesh worker is not active.",
+      );
+    }
+    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const executionHostsChanged = await this.probeWorkerHealth({
+      userId,
+      identity,
+      worker,
+      signal: options.signal,
+    });
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged },
+      { userId },
+    );
+  }
+
   async checkWorkerHealth(
     userId: string,
   ): Promise<void> {
@@ -786,90 +912,11 @@ export class MeshManager {
     let executionHostsChanged = false;
     for (const worker of workers) {
       try {
-        const nonce = crypto.randomUUID();
-        const sentAt = new Date().toISOString();
-        const envelope: Omit<MeshHealthCheck, "signature"> = {
-          protocolVersion: 1,
-          senderNodeId: identity.nodeId,
-          senderPublicKey: identity.publicKey,
-          senderFingerprint: identity.fingerprint,
-          nonce,
-          sentAt,
-        };
-        const signature = await signMeshPayload(
-          buildMeshHealthCheckSigningPayload(envelope),
-        );
-        const route = resolveMeshRoute(
-          worker.workerEndpoint,
-          "api/mesh/internal/health",
-        );
-        const response = await postMeshControlMessage(route, {
-          ...envelope,
-          signature,
-        }, nonce, {
-          tls: getMeshWorkerTlsOptions(worker),
+        executionHostsChanged ||= await this.probeWorkerHealth({
+          userId,
+          identity,
+          worker,
         });
-        const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
-          await response.json(),
-        );
-        if (!parsedResponse.success) {
-          throw new DomainError(
-            "mesh_health_check_response_invalid",
-            "The worker health response has an invalid shape.",
-          );
-        }
-        const health = parsedResponse.data;
-        if (
-          health.workerNodeId !== worker.workerNodeId
-          || health.controllerNodeId !== identity.nodeId
-          || health.requestNonce !== nonce
-        ) {
-          throw new DomainError(
-            "mesh_health_check_response_invalid",
-            "The worker health response does not match the request.",
-          );
-        }
-        const { signature: responseSignature, ...unsignedResponse } = health;
-        if (!await verifyMeshPayloadSignature(
-          buildMeshHealthCheckResponseSigningPayload(unsignedResponse),
-          responseSignature,
-          worker.workerPublicKey,
-        )) {
-          throw new DomainError(
-            "mesh_health_check_response_invalid",
-            "The worker health response signature is invalid.",
-          );
-        }
-        if (health.workerConfigRevision < worker.workerConfigRevision) {
-          throw new DomainError(
-            "mesh_health_check_response_invalid",
-            "The worker health response contains a stale configuration revision.",
-          );
-        }
-        const configurationChanged =
-          health.workerConfigRevision !== worker.workerConfigRevision
-          || health.workerDirectory !== worker.workerDirectory
-          || health.workerAcceptRemoteExecution !== worker.workerAcceptRemoteExecution
-          || JSON.stringify(health.workerCapabilities)
-            !== JSON.stringify(worker.workerCapabilities);
-        if (
-          health.workerConfigRevision === worker.workerConfigRevision
-          && configurationChanged
-        ) {
-          throw new DomainError(
-            "mesh_health_check_response_invalid",
-            "The worker changed configuration without advancing its revision.",
-          );
-        }
-        await updateWorkerHealthSnapshot({
-          workerNodeId: worker.workerNodeId,
-          localUserId: userId,
-          directory: health.workerDirectory,
-          capabilities: health.workerCapabilities,
-          acceptRemoteExecution: health.workerAcceptRemoteExecution,
-          configRevision: health.workerConfigRevision,
-        });
-        executionHostsChanged ||= configurationChanged;
       } catch (error) {
         log.warn("Worker health check failed", {
           workerNodeId: worker.workerNodeId,
@@ -1013,7 +1060,9 @@ export class MeshManager {
       signature,
     }, identity.nodeId);
 
-    const body = await response.json() as MeshEnrollmentResponse;
+    const body = await readMeshControlResponseJson<MeshEnrollmentResponse>(
+      response,
+    );
 
     if (
       body.protocolVersion !== 1

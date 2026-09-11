@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +15,8 @@ import {
   saveWorkerRegistration,
 } from "../../src/persistence/mesh";
 import { ensureMeshWorkerTlsIdentity } from "../../src/persistence/mesh-worker-tls";
+import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
+import { buildMeshHealthCheckResponseSigningPayload } from "../../src/core/mesh-protocol";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -78,6 +81,83 @@ interface ProvisioningSnapshotResponse {
     serverSettings?: {
       agent: Record<string, unknown>;
     };
+  };
+}
+
+interface MeshHealthResponder {
+  setWorker(workerNodeId: string, privateKey: KeyObject): void;
+  failNextHealthChecks(count: number): void;
+  getStats(): { requests: number; failures: number; successes: number };
+  restore(): void;
+}
+
+function installMeshHealthResponder(): MeshHealthResponder {
+  const originalFetch = globalThis.fetch;
+  let workerNodeId: string | undefined;
+  let workerPrivateKey: KeyObject | undefined;
+  let failuresRemaining = 0;
+  let requests = 0;
+  let failures = 0;
+  let successes = 0;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.toString()
+      : input.url;
+    if (!url.endsWith("/api/mesh/internal/health")) {
+      return await originalFetch(input, init);
+    }
+
+    requests++;
+    if (failuresRemaining > 0) {
+      failuresRemaining--;
+      failures++;
+      throw new TypeError("worker is still starting");
+    }
+    if (!workerNodeId || !workerPrivateKey) {
+      throw new Error("Mesh health responder is missing its worker identity");
+    }
+
+    const request = new Request(input, init);
+    const body = await request.json() as { senderNodeId: string; nonce: string };
+    const unsignedResponse = {
+      protocolVersion: 1 as const,
+      workerNodeId,
+      controllerNodeId: body.senderNodeId,
+      requestNonce: body.nonce,
+      workerDirectory: "/workspaces/worker-example",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    };
+    const response = {
+      ...unsignedResponse,
+      signature: sign(
+        null,
+        Buffer.from(buildMeshHealthCheckResponseSigningPayload(unsignedResponse)),
+        workerPrivateKey,
+      ).toString("base64url"),
+    };
+    successes++;
+    return Response.json(response);
+  }) as typeof fetch;
+
+  return {
+    setWorker(nextWorkerNodeId, nextWorkerPrivateKey) {
+      workerNodeId = nextWorkerNodeId;
+      workerPrivateKey = nextWorkerPrivateKey;
+    },
+    failNextHealthChecks(count) {
+      failuresRemaining = count;
+    },
+    getStats() {
+      return { requests, failures, successes };
+    },
+    restore() {
+      globalThis.fetch = originalFetch;
+    },
   };
 }
 
@@ -358,6 +438,7 @@ describe("Provisioning API integration", () => {
   test("provisions an automatic workspace through a dedicated HTTPS worker", async () => {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
+    const healthResponder = installMeshHealthResponder();
     try {
       const sshServer = await createServer();
       const manualWorkerHost = "worker.example.test";
@@ -386,14 +467,19 @@ describe("Provisioning API integration", () => {
           const workerNodeId = `automatic-worker-${crypto.randomUUID()}`;
           const workerEndpoint = `https://${manualWorkerHost}:5001`;
           const workerTlsIdentity = await ensureMeshWorkerTlsIdentity(workerEndpoint);
+          const workerKeys = generateKeyPairSync("ed25519");
+          const workerPublicKey = workerKeys.publicKey
+            .export({ format: "pem", type: "spki" })
+            .toString();
+          healthResponder.setWorker(workerNodeId, workerKeys.privateKey);
           await saveWorkerRegistration({
             workerNodeId,
             localUserId: "admin",
             workerInstanceName: "Worker Workspace worker",
             workerEndpoint,
             workerTransport: "https",
-            workerPublicKey: `${workerNodeId}-public-key`,
-            workerFingerprint: `${workerNodeId}-fingerprint`,
+            workerPublicKey,
+            workerFingerprint: getMeshNodeFingerprint(workerPublicKey),
             workerEncryptionPublicKey: null,
             workerTlsCertificate: workerTlsIdentity.certificate,
             workerTlsFingerprint: workerTlsIdentity.fingerprint,
@@ -409,6 +495,7 @@ describe("Provisioning API integration", () => {
             enrollment!.enrollment.id,
             workerNodeId,
           );
+          healthResponder.failNextHealthChecks(2);
         },
       });
       sshServerManager.setExecutorFactoryForTesting(() => executor);
@@ -439,6 +526,10 @@ describe("Provisioning API integration", () => {
       expect(started.job.config.workerHostAddressManual).toBe(true);
 
       const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+      expect(healthResponder.getStats()).toMatchObject({
+        failures: 2,
+        successes: 1,
+      });
       expect(completed.job.config.workerEnrollmentId).toBeTruthy();
       expect(
         completed.logs.find((entry) => entry.text.includes("Bootstrapping the workspace worker"))?.step,
@@ -518,6 +609,7 @@ describe("Provisioning API integration", () => {
         }),
       });
       sshServerManager.setExecutorFactoryForTesting(() => restartExecutor);
+      healthResponder.failNextHealthChecks(2);
 
       const restartResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
         method: "POST",
@@ -545,6 +637,8 @@ describe("Provisioning API integration", () => {
         startedRestart.job.config.id,
         ["completed"],
       );
+      expect(healthResponder.getStats().failures).toBe(4);
+      expect(healthResponder.getStats().successes).toBe(2);
       expect(completedRestart.workspace?.executionHostBinding?.host).toMatchObject({
         kind: "mesh",
         scope: "workspace",
@@ -559,6 +653,7 @@ describe("Provisioning API integration", () => {
       );
       expect(deleted.status).toBe(200);
     } finally {
+      healthResponder.restore();
       if (previousPublicBaseUrl === undefined) {
         delete process.env["CLANKY_PUBLIC_BASE_URL"];
       } else {

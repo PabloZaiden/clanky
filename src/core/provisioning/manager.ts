@@ -27,7 +27,13 @@ import type {
 } from "@/shared";
 import { isValidWorkerHostAddress } from "@/shared";
 import { getRegisteredSshServerId, isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
-import { DEFAULT_MAX_LOG_ENTRIES, DEVBOX_UP_TIMEOUT_MS, GIT_CLONE_TIMEOUT_MS } from "./constants";
+import {
+  DEFAULT_MAX_LOG_ENTRIES,
+  DEVBOX_UP_TIMEOUT_MS,
+  GIT_CLONE_TIMEOUT_MS,
+  WORKER_READINESS_POLL_INTERVAL_MS,
+  WORKER_READINESS_TIMEOUT_MS,
+} from "./constants";
 import {
   buildError,
   getSinglePublishedPort,
@@ -69,6 +75,49 @@ function validateWorkerHostAddress(value: string | undefined): string {
     );
   }
   return address;
+}
+
+function createDeadlineSignal(
+  parentSignal: AbortSignal,
+  deadlineAt: number,
+): { signal: AbortSignal; dispose: () => void } {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  if (parentSignal.aborted) {
+    controller.abort();
+  } else {
+    parentSignal.addEventListener("abort", abortFromParent, { once: true });
+  }
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Math.max(0, deadlineAt - Date.now()),
+  );
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timeout);
+      parentSignal.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
+async function waitForReadinessPoll(
+  signal: AbortSignal,
+  delayMs: number,
+): Promise<void> {
+  if (delayMs <= 0 || signal.aborted) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(finish, delayMs);
+    const onAbort = () => finish();
+    function finish(): void {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 interface WorkerPaths {
@@ -748,7 +797,8 @@ export class ProvisioningManager {
     record: ProvisioningJobRecord,
     enrollmentId: string,
   ): Promise<void> {
-    const timeoutAt = Date.now() + 120_000;
+    const timeoutAt = Date.now() + WORKER_READINESS_TIMEOUT_MS;
+    let lastHealthError: unknown;
     while (Date.now() < timeoutAt) {
       this.throwIfCancelled(record);
       const status = workspaceWorkerEnrollmentService.getStatus(
@@ -758,8 +808,27 @@ export class ProvisioningManager {
       if (
         ["connected", "attached"].includes(status.enrollment.status)
         && status.worker?.grantStatus === "active"
+        && status.worker.workerNodeId
       ) {
-        return;
+        const probe = createDeadlineSignal(
+          record.abortController.signal,
+          timeoutAt,
+        );
+        try {
+          await meshManager.checkWorkerReachability(
+            record.owner.id,
+            status.worker.workerNodeId,
+            { signal: probe.signal },
+          );
+          return;
+        } catch (error) {
+          if (record.abortController.signal.aborted) {
+            throw new ProvisioningCancelledError("Provisioning job was cancelled");
+          }
+          lastHealthError = error;
+        } finally {
+          probe.dispose();
+        }
       }
       if (["failed", "expired", "cancelled"].includes(status.enrollment.status)) {
         throw new ProvisioningFailedError(
@@ -768,12 +837,22 @@ export class ProvisioningManager {
           status.enrollment.errorMessage ?? "The workspace worker failed to connect.",
         );
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      const remainingMs = timeoutAt - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+      await waitForReadinessPoll(
+        record.abortController.signal,
+        Math.min(WORKER_READINESS_POLL_INTERVAL_MS, remainingMs),
+      );
     }
     throw new ProvisioningFailedError(
       "workspace_worker_connection_timeout",
       "test_connection",
-      "Timed out waiting for the workspace worker to connect.",
+      `Timed out waiting for the workspace worker to become reachable.${
+        lastHealthError ? ` Last health error: ${String(lastHealthError)}` : ""
+      }`,
+      { cause: lastHealthError },
     );
   }
 
