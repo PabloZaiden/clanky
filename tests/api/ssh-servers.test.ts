@@ -725,6 +725,7 @@ describe("Standalone SSH servers API integration", () => {
   });
 
   test("checks SSH prerequisites through the transport-neutral API", async () => {
+    executorFactory = () => new SshServerApiExecutor({ devboxVersion: "1.2.2" });
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -795,6 +796,7 @@ describe("Standalone SSH servers API integration", () => {
   });
 
   test("lists devbox templates through the API", async () => {
+    executorFactory = () => new SshServerApiExecutor({ devboxVersion: "1.2.2" });
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
