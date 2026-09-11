@@ -87,6 +87,15 @@ whenever its resolved directory or execution policy changes. Each controller
 health probe verifies the worker's signed response and synchronizes the newer
 snapshot into that controller's execution-host registration.
 
+Long-running provisioning commands use the authenticated asynchronous execution
+contract rather than holding one Mesh HTTP response open. The worker accepts
+the command, owns its process and cancellation signal, and returns bounded
+terminal results through encrypted polling. Short file and command operations
+continue to use the synchronous RPC path. This avoids the worker or an
+intermediate network idle timeout being mistaken for a peer outage.
+The start request is idempotent across a retried Mesh session, so losing the
+initial response does not launch a second command.
+
 ## Register as an operating-system service
 
 The service command requires the standalone `clanky` binary and an already
@@ -125,13 +134,16 @@ Simple values are emitted without quotes; paths or values that need grouping
 retain systemd-compatible quoting and escaping.
 
 On Linux, service installation also creates a dedicated
-`clanky-worker-ssh-agent.service` for the current user. The worker receives its
-stable `SSH_AUTH_SOCK` path from systemd
+`clanky-worker-ssh-agent.service` plus a systemd socket-activated relay for the
+current user. The worker receives the stable public `SSH_AUTH_SOCK` path
 (`~/.clanky/worker-ssh-agent/agent.sock`), so Git can use the user's SSH agent
-even though the worker starts outside an interactive login session. Keeping
-the socket under the user's home also makes it visible to rootless Docker
-daemons used by automatic workspace provisioning. The agent does not write
-private keys or passphrases to its unit or to Clanky data.
+even though the worker starts outside an interactive login session. The
+systemd-owned relay keeps that socket inode stable across agent and relay
+process restarts, while the real agent uses the private
+`agent-upstream.sock` path. Keeping the public socket under the user's home
+also makes it visible to rootless Docker daemons used by automatic workspace
+provisioning. Neither service writes private keys or passphrases to its unit
+or to Clanky data.
 After the agent starts, a normal `clanky worker service install` invokes
 `ssh-add` interactively and prompts for the passphrase of each default SSH
 identity that needs unlocking. The passphrase is handled by `ssh-add` and is
@@ -153,11 +165,11 @@ clanky worker ssh-agent unlock
 clanky worker ssh-agent status
 ```
 
-`--no-start` installs and enables both services and the shell hooks without
-starting the agent or prompting. Start the worker and run the unlock command
-from an interactive session when using that mode. Uninstalling the worker
-removes only Clanky's managed shell block and helper; it does not delete
-anything from `~/.ssh`.
+`--no-start` installs and enables the worker, agent, and relay units plus the
+shell hooks without starting them or prompting. Start the worker and run the
+unlock command from an interactive session when using that mode. Uninstalling
+the worker removes only Clanky's managed shell block and helper; it does not
+delete anything from `~/.ssh`.
 
 To regenerate the service configuration without starting it immediately, use
 `clanky worker service install --no-start`. The lifecycle commands are:
@@ -226,11 +238,10 @@ clanky update
 clanky worker service install
 ```
 
-`worker service install` is idempotent and is also the migration step for a
-Linux worker registered before the managed SSH-agent service was introduced:
-it rewrites and enables both units, updates the shell hooks, unlocks the agent
-when needed, and restarts the worker with the registered configuration. No
-worker data or Mesh identity is moved during an update.
+`worker service install` is idempotent and rewrites the worker, agent, and
+relay units, updates the shell hooks, unlocks the agent when needed, and
+restarts the worker with the registered configuration. No worker data or Mesh
+identity is moved during an update.
 
 Direct chats created on a Mesh server use the normal provider and model
 selection. Provider and model defaults are not stored on the worker.

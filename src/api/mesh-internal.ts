@@ -15,6 +15,7 @@ import {
   MeshWorkerKillRequestSchema,
 } from "@/contracts/schemas/mesh";
 import {
+  MeshExecutionAsyncCommandRequestSchema,
   MeshExecutionRpcRequestSchema,
   MeshExecutionFileWriteQuerySchema,
   MeshExecutionSessionRequestSchema,
@@ -59,6 +60,8 @@ function internalMeshErrorResponse(error: unknown): Response {
             ? 410
           : error.code === "mesh_execution_owner_mismatch"
             ? 403
+          : error.code === "mesh_execution_async_command_not_found"
+            ? 404
           : error.code === "workspace_not_found"
             ? 404
           : error.code === "execution_host_directory_invalid"
@@ -248,6 +251,50 @@ export const meshInternalRoutes = defineRoutes({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
           encryptedPayload: encryptMeshPayload(result, encryptionPublicKey),
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
+  "/api/mesh/internal/execution/async": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Start, inspect, or cancel a long-running mesh command.",
+    tags: ["mesh", "internal", "execution"],
+    async POST(req): Promise<Response> {
+      const parsed = await parseAndValidate(MeshExecutionAsyncCommandRequestSchema, req);
+      if (!parsed.success) return parsed.response;
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (sessionId !== parsed.data.sessionId || requestId !== parsed.data.requestId) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh headers do not match the asynchronous execution request.", 400);
+      }
+      try {
+        requireMeshRuntimeRole("worker");
+        const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
+          parsed.data.sessionId,
+          parsed.data.sessionToken,
+        );
+        const snapshot = parsed.data.action === "start"
+          ? await meshExecutionGateway.startAsyncCommand(parsed.data)
+          : parsed.data.action === "status"
+            ? await meshExecutionGateway.getAsyncCommand(
+                parsed.data.sessionId,
+                parsed.data.sessionToken,
+                parsed.data.jobId ?? "",
+                parsed.data.requestId,
+              )
+            : await meshExecutionGateway.cancelAsyncCommand(
+                parsed.data.sessionId,
+                parsed.data.sessionToken,
+                parsed.data.jobId ?? "",
+                parsed.data.requestId,
+              );
+        return Response.json({
+          protocolVersion: parsed.data.protocolVersion,
+          requestId: parsed.data.requestId,
+          encryptedPayload: encryptMeshPayload(snapshot, encryptionPublicKey),
         });
       } catch (error) {
         return internalMeshErrorResponse(error);
@@ -480,6 +527,7 @@ export const meshWorkerInternalRoutes = defineRoutes({
   "/api/mesh/internal/health": meshInternalRoutes["/api/mesh/internal/health"]!,
   "/api/mesh/internal/execution/session": meshInternalRoutes["/api/mesh/internal/execution/session"]!,
   "/api/mesh/internal/execution/rpc": meshInternalRoutes["/api/mesh/internal/execution/rpc"]!,
+  "/api/mesh/internal/execution/async": meshInternalRoutes["/api/mesh/internal/execution/async"]!,
   "/api/mesh/internal/execution/file": meshInternalRoutes["/api/mesh/internal/execution/file"]!,
   "/api/mesh/internal/execution/acp": meshInternalRoutes["/api/mesh/internal/execution/acp"]!,
   "/api/mesh/internal/terminal/session": meshInternalRoutes["/api/mesh/internal/terminal/session"]!,

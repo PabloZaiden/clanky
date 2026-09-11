@@ -48,6 +48,36 @@ export const MeshExecutionRpcRequestSchema = z.object({
   includeHidden: z.boolean().optional(),
 });
 
+export const MeshExecutionAsyncCommandRequestSchema = z.object({
+  protocolVersion: z.literal(MESH_EXECUTION_PROTOCOL_VERSION),
+  action: z.enum(["start", "status", "cancel"]),
+  sessionId: z.string().trim().min(1).max(200),
+  sessionToken: z.string().trim().min(32).max(256),
+  requestId: z.string().trim().min(1).max(200),
+  jobId: z.string().trim().min(1).max(200).optional(),
+  command: z.string().min(1).max(4_096).optional(),
+  args: z.array(z.string().max(16_384)).max(256).optional(),
+  cwd: MeshExecutionPathSchema.optional(),
+  timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
+  maxOutputBytes: z.number().int().min(1).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
+  env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
+}).superRefine((value, context) => {
+  if (value.action === "start" && !value.command) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["command"],
+      message: "start requires a command",
+    });
+  }
+  if (value.action !== "start" && !value.jobId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["jobId"],
+      message: `${value.action} requires a job ID`,
+    });
+  }
+});
+
 export const MeshExecutionFileWriteQuerySchema = z.object({
   path: MeshExecutionPathSchema,
   append: z.enum(["0", "1"]).optional().default("0").transform((value) => value === "1"),
@@ -57,4 +87,5 @@ export const MeshExecutionFileWriteQuerySchema = z.object({
 
 export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;
+export type MeshExecutionAsyncCommandRequest = z.infer<typeof MeshExecutionAsyncCommandRequestSchema>;
 export type MeshExecutionFileWriteQuery = z.infer<typeof MeshExecutionFileWriteQuerySchema>;

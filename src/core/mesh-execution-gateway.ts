@@ -11,6 +11,7 @@
 import { randomBytes } from "node:crypto";
 import { posix } from "node:path";
 import type {
+  MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
@@ -18,11 +19,19 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
+  MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS,
+  MESH_EXECUTION_ASYNC_MAX_COMMANDS,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
+} from "@/shared/mesh-execution";
+import type {
+  MeshExecutionAsyncCommandError,
+  MeshExecutionAsyncCommandResult,
+  MeshExecutionAsyncCommandSnapshot,
+  MeshExecutionAsyncCommandStatus,
 } from "@/shared/mesh-execution";
 import { getControllerGrant } from "../persistence/mesh";
 import {
@@ -55,6 +64,7 @@ interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
   callerNodeId: string;
+  workspaceId: string;
   executionRoot: string;
   directory: string;
   provider: AgentProvider;
@@ -100,6 +110,29 @@ type MeshExecutionRpcResult =
   | string
   | string[]
   | null;
+
+interface MeshExecutionAsyncCommand {
+  jobId: string;
+  requestId: string;
+  callerNodeId: string;
+  workspaceId: string;
+  executionRoot: string;
+  provider: AgentProvider;
+  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
+  executor: CommandExecutor;
+  command: string;
+  args: string[];
+  cwd: string;
+  timeout: number | null | undefined;
+  maxOutputBytes: number;
+  env?: Record<string, string>;
+  controller: AbortController;
+  status: MeshExecutionAsyncCommandStatus;
+  result?: MeshExecutionAsyncCommandResult;
+  error?: MeshExecutionAsyncCommandError;
+  createdAt: number;
+  completedAt?: number;
+}
 
 function assertStringSize(value: string, field: string): void {
   if (Buffer.byteLength(value, "utf8") > MESH_EXECUTION_MAX_RESULT_BYTES) {
@@ -152,10 +185,13 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
 
 export class MeshExecutionGateway {
   private readonly sessions = new Map<string, MeshExecutionSession>();
+  private readonly asyncCommands = new Map<string, MeshExecutionAsyncCommand>();
+  private readonly asyncCommandRequestIds = new Map<string, string>();
   private readonly usedNonces = new Map<string, number>();
 
   private pruneExpired(): void {
     const now = Date.now();
+    this.pruneAsyncCommands(now);
     for (const [sessionId, session] of this.sessions) {
       if (session.expiresAt <= now) {
         this.closeSession(sessionId);
@@ -170,6 +206,32 @@ export class MeshExecutionGateway {
       const oldest = this.sessions.keys().next().value as string | undefined;
       if (!oldest) break;
       this.closeSession(oldest);
+    }
+  }
+
+  private pruneAsyncCommands(now: number = Date.now()): void {
+    for (const [jobId, command] of this.asyncCommands) {
+      if (
+        command.completedAt !== undefined
+        && now - command.completedAt >= MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS
+      ) {
+        this.asyncCommands.delete(jobId);
+        if (this.asyncCommandRequestIds.get(command.requestId) === jobId) {
+          this.asyncCommandRequestIds.delete(command.requestId);
+        }
+      }
+    }
+    while (this.asyncCommands.size > MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
+      const oldestTerminal = [...this.asyncCommands.values()]
+        .filter((command) => command.completedAt !== undefined)
+        .sort((left, right) => (left.completedAt ?? 0) - (right.completedAt ?? 0))[0];
+      if (!oldestTerminal) {
+        break;
+      }
+      this.asyncCommands.delete(oldestTerminal.jobId);
+      if (this.asyncCommandRequestIds.get(oldestTerminal.requestId) === oldestTerminal.jobId) {
+        this.asyncCommandRequestIds.delete(oldestTerminal.requestId);
+      }
     }
   }
 
@@ -274,6 +336,7 @@ export class MeshExecutionGateway {
       sessionId,
       sessionToken,
       callerNodeId: request.callerNodeId,
+      workspaceId: request.workspaceId,
       executionRoot,
       directory: executionRoot,
       provider: request.provider,
@@ -330,6 +393,208 @@ export class MeshExecutionGateway {
     return session.callerEncryptionPublicKey;
   }
 
+  async startAsyncCommand(
+    request: MeshExecutionAsyncCommandRequest,
+  ): Promise<MeshExecutionAsyncCommandSnapshot> {
+    const { session } = await this.requireValidatedSession(
+      request.sessionId,
+      request.sessionToken,
+      { memberErrorCode: "mesh_peer_not_trusted" },
+    );
+    await requireLocalMeshExecutionCapability("commandExecution");
+    this.pruneAsyncCommands();
+
+    const existingJobId = this.asyncCommandRequestIds.get(request.requestId);
+    if (existingJobId) {
+      const existing = this.asyncCommands.get(existingJobId);
+      if (existing) {
+        if (!this.isSameAsyncCommandContext(existing, session)) {
+          throw new DomainError(
+            "mesh_execution_context_changed",
+            "The asynchronous mesh command belongs to another execution context.",
+          );
+        }
+        return this.getAsyncCommandSnapshot(existing);
+      }
+      this.asyncCommandRequestIds.delete(request.requestId);
+    }
+
+    this.claimRequestId(session, request.requestId);
+    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+      throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    }
+    if (this.asyncCommands.size >= MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
+      throw new DomainError("mesh_execution_limit_exceeded", "The execution worker has too many asynchronous commands.");
+    }
+    if (!request.command) {
+      throw new DomainError("mesh_execution_request_invalid", "Asynchronous execution requires a command.");
+    }
+
+    const cwd = assertMeshExecutionCwd(session.executionRoot, request.cwd ?? session.directory);
+    const jobId = crypto.randomUUID();
+    const command: MeshExecutionAsyncCommand = {
+      jobId,
+      requestId: request.requestId,
+      callerNodeId: session.callerNodeId,
+      workspaceId: session.workspaceId,
+      executionRoot: session.executionRoot,
+      provider: session.provider,
+      channel: session.channel,
+      executor: session.executor,
+      command: request.command,
+      args: request.args ?? [],
+      cwd,
+      timeout: request.timeout,
+      maxOutputBytes: request.maxOutputBytes ?? MESH_EXECUTION_MAX_RESULT_BYTES,
+      env: request.env,
+      controller: new AbortController(),
+      status: "running",
+      createdAt: Date.now(),
+    };
+    this.asyncCommands.set(jobId, command);
+    this.asyncCommandRequestIds.set(request.requestId, jobId);
+
+    void this.runAsyncCommand(command);
+    return this.getAsyncCommandSnapshot(command);
+  }
+
+  async getAsyncCommand(
+    sessionId: string,
+    sessionToken: string,
+    jobId: string,
+    requestId: string,
+  ): Promise<MeshExecutionAsyncCommandSnapshot> {
+    const { session } = await this.requireValidatedSession(
+      sessionId,
+      sessionToken,
+      { memberErrorCode: "mesh_peer_not_trusted" },
+    );
+    this.claimRequestId(session, requestId);
+    const command = this.requireAsyncCommand(jobId, session);
+    return this.getAsyncCommandSnapshot(command);
+  }
+
+  async cancelAsyncCommand(
+    sessionId: string,
+    sessionToken: string,
+    jobId: string,
+    requestId: string,
+  ): Promise<MeshExecutionAsyncCommandSnapshot> {
+    const { session } = await this.requireValidatedSession(
+      sessionId,
+      sessionToken,
+      { memberErrorCode: "mesh_peer_not_trusted" },
+    );
+    this.claimRequestId(session, requestId);
+    const command = this.requireAsyncCommand(jobId, session);
+    if (command.status === "running") {
+      command.status = "cancelled";
+      command.error = {
+        code: "mesh_execution_aborted",
+        message: "The asynchronous mesh command was cancelled.",
+      };
+      command.completedAt = Date.now();
+      command.controller.abort();
+    }
+    return this.getAsyncCommandSnapshot(command);
+  }
+
+  private claimRequestId(session: MeshExecutionSession, requestId: string): void {
+    if (session.requestIds.has(requestId)) {
+      throw new DomainError("mesh_execution_replay", "The execution request has already been used.");
+    }
+    session.requestIds.add(requestId);
+    while (session.requestIds.size > MAX_REQUEST_IDS) {
+      const oldest = session.requestIds.values().next().value as string | undefined;
+      if (!oldest) {
+        break;
+      }
+      session.requestIds.delete(oldest);
+    }
+  }
+
+  private requireAsyncCommand(
+    jobId: string,
+    session: MeshExecutionSession,
+  ): MeshExecutionAsyncCommand {
+    this.pruneAsyncCommands();
+    const command = this.asyncCommands.get(jobId);
+    if (!command) {
+      throw new DomainError(
+        "mesh_execution_async_command_not_found",
+        "The asynchronous mesh command was not found.",
+      );
+    }
+    if (
+      !this.isSameAsyncCommandContext(command, session)
+    ) {
+      throw new DomainError(
+        "mesh_execution_context_changed",
+        "The asynchronous mesh command belongs to another execution context.",
+      );
+    }
+    return command;
+  }
+
+  private isSameAsyncCommandContext(
+    command: MeshExecutionAsyncCommand,
+    session: MeshExecutionSession,
+  ): boolean {
+    return command.callerNodeId === session.callerNodeId
+      && command.workspaceId === session.workspaceId
+      && command.executionRoot === session.executionRoot
+      && command.provider === session.provider
+      && command.channel === session.channel;
+  }
+
+  private getAsyncCommandSnapshot(
+    command: MeshExecutionAsyncCommand,
+  ): MeshExecutionAsyncCommandSnapshot {
+    return {
+      jobId: command.jobId,
+      status: command.status,
+      ...(command.result ? { result: { ...command.result } } : {}),
+      ...(command.error ? { error: { ...command.error } } : {}),
+    };
+  }
+
+  private async runAsyncCommand(command: MeshExecutionAsyncCommand): Promise<void> {
+    try {
+      const result = await command.executor.exec(command.command, command.args, {
+        cwd: command.cwd,
+        timeout: command.timeout,
+        maxOutputBytes: command.maxOutputBytes,
+        env: command.env,
+        signal: command.controller.signal,
+        logFailures: false,
+      });
+      if (command.status === "running") {
+        command.status = "completed";
+        command.result = {
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        };
+        command.completedAt = Date.now();
+      }
+    } catch (error) {
+      if (command.status === "cancelled" || command.controller.signal.aborted) {
+        return;
+      }
+      command.status = "failed";
+      command.error = {
+        code: error instanceof DomainError
+          ? error.code
+          : isCommandOutputLimitError(error)
+            ? "mesh_execution_result_too_large"
+            : "mesh_execution_command_failed",
+        message: String(error instanceof Error ? error.message : error),
+      };
+      command.completedAt = Date.now();
+    }
+  }
+
   async execute(request: MeshExecutionRpcRequest, signal?: AbortSignal): Promise<MeshExecutionRpcResult> {
     const { session } = await this.requireValidatedSession(
       request.sessionId,
@@ -342,17 +607,9 @@ export class MeshExecutionGateway {
       request.operation === "exec" ? "commandExecution" : "fileOperations",
     );
 
-    if (session.requestIds.has(request.requestId)) {
-      throw new DomainError("mesh_execution_replay", "The execution request has already been used.");
-    }
+    this.claimRequestId(session, request.requestId);
     if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
-    }
-    session.requestIds.add(request.requestId);
-    while (session.requestIds.size > MAX_REQUEST_IDS) {
-      const oldest = session.requestIds.values().next().value as string | undefined;
-      if (!oldest) break;
-      session.requestIds.delete(oldest);
     }
     session.inFlight += 1;
 
@@ -613,6 +870,13 @@ export class MeshExecutionGateway {
     for (const sessionId of this.sessions.keys()) {
       this.closeSession(sessionId);
     }
+    for (const command of this.asyncCommands.values()) {
+      if (command.status === "running") {
+        command.controller.abort();
+      }
+    }
+    this.asyncCommands.clear();
+    this.asyncCommandRequestIds.clear();
     this.usedNonces.clear();
   }
 

@@ -14,7 +14,11 @@ import { systemdToken } from "./systemd";
 import {
   getWorkerSshAgentPaths,
   LINUX_SSH_AGENT_UNIT_NAME,
+  LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME,
+  LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME,
   renderSshAgentShellHelper,
+  renderSshAgentRelayServiceUnit,
+  renderSshAgentRelaySocketUnit,
   renderSshAgentSystemdUnit,
   removeShellStartupBlock,
   resolveWorkerSshAgentConfiguration,
@@ -436,15 +440,19 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
   const environment = Object.entries(configuration.environment)
     .map(([key, value]) => `Environment=${systemdToken(`${key}=${value}`)}`);
   const sshAgentService = configuration.sshAgent?.paths.label ?? LINUX_SSH_AGENT_UNIT_NAME;
+  const requiredServices = [
+    sshAgentService,
+    ...(configuration.sshAgent ? [LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME] : []),
+  ];
   const sshAgentSocket = configuration.sshAgent?.paths.socketPath
     ?? getWorkerSshAgentPaths(configuration.homeDirectory).socketPath;
   return [
     "[Unit]",
     "Description=Clanky Mesh worker",
     "Wants=network-online.target",
-    `Requires=${sshAgentService}`,
-    `PartOf=${sshAgentService}`,
-    `After=network-online.target ${sshAgentService}`,
+    `Requires=${requiredServices.join(" ")}`,
+    `PartOf=${requiredServices.join(" ")}`,
+    `After=network-online.target ${requiredServices.join(" ")}`,
     "",
     "[Service]",
     "Type=simple",
@@ -648,6 +656,25 @@ async function writeLinuxSshAgentUnit(
   );
 }
 
+async function writeLinuxSshAgentRelayUnits(
+  configuration: WorkerServiceConfiguration,
+  runner: ProcessRunner,
+): Promise<void> {
+  if (!configuration.sshAgent) {
+    throw new Error("Linux worker SSH-agent configuration is unavailable.");
+  }
+  await writeLinuxUnitFile(
+    configuration.sshAgent.paths.relaySocketPath,
+    renderSshAgentRelaySocketUnit(configuration.sshAgent),
+    runner,
+  );
+  await writeLinuxUnitFile(
+    configuration.sshAgent.paths.relayServicePath,
+    renderSshAgentRelayServiceUnit(configuration.sshAgent),
+    runner,
+  );
+}
+
 interface MacServiceStatus {
   loaded: boolean;
   running: boolean;
@@ -757,13 +784,24 @@ async function installService(
     if (!noStart) await startMacService(configuration.paths, runner);
     return;
   }
+  if (configuration.sshAgent) {
+    await stopLinuxService(configuration.paths.label, runner);
+    await stopLinuxService(LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME, runner);
+    await stopLinuxService(LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME, runner);
+    await stopLinuxService(configuration.sshAgent.paths.label, runner);
+    await rm(configuration.sshAgent.paths.socketPath, { force: true });
+    await rm(configuration.sshAgent.paths.upstreamSocketPath, { force: true });
+  }
+  await writeLinuxSshAgentRelayUnits(configuration, runner);
   await writeLinuxSshAgentUnit(configuration, runner);
   await writeLinuxUnit(configuration, runner);
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
   await assertSystemctlSuccess(runner, ["enable", LINUX_SSH_AGENT_UNIT_NAME]);
+  await assertSystemctlSuccess(runner, ["enable", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME]);
   await assertSystemctlSuccess(runner, ["enable", configuration.paths.label]);
   if (!noStart) {
     await assertSystemctlSuccess(runner, ["start", LINUX_SSH_AGENT_UNIT_NAME]);
+    await assertSystemctlSuccess(runner, ["start", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME]);
     if (!configuration.sshAgent) {
       throw new Error("Linux worker SSH-agent configuration is unavailable.");
     }
@@ -785,11 +823,17 @@ async function uninstallService(
   }
   await stopLinuxService(paths.label, runner);
   if (sshAgentPaths) {
+    await stopLinuxService(LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME, runner);
+    await stopLinuxService(LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME, runner);
     await stopLinuxService(sshAgentPaths.label, runner);
   }
   await runRequired(runner, "sudo", ["rm", "-f", paths.servicePath]);
   if (sshAgentPaths) {
     await runRequired(runner, "sudo", ["rm", "-f", sshAgentPaths.servicePath]);
+    await runRequired(runner, "sudo", ["rm", "-f", sshAgentPaths.relayServicePath]);
+    await runRequired(runner, "sudo", ["rm", "-f", sshAgentPaths.relaySocketPath]);
+    await rm(sshAgentPaths.socketPath, { force: true });
+    await rm(sshAgentPaths.upstreamSocketPath, { force: true });
     await uninstallShellIntegration(sshAgentPaths);
   }
   await assertSystemctlSuccess(runner, ["daemon-reload"]);
@@ -822,16 +866,54 @@ export async function getWorkerServiceStatus(
   const sshAgentEnabled = sshAgentPaths
     ? await runSystemctl(runner, ["is-enabled", sshAgentPaths.label])
     : undefined;
-  const sshAgentStatus = sshAgentPaths && sshAgentActive && sshAgentEnabled
+  const sshAgentRelayActive = sshAgentPaths
+    ? await runSystemctl(runner, ["is-active", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
+    : undefined;
+  const sshAgentRelayEnabled = sshAgentPaths
+    ? await runSystemctl(runner, ["is-enabled", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
+    : undefined;
+  const sshAgentRelaySocketActive = sshAgentPaths
+    ? await runSystemctl(runner, ["is-active", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
+    : undefined;
+  const sshAgentRelaySocketEnabled = sshAgentPaths
+    ? await runSystemctl(runner, ["is-enabled", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
+    : undefined;
+  const sshAgentStatus = sshAgentPaths
+    && sshAgentActive
+    && sshAgentEnabled
+    && sshAgentRelayActive
+    && sshAgentRelayEnabled
+    && sshAgentRelaySocketActive
+    && sshAgentRelaySocketEnabled
     ? {
         active: sshAgentActive,
         enabled: sshAgentEnabled,
         paths: sshAgentPaths,
+        relayActive: sshAgentRelayActive,
+        relayEnabled: sshAgentRelayEnabled,
+        relaySocketActive: sshAgentRelaySocketActive,
+        relaySocketEnabled: sshAgentRelaySocketEnabled,
       }
     : undefined;
   if (sshAgentStatus) {
     assertSystemctlStatusResult(sshAgentStatus.active, ["is-active", sshAgentStatus.paths.label]);
     assertSystemctlStatusResult(sshAgentStatus.enabled, ["is-enabled", sshAgentStatus.paths.label]);
+    assertSystemctlStatusResult(
+      sshAgentStatus.relayActive,
+      ["is-active", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME],
+    );
+    assertSystemctlStatusResult(
+      sshAgentStatus.relayEnabled,
+      ["is-enabled", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME],
+    );
+    assertSystemctlStatusResult(
+      sshAgentStatus.relaySocketActive,
+      ["is-active", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME],
+    );
+    assertSystemctlStatusResult(
+      sshAgentStatus.relaySocketEnabled,
+      ["is-enabled", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME],
+    );
   }
   return {
     platform: paths.platform,
@@ -849,6 +931,23 @@ export async function getWorkerServiceStatus(
             running: sshAgentStatus.active.exitCode === 0 && sshAgentStatus.active.stdout.trim() === "active",
             path: sshAgentStatus.paths.servicePath,
             socket: sshAgentStatus.paths.socketPath,
+            upstreamSocket: sshAgentStatus.paths.upstreamSocketPath,
+            relayService: {
+              name: LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME,
+              installed: await pathExists(sshAgentStatus.paths.relayServicePath),
+              loaded: sshAgentStatus.relayEnabled.exitCode === 0,
+              running: sshAgentStatus.relayActive.exitCode === 0
+                && sshAgentStatus.relayActive.stdout.trim() === "active",
+              path: sshAgentStatus.paths.relayServicePath,
+            },
+            relaySocket: {
+              name: LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME,
+              installed: await pathExists(sshAgentStatus.paths.relaySocketPath),
+              loaded: sshAgentStatus.relaySocketEnabled.exitCode === 0,
+              running: sshAgentStatus.relaySocketActive.exitCode === 0
+                && sshAgentStatus.relaySocketActive.stdout.trim() === "active",
+              path: sshAgentStatus.paths.relaySocketPath,
+            },
           },
         }
       : {}),
@@ -890,6 +989,9 @@ async function runWorkerServiceOperation(
             sshAgent: {
               service: configuration.sshAgent.paths.label,
               socket: configuration.sshAgent.paths.socketPath,
+              upstreamSocket: configuration.sshAgent.paths.upstreamSocketPath,
+              relayService: LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME,
+              relaySocket: LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME,
               unlocked: !command.noStart,
             },
           }

@@ -862,6 +862,7 @@ export class ProvisioningManager {
           args: ["clone", record.job.config.repoUrl ?? "", targetDirectory],
           timeout: GIT_CLONE_TIMEOUT_MS,
           streamOutput: true,
+          longRunning: true,
           errorCode: "clone_failed",
           errorMessage: "Failed to clone repository",
         });
@@ -924,6 +925,7 @@ export class ProvisioningManager {
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
+        longRunning: true,
         errorCode: "devbox_up_failed",
         errorMessage: "Failed to start devbox",
       });
@@ -982,6 +984,7 @@ export class ProvisioningManager {
           cwd: targetDirectory,
           timeout: DEVBOX_UP_TIMEOUT_MS,
           streamOutput: true,
+          longRunning: true,
           errorCode: "devbox_up_failed",
           errorMessage: "Failed to persist the workspace worker startup hook",
         });
@@ -1418,6 +1421,7 @@ export class ProvisioningManager {
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
+        longRunning: true,
         errorCode: action.errorCode,
         errorMessage: action.errorMessage,
       });
@@ -1695,6 +1699,7 @@ export class ProvisioningManager {
         args: ["arise"],
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
+        longRunning: true,
         errorCode: "devbox_arise_failed",
         errorMessage: "Failed to run devbox arise",
       });

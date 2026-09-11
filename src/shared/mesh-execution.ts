@@ -11,6 +11,10 @@ export const MESH_ACP_SESSION_TTL_MS = 30 * 60 * 1000;
 export const MESH_EXECUTION_SESSION_REQUEST_TTL_MS = 45_000;
 export const MESH_ACP_SESSION_REQUEST_TTL_MS = MESH_ACP_SESSION_TTL_MS - 15_000;
 export const MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS = 10_000;
+export const MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS = 10_000;
+export const MESH_EXECUTION_ASYNC_POLL_INTERVAL_MS = 250;
+export const MESH_EXECUTION_ASYNC_MAX_COMMANDS = 256;
+export const MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS = 60 * 60 * 1000;
 export const MESH_EXECUTION_MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 export const MESH_EXECUTION_MAX_RESULT_BYTES = 8 * 1024 * 1024;
 export const WORKSPACE_EXEC_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -27,3 +31,28 @@ export const MESH_EXECUTION_OPERATIONS = [
   "copyFile",
 ] as const;
 export type MeshExecutionOperation = typeof MESH_EXECUTION_OPERATIONS[number];
+
+export type MeshExecutionAsyncCommandStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface MeshExecutionAsyncCommandResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface MeshExecutionAsyncCommandError {
+  code: string;
+  message: string;
+}
+
+export interface MeshExecutionAsyncCommandSnapshot {
+  jobId: string;
+  status: MeshExecutionAsyncCommandStatus;
+  result?: MeshExecutionAsyncCommandResult;
+  error?: MeshExecutionAsyncCommandError;
+}
