@@ -7,8 +7,11 @@ import type {
 import type { RuntimeEnvironment } from "@pablozaiden/webapp/server";
 import type { ClankyCliContext } from "./mesh";
 import { systemdToken } from "./systemd";
+import { runSshAgentRelay } from "./ssh-agent-relay";
 
 export const LINUX_SSH_AGENT_UNIT_NAME = "clanky-worker-ssh-agent.service";
+export const LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME = "clanky-worker-ssh-agent-relay.service";
+export const LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME = "clanky-worker-ssh-agent-relay.socket";
 export const LINUX_SSH_AGENT_DIRECTORY_NAME = "worker-ssh-agent";
 
 const SHELL_BLOCK_START = "# >>> clanky worker ssh-agent >>>";
@@ -17,8 +20,11 @@ const SHELL_BLOCK_END = "# <<< clanky worker ssh-agent <<<";
 export interface WorkerSshAgentPaths {
   label: string;
   servicePath: string;
+  relayServicePath: string;
+  relaySocketPath: string;
   agentDirectory: string;
   socketPath: string;
+  upstreamSocketPath: string;
   helperPath: string;
   bashrcPath: string;
   bashProfilePath: string;
@@ -37,7 +43,7 @@ export interface WorkerSshAgentConfiguration {
   sshAddPath: string;
 }
 
-export type WorkerSshAgentOperation = "unlock" | "status";
+export type WorkerSshAgentOperation = "unlock" | "status" | "relay";
 
 export interface WorkerSshAgentCommand {
   operation: WorkerSshAgentOperation;
@@ -64,8 +70,11 @@ export function getWorkerSshAgentPaths(homeDirectory: string): WorkerSshAgentPat
   return {
     label: LINUX_SSH_AGENT_UNIT_NAME,
     servicePath: `/etc/systemd/system/${LINUX_SSH_AGENT_UNIT_NAME}`,
+    relayServicePath: `/etc/systemd/system/${LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME}`,
+    relaySocketPath: `/etc/systemd/system/${LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME}`,
     agentDirectory,
     socketPath: resolve(agentDirectory, "agent.sock"),
+    upstreamSocketPath: resolve(agentDirectory, "agent-upstream.sock"),
     helperPath: `${homeDirectory}/.clanky/worker-ssh-agent.sh`,
     bashrcPath: `${homeDirectory}/.bashrc`,
     bashProfilePath: `${homeDirectory}/.bash_profile`,
@@ -107,15 +116,15 @@ export function renderSshAgentSystemdUnit(
     "[Unit]",
     "Description=Clanky worker SSH agent",
     "After=local-fs.target",
-    "Before=clanky-worker.service",
+    `Before=${LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME} clanky-worker.service`,
     "",
     "[Service]",
     "Type=simple",
     `User=${systemdToken(configuration.userName)}`,
     `ExecStartPre=/usr/bin/mkdir -p ${systemdToken(configuration.paths.agentDirectory, true)}`,
     `ExecStartPre=/usr/bin/chmod 0700 ${systemdToken(configuration.paths.agentDirectory, true)}`,
-    `ExecStartPre=/usr/bin/rm -f ${systemdToken(configuration.paths.socketPath, true)}`,
-    `ExecStart=${systemdToken(configuration.sshAgentPath, true)} -D -a ${systemdToken(configuration.paths.socketPath, true)}`,
+    `ExecStartPre=/usr/bin/rm -f ${systemdToken(configuration.paths.upstreamSocketPath, true)}`,
+    `ExecStart=${systemdToken(configuration.sshAgentPath, true)} -D -a ${systemdToken(configuration.paths.upstreamSocketPath, true)}`,
     "Restart=on-failure",
     "RestartSec=5",
     "KillSignal=SIGTERM",
@@ -123,6 +132,57 @@ export function renderSshAgentSystemdUnit(
     "",
     "[Install]",
     "WantedBy=multi-user.target",
+    "",
+  ].join("\n");
+}
+
+export function renderSshAgentRelaySocketUnit(
+  configuration: WorkerSshAgentConfiguration,
+): string {
+  return [
+    "[Unit]",
+    "Description=Clanky worker SSH-agent relay socket",
+    "Before=clanky-worker.service",
+    "",
+    "[Socket]",
+    `ListenStream=${systemdToken(configuration.paths.socketPath)}`,
+    `SocketUser=${systemdToken(configuration.userName)}`,
+    "SocketMode=0600",
+    "DirectoryMode=0700",
+    "Accept=no",
+    `Service=${LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME}`,
+    "RemoveOnStop=true",
+    "",
+    "[Install]",
+    "WantedBy=sockets.target",
+    "",
+  ].join("\n");
+}
+
+export function renderSshAgentRelayServiceUnit(
+  configuration: WorkerSshAgentConfiguration,
+): string {
+  const command = [
+    configuration.binaryPath,
+    "worker",
+    "ssh-agent",
+    "relay",
+  ].map((value) => systemdToken(value, true)).join(" ");
+  return [
+    "[Unit]",
+    "Description=Clanky worker SSH-agent relay",
+    `Requires=${LINUX_SSH_AGENT_UNIT_NAME} ${LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME}`,
+    `After=${LINUX_SSH_AGENT_UNIT_NAME} ${LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME}`,
+    "",
+    "[Service]",
+    "Type=simple",
+    `User=${systemdToken(configuration.userName)}`,
+    `Environment=${systemdToken(`HOME=${configuration.homeDirectory}`)}`,
+    `ExecStart=${command}`,
+    "Restart=on-failure",
+    "RestartSec=5",
+    "KillSignal=SIGTERM",
+    "TimeoutStopSec=10",
     "",
   ].join("\n");
 }
@@ -211,8 +271,8 @@ export function parseWorkerSshAgentArgs(
   args: readonly string[],
 ): WorkerSshAgentCommand {
   const [operation, ...rest] = args;
-  if (operation !== "unlock" && operation !== "status") {
-    throw new Error("Worker ssh-agent command must be unlock or status");
+  if (operation !== "unlock" && operation !== "status" && operation !== "relay") {
+    throw new Error("Worker ssh-agent command must be unlock, status, or relay");
   }
   let ifNeeded = false;
   for (const arg of rest) {
@@ -337,6 +397,10 @@ export async function unlockWorkerSshAgent(
 async function getWorkerSshAgentStatus(
   configuration: WorkerSshAgentConfiguration,
 ): Promise<Record<string, unknown>> {
+  const socketPaths = {
+    socket: configuration.paths.socketPath,
+    upstreamSocket: configuration.paths.upstreamSocketPath,
+  };
   const listed = await runProcess(
     configuration.sshAddPath,
     ["-l"],
@@ -348,7 +412,7 @@ async function getWorkerSshAgentStatus(
   );
   if (listed.exitCode === 0) {
     return {
-      socket: configuration.paths.socketPath,
+      ...socketPaths,
       available: true,
       unlocked: true,
       identities: countIdentities(listed.stdout),
@@ -356,14 +420,14 @@ async function getWorkerSshAgentStatus(
   }
   if (listed.exitCode === 1) {
     return {
-      socket: configuration.paths.socketPath,
+      ...socketPaths,
       available: true,
       unlocked: false,
       identities: 0,
     };
   }
   return {
-    socket: configuration.paths.socketPath,
+    ...socketPaths,
     available: false,
     unlocked: false,
     identities: 0,
@@ -375,6 +439,13 @@ export async function runWorkerSshAgentCommand(
   configuration: WorkerSshAgentConfiguration,
 ): Promise<CliCommandResult> {
   const command = parseWorkerSshAgentArgs(context.args);
+  if (command.operation === "relay") {
+    await runSshAgentRelay({
+      upstreamSocketPath: configuration.paths.upstreamSocketPath,
+      environment: context.environment,
+    });
+    return { exitCode: 0 };
+  }
   if (command.operation === "status") {
     context.stdout.write(`${JSON.stringify(await getWorkerSshAgentStatus(configuration))}\n`);
     return { exitCode: 0 };

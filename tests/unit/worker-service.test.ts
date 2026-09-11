@@ -14,6 +14,8 @@ import {
 } from "../../src/cli/worker-service";
 import {
   getWorkerSshAgentPaths,
+  renderSshAgentRelayServiceUnit,
+  renderSshAgentRelaySocketUnit,
   parseWorkerSshAgentArgs,
   renderShellStartupBlock,
   renderSshAgentShellHelper,
@@ -52,6 +54,7 @@ function configuration(
       HOME: platform === "darwin" ? "/Users/alice" : "/home/alice",
       ...(platform === "linux" ? { PATH: "/home/alice/.local/bin:/usr/bin:/bin" } : {}),
     },
+    ...(platform === "linux" ? { sshAgent: sshAgentConfiguration() } : {}),
   };
 }
 
@@ -67,13 +70,17 @@ function sshAgentConfiguration(): WorkerSshAgentConfiguration {
 }
 
 describe("worker SSH-agent command and shell integration", () => {
-  test("parses unlock and status operations", () => {
+  test("parses unlock, status, and relay operations", () => {
     expect(parseWorkerSshAgentArgs(["unlock", "--if-needed"])).toEqual({
       operation: "unlock",
       ifNeeded: true,
     });
     expect(parseWorkerSshAgentArgs(["status"])).toEqual({
       operation: "status",
+      ifNeeded: false,
+    });
+    expect(parseWorkerSshAgentArgs(["relay"])).toEqual({
+      operation: "relay",
       ifNeeded: false,
     });
     expect(() => parseWorkerSshAgentArgs(["status", "--if-needed"])).toThrow(
@@ -86,10 +93,10 @@ describe("worker SSH-agent command and shell integration", () => {
     expect(unit).toContain("User=alice");
     expect(unit).toContain("ExecStartPre=/usr/bin/mkdir -p /home/alice/.clanky/worker-ssh-agent");
     expect(unit).toContain("ExecStartPre=/usr/bin/chmod 0700 /home/alice/.clanky/worker-ssh-agent");
-    expect(unit).toContain("ExecStartPre=/usr/bin/rm -f /home/alice/.clanky/worker-ssh-agent/agent.sock");
+    expect(unit).toContain("ExecStartPre=/usr/bin/rm -f /home/alice/.clanky/worker-ssh-agent/agent-upstream.sock");
     expect(unit).not.toContain("RuntimeDirectory=");
     expect(unit).toContain(
-      "ExecStart=/usr/bin/ssh-agent -D -a /home/alice/.clanky/worker-ssh-agent/agent.sock",
+      "ExecStart=/usr/bin/ssh-agent -D -a /home/alice/.clanky/worker-ssh-agent/agent-upstream.sock",
     );
     expect(unit).not.toContain("ssh-add");
     expect(unit).not.toContain("passphrase");
@@ -103,7 +110,7 @@ describe("worker SSH-agent command and shell integration", () => {
       sshAgentPath: "/usr/bin/ssh$agent",
       paths: {
         ...base.paths,
-        socketPath: "/run/$agent.sock",
+        upstreamSocketPath: "/run/$agent.sock",
       },
     });
     expect(unit).toContain(
@@ -111,11 +118,54 @@ describe("worker SSH-agent command and shell integration", () => {
     );
   });
 
+  test("renders a systemd-owned stable relay socket and service", () => {
+    const agent = sshAgentConfiguration();
+    const socketUnit = renderSshAgentRelaySocketUnit(agent);
+    const serviceUnit = renderSshAgentRelayServiceUnit(agent);
+    expect(socketUnit).toContain(
+      "ListenStream=/home/alice/.clanky/worker-ssh-agent/agent.sock",
+    );
+    expect(socketUnit).toContain("SocketUser=alice");
+    expect(socketUnit).toContain("SocketMode=0600");
+    expect(socketUnit).toContain(
+      "Service=clanky-worker-ssh-agent-relay.service",
+    );
+    expect(serviceUnit).toContain(
+      "Requires=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
+    );
+    expect(serviceUnit).toContain(
+      "ExecStart=/home/alice/.local/bin/clanky worker ssh-agent relay",
+    );
+    expect(serviceUnit).toContain("Environment=HOME=/home/alice");
+    expect(serviceUnit).not.toContain("passphrase");
+  });
+
+  test("does not escape dollar signs in the relay socket path", () => {
+    const agent = sshAgentConfiguration();
+    const socketUnit = renderSshAgentRelaySocketUnit({
+      ...agent,
+      paths: {
+        ...agent.paths,
+        socketPath: "/home/alice/.clanky/$agent.sock",
+      },
+    });
+
+    expect(
+      socketUnit.split("\n").find((line) => line.startsWith("ListenStream=")),
+    ).toBe('ListenStream="/home/alice/.clanky/$agent.sock"');
+  });
+
   test("renders the worker dependency and stable SSH_AUTH_SOCK", () => {
     const unit = renderSystemdUnit(configuration("linux"));
-    expect(unit).toContain("Requires=clanky-worker-ssh-agent.service");
-    expect(unit).toContain("PartOf=clanky-worker-ssh-agent.service");
-    expect(unit).toContain("After=network-online.target clanky-worker-ssh-agent.service");
+    expect(unit).toContain(
+      "Requires=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
+    );
+    expect(unit).toContain(
+      "PartOf=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
+    );
+    expect(unit).toContain(
+      "After=network-online.target clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
+    );
     expect(unit).toContain(
       "Environment=SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );

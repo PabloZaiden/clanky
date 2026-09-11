@@ -117,4 +117,300 @@ describe("MeshCommandExecutorClient", () => {
     expect(client.getSessionConnection().sessionId).toBe("session-1");
     client.closeSession();
   });
+
+  test("runs long-running commands through the asynchronous mesh protocol", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    let callerEncryptionPublicKey = "";
+    let statusRequests = 0;
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (!url.endsWith("/execution/async")) {
+          throw new Error(`Unexpected mesh route: ${url}`);
+        }
+
+        let payload: Record<string, unknown>;
+        if (request["action"] === "start") {
+          payload = {
+            jobId: "command-1",
+            status: "running",
+            output: {
+              stdout: "",
+              stderr: "",
+              stdoutOffset: 0,
+              stderrOffset: 0,
+              nextStdoutOffset: 0,
+              nextStderrOffset: 0,
+            },
+          };
+        } else {
+          statusRequests += 1;
+          payload = statusRequests === 1
+            ? {
+                jobId: "command-1",
+                status: "running",
+                output: {
+                  stdout: "devbox ",
+                  stderr: "",
+                  stdoutOffset: 0,
+                  stderrOffset: 0,
+                  nextStdoutOffset: 7,
+                  nextStderrOffset: 0,
+                },
+              }
+            : {
+                jobId: "command-1",
+                status: "completed",
+                output: {
+                  stdout: "rebuilt\n",
+                  stderr: "",
+                  stdoutOffset: 7,
+                  stderrOffset: 0,
+                  nextStdoutOffset: 15,
+                  nextStderrOffset: 0,
+                },
+                result: {
+                  success: true,
+                  stdout: "devbox rebuilt\n",
+                  stderr: "",
+                  exitCode: 0,
+                },
+              };
+        }
+        return Response.json({
+          protocolVersion: 1,
+          requestId: request["requestId"],
+          encryptedPayload: encryptMeshPayload(payload, callerEncryptionPublicKey),
+        });
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const output: string[] = [];
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      fetch: fetchImpl,
+    });
+
+    const result = await client.exec("devbox", ["rebuild"], {
+      longRunning: true,
+      onStdoutChunk: (chunk) => output.push(chunk),
+    });
+
+    expect(result).toEqual({
+      success: true,
+      stdout: "devbox rebuilt\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    expect(output).toEqual(["devbox ", "rebuilt\n"]);
+    expect(statusRequests).toBe(2);
+    client.closeSession();
+  });
+
+  test("retries a lost async start response without launching a second command", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    let callerEncryptionPublicKey = "";
+    let startAttempts = 0;
+    let firstStartRequestId: string | undefined;
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (!url.endsWith("/execution/async") || request["action"] !== "start") {
+          throw new Error(`Unexpected mesh route: ${url}`);
+        }
+
+        startAttempts += 1;
+        if (startAttempts === 1) {
+          firstStartRequestId = request["requestId"] as string;
+          throw new Error("connection closed after the worker accepted the command");
+        }
+        expect(request["requestId"]).toBe(firstStartRequestId);
+        return Response.json({
+          protocolVersion: 1,
+          requestId: request["requestId"],
+          encryptedPayload: encryptMeshPayload({
+            jobId: "command-1",
+            status: "completed",
+            result: {
+              success: true,
+              stdout: "recovered\n",
+              stderr: "",
+              exitCode: 0,
+            },
+          }, callerEncryptionPublicKey),
+        });
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      fetch: fetchImpl,
+    });
+
+    await expect(client.exec("devbox", ["rebuild"], { longRunning: true })).resolves.toEqual({
+      success: true,
+      stdout: "recovered\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    expect(startAttempts).toBe(2);
+    client.closeSession();
+  });
+
+  test("cancels the remote command when the provisioning signal is aborted", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    let callerEncryptionPublicKey = "";
+    let cancelJobId: string | undefined;
+    const abortController = new AbortController();
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (!url.endsWith("/execution/async")) {
+          throw new Error(`Unexpected mesh route: ${url}`);
+        }
+        if (request["action"] === "start") {
+          abortController.abort();
+          return Response.json({
+            protocolVersion: 1,
+            requestId: request["requestId"],
+            encryptedPayload: encryptMeshPayload({
+              jobId: "command-1",
+              status: "running",
+            }, callerEncryptionPublicKey),
+          });
+        }
+        expect(request["action"]).toBe("cancel");
+        cancelJobId = request["jobId"] as string;
+        return Response.json({
+          protocolVersion: 1,
+          requestId: request["requestId"],
+          encryptedPayload: encryptMeshPayload({
+            jobId: "command-1",
+            status: "cancelled",
+            error: {
+              code: "mesh_execution_aborted",
+              message: "cancelled",
+            },
+          }, callerEncryptionPublicKey),
+        });
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      fetch: fetchImpl,
+    });
+
+    await expect(client.exec("devbox", ["rebuild"], {
+      longRunning: true,
+      signal: abortController.signal,
+    })).rejects.toMatchObject({ code: "mesh_execution_aborted" });
+    expect(cancelJobId).toBe("command-1");
+    client.closeSession();
+  });
 });

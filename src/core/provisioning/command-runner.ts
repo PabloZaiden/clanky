@@ -17,6 +17,7 @@ export interface RunCommandOptions {
   errorMessage?: string;
   captureStdout?: boolean;
   captureStderr?: boolean;
+  longRunning?: boolean;
 }
 
 export async function runProvisioningCommand(
@@ -39,6 +40,7 @@ export async function runProvisioningCommand(
             appendLog(record, maxLogEntries, "stderr", chunk, options.step),
         }
       : {}),
+    ...(options.longRunning ? { longRunning: true } : {}),
   });
 
   if (record.abortController.signal.aborted) {

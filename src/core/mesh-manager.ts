@@ -81,6 +81,7 @@ import { DomainError, isDomainError } from "./domain-error";
 import { postMeshControlMessage } from "./mesh-control-client";
 import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
+import { meshExecutionGateway } from "./mesh-execution-gateway";
 import {
   decideEnrollWorker,
   decideRevokeWorker,
@@ -1119,6 +1120,7 @@ export class MeshManager {
 
     if (grant.grantStatus === "active") {
       await revokeControllerGrant(envelope.controllerNodeId);
+      meshExecutionGateway.abortAsyncCommandsForCaller(envelope.controllerNodeId);
       log.info("Controller revoked this worker's grant", {
         controllerNodeId: envelope.controllerNodeId,
       });

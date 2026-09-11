@@ -196,6 +196,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/mesh/internal/enrollment` | Receive a signed worker enrollment request. |
 | GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
 | POST | `/api/mesh/internal/execution/file` | Receive a streamed file chunk in an authenticated mesh `CommandExecutor` session. |
+| POST | `/api/mesh/internal/execution/async` | Start, inspect, or cancel a long-running mesh command without holding one HTTP response open. |
 | POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
 | POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
 | POST | `/api/mesh/internal/health` | Receive a signed health check from an enrolled controller and return the worker's signed execution-policy snapshot. |

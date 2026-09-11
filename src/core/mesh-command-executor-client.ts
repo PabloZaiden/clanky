@@ -3,10 +3,13 @@
  */
 
 import type {
+  MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
 import {
+  MESH_EXECUTION_ASYNC_POLL_INTERVAL_MS,
+  MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
@@ -14,6 +17,9 @@ import {
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
+} from "@/shared/mesh-execution";
+import type {
+  MeshExecutionAsyncCommandSnapshot,
 } from "@/shared/mesh-execution";
 import { getWorkerRegistration } from "../persistence/mesh";
 import {
@@ -94,6 +100,123 @@ function parseResponseShape<T extends object>(
     }
   }
   return record as T;
+}
+
+function parseAsyncCommandSnapshot(value: unknown): MeshExecutionAsyncCommandSnapshot {
+  const record = parseResponseShape<Record<string, unknown>>(
+    value,
+    ["jobId", "status"],
+    "The mesh asynchronous command response is invalid.",
+  );
+  const jobId = record["jobId"];
+  const status = record["status"];
+  if (
+    typeof jobId !== "string"
+    || !["running", "completed", "failed", "cancelled"].includes(String(status))
+  ) {
+    throw new DomainError(
+      "mesh_execution_response_invalid",
+      "The mesh asynchronous command response is invalid.",
+    );
+  }
+
+  const outputValue = record["output"];
+  let output: MeshExecutionAsyncCommandSnapshot["output"];
+  if (outputValue !== undefined) {
+    const outputRecord = asRecord(
+      outputValue,
+      "The mesh asynchronous command output is invalid.",
+    );
+    const stdout = outputRecord["stdout"];
+    const stderr = outputRecord["stderr"];
+    const stdoutOffset = outputRecord["stdoutOffset"];
+    const stderrOffset = outputRecord["stderrOffset"];
+    const nextStdoutOffset = outputRecord["nextStdoutOffset"];
+    const nextStderrOffset = outputRecord["nextStderrOffset"];
+    if (
+      typeof stdout !== "string"
+      || typeof stderr !== "string"
+      || typeof stdoutOffset !== "number"
+      || !Number.isSafeInteger(stdoutOffset)
+      || stdoutOffset < 0
+      || typeof stderrOffset !== "number"
+      || !Number.isSafeInteger(stderrOffset)
+      || stderrOffset < 0
+      || typeof nextStdoutOffset !== "number"
+      || !Number.isSafeInteger(nextStdoutOffset)
+      || nextStdoutOffset !== stdoutOffset + stdout.length
+      || typeof nextStderrOffset !== "number"
+      || !Number.isSafeInteger(nextStderrOffset)
+      || nextStderrOffset !== stderrOffset + stderr.length
+    ) {
+      throw new DomainError(
+        "mesh_execution_response_invalid",
+        "The mesh asynchronous command output is invalid.",
+      );
+    }
+    output = {
+      stdout,
+      stderr,
+      stdoutOffset,
+      stderrOffset,
+      nextStdoutOffset,
+      nextStderrOffset,
+    };
+  }
+
+  const resultValue = record["result"];
+  let result: MeshExecutionAsyncCommandSnapshot["result"];
+  if (resultValue !== undefined) {
+    const resultRecord = asRecord(
+      resultValue,
+      "The mesh asynchronous command result is invalid.",
+    );
+    if (
+      typeof resultRecord["success"] !== "boolean"
+      || typeof resultRecord["stdout"] !== "string"
+      || typeof resultRecord["stderr"] !== "string"
+      || typeof resultRecord["exitCode"] !== "number"
+      || !Number.isSafeInteger(resultRecord["exitCode"])
+    ) {
+      throw new DomainError(
+        "mesh_execution_response_invalid",
+        "The mesh asynchronous command result is invalid.",
+      );
+    }
+    result = {
+      success: resultRecord["success"],
+      stdout: resultRecord["stdout"],
+      stderr: resultRecord["stderr"],
+      exitCode: resultRecord["exitCode"],
+    };
+  }
+
+  const errorValue = record["error"];
+  let error: MeshExecutionAsyncCommandSnapshot["error"];
+  if (errorValue !== undefined) {
+    const errorRecord = asRecord(
+      errorValue,
+      "The mesh asynchronous command error is invalid.",
+    );
+    if (typeof errorRecord["code"] !== "string" || typeof errorRecord["message"] !== "string") {
+      throw new DomainError(
+        "mesh_execution_response_invalid",
+        "The mesh asynchronous command error is invalid.",
+      );
+    }
+    error = {
+      code: errorRecord["code"],
+      message: errorRecord["message"],
+    };
+  }
+
+  return {
+    jobId,
+    status: status as MeshExecutionAsyncCommandSnapshot["status"],
+    ...(output ? { output } : {}),
+    ...(result ? { result } : {}),
+    ...(error ? { error } : {}),
+  };
 }
 
 export class MeshCommandExecutorClient {
@@ -271,6 +394,9 @@ export class MeshCommandExecutorClient {
     args: string[],
     options?: CommandOptions,
   ): Promise<CommandResult> {
+    if (options?.longRunning && this.channel === MESH_EXECUTION_CHANNEL) {
+      return await this.execLongRunning(command, args, options);
+    }
     const result = await this.execute<CommandResult>({
       operation: "exec",
       command,
@@ -283,6 +409,280 @@ export class MeshCommandExecutorClient {
     if (result.stdout) options?.onStdoutChunk?.(result.stdout);
     if (result.stderr) options?.onStderrChunk?.(result.stderr);
     return result;
+  }
+
+  private async execLongRunning(
+    command: string,
+    args: string[],
+    options: CommandOptions,
+  ): Promise<CommandResult> {
+    let jobId: string | undefined;
+    let remoteMayBeRunning = false;
+    const output = {
+      stdout: "",
+      stderr: "",
+    };
+    const startRequestId = crypto.randomUUID();
+    const startOperation: Omit<
+      MeshExecutionAsyncCommandRequest,
+      "protocolVersion" | "sessionId" | "sessionToken" | "requestId"
+    > = {
+      action: "start",
+      command,
+      args,
+      cwd: options.cwd,
+      timeout: options.timeout,
+      maxOutputBytes: options.maxOutputBytes,
+      env: options.env,
+    };
+    try {
+      if (options.signal?.aborted) {
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+      }
+
+      let started: MeshExecutionAsyncCommandSnapshot;
+      try {
+        started = await this.sendAsyncCommandRequest(startOperation, options.signal, startRequestId);
+      } catch (error) {
+        if (!options.signal?.aborted) {
+          throw error;
+        }
+        try {
+          started = await this.sendAsyncCommandRequest(startOperation, undefined, startRequestId);
+          jobId = started.jobId;
+          remoteMayBeRunning = started.status === "running";
+          this.consumeAsyncCommandOutput(started, output, options);
+          if (remoteMayBeRunning) {
+            const cancelled = await this.sendAsyncCommandRequest({
+              action: "cancel",
+              jobId,
+              stdoutOffset: output.stdout.length,
+              stderrOffset: output.stderr.length,
+            });
+            this.consumeAsyncCommandOutput(cancelled, output, options);
+            remoteMayBeRunning = cancelled.status === "running";
+          }
+        } catch (reconcileError) {
+          throw new DomainError(
+            "mesh_execution_aborted",
+            "The asynchronous mesh command was aborted, but remote cancellation could not be confirmed.",
+            { cause: reconcileError },
+          );
+        }
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
+          cause: error,
+        });
+      }
+      jobId = started.jobId;
+      remoteMayBeRunning = started.status === "running";
+      this.consumeAsyncCommandOutput(started, output, options);
+
+      let snapshot = started;
+      while (snapshot.status === "running") {
+        await this.waitForAsyncCommandPoll(options.signal);
+        snapshot = await this.sendAsyncCommandRequest({
+          action: "status",
+          jobId,
+          stdoutOffset: output.stdout.length,
+          stderrOffset: output.stderr.length,
+        }, options.signal);
+        remoteMayBeRunning = snapshot.status === "running";
+        this.consumeAsyncCommandOutput(snapshot, output, options);
+      }
+      remoteMayBeRunning = false;
+
+      if (snapshot.status === "cancelled") {
+        throw new DomainError(
+          "mesh_execution_aborted",
+          snapshot.error?.message ?? "The asynchronous mesh command was cancelled.",
+        );
+      }
+      if (snapshot.status === "failed") {
+        throw new DomainError(
+          snapshot.error?.code ?? "mesh_execution_command_failed",
+          snapshot.error?.message ?? "The asynchronous mesh command failed.",
+        );
+      }
+      if (!snapshot.result) {
+        throw new DomainError(
+          "mesh_execution_response_invalid",
+          "The completed asynchronous mesh command has no result.",
+        );
+      }
+      this.consumeCompletedAsyncCommandOutput(snapshot.result, output, options);
+      return snapshot.result;
+    } catch (error) {
+      if (jobId && remoteMayBeRunning) {
+        try {
+          const cancelled = await this.sendAsyncCommandRequest({
+            action: "cancel",
+            jobId,
+            stdoutOffset: output.stdout.length,
+            stderrOffset: output.stderr.length,
+          });
+          this.consumeAsyncCommandOutput(cancelled, output, options);
+          remoteMayBeRunning = cancelled.status === "running";
+          if (remoteMayBeRunning) {
+            throw new DomainError(
+              "mesh_execution_cancel_failed",
+              "The asynchronous mesh command cancellation was not confirmed.",
+            );
+          }
+        } catch (cancelError) {
+          if (
+            cancelError instanceof DomainError
+            && cancelError.code === "mesh_execution_async_command_not_found"
+          ) {
+            throw error;
+          }
+          throw new DomainError(
+            options.signal?.aborted
+              ? "mesh_execution_aborted"
+              : "mesh_execution_unreachable",
+            options.signal?.aborted
+              ? "The asynchronous mesh command was aborted, but remote cancellation could not be confirmed."
+              : "The asynchronous mesh command failed, but remote cancellation could not be confirmed.",
+            { cause: cancelError },
+          );
+        }
+      }
+      throw error;
+    }
+  }
+
+  private consumeAsyncCommandOutput(
+    snapshot: MeshExecutionAsyncCommandSnapshot,
+    output: { stdout: string; stderr: string },
+    options: CommandOptions,
+  ): void {
+    const next = snapshot.output;
+    if (!next) {
+      return;
+    }
+    if (
+      next.stdoutOffset !== output.stdout.length
+      || next.stderrOffset !== output.stderr.length
+    ) {
+      throw new DomainError(
+        "mesh_execution_output_gap",
+        "The asynchronous mesh command output could not be resumed without a gap.",
+      );
+    }
+    output.stdout += next.stdout;
+    output.stderr += next.stderr;
+    if (next.stdout) options.onStdoutChunk?.(next.stdout);
+    if (next.stderr) options.onStderrChunk?.(next.stderr);
+  }
+
+  private consumeCompletedAsyncCommandOutput(
+    result: CommandResult,
+    output: { stdout: string; stderr: string },
+    options: CommandOptions,
+  ): void {
+    if (!result.stdout.startsWith(output.stdout) || !result.stderr.startsWith(output.stderr)) {
+      throw new DomainError(
+        "mesh_execution_output_gap",
+        "The completed asynchronous mesh command output does not match the polled output.",
+      );
+    }
+    const stdoutRemainder = result.stdout.slice(output.stdout.length);
+    const stderrRemainder = result.stderr.slice(output.stderr.length);
+    if (stdoutRemainder) options.onStdoutChunk?.(stdoutRemainder);
+    if (stderrRemainder) options.onStderrChunk?.(stderrRemainder);
+  }
+
+  private async sendAsyncCommandRequest(
+    operation: Omit<MeshExecutionAsyncCommandRequest, "protocolVersion" | "sessionId" | "sessionToken" | "requestId">,
+    signal?: AbortSignal,
+    requestIdOverride?: string,
+  ): Promise<MeshExecutionAsyncCommandSnapshot> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (signal?.aborted) {
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+      }
+      await this.ensureSession();
+      const session = this.session;
+      const endpoint = this.endpoint;
+      if (!session || !endpoint) {
+        throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
+      }
+      const requestId = requestIdOverride ?? crypto.randomUUID();
+      const request: MeshExecutionAsyncCommandRequest = {
+        protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        requestId,
+        ...operation,
+      };
+      try {
+        const response = await this.post(
+          resolveMeshRoute(endpoint, "api/mesh/internal/execution/async"),
+          request,
+          {
+            "x-clanky-mesh-session-id": session.sessionId,
+            "x-clanky-mesh-request-id": requestId,
+          },
+          signal,
+          MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
+        );
+        const body = parseResponseShape<MeshRpcResponse>(
+          response,
+          ["protocolVersion", "requestId", "encryptedPayload"],
+          "The mesh asynchronous command response is invalid.",
+        );
+        if (body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION || body.requestId !== requestId) {
+          throw new DomainError(
+            "mesh_execution_response_invalid",
+            "The mesh asynchronous command response does not match the request.",
+          );
+        }
+        return parseAsyncCommandSnapshot(await decryptMeshPayload(body.encryptedPayload));
+      } catch (error) {
+        if (
+          attempt === 0
+          && error instanceof DomainError
+          && (
+            error.code === "mesh_execution_session_invalid"
+            || error.code === "mesh_execution_session_expired"
+            || error.code === "mesh_execution_context_changed"
+            || (
+              error.code === "mesh_execution_unreachable"
+              || error.code === "mesh_execution_response_invalid"
+            )
+          )
+        ) {
+          this.session = null;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
+  }
+
+  private async waitForAsyncCommandPoll(signal?: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener("abort", abortHandler);
+        resolve();
+      }, MESH_EXECUTION_ASYNC_POLL_INTERVAL_MS);
+      const abortHandler = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", abortHandler);
+        reject(new DomainError("mesh_execution_aborted", "The mesh execution request was aborted."));
+      };
+      if (signal?.aborted) {
+        abortHandler();
+        return;
+      }
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    });
   }
 
   async fileExists(path: string): Promise<boolean> {

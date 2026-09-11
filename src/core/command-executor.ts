@@ -34,6 +34,11 @@ export interface CommandOptions {
   onStdoutChunk?: (chunk: string) => void;
   /** Optional callback for incremental stderr chunks */
   onStderrChunk?: (chunk: string) => void;
+  /**
+   * Run the command through a transport-owned asynchronous execution path
+   * when one is available instead of holding a single request open.
+   */
+  longRunning?: boolean;
 }
 
 export class CommandOutputLimitError extends Error {
