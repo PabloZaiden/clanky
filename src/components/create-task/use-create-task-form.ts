@@ -5,7 +5,8 @@
  * combined return value for the form component renderer.
  */
 
-import type { FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
+import type { Workspace } from "@/shared/workspace";
 import { isModelEnabled } from "../ModelSelector";
 import type { CreateTaskFormProps } from "./types";
 import { useFormFields } from "./use-form-fields";
@@ -68,6 +69,8 @@ export interface UseCreateTaskFormReturn {
   activityTimeoutSeconds: string;
   setActivityTimeoutSeconds: (v: string) => void;
   generatingTitle: boolean;
+  worktreesAllowed: boolean;
+  worktreeControlDisabled: boolean;
 
   // Handlers
   handleSubmit: (e: FormEvent, asDraft?: boolean) => Promise<void>;
@@ -94,6 +97,7 @@ export function useCreateTaskForm({
   attachments = [],
   renderActions,
   uploadedPlan,
+  workspaces = [],
 }: Pick<
   CreateTaskFormProps,
   | "onSubmit"
@@ -113,6 +117,7 @@ export function useCreateTaskForm({
   | "renderActions"
 > & {
   uploadedPlan?: UploadedPlanFile | null;
+  workspaces?: Workspace[];
 }): UseCreateTaskFormReturn {
   const isEditing = !!editTaskId;
 
@@ -124,6 +129,19 @@ export function useCreateTaskForm({
     onWorkspaceChange,
     defaultBranch,
   });
+  const selectedWorkspace = workspace.selectedWorkspaceId
+    ? workspaces.find((candidate) => candidate.id === workspace.selectedWorkspaceId) ?? null
+    : null;
+  const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
+    && selectedWorkspace.allowWorktrees !== false;
+  const preserveExistingWorktree = isEditing && fields.useWorktree;
+  const worktreeControlDisabled = !worktreesAllowed && !preserveExistingWorktree;
+
+  useEffect(() => {
+    if (!worktreesAllowed && !preserveExistingWorktree && fields.useWorktree) {
+      fields.setUseWorktree(false);
+    }
+  }, [fields.setUseWorktree, fields.useWorktree, preserveExistingWorktree, worktreesAllowed]);
 
   const {
     selectedModel,
@@ -164,7 +182,9 @@ export function useCreateTaskForm({
     selectedBranch: workspace.selectedBranch,
     currentBranch,
     clearPlanningFolder: fields.clearPlanningFolder,
-    useWorktree: fields.useWorktree,
+    useWorktree: worktreeControlDisabled && !preserveExistingWorktree
+      ? false
+      : fields.useWorktree,
     nameRef: fields.nameRef,
     promptRef: fields.promptRef,
     onSubmit,
@@ -215,7 +235,7 @@ export function useCreateTaskForm({
     setAutoAcceptPlan: fields.setAutoAcceptPlan,
     fullyAutonomous: fields.fullyAutonomous,
     setFullyAutonomous: fields.setFullyAutonomous,
-    useWorktree: fields.useWorktree,
+    useWorktree: worktreeControlDisabled ? false : fields.useWorktree,
     setUseWorktree: fields.setUseWorktree,
     clearPlanningFolder: fields.clearPlanningFolder,
     setClearPlanningFolder: fields.setClearPlanningFolder,
@@ -228,6 +248,8 @@ export function useCreateTaskForm({
     activityTimeoutSeconds: fields.activityTimeoutSeconds,
     setActivityTimeoutSeconds: fields.setActivityTimeoutSeconds,
     generatingTitle,
+    worktreesAllowed,
+    worktreeControlDisabled,
     handleSubmit: actions.handleSubmit,
     handleGenerateTitle,
     handleExternalCancel: actions.handleExternalCancel,

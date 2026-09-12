@@ -23,6 +23,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     name: workspace.name,
     directory: workspace.directory,
     workspace_type: workspace.workspaceType,
+    allow_worktrees: workspace.allowWorktrees !== false ? 1 : 0,
     execution_target_revision: Math.max(1, Math.floor(workspace.executionTargetRevision)),
     server_settings: JSON.stringify(workspace.serverSettings),
     created_at: workspace.createdAt,
@@ -51,6 +52,7 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     workspaceType: row["workspace_type"] === "directory"
       ? "directory"
       : DEFAULT_WORKSPACE_TYPE,
+    allowWorktrees: row["allow_worktrees"] === 0 ? false : true,
     executionTargetRevision: typeof row["execution_target_revision"] === "number"
       ? Math.max(1, Math.floor(row["execution_target_revision"] as number))
       : 1,

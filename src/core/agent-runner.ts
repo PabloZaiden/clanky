@@ -17,6 +17,8 @@ import { executeDeterministicAgent } from "./deterministic-agent-runtime";
 import { DeterministicAgentOutput } from "./deterministic-agent-output";
 import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
 import { AgentRunStreamPersistence } from "./agent-run-stream-persistence";
+import { getWorkspace } from "../persistence/workspaces";
+import { assertWorktreesAllowed } from "./workspace-capabilities";
 
 const log = createLogger("agent-runner");
 
@@ -110,6 +112,15 @@ export class AgentRunner {
       attachments?: MessageImageAttachment[];
     } = {},
   ): Promise<AgentRun> {
+    if (agent.config.useWorktree) {
+      const workspace = await getWorkspace(agent.config.workspaceId);
+      if (!workspace) {
+        throw new DomainError("workspace_not_found", "Workspace not found", {
+          details: { workspaceId: agent.config.workspaceId },
+        });
+      }
+      assertWorktreesAllowed(workspace);
+    }
     const scheduledFor = options.scheduledFor ?? createTimestamp();
     let run = createRunFromAgent(agent, trigger, scheduledFor, options.attachments);
     await saveAgentRun(run, {

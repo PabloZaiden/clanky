@@ -84,6 +84,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
+  allowWorktrees: z.boolean().optional(),
 });
 
 /**

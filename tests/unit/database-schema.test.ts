@@ -302,6 +302,7 @@ describe("database schema", () => {
       expect(columnNames("workspaces")).toContain("execution_host_id");
       expect(columnNames("workspaces")).toContain("execution_host_revision");
       expect(columnNames("workspaces")).toContain("workspace_type");
+      expect(columnNames("workspaces")).toContain("allow_worktrees");
       expect(columnNames("chats")).toContain("queued_messages");
       expect(columnNames("tasks")).toContain("issue_number");
       expect(tableNames()).toContain("clanky_context_api_keys");
@@ -701,6 +702,32 @@ describe("database schema", () => {
       const row = db.query("SELECT workspace_type FROM workspaces WHERE id = ?")
         .get("legacy-workspace") as { workspace_type: string };
       expect(row.workspace_type).toBe("git");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("migration v51 adds workspace worktree capability idempotently with an enabled default", () => {
+    const migration = migrations.find((candidate) => candidate.version === 51);
+    if (!migration) {
+      throw new Error("Migration v51 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
+
+      migration.up(db);
+      migration.up(db);
+
+      const columns = workspaceColumnInfo(db);
+      const allowWorktreesColumn = columns.find((column) => column.name === "allow_worktrees");
+      expect(allowWorktreesColumn?.notnull).toBe(1);
+      expect(allowWorktreesColumn?.dflt_value).toBe("1");
+
+      db.run("INSERT INTO workspaces (id) VALUES (?)", ["legacy-workspace"]);
+      const row = db.query("SELECT allow_worktrees FROM workspaces WHERE id = ?")
+        .get("legacy-workspace") as { allow_worktrees: number };
+      expect(row.allow_worktrees).toBe(1);
     } finally {
       db.close();
     }

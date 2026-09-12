@@ -261,6 +261,53 @@ describe("Agents API Integration", () => {
     expect(chats).toHaveLength(0);
   });
 
+  test("blocks new agent worktree activation when the workspace capability is disabled", async () => {
+    const disableResponse = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowWorktrees: false }),
+    });
+    expect(disableResponse.status).toBe(200);
+
+    try {
+      const worktreeResponse = await fetch(`${baseUrl}/api/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Rejected worktree agent",
+          workspaceId,
+          prompt: "This agent must not activate a worktree",
+          model: testModel,
+          useWorktree: true,
+          schedule: {
+            startAtLocal: "2030-01-01T09:00",
+            timezone: "UTC",
+            interval: { value: 1, unit: "hours" },
+          },
+          enabled: false,
+        }),
+      });
+      expect(worktreeResponse.status).toBe(409);
+      expect((await worktreeResponse.json()).error).toBe("workspace_worktrees_disabled");
+
+      const agent = await createAgent("No worktree agent");
+      const updateResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useWorktree: true }),
+      });
+      expect(updateResponse.status).toBe(409);
+      expect((await updateResponse.json()).error).toBe("workspace_worktrees_disabled");
+    } finally {
+      const enableResponse = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowWorktrees: true }),
+      });
+      expect(enableResponse.status).toBe(200);
+    }
+  });
+
   test("completes an agent run when its chat stream becomes inactive", async () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],

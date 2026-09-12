@@ -66,6 +66,7 @@ export interface CreateWorkspaceInput {
   archived?: boolean;
   isPrivate?: boolean;
   allowClankyContext?: boolean;
+  allowWorktrees?: boolean;
   sourceDirectory?: string;
   repoUrl?: string;
   basePath?: string;
@@ -78,6 +79,7 @@ export type UpdateWorkspaceInput = Partial<
   executionHost?: ExecutionHostRef;
   sshTarget?: WorkspaceSshTargetInput | null;
   allowExecutionTargetChangeWithTerminals?: boolean;
+  allowWorktrees?: boolean;
 };
 
 export type WorkspaceDirectoryValidation = Awaited<
@@ -98,6 +100,7 @@ interface NormalizedCreateWorkspaceInput {
   archived?: boolean;
   isPrivate?: boolean;
   allowClankyContext: boolean;
+  allowWorktrees: boolean;
   sourceDirectory?: string;
   repoUrl?: string;
   basePath?: string;
@@ -119,6 +122,7 @@ function normalizeCreateInput(input: CreateWorkspaceInput): NormalizedCreateWork
     archived: input.archived,
     isPrivate: input.isPrivate,
     allowClankyContext: input.allowClankyContext === true,
+    allowWorktrees: input.allowWorktrees !== false,
     sourceDirectory: input.sourceDirectory,
     repoUrl: input.repoUrl,
     basePath: input.basePath,
@@ -182,6 +186,7 @@ function createWorkspaceRecordFromInput(
     name: input.name,
     directory: input.directory,
     workspaceType: input.workspaceType,
+    allowWorktrees: input.allowWorktrees,
     executionTargetRevision: 1,
     executionHostBinding,
     ...(provisioningHostBinding ? { provisioningHostBinding } : {}),
@@ -529,11 +534,13 @@ export class WorkspaceManager {
         && updates.archived !== (current.archived === true);
       const allowClankyContextChanged = updates.allowClankyContext !== undefined
         && updates.allowClankyContext !== (current.allowClankyContext === true);
+      const allowWorktreesChanged = updates.allowWorktrees !== undefined
+        && updates.allowWorktrees !== (current.allowWorktrees !== false);
 
       const devcontainerSubpathChanged = updates.devcontainerSubpath !== undefined
         && updates.devcontainerSubpath !== current.devcontainerSubpath;
 
-      if (!nameChanged && !directoryChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !devcontainerSubpathChanged) {
+      if (!nameChanged && !directoryChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !allowWorktreesChanged && !devcontainerSubpathChanged) {
         return current;
       }
 
@@ -561,6 +568,9 @@ export class WorkspaceManager {
       }
       if (allowClankyContextChanged) {
         normalizedUpdates.allowClankyContext = updates.allowClankyContext;
+      }
+      if (allowWorktreesChanged) {
+        normalizedUpdates.allowWorktrees = updates.allowWorktrees;
       }
       if (devcontainerSubpathChanged) {
         normalizedUpdates.devcontainerSubpath = updates.devcontainerSubpath;

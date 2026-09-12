@@ -75,6 +75,11 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "This operation requires a Git-backed workspace",
         status: 409,
       },
+      workspace_worktrees_disabled: {
+        error: "workspace_worktrees_disabled",
+        message: "Worktrees are disabled for this workspace",
+        status: 409,
+      },
     } as const;
     if (error.code === "acp_connection_timed_out") {
       const isSsh = error.details["transport"] === "ssh";

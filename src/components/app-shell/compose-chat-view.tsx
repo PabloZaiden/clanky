@@ -148,6 +148,27 @@ export function ComposeChatView({
   }, [handleWorkspaceChange, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
 
   useEffect(() => {
+    if (!selectedWorkspace) {
+      setUseWorktree(false);
+      return;
+    }
+    if (selectedWorkspace.workspaceType !== "git" || selectedWorkspace.allowWorktrees === false) {
+      setUseWorktree(false);
+      return;
+    }
+    setUseWorktree(true);
+  }, [selectedWorkspace?.id]);
+
+  const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
+    && selectedWorkspace.allowWorktrees !== false;
+
+  useEffect(() => {
+    if (!worktreesAllowed) {
+      setUseWorktree(false);
+    }
+  }, [selectedWorkspace?.id, worktreesAllowed]);
+
+  useEffect(() => {
     if (!selectedWorkspace || selectedWorkspace.workspaceType !== "git") {
       setBaseBranch("");
       return;
@@ -277,7 +298,7 @@ export function ComposeChatView({
           modelID: parsedModel.modelID,
           variant: parsedModel.variant ?? "",
         },
-        useWorktree: selectedWorkspace.workspaceType === "git" ? useWorktree : false,
+        useWorktree: worktreesAllowed ? useWorktree : false,
         autoApprovePermissions,
         ...(selectedWorkspace.workspaceType === "git"
           ? { baseBranch: baseBranch.trim() || currentBranch.trim() }
@@ -370,7 +391,7 @@ export function ComposeChatView({
                 type="checkbox"
                 checked={importExistingSession}
                 onChange={(event) => setImportExistingSession(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
               />
               <div className="flex-1">
                 <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -441,9 +462,9 @@ export function ComposeChatView({
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={importExistingSession ? false : useWorktree}
+              checked={importExistingSession ? false : worktreesAllowed ? useWorktree : false}
               onChange={(event) => setUseWorktree(event.target.checked)}
-              disabled={importExistingSession}
+              disabled={importExistingSession || !worktreesAllowed}
               className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
             />
             <div className="flex-1">

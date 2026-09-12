@@ -193,6 +193,8 @@ export interface UseAgentFormStateResult {
   isSubmitting: boolean;
   canSubmit: boolean;
   workspaceSelectionsReady: boolean;
+  worktreeControlDisabled: boolean;
+  worktreeForNewRun: boolean;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setWorkspaceId: (value: string) => void;
@@ -268,6 +270,11 @@ export function useAgentFormState({
       && !modelsLoading,
   );
   const gitBackedWorkspace = selectedWorkspace?.workspaceType === "git";
+  const worktreesAllowed = gitBackedWorkspace && selectedWorkspace.allowWorktrees !== false;
+  const preserveExistingWorktree = mode === "edit"
+    && agent?.config.useWorktree === true
+    && draft.useWorktree;
+  const worktreeControlDisabled = !worktreesAllowed && !preserveExistingWorktree;
   const branchesReady = Boolean(
     selectedWorkspace
       && (!gitBackedWorkspace || (
@@ -281,6 +288,21 @@ export function useAgentFormState({
     && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch)
   );
   const workspaceSelectionsReady = modelSelectionValid && branchSelectionValid;
+
+  useEffect(() => {
+    if (!worktreeControlDisabled && worktreesAllowed) {
+      return;
+    }
+    if (preserveExistingWorktree || !draft.useWorktree) {
+      return;
+    }
+    dispatch({ type: "set-use-worktree", value: false });
+  }, [
+    draft.useWorktree,
+    preserveExistingWorktree,
+    worktreeControlDisabled,
+    worktreesAllowed,
+  ]);
 
   useEffect(() => {
     if (!gitBackedWorkspace || !branchesReady) {
@@ -397,7 +419,7 @@ export function useAgentFormState({
       ...(gitBackedWorkspace
         ? {
             baseBranch: draft.baseBranch.trim() || undefined,
-            useWorktree: draft.useWorktree,
+            useWorktree: worktreesAllowed || preserveExistingWorktree ? draft.useWorktree : false,
           }
         : {
             useWorktree: false,
@@ -442,6 +464,8 @@ export function useAgentFormState({
     schedulerTimezone,
     selectedWorkspace,
     toastError,
+    preserveExistingWorktree,
+    worktreesAllowed,
   ]);
 
   return {
@@ -450,6 +474,8 @@ export function useAgentFormState({
     isSubmitting,
     canSubmit,
     workspaceSelectionsReady,
+    worktreeControlDisabled,
+    worktreeForNewRun: worktreesAllowed ? draft.useWorktree : false,
     setName,
     setPrompt,
     setWorkspaceId,

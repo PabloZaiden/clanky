@@ -17,11 +17,23 @@ import { validateMainCheckoutStartImpl } from "./task-git-validation";
 import { clearPlanningFilesImpl } from "./task-planning-files";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError } from "./task-errors";
+import { getWorkspace } from "../../persistence/workspaces";
+import { assertWorktreesAllowed } from "../workspace-capabilities";
 
 export { startStatePersistenceImpl } from "./task-state-persistence";
 export { validateMainCheckoutStartImpl, ensureTaskBranchCheckedOutImpl } from "./task-git-validation";
 export { clearPlanningFilesImpl } from "./task-planning-files";
 export { recoverPlanningEngineImpl } from "./task-engine-recovery";
+
+async function assertTaskWorktreesAllowed(task: Task): Promise<void> {
+  if (!task.config.useWorktree) {
+    return;
+  }
+  const workspace = await getWorkspace(task.config.workspaceId);
+  if (workspace) {
+    assertWorktreesAllowed(workspace, "Worktrees are disabled for this workspace.");
+  }
+}
 
 function runEngineInBackground(
   ctx: TaskCtx,
@@ -112,6 +124,8 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
     });
   }
 
+  await assertTaskWorktreesAllowed(task);
+
   log.info("Starting task execution", {
     taskId,
     workspaceId: task.config.workspaceId,
@@ -198,6 +212,8 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
       { details: { taskId } },
     );
   }
+
+  await assertTaskWorktreesAllowed(task);
 
   log.info("Starting task plan mode", {
     taskId,
@@ -287,6 +303,8 @@ export async function startDraftImpl(
         { details: { taskId, status: task.state.status } },
       );
     }
+
+    await assertTaskWorktreesAllowed(task);
 
     if (!task.config.useWorktree) {
       const preflightExecutor = await backendManager.getCommandExecutorAsync(

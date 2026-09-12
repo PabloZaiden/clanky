@@ -380,6 +380,94 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.autoAcceptPlan).toBe(false);
     });
 
+    test("blocks new task worktree activation when the workspace capability is disabled", async () => {
+      const existingResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Preserve this worktree configuration",
+          name: "Existing Worktree Task",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(existingResponse.status).toBe(201);
+      const existingTask = await existingResponse.json() as {
+        config: { id: string; useWorktree: boolean };
+      };
+      expect(existingTask.config.useWorktree).toBe(true);
+
+      const disableResponse = await fetch(`${baseUrl}/api/workspaces/${testWorkspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowWorktrees: false }),
+      });
+      expect(disableResponse.status).toBe(200);
+
+      try {
+        const noWorktreeResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Create without a worktree",
+            name: "No Worktree Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: false,
+          }),
+        });
+        expect(noWorktreeResponse.status).toBe(201);
+        const created = await noWorktreeResponse.json() as { config: { id: string } };
+
+        const preserveResponse = await fetch(`${baseUrl}/api/tasks/${existingTask.config.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: "Keep the existing worktree configuration" }),
+        });
+        expect(preserveResponse.status).toBe(200);
+        expect((await preserveResponse.json()).config.useWorktree).toBe(true);
+
+        const worktreeResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "This worktree task must be rejected",
+            name: "Rejected Worktree Task",
+            draft: true,
+            planMode: false,
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        expect(worktreeResponse.status).toBe(409);
+        expect((await worktreeResponse.json()).error).toBe("workspace_worktrees_disabled");
+
+        const updateResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ useWorktree: true }),
+        });
+        expect(updateResponse.status).toBe(409);
+        expect((await updateResponse.json()).error).toBe("workspace_worktrees_disabled");
+      } finally {
+        const enableResponse = await fetch(`${baseUrl}/api/workspaces/${testWorkspaceId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allowWorktrees: true }),
+        });
+        expect(enableResponse.status).toBe(200);
+      }
+    });
+
     test("returns 400 for invalid JSON", async () => {
       const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",

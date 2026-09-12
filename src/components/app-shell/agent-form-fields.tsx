@@ -31,6 +31,7 @@ export interface AgentFormFieldsProps {
   setModelKey: (value: string) => void;
   setBaseBranch: (value: string) => void;
   setUseWorktree: (value: boolean) => void;
+  worktreeControlDisabled: boolean;
   setStartAtLocal: (value: string) => void;
   setIntervalValue: (value: number) => void;
   setIntervalUnit: (value: AgentFormIntervalUnit) => void;
@@ -56,6 +57,7 @@ export function AgentFormFields({
   setModelKey,
   setBaseBranch,
   setUseWorktree,
+  worktreeControlDisabled,
   setStartAtLocal,
   setIntervalValue,
   setIntervalUnit,
@@ -185,6 +187,7 @@ export function AgentFormFields({
             type="checkbox"
             checked={draft.useWorktree}
             onChange={(event) => setUseWorktree(event.target.checked)}
+            disabled={worktreeControlDisabled}
             className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
           />
           Use worktree

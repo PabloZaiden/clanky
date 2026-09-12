@@ -40,6 +40,8 @@ export interface Workspace {
   directory: string;
   /** Whether the workspace exposes Git-backed task and branch capabilities */
   workspaceType: WorkspaceType;
+  /** Whether new worktree-backed execution contexts may be created */
+  allowWorktrees?: boolean;
   /** Monotonic revision of the workspace execution target */
   executionTargetRevision: number;
   /** Canonical immutable execution-host binding. */

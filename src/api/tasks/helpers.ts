@@ -7,6 +7,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../../core/model-discovery";
 import { isTaskOperationError, type TaskOperationError, type TaskErrorCode } from "../../core/task/task-errors";
 import { domainErrorResponse, errorResponse } from "../helpers";
+import { isDomainError } from "../../core/domain-error";
 
 const log = createLogger("api:tasks");
 
@@ -84,6 +85,14 @@ export function startErrorResponse(
       });
       return errorResponse("operation_in_progress", error.message, 409);
     }
+  }
+
+  if (isDomainError(error) && error.code === "workspace_worktrees_disabled") {
+    log.warn("Task start blocked because worktrees are disabled", {
+      ...context,
+      error: error.message,
+    });
+    return errorResponse(error.code, error.message, 409);
   }
 
   log.error("Task start failed", {

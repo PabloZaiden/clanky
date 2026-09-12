@@ -24,7 +24,11 @@ import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
-import { assertGitBackedWorkspace, isGitBackedWorkspace } from "./workspace-capabilities";
+import {
+  assertGitBackedWorkspace,
+  assertWorktreesAllowed,
+  isGitBackedWorkspace,
+} from "./workspace-capabilities";
 import type {
   ChatConfigUpdates,
   ChatConversationPort,
@@ -98,6 +102,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         "Directory workspaces do not support branches or worktrees.",
       );
     }
+    const useWorktree = scope === "task"
+      ? false
+      : isGitBackedWorkspace(workspace)
+        ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
+        : false;
+    if (useWorktree) {
+      assertWorktreesAllowed(workspace);
+    }
 
     const id = crypto.randomUUID();
     const now = createTimestamp();
@@ -130,11 +142,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           modelID: options.modelID,
           variant: options.modelVariant ?? "",
         },
-        useWorktree: scope === "task"
-          ? false
-          : isGitBackedWorkspace(workspace)
-            ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
-            : false,
+        useWorktree,
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         skipBaseBranchSync: options.syncBaseBranch === false,
         baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,
@@ -427,6 +435,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           workspace,
           "Directory workspaces do not support branches or worktrees.",
         );
+      }
+      if (
+        updates.useWorktree === true
+        && chat.config.useWorktree !== true
+      ) {
+        assertWorktreesAllowed(workspace);
       }
     } else if (updates.useWorktree === true || updates.baseBranch !== undefined) {
       throw new Error("Direct execution-host chats do not support branches or worktrees");
