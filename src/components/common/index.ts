@@ -9,6 +9,7 @@ export {
   preventButtonFocusOnPointerDown,
   type FocusPreservingButtonProps,
 } from "./FocusPreservingButton";
+export { ComposerInterruptButton } from "./ComposerInterruptButton";
 export { Card, type CardProps } from "./Card";
 export {
   Badge,

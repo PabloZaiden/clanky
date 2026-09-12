@@ -264,7 +264,6 @@ export function useChatComposer({
   const composerInstanceId = useId();
   const hasQueueableInput = message.trim().length > 0 || attachments.length > 0;
   const sendButtonClassName = "wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0";
-  const interruptButtonClassName = sendButtonClassName;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
   const composerBusy = isSubmitting || isExternallyBusy;
@@ -307,7 +306,6 @@ export function useChatComposer({
     secondaryActionsDisabled,
     attachmentLimitReached,
     sendButtonClassName,
-    interruptButtonClassName,
     handleSubmit,
     handleInterrupt,
     handlePaste,
