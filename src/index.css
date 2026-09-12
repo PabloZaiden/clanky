@@ -301,20 +301,9 @@
   opacity: 0.5;
 }
 
-.clanky-composer-button-danger {
-  background: var(--wapp-danger-bg);
-  color: var(--wapp-text);
-}
-
-.clanky-composer-button-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--wapp-danger-bg), var(--wapp-text) 15%);
-  color: var(--wapp-text);
-}
-
-.clanky-composer-button-danger:disabled {
-  cursor: not-allowed;
-  background: var(--wapp-surface-muted);
-  color: var(--wapp-muted-2);
+.clanky-composer-interrupt-button {
+  width: 2rem;
+  min-height: 2rem;
 }
 
 .clanky-composer-field {
