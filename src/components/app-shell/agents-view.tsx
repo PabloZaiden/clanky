@@ -127,6 +127,7 @@ function AgentForm({
     agent,
     initialWorkspace,
     workspaces,
+    workspacesLoading,
     models,
     modelsLoading,
     modelsWorkspaceId,

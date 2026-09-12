@@ -161,6 +161,7 @@ export function ComposeChatView({
 
   const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
     && selectedWorkspace.allowWorktrees !== false;
+  const worktreeControlDisabled = importExistingSession || !worktreesAllowed;
 
   useEffect(() => {
     if (!worktreesAllowed) {
@@ -464,10 +465,10 @@ export function ComposeChatView({
               type="checkbox"
               checked={importExistingSession ? false : worktreesAllowed ? useWorktree : false}
               onChange={(event) => setUseWorktree(event.target.checked)}
-              disabled={importExistingSession || !worktreesAllowed}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+              disabled={worktreeControlDisabled}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
             />
-            <div className="flex-1">
+            <div className={`flex-1 ${worktreeControlDisabled ? "opacity-60" : ""}`}>
               <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Use worktree
               </span>

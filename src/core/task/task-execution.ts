@@ -30,9 +30,27 @@ async function assertTaskWorktreesAllowed(task: Task): Promise<void> {
     return;
   }
   const workspace = await getWorkspace(task.config.workspaceId);
-  if (workspace) {
-    assertWorktreesAllowed(workspace, "Worktrees are disabled for this workspace.");
+  if (!workspace || workspace.allowWorktrees !== false) {
+    return;
   }
+
+  const persistedWorktreePath = task.state.git?.worktreePath;
+  if (persistedWorktreePath) {
+    const executor = await backendManager.getCommandExecutorAsync(
+      task.config.workspaceId,
+      task.config.directory,
+    );
+    const git = GitService.withExecutor(executor);
+    const canonicalWorktreePath = git.getManagedWorktreePath(task.config.directory, task.config.id);
+    if (
+      persistedWorktreePath === canonicalWorktreePath
+      && await git.worktreeExists(task.config.directory, canonicalWorktreePath)
+    ) {
+      return;
+    }
+  }
+
+  assertWorktreesAllowed(workspace, "Worktrees are disabled for this workspace.");
 }
 
 function runEngineInBackground(

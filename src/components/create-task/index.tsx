@@ -123,6 +123,7 @@ export function CreateTaskForm({
     renderActions,
     uploadedPlan,
     workspaces,
+    workspacesLoading,
   });
   const gitBackedWorkspaces = workspaces.filter((workspace) => workspace.workspaceType === "git");
   const selectedWorkspace = gitBackedWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId);

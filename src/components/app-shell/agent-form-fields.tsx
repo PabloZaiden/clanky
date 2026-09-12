@@ -182,13 +182,13 @@ export function AgentFormFields({
       </div>
 
       {selectedWorkspace?.workspaceType === "git" && (
-        <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className={`flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300 ${worktreeControlDisabled ? "opacity-60" : ""}`}>
           <input
             type="checkbox"
             checked={draft.useWorktree}
             onChange={(event) => setUseWorktree(event.target.checked)}
             disabled={worktreeControlDisabled}
-            className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+            className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
           />
           Use worktree
         </label>

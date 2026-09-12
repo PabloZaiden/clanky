@@ -197,6 +197,24 @@ describe("Workspace API Integration", () => {
       expect(data.workspaceType).toBe("git");
     });
 
+    test("persists disabled worktrees when creating a workspace", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Worktrees Workspace",
+          directory: testWorkDir,
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
+          allowWorktrees: false,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.allowWorktrees).toBe(false);
+    });
+
     test("creates, updates, and switches a workspace-owned SSH target", async () => {
       const password = "workspace-only-secret";
       const response = await fetch(`${baseUrl}/api/workspaces`, {

@@ -98,6 +98,7 @@ export function useCreateTaskForm({
   renderActions,
   uploadedPlan,
   workspaces = [],
+  workspacesLoading = false,
 }: Pick<
   CreateTaskFormProps,
   | "onSubmit"
@@ -118,6 +119,7 @@ export function useCreateTaskForm({
 > & {
   uploadedPlan?: UploadedPlanFile | null;
   workspaces?: Workspace[];
+  workspacesLoading?: boolean;
 }): UseCreateTaskFormReturn {
   const isEditing = !!editTaskId;
 
@@ -135,13 +137,27 @@ export function useCreateTaskForm({
   const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
     && selectedWorkspace.allowWorktrees !== false;
   const preserveExistingWorktree = isEditing && fields.useWorktree;
-  const worktreeControlDisabled = !worktreesAllowed && !preserveExistingWorktree;
+  const workspaceSelectionResolved = !workspacesLoading;
+  const worktreeControlDisabled = workspaceSelectionResolved
+    && !worktreesAllowed
+    && !preserveExistingWorktree;
 
   useEffect(() => {
-    if (!worktreesAllowed && !preserveExistingWorktree && fields.useWorktree) {
+    if (
+      workspaceSelectionResolved
+      && !worktreesAllowed
+      && !preserveExistingWorktree
+      && fields.useWorktree
+    ) {
       fields.setUseWorktree(false);
     }
-  }, [fields.setUseWorktree, fields.useWorktree, preserveExistingWorktree, worktreesAllowed]);
+  }, [
+    fields.setUseWorktree,
+    fields.useWorktree,
+    preserveExistingWorktree,
+    worktreesAllowed,
+    workspaceSelectionResolved,
+  ]);
 
   const {
     selectedModel,

@@ -136,7 +136,11 @@ describe("Agents API Integration", () => {
     );
   }
 
-  async function createAgent(name = "Scheduled build fixer", code?: string) {
+  async function createAgent(
+    name = "Scheduled build fixer",
+    code?: string,
+    useWorktree = false,
+  ) {
     const response = await fetch(`${baseUrl}/api/agents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,7 +150,7 @@ describe("Agents API Integration", () => {
         prompt: "Check the workspace and report status",
         ...(code ? { code } : {}),
         model: testModel,
-        useWorktree: false,
+        useWorktree,
         schedule: {
           startAtLocal: "2030-01-01T09:00",
           timezone: "UTC",
@@ -1396,6 +1400,54 @@ export default async function run(ctx) {
     const updatedAgent = await loadAgent(agent!.config.id);
     expect(updatedAgent?.state.lastSkippedAt).toBeTruthy();
     expect(updatedAgent?.state.nextRunAt).not.toBe(dueAt);
+  });
+
+  test("scheduler records a failed run when scheduled worktrees are disabled", async () => {
+    const agent = await createAgent("Blocked worktree agent", undefined, true);
+    const dueAt = new Date(Date.now() - 60_000).toISOString();
+    const scheduleResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schedule: {
+          ...agent!.config.schedule,
+          nextRunAt: dueAt,
+        },
+      }),
+    });
+    expect(scheduleResponse.status).toBe(200);
+
+    const disableResponse = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowWorktrees: false }),
+    });
+    expect(disableResponse.status).toBe(200);
+
+    try {
+      await agentScheduler.tick(new Date());
+
+      const runsResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/runs?limit=10`);
+      expect(runsResponse.status).toBe(200);
+      const runs = await runsResponse.json() as AgentRun[];
+      const failedRun = runs.find((run) => run.trigger === "schedule" && run.status === "failed");
+      expect(failedRun?.error?.code).toBe("workspace_worktrees_disabled");
+      expect(failedRun?.completedAt).toBeTruthy();
+
+      const updatedAgentResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}`);
+      expect(updatedAgentResponse.status).toBe(200);
+      const updatedAgent = await updatedAgentResponse.json() as Awaited<ReturnType<typeof loadAgent>>;
+      expect(updatedAgent?.state.status).toBe("error");
+      expect(updatedAgent?.state.lastError?.code).toBe("workspace_worktrees_disabled");
+      expect(updatedAgent?.config.schedule.nextRunAt).not.toBe(dueAt);
+    } finally {
+      const enableResponse = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowWorktrees: true }),
+      });
+      expect(enableResponse.status).toBe(200);
+    }
   });
 
   test("paused agents do not run on schedule but can run manually and resume", async () => {

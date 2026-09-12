@@ -4,7 +4,7 @@ import type { ChatEvent } from "@/shared";
 import { createTranscriptChangeSet } from "@/shared";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
-import { DomainError } from "./domain-error";
+import { DomainError, isDomainError } from "./domain-error";
 import { chatManager } from "./chat-manager";
 import {
   loadAgent,
@@ -148,6 +148,51 @@ export class AgentRunner {
       updatedAt: createTimestamp(),
     };
     return run;
+  }
+
+  async recordStartFailure(
+    agent: Agent,
+    trigger: AgentRunTrigger,
+    options: { scheduledFor?: string } = {},
+    error: unknown,
+  ): Promise<AgentRun> {
+    const scheduledFor = options.scheduledFor ?? createTimestamp();
+    const run = createRunFromAgent(agent, trigger, scheduledFor);
+    const now = createTimestamp();
+    const runError = {
+      message: isDomainError(error) ? error.message : String(error),
+      timestamp: now,
+      code: isDomainError(error) ? error.code : "agent_run_start_failed",
+    };
+    const failedRun: AgentRun = {
+      ...run,
+      status: "failed",
+      completedAt: now,
+      error: runError,
+      updatedAt: now,
+    };
+    await saveAgentRun(failedRun, {
+      transcriptChanges: {
+        ...createTranscriptChangeSet(failedRun),
+        revision: `${failedRun.updatedAt}:0`,
+      },
+    });
+    agentEventEmitter.emit({
+      type: "agent.run.failed",
+      agentId: agent.config.id,
+      agentRunId: failedRun.id,
+      message: runError.message,
+      timestamp: now,
+    });
+    agentEventEmitter.emit({
+      type: "agent.run.status",
+      agentId: agent.config.id,
+      agentRunId: failedRun.id,
+      status: failedRun.status,
+      timestamp: now,
+    });
+    await this.clearAgentRunning(agent.config.id, failedRun);
+    return failedRun;
   }
 
   async interruptRun(run: AgentRun, reason = "Agent run interrupted"): Promise<AgentRun> {

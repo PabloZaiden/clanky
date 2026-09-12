@@ -57,6 +57,7 @@ export const CreateWorkspaceRequestSchema = z.object({
   sshTarget: WorkspaceSshTargetSchema.optional(),
   workspaceWorkerEnrollmentId: z.string().trim().min(1).optional(),
   allowClankyContext: z.boolean().optional(),
+  allowWorktrees: z.boolean().optional(),
   workspaceType: WorkspaceTypeSchema.default("git"),
 }).refine(
   (value) => [
