@@ -21,7 +21,7 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { MESSAGE_ATTACHMENT_LIMIT, toMessageAttachments } from "../lib/image-attachments";
-import { FocusPreservingButton, useComposerSizing } from "./common";
+import { ComposerInterruptButton, FocusPreservingButton, useComposerSizing } from "./common";
 import {
   ComposerActionsMenu,
   ComposerActionsMenuButton,
@@ -238,20 +238,12 @@ export function TaskActionBar({
 
             {/* Primary action button */}
             {showStopButton ? (
-              <button
-                type="button"
-                onClick={handleStop}
+              <ComposerInterruptButton
+                onClick={() => void handleStop()}
                 disabled={disabled || isSubmitting}
-                className="clanky-composer-button-danger flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md"
-                aria-label="Stop"
-                title="Stop"
-              >
-                {isSubmitting ? (
-                  <span className="animate-spin text-sm">⏳</span>
-                ) : (
-                  <span className="text-lg leading-none">×</span>
-                )}
-              </button>
+                busy={isSubmitting}
+                ariaLabel="Stop"
+              />
             ) : (
               <FocusPreservingButton
                 type="submit"
