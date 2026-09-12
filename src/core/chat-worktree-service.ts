@@ -9,6 +9,7 @@ import { taskManager, type TaskManager } from "./task-manager";
 import { backendManager } from "./backend";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
+import { assertWorktreesAllowed } from "./workspace-capabilities";
 import { sanitizeBranchName } from "../utils";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
@@ -134,6 +135,11 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
     if (!worktreeExists) {
+      const workspace = await this.state.getWorkspace(getChatWorkspaceId(chat));
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${getChatWorkspaceId(chat)}`);
+      }
+      assertWorktreesAllowed(workspace);
       if (options.syncBaseBranch ?? true) {
         await syncMainCheckoutBeforeWorktree({
           git,

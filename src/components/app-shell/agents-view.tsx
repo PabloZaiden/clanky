@@ -127,6 +127,7 @@ function AgentForm({
     agent,
     initialWorkspace,
     workspaces,
+    workspacesLoading,
     models,
     modelsLoading,
     modelsWorkspaceId,
@@ -161,7 +162,7 @@ function AgentForm({
     selectedWorkspace: form.selectedWorkspace,
     modelKey: form.draft.modelKey,
     baseBranch: form.draft.baseBranch,
-    useWorktree: form.draft.useWorktree,
+    useWorktree: form.worktreeForNewRun,
     workspaceSelectionsReady: form.workspaceSelectionsReady,
     onTestStarted: generation.invalidatePendingDraft,
     onTestAgentCode,
@@ -252,6 +253,7 @@ function AgentForm({
         setModelKey={form.setModelKey}
         setBaseBranch={form.setBaseBranch}
         setUseWorktree={form.setUseWorktree}
+        worktreeControlDisabled={form.worktreeControlDisabled}
         setStartAtLocal={form.setStartAtLocal}
         setIntervalValue={form.setIntervalValue}
         setIntervalUnit={form.setIntervalUnit}

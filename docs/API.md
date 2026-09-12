@@ -1778,6 +1778,7 @@ Create a new workspace. Validates that its execution directory exists on the rem
 | `name` | string | Yes | Workspace display name |
 | `directory` | string | Yes | Absolute path to git repository |
 | `serverSettings` | object | No | Workspace connection settings (defaults to `{ agent: { provider: "opencode", transport: "stdio" } }`) |
+| `allowWorktrees` | boolean | No | Whether task, chat, and agent worktrees may be created for this workspace (defaults to `true`) |
 
 **Response**
 
@@ -1817,6 +1818,7 @@ Update a workspace.
 |-------|------|-------------|
 | `name` | string | Update display name |
 | `serverSettings` | object | Update server connection settings |
+| `allowWorktrees` | boolean | Enable or disable creation of task, chat, and agent worktrees |
 
 **Response**
 

@@ -167,6 +167,7 @@ export interface UseAgentFormStateOptions {
   agent: Agent | null;
   initialWorkspace: Workspace | null;
   workspaces: Workspace[];
+  workspacesLoading: boolean;
   models: ModelInfo[];
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
@@ -193,6 +194,8 @@ export interface UseAgentFormStateResult {
   isSubmitting: boolean;
   canSubmit: boolean;
   workspaceSelectionsReady: boolean;
+  worktreeControlDisabled: boolean;
+  worktreeForNewRun: boolean;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setWorkspaceId: (value: string) => void;
@@ -210,6 +213,7 @@ export function useAgentFormState({
   agent,
   initialWorkspace,
   workspaces,
+  workspacesLoading,
   models,
   modelsLoading,
   modelsWorkspaceId,
@@ -268,6 +272,14 @@ export function useAgentFormState({
       && !modelsLoading,
   );
   const gitBackedWorkspace = selectedWorkspace?.workspaceType === "git";
+  const worktreesAllowed = gitBackedWorkspace && selectedWorkspace.allowWorktrees !== false;
+  const preserveExistingWorktree = mode === "edit"
+    && agent?.config.useWorktree === true
+    && draft.useWorktree;
+  const workspaceSelectionResolved = !workspacesLoading;
+  const worktreeControlDisabled = workspaceSelectionResolved
+    && !worktreesAllowed
+    && !preserveExistingWorktree;
   const branchesReady = Boolean(
     selectedWorkspace
       && (!gitBackedWorkspace || (
@@ -281,6 +293,25 @@ export function useAgentFormState({
     && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch)
   );
   const workspaceSelectionsReady = modelSelectionValid && branchSelectionValid;
+
+  useEffect(() => {
+    if (!workspaceSelectionResolved) {
+      return;
+    }
+    if (!worktreeControlDisabled && worktreesAllowed) {
+      return;
+    }
+    if (preserveExistingWorktree || !draft.useWorktree) {
+      return;
+    }
+    dispatch({ type: "set-use-worktree", value: false });
+  }, [
+    draft.useWorktree,
+    preserveExistingWorktree,
+    worktreeControlDisabled,
+    worktreesAllowed,
+    workspaceSelectionResolved,
+  ]);
 
   useEffect(() => {
     if (!gitBackedWorkspace || !branchesReady) {
@@ -397,7 +428,7 @@ export function useAgentFormState({
       ...(gitBackedWorkspace
         ? {
             baseBranch: draft.baseBranch.trim() || undefined,
-            useWorktree: draft.useWorktree,
+            useWorktree: worktreesAllowed || preserveExistingWorktree ? draft.useWorktree : false,
           }
         : {
             useWorktree: false,
@@ -442,6 +473,8 @@ export function useAgentFormState({
     schedulerTimezone,
     selectedWorkspace,
     toastError,
+    preserveExistingWorktree,
+    worktreesAllowed,
   ]);
 
   return {
@@ -450,6 +483,8 @@ export function useAgentFormState({
     isSubmitting,
     canSubmit,
     workspaceSelectionsReady,
+    worktreeControlDisabled,
+    worktreeForNewRun: draft.useWorktree,
     setName,
     setPrompt,
     setWorkspaceId,

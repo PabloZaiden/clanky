@@ -102,6 +102,7 @@ export function CreateTaskForm({
     activityTimeoutSeconds,
     setActivityTimeoutSeconds,
     generatingTitle,
+    worktreeControlDisabled,
     handleSubmit,
     handleGenerateTitle,
   } = useCreateTaskForm({
@@ -121,6 +122,8 @@ export function CreateTaskForm({
     attachments,
     renderActions,
     uploadedPlan,
+    workspaces,
+    workspacesLoading,
   });
   const gitBackedWorkspaces = workspaces.filter((workspace) => workspace.workspaceType === "git");
   const selectedWorkspace = gitBackedWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId);
@@ -358,6 +361,7 @@ export function CreateTaskForm({
         onFullyAutonomousChange={setFullyAutonomous}
         useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
+        worktreeControlDisabled={worktreeControlDisabled}
         uploadedPlanLocked={uploadedPlanLocked}
       />
 
