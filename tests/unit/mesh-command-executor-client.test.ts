@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +11,8 @@ import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
+  MESH_ACP_SESSION_RENEWAL_RETRY_MS,
+  MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
 import { seedTestOwnerUser } from "../setup";
@@ -26,6 +28,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   closeDatabase();
   delete process.env["CLANKY_DATA_DIR"];
   await rm(dataDir, { recursive: true, force: true });
@@ -200,6 +203,254 @@ describe("MeshCommandExecutorClient", () => {
           resolve();
         });
       });
+      expect(renewalRequests).toBe(1);
+    } finally {
+      client.closeSession();
+    }
+  });
+
+  test("retries a transient renewal failure using bounded backoff", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    jest.useFakeTimers();
+    let callerEncryptionPublicKey = "";
+    let renewalRequests = 0;
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown> | null;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request?.["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (url.endsWith("/acp/renew")) {
+          renewalRequests += 1;
+          if (renewalRequests === 1) {
+            throw new Error("temporary worker network failure");
+          }
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
+          });
+        }
+        throw new Error(`Unexpected mesh route: ${url}`);
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
+      fetch: fetchImpl,
+    });
+
+    try {
+      await client.openSession();
+      client.startSessionRenewal();
+      jest.advanceTimersToNextTimer();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(renewalRequests).toBe(1);
+
+      jest.advanceTimersByTime(MESH_ACP_SESSION_RENEWAL_RETRY_MS - 1);
+      await Promise.resolve();
+      expect(renewalRequests).toBe(1);
+
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(renewalRequests).toBe(2);
+    } finally {
+      client.closeSession();
+    }
+  });
+
+  test("stops retrying when the renewal safety window is reached", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    jest.useFakeTimers();
+    let callerEncryptionPublicKey = "";
+    let renewalRequests = 0;
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown> | null;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request?.["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (url.endsWith("/acp/renew")) {
+          renewalRequests += 1;
+          throw new Error("temporary worker network failure");
+        }
+        throw new Error(`Unexpected mesh route: ${url}`);
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      sessionTtlMs: MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS + 1,
+      fetch: fetchImpl,
+    });
+
+    try {
+      await client.openSession();
+      client.startSessionRenewal();
+      jest.advanceTimersToNextTimer();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(renewalRequests).toBe(1);
+
+      jest.advanceTimersByTime(MESH_ACP_SESSION_RENEWAL_RETRY_MS * 2);
+      await Promise.resolve();
+      expect(renewalRequests).toBe(1);
+    } finally {
+      client.closeSession();
+    }
+  });
+
+  test("cancels an in-flight renewal when the session closes", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    jest.useFakeTimers();
+    let callerEncryptionPublicKey = "";
+    let renewalRequests = 0;
+    let renewalStarted!: () => void;
+    let renewalAborted = false;
+    const renewalStartedPromise = new Promise<void>((resolve) => {
+      renewalStarted = resolve;
+    });
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown> | null;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request?.["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (url.endsWith("/acp/renew")) {
+          renewalRequests += 1;
+          renewalStarted();
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              renewalAborted = true;
+              reject(new DOMException("The renewal request was aborted.", "AbortError"));
+            }, { once: true });
+          });
+        }
+        throw new Error(`Unexpected mesh route: ${url}`);
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
+      fetch: fetchImpl,
+    });
+
+    try {
+      await client.openSession();
+      client.startSessionRenewal();
+      jest.advanceTimersToNextTimer();
+      await renewalStartedPromise;
+      expect(renewalRequests).toBe(1);
+
+      client.closeSession();
+      await Promise.resolve();
+      expect(renewalAborted).toBe(true);
+
+      jest.advanceTimersByTime(MESH_ACP_SESSION_RENEWAL_RETRY_MS * 2);
+      await Promise.resolve();
       expect(renewalRequests).toBe(1);
     } finally {
       client.closeSession();

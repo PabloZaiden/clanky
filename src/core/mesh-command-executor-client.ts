@@ -434,11 +434,11 @@ export class MeshCommandExecutorClient {
       clearTimeout(this.sessionRenewalTimer);
     }
     const remainingMs = Math.max(1, this.session.expiresAt - Date.now());
+    if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+      return;
+    }
     const defaultDelayMs = Math.max(1, remainingMs - MESH_ACP_SESSION_RENEWAL_LEAD_MS);
-    const latestSafeDelayMs = Math.max(
-      1,
-      remainingMs - MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
-    );
+    const latestSafeDelayMs = remainingMs - MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS;
     const delayMs = Math.max(
       1,
       Math.min(requestedDelayMs ?? defaultDelayMs, latestSafeDelayMs),
@@ -520,6 +520,8 @@ export class MeshCommandExecutorClient {
         || error.code === "mesh_execution_session_invalid"
         || error.code === "mesh_execution_context_changed"
         || error.code === "mesh_acp_unavailable"
+        || error.code === "mesh_execution_capability_unavailable"
+        || error.code === "mesh_remote_execution_disabled"
       );
       const retryDelayMs = Math.min(
         MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
@@ -534,6 +536,8 @@ export class MeshCommandExecutorClient {
       };
       if (terminal) {
         log.error("Mesh ACP session renewal became unrecoverable", details);
+      } else if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+        log.error("Mesh ACP session renewal window elapsed", details);
       } else {
         log.warn("Mesh ACP session renewal failed; retrying", details);
         this.scheduleSessionRenewal(generation, retryDelayMs);

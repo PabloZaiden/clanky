@@ -245,11 +245,37 @@ export class MeshAcpGateway {
     if (!relay) {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
     }
-    const expiresAt = await meshExecutionGateway.renewSession(
-      sessionId,
-      sessionToken,
-      MESH_ACP_CHANNEL,
-    );
+    let expiresAt: number;
+    try {
+      expiresAt = await meshExecutionGateway.renewSession(
+        sessionId,
+        sessionToken,
+        MESH_ACP_CHANNEL,
+      );
+    } catch (error) {
+      if (
+        this.relays.get(sessionId) === relay
+        && error instanceof DomainError
+        && (
+          error.code === "mesh_execution_context_changed"
+          || error.code === "mesh_execution_session_expired"
+          || error.code === "mesh_execution_session_invalid"
+          || error.code === "mesh_execution_capability_unavailable"
+          || error.code === "mesh_remote_execution_disabled"
+        )
+      ) {
+        await this.closeRelay(sessionId);
+        try {
+          relay.socket.close(1011, "Mesh ACP session unavailable");
+        } catch (closeError) {
+          log.debug("Failed to close mesh ACP socket after renewal failure", {
+            sessionId,
+            error: String(closeError),
+          });
+        }
+      }
+      throw error;
+    }
     if (this.relays.get(sessionId) !== relay) {
       meshExecutionGateway.closeSession(sessionId);
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
