@@ -194,6 +194,22 @@ export class MeshExecutionGateway {
   private readonly usedNonces = new Map<string, number>();
   private retainedAsyncOutputBytes = 0;
 
+  private scheduleSessionExpiry(session: MeshExecutionSession): void {
+    if (session.expiryTimer !== undefined) {
+      clearTimeout(session.expiryTimer);
+    }
+    const sessionId = session.sessionId;
+    const expiryTimer = setTimeout(() => {
+      const current = this.sessions.get(sessionId);
+      if (current !== session || current.expiresAt > Date.now()) {
+        return;
+      }
+      this.closeSession(sessionId);
+    }, Math.max(1, session.expiresAt - Date.now()));
+    expiryTimer.unref?.();
+    session.expiryTimer = expiryTimer;
+  }
+
   private pruneExpired(): void {
     const now = Date.now();
     this.pruneAsyncCommands(now);
@@ -433,18 +449,48 @@ export class MeshExecutionGateway {
       activeControllers: new Set(),
       inFlight: 0,
     };
-    const expiryTimer = setTimeout(() => {
-      this.closeSession(sessionId);
-    }, Math.max(1, expiresAt - Date.now()));
-    expiryTimer.unref?.();
-    sessionRecord.expiryTimer = expiryTimer;
     this.sessions.set(sessionId, sessionRecord);
+    this.scheduleSessionExpiry(sessionRecord);
     return {
       protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
       sessionId,
       sessionToken,
       expiresAt: new Date(expiresAt).toISOString(),
     };
+  }
+
+  async renewSession(
+    sessionId: string,
+    sessionToken: string,
+    expectedChannel?: typeof MESH_ACP_CHANNEL,
+  ): Promise<number> {
+    const validationOptions: SessionValidationOptions = {
+      memberErrorCode: expectedChannel === MESH_ACP_CHANNEL
+        ? "mesh_execution_context_changed"
+        : "mesh_peer_not_trusted",
+    };
+    if (expectedChannel !== undefined) {
+      validationOptions.expectedChannel = expectedChannel;
+    }
+    const { session } = await this.requireValidatedSession(
+      sessionId,
+      sessionToken,
+      validationOptions,
+    );
+    if (
+      this.sessions.get(sessionId) !== session
+      || session.expiresAt <= Date.now()
+    ) {
+      this.closeSession(sessionId);
+      throw new DomainError("mesh_execution_session_expired", "The execution session has expired.");
+    }
+
+    const maxSessionTtl = session.channel === MESH_ACP_CHANNEL
+      ? MESH_ACP_SESSION_TTL_MS
+      : MESH_EXECUTION_SESSION_TTL_MS;
+    session.expiresAt = Date.now() + maxSessionTtl;
+    this.scheduleSessionExpiry(session);
+    return session.expiresAt;
   }
 
   async getAcpSessionConfig(

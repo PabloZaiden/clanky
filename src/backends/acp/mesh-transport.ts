@@ -133,6 +133,9 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     socket.onclose = (event: CloseEvent) => {
       if (this.closing) return;
       this.connected = false;
+      this.socket = null;
+      this.sessionClient?.closeSession();
+      this.sessionClient = null;
       const error = new AcpError(
         "acp_transport_closed",
         event.reason.trim() || "The Mesh ACP WebSocket closed.",
@@ -155,6 +158,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       this.sessionClient = null;
       throw error;
     }
+    sessionClient.startSessionRenewal();
     this.connected = true;
     return await requester.sendRequest("initialize", {
       protocolVersion: 1,

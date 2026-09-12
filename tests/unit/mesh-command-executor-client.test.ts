@@ -9,6 +9,10 @@ import { closeDatabase, initializeDatabase } from "../../src/persistence/databas
 import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import {
+  MESH_ACP_SESSION_RENEWAL_LEAD_MS,
+  MESH_ACP_SESSION_TTL_MS,
+} from "../../src/shared/mesh-execution";
 import { seedTestOwnerUser } from "../setup";
 
 let dataDir: string;
@@ -116,6 +120,90 @@ describe("MeshCommandExecutorClient", () => {
     expect(JSON.stringify(sessionRequest?.["encryptedEnvironment"])).not.toContain("wapp_test_secret");
     expect(client.getSessionConnection().sessionId).toBe("session-1");
     client.closeSession();
+  });
+
+  test("renews an ACP session before its lease expires", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    let callerEncryptionPublicKey = "";
+    let renewalRequests = 0;
+    let resolveRenewal!: () => void;
+    const renewalStarted = new Promise<void>((resolve) => {
+      resolveRenewal = resolve;
+    });
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown> | null;
+        if (url.endsWith("/session")) {
+          callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: request?.["expiresAt"],
+            encryptedPayload: encryptMeshPayload(
+              { sessionToken: "s".repeat(32) },
+              callerEncryptionPublicKey,
+            ),
+          });
+        }
+        if (url.endsWith("/acp/renew")) {
+          renewalRequests += 1;
+          resolveRenewal();
+          return Response.json({
+            protocolVersion: 1,
+            sessionId: "session-1",
+            expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
+          });
+        }
+        throw new Error(`Unexpected mesh route: ${url}`);
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
+      fetch: fetchImpl,
+    });
+
+    try {
+      await client.openSession();
+      client.startSessionRenewal();
+      await new Promise<void>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error("Timed out waiting for ACP session renewal"));
+        }, 2_000);
+        renewalStarted.then(() => {
+          clearTimeout(timeoutId);
+          resolve();
+        });
+      });
+      expect(renewalRequests).toBe(1);
+    } finally {
+      client.closeSession();
+    }
   });
 
   test("runs long-running commands through the asynchronous mesh protocol", async () => {
