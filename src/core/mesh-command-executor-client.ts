@@ -2,6 +2,7 @@
  * HTTP client for signed, encrypted mesh CommandExecutor sessions.
  */
 
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
@@ -17,6 +18,10 @@ import {
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
+  MESH_ACP_SESSION_RENEWAL_LEAD_MS,
+  MESH_ACP_SESSION_RENEWAL_RETRY_MS,
+  MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
+  MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
 } from "@/shared/mesh-execution";
 import type {
   MeshExecutionAsyncCommandSnapshot,
@@ -39,6 +44,8 @@ import type {
   FileWriteStreamResult,
 } from "./command-executor";
 import type { AgentProvider } from "@/shared/settings";
+
+const log = createLogger("core:mesh-command-executor-client");
 
 export interface MeshCommandExecutorClientConfig {
   workspaceId: string;
@@ -71,6 +78,12 @@ interface MeshSessionResponse {
   sessionId: string;
   expiresAt: string;
   encryptedPayload: unknown;
+}
+
+interface MeshSessionRenewalResponse {
+  protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
+  sessionId: string;
+  expiresAt: string;
 }
 
 interface MeshRpcResponse {
@@ -235,6 +248,9 @@ export class MeshCommandExecutorClient {
   private workerTls: Bun.TLSOptions | undefined;
   private openingSession: Promise<void> | null = null;
   private sessionGeneration = 0;
+  private sessionRenewalTimer: ReturnType<typeof setTimeout> | undefined;
+  private sessionRenewalController: AbortController | null = null;
+  private sessionRenewalAttempt = 0;
   private readonly activeStreamControllers = new Set<AbortController>();
   private readonly activeRequestControllers = new Set<AbortController>();
 
@@ -387,7 +403,151 @@ export class MeshCommandExecutorClient {
     };
   }
 
+  startSessionRenewal(): void {
+    if (this.channel !== MESH_ACP_CHANNEL || !this.session) {
+      return;
+    }
+    this.clearSessionRenewal();
+    this.scheduleSessionRenewal(this.sessionGeneration);
+  }
 
+  private clearSessionRenewal(): void {
+    if (this.sessionRenewalTimer !== undefined) {
+      clearTimeout(this.sessionRenewalTimer);
+      this.sessionRenewalTimer = undefined;
+    }
+    this.sessionRenewalController?.abort();
+    this.sessionRenewalController = null;
+    this.sessionRenewalAttempt = 0;
+  }
+
+  private scheduleSessionRenewal(generation: number, requestedDelayMs?: number): void {
+    if (
+      this.channel !== MESH_ACP_CHANNEL
+      || generation !== this.sessionGeneration
+      || !this.session
+      || !this.endpoint
+    ) {
+      return;
+    }
+    if (this.sessionRenewalTimer !== undefined) {
+      clearTimeout(this.sessionRenewalTimer);
+    }
+    const remainingMs = Math.max(1, this.session.expiresAt - Date.now());
+    if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+      return;
+    }
+    const defaultDelayMs = Math.max(1, remainingMs - MESH_ACP_SESSION_RENEWAL_LEAD_MS);
+    const latestSafeDelayMs = remainingMs - MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS;
+    const delayMs = Math.max(
+      1,
+      Math.min(requestedDelayMs ?? defaultDelayMs, latestSafeDelayMs),
+    );
+    const timer = setTimeout(() => {
+      this.sessionRenewalTimer = undefined;
+      void this.renewAcpSession(generation);
+    }, delayMs);
+    timer.unref?.();
+    this.sessionRenewalTimer = timer;
+  }
+
+  private async renewAcpSession(generation: number): Promise<void> {
+    if (
+      generation !== this.sessionGeneration
+      || !this.session
+      || !this.endpoint
+      || this.sessionRenewalController
+    ) {
+      return;
+    }
+    const session = this.session;
+    const endpoint = this.endpoint;
+    const controller = new AbortController();
+    this.sessionRenewalController = controller;
+    const attempt = this.sessionRenewalAttempt + 1;
+    try {
+      const response = await this.post(
+        resolveMeshRoute(endpoint, "api/mesh/internal/execution/acp/renew"),
+        null,
+        {
+          "x-clanky-mesh-session-id": session.sessionId,
+          "x-clanky-mesh-session-token": session.sessionToken,
+        },
+        controller.signal,
+        MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
+      );
+      const body = parseResponseShape<MeshSessionRenewalResponse>(
+        response,
+        ["protocolVersion", "sessionId", "expiresAt"],
+        "The mesh ACP session renewal response is invalid.",
+      );
+      if (
+        body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION
+        || body.sessionId !== session.sessionId
+      ) {
+        throw new DomainError(
+          "mesh_execution_response_invalid",
+          "The mesh ACP session renewal response does not match the session.",
+        );
+      }
+      const expiresAt = new Date(body.expiresAt).getTime();
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        throw new DomainError(
+          "mesh_execution_session_expired",
+          "The renewed mesh ACP session has already expired.",
+        );
+      }
+      if (
+        generation !== this.sessionGeneration
+        || this.session !== session
+      ) {
+        return;
+      }
+      this.session = { ...session, expiresAt };
+      this.sessionRenewalAttempt = 0;
+      this.scheduleSessionRenewal(generation);
+    } catch (error) {
+      if (
+        controller.signal.aborted
+        || generation !== this.sessionGeneration
+        || this.session !== session
+      ) {
+        return;
+      }
+      this.sessionRenewalAttempt = attempt;
+      const terminal = error instanceof DomainError && (
+        error.code === "mesh_execution_session_expired"
+        || error.code === "mesh_execution_session_invalid"
+        || error.code === "mesh_execution_context_changed"
+        || error.code === "mesh_acp_unavailable"
+        || error.code === "mesh_execution_capability_unavailable"
+        || error.code === "mesh_remote_execution_disabled"
+      );
+      const retryDelayMs = Math.min(
+        MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
+        MESH_ACP_SESSION_RENEWAL_RETRY_MS * (2 ** Math.min(attempt - 1, 3)),
+      );
+      const remainingMs = Math.max(0, session.expiresAt - Date.now());
+      const details = {
+        sessionId: session.sessionId,
+        attempt,
+        remainingMs,
+        error: String(error),
+      };
+      if (terminal) {
+        log.error("Mesh ACP session renewal became unrecoverable", details);
+      } else if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+        log.error("Mesh ACP session renewal window elapsed", details);
+      } else {
+        log.warn("Mesh ACP session renewal failed; retrying", details);
+        this.scheduleSessionRenewal(generation, retryDelayMs);
+      }
+    } finally {
+      if (this.sessionRenewalController === controller) {
+        this.sessionRenewalController = null;
+      }
+    }
+  }
 
   async exec(
     command: string,
@@ -1064,6 +1224,7 @@ export class MeshCommandExecutorClient {
 
   closeSession(): void {
     this.sessionGeneration += 1;
+    this.clearSessionRenewal();
     for (const controller of this.activeStreamControllers) {
       controller.abort();
     }

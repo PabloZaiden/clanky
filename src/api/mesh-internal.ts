@@ -24,6 +24,7 @@ import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-termi
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshManager } from "../core/mesh-manager";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
+import { meshAcpGateway } from "../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../core/mesh-tcp-tunnel-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
@@ -31,6 +32,7 @@ import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 import { isDomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
+import { MESH_EXECUTION_PROTOCOL_VERSION } from "@/shared/mesh-execution";
 
 function internalMeshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
@@ -62,6 +64,8 @@ function internalMeshErrorResponse(error: unknown): Response {
             ? 403
           : error.code === "mesh_execution_async_command_not_found"
             ? 404
+          : error.code === "mesh_acp_unavailable"
+            ? 503
           : error.code === "workspace_not_found"
             ? 404
           : error.code === "execution_host_directory_invalid"
@@ -404,6 +408,30 @@ export const meshInternalRoutes = defineRoutes({
       }
     },
   },
+  "/api/mesh/internal/execution/acp/renew": {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Renew an authenticated mesh ACP relay lease.",
+    tags: ["mesh", "internal", "execution", "acp"],
+    async POST(req): Promise<Response> {
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const sessionToken = req.headers.get("x-clanky-mesh-session-token");
+      if (!sessionId || !sessionToken) {
+        return errorResponse("mesh_execution_session_invalid", "Mesh ACP session headers are required.", 401);
+      }
+      try {
+        requireMeshRuntimeRole("worker");
+        const expiresAt = await meshAcpGateway.renew(sessionId, sessionToken);
+        return Response.json({
+          protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+          sessionId,
+          expiresAt: new Date(expiresAt).toISOString(),
+        });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+  },
   "/api/mesh/internal/terminal/session": {
     auth: "public",
     sameOrigin: "never",
@@ -534,6 +562,7 @@ export const meshWorkerInternalRoutes = defineRoutes({
   "/api/mesh/internal/execution/async": meshInternalRoutes["/api/mesh/internal/execution/async"]!,
   "/api/mesh/internal/execution/file": meshInternalRoutes["/api/mesh/internal/execution/file"]!,
   "/api/mesh/internal/execution/acp": meshInternalRoutes["/api/mesh/internal/execution/acp"]!,
+  "/api/mesh/internal/execution/acp/renew": meshInternalRoutes["/api/mesh/internal/execution/acp/renew"]!,
   "/api/mesh/internal/terminal/session": meshInternalRoutes["/api/mesh/internal/terminal/session"]!,
   "/api/mesh/internal/terminal": meshInternalRoutes["/api/mesh/internal/terminal"]!,
   "/api/mesh/internal/tcp-tunnel/session": meshInternalRoutes["/api/mesh/internal/tcp-tunnel/session"]!,

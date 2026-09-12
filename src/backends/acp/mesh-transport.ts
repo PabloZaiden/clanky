@@ -125,14 +125,19 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     this.session = { id: crypto.randomUUID(), kind: "remote" };
     this.connectionInfo = { baseUrl: websocketUrl, authHeaders: {} };
     socket.onmessage = (event: MessageEvent) => {
-      void this.handleSocketMessage(event.data);
+      if (this.socket !== socket) return;
+      void this.handleSocketMessage(event.data, socket);
     };
     socket.onerror = () => {
-      this.failConnection("Mesh ACP WebSocket failed.");
+      if (this.socket !== socket) return;
+      this.failConnection("Mesh ACP WebSocket failed.", socket);
     };
     socket.onclose = (event: CloseEvent) => {
-      if (this.closing) return;
+      if (this.closing || this.socket !== socket) return;
       this.connected = false;
+      this.socket = null;
+      this.sessionClient?.closeSession();
+      this.sessionClient = null;
       const error = new AcpError(
         "acp_transport_closed",
         event.reason.trim() || "The Mesh ACP WebSocket closed.",
@@ -155,6 +160,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       this.sessionClient = null;
       throw error;
     }
+    sessionClient.startSessionRenewal();
     this.connected = true;
     return await requester.sendRequest("initialize", {
       protocolVersion: 1,
@@ -185,7 +191,8 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     this.transportClosedHandler = null;
   }
 
-  private async handleSocketMessage(data: unknown): Promise<void> {
+  private async handleSocketMessage(data: unknown, socket: WebSocket): Promise<void> {
+    if (this.socket !== socket) return;
     let text: string;
     if (typeof data === "string") {
       text = data;
@@ -194,11 +201,12 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     } else if (data instanceof Blob) {
       text = await data.text();
     } else {
-      this.failConnection("Mesh ACP returned a non-text WebSocket message.");
+      this.failConnection("Mesh ACP returned a non-text WebSocket message.", socket);
       return;
     }
+    if (this.socket !== socket) return;
     if (Buffer.byteLength(text, "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
-      this.failConnection("Mesh ACP message exceeds the size limit.");
+      this.failConnection("Mesh ACP message exceeds the size limit.", socket);
       return;
     }
     try {
@@ -208,15 +216,16 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       }
       this.messageHandler?.(message);
     } catch (error) {
-      this.failConnection(`Mesh ACP returned invalid JSON-RPC: ${String(error)}`);
+      this.failConnection(`Mesh ACP returned invalid JSON-RPC: ${String(error)}`, socket);
     }
   }
 
-  private failConnection(message: string): void {
+  private failConnection(message: string, socket: WebSocket): void {
+    if (this.socket !== socket) return;
     const error = new AcpError("acp_transport_closed", message);
     this.requester?.rejectPending(error);
-    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
-      this.socket.close(1011, message);
+    if (socket.readyState !== WebSocket.CLOSED) {
+      socket.close(1011, message);
     }
   }
 }

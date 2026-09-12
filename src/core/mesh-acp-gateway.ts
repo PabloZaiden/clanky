@@ -3,7 +3,10 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { MESH_EXECUTION_MAX_MESSAGE_BYTES } from "@/shared/mesh-execution";
+import {
+  MESH_ACP_CHANNEL,
+  MESH_EXECUTION_MAX_MESSAGE_BYTES,
+} from "@/shared/mesh-execution";
 import { AcpProcess } from "../backends/acp/acp-process";
 import type { AcpProcessExit } from "../backends/acp/types";
 import {
@@ -57,7 +60,7 @@ export interface MeshAcpSocket {
 interface RelayState {
   socket: MeshAcpSocket;
   process: AcpProcess;
-  expiryTimer: ReturnType<typeof setTimeout>;
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
 function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
@@ -191,16 +194,9 @@ export class MeshAcpGateway {
       return;
     }
 
-    const expiryTimer = setTimeout(() => {
-      void this.close(sessionId);
-      try {
-        socket.close(1000, "Mesh ACP session expired");
-      } catch {
-        // The socket may already be closed.
-      }
-    }, Math.max(1, config.expiresAt - Date.now()));
-    expiryTimer.unref?.();
-    this.relays.set(sessionId, { socket, process, expiryTimer });
+    const relay: RelayState = { socket, process };
+    this.relays.set(sessionId, relay);
+    this.scheduleRelayExpiry(sessionId, relay, config.expiresAt);
     process.start();
 
     if (outputLimitExceeded) {
@@ -219,6 +215,73 @@ export class MeshAcpGateway {
         startupStderr,
       );
     }
+  }
+
+  private scheduleRelayExpiry(
+    sessionId: string,
+    relay: RelayState,
+    expiresAt: number,
+  ): void {
+    if (relay.expiryTimer !== undefined) {
+      clearTimeout(relay.expiryTimer);
+    }
+    const expiryTimer = setTimeout(() => {
+      if (this.relays.get(sessionId) !== relay) {
+        return;
+      }
+      void this.close(sessionId);
+      try {
+        relay.socket.close(1000, "Mesh ACP session expired");
+      } catch {
+        // The socket may already be closed.
+      }
+    }, Math.max(1, expiresAt - Date.now()));
+    expiryTimer.unref?.();
+    relay.expiryTimer = expiryTimer;
+  }
+
+  async renew(sessionId: string, sessionToken: string): Promise<number> {
+    const relay = this.relays.get(sessionId);
+    if (!relay) {
+      throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
+    }
+    let expiresAt: number;
+    try {
+      expiresAt = await meshExecutionGateway.renewSession(
+        sessionId,
+        sessionToken,
+        MESH_ACP_CHANNEL,
+      );
+    } catch (error) {
+      if (
+        this.relays.get(sessionId) === relay
+        && error instanceof DomainError
+        && (
+          error.code === "mesh_execution_context_changed"
+          || error.code === "mesh_execution_session_expired"
+          || error.code === "mesh_execution_session_invalid"
+          || error.code === "mesh_execution_capability_unavailable"
+          || error.code === "mesh_remote_execution_disabled"
+        )
+      ) {
+        await this.closeRelay(sessionId);
+        try {
+          relay.socket.close(1011, "Mesh ACP session unavailable");
+        } catch (closeError) {
+          log.debug("Failed to close mesh ACP socket after renewal failure", {
+            sessionId,
+            error: String(closeError),
+          });
+        }
+      }
+      throw error;
+    }
+    if (this.relays.get(sessionId) !== relay) {
+      meshExecutionGateway.closeSession(sessionId);
+      throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
+    }
+    this.scheduleRelayExpiry(sessionId, relay, expiresAt);
+    return expiresAt;
   }
 
   async message(sessionId: string, value: string | Buffer): Promise<void> {
@@ -263,7 +326,10 @@ export class MeshAcpGateway {
       return;
     }
     this.relays.delete(sessionId);
-    clearTimeout(relay.expiryTimer);
+    if (relay.expiryTimer !== undefined) {
+      clearTimeout(relay.expiryTimer);
+      relay.expiryTimer = undefined;
+    }
     await relay.process.stop({
       gracefulWaitMs: 500,
       forceWaitMs: 0,
@@ -289,7 +355,10 @@ export class MeshAcpGateway {
       return;
     }
     this.relays.delete(sessionId);
-    clearTimeout(relay.expiryTimer);
+    if (relay.expiryTimer !== undefined) {
+      clearTimeout(relay.expiryTimer);
+      relay.expiryTimer = undefined;
+    }
     meshExecutionGateway.closeSession(sessionId);
     try {
       relay.socket.close(1011, meshAcpExitReason(provider, exit, stderr));
