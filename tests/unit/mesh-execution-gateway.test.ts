@@ -126,6 +126,8 @@ describe("mesh asynchronous command lifecycle", () => {
   ) {
     let stdoutOffset = 0;
     let stderrOffset = 0;
+    let streamedStdout = "";
+    let streamedStderr = "";
     let lastStatus = "running";
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
@@ -138,10 +140,18 @@ describe("mesh asynchronous command lifecycle", () => {
         stderrOffset,
       );
       lastStatus = snapshot.status;
-      stdoutOffset = snapshot.output?.nextStdoutOffset ?? stdoutOffset;
-      stderrOffset = snapshot.output?.nextStderrOffset ?? stderrOffset;
+      if (snapshot.output) {
+        streamedStdout += snapshot.output.stdout;
+        streamedStderr += snapshot.output.stderr;
+        stdoutOffset = snapshot.output.nextStdoutOffset;
+        stderrOffset = snapshot.output.nextStderrOffset;
+      }
       if (snapshot.status !== "running") {
-        return snapshot;
+        return {
+          snapshot,
+          streamedStdout,
+          streamedStderr,
+        };
       }
       await Bun.sleep(20);
     }
@@ -164,10 +174,10 @@ describe("mesh asynchronous command lifecycle", () => {
     });
     const completed = await waitForTerminal(session, started.jobId);
 
-    expect(completed.status).toBe("completed");
-    expect(completed.output?.stdout).toBe("gateway-output");
-    expect(completed.result?.stdout).toBe("gateway-output");
-    expect(completed.result?.exitCode).toBe(0);
+    expect(completed.snapshot.status).toBe("completed");
+    expect(completed.streamedStdout).toBe("gateway-output");
+    expect(completed.snapshot.result?.stdout).toBe("gateway-output");
+    expect(completed.snapshot.result?.exitCode).toBe(0);
 
     const cancellable = await gateway.startAsyncCommand({
       protocolVersion: 1,
