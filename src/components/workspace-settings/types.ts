@@ -23,6 +23,7 @@ export interface WorkspaceSettingsFormProps {
     sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
+    allowWorktrees: boolean,
   ) => Promise<boolean>;
   /** Callback to test connection */
   onTest: (

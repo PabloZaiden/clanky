@@ -1788,6 +1788,60 @@ describe("Chats API Integration", () => {
     expect(persisted?.state.worktree).toBeUndefined();
   });
 
+  test("blocks new worktree activation when the workspace capability is disabled", async () => {
+    const disableResponse = await fetch(`${baseUrl}/api/workspaces/${testWorkspaceId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowWorktrees: false }),
+    });
+    expect(disableResponse.status).toBe(200);
+
+    try {
+      const noWorktreeResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Chat Without Worktree",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(noWorktreeResponse.status).toBe(201);
+
+      const worktreeResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Rejected Worktree Chat",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: true,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(worktreeResponse.status).toBe(409);
+      expect((await worktreeResponse.json()).error).toBe("workspace_worktrees_disabled");
+
+      const created = await noWorktreeResponse.json() as { config: { id: string } };
+      const updateResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useWorktree: true }),
+      });
+      expect(updateResponse.status).toBe(409);
+      expect((await updateResponse.json()).error).toBe("workspace_worktrees_disabled");
+    } finally {
+      const enableResponse = await fetch(`${baseUrl}/api/workspaces/${testWorkspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowWorktrees: true }),
+      });
+      expect(enableResponse.status).toBe(200);
+    }
+  });
+
   test("persists quick chat worktree preference and defaults unset settings to disabled", async () => {
     await setQuickChatSettings(DEFAULT_QUICK_CHAT_SETTINGS);
 

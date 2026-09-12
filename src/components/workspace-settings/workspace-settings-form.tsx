@@ -38,6 +38,7 @@ export function WorkspaceSettingsForm({
   const [name, setName] = useState("");
   const [archived, setArchived] = useState(false);
   const [allowClankyContext, setAllowClankyContext] = useState(false);
+  const [allowWorktrees, setAllowWorktrees] = useState(true);
   const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
   const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(null);
   const [sshTarget, setSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
@@ -49,6 +50,7 @@ export function WorkspaceSettingsForm({
       setName(workspace.name);
       setArchived(workspace.archived === true);
       setAllowClankyContext(workspace.allowClankyContext === true);
+      setAllowWorktrees(workspace.allowWorktrees !== false);
       setServerSettings(workspace.serverSettings);
       setExecutionHost(workspace.executionHostBinding.host);
       setSshTarget(
@@ -67,6 +69,7 @@ export function WorkspaceSettingsForm({
     setName("");
     setArchived(false);
     setAllowClankyContext(false);
+    setAllowWorktrees(true);
     setServerSettings(null);
     setExecutionHost(null);
     setSshTarget(null);
@@ -86,6 +89,7 @@ export function WorkspaceSettingsForm({
       sshTarget,
       archived,
       allowClankyContext,
+      allowWorktrees,
     );
     if (success) {
       log.debug("Workspace settings saved successfully");
@@ -200,6 +204,23 @@ export function WorkspaceSettingsForm({
               <span className="block font-medium text-gray-900 dark:text-gray-100">Allow Clanky CLI access</span>
               <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                 Allow new processes in this workspace to authenticate with Clanky.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {workspace?.workspaceType === "git" && (
+          <label className="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={allowWorktrees}
+              onChange={(event) => setAllowWorktrees(event.currentTarget.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-medium text-gray-900 dark:text-gray-100">Allow worktrees</span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                Allow new tasks, chats, and agents in this workspace to use isolated Git worktrees.
               </span>
             </span>
           </label>

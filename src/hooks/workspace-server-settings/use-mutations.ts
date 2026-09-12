@@ -92,6 +92,7 @@ export function useWorkspaceMutations(
     sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
+    allowWorktrees: boolean,
   ): Promise<boolean> => {
     if (!workspaceId) {
       setError("No workspace selected");
@@ -112,6 +113,7 @@ export function useWorkspaceMutations(
           ...(sshTarget ? { sshTarget } : {}),
           archived,
           allowClankyContext,
+          allowWorktrees,
         }),
         action: "Update workspace",
         fallbackMessage: "Failed to update workspace",

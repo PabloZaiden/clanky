@@ -80,6 +80,9 @@ export function buildShellSettingsSections({
                   useWorktree: workspaces.find(
                     (workspace) => workspace.id === event.currentTarget.value,
                   )?.workspaceType === "git"
+                    && workspaces.find(
+                      (workspace) => workspace.id === event.currentTarget.value,
+                    )?.allowWorktrees !== false
                     ? quickChatSettings.settings.useWorktree
                     : false,
                 })}
@@ -118,13 +121,20 @@ export function buildShellSettingsSections({
             <SettingsCheckbox
               id="quick-chat-worktree"
               ariaLabel="Use worktrees for quick chats"
-              checked={quickChatSettings.settings.useWorktree}
+              checked={
+                selectedQuickChatWorkspace.allowWorktrees !== false
+                  && quickChatSettings.settings.useWorktree
+              }
               onChange={(event) => void quickChatSettings.updateSettings({
                 workspaceId: quickChatSettings.settings.workspaceId,
                 model: quickChatSettings.settings.model,
                 useWorktree: event.currentTarget.checked,
               })}
-              disabled={quickChatSettings.loading || quickChatSettings.saving}
+              disabled={
+                quickChatSettings.loading
+                || quickChatSettings.saving
+                || selectedQuickChatWorkspace.allowWorktrees === false
+              }
             />
           ),
           contentPlacement: "inline" as const,

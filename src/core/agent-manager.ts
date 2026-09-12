@@ -32,7 +32,11 @@ import {
 } from "./deterministic-agent-generation";
 import { backendManager } from "./backend";
 import type { CommandExecutor } from "./command-executor";
-import { assertGitBackedWorkspace, isGitBackedWorkspace } from "./workspace-capabilities";
+import {
+  assertGitBackedWorkspace,
+  assertWorktreesAllowed,
+  isGitBackedWorkspace,
+} from "./workspace-capabilities";
 
 const INTERRUPT_CHAT_ID_WAIT_MS = 2000;
 const INTERRUPT_CHAT_ID_POLL_MS = 50;
@@ -115,6 +119,9 @@ export class AgentManager {
         workspace,
         "Directory workspaces do not support branches or worktrees.",
       );
+    }
+    if (options.useWorktree) {
+      assertWorktreesAllowed(workspace);
     }
     const now = createTimestamp();
     const nextRunAt = options.schedule.nextRunAt
@@ -337,6 +344,13 @@ export class AgentManager {
         workspace,
         "Directory workspaces do not support branches or worktrees.",
       );
+    }
+    if (
+      workspace
+      && updates.useWorktree === true
+      && agent.config.useWorktree !== true
+    ) {
+      assertWorktreesAllowed(workspace);
     }
     const nextSchedule = updates.schedule
       ? {

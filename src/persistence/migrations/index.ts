@@ -1572,6 +1572,19 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 51,
+    name: "add_workspace_worktree_capability",
+    up: (db) => {
+      if (!tableExists(db, "workspaces")) {
+        return;
+      }
+      const columns = getTableColumns(db, "workspaces");
+      if (!columns.includes("allow_worktrees")) {
+        db.run("ALTER TABLE workspaces ADD COLUMN allow_worktrees INTEGER NOT NULL DEFAULT 1");
+      }
+    },
+  },
 ];
 
 const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());

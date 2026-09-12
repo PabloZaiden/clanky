@@ -193,7 +193,26 @@ describe("Workspace API Integration", () => {
       expect(data.createdAt).toBeDefined();
       expect(data.updatedAt).toBeDefined();
       expect(data.allowClankyContext).toBe(false);
+      expect(data.allowWorktrees).toBe(true);
       expect(data.workspaceType).toBe("git");
+    });
+
+    test("persists disabled worktrees when creating a workspace", async () => {
+      const response = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "No Worktrees Workspace",
+          directory: testWorkDir,
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
+          allowWorktrees: false,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.allowWorktrees).toBe(false);
     });
 
     test("creates, updates, and switches a workspace-owned SSH target", async () => {
@@ -597,9 +616,11 @@ describe("Workspace API Integration", () => {
         id: string;
         archived?: boolean;
         allowClankyContext?: boolean;
+        allowWorktrees?: boolean;
       };
       expect(workspace.archived).toBe(false);
       expect(workspace.allowClankyContext).toBe(false);
+      expect(workspace.allowWorktrees).toBe(true);
 
       const archiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
         method: "PUT",
@@ -607,19 +628,23 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           archived: true,
           allowClankyContext: true,
+          allowWorktrees: false,
         }),
       });
       expect(archiveResponse.ok).toBe(true);
       const archivedWorkspace = await archiveResponse.json() as {
         archived?: boolean;
         allowClankyContext?: boolean;
+        allowWorktrees?: boolean;
       };
       expect(archivedWorkspace.archived).toBe(true);
       expect(archivedWorkspace.allowClankyContext).toBe(true);
+      expect(archivedWorkspace.allowWorktrees).toBe(false);
 
       const persistedArchivedWorkspace = await getWorkspace(workspace.id);
       expect(persistedArchivedWorkspace?.archived).toBe(true);
       expect(persistedArchivedWorkspace?.allowClankyContext).toBe(true);
+      expect(persistedArchivedWorkspace?.allowWorktrees).toBe(false);
 
       const unarchiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
         method: "PUT",
@@ -627,19 +652,23 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           archived: false,
           allowClankyContext: false,
+          allowWorktrees: true,
         }),
       });
       expect(unarchiveResponse.ok).toBe(true);
       const unarchivedWorkspace = await unarchiveResponse.json() as {
         archived?: boolean;
         allowClankyContext?: boolean;
+        allowWorktrees?: boolean;
       };
       expect(unarchivedWorkspace.archived).toBe(false);
       expect(unarchivedWorkspace.allowClankyContext).toBe(false);
+      expect(unarchivedWorkspace.allowWorktrees).toBe(true);
 
       const persistedUnarchivedWorkspace = await getWorkspace(workspace.id);
       expect(persistedUnarchivedWorkspace?.archived).toBe(false);
       expect(persistedUnarchivedWorkspace?.allowClankyContext).toBe(false);
+      expect(persistedUnarchivedWorkspace?.allowWorktrees).toBe(true);
     });
 
     test("allows unchanged settings saves when a workspace terminal exists", async () => {

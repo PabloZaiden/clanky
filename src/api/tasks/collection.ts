@@ -28,6 +28,9 @@ function mapTaskCreationError(error: unknown, workspaceId: string): Response | n
   if (error.code === "workspace_git_required") {
     return errorResponse(error.code, error.message, 409);
   }
+  if (error.code === "workspace_worktrees_disabled") {
+    return errorResponse(error.code, error.message, 409);
+  }
 
   return errorResponse(error.code, error.message, 400);
 }

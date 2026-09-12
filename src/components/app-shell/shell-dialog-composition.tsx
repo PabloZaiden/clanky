@@ -174,7 +174,10 @@ export function useShellDialogComposition({
       const chat = await createChat({
         workspaceId: quickChatWorkspace.id,
         model: settings.model,
-        useWorktree: quickChatWorkspace.workspaceType === "git" ? settings.useWorktree : false,
+        useWorktree: quickChatWorkspace.workspaceType === "git"
+          && quickChatWorkspace.allowWorktrees !== false
+          ? settings.useWorktree
+          : false,
         autoApprovePermissions: true,
         quick: true,
       } satisfies CreateChatRequest);

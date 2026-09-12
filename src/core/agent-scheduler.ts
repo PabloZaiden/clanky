@@ -192,6 +192,7 @@ export class AgentScheduler {
         agentId: latest.config.id,
         error: String(error),
       });
+      return agentRunner.recordStartFailure(latest, "schedule", { scheduledFor }, error);
     });
   }
 }

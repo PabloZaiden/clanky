@@ -29,7 +29,7 @@ import { getTaskWorkingDirectory, type GenerateTaskTitleOptions } from "./task-t
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError, TaskUpdateError, type TaskUpdateErrorCode } from "./task-errors";
 import { getWorkspace } from "../../persistence/workspaces";
-import { isGitBackedWorkspace } from "../workspace-capabilities";
+import { assertWorktreesAllowed, isGitBackedWorkspace } from "../workspace-capabilities";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -60,6 +60,10 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
       "Tasks require a Git-backed workspace.",
       { details: { workspaceId: options.workspaceId } },
     );
+  }
+  const useWorktree = options.useWorktree ?? DEFAULT_TASK_CONFIG.useWorktree;
+  if (workspace && useWorktree) {
+    assertWorktreesAllowed(workspace, "Worktrees are disabled for this workspace.");
   }
 
   log.debug("createTask - Input", {
@@ -97,7 +101,7 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
       commitScope: normalizeCommitScope(options.gitCommitScope ?? DEFAULT_TASK_CONFIG.git.commitScope) ?? "",
     },
     baseBranch: options.baseBranch,
-    useWorktree: options.useWorktree ?? DEFAULT_TASK_CONFIG.useWorktree,
+    useWorktree,
     clearPlanningFolder: options.clearPlanningFolder ?? DEFAULT_TASK_CONFIG.clearPlanningFolder,
     planMode: options.planMode,
     autoAcceptPlan,
@@ -376,6 +380,13 @@ export async function updateTaskImpl(
   ) {
     log.warn(`Rejected useWorktree update for task ${taskId} after git setup`);
     throw createTaskUpdateError("Use Worktree cannot be updated after git setup.", "use_worktree_immutable");
+  }
+
+  if (updates.useWorktree === true && currentConfig.useWorktree !== true) {
+    const workspace = await getWorkspace(currentConfig.workspaceId);
+    if (workspace) {
+      assertWorktreesAllowed(workspace, "Worktrees are disabled for this workspace.");
+    }
   }
 
   if (updates.baseBranch !== undefined && task.state.status === "draft") {

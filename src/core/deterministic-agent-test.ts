@@ -9,6 +9,8 @@ import { validateDeterministicAgentCode } from "./deterministic-agent-code";
 import { DeterministicAgentOutput } from "./deterministic-agent-output";
 import { executeDeterministicAgent } from "./deterministic-agent-runtime";
 import { managedContextIdentityResolver } from "./managed-context-identity";
+import { getWorkspace } from "../persistence/workspaces";
+import { assertWorktreesAllowed } from "./workspace-capabilities";
 
 const log = createLogger("deterministic-agent-test");
 
@@ -92,6 +94,13 @@ export async function testDeterministicAgentCode(
   let chatId: string | undefined;
 
   try {
+    if (options.useWorktree) {
+      const workspace = await getWorkspace(options.workspaceId);
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${options.workspaceId}`);
+      }
+      assertWorktreesAllowed(workspace);
+    }
     const chat = await chatManager.createAgentRunChat({
       name: `Test code: ${options.name}`,
       workspaceId: options.workspaceId,

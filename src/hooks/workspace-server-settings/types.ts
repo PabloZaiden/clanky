@@ -33,6 +33,7 @@ export interface UseWorkspaceServerSettingsResult {
     sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
+    allowWorktrees: boolean,
   ) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
   testConnection: (

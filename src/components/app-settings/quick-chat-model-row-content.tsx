@@ -116,7 +116,9 @@ export function QuickChatModelRowContent({
       await onUpdate({
         workspaceId: workspace?.id ?? "",
         model: null,
-        useWorktree: workspace?.workspaceType === "git" ? settings.useWorktree : false,
+        useWorktree: workspace?.workspaceType === "git" && workspace.allowWorktrees !== false
+          ? settings.useWorktree
+          : false,
       });
       return;
     }
@@ -128,7 +130,9 @@ export function QuickChatModelRowContent({
         modelID: parsedModel.modelID,
         variant: parsedModel.variant,
       },
-      useWorktree: workspace.workspaceType === "git" ? settings.useWorktree : false,
+      useWorktree: workspace.workspaceType === "git" && workspace.allowWorktrees !== false
+        ? settings.useWorktree
+        : false,
     });
   }
 

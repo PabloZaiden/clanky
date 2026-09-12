@@ -16,6 +16,7 @@ import { errorResponse, internalErrorResponse, successResponse } from "../helper
 import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
 import { UpdateTaskRequestSchema } from "@/contracts/schemas";
+import { isDomainError } from "../../core/domain-error";
 
 const log = createLogger("api:tasks");
 
@@ -95,6 +96,9 @@ async function applyTaskUpdates(
   } catch (error) {
     const errorMessage = String(error);
     if (error instanceof TaskUpdateError) {
+      return errorResponse(error.code, error.message, 409);
+    }
+    if (isDomainError(error) && error.code === "workspace_worktrees_disabled") {
       return errorResponse(error.code, error.message, 409);
     }
     log.error("Failed to update task", { taskId, error: errorMessage });

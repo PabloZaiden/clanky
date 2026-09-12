@@ -86,7 +86,7 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "directory" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext"
+    "name" | "directory" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext" | "allowWorktrees"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
@@ -99,6 +99,7 @@ export async function updateWorkspace(
     hasPrivateUpdate: updates.isPrivate !== undefined,
     hasArchivedUpdate: updates.archived !== undefined,
     hasClankyContextUpdate: updates.allowClankyContext !== undefined,
+    hasWorktreesUpdate: updates.allowWorktrees !== undefined,
   });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
@@ -160,6 +161,11 @@ export async function updateWorkspace(
   if (updates.allowClankyContext !== undefined) {
     setClauses.push("allow_clanky_context = ?");
     values.push(updates.allowClankyContext ? 1 : 0);
+  }
+
+  if (updates.allowWorktrees !== undefined) {
+    setClauses.push("allow_worktrees = ?");
+    values.push(updates.allowWorktrees ? 1 : 0);
   }
 
   if (setClauses.length === 0) {

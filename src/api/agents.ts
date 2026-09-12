@@ -20,7 +20,10 @@ import { parseAndValidate, validateRequest } from "./validation";
 import { generateDeterministicAgentCode } from "../core/deterministic-agent-generation";
 import { testDeterministicAgentCode } from "../core/deterministic-agent-test";
 import { isDomainError } from "../core/domain-error";
-import { isGitBackedWorkspace } from "../core/workspace-capabilities";
+import {
+  assertWorktreesAllowed,
+  isGitBackedWorkspace,
+} from "../core/workspace-capabilities";
 import {
   exportAgentConfig,
   getAgentTransferFilename,
@@ -433,6 +436,16 @@ async function prepareDeterministicAgentTest(
       409,
     );
   }
+  if (body.useWorktree) {
+    try {
+      assertWorktreesAllowed(workspace);
+    } catch (error) {
+      if (isDomainError(error)) {
+        return errorResponse(error.code, error.message, 409);
+      }
+      throw error;
+    }
+  }
   const modelValidation = await validateAgentModel(body.workspaceId, body.model);
   if (modelValidation) {
     return modelValidation;
@@ -722,6 +735,10 @@ export const agentsRoutes = defineRoutes({
             error: "workspace_git_required",
             status: 409,
           },
+          workspace_worktrees_disabled: {
+            error: "workspace_worktrees_disabled",
+            status: 409,
+          },
         });
         if (response.status >= 500) {
           log.error("Failed to create agent", {
@@ -803,6 +820,10 @@ export const agentsRoutes = defineRoutes({
             error: "workspace_git_required",
             status: 409,
           },
+          workspace_worktrees_disabled: {
+            error: "workspace_worktrees_disabled",
+            status: 409,
+          },
           workspace_not_found: {
             error: "workspace_not_found",
             status: 404,
@@ -872,6 +893,10 @@ export const agentsRoutes = defineRoutes({
           },
           workspace_git_required: {
             error: "workspace_git_required",
+            status: 409,
+          },
+          workspace_worktrees_disabled: {
+            error: "workspace_worktrees_disabled",
             status: 409,
           },
         });
@@ -1003,6 +1028,10 @@ export const agentsRoutes = defineRoutes({
             },
             agent_already_running: {
               error: "agent_already_running",
+              status: 409,
+            },
+            workspace_worktrees_disabled: {
+              error: "workspace_worktrees_disabled",
               status: 409,
             },
           },
