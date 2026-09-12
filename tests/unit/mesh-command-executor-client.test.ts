@@ -10,9 +10,11 @@ import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-ide
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
+  MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
   MESH_ACP_SESSION_RENEWAL_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
+  MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
 import { seedTestOwnerUser } from "../setup";
@@ -204,6 +206,86 @@ describe("MeshCommandExecutorClient", () => {
         });
       });
       expect(renewalRequests).toBe(1);
+    } finally {
+      client.closeSession();
+    }
+  });
+
+  test("falls back to the legacy ACP lease for older workers", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    const sessionRequests: Record<string, unknown>[] = [];
+    const fetchImpl = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        if (!url.endsWith("/session")) {
+          throw new Error(`Unexpected mesh route: ${url}`);
+        }
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const headers = init?.headers as Record<string, string>;
+        expect(headers["x-clanky-mesh-request-id"]).toBe(request["requestId"] as string);
+        sessionRequests.push(request);
+        if (sessionRequests.length === 1) {
+          return Response.json(
+            {
+              error: "mesh_execution_session_expiry_invalid",
+              message: "The execution session expiry is too far in the future.",
+            },
+            { status: 400 },
+          );
+        }
+        return Response.json({
+          protocolVersion: 1,
+          sessionId: "legacy-session",
+          expiresAt: request["expiresAt"],
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: "s".repeat(32) },
+            request["callerEncryptionPublicKey"] as string,
+          ),
+        });
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      fetch: fetchImpl,
+    });
+
+    try {
+      await client.openSession();
+
+      expect(sessionRequests).toHaveLength(2);
+      expect(sessionRequests[0]?.["requestId"]).not.toBe(sessionRequests[1]?.["requestId"]);
+      expect(sessionRequests[0]?.["nonce"]).not.toBe(sessionRequests[1]?.["nonce"]);
+      expect(sessionRequests[0]?.["signature"]).not.toBe(sessionRequests[1]?.["signature"]);
+      const extendedExpiry = Date.parse(sessionRequests[0]?.["expiresAt"] as string);
+      const legacyExpiry = Date.parse(sessionRequests[1]?.["expiresAt"] as string);
+      expect(extendedExpiry - legacyExpiry).toBeGreaterThan(
+        MESH_ACP_SESSION_REQUEST_TTL_MS - MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS - 1_000,
+      );
+      expect(client.getSessionConnection().sessionId).toBe("legacy-session");
     } finally {
       client.closeSession();
     }

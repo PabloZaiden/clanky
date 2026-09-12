@@ -16,6 +16,7 @@ import {
   MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
+  MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
@@ -306,6 +307,7 @@ export class MeshCommandExecutorClient {
         "The local mesh identity has no usable encryption public key.",
       );
     }
+    const callerEncryptionPublicKey = identity.encryptionPublicKey;
     const localUserId = this.localUserId ?? requireCurrentUserId();
     const registration = await getWorkerRegistration(this.executionNodeId, localUserId);
     const endpoint = registration?.workerEndpoint;
@@ -318,7 +320,6 @@ export class MeshCommandExecutorClient {
     this.workerTls = getMeshWorkerTlsOptions(registration);
 
     const channel = this.channel;
-    const expiresAt = new Date(Date.now() + this.sessionTtlMs).toISOString();
     let encryptedEnvironment: unknown;
     if (this.managedEnvironment !== undefined) {
       if (!registration.workerEncryptionPublicKey) {
@@ -332,31 +333,59 @@ export class MeshCommandExecutorClient {
         registration.workerEncryptionPublicKey,
       );
     }
-    const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
-      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(),
-      callerNodeId: identity.nodeId,
-      callerPublicKey: identity.publicKey,
-      callerFingerprint: identity.fingerprint,
-      callerEncryptionPublicKey: identity.encryptionPublicKey,
-      targetNodeId: this.executionNodeId,
-      workspaceId: this.workspaceId,
-      directory: this.directory,
-      provider: this.provider,
-      channel,
-      ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
-      nonce: crypto.randomUUID(),
-      expiresAt,
-    };
-    const request: MeshExecutionSessionRequest = {
-      ...unsigned,
-      signature: await signMeshPayload(buildMeshExecutionSessionSigningPayload(unsigned)),
-    };
     const route = resolveMeshRoute(endpoint, "api/mesh/internal/execution/session");
-    const response = await this.post(route, request, {
+    const buildSessionRequest = async (
+      sessionTtlMs: number,
+    ): Promise<MeshExecutionSessionRequest> => {
+      const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
+        protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+        requestId: crypto.randomUUID(),
+        callerNodeId: identity.nodeId,
+        callerPublicKey: identity.publicKey,
+        callerFingerprint: identity.fingerprint,
+        callerEncryptionPublicKey,
+        targetNodeId: this.executionNodeId,
+        workspaceId: this.workspaceId,
+        directory: this.directory,
+        provider: this.provider,
+        channel,
+        ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
+        nonce: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
+      };
+      return {
+        ...unsigned,
+        signature: await signMeshPayload(buildMeshExecutionSessionSigningPayload(unsigned)),
+      };
+    };
+    const postSessionRequest = async (
+      request: MeshExecutionSessionRequest,
+    ): Promise<unknown> => this.post(route, request, {
       "x-clanky-mesh-node-id": identity.nodeId,
       "x-clanky-mesh-request-id": request.requestId,
     }, undefined, MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS);
+
+    let request = await buildSessionRequest(this.sessionTtlMs);
+    let response: unknown;
+    try {
+      response = await postSessionRequest(request);
+    } catch (error) {
+      if (
+        this.channel !== MESH_ACP_CHANNEL
+        || !(error instanceof DomainError)
+        || error.code !== "mesh_execution_session_expiry_invalid"
+        || this.sessionTtlMs <= MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
+      ) {
+        throw error;
+      }
+      log.warn("Mesh ACP worker rejected the extended session lease; retrying with the legacy lease", {
+        executionNodeId: this.executionNodeId,
+        requestedTtlMs: this.sessionTtlMs,
+        fallbackTtlMs: MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
+      });
+      request = await buildSessionRequest(MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS);
+      response = await postSessionRequest(request);
+    }
     const body = parseResponseShape<MeshSessionResponse>(
       response,
       ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],
