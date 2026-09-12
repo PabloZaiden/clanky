@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   VOICE_CAPABILITIES,
   VOICE_LANGUAGE_HINTS,
@@ -30,6 +30,14 @@ function toDraft(settings: VoiceSettings): VoiceSettingsDraft {
   };
 }
 
+function draftValuesMatch(left: VoiceSettingsDraft, right: VoiceSettingsDraft): boolean {
+  return left.baseUrl === right.baseUrl
+    && left.transcription === right.transcription
+    && left.speech === right.speech
+    && left.text === right.text
+    && left.languageHints.join(",") === right.languageHints.join(",");
+}
+
 function capabilityLabel(capability: VoiceCapability): string {
   if (capability === "transcription") return "Transcription";
   if (capability === "speech") return "Text to speech";
@@ -43,27 +51,33 @@ export function VoiceSettingsRowContent({
 }) {
   const { settings, loading, saving, validating, error } = voiceSettings;
   const [draft, setDraft] = useState<VoiceSettingsDraft>(() => toDraft(settings));
+  const draftRef = useRef(draft);
+  const lastSyncedDraftRef = useRef<VoiceSettingsDraft>(toDraft(settings));
   const [clearApiKey, setClearApiKey] = useState(false);
-  const draftIsDirty = draft.baseUrl !== settings.baseUrl
-    || draft.transcription !== settings.models.transcription
-    || draft.speech !== settings.models.speech
-    || draft.text !== settings.models.text
-    || draft.languageHints.join(",") !== settings.languageHints.join(",")
+  draftRef.current = draft;
+  const draftIsDirty = !draftValuesMatch(draft, lastSyncedDraftRef.current)
     || draft.apiKey.length > 0
     || clearApiKey;
 
   useEffect(() => {
-    if (draftIsDirty) {
+    const nextSyncedDraft = toDraft(settings);
+    const currentDraft = draftRef.current;
+    const currentDraftIsDirty = !draftValuesMatch(
+      currentDraft,
+      lastSyncedDraftRef.current,
+    ) || currentDraft.apiKey.length > 0 || clearApiKey;
+    lastSyncedDraftRef.current = nextSyncedDraft;
+    if (currentDraftIsDirty) {
       return;
     }
     setDraft((current) => ({
-      ...toDraft(settings),
+      ...nextSyncedDraft,
       apiKey: current.apiKey,
     }));
-  }, [draftIsDirty, settings]);
+  }, [clearApiKey, settings]);
 
   async function save(): Promise<void> {
-    await voiceSettings.updateSettings({
+    const savedSettings = await voiceSettings.updateSettings({
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey || undefined,
       clearApiKey,
@@ -74,7 +88,9 @@ export function VoiceSettingsRowContent({
       },
       languageHints: draft.languageHints,
     });
-    setDraft((current) => ({ ...current, apiKey: "" }));
+    const savedDraft = toDraft(savedSettings);
+    lastSyncedDraftRef.current = savedDraft;
+    setDraft({ ...savedDraft, apiKey: "" });
     setClearApiKey(false);
   }
 
