@@ -125,6 +125,12 @@ export interface ConversationViewerProps extends LogViewerProps {
   emptyStateMessage?: string;
   /** Active-state copy to show while the transcript is still streaming. */
   activeStateMessage?: string;
+  /** Start server-side speech playback for a completed assistant message. */
+  onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
+  /** Whether the summary playback action is available. */
+  readAloudSummaryEnabled?: boolean;
+  /** Current message/mode being played, if any. */
+  playingReadAloudKey?: string | null;
 }
 
 /**

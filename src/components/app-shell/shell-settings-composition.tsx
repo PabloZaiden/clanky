@@ -10,6 +10,7 @@ import {
   SettingsCheckbox,
   SettingsError,
   SettingsSelect,
+  VoiceSettingsRowContent,
 } from "../app-settings";
 import type {
   PrivateItemsPreference,
@@ -20,6 +21,7 @@ import type {
   UseMeshResult,
   UseQuickChatSettingsResult,
   UseSchedulerTimezoneResult,
+  UseVoiceSettingsResult,
 } from "../../hooks";
 
 export interface ShellSettingsCompositionOptions {
@@ -37,6 +39,7 @@ export interface ShellSettingsCompositionOptions {
   workspacesLoading: boolean;
   refreshTasks: () => Promise<void>;
   mesh: UseMeshResult;
+  voiceSettings: UseVoiceSettingsResult;
 }
 
 export type ShellSettingsSections =
@@ -54,6 +57,7 @@ export function buildShellSettingsSections({
   workspacesLoading,
   refreshTasks,
   mesh,
+  voiceSettings,
 }: ShellSettingsCompositionOptions): ShellSettingsSections {
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
@@ -166,6 +170,17 @@ export function buildShellSettingsSections({
         id: "mesh-management",
         title: "Mesh",
         content: <MeshSettingsContent mesh={mesh} />,
+      }],
+    },
+    {
+      id: "voice",
+      title: "Voice",
+      scope: "user" as const,
+      rows: [{
+        id: "voice-provider",
+        title: "Provider",
+        description: "Configure server-side transcription, speech, and text models.",
+        content: <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
       }],
     },
     {

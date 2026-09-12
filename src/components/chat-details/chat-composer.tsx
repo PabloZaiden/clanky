@@ -161,6 +161,21 @@ export function ChatComposer(props: ChatComposerProps) {
                   <span aria-hidden="true">📎</span>
                 </ComposerActionsMenuButton>
               </ComposerActionsMenuSection>
+              {props.voiceInput.available && (
+                <ComposerActionsMenuSection label="Voice">
+                  <ComposerActionsMenuButton
+                    disabled={
+                      secondaryActionsDisabled
+                      || props.voiceInput.status !== "idle"
+                      || hasQueueableInput
+                    }
+                    onClick={() => void props.onStartVoice()}
+                  >
+                    <span>Talk</span>
+                    <span aria-hidden="true">🎙</span>
+                  </ComposerActionsMenuButton>
+                </ComposerActionsMenuSection>
+              )}
             </ComposerActionsMenu>
             <textarea
               ref={(node) => {

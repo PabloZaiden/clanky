@@ -51,6 +51,7 @@ export function useChatComposer({
   markChatStarting,
   refreshChat,
   onSendMessage,
+  registerVoiceDraft,
 }: ChatComposerProps) {
   const toast = useToast();
   const draftPersistence = useMemo(
@@ -68,6 +69,8 @@ export function useChatComposer({
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageRef = useRef(message);
+  const attachmentsRef = useRef(attachments);
   const visualViewport = useVisualViewport(true);
   const isKeyboardVisible = isVisualViewportReduced(
     visualViewport,
@@ -84,6 +87,19 @@ export function useChatComposer({
     setMessageState(nextMessage);
     draftPersistence.schedule(nextMessage);
   }, [draftPersistence]);
+
+  messageRef.current = message;
+  attachmentsRef.current = attachments;
+
+  useEffect(() => {
+    return registerVoiceDraft(
+      (transcript: string) => {
+        const current = messageRef.current.trim();
+        setMessage(current ? `${current}\n\n${transcript}` : transcript);
+      },
+      () => messageRef.current.trim() || (attachmentsRef.current.length > 0 ? "attachment" : ""),
+    );
+  }, [registerVoiceDraft, setMessage]);
 
   useLayoutEffect(() => {
     const restoredMessage = getStoredChatComposerDraft(chatId) ?? "";

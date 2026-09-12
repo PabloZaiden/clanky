@@ -19,6 +19,7 @@ import {
   useTasks,
   useTerminalSessions,
   useWorkspaces,
+  useVoiceSettings,
 } from "../../hooks";
 import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { getShellRouteSelection } from "./shell-route-composition";
@@ -98,6 +99,7 @@ export function useShellResources(route: WebAppRoute) {
   const mesh = useMesh();
   const fullTreePreference = useFileExplorerFullTreePreference();
   const privateItemsPreference = usePrivateItemsPreference();
+  const voiceSettings = useVoiceSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
@@ -230,6 +232,7 @@ export function useShellResources(route: WebAppRoute) {
     mesh,
     fullTreePreference,
     privateItemsPreference,
+    voiceSettings,
     dashboardData,
     provisioning,
     workspaceGroups,

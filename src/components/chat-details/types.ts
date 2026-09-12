@@ -2,10 +2,12 @@ import type {
   Chat,
   ChatEvent,
   ChatPermissionRequest,
+  MessageData,
   QueuedChatMessage,
   ToolCallData,
   ToolCallDisplayData,
 } from "@/shared";
+import type { VoiceRecorderStatus } from "../../hooks";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import type { TranscriptFileLinkContext } from "../LogViewer";
 
@@ -57,6 +59,20 @@ export interface ChatTranscriptProps {
   toolPathDisplayRoot: string;
   fileLinkContext?: TranscriptFileLinkContext;
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  voiceInput: {
+    available: boolean;
+    status: VoiceRecorderStatus;
+    elapsedMs: number;
+    error: string | null;
+  };
+  onStartVoice: () => Promise<void>;
+  onStopVoice: () => void;
+  onCancelVoice: () => void;
+  onDismissVoiceError: () => void;
+  onReadAloud: (message: MessageData, mode: "full" | "summary") => void;
+  readAloudAvailable: boolean;
+  readAloudSummaryAvailable: boolean;
+  playingReadAloudKey: string | null;
 }
 
 export interface ChatPermissionPanelProps {
@@ -86,4 +102,13 @@ export interface ChatComposerProps {
     message?: string;
     attachments: MessageImageAttachment[];
   }) => Promise<Chat>;
+  voiceInput: {
+    available: boolean;
+    status: VoiceRecorderStatus;
+  };
+  onStartVoice: () => Promise<void>;
+  registerVoiceDraft: (
+    setDraft: (text: string) => void,
+    getDraft: () => string,
+  ) => () => void;
 }

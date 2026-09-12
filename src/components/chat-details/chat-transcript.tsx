@@ -1,4 +1,5 @@
 import { ConversationViewer } from "../LogViewer";
+import type { MouseEvent } from "react";
 import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
 
@@ -10,11 +11,31 @@ export function ChatTranscript({
   toolPathDisplayRoot,
   fileLinkContext,
   onLoadToolDetails,
+  voiceInput,
+  onStartVoice,
+  onReadAloud,
+  readAloudAvailable,
+  readAloudSummaryAvailable,
+  playingReadAloudKey,
 }: ChatTranscriptProps) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
 
+  function handleTranscriptClick(event: MouseEvent<HTMLDivElement>): void {
+    if (!voiceInput.available || event.detail !== 3) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof HTMLElement
+      && target.closest("a,button,input,textarea,select,pre,code")
+    ) {
+      return;
+    }
+    void onStartVoice();
+  }
+
   return (
-    <>
+    <div className="min-h-0 flex-1" onClick={handleTranscriptClick}>
       {lifecycleError && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {lifecycleError}
@@ -39,7 +60,10 @@ export function ChatTranscript({
         fileLinkContext={fileLinkContext}
         emptyStateMessage="No messages yet"
         activeStateMessage="Thinking…"
+        onReadAloud={readAloudAvailable ? onReadAloud : undefined}
+        readAloudSummaryEnabled={readAloudSummaryAvailable}
+        playingReadAloudKey={playingReadAloudKey}
       />
-    </>
+    </div>
   );
 }

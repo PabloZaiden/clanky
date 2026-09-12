@@ -36,6 +36,9 @@ export const ConversationViewer = memo(function ConversationViewer({
   showMessageRoles = false,
   emptyStateMessage = "No activity yet.",
   activeStateMessage = "Working...",
+  onReadAloud,
+  readAloudSummaryEnabled = false,
+  playingReadAloudKey = null,
   toolPathDisplayRoot,
   fileLinkContext,
   surfaceClassName,
@@ -165,6 +168,10 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [isActive, logs, messages, showAssistantMessages, showResponseLogs, showSystemInfo, showTools, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
+  const latestAssistantMessageId = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null,
+    [messages],
+  );
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
   const shouldShowWorkingIndicator = isActive && !isEmpty && !hasActiveWorkRow;
@@ -214,6 +221,10 @@ export const ConversationViewer = memo(function ConversationViewer({
                     markdownEnabled={markdownEnabled}
                     showRoleLabel={showMessageRoles}
                     fileLinkContext={resolvedFileLinkContext}
+                    onReadAloud={onReadAloud}
+                    readAloudSummaryEnabled={readAloudSummaryEnabled}
+                    playingReadAloudKey={playingReadAloudKey}
+                    readAloudDisabled={isActive && entry.data.id === latestAssistantMessageId}
                   />
                 );
               } else if (entry.type === "tool") {

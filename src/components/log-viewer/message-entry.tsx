@@ -18,6 +18,10 @@ interface MessageEntryProps {
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
+  onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
+  readAloudSummaryEnabled: boolean;
+  playingReadAloudKey: string | null;
+  readAloudDisabled: boolean;
 }
 
 export const MessageEntry = memo(function MessageEntry({
@@ -27,6 +31,10 @@ export const MessageEntry = memo(function MessageEntry({
   markdownEnabled,
   showRoleLabel,
   fileLinkContext,
+  onReadAloud,
+  readAloudSummaryEnabled,
+  playingReadAloudKey,
+  readAloudDisabled,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
@@ -123,6 +131,28 @@ export const MessageEntry = memo(function MessageEntry({
                   </div>
                 )
               ))}
+            </div>
+          )}
+          {!isUser && onReadAloud && msg.content.trim() && !readAloudDisabled && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400"
+                onClick={() => onReadAloud(msg, "full")}
+                aria-label={playingReadAloudKey === `${msg.id}:full` ? "Stop reading response" : "Read response aloud"}
+              >
+                {playingReadAloudKey === `${msg.id}:full` ? "Stop reading" : "Read aloud"}
+              </button>
+              {readAloudSummaryEnabled ? (
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400"
+                  onClick={() => onReadAloud(msg, "summary")}
+                  aria-label={playingReadAloudKey === `${msg.id}:summary` ? "Stop reading summary" : "Read response summary aloud"}
+                >
+                  {playingReadAloudKey === `${msg.id}:summary` ? "Stop summary" : "Read summary"}
+                </button>
+              ) : null}
             </div>
           )}
           <ImageViewerModal image={selectedImage} onClose={() => setSelectedAttachment(null)} />

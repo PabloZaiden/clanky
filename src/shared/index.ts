@@ -27,3 +27,4 @@ export * from "./repository-url";
 export * from "./workspace";
 export * from "./workspace-files";
 export * from "./worker-host";
+export * from "./voice";
