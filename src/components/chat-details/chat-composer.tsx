@@ -9,7 +9,7 @@ import {
   ComposerActionsMenuSection,
 } from "../ComposerActionsMenu";
 import { ChatTemplateSelector } from "../chat-template-selector";
-import { Button, FocusPreservingButton } from "../common";
+import { Button, ComposerInterruptButton, FocusPreservingButton } from "../common";
 import { useChatComposer } from "./chat-composer-state";
 import type { ChatComposerProps } from "./types";
 import { CHAT_STARTUP_STAGE_LABELS } from "@/shared/chat";
@@ -61,7 +61,6 @@ export function ChatComposer(props: ChatComposerProps) {
     secondaryActionsDisabled,
     attachmentLimitReached,
     sendButtonClassName,
-    interruptButtonClassName,
     handleSubmit,
     handleInterrupt,
     handlePaste,
@@ -178,20 +177,12 @@ export function ChatComposer(props: ChatComposerProps) {
               className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
             />
             {isActive && !hasQueueableInput ? (
-              <button
-                type="button"
+              <ComposerInterruptButton
                 onClick={() => void handleInterrupt()}
                 disabled={isComposerBusy}
-                className={interruptButtonClassName}
-                aria-label="Interrupt"
-                title="Interrupt"
-              >
-                {isComposerBusy ? (
-                  <ThinkingSpinner />
-                ) : (
-                  <span className="text-lg leading-none">×</span>
-                )}
-              </button>
+                busy={isComposerBusy}
+                ariaLabel="Interrupt"
+              />
             ) : (
               <FocusPreservingButton
                 type="submit"
