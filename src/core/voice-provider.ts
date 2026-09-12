@@ -10,6 +10,8 @@ export const VOICE_MAX_TEXT_CHARS = 30_000;
 export const VOICE_MAX_SUMMARY_CHARS = 8_000;
 export const VOICE_PROVIDER_TIMEOUT_MS = 120_000;
 export const VOICE_AZURE_API_VERSION = "2025-03-01-preview";
+const VOICE_MAX_PROVIDER_JSON_BYTES = 1 * 1024 * 1024;
+const VOICE_TEST_CONTEXT_ENV = "CLANKY_TEST_OWNER_CONTEXT";
 
 export interface VoiceProviderCredentials {
   baseUrl: string;
@@ -22,12 +24,14 @@ export interface VoiceTranscriptionOptions {
   mimeType: string;
   model: string;
   languageHints: readonly string[];
+  signal?: AbortSignal;
 }
 
 export interface VoiceSpeechOptions {
   text: string;
   model: string;
   voice: string;
+  signal?: AbortSignal;
 }
 
 export interface VoiceAudioResult {
@@ -37,6 +41,161 @@ export interface VoiceAudioResult {
 
 function isAzureOpenAiUrl(url: URL): boolean {
   return url.hostname.toLowerCase().endsWith(".openai.azure.com");
+}
+
+function isTestContext(): boolean {
+  return process.env[VOICE_TEST_CONTEXT_ENV] === "1";
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return normalized === "localhost"
+    || normalized === "127.0.0.1"
+    || normalized === "::1";
+}
+
+function parseIpv4(address: string): number[] | null {
+  const parts = address.split(".");
+  if (parts.length !== 4) {
+    return null;
+  }
+  const octets = parts.map((part) => Number(part));
+  if (
+    octets.some((octet, index) => (
+      !Number.isInteger(octet)
+      || octet < 0
+      || octet > 255
+      || parts[index] !== String(octet)
+    ))
+  ) {
+    return null;
+  }
+  return octets;
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const octets = parseIpv4(address);
+  if (!octets) {
+    return false;
+  }
+  const [first = 0, second = 0] = octets;
+  return first === 0
+    || first === 10
+    || first === 127
+    || (first === 100 && second >= 64 && second <= 127)
+    || (first === 169 && second === 254)
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 0)
+    || (first === 192 && second === 168)
+    || (first === 192 && second === 2)
+    || (first === 198 && second >= 18 && second <= 19)
+    || (first === 198 && second === 51)
+    || (first === 203 && second === 0)
+    || first >= 224;
+}
+
+function parseIpv6Words(address: string): number[] | null {
+  const normalized = address.replace(/^\[|\]$/g, "").toLowerCase().split("%", 1)[0] ?? "";
+  const sections = normalized.split("::");
+  if (sections.length > 2) {
+    return null;
+  }
+  const parseSection = (section: string): number[] | null => {
+    if (!section) {
+      return [];
+    }
+    const words: number[] = [];
+    for (const segment of section.split(":")) {
+      if (segment.includes(".")) {
+        const octets = parseIpv4(segment);
+        if (!octets) {
+          return null;
+        }
+        const [first = 0, second = 0, third = 0, fourth = 0] = octets;
+        words.push((first << 8) | second, (third << 8) | fourth);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(segment)) {
+        return null;
+      }
+      words.push(Number.parseInt(segment, 16));
+    }
+    return words;
+  };
+
+  const left = parseSection(sections[0] ?? "");
+  const right = parseSection(sections.length === 2 ? sections[1] ?? "" : "");
+  if (!left || !right) {
+    return null;
+  }
+  if (sections.length === 1) {
+    return left.length === 8 ? left : null;
+  }
+  const missing = 8 - left.length - right.length;
+  if (missing < 1) {
+    return null;
+  }
+  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
+}
+
+function isPrivateIpv6(address: string): boolean {
+  if (!address.includes(":")) {
+    return false;
+  }
+  const words = parseIpv6Words(address);
+  if (!words) {
+    return false;
+  }
+  const first = words[0] ?? 0;
+  const isMappedIpv4 = words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff;
+  const mappedIpv4 = isMappedIpv4
+    ? `${(words[6] ?? 0) >> 8}.${(words[6] ?? 0) & 0xff}.${(words[7] ?? 0) >> 8}.${(words[7] ?? 0) & 0xff}`
+    : null;
+  return words.every((word) => word === 0)
+    || words.slice(0, 7).every((word) => word === 0) && words[7] === 1
+    || (first & 0xfe00) === 0xfc00
+    || (first & 0xffc0) === 0xfe80
+    || (first & 0xff00) === 0xff00
+    || (first === 0x2001 && words[1] === 0x0db8)
+    || (mappedIpv4 !== null && isPrivateIpv4(mappedIpv4));
+}
+
+function isPrivateAddress(address: string): boolean {
+  return address.includes(":")
+    ? isPrivateIpv6(address)
+    : isPrivateIpv4(address);
+}
+
+function assertSafeBaseUrlHost(url: URL): void {
+  const hostname = url.hostname;
+  if (isPrivateAddress(hostname) && !(isTestContext() && isLoopbackHostname(hostname))) {
+    throw new DomainError(
+      "voice_unsafe_provider_url",
+      "The voice provider URL must resolve to a public address.",
+    );
+  }
+  if (url.protocol === "http:" && !(isTestContext() && isLoopbackHostname(hostname))) {
+    throw new DomainError(
+      "voice_invalid_base_url",
+      "The voice provider base URL must use HTTPS.",
+    );
+  }
+}
+
+function assertAllowedQueryParams(url: URL): void {
+  const keys = Array.from(url.searchParams.keys());
+  if (keys.some((key) => key.toLowerCase() !== "api-version")) {
+    throw new DomainError(
+      "voice_invalid_base_url",
+      "The voice provider base URL may only include the api-version query parameter.",
+    );
+  }
+  if (keys.filter((key) => key.toLowerCase() === "api-version").length > 1) {
+    throw new DomainError(
+      "voice_invalid_base_url",
+      "The voice provider base URL may only include one api-version query parameter.",
+    );
+  }
 }
 
 function azureResourcePath(pathname: string): string {
@@ -107,17 +266,25 @@ export function normalizeVoiceBaseUrl(value: string): string {
       "The voice provider base URL must be an HTTP(S) URL without credentials or a fragment.",
     );
   }
+  assertAllowedQueryParams(url);
+  assertSafeBaseUrlHost(url);
   return url.toString().replace(/\/+$/, "");
 }
 
 function providerError(
   status: number,
+  retryAfter?: string | null,
 ): DomainError {
   if (status === 429) {
     return new DomainError(
       "voice_provider_rate_limited",
       "The voice provider rate limit was reached.",
-      { details: { status } },
+      {
+        details: {
+          status,
+          ...(retryAfter ? { retryAfter } : {}),
+        },
+      },
     );
   }
   return new DomainError(
@@ -127,20 +294,155 @@ function providerError(
   );
 }
 
-async function fetchWithTimeout(
+async function assertSafeProviderDestination(url: string): Promise<void> {
+  const parsed = new URL(url);
+  assertSafeBaseUrlHost(parsed);
+  if (isTestContext() && isLoopbackHostname(parsed.hostname)) {
+    return;
+  }
+
+  let addresses: Bun.DNSLookup[];
+  try {
+    addresses = await Bun.dns.lookup(parsed.hostname, { family: "any" });
+  } catch (error) {
+    throw new DomainError(
+      "voice_provider_unreachable",
+      "The voice provider could not be reached.",
+      { cause: error },
+    );
+  }
+  if (
+    addresses.length === 0
+    || addresses.some(({ address }) => isPrivateAddress(address))
+  ) {
+    throw new DomainError(
+      "voice_unsafe_provider_url",
+      "The voice provider URL must resolve to a public address.",
+    );
+  }
+  // Resolve immediately before fetch so a later request does not reuse an
+  // earlier hostname decision; prefetch also narrows the DNS rebinding window.
+  Bun.dns.prefetch(
+    parsed.hostname,
+    parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80,
+  );
+}
+
+async function readBoundedResponseBody(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new DomainError(
+      "voice_provider_response_too_large",
+      "The voice provider response is too large.",
+    );
+  }
+
+  if (!response.body) {
+    return new Uint8Array();
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw new DOMException("The voice provider request was aborted.", "AbortError");
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      total += value.byteLength;
+      if (total > maxBytes) {
+        void reader.cancel().catch(() => {
+          // The size violation remains the authoritative provider error.
+        });
+        throw new DomainError(
+          "voice_provider_response_too_large",
+          "The voice provider response is too large.",
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+async function readJsonResponse(
+  response: Response,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const body = await readBoundedResponseBody(
+    response,
+    VOICE_MAX_PROVIDER_JSON_BYTES,
+    signal,
+  );
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as unknown;
+  } catch (error) {
+    throw new DomainError(
+      "voice_provider_invalid_response",
+      "The voice provider returned invalid data.",
+      { cause: error },
+    );
+  }
+}
+
+async function fetchWithTimeout<T>(
   url: string,
   init: RequestInit,
-): Promise<Response> {
+  signal: AbortSignal | undefined,
+  consume: (response: Response, requestSignal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  await assertSafeProviderDestination(url);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), VOICE_PROVIDER_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    VOICE_PROVIDER_TIMEOUT_MS,
+  );
+  const abortCaller = (): void => controller.abort();
+  signal?.addEventListener("abort", abortCaller, { once: true });
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
+      redirect: "manual",
     });
+    if (response.status >= 300 && response.status < 400) {
+      throw new DomainError(
+        "voice_provider_redirect",
+        "The voice provider must not redirect requests.",
+        { details: { status: response.status } },
+      );
+    }
+    return await consume(response, controller.signal);
   } catch (error) {
     if (error instanceof DomainError) {
       throw error;
+    }
+    if (signal?.aborted) {
+      throw error;
+    }
+    if (controller.signal.aborted) {
+      throw new DomainError(
+        "voice_provider_timeout",
+        "The voice provider request timed out.",
+        { cause: error },
+      );
     }
     throw new DomainError(
       "voice_provider_unreachable",
@@ -149,6 +451,7 @@ async function fetchWithTimeout(
     );
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortCaller);
   }
 }
 
@@ -273,42 +576,36 @@ export class OpenAiCompatibleVoiceProvider {
       ].join(" "),
     );
 
-    const response = await fetchWithTimeout(
+    return await fetchWithTimeout(
       this.url("/audio/transcriptions", options.model),
       {
         method: "POST",
         headers: this.headers,
         body: form,
       },
-    );
-    if (!response.ok) {
-      throw providerError(response.status);
-    }
+      options.signal,
+      async (response, requestSignal) => {
+        if (!response.ok) {
+          throw providerError(response.status, response.headers.get("retry-after"));
+        }
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      throw new DomainError(
-        "voice_provider_invalid_response",
-        "The transcription provider returned invalid data.",
-        { cause: error },
-      );
-    }
-    const text = payload && typeof payload === "object"
-      ? (payload as Record<string, unknown>)["text"]
-      : undefined;
-    if (typeof text !== "string") {
-      throw new DomainError(
-        "voice_provider_invalid_response",
-        "The transcription provider did not return transcript text.",
-      );
-    }
-    return text.trim();
+        const payload = await readJsonResponse(response, requestSignal);
+        const text = payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)["text"]
+          : undefined;
+        if (typeof text !== "string") {
+          throw new DomainError(
+            "voice_provider_invalid_response",
+            "The transcription provider did not return transcript text.",
+          );
+        }
+        return text.trim();
+      },
+    );
   }
 
   async synthesizeSpeech(options: VoiceSpeechOptions): Promise<VoiceAudioResult> {
-    const response = await fetchWithTimeout(
+    return await fetchWithTimeout(
       this.url("/audio/speech", options.model),
       {
         method: "POST",
@@ -324,34 +621,46 @@ export class OpenAiCompatibleVoiceProvider {
           response_format: "mp3",
         }),
       },
-    );
-    if (!response.ok) {
-      throw providerError(response.status);
-    }
+      options.signal,
+      async (response, requestSignal) => {
+        if (!response.ok) {
+          throw providerError(response.status, response.headers.get("retry-after"));
+        }
 
-    const contentLength = Number(response.headers.get("content-length") ?? "0");
-    if (contentLength > VOICE_MAX_AUDIO_BYTES) {
-      throw new DomainError(
-        "voice_provider_response_too_large",
-        "The speech provider returned an audio response that is too large.",
-      );
-    }
-    const audio = await response.arrayBuffer();
-    if (audio.byteLength === 0 || audio.byteLength > VOICE_MAX_AUDIO_BYTES) {
-      throw new DomainError(
-        "voice_provider_invalid_response",
-        "The speech provider returned invalid audio.",
-      );
-    }
-    return {
-      audio,
-      contentType: response.headers.get("content-type")?.split(";")[0]?.trim()
-        || "audio/mpeg",
-    };
+        const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+        if (!contentType || (!contentType.startsWith("audio/") && contentType !== "application/octet-stream")) {
+          throw new DomainError(
+            "voice_provider_invalid_response",
+            "The speech provider did not return audio.",
+          );
+        }
+        const audio = await readBoundedResponseBody(
+          response,
+          VOICE_MAX_AUDIO_BYTES,
+          requestSignal,
+        );
+        if (audio.byteLength === 0) {
+          throw new DomainError(
+            "voice_provider_invalid_response",
+            "The speech provider returned invalid audio.",
+          );
+        }
+        const audioBuffer = new Uint8Array(audio.byteLength);
+        audioBuffer.set(audio);
+        return {
+          audio: audioBuffer.buffer,
+          contentType,
+        };
+      },
+    );
   }
 
-  async completeText(model: string, prompt: string): Promise<string> {
-    const response = await fetchWithTimeout(
+  async completeText(
+    model: string,
+    prompt: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    return await fetchWithTimeout(
       this.url("/chat/completions", model),
       {
         method: "POST",
@@ -365,38 +674,37 @@ export class OpenAiCompatibleVoiceProvider {
           max_completion_tokens: 512,
         }),
       },
-    );
-    if (!response.ok) {
-      throw providerError(response.status);
-    }
+      signal,
+      async (response, requestSignal) => {
+        if (!response.ok) {
+          throw providerError(response.status, response.headers.get("retry-after"));
+        }
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      throw new DomainError(
-        "voice_provider_invalid_response",
-        "The text provider returned invalid data.",
-        { cause: error },
-      );
-    }
-    const text = extractResponseText(payload);
-    if (!text) {
-      throw new DomainError(
-        "voice_provider_invalid_response",
-        "The text provider returned an empty response.",
-      );
-    }
-    return text;
+        const payload = await readJsonResponse(response, requestSignal);
+        const text = extractResponseText(payload);
+        if (!text) {
+          throw new DomainError(
+            "voice_provider_invalid_response",
+            "The text provider returned an empty response.",
+          );
+        }
+        return text;
+      },
+    );
   }
 
-  async validateTranscription(model: string, languageHints: readonly string[]): Promise<void> {
+  async validateTranscription(
+    model: string,
+    languageHints: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<void> {
     await this.transcribe({
       audio: createValidationWav(),
       filename: "voice-validation.wav",
       mimeType: "audio/wav",
       model,
       languageHints,
+      signal,
     });
   }
 

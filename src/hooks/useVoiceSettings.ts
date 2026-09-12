@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { apiRequest } from "../lib/api-client";
+import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
 } from "@/shared";
@@ -45,6 +46,80 @@ function createDefaultSettings(): VoiceSettings {
   };
 }
 
+interface VoiceSettingsStoreState {
+  settings: VoiceSettings;
+  loading: boolean;
+  saving: boolean;
+  validating: VoiceCapability | null;
+  error: string | null;
+}
+
+const listeners = new Set<() => void>();
+const refreshCoordinator = createRefreshCoordinator<void>();
+let refreshController: AbortController | null = null;
+let subscriberCount = 0;
+let state: VoiceSettingsStoreState = {
+  settings: createDefaultSettings(),
+  loading: true,
+  saving: false,
+  validating: null,
+  error: null,
+};
+
+function emit(): void {
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+function updateState(patch: Partial<VoiceSettingsStoreState>): void {
+  state = { ...state, ...patch };
+  emit();
+}
+
+async function refreshVoiceSettings(): Promise<void> {
+  await refreshCoordinator.run(async () => {
+    const controller = new AbortController();
+    refreshController = controller;
+    updateState({ loading: true });
+    try {
+      const next = await apiRequest<VoiceSettings>("/api/voice/settings", {
+        signal: controller.signal,
+        action: "Load voice settings",
+        fallbackMessage: "Failed to load voice settings",
+      });
+      updateState({ settings: next, error: null });
+    } catch (refreshError) {
+      if (!(refreshError instanceof Error && refreshError.name === "AbortError")) {
+        updateState({ error: String(refreshError) });
+      }
+    } finally {
+      if (refreshController === controller) {
+        refreshController = null;
+        updateState({ loading: false });
+      }
+    }
+  });
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  subscriberCount += 1;
+  return () => {
+    listeners.delete(listener);
+    subscriberCount = Math.max(0, subscriberCount - 1);
+    if (subscriberCount === 0 && refreshController) {
+      refreshController.abort();
+      refreshController = null;
+      refreshCoordinator.reset();
+    }
+  };
+}
+
+function getSnapshot(): VoiceSettingsStoreState {
+  return state;
+}
+
 export interface UseVoiceSettingsResult {
   settings: VoiceSettings;
   loading: boolean;
@@ -57,51 +132,16 @@ export interface UseVoiceSettingsResult {
 }
 
 export function useVoiceSettings(): UseVoiceSettingsResult {
-  const [settings, setSettings] = useState<VoiceSettings>(createDefaultSettings);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [validating, setValidating] = useState<VoiceCapability | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const refreshControllerRef = useRef<AbortController | null>(null);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    refreshControllerRef.current?.abort();
-    const controller = new AbortController();
-    refreshControllerRef.current = controller;
-    setLoading(true);
-    try {
-      const next = await apiRequest<VoiceSettings>("/api/voice/settings", {
-        signal: controller.signal,
-        action: "Load voice settings",
-        fallbackMessage: "Failed to load voice settings",
-      });
-      setSettings(next);
-      setError(null);
-    } catch (refreshError) {
-      if (refreshError instanceof Error && refreshError.name === "AbortError") {
-        return;
-      }
-      setError(String(refreshError));
-    } finally {
-      if (refreshControllerRef.current === controller) {
-        refreshControllerRef.current = null;
-        setLoading(false);
-      }
-    }
-  }, []);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    void refresh();
-    return () => {
-      refreshControllerRef.current?.abort();
-      refreshControllerRef.current = null;
-    };
-  }, [refresh]);
+    void refreshVoiceSettings();
+  }, []);
 
   const updateSettings = useCallback(async (
     update: VoiceSettingsUpdate,
   ): Promise<VoiceSettings> => {
-    setSaving(true);
+    updateState({ saving: true });
     try {
       const next = await apiRequest<VoiceSettings>("/api/voice/settings", {
         method: "PUT",
@@ -110,21 +150,20 @@ export function useVoiceSettings(): UseVoiceSettingsResult {
         action: "Save voice settings",
         fallbackMessage: "Failed to save voice settings",
       });
-      setSettings(next);
-      setError(null);
+      updateState({ settings: next, error: null });
       return next;
     } catch (saveError) {
-      setError(String(saveError));
+      updateState({ error: String(saveError) });
       throw saveError;
     } finally {
-      setSaving(false);
+      updateState({ saving: false });
     }
   }, []);
 
   const validateCapability = useCallback(async (
     capability: VoiceCapability,
   ): Promise<VoiceSettings> => {
-    setValidating(capability);
+    updateState({ validating: capability });
     try {
       const result = await apiRequest<{ settings: VoiceSettings }>("/api/voice/validate", {
         method: "POST",
@@ -133,29 +172,24 @@ export function useVoiceSettings(): UseVoiceSettingsResult {
         action: `Validate ${capability} voice capability`,
         fallbackMessage: `Failed to validate ${capability} voice capability`,
       });
-      setSettings(result.settings);
-      setError(null);
+      updateState({ settings: result.settings, error: null });
       return result.settings;
     } catch (validationError) {
-      setError(String(validationError));
-      try {
-        await refresh();
-      } catch {
-        // The validation error is already visible; refresh is best effort.
-      }
+      await refreshVoiceSettings();
+      updateState({ error: String(validationError) });
       throw validationError;
     } finally {
-      setValidating(null);
+      updateState({ validating: null });
     }
-  }, [refresh]);
+  }, []);
 
   return {
-    settings,
-    loading,
-    saving,
-    validating,
-    error,
-    refresh,
+    settings: snapshot.settings,
+    loading: snapshot.loading,
+    saving: snapshot.saving,
+    validating: snapshot.validating,
+    error: snapshot.error,
+    refresh: refreshVoiceSettings,
     updateSettings,
     validateCapability,
   };

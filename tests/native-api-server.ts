@@ -3,6 +3,7 @@ import type { Server } from "bun";
 import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import { runWithCurrentUser } from "../src/core/user-context";
 
 export interface NativeApiServerOptions {
   /** Bun.serve's idleTimeout value, expressed in seconds. */
@@ -39,7 +40,10 @@ export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Serv
           return currentUser;
         },
       };
-      return await handler(req, context as RouteContext) ?? new Response(null, { status: 204 });
+      return await runWithCurrentUser(
+        currentUser,
+        async () => await handler(req, context as RouteContext) ?? new Response(null, { status: 204 }),
+      );
     },
   });
 }

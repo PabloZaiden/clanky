@@ -45,8 +45,12 @@ export function useVoiceRecorder({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderGenerationRef = useRef<number | null>(null);
+  const generationRef = useRef(0);
+  const startLockRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordedBytesRef = useRef(0);
   const discardRef = useRef(false);
   const recordingErrorRef = useRef<string | null>(null);
   const startedAtRef = useRef(0);
@@ -75,7 +79,9 @@ export function useVoiceRecorder({
 
   const clearRecorder = useCallback((): void => {
     recorderRef.current = null;
+    recorderGenerationRef.current = null;
     chunksRef.current = [];
+    recordedBytesRef.current = 0;
     clearTimer();
     stopStream();
   }, [clearTimer, stopStream]);
@@ -141,8 +147,16 @@ export function useVoiceRecorder({
     }
   }, [fail]);
 
-  const finalizeRecording = useCallback((): void => {
-    const recorder = recorderRef.current;
+  const finalizeRecording = useCallback((
+    generation: number,
+    recorder: MediaRecorder,
+  ): void => {
+    if (
+      recorderRef.current !== recorder
+      || recorderGenerationRef.current !== generation
+    ) {
+      return;
+    }
     const chunks = chunksRef.current;
     const mimeType = recorder?.mimeType ?? "audio/webm";
     const discard = discardRef.current;
@@ -195,15 +209,20 @@ export function useVoiceRecorder({
   }, [clearRecorder]);
 
   const start = useCallback(async (): Promise<void> => {
-    if (status !== "idle" && status !== "error") {
+    if (startLockRef.current || (status !== "idle" && status !== "error")) {
       return;
     }
+    startLockRef.current = true;
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
     if (!enabled) {
+      startLockRef.current = false;
       setError("Voice transcription is not configured and validated.");
       setStatus("error");
       return;
     }
     if (canStartRef.current && !canStartRef.current()) {
+      startLockRef.current = false;
       setError("Clear the composer before starting voice input.");
       setStatus("error");
       return;
@@ -213,6 +232,7 @@ export function useVoiceRecorder({
       || !navigator.mediaDevices?.getUserMedia
       || typeof MediaRecorder === "undefined"
     ) {
+      startLockRef.current = false;
       setError("This browser does not support audio recording.");
       setStatus("error");
       return;
@@ -223,25 +243,54 @@ export function useVoiceRecorder({
     discardRef.current = false;
     recordingErrorRef.current = null;
     chunksRef.current = [];
+    recordedBytesRef.current = 0;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mountedRef.current) {
+      if (!mountedRef.current || generationRef.current !== generation) {
         stream.getTracks().forEach((track) => track.stop());
+        startLockRef.current = false;
         return;
       }
+      streamRef.current = stream;
       const mimeType = getRecordingMimeType();
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
-      streamRef.current = stream;
       recorderRef.current = recorder;
+      recorderGenerationRef.current = generation;
+      startLockRef.current = false;
       startedAtRef.current = Date.now();
       recorder.ondataavailable = (event: BlobEvent) => {
+        if (
+          recorderRef.current !== recorder
+          || recorderGenerationRef.current !== generation
+        ) {
+          return;
+        }
         if (event.data.size > 0) {
+          if (recordedBytesRef.current + event.data.size > VOICE_RECORDING_MAX_BYTES) {
+            recordingErrorRef.current = "The recording exceeds the 20 MB limit.";
+            discardRef.current = true;
+            try {
+              if (recorder.state !== "inactive") {
+                recorder.stop();
+              }
+            } catch {
+              fail("The recording exceeds the 20 MB limit.");
+            }
+            return;
+          }
+          recordedBytesRef.current += event.data.size;
           chunksRef.current.push(event.data);
         }
       };
       recorder.onerror = () => {
+        if (
+          recorderRef.current !== recorder
+          || recorderGenerationRef.current !== generation
+        ) {
+          return;
+        }
         const message = "The browser could not record audio.";
         recordingErrorRef.current = message;
         discardRef.current = true;
@@ -255,7 +304,7 @@ export function useVoiceRecorder({
         }
         fail(message);
       };
-      recorder.onstop = finalizeRecording;
+      recorder.onstop = () => finalizeRecording(generation, recorder);
       recorder.start(1_000);
       setStatus("listening");
       timerRef.current = window.setInterval(() => {
@@ -266,6 +315,11 @@ export function useVoiceRecorder({
         }
       }, 1_000);
     } catch (recordingError) {
+      if (generationRef.current !== generation || !mountedRef.current) {
+        startLockRef.current = false;
+        return;
+      }
+      startLockRef.current = false;
       clearRecorder();
       setError(String(recordingError));
       setStatus("error");
@@ -284,6 +338,8 @@ export function useVoiceRecorder({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      generationRef.current += 1;
+      startLockRef.current = false;
       discardRef.current = true;
       recordingErrorRef.current = null;
       requestControllerRef.current?.abort();

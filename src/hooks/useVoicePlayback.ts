@@ -16,9 +16,22 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   const objectUrlRef = useRef<string | null>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const activeKeyRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
 
-  const releaseAudio = useCallback((): void => {
+  const releaseAudio = useCallback((
+    generation?: number,
+    expectedAudio?: HTMLAudioElement,
+  ): void => {
+    if (
+      generation !== undefined
+      && generationRef.current !== generation
+    ) {
+      return;
+    }
     const audio = audioRef.current;
+    if (expectedAudio && audio !== expectedAudio) {
+      return;
+    }
     if (audio) {
       audio.pause();
       audio.removeAttribute("src");
@@ -34,9 +47,10 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   }, []);
 
   const stop = useCallback((): void => {
+    generationRef.current += 1;
     requestControllerRef.current?.abort();
     requestControllerRef.current = null;
-    releaseAudio();
+    releaseAudio(generationRef.current);
   }, [releaseAudio]);
 
   const play = useCallback(async (
@@ -50,6 +64,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     }
     stop();
     activeKeyRef.current = key;
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
     const controller = new AbortController();
     requestControllerRef.current = controller;
     try {
@@ -62,7 +78,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
         action: mode === "summary" ? "Read response summary aloud" : "Read response aloud",
         fallbackMessage: "Failed to generate speech",
       });
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || generationRef.current !== generation) {
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -70,9 +86,12 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       const audio = new Audio(url);
       audioRef.current = audio;
       setPlayingKey(key);
-      audio.onended = releaseAudio;
+      audio.onended = () => releaseAudio(generation, audio);
       audio.onerror = () => {
-        releaseAudio();
+        if (generationRef.current !== generation || audioRef.current !== audio) {
+          return;
+        }
+        releaseAudio(generation, audio);
         toast.error("The generated audio could not be played.");
       };
       await audio.play();
@@ -80,8 +99,10 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       if (playbackError instanceof Error && playbackError.name === "AbortError") {
         return;
       }
-      releaseAudio();
-      toast.error(String(playbackError));
+      if (generationRef.current === generation) {
+        releaseAudio(generation);
+        toast.error(String(playbackError));
+      }
     } finally {
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
@@ -90,8 +111,9 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   }, [releaseAudio, stop, toast]);
 
   useEffect(() => () => {
+    generationRef.current += 1;
     requestControllerRef.current?.abort();
-    releaseAudio();
+    releaseAudio(generationRef.current);
   }, [releaseAudio]);
 
   return { playingKey, play, stop };

@@ -44,13 +44,23 @@ export function VoiceSettingsRowContent({
   const { settings, loading, saving, validating, error } = voiceSettings;
   const [draft, setDraft] = useState<VoiceSettingsDraft>(() => toDraft(settings));
   const [clearApiKey, setClearApiKey] = useState(false);
+  const draftIsDirty = draft.baseUrl !== settings.baseUrl
+    || draft.transcription !== settings.models.transcription
+    || draft.speech !== settings.models.speech
+    || draft.text !== settings.models.text
+    || draft.languageHints.join(",") !== settings.languageHints.join(",")
+    || draft.apiKey.length > 0
+    || clearApiKey;
 
   useEffect(() => {
+    if (draftIsDirty) {
+      return;
+    }
     setDraft((current) => ({
       ...toDraft(settings),
       apiKey: current.apiKey,
     }));
-  }, [settings]);
+  }, [draftIsDirty, settings]);
 
   async function save(): Promise<void> {
     await voiceSettings.updateSettings({
@@ -203,7 +213,7 @@ export function VoiceSettingsRowContent({
                   {capabilityStatus.validated
                     ? "validated"
                     : capabilityStatus.configured
-                      ? capabilityStatus.state
+                        ? `${capabilityStatus.state}${capabilityStatus.error ? `: ${capabilityStatus.error}` : ""}`
                       : "not configured"}
                 </span>
               </span>
@@ -216,6 +226,7 @@ export function VoiceSettingsRowContent({
                   loading
                   || saving
                   || validating !== null
+                  || draftIsDirty
                   || !capabilityStatus.configured
                 }
                 onClick={() => void voiceSettings.validateCapability(capability)}
@@ -225,9 +236,6 @@ export function VoiceSettingsRowContent({
             </div>
           );
         })}
-        <p className="text-xs text-amber-700 dark:text-amber-300">
-          Validating text-to-speech uses one provider request. The configured quota allows three per minute.
-        </p>
       </div>
       {error ? <SettingsError>{error}</SettingsError> : null}
     </div>

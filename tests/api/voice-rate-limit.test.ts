@@ -1,5 +1,5 @@
 /**
- * API coverage for the provider-wide TTS request limit.
+ * API coverage for provider-owned TTS rate-limit responses.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -13,14 +13,24 @@ describe("Voice TTS rate limit", () => {
   let provider: Server<unknown>;
   let baseUrl: string;
   let providerBaseUrl: string;
+  let providerRequests = 0;
 
   beforeEach(async () => {
     context = await setupTestContext();
     provider = Bun.serve({
       port: 0,
-      fetch: async () => new Response(new Uint8Array([1, 2, 3]), {
-        headers: { "Content-Type": "audio/mpeg" },
-      }),
+      fetch: async () => {
+        providerRequests += 1;
+        if (providerRequests > 3) {
+          return new Response("slow down", {
+            status: 429,
+            headers: { "Retry-After": "17" },
+          });
+        }
+        return new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "Content-Type": "audio/mpeg" },
+        });
+      },
     });
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -54,7 +64,7 @@ describe("Voice TTS rate limit", () => {
     await teardownTestContext(context);
   });
 
-  test("allows two more requests after validation and rejects the next one", async () => {
+  test("propagates a provider rate limit without a global local bucket", async () => {
     for (let index = 0; index < 2; index += 1) {
       const response = await fetch(`${baseUrl}/api/voice/speech`, {
         method: "POST",
@@ -70,9 +80,9 @@ describe("Voice TTS rate limit", () => {
       body: JSON.stringify({ text: "Request 3", mode: "full" }),
     });
     expect(limited.status).toBe(429);
-    expect(limited.headers.get("retry-after")).toBeTruthy();
+    expect(limited.headers.get("retry-after")).toBe("17");
     expect(await limited.json()).toMatchObject({
-      error: "voice_tts_rate_limited",
+      error: "voice_provider_rate_limited",
     });
   });
 });

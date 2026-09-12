@@ -35,7 +35,7 @@ export function ChatTranscript({
   }
 
   return (
-    <div className="min-h-0 flex-1" onClick={handleTranscriptClick}>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col" onClick={handleTranscriptClick}>
       {lifecycleError && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {lifecycleError}

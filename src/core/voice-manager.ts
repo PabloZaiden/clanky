@@ -16,13 +16,15 @@ import type {
 import { DomainError } from "../domain/domain-error";
 import {
   getDefaultVoiceValidation,
+  getVoiceValidationIdentity,
   getPersistedVoiceApiKey,
   getPersistedVoiceSettings,
-  savePersistedVoiceSettings,
   updatePersistedVoiceSettings,
+  updatePersistedVoiceValidation,
   type PersistedVoiceSettings,
   type PersistedVoiceValidation,
 } from "../persistence/voice-settings";
+import { isDomainError } from "../domain/domain-error";
 import {
   normalizeVoiceBaseUrl,
   OpenAiCompatibleVoiceProvider,
@@ -35,16 +37,12 @@ const log = createLogger("core:voice-manager");
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
 const DEFAULT_SPEECH_MODEL = "tts";
 const DEFAULT_TEXT_MODEL = "gpt-5.6-luna";
-const TTS_RATE_LIMIT = 3;
-const TTS_RATE_WINDOW_MS = 60_000;
-
-const ttsRequestTimes: number[] = [];
 
 function emptySettings(): PersistedVoiceSettings {
   return {
     version: 1,
     baseUrl: "",
-    apiKey: null,
+    apiKeyCiphertext: null,
     models: {
       transcription: DEFAULT_TRANSCRIPTION_MODEL,
       speech: DEFAULT_SPEECH_MODEL,
@@ -71,7 +69,9 @@ function publicCapabilityStatus(
   validation: PersistedVoiceValidation,
   configured: boolean,
 ): VoiceCapabilityStatus {
-  const state = configured ? validation.state : "unconfigured";
+  const state = configured
+    ? validation.state === "unconfigured" ? "unvalidated" : validation.state
+    : "unconfigured";
   return {
     configured,
     validated: configured && state === "valid",
@@ -126,23 +126,21 @@ function markValidation(
   };
 }
 
-function reserveTtsRequest(): void {
-  const now = Date.now();
-  while (ttsRequestTimes[0] !== undefined && ttsRequestTimes[0] <= now - TTS_RATE_WINDOW_MS) {
-    ttsRequestTimes.shift();
+function shouldPersistInvalidValidation(
+  error: unknown,
+  signal: AbortSignal | undefined,
+): boolean {
+  if (signal?.aborted) {
+    return false;
   }
-  if (ttsRequestTimes.length >= TTS_RATE_LIMIT) {
-    const retryAfterMs = Math.max(
-      1_000,
-      (ttsRequestTimes[0] ?? now) + TTS_RATE_WINDOW_MS - now,
-    );
-    throw new DomainError(
-      "voice_tts_rate_limited",
-      "Text-to-speech is limited to three requests per minute.",
-      { details: { retryAfterSeconds: Math.ceil(retryAfterMs / 1_000) } },
-    );
+  if (!isDomainError(error)) {
+    return true;
   }
-  ttsRequestTimes.push(now);
+  return ![
+    "voice_provider_rate_limited",
+    "voice_provider_timeout",
+    "voice_provider_unreachable",
+  ].includes(error.code);
 }
 
 export class VoiceManager {
@@ -164,13 +162,15 @@ export class VoiceManager {
       },
       languageHints: Array.from(new Set(update.languageHints)),
     };
-    const existing = await getPersistedVoiceSettings();
-    const next = await updatePersistedVoiceSettings(normalized, existing);
+    const next = await updatePersistedVoiceSettings(normalized);
     const apiKey = await getPersistedVoiceApiKey(next);
     return buildPublicSettings(next, apiKey);
   }
 
-  async validateCapability(capability: VoiceCapability): Promise<VoiceSettings> {
+  async validateCapability(
+    capability: VoiceCapability,
+    signal?: AbortSignal,
+  ): Promise<VoiceSettings> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
     if (!capabilityConfigured(settings, capability, apiKey)) {
@@ -189,28 +189,43 @@ export class VoiceManager {
         await provider.validateTranscription(
           settings.models.transcription,
           settings.languageHints,
+          signal,
         );
       } else if (capability === "speech") {
-        reserveTtsRequest();
         await provider.synthesizeSpeech({
           text: "OK",
           model: settings.models.speech,
           voice: "alloy",
+          signal,
         });
       } else {
         await provider.completeText(
           settings.models.text,
           "Reply with exactly OK.",
+          signal,
         );
       }
     } catch (error) {
-      const failed = markValidation(
-        settings,
-        capability,
-        "invalid",
-        "The provider validation request failed.",
-      );
-      await savePersistedVoiceSettings(failed);
+      if (shouldPersistInvalidValidation(error, signal)) {
+        const failed = markValidation(
+          settings,
+          capability,
+          "invalid",
+          "The provider validation request failed.",
+        );
+        const persisted = await updatePersistedVoiceValidation(
+          capability,
+          getVoiceValidationIdentity(settings, capability),
+          failed.validation[capability],
+        );
+        if (!persisted) {
+          throw new DomainError(
+            "voice_validation_stale",
+            "The voice settings changed while validation was running.",
+            { cause: error },
+          );
+        }
+      }
       log.warn("Voice provider capability validation failed", {
         capability,
         error: String(error),
@@ -219,14 +234,25 @@ export class VoiceManager {
     }
 
     const validated = markValidation(settings, capability, "valid", null);
-    await savePersistedVoiceSettings(validated);
-    return buildPublicSettings(validated, apiKey);
+    const persisted = await updatePersistedVoiceValidation(
+      capability,
+      getVoiceValidationIdentity(settings, capability),
+      validated.validation[capability],
+    );
+    if (!persisted) {
+      throw new DomainError(
+        "voice_validation_stale",
+        "The voice settings changed while validation was running.",
+      );
+    }
+    return buildPublicSettings(persisted, apiKey);
   }
 
   async transcribe(
     audio: Blob,
     filename: string,
     mimeType: string,
+    signal?: AbortSignal,
   ): Promise<string> {
     if (audio.size <= 0 || audio.size > VOICE_MAX_AUDIO_BYTES) {
       throw new DomainError(
@@ -245,6 +271,7 @@ export class VoiceManager {
       mimeType,
       model: settings.models.transcription,
       languageHints: settings.languageHints,
+      signal,
     });
   }
 
@@ -252,6 +279,7 @@ export class VoiceManager {
     text: string,
     mode: VoiceSpeechMode,
     voice: string,
+    signal?: AbortSignal,
   ): Promise<{ audio: ArrayBuffer; contentType: string }> {
     const normalizedText = text.trim();
     if (!normalizedText || normalizedText.length > VOICE_MAX_TEXT_CHARS) {
@@ -278,15 +306,16 @@ export class VoiceManager {
           "Return only the concise summary, without headings or preamble.",
           normalizedText,
         ].join("\n\n"),
+        signal,
       );
       speechText = speechText.slice(0, VOICE_MAX_SUMMARY_CHARS).trim();
     }
 
-    reserveTtsRequest();
     return await provider.synthesizeSpeech({
       text: speechText,
       model: settings.models.speech,
       voice: voice.trim() || "alloy",
+      signal,
     });
   }
 
