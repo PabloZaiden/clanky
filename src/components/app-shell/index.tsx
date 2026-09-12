@@ -72,6 +72,7 @@ export function AppShell() {
     mesh,
     fullTreePreference,
     privateItemsPreference,
+    voiceSettings,
     dashboardData,
     provisioning,
     workspaceGroups,
@@ -335,6 +336,7 @@ export function AppShell() {
     workspacesLoading,
     refreshTasks,
     mesh,
+    voiceSettings,
   }), [
     dashboardData,
     fullTreePreference,
@@ -347,6 +349,7 @@ export function AppShell() {
     schedulerTimezone,
     workspaces,
     workspacesLoading,
+    voiceSettings,
   ]);
 
   const sidebarSnapshotReady = !shellLoading && shellErrors.length === 0;

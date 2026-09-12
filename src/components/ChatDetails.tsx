@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { type TranscriptFileLinkTarget } from "./LogViewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { appAbsoluteUrl } from "../lib/public-path";
@@ -11,6 +11,12 @@ import {
 } from "./chat-details/chat-support-panels";
 import { ChatTranscript } from "./chat-details/chat-transcript";
 import type { ChatComposerProps } from "./chat-details/types";
+import { VoiceListeningOverlay } from "./chat-details/voice-listening-overlay";
+import {
+  useVoicePlayback,
+  useVoiceRecorder,
+  useVoiceSettings,
+} from "../hooks";
 
 export function ChatDetails({
   chatId,
@@ -40,6 +46,49 @@ export function ChatDetails({
     markChatStarting,
     handleReconnect,
   } = useChatLifecycle(chatId);
+  const voiceSettings = useVoiceSettings();
+  const voiceDraftSetterRef = useRef<((text: string) => void) | null>(null);
+  const voiceDraftGetterRef = useRef<(() => string) | null>(null);
+  const registerVoiceDraft = useCallback((
+    setDraft: (text: string) => void,
+    getDraft: () => string,
+  ): (() => void) => {
+    voiceDraftSetterRef.current = setDraft;
+    voiceDraftGetterRef.current = getDraft;
+    return () => {
+      if (voiceDraftSetterRef.current === setDraft) {
+        voiceDraftSetterRef.current = null;
+        voiceDraftGetterRef.current = null;
+      }
+    };
+  }, []);
+  const handleVoiceTranscript = useCallback((text: string): void => {
+    voiceDraftSetterRef.current?.(text);
+  }, []);
+  const voiceRecorder = useVoiceRecorder({
+    enabled: voiceSettings.settings.capabilities.transcription.validated,
+    canStart: () => voiceDraftGetterRef.current?.().trim() === "",
+    onTranscript: handleVoiceTranscript,
+  });
+  const voicePlayback = useVoicePlayback();
+  const handleReadAloud = useCallback((
+    message: { id: string; content: string },
+    mode: "full" | "summary",
+  ): void => {
+    const capability = mode === "summary"
+      ? voiceSettings.settings.capabilities.text
+      : voiceSettings.settings.capabilities.speech;
+    if (!capability.validated) {
+      toast.error("This voice capability is not configured and validated.");
+      return;
+    }
+    void voicePlayback.play(`${message.id}:${mode}`, message.content, mode);
+  }, [
+    toast,
+    voicePlayback,
+    voiceSettings.settings.capabilities.speech,
+    voiceSettings.settings.capabilities.text,
+  ]);
   const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
   const fileLinkContext = useMemo(() => {
     if (!chat || !chatWorkingDirectory) {
@@ -124,7 +173,7 @@ export function ChatDetails({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       <ChatTranscript
         chat={chat}
         transcript={transcript}
@@ -133,6 +182,23 @@ export function ChatDetails({
         toolPathDisplayRoot={chatWorkingDirectory}
         fileLinkContext={fileLinkContext}
         onLoadToolDetails={loadToolCallDetails}
+        voiceInput={{
+          available: voiceSettings.settings.capabilities.transcription.validated,
+          status: voiceRecorder.status,
+          elapsedMs: voiceRecorder.elapsedMs,
+          error: voiceRecorder.error,
+        }}
+        onStartVoice={voiceRecorder.start}
+        onStopVoice={voiceRecorder.stop}
+        onCancelVoice={voiceRecorder.cancel}
+        onDismissVoiceError={voiceRecorder.dismissError}
+        onReadAloud={handleReadAloud}
+        readAloudAvailable={voiceSettings.settings.capabilities.speech.validated}
+        readAloudSummaryAvailable={
+          voiceSettings.settings.capabilities.speech.validated
+          && voiceSettings.settings.capabilities.text.validated
+        }
+        playingReadAloudKey={voicePlayback.playingKey}
       />
       <ChatPermissionPanel
         chatId={chatId}
@@ -156,6 +222,20 @@ export function ChatDetails({
         refreshChat={refreshChat}
         handleReconnect={handleReconnect}
         onSendMessage={onSendMessage}
+        voiceInput={{
+          available: voiceSettings.settings.capabilities.transcription.validated,
+          status: voiceRecorder.status,
+        }}
+        onStartVoice={voiceRecorder.start}
+        registerVoiceDraft={registerVoiceDraft}
+      />
+      <VoiceListeningOverlay
+        status={voiceRecorder.status}
+        elapsedMs={voiceRecorder.elapsedMs}
+        error={voiceRecorder.error}
+        onStop={voiceRecorder.stop}
+        onCancel={voiceRecorder.cancel}
+        onDismissError={voiceRecorder.dismissError}
       />
     </div>
   );

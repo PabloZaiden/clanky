@@ -6,16 +6,9 @@
  * the Clanky data directory.
  */
 
-import { chmod } from "fs/promises";
-import { join } from "path";
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from "node:crypto";
 import type { WorkspaceSshTarget } from "@/shared/workspace";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
-import { getDatabase, getDataDir } from "./database";
+import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";
 import {
   ensureExecutionHost,
@@ -24,11 +17,11 @@ import {
   type PersistedExecutionHost,
 } from "./execution-hosts";
 import { buildSshTargetKey } from "./workspace-target-key";
-
-const ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const ENCRYPTION_KEY_BYTES = 32;
-const ENCRYPTION_IV_BYTES = 12;
-const ENCRYPTED_PASSWORD_VERSION = "v1";
+import {
+  decryptPersistedSecret,
+  encryptPersistedSecret,
+  resetPersistedSecretKeyCache,
+} from "./encrypted-secret";
 
 interface WorkspaceExecutionTargetRow {
   workspace_id: string;
@@ -59,89 +52,6 @@ export interface PersistedWorkspaceSshTarget extends WorkspaceSshTarget {
   password?: string;
 }
 
-let cachedKeyPath: string | null = null;
-let cachedEncryptionKey: Buffer | null = null;
-
-function getEncryptionKeyPath(): string {
-  return join(getDataDir(), "workspace-execution-target.key");
-}
-
-async function getEncryptionKey(): Promise<Buffer> {
-  const keyPath = getEncryptionKeyPath();
-  if (cachedKeyPath === keyPath && cachedEncryptionKey) {
-    if (await Bun.file(keyPath).exists()) {
-      return cachedEncryptionKey;
-    }
-    cachedKeyPath = null;
-    cachedEncryptionKey = null;
-  }
-
-  const file = Bun.file(keyPath);
-  if (await file.exists()) {
-    const raw = (await file.text()).trim();
-    const key = Buffer.from(raw, "base64");
-    if (key.length !== ENCRYPTION_KEY_BYTES) {
-      throw new Error("Workspace execution target encryption key is invalid");
-    }
-    cachedKeyPath = keyPath;
-    cachedEncryptionKey = key;
-    return key;
-  }
-
-  const key = randomBytes(ENCRYPTION_KEY_BYTES);
-  await Bun.write(keyPath, key.toString("base64"));
-  await chmod(keyPath, 0o600);
-  cachedKeyPath = keyPath;
-  cachedEncryptionKey = key;
-  return key;
-}
-
-async function encryptPassword(password: string): Promise<string> {
-  const key = await getEncryptionKey();
-  const iv = randomBytes(ENCRYPTION_IV_BYTES);
-  const cipher = createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(password, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return [
-    ENCRYPTED_PASSWORD_VERSION,
-    iv.toString("base64"),
-    tag.toString("base64"),
-    ciphertext.toString("base64"),
-  ].join(".");
-}
-
-async function decryptPassword(value: string): Promise<string> {
-  const [version, ivValue, tagValue, ciphertextValue] = value.split(".");
-  if (
-    version !== ENCRYPTED_PASSWORD_VERSION
-    || !ivValue
-    || !tagValue
-    || !ciphertextValue
-  ) {
-    throw new Error("Workspace execution target password has an invalid format");
-  }
-
-  try {
-    const key = await getEncryptionKey();
-    const decipher = createDecipheriv(
-      ENCRYPTION_ALGORITHM,
-      key,
-      Buffer.from(ivValue, "base64"),
-    );
-    decipher.setAuthTag(Buffer.from(tagValue, "base64"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(ciphertextValue, "base64")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch (error) {
-    throw new Error("Unable to decrypt workspace execution target password", {
-      cause: error,
-    });
-  }
-}
 
 function workspaceTargetRef(workspaceId: string) {
   return {
@@ -404,7 +314,7 @@ export async function getWorkspaceSshTarget(
   return {
     ...summary,
     ...(row.password_ciphertext
-      ? { password: await decryptPassword(row.password_ciphertext) }
+      ? { password: await decryptPersistedSecret(row.password_ciphertext) }
       : {}),
   };
 }
@@ -421,7 +331,7 @@ export async function ensureWorkspaceSshTarget(
   const { normalized, existing } = prepared;
   const passwordCiphertext = normalized.passwordProvided
     ? normalized.password
-      ? await encryptPassword(normalized.password)
+      ? await encryptPersistedSecret(normalized.password)
       : null
     : existing?.password_ciphertext ?? null;
   const host = getDatabase().transaction(() => {
@@ -497,6 +407,5 @@ export async function removeWorkspaceSshTarget(
 }
 
 export function resetWorkspaceExecutionTargetCredentialCache(): void {
-  cachedKeyPath = null;
-  cachedEncryptionKey = null;
+  resetPersistedSecretKeyCache();
 }

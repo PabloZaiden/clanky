@@ -30,6 +30,14 @@ export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuic
 export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
 export { useGithubUsername, type UseGithubUsernameResult } from "./useGithubUsername";
 export { usePrivateItemsPreference, type PrivateItemsPreference } from "./usePrivateItemsPreference";
+export { useVoiceSettings, type UseVoiceSettingsResult } from "./useVoiceSettings";
+export {
+  useVoiceRecorder,
+  VOICE_MAX_RECORDING_MS,
+  type VoiceRecorderStatus,
+  type UseVoiceRecorderResult,
+} from "./useVoiceRecorder";
+export { useVoicePlayback, type UseVoicePlaybackResult } from "./useVoicePlayback";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
 export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";

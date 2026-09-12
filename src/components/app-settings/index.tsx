@@ -3,6 +3,7 @@ export { SchedulerTimezoneRowContent } from "./scheduler-timezone-row-content";
 export { PurgeTerminalTasksAction } from "./purge-terminal-tasks-action";
 export { MeshSettingsContent } from "./mesh-settings-content";
 export { GithubUsernameRowContent } from "./github-username-row-content";
+export { VoiceSettingsRowContent } from "./voice-settings-row-content";
 export {
   SettingsCheckbox,
   SettingsError,

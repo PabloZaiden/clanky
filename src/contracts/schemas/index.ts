@@ -138,6 +138,16 @@ export {
   normalizeQuickChatSettings,
 } from "./preferences";
 
+export {
+  VoiceSettingsUpdateSchema,
+  VoiceCapabilitySchema,
+  VoiceValidationRequestSchema,
+  VoiceSpeechRequestSchema,
+  type VoiceSettingsUpdateRequest,
+  type VoiceValidationRequest,
+  type VoiceSpeechRequest,
+} from "./voice";
+
 // Terminal session schemas
 export {
   TerminalConnectionModeSchema,

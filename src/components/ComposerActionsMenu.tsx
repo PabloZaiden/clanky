@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { FloatingPanel, OverflowIcon } from "@pablozaiden/webapp/web";
+
+const ComposerActionsMenuCloseContext = createContext<(() => void) | null>(null);
 
 interface ComposerActionsMenuProps {
   ariaLabel: string;
@@ -42,22 +53,24 @@ export function ComposerActionsMenu({
       >
         <OverflowIcon />
       </button>
-      <FloatingPanel
-        open={isOpen}
-        anchorRef={triggerRef}
-        onClose={() => close()}
-        ariaLabel={ariaLabel}
-        role="group"
-        id={menuId}
-        placement="top-start"
-        focusSelector="button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
-        restoreFocusOnClose
-        className="clanky-composer-panel max-h-[min(24rem,calc(100vh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg p-3"
-      >
-        <div className="space-y-3">
-          {children}
-        </div>
-      </FloatingPanel>
+      <ComposerActionsMenuCloseContext.Provider value={close}>
+        <FloatingPanel
+          open={isOpen}
+          anchorRef={triggerRef}
+          onClose={() => close()}
+          ariaLabel={ariaLabel}
+          role="group"
+          id={menuId}
+          placement="top-start"
+          focusSelector="button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
+          restoreFocusOnClose
+          className="clanky-composer-panel max-h-[min(24rem,calc(100vh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg p-3"
+        >
+          <div className="space-y-3">
+            {children}
+          </div>
+        </FloatingPanel>
+      </ComposerActionsMenuCloseContext.Provider>
     </>
   );
 }
@@ -88,11 +101,16 @@ export function ComposerActionsMenuButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
+  const closeMenu = useContext(ComposerActionsMenuCloseContext);
+
   return (
     <button
       type="button"
       disabled={disabled}
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+        closeMenu?.();
+      }}
       className="clanky-composer-button flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm"
     >
       {children}

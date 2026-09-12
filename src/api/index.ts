@@ -45,6 +45,7 @@ import { meshRoutes } from "./mesh";
 import { workspaceWorkerEnrollmentRoutes } from "./workspace-worker-enrollments";
 import { executionHostRoutes } from "./execution-hosts";
 import { executionHostFilesRoutes } from "./execution-host-files";
+import { voiceRoutes } from "./voice";
 
 /**
  * All API routes combined.
@@ -70,6 +71,7 @@ const nativeApiRoutes = {
   ...workspaceWorkerEnrollmentRoutes,
   ...executionHostRoutes,
   ...executionHostFilesRoutes,
+  ...voiceRoutes,
   ...agentPromptBridgeRoutes,
 };
 
@@ -117,3 +119,4 @@ export * from "./mesh";
 export * from "./workspace-worker-enrollments";
 export * from "./execution-hosts";
 export * from "./execution-host-files";
+export * from "./voice";
