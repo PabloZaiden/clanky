@@ -200,8 +200,8 @@ export const ConversationViewer = memo(function ConversationViewer({
         {isEmpty ? (
           <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
             {isActive ? (
-              <div className="flex items-center gap-2">
-                <ActivitySpinner className="h-4 w-4" />
+              <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
+                <ActivitySpinner className="h-3.5 w-3.5" />
                 <span>{activeStateMessage}</span>
               </div>
             ) : (
@@ -289,7 +289,7 @@ export const ConversationViewer = memo(function ConversationViewer({
               }
             })}
             {shouldShowWorkingIndicator && (
-              <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
                 <ActivitySpinner />
                 <span>{activeStateMessage}</span>
               </div>
