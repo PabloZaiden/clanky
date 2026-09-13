@@ -30,9 +30,21 @@ function createSilentAudioUrl(): string {
   return URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
 }
 
-function getPlaybackErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.name === "NotAllowedError") {
-    return "The browser blocked audio playback. Tap Read aloud again to allow audio.";
+function getErrorName(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const name = error.name;
+    return typeof name === "string" ? name : undefined;
+  }
+  return undefined;
+}
+
+function getPlaybackErrorMessage(error: unknown, mode: VoiceSpeechMode): string {
+  if (getErrorName(error) === "NotAllowedError") {
+    const actionLabel = mode === "summary" ? "Read summary" : "Read aloud";
+    return `The browser blocked audio playback. Try ${actionLabel} again to allow audio.`;
   }
   return String(error);
 }
@@ -182,7 +194,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       }
       if (generationRef.current === generation) {
         releaseAudio(generation);
-        toast.error(getPlaybackErrorMessage(playbackError));
+        toast.error(getPlaybackErrorMessage(playbackError, mode));
       }
     } finally {
       if (requestControllerRef.current === controller) {
