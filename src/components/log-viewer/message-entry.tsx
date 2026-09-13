@@ -171,7 +171,7 @@ export const MessageEntry = memo(function MessageEntry({
               ))}
             </div>
           )}
-          {!isUser && onReadAloud && msg.content.trim() && !readAloudDisabled && (
+          {!isUser && onReadAloud && msg.content.trim() && (!readAloudDisabled || generatingReadAloudMode) && (
             <div className="flex flex-wrap gap-2 pt-1">
               {generatingReadAloudMode ? (
                 renderReadAloudAction(
