@@ -105,7 +105,7 @@ export class MeshAcpGateway {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is at capacity.");
     }
     const config = await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
-    await this.closeRelay(sessionId);
+    await this.stopRelay(sessionId);
     const directoryCheck = await new CommandExecutorImpl({
       provider: "local",
       directory: ".",
@@ -319,10 +319,9 @@ export class MeshAcpGateway {
     await this.closeRelay(sessionId);
   }
 
-  private async closeRelay(sessionId: string): Promise<void> {
+  private async stopRelay(sessionId: string): Promise<void> {
     const relay = this.relays.get(sessionId);
     if (!relay) {
-      meshExecutionGateway.closeSession(sessionId);
       return;
     }
     this.relays.delete(sessionId);
@@ -334,6 +333,10 @@ export class MeshAcpGateway {
       gracefulWaitMs: 500,
       forceWaitMs: 0,
     });
+  }
+
+  private async closeRelay(sessionId: string): Promise<void> {
+    await this.stopRelay(sessionId);
     meshExecutionGateway.closeSession(sessionId);
   }
 
