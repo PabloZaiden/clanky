@@ -211,6 +211,77 @@ describe("MeshCommandExecutorClient", () => {
     }
   });
 
+  test("releases a remote session when opening is cancelled after worker creation", async () => {
+    await ensureLocalMeshNodeIdentity();
+    await saveWorkerRegistration({
+      workerNodeId: "worker-1",
+      localUserId: "admin",
+      workerInstanceName: "Worker",
+      workerEndpoint: "http://worker.example",
+      workerTransport: "http",
+      workerPublicKey: "worker-public-key",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/workspace",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+
+    let requestStarted!: () => void;
+    const responseStarted = new Promise<void>((resolve) => {
+      requestStarted = resolve;
+    });
+    let releaseResponse!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    let releaseRequests = 0;
+    const fetchImpl = Object.assign(
+      async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        if (init?.method === "DELETE") {
+          releaseRequests += 1;
+          expect(body["sessionId"]).toBe("session-1");
+          expect(body["sessionToken"]).toBe("s".repeat(32));
+          return Response.json({ success: true });
+        }
+        requestStarted();
+        await responseGate;
+        return Response.json({
+          protocolVersion: 1,
+          sessionId: "session-1",
+          expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
+          encryptedPayload: encryptMeshPayload(
+            { sessionToken: "s".repeat(32) },
+            body["callerEncryptionPublicKey"] as string,
+          ),
+        });
+      },
+      { preconnect: () => undefined },
+    ) as typeof globalThis.fetch;
+    const client = new MeshCommandExecutorClient({
+      workspaceId: "workspace-1",
+      directory: "/workspace",
+      executionNodeId: "worker-1",
+      provider: "copilot",
+      localUserId: "admin",
+      channel: "acp",
+      fetch: fetchImpl,
+    });
+    const controller = new AbortController();
+    const opening = client.openSession(controller.signal);
+    await responseStarted;
+    controller.abort();
+    releaseResponse();
+
+    await expect(opening).rejects.toMatchObject({ code: "mesh_execution_aborted" });
+    expect(releaseRequests).toBe(1);
+    client.closeSession();
+  });
+
   test("falls back to the legacy ACP lease for older workers", async () => {
     await ensureLocalMeshNodeIdentity();
     await saveWorkerRegistration({

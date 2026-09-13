@@ -114,4 +114,42 @@ describe("MeshAcpGateway relay lifecycle", () => {
     ).resolves.toBeGreaterThan(Date.now());
     expect(closeEvents).toEqual([]);
   });
+
+  test("aborts a relay opening when the socket closes", async () => {
+    const session = await createSession();
+    let openingStarted!: () => void;
+    const openingStartedPromise = new Promise<void>((resolve) => {
+      openingStarted = resolve;
+    });
+    let releaseOpening!: () => void;
+    const openingGate = new Promise<void>((resolve) => {
+      releaseOpening = resolve;
+    });
+    const originalGetAcpSessionConfig = meshExecutionGateway.getAcpSessionConfig.bind(meshExecutionGateway);
+    meshExecutionGateway.getAcpSessionConfig = async (sessionId, sessionToken) => {
+      openingStarted();
+      await openingGate;
+      return await originalGetAcpSessionConfig(sessionId, sessionToken);
+    };
+
+    const socket = {
+      send(_data: string): void {},
+      close(_code?: number, _reason?: string): void {},
+    };
+    const opening = gateway.open(socket, session.sessionId, session.sessionToken);
+    const openingOutcome = opening.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    try {
+      await openingStartedPromise;
+      await gateway.close(session.sessionId);
+      const error = await openingOutcome;
+      expect(error).toBeInstanceOf(Error);
+    } finally {
+      meshExecutionGateway.getAcpSessionConfig = originalGetAcpSessionConfig;
+      releaseOpening();
+      await gateway.closeAll();
+    }
+  });
 });

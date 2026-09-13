@@ -29,6 +29,13 @@ export const MeshExecutionSessionRequestSchema = z.object({
   signature: z.string().trim().min(1).max(16_384),
 });
 
+export const MeshExecutionSessionCloseRequestSchema = z.object({
+  protocolVersion: z.literal(MESH_EXECUTION_PROTOCOL_VERSION),
+  sessionId: z.string().trim().min(1).max(200),
+  sessionToken: z.string().trim().min(32).max(256),
+  requestId: z.string().trim().min(1).max(200),
+});
+
 export const MeshExecutionRpcRequestSchema = z.object({
   protocolVersion: z.literal(MESH_EXECUTION_PROTOCOL_VERSION),
   sessionId: z.string().trim().min(1).max(200),
@@ -88,6 +95,7 @@ export const MeshExecutionFileWriteQuerySchema = z.object({
 });
 
 export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestSchema>;
+export type MeshExecutionSessionCloseRequest = z.infer<typeof MeshExecutionSessionCloseRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;
 export type MeshExecutionAsyncCommandRequest = z.infer<typeof MeshExecutionAsyncCommandRequestSchema>;
 export type MeshExecutionFileWriteQuery = z.infer<typeof MeshExecutionFileWriteQuerySchema>;

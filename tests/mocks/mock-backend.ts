@@ -40,6 +40,11 @@ export interface MockModelInfo {
 export interface MockBackendOptions {
   /** Responses to return for prompts (cycled through in order) */
   responses?: string[];
+  /** Optional hook invoked while a backend connection is being established. */
+  onConnect?: (
+    config: BackendConnectionConfig,
+    signal?: AbortSignal,
+  ) => void | Promise<void>;
   /** Streaming response chunks to emit for async prompts, cycled independently from `responses`. */
   streamingResponseChunks?: string[][];
   /** Normalized event sequences to emit for async prompts, cycled independently from `responses`. */
@@ -76,6 +81,7 @@ export class MockAcpBackend implements Backend {
   private responseIndex = 0;
   private pendingPrompt = false;
   private readonly responses: string[];
+  private readonly onConnect?: MockBackendOptions["onConnect"];
   private readonly streamingResponseChunks: string[][];
   private readonly streamEventSequences: AgentEvent[][];
   private readonly onPrompt?: MockBackendOptions["onPrompt"];
@@ -97,6 +103,7 @@ export class MockAcpBackend implements Backend {
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
+    this.onConnect = options.onConnect;
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
     this.streamEventSequences = options.streamEventSequences ?? [];
     this.onPrompt = options.onPrompt;
@@ -126,10 +133,18 @@ export class MockAcpBackend implements Backend {
   // Core Backend methods (used by TaskEngine)
   // ============================================
 
-  async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
+  async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+    this.connectionConfigs.push(config);
+    await this.onConnect?.(config, signal);
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error("connection aborted");
+    }
     this.connected = true;
     this.directory = config.directory;
-    this.connectionConfigs.push(config);
   }
 
   async disconnect(): Promise<void> {

@@ -16,6 +16,7 @@ import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { fetchTestLocalExecutionHost } from "../setup";
+import { pollUntil } from "../helpers/polling";
 import type { ExecutionHostRef } from "@/shared";
 
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
@@ -1367,9 +1368,6 @@ describe("Workspace API Integration", () => {
       const workspace = await workspaceResponse.json();
       const originalUpdatedAt = workspace.updatedAt;
 
-      // Wait a bit to ensure timestamp difference
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       // Step 2: Create a task using the workspaceId (draft to avoid git operations)
       const taskResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
@@ -1404,11 +1402,22 @@ describe("Workspace API Integration", () => {
       expect(task.state.status).toBe("draft");
 
       // Step 3: Verify the workspace was touched (updatedAt should be updated)
-      const updatedWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
-      expect(updatedWorkspaceResponse.ok).toBe(true);
-      const updatedWorkspace = await updatedWorkspaceResponse.json();
+      const updatedWorkspace = await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
+          expect(response.ok).toBe(true);
+          return await response.json();
+        },
+        (candidate) =>
+          new Date(candidate.updatedAt).getTime() > new Date(originalUpdatedAt).getTime(),
+        {
+          description: "workspace updatedAt to reflect task creation",
+          timeoutMs: 5000,
+          formatLastObserved: (candidate) => `updatedAt=${candidate.updatedAt}`,
+        },
+      );
       expect(new Date(updatedWorkspace.updatedAt).getTime()).toBeGreaterThan(
-        new Date(originalUpdatedAt).getTime()
+        new Date(originalUpdatedAt).getTime(),
       );
 
     });

@@ -46,14 +46,16 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
   async resolveWorkingDirectory(
     chat: Chat,
-    options: { prepareWorkspace: boolean },
+    options: { prepareWorkspace: boolean; signal?: AbortSignal },
   ): Promise<ChatDirectoryResolution> {
+    throwIfAborted(options.signal);
     if (isTaskChat(chat)) {
       const taskId = chat.config.taskId;
       if (!taskId) {
         throw new Error(`Task chat ${chat.config.id} is missing its taskId`);
       }
       const task = await this.taskManager.getTask(taskId);
+      throwIfAborted(options.signal);
       if (!task) {
         throw new Error(`Task ${taskId} for chat ${chat.config.id} was not found`);
       }
@@ -82,8 +84,9 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
     if (!chat.config.useWorktree) {
       if (options.prepareWorkspace) {
-        await this.ensureStandaloneChatBranch(chat);
+        await this.ensureStandaloneChatBranch(chat, options.signal);
       }
+      throwIfAborted(options.signal);
       return {
         chat,
         directory: chat.config.directory,
@@ -98,6 +101,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
         );
       }
       const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
+      throwIfAborted(options.signal);
       const git = GitService.withExecutor(executor);
       return {
         chat,
@@ -105,7 +109,8 @@ export class ChatWorktreeService implements ChatWorktreePort {
       };
     }
 
-    const prepared = await this.ensureWorktree(chat);
+    const prepared = await this.ensureWorktree(chat, { signal: options.signal });
+    throwIfAborted(options.signal);
     const worktreePath = prepared.state.worktree?.worktreePath;
     if (!worktreePath) {
       throw new Error(`Chat ${chat.config.id} is configured to use a worktree but no worktree path was recorded`);
@@ -119,13 +124,16 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
   async prepareWorktreeState(
     chat: Chat,
-    options: { syncBaseBranch?: boolean } = {},
+    options: { syncBaseBranch?: boolean; signal?: AbortSignal } = {},
   ): Promise<ChatWorktreeState> {
+    throwIfAborted(options.signal);
     const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
+    throwIfAborted(options.signal);
     const git = GitService.withExecutor(executor);
     const originalBranch = chat.state.worktree?.originalBranch
       ?? chat.config.baseBranch
       ?? await git.getCurrentBranch(chat.config.directory);
+    throwIfAborted(options.signal);
     const workingBranch = chat.state.worktree?.workingBranch
       ?? this.buildWorkingBranchName(chat);
     const persistedWorktreePath = chat.state.worktree?.worktreePath;
@@ -134,6 +142,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
       : git.getManagedWorktreePath(chat.config.directory, chat.config.id);
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
+    throwIfAborted(options.signal);
     if (!worktreeExists) {
       const workspace = await this.state.getWorkspace(getChatWorkspaceId(chat));
       if (!workspace) {
@@ -153,8 +162,10 @@ export class ChatWorktreeService implements ChatWorktreePort {
           },
         });
       }
+      throwIfAborted(options.signal);
 
       const branchExists = await git.branchExists(chat.config.directory, workingBranch);
+      throwIfAborted(options.signal);
       if (branchExists) {
         await git.addWorktreeForExistingBranch(chat.config.directory, worktreePath, workingBranch);
       } else {
@@ -169,17 +180,17 @@ export class ChatWorktreeService implements ChatWorktreePort {
     };
   }
 
-  async ensureWorktree(chat: Chat): Promise<Chat> {
+  async ensureWorktree(chat: Chat, options: { signal?: AbortSignal } = {}): Promise<Chat> {
     if (isTaskChat(chat) || !chat.config.useWorktree) {
       return chat;
     }
 
     const pendingPreparation = this.pendingWorktreePreparations.get(chat.config.id);
     if (pendingPreparation) {
-      return pendingPreparation;
+      return await raceWithAbort(pendingPreparation, options.signal);
     }
 
-    return this.prepareAndPersistWorktree(chat);
+    return await raceWithAbort(this.prepareAndPersistWorktree(chat, options.signal), options.signal);
   }
 
   prepareWorktreeInBackground(chat: Chat): void {
@@ -219,13 +230,13 @@ export class ChatWorktreeService implements ChatWorktreePort {
     });
   }
 
-  private prepareAndPersistWorktree(chat: Chat): Promise<Chat> {
+  private prepareAndPersistWorktree(chat: Chat, signal?: AbortSignal): Promise<Chat> {
     const existing = this.pendingWorktreePreparations.get(chat.config.id);
     if (existing) {
       return existing;
     }
 
-    const preparation = this.doPrepareAndPersistWorktree(chat).finally(() => {
+    const preparation = this.doPrepareAndPersistWorktree(chat, signal).finally(() => {
       if (this.pendingWorktreePreparations.get(chat.config.id) === preparation) {
         this.pendingWorktreePreparations.delete(chat.config.id);
       }
@@ -234,11 +245,14 @@ export class ChatWorktreeService implements ChatWorktreePort {
     return preparation;
   }
 
-  private async doPrepareAndPersistWorktree(chat: Chat): Promise<Chat> {
+  private async doPrepareAndPersistWorktree(chat: Chat, signal?: AbortSignal): Promise<Chat> {
     const nextWorktreeState = await this.prepareWorktreeState(chat, {
       syncBaseBranch: !chat.config.skipBaseBranchSync,
+      signal,
     });
+    throwIfAborted(signal);
     const latest = await this.state.getChat(chat.config.id) ?? chat;
+    throwIfAborted(signal);
     const worktreeChanged =
       latest.state.worktree?.originalBranch !== nextWorktreeState.originalBranch
       || latest.state.worktree?.workingBranch !== nextWorktreeState.workingBranch
@@ -256,6 +270,8 @@ export class ChatWorktreeService implements ChatWorktreePort {
       worktree: nextWorktreeState,
       ...(shouldClearCreationStage ? { startupStage: undefined } : {}),
       lastActivityAt: latest.state.lastActivityAt ?? createTimestamp(),
+    }, {
+      expectedStatus: latest.state.status,
     });
     this.state.emitChatUpdated(updated);
     return updated;
@@ -278,7 +294,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     await this.state.markChatError(latest, `Failed to prepare chat workspace: ${String(error)}`);
   }
 
-  private async ensureStandaloneChatBranch(chat: Chat): Promise<void> {
+  private async ensureStandaloneChatBranch(chat: Chat, signal?: AbortSignal): Promise<void> {
     if (isTaskChat(chat) || chat.config.useWorktree) {
       return;
     }
@@ -289,14 +305,17 @@ export class ChatWorktreeService implements ChatWorktreePort {
     }
 
     const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
+    throwIfAborted(signal);
     const git = GitService.withExecutor(executor);
     const isGitRepo = await git.isGitRepo(chat.config.directory);
+    throwIfAborted(signal);
     if (!isGitRepo) {
       return;
     }
 
     try {
       await git.assertValidBranchName(chat.config.directory, expectedBranch);
+      throwIfAborted(signal);
     } catch (error) {
       if (error instanceof InvalidBranchNameError) {
         throw new InvalidChatBaseBranchError(expectedBranch);
@@ -309,7 +328,11 @@ export class ChatWorktreeService implements ChatWorktreePort {
       result = await git.ensureBranch(chat.config.directory, expectedBranch, {
         autoCheckout: true,
       });
+      throwIfAborted(signal);
     } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
       throw new ChatBranchCheckoutError(
         expectedBranch,
         `Unable to switch the standalone chat to branch '${expectedBranch}'. ${String(error)}`,
@@ -324,9 +347,41 @@ export class ChatWorktreeService implements ChatWorktreePort {
         toBranch: result.expectedBranch,
       });
     }
+
   }
 
   private buildWorkingBranchName(chat: Chat): string {
     return `chat-${sanitizeBranchName(chat.config.name)}-${chat.config.id.slice(0, 8)}`;
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Chat startup was aborted.");
+  }
+}
+
+async function raceWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return await operation;
+  }
+  throwIfAborted(signal);
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(
+      signal.reason instanceof Error
+        ? signal.reason
+        : new Error("Chat startup was aborted."),
+    );
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+    }
   }
 }

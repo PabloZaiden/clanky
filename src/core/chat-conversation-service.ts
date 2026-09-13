@@ -72,11 +72,20 @@ import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
+const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
+const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
 
 interface ActiveChatStream {
   handle: AgentStreamHandle;
   generation: number;
   completion: Promise<void>;
+}
+
+interface StartupOperation {
+  controller: AbortController;
+  settled: Promise<void>;
+  resolveSettled: () => void;
+  interrupted: boolean;
 }
 
 interface ChatTranscriptMemory {
@@ -121,6 +130,7 @@ export interface ChatConversationServiceDependencies {
 export class ChatConversationService implements ChatConversationPort {
   private readonly activeStreams = new Map<string, ActiveChatStream>();
   private readonly activeStreamGenerations = new Map<string, number>();
+  private readonly startupOperations = new Map<string, StartupOperation>();
   private readonly state: ChatStatePort;
   private readonly session: ChatSessionPort;
   private readonly worktree: ChatWorktreePort;
@@ -156,6 +166,8 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const timer = createChatLatencyTimer();
     this.assertChatIsAvailable(chat);
+    const startupOperation = createStartupOperation();
+    this.startupOperations.set(chat.config.id, startupOperation);
 
     const userMessage: MessageData = {
       id: `chat-user-${crypto.randomUUID()}`,
@@ -190,56 +202,112 @@ export class ChatConversationService implements ChatConversationPort {
 
       let workingDirectory: ChatDirectoryResolution | undefined;
       if (isExecutionHostChat(current)) {
-        current = await this.state.updateStartupStage(current, "connecting_provider");
+        throwIfChatStartupAborted(startupOperation.controller.signal);
+        current = await this.state.updateStartupStage(current, "connecting_provider", {
+          expectedStatus: current.state.status,
+        });
       } else {
         workingDirectory = await timer.measure("worktree_preparation", () =>
           this.worktree.resolveWorkingDirectory(current, {
             prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(current),
+            signal: startupOperation.controller.signal,
           })
         );
+        throwIfChatStartupAborted(startupOperation.controller.signal);
         const stagedWorking = {
           ...workingDirectory,
-          chat: await this.state.updateStartupStage(workingDirectory.chat, "connecting_provider"),
+          chat: await this.state.updateStartupStage(workingDirectory.chat, "connecting_provider", {
+            expectedStatus: workingDirectory.chat.state.status,
+          }),
         };
         workingDirectory = stagedWorking;
         current = stagedWorking.chat;
       }
 
-      const backend = await timer.measure("backend_connection", () =>
-        this.session.ensureBackendConnected(
-          current,
-          { credentialToken: options.credentialToken },
-          workingDirectory,
-        )
-      );
-      current = await timer.measure("session_creation", () =>
-        this.session.ensureSession(current, backend, {
-          recreateIfMissing: true,
-          workingDirectory,
-        })
-      );
+      let backend!: Backend;
+      let startupAttempt = 0;
+      while (true) {
+        try {
+          backend = await timer.measure("backend_connection", () =>
+            this.session.ensureBackendConnected(
+              current,
+              {
+                credentialToken: options.credentialToken,
+                signal: startupOperation.controller.signal,
+              },
+              workingDirectory,
+            )
+          );
+          current = await timer.measure("session_creation", () =>
+            this.session.ensureSession(current, backend, {
+              recreateIfMissing: true,
+              workingDirectory,
+              signal: startupOperation.controller.signal,
+            })
+          );
+          break;
+        } catch (error) {
+          if (
+            startupAttempt === 0
+            && !startupOperation.controller.signal.aborted
+            && isRecoverableChatStartupFailure(error)
+          ) {
+            startupAttempt++;
+            log.warn("Retrying chat startup after a transient ACP failure", {
+              chatId: chat.config.id,
+              error: getAcpErrorMessage(error),
+            });
+            await this.session.disconnectChat(chat.config.id);
+            current = await this.loadChatIfAvailable(chat.config.id) ?? current;
+            continue;
+          }
+          throw error;
+        }
+      }
+      throwIfChatStartupAborted(startupOperation.controller.signal);
       if (!current.state.session?.id) {
         throw new Error("Failed to establish chat session");
       }
 
-      current = await this.state.updateStartupStage(current, "sending_prompt");
+      current = await this.state.updateStartupStage(current, "sending_prompt", {
+        expectedStatus: current.state.status,
+      });
       const prompt: PromptInput = {
         parts: buildPromptParts(input.message, input.attachments),
         model: current.config.model,
       };
       const started = await timer.measure("prompt_start", () =>
-        this.startActivePrompt(current, backend, current.state.session!.id, prompt)
+        this.startActivePrompt(
+          current,
+          backend,
+          current.state.session!.id,
+          prompt,
+          startupOperation.controller.signal,
+        )
       );
       this.scheduleAutogeneratedChatName(started, backend, input.message);
       return started;
     } catch (error) {
+      const latest = await this.loadChatIfAvailable(chat.config.id);
+      if (startupOperation.interrupted) {
+        if (this.startupOperations.get(chat.config.id) === startupOperation && latest) {
+          return await this.completeInterruptedChat(latest);
+        }
+        return latest ?? chat;
+      }
       if (error instanceof ChatBusyError) {
         throw error;
       }
-      const latest = await this.loadChatIfAvailable(chat.config.id);
-      await this.emitChatError(latest ?? chat, error);
+      const erroredChat = await this.emitChatError(latest ?? chat, error);
+      if ((erroredChat.state.queuedMessages ?? []).length > 0) {
+        this.scheduleQueuedMessageDrain(chat.config.id);
+      }
       throw error;
     } finally {
+      if (this.startupOperations.get(chat.config.id) === startupOperation) {
+        this.startupOperations.delete(chat.config.id);
+      }
+      startupOperation.resolveSettled();
       const timing = timer.complete();
       log.info("Chat first-message timing", {
         chatId: chat.config.id,
@@ -267,39 +335,79 @@ export class ChatConversationService implements ChatConversationPort {
   }
 
   async interruptChat(chatId: string, reason?: string): Promise<Chat | null> {
-    const chat = await this.state.getChat(chatId);
+    let chat = await this.state.getChat(chatId);
     if (!chat) {
       return null;
     }
 
-    if (!chat.state.session?.id) {
+    const startupOperation = this.startupOperations.get(chatId);
+    const activeStream = this.activeStreams.get(chatId);
+    if (!chat.state.session?.id && !startupOperation && !activeStream) {
       return chat;
     }
 
-    const backend = await this.session.ensureBackendConnected(chat);
-    await this.updateState(chat, {
-      ...chat.state,
-      status: "interrupting",
-      interruptRequested: true,
-      lastActivityAt: createTimestamp(),
-    });
+    chat = await this.state.getChat(chatId) ?? chat;
+    startupOperation?.controller.abort();
+    if (startupOperation) {
+      startupOperation.interrupted = true;
+    }
+    const markInterrupting = async (candidate: Chat): Promise<void> => {
+      await this.updateState(candidate, {
+        ...candidate.state,
+        status: "interrupting",
+        interruptRequested: true,
+        lastActivityAt: createTimestamp(),
+      }, {
+        expectedStatus: candidate.state.status,
+      });
+    };
+    try {
+      await markInterrupting(chat);
+    } catch (error) {
+      if (!(error instanceof ChatBusyError)) {
+        throw error;
+      }
+      const latest = await this.state.getChat(chatId);
+      if (!latest) {
+        return null;
+      }
+      chat = latest;
+      await markInterrupting(chat);
+    }
 
-    const activeStream = this.activeStreams.get(chatId);
     if (activeStream) {
       this.closeActiveStream(chatId);
     }
 
-    try {
-      await backend.abortSession(chat.state.session.id);
-    } catch (error) {
-      log.warn("Failed to abort chat session during interrupt", {
-        chatId,
-        sessionId: chat.state.session.id,
-        error: String(error),
-      });
+    let backend: Backend | undefined;
+    if (!startupOperation && chat.state.session?.id) {
+      try {
+        backend = this.session.getChatBackend(chat.config.id, chat.config.workspaceId);
+      } catch (error) {
+        log.warn("Chat backend was unavailable during interrupt", {
+          chatId,
+          error: String(error),
+        });
+      }
     }
 
-    if (activeStream) {
+    if (backend?.isConnected() && chat.state.session?.id) {
+      try {
+        await withTimeout(
+          backend.abortSession(chat.state.session.id),
+          CHAT_INTERRUPT_ABORT_TIMEOUT_MS,
+          "Chat session abort timed out",
+        );
+      } catch (error) {
+        log.warn("Failed to abort chat session during interrupt", {
+          chatId,
+          sessionId: chat.state.session.id,
+          error: String(error),
+        });
+      }
+    }
+
+    if (startupOperation || activeStream || backend) {
       try {
         await this.session.disconnectChat(chatId);
       } catch (error) {
@@ -309,9 +417,20 @@ export class ChatConversationService implements ChatConversationPort {
         });
       }
     }
-
-    if (activeStream) {
-      await activeStream.completion;
+    if (startupOperation) {
+      if (activeStream) {
+        await activeStream.completion;
+      }
+      await withTimeout(
+        startupOperation.settled,
+        CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS,
+        "Chat startup cancellation timed out",
+      ).catch((error) => {
+        log.warn("Chat startup did not settle promptly after interrupt", {
+          chatId,
+          error: String(error),
+        });
+      });
     }
     const latestChat = await this.state.getChat(chatId);
     if (!latestChat) {
@@ -320,7 +439,11 @@ export class ChatConversationService implements ChatConversationPort {
     if (reason) {
       log.info("Chat interrupted by user request", { chatId, reason });
     }
-    const completed = activeStream
+    const currentStartupOperation = this.startupOperations.get(chatId);
+    const completed = (
+      startupOperation?.interrupted
+      && (!currentStartupOperation || currentStartupOperation === startupOperation)
+    ) || activeStream
       || latestChat.state.status === "interrupting"
       || latestChat.state.interruptRequested
       ? await this.completeInterruptedChat(latestChat)
@@ -514,7 +637,9 @@ export class ChatConversationService implements ChatConversationPort {
     backend: Backend,
     sessionId: string,
     prompt: PromptInput,
+    signal?: AbortSignal,
   ): Promise<Chat> {
+    throwIfChatStartupAborted(signal);
     const streamController = new AgentStreamController(backend);
     const handle = streamController.start({
       sessionId,
@@ -529,6 +654,7 @@ export class ChatConversationService implements ChatConversationPort {
     };
     this.activeStreams.set(chat.config.id, activeStream);
     try {
+      throwIfChatStartupAborted(signal);
       const streamingChat = await this.updateState(chat, {
         ...chat.state,
         status: "streaming",
@@ -536,16 +662,22 @@ export class ChatConversationService implements ChatConversationPort {
         interruptRequested: false,
         completedAt: undefined,
         lastActivityAt: createTimestamp(),
+      }, {
+        expectedStatus: chat.state.status,
       });
+      throwIfChatStartupAborted(signal);
       const started = await handle.startPrompt();
       if (!started) {
         this.clearActiveStream(chat.config.id, generation);
         return await this.state.getChat(chat.config.id) ?? chat;
       }
+      throwIfChatStartupAborted(signal);
       const startedChat = await this.updateState(streamingChat, {
         ...streamingChat.state,
         startupStage: undefined,
         lastActivityAt: createTimestamp(),
+      }, {
+        expectedStatus: streamingChat.state.status,
       });
       activeStream.completion = this.consumeEventStream(chat.config.id, backend, handle, generation, startedChat);
       return startedChat;
@@ -1814,6 +1946,56 @@ export class ChatConversationService implements ChatConversationPort {
         return null;
       }
       throw error;
+    }
+  }
+}
+
+function createStartupOperation(): StartupOperation {
+  let resolveSettled!: () => void;
+  const settled = new Promise<void>((resolve) => {
+    resolveSettled = resolve;
+  });
+  return {
+    controller: new AbortController(),
+    settled,
+    resolveSettled,
+    interrupted: false,
+  };
+}
+
+function throwIfChatStartupAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Chat startup was aborted");
+  }
+}
+
+function isRecoverableChatStartupFailure(error: unknown): boolean {
+  return (
+    isAcpErrorCode(error, "acp_connection_timed_out")
+    || isAcpErrorCode(error, "acp_transport_closed")
+    || isAcpErrorCode(error, "acp_transport_unavailable")
+    || isAcpErrorCode(error, "acp_request_timed_out")
+  );
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
     }
   }
 }

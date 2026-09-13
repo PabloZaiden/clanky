@@ -748,6 +748,102 @@ describe("Chats API Integration", () => {
     }
   });
 
+  test("cancels a chat startup cleanly before sending a follow-up", async () => {
+    let connectionStarted!: () => void;
+    const connectionStartedPromise = new Promise<void>((resolve) => {
+      connectionStarted = resolve;
+    });
+    let connectionRelease!: () => void;
+    let connectionAbortObserved = false;
+    const connectionGate = new Promise<void>((resolve) => {
+      connectionRelease = resolve;
+    });
+    let blockConnection = true;
+    mockBackend = new MockAcpBackend({
+      responses: ["Recovered response"],
+      models: [defaultTestModel],
+      onConnect: async (_config, signal) => {
+        if (!blockConnection) {
+          return;
+        }
+        await new Promise<void>((resolve, reject) => {
+          const abort = (): void => {
+            connectionAbortObserved = true;
+            signal?.removeEventListener("abort", abort);
+            reject(new Error("connection aborted"));
+          };
+          signal?.addEventListener("abort", abort, { once: true });
+          connectionStarted();
+          void connectionGate.then(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+          });
+          if (signal?.aborted) {
+            abort();
+          }
+        });
+      },
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Interrupt Startup Test",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const firstSendPromise = fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Start provider connection" }),
+      });
+      await connectionStartedPromise;
+
+      const interruptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/interrupt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "cancel startup" }),
+      });
+      expect(interruptResponse.status).toBe(200);
+      const interrupted = await interruptResponse.json() as Chat;
+      expect(interrupted.state.status).toBe("idle");
+      expect(connectionAbortObserved).toBe(true);
+      const firstSendResponse = await firstSendPromise;
+      expect(firstSendResponse.status).toBe(200);
+      await expect(firstSendResponse.json()).resolves.toMatchObject({
+        chat: { state: { status: "idle" } },
+      });
+
+      blockConnection = false;
+      connectionRelease();
+      const followUpResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Resume after cancellation" }),
+      });
+      expect(followUpResponse.status).toBe(200);
+
+      const settled = await waitForChatIdle(created.config.id);
+      expect(settled.state.status).toBe("idle");
+      expect(settled.state.messages.map((message) => message.content)).toContain("Resume after cancellation");
+      expect(settled.state.error).toBeUndefined();
+    } finally {
+      blockConnection = false;
+      connectionRelease();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
   test("treats ACP inactivity as a normal chat completion", async () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],

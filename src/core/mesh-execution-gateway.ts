@@ -493,6 +493,11 @@ export class MeshExecutionGateway {
     return session.expiresAt;
   }
 
+  releaseSession(sessionId: string, sessionToken: string): void {
+    this.requireSessionRecord(sessionId, sessionToken);
+    this.closeSession(sessionId);
+  }
+
   async getAcpSessionConfig(
     sessionId: string,
     sessionToken: string,

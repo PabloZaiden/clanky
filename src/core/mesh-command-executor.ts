@@ -71,7 +71,7 @@ export class MeshCommandExecutor implements CommandExecutor {
   }
 
   close(): void {
-    this.client.closeSession();
+    void this.client.releaseSession();
   }
 }
 

@@ -6,6 +6,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
+  MeshExecutionSessionCloseRequest,
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
 import {
@@ -248,6 +249,8 @@ export class MeshCommandExecutorClient {
   private endpoint: string | null = null;
   private workerTls: Bun.TLSOptions | undefined;
   private openingSession: Promise<void> | null = null;
+  private openingSessionController: AbortController | null = null;
+  private callerNodeId: string | null = null;
   private sessionGeneration = 0;
   private sessionRenewalTimer: ReturnType<typeof setTimeout> | undefined;
   private sessionRenewalController: AbortController | null = null;
@@ -271,14 +274,26 @@ export class MeshCommandExecutorClient {
     this.managedEnvironment = config.managedEnvironment;
   }
 
-  async openSession(): Promise<void> {
+  async openSession(signal?: AbortSignal): Promise<void> {
     if (this.openingSession) {
-      await this.openingSession;
+      await raceWithAbort(this.openingSession, signal);
       return;
     }
     this.closeSession();
     const generation = this.sessionGeneration;
-    const opening = this.openSessionInternal(generation);
+    const controller = new AbortController();
+    const abortHandler = (): void => {
+      if (!controller.signal.aborted) {
+        controller.abort(signal?.reason);
+      }
+    };
+    if (signal?.aborted) {
+      abortHandler();
+    } else {
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    }
+    this.openingSessionController = controller;
+    const opening = this.openSessionInternal(generation, controller.signal);
     this.openingSession = opening;
     try {
       await opening;
@@ -290,13 +305,18 @@ export class MeshCommandExecutorClient {
       }
       throw error;
     } finally {
+      signal?.removeEventListener("abort", abortHandler);
+      if (this.openingSessionController === controller) {
+        this.openingSessionController = null;
+      }
       if (this.openingSession === opening) {
         this.openingSession = null;
       }
     }
   }
 
-  private async openSessionInternal(generation: number): Promise<void> {
+  private async openSessionInternal(generation: number, signal: AbortSignal): Promise<void> {
+    throwIfMeshSessionOpeningAborted(signal);
     const identity = await ensureLocalMeshNodeIdentity();
     if (
       typeof identity.encryptionPublicKey !== "string"
@@ -307,9 +327,11 @@ export class MeshCommandExecutorClient {
         "The local mesh identity has no usable encryption public key.",
       );
     }
+    throwIfMeshSessionOpeningAborted(signal);
     const callerEncryptionPublicKey = identity.encryptionPublicKey;
     const localUserId = this.localUserId ?? requireCurrentUserId();
     const registration = await getWorkerRegistration(this.executionNodeId, localUserId);
+    throwIfMeshSessionOpeningAborted(signal);
     const endpoint = registration?.workerEndpoint;
     if (!registration || registration.grantStatus !== "active" || !endpoint) {
       throw new DomainError(
@@ -317,7 +339,8 @@ export class MeshCommandExecutorClient {
         "The selected worker has no active registration or usable Mesh endpoint.",
       );
     }
-    this.workerTls = getMeshWorkerTlsOptions(registration);
+    const workerTls = getMeshWorkerTlsOptions(registration);
+    this.workerTls = workerTls;
 
     const channel = this.channel;
     let encryptedEnvironment: unknown;
@@ -363,7 +386,7 @@ export class MeshCommandExecutorClient {
     ): Promise<unknown> => this.post(route, request, {
       "x-clanky-mesh-node-id": identity.nodeId,
       "x-clanky-mesh-request-id": request.requestId,
-    }, undefined, MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS);
+    }, signal, MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS);
 
     let request = await buildSessionRequest(this.sessionTtlMs);
     let response: unknown;
@@ -404,17 +427,34 @@ export class MeshCommandExecutorClient {
     if (typeof decrypted["sessionToken"] !== "string" || decrypted["sessionToken"].length < 32) {
       throw new DomainError("mesh_execution_response_invalid", "The mesh execution session token is invalid.");
     }
+    const sessionToken = decrypted["sessionToken"];
     const expiresAtMs = new Date(body.expiresAt).getTime();
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
       throw new DomainError("mesh_execution_session_expired", "The mesh execution session has expired.");
     }
-    if (generation !== this.sessionGeneration) {
+    const remoteSession = {
+      sessionId: body.sessionId,
+      sessionToken,
+    };
+    if (signal.aborted || generation !== this.sessionGeneration) {
+      await this.releaseRemoteSession(
+        endpoint,
+        workerTls,
+        identity.nodeId,
+        remoteSession,
+      );
+      if (signal.aborted) {
+        throw new DomainError("mesh_execution_aborted", "The mesh execution session opening was aborted.", {
+          cause: signal.reason,
+        });
+      }
       throw new DomainError("mesh_execution_session_invalid", "The mesh execution session opening was superseded.");
     }
+    this.callerNodeId = identity.nodeId;
     this.endpoint = endpoint;
     this.session = {
       sessionId: body.sessionId,
-      sessionToken: decrypted["sessionToken"],
+      sessionToken,
       expiresAt: expiresAtMs,
     };
   }
@@ -1251,8 +1291,22 @@ export class MeshCommandExecutorClient {
     throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
   }
 
+  async releaseSession(): Promise<void> {
+    const session = this.session;
+    const endpoint = this.endpoint;
+    const workerTls = this.workerTls;
+    const callerNodeId = this.callerNodeId;
+    this.closeSession();
+    if (!session || !endpoint || !callerNodeId) {
+      return;
+    }
+    await this.releaseRemoteSession(endpoint, workerTls, callerNodeId, session);
+  }
+
   closeSession(): void {
     this.sessionGeneration += 1;
+    this.openingSessionController?.abort();
+    this.openingSessionController = null;
     this.clearSessionRenewal();
     for (const controller of this.activeStreamControllers) {
       controller.abort();
@@ -1265,6 +1319,7 @@ export class MeshCommandExecutorClient {
     this.session = null;
     this.endpoint = null;
     this.workerTls = undefined;
+    this.callerNodeId = null;
   }
 
   private async ensureSession(): Promise<void> {
@@ -1279,6 +1334,8 @@ export class MeshCommandExecutorClient {
     headers: Record<string, string>,
     signal?: AbortSignal,
     requestTimeoutMs?: number,
+    method: "POST" | "DELETE" = "POST",
+    tls: Bun.TLSOptions | undefined = this.workerTls,
   ): Promise<unknown> {
     if (signal?.aborted) {
       throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
@@ -1292,14 +1349,14 @@ export class MeshCommandExecutorClient {
     signal?.addEventListener("abort", abortHandler, { once: true });
     try {
       const response = await this.fetchImpl(url, {
-        method: "POST",
+        method,
         headers: {
           "content-type": "application/json",
           ...headers,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
-        tls: this.workerTls,
+        tls,
       });
       if (!response.ok) {
         let payload: unknown = null;
@@ -1331,6 +1388,73 @@ export class MeshCommandExecutorClient {
     } finally {
       clearTimeout(timeoutId);
       signal?.removeEventListener("abort", abortHandler);
+    }
+  }
+
+  private async releaseRemoteSession(
+    endpoint: string,
+    tls: Bun.TLSOptions | undefined,
+    callerNodeId: string,
+    session: Pick<MeshExecutionSession, "sessionId" | "sessionToken">,
+  ): Promise<void> {
+    const requestId = crypto.randomUUID();
+    const body: MeshExecutionSessionCloseRequest = {
+      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      requestId,
+    };
+    try {
+      await this.post(
+        resolveMeshRoute(endpoint, "api/mesh/internal/execution/session"),
+        body,
+        {
+          "x-clanky-mesh-node-id": callerNodeId,
+          "x-clanky-mesh-session-id": session.sessionId,
+          "x-clanky-mesh-request-id": requestId,
+        },
+        undefined,
+        MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
+        "DELETE",
+        tls,
+      );
+    } catch (error) {
+      log.warn("Failed to release remote Mesh execution session", {
+        executionNodeId: this.executionNodeId,
+        sessionId: session.sessionId,
+        error: String(error),
+      });
+    }
+  }
+}
+
+function throwIfMeshSessionOpeningAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new DomainError("mesh_execution_aborted", "The mesh execution session opening was aborted.", {
+      cause: signal.reason,
+    });
+  }
+}
+
+async function raceWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return await operation;
+  }
+  throwIfMeshSessionOpeningAborted(signal);
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(new DomainError(
+      "mesh_execution_aborted",
+      "The mesh execution session opening was aborted.",
+      { cause: signal.reason },
+    ));
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
     }
   }
 }

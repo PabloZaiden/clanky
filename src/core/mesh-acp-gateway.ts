@@ -5,6 +5,8 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   MESH_ACP_CHANNEL,
+  MESH_ACP_RELAY_CLOSE_TIMEOUT_MS,
+  MESH_ACP_STARTUP_TIMEOUT_MS,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
 } from "@/shared/mesh-execution";
 import { AcpProcess } from "../backends/acp/acp-process";
@@ -63,6 +65,11 @@ interface RelayState {
   expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
+interface OpeningState {
+  promise: Promise<void>;
+  controller: AbortController;
+}
+
 function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
   if (
     !value
@@ -77,7 +84,7 @@ function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
 
 export class MeshAcpGateway {
   private readonly relays = new Map<string, RelayState>();
-  private readonly opening = new Map<string, Promise<void>>();
+  private readonly opening = new Map<string, OpeningState>();
   private readonly closing = new Set<string>();
 
   async open(
@@ -85,10 +92,20 @@ export class MeshAcpGateway {
     sessionId: string,
     sessionToken: string,
   ): Promise<void> {
-    const opening = this.openRelay(socket, sessionId, sessionToken);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(new DomainError(
+        "mesh_acp_startup_timed_out",
+        `Mesh ACP relay startup timed out after ${MESH_ACP_STARTUP_TIMEOUT_MS}ms.`,
+      ));
+    }, MESH_ACP_STARTUP_TIMEOUT_MS);
+    timeout.unref?.();
+    const openingPromise = this.openRelay(socket, sessionId, sessionToken, controller.signal)
+      .finally(() => clearTimeout(timeout));
+    const opening: OpeningState = { promise: openingPromise, controller };
     this.opening.set(sessionId, opening);
     try {
-      await opening;
+      await openingPromise;
     } finally {
       if (this.opening.get(sessionId) === opening) {
         this.opening.delete(sessionId);
@@ -100,120 +117,157 @@ export class MeshAcpGateway {
     socket: MeshAcpSocket,
     sessionId: string,
     sessionToken: string,
+    signal: AbortSignal,
   ): Promise<void> {
-    if (this.relays.size >= MAX_RELAY_SESSIONS) {
-      throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is at capacity.");
-    }
-    const config = await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
-    await this.stopRelay(sessionId);
-    const directoryCheck = await new CommandExecutorImpl({
-      provider: "local",
-      directory: ".",
-    }).exec(
-      "/bin/sh",
-      ["-c", "test -d \"$1\"", "clanky-acp-directory-check", config.directory],
-      { cwd: ".", maxOutputBytes: 16 * 1024 },
-    );
-    if (!directoryCheck.success) {
-      throw new DomainError(
-        "mesh_acp_directory_invalid",
-        `The ACP working directory does not exist: ${config.directory}`,
-      );
-    }
-    const providerCommand = getProviderAcpCommand(config.provider, "stdio");
     let processHandle: AcpProcess | null = null;
-    let processExit: AcpProcessExit | null = null;
-    let outputLimitExceeded = false;
-    let startupStderr = "";
     try {
-      const spawned = await AcpProcess.spawn({
-        command: providerCommand.command,
-        args: providerCommand.args,
-        cwd: config.directory,
-        env: buildProviderSpawnEnvironment(
-          providerCommand,
-          globalThis.process.env,
-          config.environment,
-        ),
-        maxBufferedBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
-        maxLineBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
-        onLine: (source, line) => {
-          if (source === "stdout") {
-            this.sendLine(sessionId, line);
-          } else {
-            startupStderr = appendStartupDiagnostic(startupStderr, line);
-          }
+      throwIfAborted(signal);
+      if (this.relays.size >= MAX_RELAY_SESSIONS) {
+        throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is at capacity.");
+      }
+      const config = await raceWithAbort(
+        meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken),
+        signal,
+      );
+      throwIfAborted(signal);
+      await this.stopRelay(sessionId);
+      const directoryCheck = await new CommandExecutorImpl({
+        provider: "local",
+        directory: ".",
+      }).exec(
+        "/bin/sh",
+        ["-c", "test -d \"$1\"", "clanky-acp-directory-check", config.directory],
+        {
+          cwd: ".",
+          maxOutputBytes: 16 * 1024,
+          signal,
+          timeout: MESH_ACP_STARTUP_TIMEOUT_MS,
         },
-        onExit: (exit) => {
-          processExit = exit;
-          if (processHandle) {
-            void this.handleProcessExit(
+      );
+      if (signal.aborted || directoryCheck.exitCode === 130) {
+        throwIfAborted(signal);
+        throw new DomainError("mesh_acp_open_aborted", "The Mesh ACP directory check was aborted.");
+      }
+      if (directoryCheck.exitCode === 124) {
+        throw new DomainError(
+          "mesh_acp_startup_timed_out",
+          `The Mesh ACP directory check timed out after ${MESH_ACP_STARTUP_TIMEOUT_MS}ms.`,
+        );
+      }
+      if (!directoryCheck.success) {
+        throw new DomainError(
+          "mesh_acp_directory_invalid",
+          `The ACP working directory does not exist: ${config.directory}`,
+        );
+      }
+      throwIfAborted(signal);
+      const providerCommand = getProviderAcpCommand(config.provider, "stdio");
+      let processExit: AcpProcessExit | null = null;
+      let outputLimitExceeded = false;
+      let startupStderr = "";
+      const spawnPromise = AcpProcess.spawn({
+          command: providerCommand.command,
+          args: providerCommand.args,
+          cwd: config.directory,
+          env: buildProviderSpawnEnvironment(
+            providerCommand,
+            globalThis.process.env,
+            config.environment,
+          ),
+          maxBufferedBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
+          maxLineBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
+          onLine: (source, line) => {
+            if (source === "stdout") {
+              this.sendLine(sessionId, line);
+            } else {
+              startupStderr = appendStartupDiagnostic(startupStderr, line);
+            }
+          },
+          onExit: (exit) => {
+            processExit = exit;
+            if (processHandle) {
+              void this.handleProcessExit(
+                sessionId,
+                processHandle,
+                config.provider,
+                exit,
+                startupStderr,
+              );
+            }
+          },
+          onOutputLimitExceeded: () => {
+            outputLimitExceeded = true;
+            if (this.relays.has(sessionId)) {
+              void this.close(sessionId);
+            }
+          },
+          onStreamError: (source, error) => {
+            log.warn("Mesh ACP process stream failed", {
               sessionId,
-              processHandle,
-              config.provider,
-              exit,
-              startupStderr,
-            );
-          }
-        },
-        onOutputLimitExceeded: () => {
-          outputLimitExceeded = true;
-          if (this.relays.has(sessionId)) {
-            void this.close(sessionId);
-          }
-        },
-        onStreamError: (source, error) => {
-          log.warn("Mesh ACP process stream failed", {
-            sessionId,
-            source,
-            error: String(error),
-          });
-        },
+              source,
+              error: String(error),
+            });
+          },
+        });
+      const spawned = await raceWithAbort(spawnPromise, signal).catch(async (error) => {
+        await spawnPromise.then(
+          (process) => process.stop({ gracefulWaitMs: 0, forceWaitMs: 0 }),
+          () => undefined,
+        );
+        throw error;
       });
       processHandle = spawned;
-    } catch (error) {
-      if (error instanceof DomainError) {
-        throw error;
+      const process = processHandle;
+      if (!process) {
+        throw new DomainError("mesh_acp_process_failed", "The mesh ACP process was not created.");
       }
-      throw new DomainError(
-        "mesh_acp_process_failed",
-        `Failed to start ${config.provider} ACP in ${config.directory}: ${String(error)}`,
-        { cause: error },
-      );
-    }
-    const process = processHandle;
-    if (!process) {
-      throw new DomainError("mesh_acp_process_failed", "The mesh ACP process was not created.");
-    }
-    if (this.closing.has(sessionId)) {
-      await process.stop({
-        gracefulWaitMs: 500,
-        forceWaitMs: 0,
-      });
-      meshExecutionGateway.closeSession(sessionId);
-      return;
-    }
+      if (this.closing.has(sessionId) || signal.aborted) {
+        await process.stop({
+          gracefulWaitMs: 500,
+          forceWaitMs: 0,
+        });
+        return;
+      }
 
-    const relay: RelayState = { socket, process };
-    this.relays.set(sessionId, relay);
-    this.scheduleRelayExpiry(sessionId, relay, config.expiresAt);
-    process.start();
+      const relay: RelayState = { socket, process };
+      this.relays.set(sessionId, relay);
+      this.scheduleRelayExpiry(sessionId, relay, config.expiresAt);
+      process.start();
 
-    if (outputLimitExceeded) {
-      await this.closeRelay(sessionId);
-      return;
-    }
-    if (processExit || process.exitCode !== null) {
-      await this.handleProcessExit(
-        sessionId,
-        process,
-        config.provider,
-        processExit ?? {
-          exitCode: process.exitCode ?? -1,
-          signalCode: process.signalCode,
-        },
-        startupStderr,
-      );
+      if (outputLimitExceeded) {
+        await this.closeRelay(sessionId);
+        return;
+      }
+      if (processExit || process.exitCode !== null) {
+        await this.handleProcessExit(
+          sessionId,
+          process,
+          config.provider,
+          processExit ?? {
+            exitCode: process.exitCode ?? -1,
+            signalCode: process.signalCode,
+          },
+          startupStderr,
+        );
+      }
+    } catch (error) {
+      if (processHandle) {
+        await processHandle.stop({
+          gracefulWaitMs: 0,
+          forceWaitMs: 0,
+        });
+      }
+      throw error instanceof DomainError
+        ? error
+        : new DomainError(
+          "mesh_acp_process_failed",
+          `Failed to start the mesh ACP provider: ${String(error)}`,
+          { cause: error },
+        );
+    } finally {
+      if (!this.relays.has(sessionId)) {
+        meshExecutionGateway.closeSession(sessionId);
+      }
     }
   }
 
@@ -287,7 +341,7 @@ export class MeshAcpGateway {
   async message(sessionId: string, value: string | Buffer): Promise<void> {
     const opening = this.opening.get(sessionId);
     if (opening) {
-      await opening;
+      await opening.promise;
     }
     const relay = this.relays.get(sessionId);
     if (!relay || !relay.process.isWritable()) {
@@ -305,8 +359,12 @@ export class MeshAcpGateway {
     const opening = this.opening.get(sessionId);
     if (opening) {
       this.closing.add(sessionId);
+      opening.controller.abort(new DomainError(
+        "mesh_acp_open_aborted",
+        "The mesh ACP relay was closed while it was starting.",
+      ));
       try {
-        await opening;
+        await waitForSettlement(opening.promise, MESH_ACP_RELAY_CLOSE_TIMEOUT_MS);
       } catch (error) {
         log.debug("Mesh ACP relay opening failed while closing", {
           sessionId,
@@ -315,6 +373,7 @@ export class MeshAcpGateway {
       } finally {
         this.closing.delete(sessionId);
       }
+
     }
     await this.closeRelay(sessionId);
   }
@@ -385,6 +444,53 @@ export class MeshAcpGateway {
       relay.socket.send(line);
     } catch (error) {
       log.warn("Mesh ACP output was not valid JSON-RPC", { sessionId, error: String(error) });
+    }
+  }
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason instanceof DomainError
+      ? signal.reason
+      : new DomainError("mesh_acp_open_aborted", "The mesh ACP relay was aborted.");
+  }
+}
+
+async function raceWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  throwIfAborted(signal);
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(
+      signal.reason instanceof Error
+        ? signal.reason
+        : new DomainError("mesh_acp_open_aborted", "The mesh ACP relay was aborted."),
+    );
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+    }
+  }
+}
+
+async function waitForSettlement(operation: Promise<void>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      operation,
+      new Promise<void>((_, reject) => {
+        timer = setTimeout(() => reject(new DomainError(
+          "mesh_acp_close_timed_out",
+          `Mesh ACP relay cleanup timed out after ${timeoutMs}ms.`,
+        )), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
     }
   }
 }
