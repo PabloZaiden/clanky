@@ -55,8 +55,9 @@ function parseOptions(
       positionals.push(arg);
       continue;
     }
-    const [rawName, inlineValue] = arg.split("=", 2);
-    const name = rawName ?? arg;
+    const equalsIndex = arg.indexOf("=");
+    const name = equalsIndex < 0 ? arg : arg.slice(0, equalsIndex);
+    const inlineValue = equalsIndex < 0 ? undefined : arg.slice(equalsIndex + 1);
     if (!allowedOptions.includes(name)) {
       throw usageError(`Unknown ${optionLabel} option: ${name}`);
     }

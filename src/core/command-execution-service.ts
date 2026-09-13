@@ -26,13 +26,14 @@ export function resolveCommandWorkingDirectory(
   requestedCwd: string | undefined,
   errors: Pick<CommandExecutionErrorCodes, "cwdInvalid">,
 ): string {
-  const root = pathPosix.normalize(rootDirectory.trim());
-  if (!root.startsWith("/") || root.includes("\0")) {
+  const trimmedRoot = rootDirectory.trim();
+  if (!trimmedRoot || trimmedRoot.includes("\0")) {
     throw new DomainError(
       errors.cwdInvalid,
-      "The execution root is not a valid absolute path.",
+      "The execution root is not a valid path.",
     );
   }
+  const root = pathPosix.normalize(trimmedRoot);
   if (requestedCwd === undefined) {
     return root;
   }

@@ -111,16 +111,17 @@ describe("CLI server commands", () => {
     expect(parseServerCommandArgs([
       "exec",
       "mesh:worker-1",
-      "--credential-token=temporary-token",
+      "--cwd=/var/log/a=b",
+      "--credential-token=temporary=token",
       "--",
       "uname",
       "-a",
     ])).toEqual({
       operation: "exec",
       server: "mesh:worker-1",
-      cwd: undefined,
+      cwd: "/var/log/a=b",
       timeoutMs: undefined,
-      credentialToken: "temporary-token",
+      credentialToken: "temporary=token",
       command: "uname",
       args: ["-a"],
     });

@@ -173,13 +173,17 @@ describe("Standalone SSH servers API integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let executorFactory: () => TestCommandExecutor;
+  let lastSshPassword: string | undefined;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-servers-api-"));
     process.env["CLANKY_DATA_DIR"] = dataDir;
     await initializeDatabase();
     executorFactory = () => new SshServerApiExecutor();
-    sshServerManager.setExecutorFactoryForTesting(() => executorFactory());
+    sshServerManager.setExecutorFactoryForTesting((_server, password) => {
+      lastSshPassword = password;
+      return executorFactory();
+    });
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -195,6 +199,7 @@ describe("Standalone SSH servers API integration", () => {
 
   beforeEach(() => {
     executorFactory = () => new SshServerApiExecutor();
+    lastSshPassword = undefined;
     backendManager.resetForTesting();
     const db = getDatabase();
     db.run("DELETE FROM chats");
@@ -297,6 +302,53 @@ describe("Standalone SSH servers API integration", () => {
     expect(credentialResponse.status).toBe(201);
     const exchange = await credentialResponse.json() as { credentialToken: string };
     expect(exchange.credentialToken.length).toBeGreaterThan(0);
+  });
+
+  test("executes a command with exchanged SSH credentials through the execution-host API", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Command host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "node_modules",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id, "remote-secret")),
+    });
+    expect(credentialResponse.status).toBe(201);
+    const exchange = await credentialResponse.json() as { credentialToken: string };
+
+    const execResponse = await fetch(
+      `${baseUrl}/api/execution-hosts/ssh/${createdServer.config.id}/exec`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-clanky-ssh-credential-token": exchange.credentialToken,
+        },
+        body: JSON.stringify({
+          command: "printf",
+          args: ["%s", "remote command output"],
+        }),
+      },
+    );
+
+    expect(execResponse.status).toBe(200);
+    expect(await execResponse.json()).toEqual({
+      executionHost: `ssh:${createdServer.config.id}`,
+      success: true,
+      stdout: "remote command output",
+      stderr: "",
+      exitCode: 0,
+    });
+    expect(lastSshPassword).toBe("remote-secret");
   });
 
   test("creates a direct terminal through the transport-neutral API", async () => {

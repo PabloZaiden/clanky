@@ -193,6 +193,9 @@ export const executionHostRoutes = defineRoutes({
             execution_host_exec_output_limit_exceeded: {
               status: 413,
             },
+            mesh_execution_result_too_large: {
+              status: 413,
+            },
             invalid_credential_token: {
               status: 400,
             },
