@@ -134,6 +134,26 @@ This execution channel is decoupled from ACP streaming/provider internals. The f
 - File reads (`/api/tasks/:id/plan`, `/api/tasks/:id/status-file`)
 - Directory listings
 
+### Direct execution-host commands
+
+`POST /api/execution-hosts/:kind/:id/exec` runs one bounded, non-interactive
+command on a registered local, Mesh, or SSH execution host. The `:id` value is
+the host source ID returned by `GET /api/execution-hosts`; for Mesh hosts this
+is the worker node ID. The endpoint uses the same command, argument, cwd,
+timeout, output-limit, and exit-code semantics as
+`POST /api/workspaces/:id/exec`.
+
+```bash
+clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
+clanky server exec mesh:worker-1 -- journalctl -u clanky-worker --no-pager
+```
+
+The operation does not start a persistent shell. Use the execution-host
+terminal endpoints for interactive sessions. SSH hosts can receive the
+temporary credential token issued by Clanky through
+`--credential-token TOKEN`; Mesh execution continues to use its signed,
+encrypted worker transport.
+
 ## Endpoints
 
 ### Current Clanky route inventory
@@ -182,6 +202,9 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/chats/import` | Import an existing chat session. |
 | GET | `/api/chats/importable-sessions` | List chat sessions available for import. |
 | GET | `/api/check-planning-dir` | Inspect a workspace's `.clanky-planning` files. |
+| GET | `/api/execution-hosts` | List execution hosts available to the current user. |
+| POST | `/api/execution-hosts/:kind/:id/exec` | Execute one non-interactive command on a registered execution host. |
+| GET, POST | `/api/execution-hosts/:kind/:id/working-directory` | Resolve the configured or current execution-host directory. |
 | GET | `/api/git/branches` | List local git branches for a workspace. |
 | GET | `/api/git/default-branch` | Detect the default git branch for a workspace. |
 | GET | `/api/git/github-issues` | List open GitHub issues for a workspace repository. |

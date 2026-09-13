@@ -6,6 +6,7 @@ import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
 import { createWorkspaceCommand } from "./workspace";
+import { createServerCommand } from "./server";
 import { createWorkerCommand } from "./worker";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 
@@ -85,6 +86,7 @@ export function createClankyCli() {
         },
       },
       workspace: createWorkspaceCommand(),
+      server: createServerCommand(),
       worker: createWorkerCommand(),
     },
   });

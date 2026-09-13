@@ -235,11 +235,25 @@ export {
 } from "./mesh-execution";
 
 export {
+  CommandExecRequestSchema,
+  CommandExecResultSchema,
+  type CommandExecRequest,
+  type CommandExecResult,
+} from "./command-execution";
+
+export {
   WorkspaceExecRequestSchema,
   WorkspaceExecResponseSchema,
   type WorkspaceExecRequest,
   type WorkspaceExecResponse,
 } from "./workspace-execution";
+
+export {
+  ExecutionHostExecRequestSchema,
+  ExecutionHostExecResponseSchema,
+  type ExecutionHostExecRequest,
+  type ExecutionHostExecResponse,
+} from "./execution-host-execution";
 
 export {
   MeshTerminalSessionRequestSchema,

@@ -171,6 +171,33 @@ describe("Workspace API Integration", () => {
     });
   });
 
+  describe("POST /api/execution-hosts/:kind/:id/exec", () => {
+    test("executes a command on the registered local execution host", async () => {
+      const response = await fetch(
+        `${baseUrl}/api/execution-hosts/local/${encodeURIComponent(localExecutionHost.nodeId)}/exec`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: "pwd",
+            args: [],
+            cwd: testWorkDir,
+            timeoutMs: 5_000,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        executionHost: `local:${localExecutionHost.nodeId}`,
+        success: true,
+        stdout: `${testWorkDir}\n`,
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+  });
+
   describe("POST /api/workspaces", () => {
     test("creates a new workspace", async () => {
       const response = await fetch(`${baseUrl}/api/workspaces`, {

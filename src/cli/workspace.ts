@@ -18,6 +18,7 @@ import type {
 import { WorkspaceExecResponseSchema } from "@/contracts/schemas";
 import { retryFileUploadChunk, uploadFileInChunks } from "@/shared";
 import type { ClankyCliContext } from "./mesh";
+import { parseExecCommandArgs } from "./exec-command";
 
 export interface WorkspaceExecCommand {
   operation: "exec";
@@ -93,34 +94,6 @@ function parseOptionValue(
   };
 }
 
-function parseOptions(
-  args: readonly string[],
-  allowedOptions: readonly string[],
-): { positionals: string[]; options: Record<string, string> } {
-  const positionals: string[] = [];
-  const options: Record<string, string> = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg) continue;
-    if (!arg.startsWith("--")) {
-      positionals.push(arg);
-      continue;
-    }
-    const [rawName, inlineValue] = arg.split("=", 2);
-    const name = rawName ?? arg;
-    if (!allowedOptions.includes(name)) {
-      throw usageError(`Unknown workspace option: ${name}`);
-    }
-    if (options[name] !== undefined) {
-      throw usageError(`${name} may only be specified once`);
-    }
-    const parsed = parseOptionValue(args, index, name, inlineValue);
-    options[name] = parsed.value;
-    index = parsed.nextIndex;
-  }
-  return { positionals, options };
-}
-
 function parseDownloadOptions(
   args: readonly string[],
 ): { positionals: string[]; output?: string; force: boolean } {
@@ -187,40 +160,21 @@ function parseUploadOptions(
   return { positionals, remotePath, force };
 }
 
-function parseTimeout(value: string): number {
-  const timeoutMs = Number(value);
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60 * 1000) {
-    throw usageError("--timeout must be an integer between 1 and 1800000");
-  }
-  return timeoutMs;
-}
-
 export function parseWorkspaceCommandArgs(args: readonly string[]): WorkspaceCommand {
   const [operation, ...operationArgs] = args;
   if (operation === "exec") {
-    const separator = operationArgs.indexOf("--");
-    if (separator < 0) {
-      throw usageError("workspace exec requires -- before COMMAND");
-    }
-    const controls = operationArgs.slice(0, separator);
-    const commandArgs = operationArgs.slice(separator + 1);
-    const { positionals, options } = parseOptions(controls, ["--cwd", "--timeout"]);
-    if (positionals.length !== 1 || !positionals[0]) {
-      throw usageError("workspace exec requires one workspace ID or name");
-    }
-    const command = commandArgs[0];
-    if (!command) {
-      throw usageError("workspace exec requires a command after --");
-    }
+    const parsed = parseExecCommandArgs(
+      operationArgs,
+      "workspace exec",
+      "workspace",
+    );
     return {
       operation,
-      workspace: positionals[0],
-      cwd: options["--cwd"],
-      timeoutMs: options["--timeout"] === undefined
-        ? undefined
-        : parseTimeout(options["--timeout"]),
-      command,
-      args: commandArgs.slice(1),
+      workspace: parsed.target,
+      cwd: parsed.cwd,
+      timeoutMs: parsed.timeoutMs,
+      command: parsed.command,
+      args: parsed.args,
     };
   }
 

@@ -144,7 +144,18 @@ clanky schema auth/device
 
 # Stream authenticated websocket events over stdio
 clanky ws
+
+# Execute a diagnostic command on a registered local, Mesh, or SSH host
+clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
 ```
+
+`clanky server exec` is the execution-host equivalent of
+`clanky workspace exec`. The target may be an execution-host name, its source
+ID (for example a Mesh node ID), or a serialized reference such as
+`mesh:worker-1`. The command and its arguments are passed separately; the
+operation is non-interactive and preserves stdout, stderr, and the remote exit
+code. SSH hosts may receive a temporary credential with
+`--credential-token TOKEN`.
 
 ## Key features
 
