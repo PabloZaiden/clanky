@@ -19,7 +19,7 @@ import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
-import { ThinkingIndicator } from "./thinking-indicator";
+import { ActivitySpinner } from "./activity-spinner";
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -198,11 +198,12 @@ export const ConversationViewer = memo(function ConversationViewer({
         style={maxHeight ? { maxHeight } : undefined}
       >
         {isEmpty ? (
-          <div className="flex h-32 items-center justify-center">
+          <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
             {isActive ? (
-              <ThinkingIndicator isActive label={activeStateMessage}>
-                {activeStateMessage}
-              </ThinkingIndicator>
+              <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
+                <ActivitySpinner className="h-3.5 w-3.5" />
+                <span>{activeStateMessage}</span>
+              </div>
             ) : (
               emptyStateMessage
             )}
@@ -288,10 +289,9 @@ export const ConversationViewer = memo(function ConversationViewer({
               }
             })}
             {shouldShowWorkingIndicator && (
-              <div className="mt-4 flex items-center py-1" data-testid="working-indicator">
-                <ThinkingIndicator isActive label={activeStateMessage}>
-                  {activeStateMessage}
-                </ThinkingIndicator>
+              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
+                <ActivitySpinner />
+                <span>{activeStateMessage}</span>
               </div>
             )}
           </div>
