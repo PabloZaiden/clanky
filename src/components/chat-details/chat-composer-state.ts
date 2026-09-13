@@ -91,16 +91,6 @@ export function useChatComposer({
   messageRef.current = message;
   attachmentsRef.current = attachments;
 
-  useEffect(() => {
-    return registerVoiceDraft(
-      (transcript: string) => {
-        const current = messageRef.current.trim();
-        setMessage(current ? `${current}\n\n${transcript}` : transcript);
-      },
-      () => messageRef.current.trim() || (attachmentsRef.current.length > 0 ? "attachment" : ""),
-    );
-  }, [registerVoiceDraft, setMessage]);
-
   useLayoutEffect(() => {
     const restoredMessage = getStoredChatComposerDraft(chatId) ?? "";
     setMessageState(restoredMessage);
@@ -139,13 +129,12 @@ export function useChatComposer({
   );
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  async function submitMessage(messageOverride?: string): Promise<void> {
     if (isSubmitting || isExternallyBusy) {
       return;
     }
 
-    const trimmedMessage = message.trim();
+    const trimmedMessage = (messageOverride ?? message).trim();
     const queueableInputPresent = trimmedMessage.length > 0 || attachments.length > 0;
     const hasPendingModelChange = !isEmbedded && !isActive && selectedModel.length > 0;
     if (isActive && !queueableInputPresent) {
@@ -237,6 +226,23 @@ export function useChatComposer({
       setIsSubmitting(false);
     }
   }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    await submitMessage();
+  }
+
+  useEffect(() => {
+    return registerVoiceDraft(
+      (transcript: string) => {
+        setMessage(transcript);
+      },
+      () => messageRef.current.trim() || (attachmentsRef.current.length > 0 ? "attachment" : ""),
+      async (transcript: string) => {
+        await submitMessage(transcript);
+      },
+    );
+  }, [registerVoiceDraft, setMessage, submitMessage]);
 
   async function handleInterrupt(): Promise<void> {
     if (!isActive || isSubmitting || isExternallyBusy) {

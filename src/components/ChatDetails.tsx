@@ -49,21 +49,28 @@ export function ChatDetails({
   const voiceSettings = useVoiceSettings();
   const voiceDraftSetterRef = useRef<((text: string) => void) | null>(null);
   const voiceDraftGetterRef = useRef<(() => string) | null>(null);
+  const voiceDraftSubmitterRef = useRef<((text: string) => Promise<void>) | null>(null);
   const registerVoiceDraft = useCallback((
     setDraft: (text: string) => void,
     getDraft: () => string,
+    submitDraft: (text: string) => Promise<void>,
   ): (() => void) => {
     voiceDraftSetterRef.current = setDraft;
     voiceDraftGetterRef.current = getDraft;
+    voiceDraftSubmitterRef.current = submitDraft;
     return () => {
       if (voiceDraftSetterRef.current === setDraft) {
         voiceDraftSetterRef.current = null;
         voiceDraftGetterRef.current = null;
+        voiceDraftSubmitterRef.current = null;
       }
     };
   }, []);
   const handleVoiceTranscript = useCallback((text: string): void => {
-    voiceDraftSetterRef.current?.(text);
+    const currentDraft = voiceDraftGetterRef.current?.().trim() ?? "";
+    const nextDraft = currentDraft ? `${currentDraft}\n\n${text}` : text;
+    voiceDraftSetterRef.current?.(nextDraft);
+    void voiceDraftSubmitterRef.current?.(nextDraft);
   }, []);
   const voiceRecorder = useVoiceRecorder({
     enabled: voiceSettings.settings.capabilities.transcription.validated,

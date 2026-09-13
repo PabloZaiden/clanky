@@ -111,5 +111,6 @@ export interface ChatComposerProps {
   registerVoiceDraft: (
     setDraft: (text: string) => void,
     getDraft: () => string,
+    submitDraft: (text: string) => Promise<void>,
   ) => () => void;
 }
