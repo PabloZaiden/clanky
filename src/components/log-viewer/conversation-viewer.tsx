@@ -19,7 +19,7 @@ import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
-import { ActivitySpinner } from "./activity-spinner";
+import { ThinkingIndicator } from "./thinking-indicator";
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -198,12 +198,11 @@ export const ConversationViewer = memo(function ConversationViewer({
         style={maxHeight ? { maxHeight } : undefined}
       >
         {isEmpty ? (
-          <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
+          <div className="flex h-32 items-center justify-center">
             {isActive ? (
-              <div className="flex items-center gap-2">
-                <ActivitySpinner className="h-4 w-4" />
-                <span>{activeStateMessage}</span>
-              </div>
+              <ThinkingIndicator isActive label={activeStateMessage}>
+                {activeStateMessage}
+              </ThinkingIndicator>
             ) : (
               emptyStateMessage
             )}
@@ -289,9 +288,10 @@ export const ConversationViewer = memo(function ConversationViewer({
               }
             })}
             {shouldShowWorkingIndicator && (
-              <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
-                <ActivitySpinner />
-                <span>{activeStateMessage}</span>
+              <div className="mt-4 flex items-center py-1" data-testid="working-indicator">
+                <ThinkingIndicator isActive label={activeStateMessage}>
+                  {activeStateMessage}
+                </ThinkingIndicator>
               </div>
             )}
           </div>
