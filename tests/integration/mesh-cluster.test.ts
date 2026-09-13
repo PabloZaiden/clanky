@@ -330,6 +330,50 @@ describe("controller-worker Mesh", () => {
     expect(await worker.child.exited).toBe(1);
   }, 30_000);
 
+  test("controller executes a command on a globally discoverable Mesh host", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    await enroll(controller, worker);
+
+    const meshHost = await pollUntil(
+      async () => (await jsonRequest(controller, "/api/execution-hosts")).body as Array<{
+        ref: { kind: string; nodeId?: string };
+      }>,
+      (hosts) => hosts.some(
+        (host) => host.ref.kind === "mesh" && host.ref.nodeId !== undefined,
+      ),
+      { description: "Mesh worker in execution-host catalog", timeoutMs: 10_000 },
+    );
+    const workerNodeId = meshHost.find(
+      (host) => host.ref.kind === "mesh" && host.ref.nodeId !== undefined,
+    )!.ref.nodeId!;
+
+    const execution = await jsonRequest(
+      controller,
+      `/api/execution-hosts/mesh/${encodeURIComponent(workerNodeId)}/exec`,
+      {
+        method: "POST",
+        body: {
+          command: "pwd",
+          args: [],
+          cwd: worker.dataDir,
+          timeoutMs: 5_000,
+        },
+      },
+    );
+
+    expect(execution.status).toBe(200);
+    expect(execution.body).toMatchObject({
+      executionHost: `mesh:${workerNodeId}`,
+      success: true,
+      stdout: `${worker.dataDir}\n`,
+      stderr: "",
+      exitCode: 0,
+    });
+  }, 30_000);
+
   test("keeps a dedicated worker out of global hosts and removes it with its workspace", async () => {
     const [controller, worker] = await Promise.all([
       startNode("controller"),

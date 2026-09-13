@@ -60,6 +60,8 @@ import {
   UploadFileExplorerChunkRequestSchema,
   CompleteFileExplorerUploadRequestSchema,
   CancelFileExplorerUploadRequestSchema,
+  ExecutionHostExecRequestSchema,
+  ExecutionHostExecResponseSchema,
   WorkspaceExecRequestSchema,
   WorkspaceExecResponseSchema,
 } from "./schemas";
@@ -228,6 +230,8 @@ export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;
 export type WorkspaceExecRequest = z.infer<typeof WorkspaceExecRequestSchema>;
 export type WorkspaceExecResponse = z.infer<typeof WorkspaceExecResponseSchema>;
+export type ExecutionHostExecRequest = z.infer<typeof ExecutionHostExecRequestSchema>;
+export type ExecutionHostExecResponse = z.infer<typeof ExecutionHostExecResponseSchema>;
 
 export type ListChatsResponse = Chat[];
 

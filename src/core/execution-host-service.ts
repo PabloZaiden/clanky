@@ -33,7 +33,10 @@ import {
   buildSshTargetKey,
 } from "../persistence/workspace-target-key";
 import { ensureLocalInstallationId } from "../persistence/installation-identity";
-import type { CommandExecutor } from "./command-executor";
+import {
+  closeCommandExecutor,
+  type CommandExecutor,
+} from "./command-executor";
 import { isRemoteOnlyMode } from "./config";
 import { DomainError } from "./domain-error";
 import { MeshCommandExecutor } from "./mesh-command-executor";
@@ -217,10 +220,16 @@ export class ExecutionHostService {
       localUserId: userId,
       sshPassword: options.sshPassword,
     });
-    const result = await executor.exec("/bin/pwd", [], {
-      cwd: ".",
-      maxOutputBytes: 16 * 1024,
-    });
+    const result = await (async () => {
+      try {
+        return await executor.exec("/bin/pwd", [], {
+          cwd: ".",
+          maxOutputBytes: 16 * 1024,
+        });
+      } finally {
+        closeCommandExecutor(executor);
+      }
+    })();
     const directory = result.stdout.trim();
     if (!result.success || !directory) {
       throw new DomainError(

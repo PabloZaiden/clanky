@@ -4,6 +4,7 @@
 
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { executionHostService } from "../core/execution-host-service";
+import { executionHostCommandService } from "../core/execution-host-command-service";
 import { chatManager } from "../core/chat-manager";
 import { CreateExecutionHostChatRequestSchema } from "@/contracts/schemas";
 import {
@@ -11,6 +12,8 @@ import {
   DiscoverExecutionHostAddressesRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
+  ExecutionHostExecRequestSchema,
+  ExecutionHostExecResponseSchema,
   GetDevboxTemplatesRequestSchema,
   ResolveExecutionHostWorkingDirectoryRequestSchema,
   UpdateExecutionHostConfigurationSchema,
@@ -130,6 +133,80 @@ export const executionHostRoutes = defineRoutes({
         ctx.requireUser().id,
         validation.data.credentialToken ?? null,
       );
+    },
+  },
+  "/api/execution-hosts/:kind/:id/exec": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Execute one non-interactive command on a registered execution host.",
+    tags: ["execution-hosts", "execution"],
+    requestSchema: ExecutionHostExecRequestSchema,
+    responseSchema: ExecutionHostExecResponseSchema,
+    async POST(req, ctx): Promise<Response> {
+      const validation = await parseAndValidate(ExecutionHostExecRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+      const ref = executionHostRefFromParts(ctx.params["kind"]!, ctx.params["id"]!);
+      if (!ref) {
+        return errorResponse(
+          "execution_host_kind_invalid",
+          "Execution host kind must be local, mesh, or ssh.",
+          400,
+        );
+      }
+      const userId = ctx.requireUser().id;
+      try {
+        return Response.json(await executionHostCommandService.execute(
+          ref,
+          validation.data,
+          req.signal,
+          userId,
+          resolveSshPassword(ref, req.headers.get("x-clanky-ssh-credential-token")),
+        ));
+      } catch (error) {
+        log.error("Failed to execute command on execution host", {
+          kind: ref.kind,
+          error: String(error),
+        });
+        return domainErrorResponse(error, {
+          fallback: {
+            error: "execution_host_exec_failed",
+            message: "Execution-host command execution failed.",
+            status: 500,
+          },
+          mappings: {
+            execution_host_unavailable: {
+              status: 404,
+              message: "Execution host not found or unavailable.",
+            },
+            execution_host_private: {
+              status: 400,
+              message: "This execution host is private to its workspace.",
+            },
+            execution_host_exec_cwd_invalid: {
+              status: 400,
+            },
+            execution_host_exec_cwd_not_found: {
+              status: 400,
+            },
+            execution_host_exec_output_limit_exceeded: {
+              status: 413,
+            },
+            invalid_credential_token: {
+              status: 400,
+            },
+            mesh_execution_aborted: {
+              status: 499,
+              message: "Execution-host command was aborted.",
+            },
+            mesh_execution_unreachable: {
+              status: 502,
+              message: "The execution host is unavailable.",
+            },
+          },
+        });
+      }
     },
   },
   "/api/execution-hosts/:kind/:id/addresses": {

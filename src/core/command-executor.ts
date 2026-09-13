@@ -163,4 +163,9 @@ export interface CommandExecutor {
   writeFile(path: string, content: string): Promise<boolean>;
 }
 
+export function closeCommandExecutor(executor: CommandExecutor): void {
+  const closable = executor as CommandExecutor & { close?: () => void };
+  closable.close?.();
+}
+
 export { MeshCommandExecutor, MeshCommandExecutorClient } from "./mesh-command-executor";
