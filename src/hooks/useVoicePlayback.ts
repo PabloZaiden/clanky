@@ -41,18 +41,29 @@ function getErrorName(error: unknown): string | undefined {
   return undefined;
 }
 
-function getPlaybackErrorMessage(error: unknown, mode: VoiceSpeechMode): string {
+function isAbortError(error: unknown): boolean {
+  return getErrorName(error) === "AbortError";
+}
+
+function getPlaybackErrorMessage(error: unknown): string {
   if (getErrorName(error) === "NotAllowedError") {
-    const actionLabel = mode === "summary" ? "Read summary" : "Read aloud";
-    return `The browser blocked audio playback. Try ${actionLabel} again to allow audio.`;
+    return "The browser blocked audio playback. Tap Play to try again.";
   }
-  return String(error);
+  return "The generated audio could not be played. Tap Play to try again.";
+}
+
+export interface VoicePlaybackRecovery {
+  key: string;
+  mode: VoiceSpeechMode;
+  message: string;
 }
 
 export interface UseVoicePlaybackResult {
   playingKey: string | null;
   status: "idle" | "generating" | "playing";
+  playbackRecovery: VoicePlaybackRecovery | null;
   play: (key: string, text: string, mode: VoiceSpeechMode) => Promise<void>;
+  retryPlayback: () => Promise<void>;
   stop: () => void;
 }
 
@@ -60,32 +71,44 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   const toast = useToast();
   const [playingKey, setPlayingKey] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "generating" | "playing">("idle");
+  const [playbackRecovery, setPlaybackRecovery] = useState<VoicePlaybackRecovery | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
-  const unlockAudioRef = useRef<HTMLAudioElement | null>(null);
   const unlockAudioUrlRef = useRef<string | null>(null);
+  const primingGenerationRef = useRef(0);
   const requestControllerRef = useRef<AbortController | null>(null);
   const activeKeyRef = useRef<string | null>(null);
   const generationRef = useRef(0);
 
   const unlockAudio = useCallback((): void => {
-    // Prime an inaudible media element while the click activation is live;
-    // the TTS response arrives after the browser's activation window expires.
-    let audio = unlockAudioRef.current;
+    // Prime the same media element that will receive the TTS response. iOS
+    // may reject a newly created element after the click activation expires.
+    let audio = audioRef.current;
     if (!audio) {
-      const url = createSilentAudioUrl();
-      unlockAudioUrlRef.current = url;
-      audio = new Audio(url);
+      audio = new Audio();
       audio.preload = "auto";
       audio.setAttribute("playsinline", "");
-      unlockAudioRef.current = audio;
+      audioRef.current = audio;
+    }
+    const url = unlockAudioUrlRef.current ?? createSilentAudioUrl();
+    unlockAudioUrlRef.current ??= url;
+    if (audio.getAttribute("src") !== url) {
+      audio.src = url;
+      audio.load();
     }
     audio.pause();
     audio.currentTime = 0;
+    const primingGeneration = primingGenerationRef.current + 1;
+    primingGenerationRef.current = primingGeneration;
     void audio.play().then(
       () => {
-        audio.pause();
-        audio.currentTime = 0;
+        if (
+          primingGenerationRef.current === primingGeneration
+          && audioRef.current === audio
+        ) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
       },
       () => {
         // The real playback attempt below reports a user-facing error if needed.
@@ -109,6 +132,47 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     }
     if (audio) {
       audio.pause();
+      audio.onended = null;
+      audio.onerror = null;
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    primingGenerationRef.current += 1;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    activeKeyRef.current = null;
+    setPlaybackRecovery(null);
+    setPlayingKey(null);
+    setStatus("idle");
+  }, []);
+
+  const configureAudioPlayback = useCallback((
+    audio: HTMLAudioElement,
+    key: string,
+    mode: VoiceSpeechMode,
+    generation: number,
+  ): void => {
+    audio.onended = () => releaseAudio(generation, audio);
+    audio.onerror = () => {
+      if (generationRef.current !== generation || audioRef.current !== audio) {
+        return;
+      }
+      setPlaybackRecovery({
+        key,
+        mode,
+        message: getPlaybackErrorMessage(new Error("Audio playback failed.")),
+      });
+    };
+  }, [releaseAudio]);
+
+  const cleanupAudio = useCallback((): void => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.onended = null;
+      audio.onerror = null;
       audio.removeAttribute("src");
       audio.load();
     }
@@ -117,19 +181,6 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
-    activeKeyRef.current = null;
-    setPlayingKey(null);
-    setStatus("idle");
-  }, []);
-
-  const cleanupUnlockAudio = useCallback((): void => {
-    const audio = unlockAudioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-    unlockAudioRef.current = null;
     if (unlockAudioUrlRef.current) {
       URL.revokeObjectURL(unlockAudioUrlRef.current);
       unlockAudioUrlRef.current = null;
@@ -142,6 +193,40 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     requestControllerRef.current = null;
     releaseAudio(generationRef.current);
   }, [releaseAudio]);
+
+  const retryPlayback = useCallback(async (): Promise<void> => {
+    const recovery = playbackRecovery;
+    const audio = audioRef.current;
+    const url = objectUrlRef.current;
+    const generation = generationRef.current;
+    setPlaybackRecovery(null);
+    if (
+      !recovery
+      || activeKeyRef.current !== recovery.key
+      || !audio
+      || !url
+    ) {
+      if (recovery) {
+        releaseAudio(generation);
+      }
+      return;
+    }
+    audio.pause();
+    audio.currentTime = 0;
+    try {
+      setStatus("playing");
+      await audio.play();
+    } catch (playbackError) {
+      if (generationRef.current !== generation || isAbortError(playbackError)) {
+        return;
+      }
+      setPlaybackRecovery({
+        key: recovery.key,
+        mode: recovery.mode,
+        message: getPlaybackErrorMessage(playbackError),
+      });
+    }
+  }, [playbackRecovery, releaseAudio]);
 
   const play = useCallback(async (
     key: string,
@@ -159,6 +244,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     generationRef.current = generation;
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    let generatedAudioReady = false;
     setPlayingKey(key);
     setStatus("generating");
     try {
@@ -176,39 +262,47 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       }
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
-      const audio = new Audio(url);
-      audioRef.current = audio;
+      generatedAudioReady = true;
+      const audio = audioRef.current;
+      if (!audio) {
+        throw new Error("Audio playback was not initialized.");
+      }
+      primingGenerationRef.current += 1;
+      audio.pause();
+      audio.src = url;
+      configureAudioPlayback(audio, key, mode, generation);
+      audio.load();
       setStatus("playing");
-      audio.onended = () => releaseAudio(generation, audio);
-      audio.onerror = () => {
-        if (generationRef.current !== generation || audioRef.current !== audio) {
-          return;
-        }
-        releaseAudio(generation, audio);
-        toast.error("The generated audio could not be played.");
-      };
       await audio.play();
     } catch (playbackError) {
-      if (playbackError instanceof Error && playbackError.name === "AbortError") {
+      if (controller.signal.aborted || isAbortError(playbackError)) {
         return;
       }
       if (generationRef.current === generation) {
-        releaseAudio(generation);
-        toast.error(getPlaybackErrorMessage(playbackError, mode));
+        if (generatedAudioReady) {
+          setPlaybackRecovery({
+            key,
+            mode,
+            message: getPlaybackErrorMessage(playbackError),
+          });
+        } else {
+          releaseAudio(generation);
+          toast.error(String(playbackError));
+        }
       }
     } finally {
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
       }
     }
-  }, [releaseAudio, stop, toast, unlockAudio]);
+  }, [configureAudioPlayback, releaseAudio, stop, toast, unlockAudio]);
 
   useEffect(() => () => {
     generationRef.current += 1;
     requestControllerRef.current?.abort();
     releaseAudio(generationRef.current);
-    cleanupUnlockAudio();
-  }, [cleanupUnlockAudio, releaseAudio]);
+    cleanupAudio();
+  }, [cleanupAudio, releaseAudio]);
 
-  return { playingKey, status, play, stop };
+  return { playingKey, status, playbackRecovery, play, retryPlayback, stop };
 }

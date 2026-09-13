@@ -5,7 +5,12 @@ import { apiRequest } from "../lib/api-client";
 export const VOICE_MAX_RECORDING_MS = 10 * 60 * 1_000;
 const VOICE_RECORDING_MAX_BYTES = 20 * 1024 * 1024;
 
-export type VoiceRecorderStatus = "idle" | "listening" | "transcribing" | "error";
+export type VoiceRecorderStatus =
+  | "idle"
+  | "requesting"
+  | "listening"
+  | "transcribing"
+  | "error";
 
 interface UseVoiceRecorderOptions {
   enabled: boolean;
@@ -36,6 +41,35 @@ function getRecordingMimeType(): string {
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
 }
 
+function getErrorName(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const name = error.name;
+    return typeof name === "string" ? name : undefined;
+  }
+  return undefined;
+}
+
+function isAbortError(error: unknown): boolean {
+  return getErrorName(error) === "AbortError";
+}
+
+function getRecordingErrorMessage(error: unknown): string {
+  switch (getErrorName(error)) {
+    case "NotAllowedError":
+      return "Microphone access was blocked or is unavailable. Check your browser or device permissions, then try again.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The microphone is temporarily unavailable. Try again.";
+    case "SecurityError":
+      return "Microphone access is blocked by browser or device settings. Check permissions and try again.";
+    default:
+      return String(error);
+  }
+}
+
 export function useVoiceRecorder({
   enabled,
   canStart,
@@ -47,7 +81,7 @@ export function useVoiceRecorder({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderGenerationRef = useRef<number | null>(null);
   const generationRef = useRef(0);
-  const startLockRef = useRef(false);
+  const startLockGenerationRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordedBytesRef = useRef(0);
@@ -59,6 +93,12 @@ export function useVoiceRecorder({
   const mountedRef = useRef(true);
   const onTranscriptRef = useRef(onTranscript);
   const canStartRef = useRef(canStart);
+
+  const releaseStartLock = useCallback((generation: number): void => {
+    if (startLockGenerationRef.current === generation) {
+      startLockGenerationRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -136,7 +176,7 @@ export function useVoiceRecorder({
       setError(null);
       setStatus("idle");
     } catch (transcriptionError) {
-      if (transcriptionError instanceof Error && transcriptionError.name === "AbortError") {
+      if (controller.signal.aborted || isAbortError(transcriptionError)) {
         return;
       }
       fail(String(transcriptionError));
@@ -193,6 +233,8 @@ export function useVoiceRecorder({
   }, []);
 
   const cancel = useCallback((): void => {
+    generationRef.current += 1;
+    startLockGenerationRef.current = null;
     discardRef.current = true;
     recordingErrorRef.current = null;
     requestControllerRef.current?.abort();
@@ -209,20 +251,23 @@ export function useVoiceRecorder({
   }, [clearRecorder]);
 
   const start = useCallback(async (): Promise<void> => {
-    if (startLockRef.current || (status !== "idle" && status !== "error")) {
+    if (
+      startLockGenerationRef.current !== null
+      || (status !== "idle" && status !== "error")
+    ) {
       return;
     }
-    startLockRef.current = true;
     const generation = generationRef.current + 1;
     generationRef.current = generation;
+    startLockGenerationRef.current = generation;
     if (!enabled) {
-      startLockRef.current = false;
+      releaseStartLock(generation);
       setError("Voice transcription is not configured and validated.");
       setStatus("error");
       return;
     }
     if (canStartRef.current && !canStartRef.current()) {
-      startLockRef.current = false;
+      releaseStartLock(generation);
       setError("Clear the composer before starting voice input.");
       setStatus("error");
       return;
@@ -232,7 +277,7 @@ export function useVoiceRecorder({
       || !navigator.mediaDevices?.getUserMedia
       || typeof MediaRecorder === "undefined"
     ) {
-      startLockRef.current = false;
+      releaseStartLock(generation);
       setError("This browser does not support audio recording.");
       setStatus("error");
       return;
@@ -240,6 +285,7 @@ export function useVoiceRecorder({
 
     setError(null);
     setElapsedMs(0);
+    setStatus("requesting");
     discardRef.current = false;
     recordingErrorRef.current = null;
     chunksRef.current = [];
@@ -248,7 +294,7 @@ export function useVoiceRecorder({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!mountedRef.current || generationRef.current !== generation) {
         stream.getTracks().forEach((track) => track.stop());
-        startLockRef.current = false;
+        releaseStartLock(generation);
         return;
       }
       streamRef.current = stream;
@@ -258,7 +304,7 @@ export function useVoiceRecorder({
         : new MediaRecorder(stream);
       recorderRef.current = recorder;
       recorderGenerationRef.current = generation;
-      startLockRef.current = false;
+      releaseStartLock(generation);
       startedAtRef.current = Date.now();
       recorder.ondataavailable = (event: BlobEvent) => {
         if (
@@ -316,15 +362,15 @@ export function useVoiceRecorder({
       }, 1_000);
     } catch (recordingError) {
       if (generationRef.current !== generation || !mountedRef.current) {
-        startLockRef.current = false;
+        releaseStartLock(generation);
         return;
       }
-      startLockRef.current = false;
+      releaseStartLock(generation);
       clearRecorder();
-      setError(String(recordingError));
+      setError(getRecordingErrorMessage(recordingError));
       setStatus("error");
     }
-  }, [clearRecorder, enabled, fail, finalizeRecording, status, stop]);
+  }, [clearRecorder, enabled, fail, finalizeRecording, releaseStartLock, status, stop]);
 
   const dismissError = useCallback((): void => {
     if (status === "error") {
@@ -339,7 +385,7 @@ export function useVoiceRecorder({
     return () => {
       mountedRef.current = false;
       generationRef.current += 1;
-      startLockRef.current = false;
+      startLockGenerationRef.current = null;
       discardRef.current = true;
       recordingErrorRef.current = null;
       requestControllerRef.current?.abort();
