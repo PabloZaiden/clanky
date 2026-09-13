@@ -818,7 +818,11 @@ describe("Chats API Integration", () => {
       const interrupted = await interruptResponse.json() as Chat;
       expect(interrupted.state.status).toBe("idle");
       expect(connectionAbortObserved).toBe(true);
-      await firstSendPromise;
+      const firstSendResponse = await firstSendPromise;
+      expect(firstSendResponse.status).toBe(200);
+      await expect(firstSendResponse.json()).resolves.toMatchObject({
+        chat: { state: { status: "idle" } },
+      });
 
       blockConnection = false;
       connectionRelease();

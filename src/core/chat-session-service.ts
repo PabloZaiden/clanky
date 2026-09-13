@@ -110,7 +110,9 @@ export class ChatSessionService implements ChatSessionPort {
     workingDirectory?: ChatDirectoryResolution,
   ): Promise<Backend> {
     if (isExecutionHostChat(chat)) {
-      await this.state.updateStartupStage(chat, "connecting_provider");
+      await this.state.updateStartupStage(chat, "connecting_provider", {
+        expectedStatus: chat.state.status,
+      });
       return await this.ensureExecutionHostBackendConnected(chat, options);
     }
     const workspaceId = getChatWorkspaceId(chat);
@@ -121,12 +123,15 @@ export class ChatSessionService implements ChatSessionPort {
 
     const working = workingDirectory ?? await this.worktree.resolveWorkingDirectory(chat, {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),
+      signal: options.signal,
     });
     const stagedWorking = workingDirectory
       ? working
       : {
           ...working,
-          chat: await this.state.updateStartupStage(working.chat, "connecting_provider"),
+          chat: await this.state.updateStartupStage(working.chat, "connecting_provider", {
+            expectedStatus: working.chat.state.status,
+          }),
         };
     await this.backendManager.getBackendAsync(workspaceId);
     const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
@@ -153,6 +158,7 @@ export class ChatSessionService implements ChatSessionPort {
         throw error;
       }
     }
+
     return backend;
   }
 
@@ -162,22 +168,28 @@ export class ChatSessionService implements ChatSessionPort {
     options?: {
       recreateIfMissing?: boolean;
       workingDirectory?: ChatDirectoryResolution;
+      signal?: AbortSignal;
     },
   ): Promise<Chat> {
+    throwIfAborted(options?.signal);
     if (chat.state.session?.id) {
       try {
-        const existing = await backend.getSession(chat.state.session.id);
+        const existing = await raceWithAbort(
+          backend.getSession(chat.state.session.id),
+          options?.signal,
+        );
+        throwIfAborted(options?.signal);
         if (existing) {
           return chat;
         }
         if (options?.recreateIfMissing) {
-          return this.recreateSession(chat, backend);
+          return this.recreateSession(chat, backend, options);
         }
         return this.failLostSession(chat, createAcpSessionNotFoundError(chat.state.session.id));
       } catch (error) {
         if (isAcpErrorCode(error, "acp_session_not_found")) {
           if (options?.recreateIfMissing) {
-            return this.recreateSession(chat, backend);
+            return this.recreateSession(chat, backend, options);
           }
           return this.failLostSession(chat, error);
         }
@@ -188,6 +200,7 @@ export class ChatSessionService implements ChatSessionPort {
     return this.createSession(chat, backend, {
       prepareWorkspace: !this.worktree.hasEstablishedWorkspaceContext(chat),
       workingDirectory: options?.workingDirectory,
+      signal: options?.signal,
     });
   }
 
@@ -197,18 +210,57 @@ export class ChatSessionService implements ChatSessionPort {
     options: {
       prepareWorkspace: boolean;
       workingDirectory?: ChatDirectoryResolution;
+      signal?: AbortSignal;
     },
   ): Promise<Chat> {
-    const working = options.workingDirectory ?? await this.worktree.resolveWorkingDirectory(chat, options);
+    throwIfAborted(options.signal);
+    const working = options.workingDirectory
+      ? { ...options.workingDirectory, chat }
+      : await this.worktree.resolveWorkingDirectory(chat, options);
     const stagedWorking = {
       ...working,
-      chat: await this.state.updateStartupStage(working.chat, "creating_session"),
+      chat: await this.state.updateStartupStage(working.chat, "creating_session", {
+        expectedStatus: working.chat.state.status,
+      }),
     };
-    const session = await backend.createSession({
+    throwIfAborted(options.signal);
+    const sessionPromise = backend.createSession({
       title: `Clanky Chat: ${stagedWorking.chat.config.name}`,
       directory: stagedWorking.directory,
       model: stagedWorking.chat.config.model.modelID,
     });
+    let session: Awaited<typeof sessionPromise>;
+    try {
+      session = await raceWithAbort(sessionPromise, options.signal);
+    } catch (error) {
+      if (options.signal) {
+        void sessionPromise.then(async (lateSession) => {
+          if (!options.signal?.aborted) {
+            return;
+          }
+          try {
+            await withTimeout(
+              backend.deleteSession(lateSession.id),
+              5_000,
+              `Timed out deleting cancelled chat session ${lateSession.id}`,
+            );
+          } catch (cleanupError) {
+            log.warn("Failed to clean up a chat session created after cancellation", {
+              chatId: chat.config.id,
+              sessionId: lateSession.id,
+              error: String(cleanupError),
+            });
+          }
+        }).catch((lateError) => {
+          log.debug("Cancelled chat session creation rejected after cancellation", {
+            chatId: chat.config.id,
+            error: String(lateError),
+          });
+        });
+      }
+      throw error;
+    }
+    throwIfAborted(options.signal);
 
     return this.state.updateState(stagedWorking.chat, {
       ...stagedWorking.chat.state,
@@ -218,6 +270,8 @@ export class ChatSessionService implements ChatSessionPort {
       startedAt: stagedWorking.chat.state.startedAt ?? createTimestamp(),
       lastActivityAt: createTimestamp(),
       error: undefined,
+    }, {
+      expectedStatus: options.signal ? stagedWorking.chat.state.status : undefined,
     });
   }
 
@@ -232,21 +286,30 @@ export class ChatSessionService implements ChatSessionPort {
 
     try {
       if (!reconnectingChat.state.session?.id) {
-        reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+        reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
+          recreateIfMissing: true,
+          signal: options.signal,
+        });
         return this.finishReconnect(reconnectingChat);
       }
 
       try {
         const existing = await backend.getSession(reconnectingChat.state.session.id);
         if (!existing) {
-          reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+          reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
+            recreateIfMissing: true,
+            signal: options.signal,
+          });
           return this.finishReconnect(reconnectingChat);
         }
       } catch (error) {
         if (!isAcpErrorCode(error, "acp_session_not_found")) {
           throw error;
         }
-        reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+        reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
+          recreateIfMissing: true,
+          signal: options.signal,
+        });
         return this.finishReconnect(reconnectingChat);
       }
     } catch (error) {
@@ -353,7 +416,12 @@ export class ChatSessionService implements ChatSessionPort {
       await backend.connect(buildConnectionConfig(settings, directory), options.signal);
       return backend;
     } catch (error) {
-      if (source.executionHost.host.kind === "ssh") {
+      if (
+        source.executionHost.host.kind === "ssh"
+        && !options.signal?.aborted
+        && !isAcpErrorCode(error, "acp_connection_aborted")
+        && !isAcpErrorCode(error, "acp_request_cancelled")
+      ) {
         await this.markSshConnectionFailed(chat, error);
       }
       throw error;
@@ -389,7 +457,15 @@ export class ChatSessionService implements ChatSessionPort {
     });
   }
 
-  private async recreateSession(chat: Chat, backend: Backend): Promise<Chat> {
+  private async recreateSession(
+    chat: Chat,
+    backend: Backend,
+    options: {
+      workingDirectory?: ChatDirectoryResolution;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<Chat> {
+    throwIfAborted(options.signal);
     const reconnecting = chat.state.status === "reconnecting"
       ? chat
       : await this.state.updateState(chat, {
@@ -400,10 +476,19 @@ export class ChatSessionService implements ChatSessionPort {
           activeMessageId: undefined,
           interruptRequested: false,
           lastActivityAt: createTimestamp(),
-        });
+          }, {
+            expectedStatus: options.signal ? chat.state.status : undefined,
+          });
     try {
-      return await this.createSession(reconnecting, backend, { prepareWorkspace: false });
+      return await this.createSession(reconnecting, backend, {
+          prepareWorkspace: false,
+          workingDirectory: options.workingDirectory,
+          signal: options.signal,
+      });
     } catch (error) {
+      if (options.signal?.aborted) {
+          throw error;
+      }
       await this.failChat(reconnecting, error);
       throw error;
     }
@@ -433,5 +518,56 @@ export class ChatSessionService implements ChatSessionPort {
       lastActivityAt: createTimestamp(),
     };
     return this.state.updateState(chat, state);
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Chat startup was aborted.");
+  }
+}
+
+async function raceWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return await operation;
+  }
+  throwIfAborted(signal);
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(
+      signal.reason instanceof Error
+        ? signal.reason
+        : new Error("Chat startup was aborted."),
+    );
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+    }
+  }
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }

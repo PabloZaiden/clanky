@@ -18,6 +18,7 @@ import {
   MeshExecutionAsyncCommandRequestSchema,
   MeshExecutionRpcRequestSchema,
   MeshExecutionFileWriteQuerySchema,
+  MeshExecutionSessionCloseRequestSchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
 import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
@@ -30,7 +31,7 @@ import { meshTcpTunnelGateway } from "../core/mesh-tcp-tunnel-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
-import { isDomainError } from "../core/domain-error";
+import { DomainError, isDomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
 import { MESH_EXECUTION_PROTOCOL_VERSION } from "@/shared/mesh-execution";
 
@@ -217,6 +218,13 @@ export const meshInternalRoutes = defineRoutes({
       try {
         requireMeshRuntimeRole("worker");
         const session = await meshExecutionGateway.createSession(parsed.data);
+        if (req.signal.aborted) {
+          meshExecutionGateway.releaseSession(session.sessionId, session.sessionToken);
+          throw new DomainError(
+            "mesh_execution_aborted",
+            "Mesh execution session creation was aborted.",
+          );
+        }
         // Keep the bearer token plaintext out of the HTTP response body.
         return Response.json({
           protocolVersion: session.protocolVersion,
@@ -227,6 +235,22 @@ export const meshInternalRoutes = defineRoutes({
             parsed.data.callerEncryptionPublicKey,
           ),
         });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+    async DELETE(req): Promise<Response> {
+      const parsed = await parseAndValidate(MeshExecutionSessionCloseRequestSchema, req);
+      if (!parsed.success) return parsed.response;
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (sessionId !== parsed.data.sessionId || requestId !== parsed.data.requestId) {
+        return errorResponse("mesh_peer_headers_invalid", "Mesh headers do not match the execution session release.", 400);
+      }
+      try {
+        requireMeshRuntimeRole("worker");
+        meshExecutionGateway.releaseSession(parsed.data.sessionId, parsed.data.sessionToken);
+        return Response.json({ success: true });
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

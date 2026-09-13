@@ -134,10 +134,17 @@ export class MockAcpBackend implements Backend {
   // ============================================
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
-    this.connected = true;
-    this.directory = config.directory;
+    this.connected = false;
+    this.directory = "";
     this.connectionConfigs.push(config);
     await this.onConnect?.(config, signal);
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error("connection aborted");
+    }
+    this.connected = true;
+    this.directory = config.directory;
   }
 
   async disconnect(): Promise<void> {

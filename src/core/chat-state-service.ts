@@ -189,16 +189,31 @@ export class ChatStateService implements ChatStatePort {
     return updated;
   }
 
-  async updateStartupStage(chat: Chat, startupStage: ChatStartupStage | undefined): Promise<Chat> {
-    if (chat.state.startupStage === startupStage) {
-      return chat;
+  async updateStartupStage(
+    chat: Chat,
+    startupStage: ChatStartupStage | undefined,
+    options: { expectedStatus?: ChatStatus } = {},
+  ): Promise<Chat> {
+    let current = chat;
+    if (options.expectedStatus !== undefined) {
+      const latest = await this.getChat(chat.config.id);
+      if (!latest) {
+        throw new Error(`Chat not found: ${chat.config.id}`);
+      }
+      if (latest.state.status !== options.expectedStatus) {
+        throw new ChatBusyError("Chat changed while updating startup stage");
+      }
+      current = latest;
+    }
+    if (current.state.startupStage === startupStage) {
+      return current;
     }
 
-    const updated = await this.updateState(chat, {
-      ...chat.state,
+    const updated = await this.updateState(current, {
+      ...current.state,
       startupStage,
       lastActivityAt: createTimestamp(),
-    });
+    }, options);
     this.emitChatUpdated(updated);
     return updated;
   }

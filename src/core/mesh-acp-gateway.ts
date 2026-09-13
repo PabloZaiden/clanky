@@ -144,6 +144,16 @@ export class MeshAcpGateway {
           timeout: MESH_ACP_STARTUP_TIMEOUT_MS,
         },
       );
+      if (signal.aborted || directoryCheck.exitCode === 130) {
+        throwIfAborted(signal);
+        throw new DomainError("mesh_acp_open_aborted", "The Mesh ACP directory check was aborted.");
+      }
+      if (directoryCheck.exitCode === 124) {
+        throw new DomainError(
+          "mesh_acp_startup_timed_out",
+          `The Mesh ACP directory check timed out after ${MESH_ACP_STARTUP_TIMEOUT_MS}ms.`,
+        );
+      }
       if (!directoryCheck.success) {
         throw new DomainError(
           "mesh_acp_directory_invalid",

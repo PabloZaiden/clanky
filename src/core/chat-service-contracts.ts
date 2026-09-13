@@ -130,7 +130,11 @@ export interface ChatStatePort {
       expectedStatus?: ChatStatus;
     },
   ): Promise<Chat>;
-  updateStartupStage(chat: Chat, startupStage: ChatStartupStage | undefined): Promise<Chat>;
+  updateStartupStage(
+    chat: Chat,
+    startupStage: ChatStartupStage | undefined,
+    options?: { expectedStatus?: ChatStatus },
+  ): Promise<Chat>;
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;
@@ -143,10 +147,13 @@ export interface ChatWorktreePort {
   hasEstablishedWorkspaceContext(chat: Chat): boolean;
   resolveWorkingDirectory(
     chat: Chat,
-    options: { prepareWorkspace: boolean },
+    options: { prepareWorkspace: boolean; signal?: AbortSignal },
   ): Promise<ChatDirectoryResolution>;
-  prepareWorktreeState(chat: Chat, options?: { syncBaseBranch?: boolean }): Promise<ChatWorktreeState>;
-  ensureWorktree(chat: Chat): Promise<Chat>;
+  prepareWorktreeState(
+    chat: Chat,
+    options?: { syncBaseBranch?: boolean; signal?: AbortSignal },
+  ): Promise<ChatWorktreeState>;
+  ensureWorktree(chat: Chat, options?: { signal?: AbortSignal }): Promise<Chat>;
   prepareWorktreeInBackground(chat: Chat): void;
   cleanupWorktree(chat: Chat): Promise<void>;
 }
@@ -166,6 +173,7 @@ export interface ChatSessionPort {
     options?: {
       recreateIfMissing?: boolean;
       workingDirectory?: ChatDirectoryResolution;
+      signal?: AbortSignal;
     },
   ): Promise<Chat>;
   createSession(
@@ -174,6 +182,7 @@ export interface ChatSessionPort {
     options: {
       prepareWorkspace: boolean;
       workingDirectory?: ChatDirectoryResolution;
+      signal?: AbortSignal;
     },
   ): Promise<Chat>;
   configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void>;

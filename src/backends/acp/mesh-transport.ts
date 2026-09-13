@@ -120,7 +120,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     const startup = createMeshStartupAbortContext(signal);
     try {
       await raceWithAbort(
-        sessionClient.openSession(),
+        sessionClient.openSession(startup.signal),
         startup.signal,
         () => getMeshStartupAbortError(startup.signal),
       );
@@ -147,8 +147,9 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
         if (this.closing || this.socket !== socket) return;
         this.connected = false;
         this.socket = null;
-        this.sessionClient?.closeSession();
+        const closingSessionClient = this.sessionClient;
         this.sessionClient = null;
+        void closingSessionClient?.releaseSession();
         const error = new AcpError(
           "acp_transport_closed",
           event.reason.trim() || "The Mesh ACP WebSocket closed.",
@@ -198,11 +199,12 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     requester?.clearPending();
     const socket = this.socket;
     this.socket = null;
-    this.sessionClient?.closeSession();
+    const sessionClient = this.sessionClient;
     this.sessionClient = null;
     if (socket && socket.readyState !== WebSocket.CLOSED) {
       socket.close(1000, "Disconnected");
     }
+    await sessionClient?.releaseSession();
     this.connected = false;
     this.directory = "";
     this.provider = null;
