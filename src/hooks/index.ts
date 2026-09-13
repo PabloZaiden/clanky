@@ -37,7 +37,11 @@ export {
   type VoiceRecorderStatus,
   type UseVoiceRecorderResult,
 } from "./useVoiceRecorder";
-export { useVoicePlayback, type UseVoicePlaybackResult } from "./useVoicePlayback";
+export {
+  useVoicePlayback,
+  type UseVoicePlaybackResult,
+  type VoicePlaybackRecovery,
+} from "./useVoicePlayback";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
 export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";

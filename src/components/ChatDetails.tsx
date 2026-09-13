@@ -12,6 +12,7 @@ import {
 import { ChatTranscript } from "./chat-details/chat-transcript";
 import type { ChatComposerProps } from "./chat-details/types";
 import { VoiceListeningOverlay } from "./chat-details/voice-listening-overlay";
+import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
 import {
   useVoicePlayback,
   useVoiceRecorder,
@@ -245,6 +246,11 @@ export function ChatDetails({
         onCancel={voiceRecorder.cancel}
         onRetry={voiceRecorder.start}
         onDismissError={voiceRecorder.dismissError}
+      />
+      <VoicePlaybackOverlay
+        recovery={voicePlayback.playbackRecovery}
+        onPlay={voicePlayback.retryPlayback}
+        onCancel={voicePlayback.stop}
       />
     </div>
   );
