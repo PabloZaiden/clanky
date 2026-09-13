@@ -106,7 +106,7 @@ export function createAcpProcessError(
     command?: string;
     exitCode?: number;
     signalCode?: NodeJS.Signals | null;
-    transport?: "stdio" | "ssh";
+    transport?: "stdio" | "ssh" | "mesh";
     authenticationMode?: AcpAuthenticationMode;
     authenticationFailure?: boolean;
     stage?: AcpTransportStage;
@@ -155,7 +155,7 @@ export function createAcpProcessError(
 export function createAcpConnectionTimeoutError(
   timeoutMs: number,
   options: {
-    transport?: "stdio" | "ssh";
+    transport?: "stdio" | "ssh" | "mesh";
     stage?: AcpTransportStage;
     target?: {
       hostname?: string;
@@ -180,7 +180,7 @@ export function createAcpConnectionTimeoutError(
 
 export function createAcpConnectionAbortedError(
   options: {
-    transport?: "stdio" | "ssh";
+    transport?: "stdio" | "ssh" | "mesh";
     stage?: AcpTransportStage;
     target?: {
       hostname?: string;

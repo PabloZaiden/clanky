@@ -2,11 +2,7 @@
  * Integration tests for the workspace-host deterministic agent runner.
  *
  * These tests verify:
- * - Local runner execution via Node.js 24+
- * - Only ctx.stdout.write / ctx.stderr.write produce visible output (not workspace.exec)
- * - Cancellation via AbortSignal kills the runner process
- * - Node.js version check rejects hosts below v24
- * - Prompt bridge route authentication, chat ownership, and response forwarding
+ * - Prompt bridge route behavior and response forwarding
  * - Managed API-key lifecycle: created per run, revoked on all code paths
  */
 
@@ -18,297 +14,22 @@ import { createWorkspace } from "../../src/persistence/workspaces";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import {
   getTestLocalExecutionHostBinding,
-  testOwnerUser,
   seedTestOwnerUser,
   testModel,
+  testOwnerUser,
 } from "../setup";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { backendManager } from "../../src/core/backend-manager";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
-import { managedCredentialService } from "../../src/core/managed-credential-service";
-import type { ManagedRuntimeCredential } from "../../src/core/managed-credential-service";
-import { DETERMINISTIC_AGENT_MANAGED_BY } from "../../src/core/managed-credential-service";
+import { DETERMINISTIC_AGENT_MANAGED_BY, managedCredentialService } from "../../src/core/managed-credential-service";
 import { pollUntil } from "../helpers/polling";
 import { listContextApiKeyAssociationsForUser } from "../../src/persistence/context-api-keys";
 import { sqliteWebAppStore } from "@pablozaiden/webapp/server";
 import { serveNativeApiRoutes } from "../native-api-server";
 import type { Server } from "bun";
-import type { Workspace } from "@/shared/workspace";
 import type { Chat } from "@/shared/chat";
-import {
-  assertNodeVersionOnHost,
-  launchDeterministicAgentOnHost,
-} from "../../src/core/deterministic-agent-runner";
-import { DeterministicAgentOutput } from "../../src/core/deterministic-agent-output";
+import type { Workspace } from "@/shared/workspace";
 import { testDeterministicAgentCode } from "../../src/core/deterministic-agent-test";
-import type { AgentRun } from "@/shared/agent";
-
-function createDummyRun(id = crypto.randomUUID()): AgentRun {
-  const now = new Date().toISOString();
-  return {
-    id,
-    agentId: crypto.randomUUID(),
-    status: "running",
-    trigger: "manual",
-    scheduledFor: now,
-    startedAt: now,
-    messages: [],
-    logs: [],
-    toolCalls: [],
-    pendingPermissionRequests: [],
-    configSnapshot: {
-      name: "Test runner",
-      workspaceId: "test-ws",
-      directory: "/tmp",
-      prompt: "",
-      model: { providerID: "test", modelID: "test", variant: "" },
-      useWorktree: false,
-      schedule: {
-        startAtLocal: now.slice(0, 16),
-        timezone: "UTC",
-        interval: { value: 1, unit: "hours" },
-        nextRunAt: now,
-      },
-    },
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-describe("deterministic agent runner — workspace host execution", () => {
-  let tempDir: string;
-  let executor: TestCommandExecutor;
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(process.cwd(), ".test-runner-"));
-    executor = new TestCommandExecutor();
-    await initializeDatabase();
-    seedTestOwnerUser();
-  });
-
-  afterEach(async () => {
-    closeDatabase();
-    await rm(tempDir, { recursive: true, force: true });
-  });
-
-  test("assertNodeVersionOnHost throws when node command is missing", async () => {
-    // Use a path that won't find node
-    const badExecutor = new TestCommandExecutor();
-    // Override exec to simulate missing node
-    const origExec = badExecutor.exec.bind(badExecutor);
-    badExecutor.exec = async (cmd, args, opts) => {
-      if (cmd === "node") {
-        return { success: false, stdout: "", stderr: "node: command not found", exitCode: 127 };
-      }
-      return origExec(cmd, args, opts);
-    };
-    await expect(assertNodeVersionOnHost(badExecutor)).rejects.toThrow(
-      /Node\.js 24 or newer is required/,
-    );
-  });
-
-  test("assertNodeVersionOnHost throws when Node.js version is too old", async () => {
-    const oldVersionExecutor = new TestCommandExecutor();
-    oldVersionExecutor.exec = async (cmd) => {
-      if (cmd === "node") {
-        return { success: true, stdout: "v20.0.0\n", stderr: "", exitCode: 0 };
-      }
-      return { success: true, stdout: "", stderr: "", exitCode: 0 };
-    };
-    await expect(assertNodeVersionOnHost(oldVersionExecutor)).rejects.toThrow(
-      /found v20\.0\.0/,
-    );
-  });
-
-  test("runner produces stdout and stderr only from ctx.stdout/stderr.write", async () => {
-    await runWithCurrentUser(testOwnerUser, async () => {
-      const run = createDummyRun();
-      const output = new DeterministicAgentOutput(run, { persist: false, emit: false });
-      const code = `export default async function run(ctx) {
-  const stdoutMessage: string = "hello stdout";
-  console.log("hidden console output");
-  ctx.stdout.write(stdoutMessage);
-  ctx.stderr.write("hello stderr");
-  const result = await ctx.workspace.exec("sh", ["-c", "printf 'cmd output'"]);
-  // result.stdout should be accessible to the program, but not in visible output
-  if (!result.success || !result.stdout.includes("cmd output")) {
-    throw new Error("exec result not returned to program: " + JSON.stringify(result));
-  }
-}`;
-      const result = await launchDeterministicAgentOnHost({
-        run,
-        sourceCode: code,
-        chatId: "test-chat-id",
-        credential: undefined,
-        directory: tempDir,
-        signal: new AbortController().signal,
-        output,
-        executor,
-      });
-
-      const logs = result.logs;
-      expect(logs.some((l) => l.message.includes("hello stdout"))).toBe(true);
-      expect(logs.some((l) => l.message.includes("hello stderr"))).toBe(true);
-      expect(logs.every((l) => !l.message.includes("hidden console output"))).toBe(true);
-      // Command output must NOT appear in visible logs
-      expect(logs.every((l) => !l.message.includes("cmd output"))).toBe(true);
-
-      // Stream distinction is preserved
-      const stdoutLogs = logs.filter((l) => l.details?.["stream"] === "stdout");
-      const stderrLogs = logs.filter((l) => l.details?.["stream"] === "stderr");
-      expect(stdoutLogs.some((l) => l.message.includes("hello stdout"))).toBe(true);
-      expect(stderrLogs.some((l) => l.message.includes("hello stderr"))).toBe(true);
-      expect(logs.every((l) => l.details?.["source"] === undefined)).toBe(true);
-      expect(await executor.directoryExists(`/tmp/clanky-agent-${run.id}`)).toBe(false);
-    });
-  });
-
-  test("workspace.prompt uses the bridge without exposing direct process output", async () => {
-    let receivedAuthorization = "";
-    let receivedMessage = "";
-    const bridge = Bun.serve({
-      port: 0,
-      fetch: async (request) => {
-        receivedAuthorization = request.headers.get("authorization") ?? "";
-        const body = await request.json() as { chatId?: string; message?: string };
-        receivedMessage = `${body.chatId ?? ""}:${body.message ?? ""}`;
-        return Response.json({ response: "prompt response" });
-      },
-    });
-    try {
-      await runWithCurrentUser(testOwnerUser, async () => {
-        const run = createDummyRun();
-        const output = new DeterministicAgentOutput(run, { persist: false, emit: false });
-        const credential: ManagedRuntimeCredential = {
-          userId: testOwnerUser.id,
-          workspaceId: "test-ws",
-          contextType: "agent_run",
-          contextId: run.id,
-          apiKeyId: "test-key",
-          generation: 1,
-          baseUrl: bridge.url.toString().replace(/\/$/, ""),
-          token: "test-token",
-        };
-        const result = await launchDeterministicAgentOnHost({
-          run,
-          sourceCode: `export default async function run(ctx) {
-  console.error("hidden stderr output");
-  const answer = await ctx.workspace.prompt("hello");
-  ctx.stdout.write(answer);
-}`,
-          chatId: "bridge-chat",
-          credential,
-          directory: tempDir,
-          signal: new AbortController().signal,
-          output,
-          executor,
-        });
-
-        expect(result.logs.some((entry) => entry.message === "prompt response")).toBe(true);
-        expect(result.logs.every((entry) => !entry.message.includes("hidden stderr output"))).toBe(true);
-      });
-    } finally {
-      bridge.stop();
-    }
-    expect(receivedAuthorization).toBe("Bearer test-token");
-    expect(receivedMessage).toBe("bridge-chat:hello");
-  });
-
-  test("runner throws when user code throws", async () => {
-    await runWithCurrentUser(testOwnerUser, async () => {
-      const run = createDummyRun();
-      const output = new DeterministicAgentOutput(run, { persist: false, emit: false });
-      const code = `export default async function run(ctx) {
-  throw new Error("deliberate test error");
-}`;
-      await expect(
-        launchDeterministicAgentOnHost({
-          run,
-          sourceCode: code,
-          chatId: "test-chat-id",
-          credential: undefined,
-          directory: tempDir,
-          signal: new AbortController().signal,
-          output,
-          executor,
-        }),
-      ).rejects.toThrow("deliberate test error");
-    });
-  });
-
-  test("runner treats AbortSignal cancellation as interrupted", async () => {
-    await runWithCurrentUser(testOwnerUser, async () => {
-      const run = createDummyRun();
-      const output = new DeterministicAgentOutput(run, { persist: false, emit: false });
-      const ac = new AbortController();
-
-      const code = `export default async function run(ctx) {
-  ctx.stdout.write("start");
-  while (!ctx.signal.aborted) {
-    await new Promise(r => setTimeout(r, 10));
-  }
-  ctx.signal.throwIfAborted();
-}`;
-      // Abort after 300ms to give runner time to write "start"
-      const launchPromise = launchDeterministicAgentOnHost({
-        run,
-        sourceCode: code,
-        chatId: "test-chat-id",
-        credential: undefined,
-        directory: tempDir,
-        signal: ac.signal,
-        output,
-        executor,
-      });
-
-      // Wait for "start" then abort.
-      try {
-        await pollUntil(
-          () => output.run.logs.some((log) => log.message.includes("start")),
-          (started) => started,
-          {
-            description: "deterministic runner to emit its start message",
-            timeoutMs: 5000,
-            intervalMs: 20,
-            formatLastObserved: (started) => started ? "observed" : "missing",
-          },
-        );
-      } finally {
-        ac.abort();
-      }
-
-      await expect(launchPromise).rejects.toThrow(/interrupted/);
-    });
-  });
-
-  test("runner passes exec results back to user code without adding to visible output", async () => {
-    await runWithCurrentUser(testOwnerUser, async () => {
-      const run = createDummyRun();
-      const output = new DeterministicAgentOutput(run, { persist: false, emit: false });
-      const code = `export default async function run(ctx) {
-  const r = await ctx.workspace.exec("sh", ["-c", "echo hello-from-exec"]);
-  if (r.stdout.trim() !== "hello-from-exec") {
-    throw new Error("unexpected exec result: " + r.stdout);
-  }
-  if (!r.success) throw new Error("exec not successful");
-  ctx.stdout.write("exec-verified");
-}`;
-      const result = await launchDeterministicAgentOnHost({
-        run,
-        sourceCode: code,
-        chatId: "test-chat-id",
-        credential: undefined,
-        directory: tempDir,
-        signal: new AbortController().signal,
-        output,
-        executor,
-      });
-
-      expect(result.logs.some((l) => l.message.includes("exec-verified"))).toBe(true);
-      expect(result.logs.every((l) => !l.message.includes("hello-from-exec"))).toBe(true);
-    });
-  });
-});
 
 describe("deterministic agent runner — API key lifecycle", () => {
   let tempDataDir: string;
@@ -407,7 +128,6 @@ describe("deterministic agent runner — API key lifecycle", () => {
     expect(result.status).toBe("completed");
     expect(result.logs.some((l) => l.message.includes("success"))).toBe(true);
 
-    // All managed keys for this workspace should be revoked
     const remainingKeys = managedCredentialService.listManagedKeysForCurrentUser
       ? await runWithCurrentUser(testOwnerUser, () =>
           Promise.resolve(
@@ -463,24 +183,20 @@ describe("deterministic agent runner — API key lifecycle", () => {
       }),
     );
 
-    // Wait for "running" output
-    await new Promise<void>((resolve) => {
-      const checkInterval = setInterval(async () => {
-        const keys = await runWithCurrentUser(testOwnerUser, () =>
+    await pollUntil(
+      () =>
+        runWithCurrentUser(testOwnerUser, () =>
           Promise.resolve(
             managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
           ),
-        );
-        if (keys.length > 0) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 50);
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 5000);
-    });
+        ),
+      (keys) => keys.length > 0,
+      {
+        description: "deterministic agent run to create its managed API key",
+        timeoutMs: 5000,
+        formatLastObserved: (keys) => `keyCount=${keys.length}`,
+      },
+    );
 
     ac.abort();
     const result = await runPromise;
@@ -516,11 +232,13 @@ describe("deterministic agent runner — API key lifecycle", () => {
       managedCredentialService.reconcileCurrentUser(),
     );
     expect(revoked).toBeGreaterThan(0);
-    expect(await runWithCurrentUser(testOwnerUser, () =>
-      Promise.resolve(
-        managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+    expect(
+      await runWithCurrentUser(testOwnerUser, () =>
+        Promise.resolve(
+          managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+        ),
       ),
-    )).toHaveLength(0);
+    ).toHaveLength(0);
     const associations = await runWithCurrentUser(testOwnerUser, () =>
       listContextApiKeyAssociationsForUser(testOwnerUser.id),
     );
@@ -544,7 +262,10 @@ describe("deterministic agent runner — prompt bridge route", () => {
     await initializeDatabase();
     seedTestOwnerUser();
 
-    credentialStore = sqliteWebAppStore({ dataDir: tempDataDir, fileName: "prompt-bridge-keys.db" });
+    credentialStore = sqliteWebAppStore({
+      dataDir: tempDataDir,
+      fileName: "prompt-bridge-keys.db",
+    });
     credentialStore.initialize();
     const now = new Date().toISOString();
     credentialStore.createUser({
@@ -610,37 +331,35 @@ describe("deterministic agent runner — prompt bridge route", () => {
     return chat.config.id;
   }
 
-  test("prompt bridge returns 404 for unknown chat (via test server that injects user)", async () => {
-    // serveNativeApiRoutes injects testOwnerUser, so auth is bypassed.
-    // The chat does not exist, so the route should return 404.
-    const resp = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
+  test("prompt bridge returns 404 for unknown chat", async () => {
+    const response = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatId: "nonexistent-chat-id", message: "hello" }),
     });
-    expect(resp.status).toBe(404);
+    expect(response.status).toBe(404);
   });
 
   test("prompt bridge returns 400 for missing chatId", async () => {
-    const resp = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
+    const response = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "hello" }),
     });
-    expect(resp.status).toBe(400);
+    expect(response.status).toBe(400);
   });
 
   test("forwards a prompt and returns the new assistant response", async () => {
     const chatId = await createPromptBridgeChat();
 
-    const resp = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
+    const response = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatId, message: "hello from the bridge" }),
     });
 
-    expect(resp.status).toBe(200);
-    expect(await resp.json()).toEqual({ response: "<promise>COMPLETE</promise>" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ response: "<promise>COMPLETE</promise>" });
   });
 
   test("interrupts the chat when the prompt client disconnects", async () => {

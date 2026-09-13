@@ -147,9 +147,10 @@ export class ChatSessionService implements ChatSessionPort {
           await this.backendManager.getWorkspaceSettings(workspaceId),
           stagedWorking.directory,
           buildManagedContextEnvironment(credential),
-        ));
+        ), options.signal);
       } catch (error) {
         await managedCredentialService.cleanupFailedLaunch(credential, error);
+        throw error;
       }
     }
     return backend;
@@ -349,7 +350,7 @@ export class ChatSessionService implements ChatSessionPort {
         password,
       );
       this.directChatBackends.set(chat.config.id, backend);
-      await backend.connect(buildConnectionConfig(settings, directory));
+      await backend.connect(buildConnectionConfig(settings, directory), options.signal);
       return backend;
     } catch (error) {
       if (source.executionHost.host.kind === "ssh") {

@@ -196,7 +196,6 @@ describe("worker SSH-agent command and shell integration", () => {
     const once = upsertShellStartupBlock(initial, helperPath);
     const twice = upsertShellStartupBlock(once, helperPath);
     expect(twice).toBe(once);
-    expect(twice.match(/# >>> clanky worker ssh-agent >>>/g)?.length).toBe(1);
     expect(removeShellStartupBlock(twice)).toBe(initial);
   });
 

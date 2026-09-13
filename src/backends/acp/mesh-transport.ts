@@ -11,10 +11,15 @@ import {
 } from "@/shared/settings";
 import {
   MESH_ACP_WEBSOCKET_OPEN_TIMEOUT_MS,
+  MESH_ACP_STARTUP_TIMEOUT_MS,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
 } from "@/shared/mesh-execution";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
-import { AcpError } from "./errors";
+import {
+  AcpError,
+  createAcpConnectionAbortedError,
+  createAcpConnectionTimeoutError,
+} from "./errors";
 import {
   MeshCommandExecutorClient,
 } from "../../core/mesh-command-executor-client";
@@ -112,69 +117,85 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       managedEnvironment: config.managedEnvironment,
     });
     this.sessionClient = sessionClient;
-    await sessionClient.openSession();
-    const session = sessionClient.getSessionConnection();
-    const websocketUrl = toWebSocketUrl(
-      resolveMeshRoute(session.endpoint, "api/mesh/internal/execution/acp"),
-    );
-    const socket = createWebSocket(websocketUrl, {
-      "x-clanky-mesh-session-id": session.sessionId,
-      "x-clanky-mesh-session-token": session.sessionToken,
-    }, session.tls);
-    this.socket = socket;
-    this.session = { id: crypto.randomUUID(), kind: "remote" };
-    this.connectionInfo = { baseUrl: websocketUrl, authHeaders: {} };
-    socket.onmessage = (event: MessageEvent) => {
-      if (this.socket !== socket) return;
-      void this.handleSocketMessage(event.data, socket);
-    };
-    socket.onerror = () => {
-      if (this.socket !== socket) return;
-      this.failConnection("Mesh ACP WebSocket failed.", socket);
-    };
-    socket.onclose = (event: CloseEvent) => {
-      if (this.closing || this.socket !== socket) return;
-      this.connected = false;
-      this.socket = null;
-      this.sessionClient?.closeSession();
-      this.sessionClient = null;
-      const error = new AcpError(
-        "acp_transport_closed",
-        event.reason.trim() || "The Mesh ACP WebSocket closed.",
-      );
-      this.requester?.rejectPending(error);
-      const sessionState = this.session;
-      if (sessionState) {
-        this.transportClosedHandler?.({
-          session: sessionState,
-          reason: "remote-close",
-          error,
-        });
-      }
-      this.session = null;
-    };
+    const startup = createMeshStartupAbortContext(signal);
     try {
-      await waitForWebSocketOpen(socket, signal);
+      await raceWithAbort(
+        sessionClient.openSession(),
+        startup.signal,
+        () => getMeshStartupAbortError(startup.signal),
+      );
+      const session = sessionClient.getSessionConnection();
+      const websocketUrl = toWebSocketUrl(
+        resolveMeshRoute(session.endpoint, "api/mesh/internal/execution/acp"),
+      );
+      const socket = createWebSocket(websocketUrl, {
+        "x-clanky-mesh-session-id": session.sessionId,
+        "x-clanky-mesh-session-token": session.sessionToken,
+      }, session.tls);
+      this.socket = socket;
+      this.session = { id: crypto.randomUUID(), kind: "remote" };
+      this.connectionInfo = { baseUrl: websocketUrl, authHeaders: {} };
+      socket.onmessage = (event: MessageEvent) => {
+        if (this.socket !== socket) return;
+        void this.handleSocketMessage(event.data, socket);
+      };
+      socket.onerror = () => {
+        if (this.socket !== socket) return;
+        this.failConnection("Mesh ACP WebSocket failed.", socket);
+      };
+      socket.onclose = (event: CloseEvent) => {
+        if (this.closing || this.socket !== socket) return;
+        this.connected = false;
+        this.socket = null;
+        this.sessionClient?.closeSession();
+        this.sessionClient = null;
+        const error = new AcpError(
+          "acp_transport_closed",
+          event.reason.trim() || "The Mesh ACP WebSocket closed.",
+        );
+        this.requester?.rejectPending(error);
+        const sessionState = this.session;
+        if (sessionState) {
+          this.transportClosedHandler?.({
+            session: sessionState,
+            reason: "remote-close",
+            error,
+          });
+        }
+        this.session = null;
+      };
+      await waitForWebSocketOpen(socket, startup.signal);
+      sessionClient.startSessionRenewal();
+      this.connected = true;
+      return await raceWithAbort(
+        requester.sendRequest("initialize", {
+          protocolVersion: 1,
+          clientInfo: {
+            name: "clanky",
+            version: "0.0.0",
+          },
+        }, MESH_ACP_STARTUP_TIMEOUT_MS),
+        startup.signal,
+        () => getMeshStartupAbortError(startup.signal),
+      );
     } catch (error) {
-      sessionClient.closeSession();
-      this.sessionClient = null;
+      await this.disconnect();
       throw error;
+    } finally {
+      startup.dispose();
     }
-    sessionClient.startSessionRenewal();
-    this.connected = true;
-    return await requester.sendRequest("initialize", {
-      protocolVersion: 1,
-      clientInfo: {
-        name: "clanky",
-        version: "0.0.0",
-      },
-    });
   }
 
   async disconnect(): Promise<void> {
     this.closing = true;
     this.connected = false;
+    const requester = this.requester;
     this.requester = null;
+    requester?.rejectPending(new AcpError(
+      "acp_transport_closed",
+      "The Mesh ACP transport was disconnected.",
+    ));
+    requester?.clearPending();
     const socket = this.socket;
     this.socket = null;
     this.sessionClient?.closeSession();
@@ -262,7 +283,7 @@ async function waitForWebSocketOpen(socket: WebSocket, signal?: AbortSignal): Pr
     const abort = () => {
       cleanup();
       socket.close();
-      reject(new AcpError("acp_request_cancelled", "The Mesh ACP connection was aborted."));
+      reject(getMeshStartupAbortError(signal));
     };
     const onOpen = () => {
       cleanup();
@@ -289,6 +310,75 @@ async function waitForWebSocketOpen(socket: WebSocket, signal?: AbortSignal): Pr
     socket.addEventListener("error", onError);
     socket.addEventListener("close", onClose);
   });
+}
+
+function createMeshStartupAbortContext(externalSignal: AbortSignal | undefined): {
+  signal: AbortSignal;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+  const abortFromExternalSignal = (): void => {
+    if (!controller.signal.aborted) {
+      controller.abort(externalSignal?.reason);
+    }
+  };
+  if (externalSignal?.aborted) {
+    abortFromExternalSignal();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
+  const timer = setTimeout(() => {
+    if (!controller.signal.aborted) {
+      controller.abort(createAcpConnectionTimeoutError(
+        MESH_ACP_STARTUP_TIMEOUT_MS,
+        { transport: "mesh", stage: "initialize" },
+      ));
+    }
+  }, MESH_ACP_STARTUP_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+    },
+  };
+}
+
+function getMeshStartupAbortError(signal: AbortSignal | undefined): AcpError {
+  const reason = signal?.reason;
+  if (reason instanceof AcpError) {
+    return reason;
+  }
+  return createAcpConnectionAbortedError({
+    transport: "mesh",
+    stage: "initialize",
+    cause: reason,
+  });
+}
+
+async function raceWithAbort<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  getAbortError: () => AcpError,
+): Promise<T> {
+  if (!signal) {
+    return await operation;
+  }
+  if (signal.aborted) {
+    throw getAbortError();
+  }
+  let abortHandler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortHandler = () => reject(getAbortError());
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abortPromise]);
+  } finally {
+    if (abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+    }
+  }
 }
 
 export class WorkspaceAcpTransportLifecycle implements AcpTransportLifecycle {

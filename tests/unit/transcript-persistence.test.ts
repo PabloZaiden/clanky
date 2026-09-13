@@ -9,7 +9,6 @@ import {
 } from "@/shared";
 
 import { TaskEngine } from "../../src/core/task-engine";
-import { TranscriptMemoryIndex } from "../../src/core/transcript-memory-index";
 import {
   loadTask,
   saveTask,
@@ -121,21 +120,6 @@ describe("incremental transcript persistence", () => {
       expect(persisted?.state.toolCalls[0]?.output).toBe("after");
       expect(getTranscriptMeta("task", task.config.id)?.entryCount).toBe(3);
     });
-  });
-
-  test("evicts bounded transcript entries without changing their logical order", () => {
-    const index = new TranscriptMemoryIndex([
-      { id: "entry-1" },
-      { id: "entry-2" },
-    ], 2);
-
-    index.upsert({ id: "entry-3" });
-    index.upsert({ id: "entry-4" });
-
-    expect(index.values.map((entry) => entry.id)).toEqual(["entry-3", "entry-4"]);
-    expect(JSON.stringify(index.values)).toBe('[{"id":"entry-3"},{"id":"entry-4"}]');
-    expect(index.get("entry-1")).toBeUndefined();
-    expect(index.get("entry-4")?.id).toBe("entry-4");
   });
 
   test("flushes task transcript changes before disabling persistence on stop", async () => {

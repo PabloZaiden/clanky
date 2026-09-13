@@ -62,7 +62,11 @@ export async function resetStaleChat(chatId: string): Promise<boolean> {
         error_message = ?,
         error_timestamp = ?,
         completed_at = ?,
-        interrupt_requested = 0
+        interrupt_requested = 0,
+        active_message_id = NULL,
+        pending_permission_requests = '[]',
+        connection_status = 'disconnected',
+        startup_stage = NULL
     WHERE id = ? AND user_id = ? AND status IN (${placeholders})
   `).run(STALE_CHAT_RESET_MESSAGE, now, now, chatId, userId, ...STALE_CHAT_STATUSES);
 
@@ -84,7 +88,11 @@ export async function resetStaleChats(): Promise<number> {
         error_message = ?,
         error_timestamp = ?,
         completed_at = ?,
-        interrupt_requested = 0
+        interrupt_requested = 0,
+        active_message_id = NULL,
+        pending_permission_requests = '[]',
+        connection_status = 'disconnected',
+        startup_stage = NULL
     WHERE user_id = ? AND status IN (${placeholders})
   `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...STALE_CHAT_STATUSES);
 

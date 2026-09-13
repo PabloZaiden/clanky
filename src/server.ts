@@ -19,6 +19,7 @@ import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
 import { resetStaleTasks } from "./persistence/tasks";
+import { resetStaleChats } from "./persistence/chats";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
@@ -148,15 +149,20 @@ async function reconcileStartupState(): Promise<void> {
   await backendManager.initialize();
 
   let staleTasksReset = 0;
+  let staleChatsReset = 0;
   let staleManagedContextsRevoked = 0;
   await runForEachActiveUser(async (user) => {
     staleTasksReset += await resetStaleTasks();
+    staleChatsReset += await resetStaleChats();
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
     await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
     await provisioningManager.reconcileDedicatedWorkerStartupState();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
+  }
+  if (staleChatsReset > 0) {
+    log.info(`Reconciled ${staleChatsReset} stale chats during startup`);
   }
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);

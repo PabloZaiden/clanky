@@ -73,6 +73,7 @@ export interface ImportExistingSessionOptions {
 
 export interface ReconnectChatOptions {
   credentialToken?: string | null;
+  signal?: AbortSignal;
 }
 
 export interface DeleteChatOptions {
