@@ -73,6 +73,7 @@ export interface ChatTranscriptProps {
   readAloudAvailable: boolean;
   readAloudSummaryAvailable: boolean;
   playingReadAloudKey: string | null;
+  readAloudStatus: "generating" | "playing" | null;
 }
 
 export interface ChatPermissionPanelProps {

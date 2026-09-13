@@ -199,6 +199,7 @@ export function ChatDetails({
           && voiceSettings.settings.capabilities.text.validated
         }
         playingReadAloudKey={voicePlayback.playingKey}
+        readAloudStatus={voicePlayback.status === "idle" ? null : voicePlayback.status}
       />
       <ChatPermissionPanel
         chatId={chatId}
