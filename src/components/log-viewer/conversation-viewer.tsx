@@ -39,6 +39,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   onReadAloud,
   readAloudSummaryEnabled = false,
   playingReadAloudKey = null,
+  readAloudStatus = null,
   toolPathDisplayRoot,
   fileLinkContext,
   surfaceClassName,
@@ -224,6 +225,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     onReadAloud={onReadAloud}
                     readAloudSummaryEnabled={readAloudSummaryEnabled}
                     playingReadAloudKey={playingReadAloudKey}
+                    readAloudStatus={readAloudStatus}
                     readAloudDisabled={isActive && entry.data.id === latestAssistantMessageId}
                   />
                 );

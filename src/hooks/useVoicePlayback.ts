@@ -5,6 +5,7 @@ import type { VoiceSpeechMode } from "@/shared";
 
 export interface UseVoicePlaybackResult {
   playingKey: string | null;
+  status: "idle" | "generating" | "playing";
   play: (key: string, text: string, mode: VoiceSpeechMode) => Promise<void>;
   stop: () => void;
 }
@@ -12,6 +13,7 @@ export interface UseVoicePlaybackResult {
 export function useVoicePlayback(): UseVoicePlaybackResult {
   const toast = useToast();
   const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "generating" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
@@ -44,6 +46,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     }
     activeKeyRef.current = null;
     setPlayingKey(null);
+    setStatus("idle");
   }, []);
 
   const stop = useCallback((): void => {
@@ -68,6 +71,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     generationRef.current = generation;
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    setPlayingKey(key);
+    setStatus("generating");
     try {
       const blob = await apiRequest("/api/voice/speech", {
         method: "POST",
@@ -85,7 +90,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       objectUrlRef.current = url;
       const audio = new Audio(url);
       audioRef.current = audio;
-      setPlayingKey(key);
+      setStatus("playing");
       audio.onended = () => releaseAudio(generation, audio);
       audio.onerror = () => {
         if (generationRef.current !== generation || audioRef.current !== audio) {
@@ -116,5 +121,5 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     releaseAudio(generationRef.current);
   }, [releaseAudio]);
 
-  return { playingKey, play, stop };
+  return { playingKey, status, play, stop };
 }

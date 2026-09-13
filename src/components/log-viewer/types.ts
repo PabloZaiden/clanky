@@ -131,6 +131,8 @@ export interface ConversationViewerProps extends LogViewerProps {
   readAloudSummaryEnabled?: boolean;
   /** Current message/mode being played, if any. */
   playingReadAloudKey?: string | null;
+  /** Current read-aloud lifecycle state. */
+  readAloudStatus?: "generating" | "playing" | null;
 }
 
 /**
