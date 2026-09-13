@@ -62,30 +62,41 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   const [status, setStatus] = useState<"idle" | "generating" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
-  const unlockAudioRef = useRef<HTMLAudioElement | null>(null);
   const unlockAudioUrlRef = useRef<string | null>(null);
+  const primingGenerationRef = useRef(0);
   const requestControllerRef = useRef<AbortController | null>(null);
   const activeKeyRef = useRef<string | null>(null);
   const generationRef = useRef(0);
 
   const unlockAudio = useCallback((): void => {
-    // Prime an inaudible media element while the click activation is live;
-    // the TTS response arrives after the browser's activation window expires.
-    let audio = unlockAudioRef.current;
+    // Prime the same media element that will receive the TTS response. iOS
+    // may reject a newly created element after the click activation expires.
+    let audio = audioRef.current;
     if (!audio) {
-      const url = createSilentAudioUrl();
-      unlockAudioUrlRef.current = url;
-      audio = new Audio(url);
+      audio = new Audio();
       audio.preload = "auto";
       audio.setAttribute("playsinline", "");
-      unlockAudioRef.current = audio;
+      audioRef.current = audio;
+    }
+    const url = unlockAudioUrlRef.current ?? createSilentAudioUrl();
+    unlockAudioUrlRef.current ??= url;
+    if (audio.getAttribute("src") !== url) {
+      audio.src = url;
+      audio.load();
     }
     audio.pause();
     audio.currentTime = 0;
+    const primingGeneration = primingGenerationRef.current + 1;
+    primingGenerationRef.current = primingGeneration;
     void audio.play().then(
       () => {
-        audio.pause();
-        audio.currentTime = 0;
+        if (
+          primingGenerationRef.current === primingGeneration
+          && audioRef.current === audio
+        ) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
       },
       () => {
         // The real playback attempt below reports a user-facing error if needed.
@@ -109,10 +120,12 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     }
     if (audio) {
       audio.pause();
+      audio.onended = null;
+      audio.onerror = null;
       audio.removeAttribute("src");
       audio.load();
     }
-    audioRef.current = null;
+    primingGenerationRef.current += 1;
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
@@ -122,14 +135,20 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     setStatus("idle");
   }, []);
 
-  const cleanupUnlockAudio = useCallback((): void => {
-    const audio = unlockAudioRef.current;
+  const cleanupAudio = useCallback((): void => {
+    const audio = audioRef.current;
     if (audio) {
       audio.pause();
+      audio.onended = null;
+      audio.onerror = null;
       audio.removeAttribute("src");
       audio.load();
     }
-    unlockAudioRef.current = null;
+    audioRef.current = null;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
     if (unlockAudioUrlRef.current) {
       URL.revokeObjectURL(unlockAudioUrlRef.current);
       unlockAudioUrlRef.current = null;
@@ -176,8 +195,14 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       }
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
-      const audio = new Audio(url);
-      audioRef.current = audio;
+      const audio = audioRef.current;
+      if (!audio) {
+        throw new Error("Audio playback was not initialized.");
+      }
+      primingGenerationRef.current += 1;
+      audio.pause();
+      audio.src = url;
+      audio.load();
       setStatus("playing");
       audio.onended = () => releaseAudio(generation, audio);
       audio.onerror = () => {
@@ -207,8 +232,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     generationRef.current += 1;
     requestControllerRef.current?.abort();
     releaseAudio(generationRef.current);
-    cleanupUnlockAudio();
-  }, [cleanupUnlockAudio, releaseAudio]);
+    cleanupAudio();
+  }, [cleanupAudio, releaseAudio]);
 
   return { playingKey, status, play, stop };
 }

@@ -243,6 +243,7 @@ export function ChatDetails({
         error={voiceRecorder.error}
         onStop={voiceRecorder.stop}
         onCancel={voiceRecorder.cancel}
+        onRetry={voiceRecorder.start}
         onDismissError={voiceRecorder.dismissError}
       />
     </div>

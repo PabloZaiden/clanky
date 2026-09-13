@@ -5,7 +5,12 @@ import { apiRequest } from "../lib/api-client";
 export const VOICE_MAX_RECORDING_MS = 10 * 60 * 1_000;
 const VOICE_RECORDING_MAX_BYTES = 20 * 1024 * 1024;
 
-export type VoiceRecorderStatus = "idle" | "listening" | "transcribing" | "error";
+export type VoiceRecorderStatus =
+  | "idle"
+  | "requesting"
+  | "listening"
+  | "transcribing"
+  | "error";
 
 interface UseVoiceRecorderOptions {
   enabled: boolean;
@@ -34,6 +39,31 @@ function getRecordingMimeType(): string {
     "audio/ogg;codecs=opus",
   ];
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
+function getErrorName(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const name = error.name;
+    return typeof name === "string" ? name : undefined;
+  }
+  return undefined;
+}
+
+function getRecordingErrorMessage(error: unknown): string {
+  switch (getErrorName(error)) {
+    case "NotAllowedError":
+      return "Microphone access was blocked or the iPhone audio session is unavailable. Try again.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The microphone is temporarily unavailable. Try again.";
+    case "SecurityError":
+      return "Microphone access is blocked for this app. Check the iPhone or Safari settings.";
+    default:
+      return String(error);
+  }
 }
 
 export function useVoiceRecorder({
@@ -193,6 +223,8 @@ export function useVoiceRecorder({
   }, []);
 
   const cancel = useCallback((): void => {
+    generationRef.current += 1;
+    startLockRef.current = false;
     discardRef.current = true;
     recordingErrorRef.current = null;
     requestControllerRef.current?.abort();
@@ -240,6 +272,7 @@ export function useVoiceRecorder({
 
     setError(null);
     setElapsedMs(0);
+    setStatus("requesting");
     discardRef.current = false;
     recordingErrorRef.current = null;
     chunksRef.current = [];
@@ -321,7 +354,7 @@ export function useVoiceRecorder({
       }
       startLockRef.current = false;
       clearRecorder();
-      setError(String(recordingError));
+      setError(getRecordingErrorMessage(recordingError));
       setStatus("error");
     }
   }, [clearRecorder, enabled, fail, finalizeRecording, status, stop]);

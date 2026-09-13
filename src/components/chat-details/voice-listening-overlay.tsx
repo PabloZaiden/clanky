@@ -15,6 +15,7 @@ export function VoiceListeningOverlay({
   error,
   onStop,
   onCancel,
+  onRetry,
   onDismissError,
 }: {
   status: VoiceRecorderStatus;
@@ -22,6 +23,7 @@ export function VoiceListeningOverlay({
   error: string | null;
   onStop: () => void;
   onCancel: () => void;
+  onRetry: () => Promise<void>;
   onDismissError: () => void;
 }) {
   if (status === "idle") {
@@ -29,16 +31,20 @@ export function VoiceListeningOverlay({
   }
 
   const listening = status === "listening";
+  const requesting = status === "requesting";
   const transcribing = status === "transcribing";
-  const title = listening
-    ? "Listening"
-    : transcribing
-      ? "Transcribing…"
-      : "Voice input failed";
+  let title = "Voice input failed";
+  if (listening) {
+    title = "Listening";
+  } else if (requesting) {
+    title = "Requesting microphone…";
+  } else if (transcribing) {
+    title = "Transcribing…";
+  }
   return (
     <Modal
       isOpen
-      onClose={listening || transcribing ? onCancel : onDismissError}
+      onClose={listening || requesting || transcribing ? onCancel : onDismissError}
       title={title}
       showCloseButton={false}
       closeOnOverlayClick={false}
@@ -54,14 +60,19 @@ export function VoiceListeningOverlay({
               Stop
             </Button>
           </>
-        ) : transcribing ? (
+        ) : requesting || transcribing ? (
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
         ) : (
-          <Button type="button" variant="secondary" onClick={onDismissError}>
-            Close
-          </Button>
+          <>
+            <Button type="button" variant="ghost" onClick={onDismissError}>
+              Close
+            </Button>
+            <Button type="button" variant="primary" onClick={() => void onRetry()}>
+              Retry microphone
+            </Button>
+          </>
         )
       )}
     >
@@ -75,7 +86,7 @@ export function VoiceListeningOverlay({
               {formatElapsed(elapsedMs)} / {formatElapsed(VOICE_MAX_RECORDING_MS)}
             </p>
           </>
-        ) : transcribing ? (
+        ) : requesting || transcribing ? (
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-gray-900 dark:border-gray-700 dark:border-t-white" aria-hidden="true" />
         ) : (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400">
