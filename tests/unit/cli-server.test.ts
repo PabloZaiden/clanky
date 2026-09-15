@@ -69,6 +69,7 @@ describe("CLI server commands", () => {
           targetKey: "mesh:worker-1",
           name: "Diagnostics worker",
           endpoint: "https://worker.example",
+          meshRouteKind: "direct",
           repositoriesBasePath: "/srv",
           preferredModel: null,
           configurationRevision: 1,

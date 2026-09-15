@@ -708,6 +708,8 @@ describe("controller-worker Mesh", () => {
     const meshHost = await pollUntil(
       async () => (await jsonRequest(controller, "/api/execution-hosts")).body as Array<{
         ref: { kind: string; nodeId?: string };
+        endpoint: string | null;
+        meshRouteKind: "direct" | "relay" | null;
       }>,
       (hosts) => hosts.some(
         (host) => host.ref.kind === "mesh" && host.ref.nodeId !== undefined,
@@ -717,6 +719,12 @@ describe("controller-worker Mesh", () => {
     const workerNodeId = meshHost.find(
       (host) => host.ref.kind === "mesh" && host.ref.nodeId !== undefined,
     )!.ref.nodeId!;
+    expect(meshHost.find(
+      (host) => host.ref.kind === "mesh" && host.ref.nodeId === workerNodeId,
+    )).toMatchObject({
+      endpoint: worker.baseUrl,
+      meshRouteKind: "direct",
+    });
 
     const execution = await jsonRequest(
       controller,

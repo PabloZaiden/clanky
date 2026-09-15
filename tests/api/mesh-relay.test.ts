@@ -123,6 +123,13 @@ describe("controller relay owner API", () => {
         relayFingerprint: relay!.identity.fingerprint,
       },
     });
+    const executionHostsResponse = await fetch(`${api!.url}/api/execution-hosts`);
+    expect(executionHostsResponse.status).toBe(200);
+    expect(await executionHostsResponse.json()).toContainEqual(expect.objectContaining({
+      ref: { kind: "mesh", nodeId: "worker-live" },
+      endpoint: "http://127.0.0.1:4000",
+      meshRouteKind: "relay",
+    }));
     const health = await fetch(`${relayUrl}/api/health`);
     expect(health.ok).toBe(true);
     const before = await fetch(`${relayUrl}${MESH_RELAY_DESCRIPTOR_PATH}`);

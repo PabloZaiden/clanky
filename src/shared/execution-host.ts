@@ -149,6 +149,7 @@ export interface ExecutionHostDescriptor {
   targetKey: string;
   name: string;
   endpoint: string | null;
+  meshRouteKind: "direct" | "relay" | null;
   repositoriesBasePath: string | null;
   preferredModel: ExecutionHostModelConfig | null;
   configurationRevision: number;
