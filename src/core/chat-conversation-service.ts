@@ -716,10 +716,26 @@ export class ChatConversationService implements ChatConversationPort {
     initialChat: Chat,
   ): Promise<void> {
     const streamState = this.createChatStreamState(initialChat);
+    const sessionId = streamState.chat.state.session?.id;
 
     try {
       const streamResult = await handle.consume({
         shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
+        onInactivity: async () => {
+          if (!sessionId) {
+            log.warn("Cannot abort inactive chat stream without a session ID", { chatId });
+            return;
+          }
+          try {
+            await backend.abortSession(sessionId);
+          } catch (error) {
+            log.warn("Failed to abort inactive chat session", {
+              chatId,
+              sessionId,
+              error: String(error),
+            });
+          }
+        },
         onEvent: (event) =>
           this.handleChatStreamEvent(chatId, backend, generation, streamState, event),
       });

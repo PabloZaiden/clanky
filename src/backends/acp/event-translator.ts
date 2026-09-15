@@ -56,6 +56,30 @@ export class AcpEventTranslator {
       }
     }
 
+    if (this.state.isPromptAborted(sessionId)) {
+      return;
+    }
+
+    if (updateType === "state_update") {
+      const state = getString(updateObj["state"]);
+      if (state === "running") {
+        this.handleNormalizedSessionStatus(sessionId, "busy", {
+          attempt: getNumber(updateObj["attempt"]),
+          message: getString(updateObj["message"]),
+        });
+      } else if (state === "idle") {
+        this.handleNormalizedSessionStatus(sessionId, "idle", {
+          attempt: getNumber(updateObj["attempt"]),
+          message: getString(updateObj["message"]),
+          stopReason: getString(updateObj["stopReason"]) ?? undefined,
+          terminalSignal: true,
+        });
+      } else if (state === "requires_action") {
+        this.state.markPromptActivity(sessionId);
+      }
+      return;
+    }
+
     if (updateType === "config_option_update" || updateType === "config_options_update") {
       const configOptions = this.capability.parseConfigOptions(updateObj);
       if (configOptions.length > 0) {
@@ -216,25 +240,61 @@ export class AcpEventTranslator {
     if (!sessionId || (status !== "idle" && status !== "busy" && status !== "retry")) {
       return;
     }
-    const hasActivePrompt = this.state.hasActivePrompt(sessionId);
-    const ignoreStatusUntilActivity = this.state.isIgnoringStatusUntilActivity(sessionId);
-    if (hasActivePrompt && !ignoreStatusUntilActivity && (status === "busy" || status === "retry")) {
-      this.state.markPromptActivity(sessionId);
-    }
-    this.state.emitSessionEvent(sessionId, {
-      type: "session.status",
-      sessionId,
-      status,
+    this.handleNormalizedSessionStatus(sessionId, status, {
       attempt: getNumber(params["attempt"]),
       message: getString(params["message"]),
+      stopReason: getString(params["stopReason"]) ?? undefined,
+      terminalSignal: getString(params["stopReason"]) !== undefined,
     });
+  }
+
+  private handleNormalizedSessionStatus(
+    sessionId: string,
+    status: "idle" | "busy" | "retry",
+    details: {
+      attempt?: number;
+      message?: string;
+      stopReason?: string;
+      terminalSignal?: boolean;
+    },
+  ): void {
+    const hasActivePrompt = this.state.hasActivePrompt(sessionId);
+    const ignoreStatusUntilActivity = this.state.isIgnoringStatusUntilActivity(sessionId);
     const hasPromptActivity = this.state.hasPromptActivity(sessionId);
-    if (status === "idle" && hasActivePrompt && hasPromptActivity && !ignoreStatusUntilActivity) {
-      this.state.emitSessionEvent(sessionId, {
-        type: "message.complete",
-        content: "",
+    const isIdle = status === "idle";
+    const hasTerminalSignal = details.terminalSignal === true;
+    const canComplete = (
+      isIdle
+      && hasActivePrompt
+      && hasTerminalSignal
+      && (hasPromptActivity || this.state.hasPromptRpcAccepted(sessionId))
+      && !ignoreStatusUntilActivity
+    );
+    if (canComplete) {
+      this.state.completePrompt(sessionId);
+    } else if (isIdle && hasActivePrompt && hasTerminalSignal && !ignoreStatusUntilActivity) {
+      this.state.deferPromptCompletion(sessionId);
+      log.debug("[AcpBackend] Deferring terminal signal until prompt acknowledgement", {
+        sessionId,
+        hadActivity: hasPromptActivity,
+        rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
       });
-      this.state.clearPromptState(sessionId);
+    } else if (isIdle && hasActivePrompt && !ignoreStatusUntilActivity && !hasTerminalSignal) {
+      log.debug("[AcpBackend] Ignoring legacy idle status without terminal reason", {
+        sessionId,
+        hadActivity: hasPromptActivity,
+        rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
+      });
+    }
+    if (!isIdle || !hasActivePrompt || ignoreStatusUntilActivity) {
+      this.state.emitSessionEvent(sessionId, {
+        type: "session.status",
+        sessionId,
+        status,
+        attempt: details.attempt,
+        message: details.message,
+        ...(details.stopReason ? { stopReason: details.stopReason } : {}),
+      });
     }
   }
 

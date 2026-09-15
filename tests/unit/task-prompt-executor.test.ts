@@ -108,6 +108,7 @@ describe("TaskPromptExecutor inactivity", () => {
     const logs: string[] = [];
     const persistedToolCallSnapshots: TaskState["toolCalls"][] = [];
     let retryResetCount = 0;
+    const backend = new NeverCompletingMockBackend();
     const persistence = new TaskPersistenceCoordinator({
       state,
       onPersistState: async (nextState) => {
@@ -115,7 +116,7 @@ describe("TaskPromptExecutor inactivity", () => {
       },
     });
     const executor = new TaskPromptExecutorImpl({
-      backend: new NeverCompletingMockBackend(),
+      backend,
       session: createSession(),
       config: createTaskConfig(),
       state,
@@ -148,6 +149,7 @@ describe("TaskPromptExecutor inactivity", () => {
     });
 
     expect(result.prompt.parts).toEqual([{ type: "text", text: "hello" }]);
+    expect(backend.getAbortSessionCalls()).toBe(1);
     expect(logs).toContain("AI response stream ended after inactivity; treating the turn as complete");
     expect(retryResetCount).toBe(0);
     expect(state.error).toBeUndefined();

@@ -62,4 +62,28 @@ describe("AgentStreamController inactivity", () => {
 
     await expect(handle.consume({ onEvent: () => {} })).rejects.toThrow("transport failed");
   });
+
+  test("runs the inactivity cleanup before returning", async () => {
+    const source = createEventStream<AgentEvent>();
+    const stream: EventStream<AgentEvent> = {
+      next: () => source.stream.next(),
+      close: () => source.stream.close(),
+    };
+    let cleanupCalls = 0;
+    const handle = new AgentStreamController(createBackend(stream)).start({
+      sessionId: "session-1",
+      prompt: { parts: [{ type: "text", text: "hello" }] },
+      activityTimeoutMs: 1,
+    });
+
+    await handle.startPrompt();
+    await handle.consume({
+      onEvent: () => {},
+      onInactivity: () => {
+        cleanupCalls += 1;
+      },
+    });
+
+    expect(cleanupCalls).toBe(1);
+  });
 });

@@ -845,14 +845,15 @@ describe("Chats API Integration", () => {
   });
 
   test("treats ACP inactivity as a normal chat completion", async () => {
-    backendManager.setBackendForTesting(new NeverCompletingMockBackend({
+    const backend = new NeverCompletingMockBackend({
       models: [defaultTestModel],
       runningToolCall: {
         id: "tool-inactivity",
         name: "read_file",
         input: { path: "README.md" },
       },
-    }));
+    });
+    backendManager.setBackendForTesting(backend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
     chatManager.setActivityTimeoutForTesting(10);
 
@@ -880,6 +881,7 @@ describe("Chats API Integration", () => {
 
       const settled = await waitForChatIdle(created.config.id);
       expect(settled.state.status).toBe("idle");
+      expect(backend.getAbortSessionCalls()).toBe(1);
       expect(settled.state.error).toBeUndefined();
       expect(settled.state.activeMessageId).toBeUndefined();
       expect(settled.state.messages).toContainEqual(expect.objectContaining({

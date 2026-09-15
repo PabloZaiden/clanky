@@ -406,35 +406,35 @@ export class SessionService {
         if (this.state.getPromptSequence(sessionId) !== sequence) {
           return;
         }
-        const hasPromptActivity = this.state.hasPromptActivity(sessionId);
-        const messageStarted = this.state.isMessageStarted(sessionId);
-        const responseContent = this.extractPromptResultContent(result);
-        if (!hasPromptActivity && !messageStarted) {
-          if (responseContent) {
-            log.debug("[AcpBackend] Async prompt RPC completed with direct content before activity", {
-              sessionId,
-              sequence,
-              responseLength: responseContent.length,
-            });
-            this.state.emitSessionEvent(sessionId, {
-              type: "message.complete",
-              content: responseContent,
-            });
-            this.state.clearPromptState(sessionId);
-            return;
-          }
-          log.debug("[AcpBackend] Async prompt RPC completed before activity; waiting for session updates", {
+        if (!this.state.markPromptRpcAccepted(sessionId, sequence)) {
+          return;
+        }
+        const promptResult = this.extractPromptResult(result);
+        if (promptResult.content || promptResult.stopReason) {
+          log.debug("[AcpBackend] Async prompt RPC reported terminal result", {
+            sessionId,
+            sequence,
+            responseLength: promptResult.content.length,
+            stopReason: promptResult.stopReason ?? "none",
+            hadActivity: this.state.hasPromptActivity(sessionId),
+          });
+          this.state.completePrompt(sessionId, promptResult.content, sequence);
+          return;
+        }
+        if (this.state.consumeDeferredPromptCompletion(sessionId)) {
+          log.debug("[AcpBackend] Completing prompt after deferred terminal signal", {
             sessionId,
             sequence,
           });
+          this.state.completePrompt(sessionId, "", sequence);
           return;
         }
-        log.debug("[AcpBackend] Async prompt RPC completed", { sessionId, sequence });
-        this.state.emitSessionEvent(sessionId, {
-          type: "message.complete",
-          content: "",
+
+        log.debug("[AcpBackend] Async prompt RPC accepted; waiting for session completion update", {
+          sessionId,
+          sequence,
+          hadActivity: this.state.hasPromptActivity(sessionId),
         });
-        this.state.clearPromptState(sessionId);
       })
       .catch((error) => {
         if (this.state.getPromptSequence(sessionId) !== sequence) {
@@ -463,6 +463,7 @@ export class SessionService {
   }
 
   async abortSession(sessionId: string): Promise<void> {
+    this.state.markAborted(sessionId);
     this.ensureConnected();
     const outcome = await invokeOptionalMethod(
       this.rpc,
@@ -471,7 +472,6 @@ export class SessionService {
       5_000,
     );
     if (outcome.kind === "supported") {
-      this.state.markAborted(sessionId);
       return;
     }
 
@@ -486,12 +486,19 @@ export class SessionService {
     return this.capability.getModelVariants(directory, modelID, this.setConfigOptionBound);
   }
 
-  private extractPromptResultContent(result: unknown): string {
+  private extractPromptResult(result: unknown): {
+    content: string;
+    stopReason?: string;
+  } {
     if (!isRecord(result)) {
-      return "";
+      return { content: "" };
     }
     const content = getString(result["content"]);
-    return content ?? "";
+    const stopReason = getString(result["stopReason"]);
+    return {
+      content: content ?? "",
+      ...(stopReason ? { stopReason } : {}),
+    };
   }
 
   private buildPromptParts(prompt: PromptInput): Array<Record<string, unknown>> {
