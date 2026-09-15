@@ -17,6 +17,7 @@ import {
   MeshRelayStreamStatusFrameSchema,
 } from "@/contracts/schemas/mesh-relay";
 import {
+  MESH_RELAY_CONTROL_CLOSE_REPLACED,
   MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   MESH_RELAY_MAX_AUTHORIZED_WORKERS,
   MESH_RELAY_PROTOCOL_VERSION,
@@ -82,7 +83,6 @@ export const RELAY_MAX_QUEUED_BYTES = MESH_RELAY_MAX_QUEUED_BYTES;
 
 const CONTROL_CLOSE_INVALID = 4400;
 const CONTROL_CLOSE_UNAUTHORIZED = 4401;
-const CONTROL_CLOSE_REPLACED = 4409;
 const CONTROL_CLOSE_TIMEOUT = 4410;
 const CONTROL_CLOSE_CAPACITY = 4429;
 
@@ -227,7 +227,7 @@ function identitiesMatch(
 
 function controlDisconnectOutcome(code: number): string {
   if (code === 1000) return "normal";
-  if (code === CONTROL_CLOSE_REPLACED) return "replaced";
+  if (code === MESH_RELAY_CONTROL_CLOSE_REPLACED) return "replaced";
   if (code === CONTROL_CLOSE_TIMEOUT) return "timeout";
   if (code === CONTROL_CLOSE_CAPACITY) return "capacity";
   if (code === 1012) return "server_shutdown";
@@ -783,7 +783,7 @@ export class MeshRelayBroker {
       if (previousId && previousId !== connection.id) {
         this.closeControl(
           previousId,
-          CONTROL_CLOSE_REPLACED,
+          MESH_RELAY_CONTROL_CLOSE_REPLACED,
           "Controller connection replaced",
         );
       }
@@ -865,7 +865,7 @@ export class MeshRelayBroker {
       if (previousId && previousId !== connection.id) {
         this.closeControl(
           previousId,
-          CONTROL_CLOSE_REPLACED,
+          MESH_RELAY_CONTROL_CLOSE_REPLACED,
           "Worker connection replaced",
         );
       }

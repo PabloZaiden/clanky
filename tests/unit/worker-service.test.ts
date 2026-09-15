@@ -10,7 +10,9 @@ import {
   parseWorkerServiceArgs,
   renderLaunchAgent,
   renderSystemdUnit,
+  runMacWorkerServiceOperation,
   type WorkerServiceConfiguration,
+  type WorkerServiceProcessResult,
 } from "../../src/cli/worker-service";
 import {
   getWorkerSshAgentPaths,
@@ -411,5 +413,117 @@ describe("worker service definitions", () => {
     } finally {
       await rm(temporaryDirectory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("macOS worker service lifecycle", () => {
+  // launchctl sequencing is the external lifecycle contract that prevents duplicate workers.
+  function runnerWith(
+    results: WorkerServiceProcessResult[],
+  ): {
+    calls: Array<{ command: string; args: readonly string[] }>;
+    runner: (
+      command: string,
+      args: readonly string[],
+    ) => Promise<WorkerServiceProcessResult>;
+  } {
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    return {
+      calls,
+      runner: async (command, args) => {
+        calls.push({ command, args });
+        const result = results.shift();
+        if (!result) {
+          throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+        }
+        return result;
+      },
+    };
+  }
+
+  const success: WorkerServiceProcessResult = {
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+  };
+  const unloaded: WorkerServiceProcessResult = {
+    exitCode: 113,
+    stdout: "",
+    stderr: "Could not find service",
+  };
+
+  test("bootstraps an unloaded RunAtLoad service without kickstarting it", async () => {
+    const mock = runnerWith([unloaded, success]);
+    const paths = configuration("darwin").paths;
+
+    await runMacWorkerServiceOperation("start", paths, mock.runner);
+
+    expect(mock.calls).toEqual([
+      {
+        command: "launchctl",
+        args: ["print", paths.supervisorTarget],
+      },
+      {
+        command: "launchctl",
+        args: ["bootstrap", paths.supervisorDomain!, paths.servicePath],
+      },
+    ]);
+  });
+
+  test("kickstarts a loaded stopped service without forced replacement", async () => {
+    const mock = runnerWith([
+      { exitCode: 0, stdout: "state = waiting\n", stderr: "" },
+      success,
+    ]);
+    const paths = configuration("darwin").paths;
+
+    await runMacWorkerServiceOperation("start", paths, mock.runner);
+
+    expect(mock.calls.at(-1)).toEqual({
+      command: "launchctl",
+      args: ["kickstart", paths.supervisorTarget],
+    });
+  });
+
+  test("leaves an already running service unchanged", async () => {
+    const mock = runnerWith([
+      { exitCode: 0, stdout: "state = running\n", stderr: "" },
+    ]);
+    const paths = configuration("darwin").paths;
+
+    await runMacWorkerServiceOperation("start", paths, mock.runner);
+
+    expect(mock.calls).toHaveLength(1);
+  });
+
+  test("restarts with bootout followed by one RunAtLoad bootstrap", async () => {
+    const mock = runnerWith([
+      { exitCode: 0, stdout: "state = running\n", stderr: "" },
+      success,
+      unloaded,
+      success,
+    ]);
+    const paths = configuration("darwin").paths;
+
+    await runMacWorkerServiceOperation("restart", paths, mock.runner);
+
+    expect(mock.calls).toEqual([
+      {
+        command: "launchctl",
+        args: ["print", paths.supervisorTarget],
+      },
+      {
+        command: "launchctl",
+        args: ["bootout", paths.supervisorTarget],
+      },
+      {
+        command: "launchctl",
+        args: ["print", paths.supervisorTarget],
+      },
+      {
+        command: "launchctl",
+        args: ["bootstrap", paths.supervisorDomain!, paths.servicePath],
+      },
+    ]);
   });
 });

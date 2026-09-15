@@ -714,14 +714,33 @@ async function startMacService(
   paths: WorkerServicePaths,
   runner: ProcessRunner,
 ): Promise<void> {
-  if (!(await inspectMacService(paths, runner)).loaded) {
+  const status = await inspectMacService(paths, runner);
+  if (!status.loaded) {
     await runRequired(runner, "launchctl", [
       "bootstrap",
       paths.supervisorDomain!,
       paths.servicePath,
     ]);
+    return;
   }
-  await runRequired(runner, "launchctl", ["kickstart", "-k", paths.supervisorTarget]);
+  if (!status.running) {
+    await runRequired(runner, "launchctl", ["kickstart", paths.supervisorTarget]);
+  }
+}
+
+export async function runMacWorkerServiceOperation(
+  operation: "start" | "stop" | "restart",
+  paths: WorkerServicePaths,
+  runner: WorkerServiceProcessRunner,
+): Promise<void> {
+  if (operation === "stop") {
+    await unloadMacService(paths, runner);
+    return;
+  }
+  if (operation === "restart") {
+    await unloadMacService(paths, runner);
+  }
+  await startMacService(paths, runner);
 }
 
 function systemctlArgs(args: readonly string[]): string[] {
@@ -1018,12 +1037,7 @@ async function runWorkerServiceOperation(
     throw new Error(`The worker service is not installed: ${paths.servicePath}`);
   }
   if (platform === "darwin") {
-    if (command.operation === "stop") {
-      await unloadMacService(paths, runner);
-    } else {
-      if (command.operation === "restart") await unloadMacService(paths, runner);
-      await startMacService(paths, runner);
-    }
+    await runMacWorkerServiceOperation(command.operation, paths, runner);
   } else {
     await assertSystemctlSuccess(runner, [command.operation, paths.label]);
   }

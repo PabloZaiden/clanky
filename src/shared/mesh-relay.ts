@@ -11,6 +11,7 @@ export const MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES = 4 * 1_024 * 1_024;
 export const MESH_RELAY_DESCRIPTOR_PATH = "/.well-known/clanky-mesh";
 export const MESH_RELAY_CONTROL_PATH = "/api/mesh/relay/control";
 export const MESH_RELAY_STREAM_PATH = "/api/mesh/relay/stream";
+export const MESH_RELAY_CONTROL_CLOSE_REPLACED = 4409;
 
 export type MeshRelayPeerRole = "controller" | "worker";
 export type MeshRelayWorkerStatus = "pending" | "authorized";
