@@ -83,6 +83,7 @@ export type MeshRelayConnectorStatus =
   | "idle"
   | "connecting"
   | "authenticating"
+  | "awaiting-auth"
   | "connected"
   | "closed";
 
@@ -757,7 +758,16 @@ export class MeshRelayConnector {
       return;
     }
     this.lastServerFrameAt = Date.now();
-    switch (record["type"]) {
+    const type = record["type"];
+    if (
+      type !== "challenge"
+      && type !== "auth.ok"
+      && this.state !== "connected"
+    ) {
+      this.rejectPreAuthenticationFrame(type);
+      return;
+    }
+    switch (type) {
       case "challenge":
         await this.handleChallenge(raw, identity);
         return;
@@ -867,6 +877,7 @@ export class MeshRelayConnector {
     }
     try {
       this.sendControl({ ...unsigned, signature });
+      this.setStatus("awaiting-auth");
     } catch (error) {
       this.failConnect(error);
       this.close(1011, "Mesh relay authentication could not be sent");
@@ -883,6 +894,10 @@ export class MeshRelayConnector {
   }
 
   private handleAuthOk(raw: unknown): void {
+    if (this.state !== "awaiting-auth" && this.state !== "connected") {
+      this.rejectPreAuthenticationFrame("auth.ok");
+      return;
+    }
     const parsed = MeshRelayAuthOkFrameSchema.safeParse(raw);
     if (!parsed.success || parsed.data.role !== this.options.config.role) {
       this.failConnect(new MeshRelayStreamError(
@@ -907,6 +922,15 @@ export class MeshRelayConnector {
       this.rejectConnect = undefined;
     }
     this.options.onAuthenticated?.(parsed.data);
+  }
+
+  private rejectPreAuthenticationFrame(type: unknown): void {
+    this.failConnect(new MeshRelayStreamError(
+      "mesh_relay_auth_invalid",
+      `The Mesh relay sent "${String(type)}" before authentication completed.`,
+      { status: 502 },
+    ));
+    this.close(4401, "Unexpected Mesh relay frame before authentication");
   }
 
   private handleAuthorizationAck(raw: unknown): void {

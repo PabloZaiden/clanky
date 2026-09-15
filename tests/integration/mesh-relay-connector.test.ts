@@ -33,6 +33,7 @@ import {
   type MeshRelayInboundHandler,
   type MeshRelayOfferContext,
 } from "../../src/core/mesh-relay-connector";
+import type { MeshRelayClientSocket } from "../../src/core/mesh-relay-client-socket";
 import { createMeshRelayInboundHandler } from "../../src/core/mesh-relay-inbound";
 import { createMeshRelayPeerTransport } from "../../src/core/mesh-relay-transport";
 import { MeshRelayStreamError } from "../../src/core/mesh-relay-errors";
@@ -104,6 +105,36 @@ function fileStream(): ReadableStream<Uint8Array> {
       emitted += 1;
     },
   });
+}
+
+interface ManualRelaySocket extends MeshRelayClientSocket {
+  emitMessage(data: string): void;
+}
+
+function createManualRelaySocket(): ManualRelaySocket {
+  const target = new EventTarget();
+  let readyState: number = WebSocket.OPEN;
+  return {
+    get readyState(): number {
+      return readyState;
+    },
+    bufferedAmount: 0,
+    binaryType: "blob",
+    send(): void {},
+    close(code = 1000, reason = ""): void {
+      readyState = WebSocket.CLOSED;
+      target.dispatchEvent(new CloseEvent("close", { code, reason }));
+    },
+    addEventListener(type, listener): void {
+      target.addEventListener(type, listener as EventListener);
+    },
+    removeEventListener(type, listener): void {
+      target.removeEventListener(type, listener as EventListener);
+    },
+    emitMessage(data: string): void {
+      target.dispatchEvent(new MessageEvent("message", { data }));
+    },
+  };
 }
 
 async function dispatch(request: Request): Promise<Response | undefined> {
@@ -265,6 +296,35 @@ describe("Mesh relay connector", () => {
   function transport() {
     return createMeshRelayPeerTransport(() => controller);
   }
+
+  // The relay handshake is a security boundary: an acknowledgement is only
+  // trusted after a signed response to a validated challenge was sent.
+  test("rejects an unsolicited authentication acknowledgement", async () => {
+    const socket = createManualRelaySocket();
+    const connector = new MeshRelayConnector({
+      config: {
+        relayUrl: "http://127.0.0.1:8080",
+        relayFingerprint: relay.identity.fingerprint,
+        role: "controller",
+      },
+      identity: createIdentity("unsolicited-auth-controller"),
+      socketFactory: () => socket,
+    });
+    const connecting = connector.connect();
+
+    socket.emitMessage(JSON.stringify({
+      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      type: "auth.ok",
+      connectionId: "unsolicited-connection",
+      role: "controller",
+      nodeId: "unsolicited-auth-controller",
+    }));
+
+    await expect(connecting).rejects.toMatchObject({
+      code: "mesh_relay_auth_invalid",
+    });
+    expect(connector.status).toBe("closed");
+  });
 
   test("replaces and revokes an authorization snapshot larger than one frame", async () => {
     const revocableIdentity = createIdentity("worker-revocable");
