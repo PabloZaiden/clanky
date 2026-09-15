@@ -456,6 +456,7 @@ export class NeverCompletingMockBackend implements Backend {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
   private readonly runningToolCall: { id: string; name: string; input: unknown } | undefined;
+  private abortSessionCalls = 0;
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
@@ -499,7 +500,11 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   async abortSession(_sessionId: string): Promise<void> {
-    // No-op
+    this.abortSessionCalls++;
+  }
+
+  getAbortSessionCalls(): number {
+    return this.abortSessionCalls;
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {

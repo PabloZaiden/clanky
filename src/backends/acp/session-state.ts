@@ -40,6 +40,9 @@ export class SessionStateStore implements SessionEventSink {
   /** Whether the provider has acknowledged the active prompt RPC. */
   private readonly sessionPromptRpcAccepted = new Set<string>();
 
+  /** Whether an explicit terminal signal arrived before the prompt RPC acknowledgement. */
+  private readonly sessionPromptTerminalPending = new Set<string>();
+
   /** Prevent duplicate terminal events for the same prompt sequence. */
   private readonly sessionPromptCompleted = new Set<string>();
 
@@ -178,7 +181,9 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionMessageContent.set(sessionId, "");
     this.sessionPromptCompleted.delete(sessionId);
     this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptTerminalPending.delete(sessionId);
     this.sessionPromptAborted.delete(sessionId);
+    this.sessionIgnoreStatusUntilActivity.delete(sessionId);
     const sequence = (this.sessionPromptSequences.get(sessionId) ?? 0) + 1;
     this.sessionPromptSequences.set(sessionId, sequence);
     this.sessionPromptHasActivity.set(sessionId, false);
@@ -213,6 +218,18 @@ export class SessionStateStore implements SessionEventSink {
 
   hasPromptRpcAccepted(sessionId: string): boolean {
     return this.sessionPromptRpcAccepted.has(sessionId);
+  }
+
+  deferPromptCompletion(sessionId: string): void {
+    if (this.sessionPromptSequences.has(sessionId)) {
+      this.sessionPromptTerminalPending.add(sessionId);
+    }
+  }
+
+  consumeDeferredPromptCompletion(sessionId: string): boolean {
+    const deferred = this.sessionPromptTerminalPending.has(sessionId);
+    this.sessionPromptTerminalPending.delete(sessionId);
+    return deferred;
   }
 
   isPromptAborted(sessionId: string): boolean {
@@ -343,6 +360,7 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionPromptHasActivity.delete(sessionId);
     this.sessionPromptCompleted.delete(sessionId);
     this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptTerminalPending.delete(sessionId);
     this.sessionPromptAborted.delete(sessionId);
     this.sessionIgnoreStatusUntilActivity.delete(sessionId);
     this.sessionReasoningPartKeys.delete(sessionId);
@@ -389,6 +407,7 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
     this.sessionPromptCompleted.delete(sessionId);
     this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptTerminalPending.delete(sessionId);
     this.sessionPromptAborted.add(sessionId);
     this.sessionPromptHasActivity.set(sessionId, false);
     this.sessionMessageStarted.set(sessionId, false);
@@ -411,6 +430,7 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionPromptHasActivity.delete(sessionId);
     this.sessionPromptCompleted.delete(sessionId);
     this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptTerminalPending.delete(sessionId);
     this.sessionPromptAborted.delete(sessionId);
     this.sessionIgnoreStatusUntilActivity.delete(sessionId);
     this.sessionReasoningPartKeys.delete(sessionId);
@@ -428,6 +448,7 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionPromptHasActivity.clear();
     this.sessionPromptCompleted.clear();
     this.sessionPromptRpcAccepted.clear();
+    this.sessionPromptTerminalPending.clear();
     this.sessionPromptAborted.clear();
     this.sessionIgnoreStatusUntilActivity.clear();
     this.sessionReasoningPartKeys.clear();

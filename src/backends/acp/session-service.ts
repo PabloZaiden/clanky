@@ -406,7 +406,9 @@ export class SessionService {
         if (this.state.getPromptSequence(sessionId) !== sequence) {
           return;
         }
-        this.state.markPromptRpcAccepted(sessionId, sequence);
+        if (!this.state.markPromptRpcAccepted(sessionId, sequence)) {
+          return;
+        }
         const promptResult = this.extractPromptResult(result);
         if (promptResult.content || promptResult.stopReason) {
           log.debug("[AcpBackend] Async prompt RPC reported terminal result", {
@@ -417,6 +419,14 @@ export class SessionService {
             hadActivity: this.state.hasPromptActivity(sessionId),
           });
           this.state.completePrompt(sessionId, promptResult.content, sequence);
+          return;
+        }
+        if (this.state.consumeDeferredPromptCompletion(sessionId)) {
+          log.debug("[AcpBackend] Completing prompt after deferred terminal signal", {
+            sessionId,
+            sequence,
+          });
+          this.state.completePrompt(sessionId, "", sequence);
           return;
         }
 

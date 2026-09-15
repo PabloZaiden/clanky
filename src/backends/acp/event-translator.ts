@@ -260,28 +260,40 @@ export class AcpEventTranslator {
   ): void {
     const hasActivePrompt = this.state.hasActivePrompt(sessionId);
     const ignoreStatusUntilActivity = this.state.isIgnoringStatusUntilActivity(sessionId);
-    this.state.emitSessionEvent(sessionId, {
-      type: "session.status",
-      sessionId,
-      status,
-      attempt: details.attempt,
-      message: details.message,
-      ...(details.stopReason ? { stopReason: details.stopReason } : {}),
-    });
     const hasPromptActivity = this.state.hasPromptActivity(sessionId);
-    if (
-      status === "idle"
+    const isIdle = status === "idle";
+    const hasTerminalSignal = details.terminalSignal === true;
+    const canComplete = (
+      isIdle
       && hasActivePrompt
-      && details.terminalSignal === true
+      && hasTerminalSignal
       && (hasPromptActivity || this.state.hasPromptRpcAccepted(sessionId))
       && !ignoreStatusUntilActivity
-    ) {
+    );
+    if (canComplete) {
       this.state.completePrompt(sessionId);
-    } else if (status === "idle" && hasActivePrompt && !ignoreStatusUntilActivity && !details.terminalSignal) {
+    } else if (isIdle && hasActivePrompt && hasTerminalSignal && !ignoreStatusUntilActivity) {
+      this.state.deferPromptCompletion(sessionId);
+      log.debug("[AcpBackend] Deferring terminal signal until prompt acknowledgement", {
+        sessionId,
+        hadActivity: hasPromptActivity,
+        rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
+      });
+    } else if (isIdle && hasActivePrompt && !ignoreStatusUntilActivity && !hasTerminalSignal) {
       log.debug("[AcpBackend] Ignoring legacy idle status without terminal reason", {
         sessionId,
         hadActivity: hasPromptActivity,
         rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
+      });
+    }
+    if (!isIdle || !hasActivePrompt || ignoreStatusUntilActivity) {
+      this.state.emitSessionEvent(sessionId, {
+        type: "session.status",
+        sessionId,
+        status,
+        attempt: details.attempt,
+        message: details.message,
+        ...(details.stopReason ? { stopReason: details.stopReason } : {}),
       });
     }
   }

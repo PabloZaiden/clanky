@@ -126,10 +126,43 @@ describe("ACP prompt completion", () => {
     });
 
     expect(events.filter((event) => event.type === "message.complete")).toHaveLength(1);
-    expect(events.find((event) => event.type === "session.status")).toMatchObject({
-      type: "session.status",
-      status: "idle",
+  });
+
+  test("reconciles an explicit terminal signal received before the prompt acknowledgement", async () => {
+    let resolvePrompt: ((result: unknown) => void) | undefined;
+    const requester: RpcRequester = {
+      sendRequest<T>(method: string, _params: Record<string, unknown>): Promise<T> {
+        if (method !== "session/prompt") {
+          return Promise.resolve({} as T);
+        }
+        return new Promise<unknown>((resolve) => {
+          resolvePrompt = resolve;
+        }) as Promise<T>;
+      },
+      writeMessage(_message: JsonRpcMessage): void {},
+    };
+    const state = new SessionStateStore();
+    const capability = new CapabilityService(requester);
+    const sessions = new SessionService(requester, state, capability, () => {});
+    const translator = new AcpEventTranslator(state, capability);
+    const events: AgentEvent[] = [];
+    state.addSessionSubscriber("session-1", (event) => {
+      events.push(event);
     });
+
+    await sessions.sendPromptAsync("session-1", createPrompt());
+    translator.handleSessionUpdate({
+      sessionId: "session-1",
+      update: { sessionUpdate: "state_update", state: "idle" },
+    });
+    expect(events.filter((event) => event.type === "message.complete")).toHaveLength(0);
+
+    resolvePrompt?.({});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events.filter((event) => event.type === "message.complete")).toHaveLength(1);
+    expect(state.hasActivePrompt("session-1")).toBe(false);
   });
 
   test("does not let a legacy idle status truncate later response chunks", () => {
@@ -153,6 +186,7 @@ describe("ACP prompt completion", () => {
     });
 
     expect(events.filter((event) => event.type === "message.complete")).toHaveLength(0);
+    expect(events.filter((event) => event.type === "session.status")).toHaveLength(0);
     expect(events
       .filter((event): event is Extract<AgentEvent, { type: "message.delta" }> => event.type === "message.delta")
       .map((event) => event.content)
@@ -199,6 +233,19 @@ describe("ACP prompt completion", () => {
     });
 
     expect(events).toHaveLength(0);
+
+    const nextSequence = state.beginPrompt("session-1");
+    state.markPromptRpcAccepted("session-1", nextSequence);
+    translator.handleSessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "state_update",
+        state: "idle",
+      },
+    });
+
+    expect(events.filter((event) => event.type === "message.complete")).toHaveLength(1);
+    expect(state.hasActivePrompt("session-1")).toBe(false);
 
     state.beginPrompt("session-1");
     translator.handleSessionUpdate({
