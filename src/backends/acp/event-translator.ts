@@ -56,6 +56,30 @@ export class AcpEventTranslator {
       }
     }
 
+    if (this.state.isPromptAborted(sessionId)) {
+      return;
+    }
+
+    if (updateType === "state_update") {
+      const state = getString(updateObj["state"]);
+      if (state === "running") {
+        this.handleNormalizedSessionStatus(sessionId, "busy", {
+          attempt: getNumber(updateObj["attempt"]),
+          message: getString(updateObj["message"]),
+        });
+      } else if (state === "idle") {
+        this.handleNormalizedSessionStatus(sessionId, "idle", {
+          attempt: getNumber(updateObj["attempt"]),
+          message: getString(updateObj["message"]),
+          stopReason: getString(updateObj["stopReason"]) ?? undefined,
+          terminalSignal: true,
+        });
+      } else if (state === "requires_action") {
+        this.state.markPromptActivity(sessionId);
+      }
+      return;
+    }
+
     if (updateType === "config_option_update" || updateType === "config_options_update") {
       const configOptions = this.capability.parseConfigOptions(updateObj);
       if (configOptions.length > 0) {
@@ -216,25 +240,49 @@ export class AcpEventTranslator {
     if (!sessionId || (status !== "idle" && status !== "busy" && status !== "retry")) {
       return;
     }
+    this.handleNormalizedSessionStatus(sessionId, status, {
+      attempt: getNumber(params["attempt"]),
+      message: getString(params["message"]),
+      stopReason: getString(params["stopReason"]) ?? undefined,
+      terminalSignal: getString(params["stopReason"]) !== undefined,
+    });
+  }
+
+  private handleNormalizedSessionStatus(
+    sessionId: string,
+    status: "idle" | "busy" | "retry",
+    details: {
+      attempt?: number;
+      message?: string;
+      stopReason?: string;
+      terminalSignal?: boolean;
+    },
+  ): void {
     const hasActivePrompt = this.state.hasActivePrompt(sessionId);
     const ignoreStatusUntilActivity = this.state.isIgnoringStatusUntilActivity(sessionId);
-    if (hasActivePrompt && !ignoreStatusUntilActivity && (status === "busy" || status === "retry")) {
-      this.state.markPromptActivity(sessionId);
-    }
     this.state.emitSessionEvent(sessionId, {
       type: "session.status",
       sessionId,
       status,
-      attempt: getNumber(params["attempt"]),
-      message: getString(params["message"]),
+      attempt: details.attempt,
+      message: details.message,
+      ...(details.stopReason ? { stopReason: details.stopReason } : {}),
     });
     const hasPromptActivity = this.state.hasPromptActivity(sessionId);
-    if (status === "idle" && hasActivePrompt && hasPromptActivity && !ignoreStatusUntilActivity) {
-      this.state.emitSessionEvent(sessionId, {
-        type: "message.complete",
-        content: "",
+    if (
+      status === "idle"
+      && hasActivePrompt
+      && details.terminalSignal === true
+      && (hasPromptActivity || this.state.hasPromptRpcAccepted(sessionId))
+      && !ignoreStatusUntilActivity
+    ) {
+      this.state.completePrompt(sessionId);
+    } else if (status === "idle" && hasActivePrompt && !ignoreStatusUntilActivity && !details.terminalSignal) {
+      log.debug("[AcpBackend] Ignoring legacy idle status without terminal reason", {
+        sessionId,
+        hadActivity: hasPromptActivity,
+        rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
       });
-      this.state.clearPromptState(sessionId);
     }
   }
 

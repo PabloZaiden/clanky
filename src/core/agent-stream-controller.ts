@@ -81,6 +81,7 @@ export interface AgentStreamStartOptions {
 
 export interface AgentStreamRunOptions {
   shouldStop?: () => boolean | Promise<boolean>;
+  onInactivity?: () => void | Promise<void>;
   onEvent: (
     event: AgentEvent,
   ) => AgentStreamEventResult | void | Promise<AgentStreamEventResult | void>;
@@ -217,6 +218,9 @@ export class AgentStreamController {
         event = await readNextEvent();
       }
 
+      if (endedByInactivity && options.onInactivity) {
+        await options.onInactivity();
+      }
       return { lastEvent, stopped: true, endedByInactivity };
     } finally {
       stream.close();

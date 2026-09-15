@@ -282,7 +282,14 @@ export type AgentEvent =
   | { type: "error"; message: string; code?: string; details?: Readonly<Record<string, unknown>> }
   | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
   | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }
-  | { type: "session.status"; sessionId: string; status: "idle" | "busy" | "retry"; attempt?: number; message?: string };
+  | {
+    type: "session.status";
+    sessionId: string;
+    status: "idle" | "busy" | "retry";
+    attempt?: number;
+    message?: string;
+    stopReason?: string;
+  };
 
 /**
  * Backend interface that all backend implementations must implement.

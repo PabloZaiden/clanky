@@ -158,6 +158,16 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
             }
             return true;
           },
+          onInactivity: async () => {
+            try {
+              await this.backend.abortSession(activeSessionId);
+            } catch (error) {
+              log.warn("[TaskEngine] Failed to abort inactive AI session", {
+                sessionId: activeSessionId,
+                error: String(error),
+              });
+            }
+          },
           onEvent: async (event) => {
             log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
             this.updateState({ lastActivityAt: createTimestamp() });

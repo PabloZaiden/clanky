@@ -37,6 +37,15 @@ export class SessionStateStore implements SessionEventSink {
   /** Whether the active async prompt has produced meaningful activity. */
   private readonly sessionPromptHasActivity = new Map<string, boolean>();
 
+  /** Whether the provider has acknowledged the active prompt RPC. */
+  private readonly sessionPromptRpcAccepted = new Set<string>();
+
+  /** Prevent duplicate terminal events for the same prompt sequence. */
+  private readonly sessionPromptCompleted = new Set<string>();
+
+  /** Ignore late output from a prompt that was explicitly aborted. */
+  private readonly sessionPromptAborted = new Set<string>();
+
   /** Ignore status-only completion signals until fresh activity arrives after an abort. */
   private readonly sessionIgnoreStatusUntilActivity = new Set<string>();
 
@@ -167,6 +176,9 @@ export class SessionStateStore implements SessionEventSink {
   beginPrompt(sessionId: string): number {
     this.sessionMessageStarted.set(sessionId, false);
     this.sessionMessageContent.set(sessionId, "");
+    this.sessionPromptCompleted.delete(sessionId);
+    this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptAborted.delete(sessionId);
     const sequence = (this.sessionPromptSequences.get(sessionId) ?? 0) + 1;
     this.sessionPromptSequences.set(sessionId, sequence);
     this.sessionPromptHasActivity.set(sessionId, false);
@@ -189,6 +201,41 @@ export class SessionStateStore implements SessionEventSink {
 
   hasPromptActivity(sessionId: string): boolean {
     return this.sessionPromptHasActivity.get(sessionId) ?? false;
+  }
+
+  markPromptRpcAccepted(sessionId: string, sequence: number): boolean {
+    if (this.sessionPromptSequences.get(sessionId) !== sequence) {
+      return false;
+    }
+    this.sessionPromptRpcAccepted.add(sessionId);
+    return true;
+  }
+
+  hasPromptRpcAccepted(sessionId: string): boolean {
+    return this.sessionPromptRpcAccepted.has(sessionId);
+  }
+
+  isPromptAborted(sessionId: string): boolean {
+    return this.sessionPromptAborted.has(sessionId);
+  }
+
+  /**
+   * Claim the active prompt's terminal transition for one sequence.
+   *
+   * The sequence guard keeps an asynchronous RPC completion from closing a
+   * newer prompt after the previous prompt was interrupted or replaced.
+   */
+  claimPromptCompletion(sessionId: string, sequence?: number): boolean {
+    const activeSequence = this.sessionPromptSequences.get(sessionId);
+    if (
+      activeSequence === undefined
+      || (sequence !== undefined && activeSequence !== sequence)
+      || this.sessionPromptCompleted.has(sessionId)
+    ) {
+      return false;
+    }
+    this.sessionPromptCompleted.add(sessionId);
+    return true;
   }
 
   isIgnoringStatusUntilActivity(sessionId: string): boolean {
@@ -294,10 +341,28 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionMessageContent.delete(sessionId);
     this.sessionPromptSequences.delete(sessionId);
     this.sessionPromptHasActivity.delete(sessionId);
+    this.sessionPromptCompleted.delete(sessionId);
+    this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptAborted.delete(sessionId);
     this.sessionIgnoreStatusUntilActivity.delete(sessionId);
     this.sessionReasoningPartKeys.delete(sessionId);
     this.sessionLastReasoningChunkSignature.delete(sessionId);
     this.clearToolNames(sessionId);
+  }
+
+  completePrompt(sessionId: string, content = "", sequence?: number): boolean {
+    if (!this.claimPromptCompletion(sessionId, sequence)) {
+      return false;
+    }
+    try {
+      this.emitSessionEvent(sessionId, {
+        type: "message.complete",
+        content,
+      });
+    } finally {
+      this.clearPromptState(sessionId);
+    }
+    return true;
   }
 
   /** Reset streaming/normalization state around an import replay. */
@@ -322,6 +387,9 @@ export class SessionStateStore implements SessionEventSink {
       return;
     }
     this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
+    this.sessionPromptCompleted.delete(sessionId);
+    this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptAborted.add(sessionId);
     this.sessionPromptHasActivity.set(sessionId, false);
     this.sessionMessageStarted.set(sessionId, false);
     this.sessionMessageContent.set(sessionId, "");
@@ -341,6 +409,9 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionMessageContent.delete(sessionId);
     this.sessionPromptSequences.delete(sessionId);
     this.sessionPromptHasActivity.delete(sessionId);
+    this.sessionPromptCompleted.delete(sessionId);
+    this.sessionPromptRpcAccepted.delete(sessionId);
+    this.sessionPromptAborted.delete(sessionId);
     this.sessionIgnoreStatusUntilActivity.delete(sessionId);
     this.sessionReasoningPartKeys.delete(sessionId);
     this.sessionLastReasoningChunkSignature.delete(sessionId);
@@ -355,6 +426,9 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionMessageContent.clear();
     this.sessionPromptSequences.clear();
     this.sessionPromptHasActivity.clear();
+    this.sessionPromptCompleted.clear();
+    this.sessionPromptRpcAccepted.clear();
+    this.sessionPromptAborted.clear();
     this.sessionIgnoreStatusUntilActivity.clear();
     this.sessionReasoningPartKeys.clear();
     this.sessionLastReasoningChunkSignature.clear();
