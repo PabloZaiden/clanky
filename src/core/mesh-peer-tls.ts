@@ -18,6 +18,7 @@ export function getMeshWorkerTlsOptions(
   if (registration.workerTransport === "http") {
     return undefined;
   }
+
   if (!registration.workerTlsCertificate || !registration.workerTlsFingerprint) {
     throw new DomainError(
       "mesh_worker_tls_identity_missing",

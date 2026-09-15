@@ -91,8 +91,17 @@ export class MeshAcpGateway {
     socket: MeshAcpSocket,
     sessionId: string,
     sessionToken: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     const controller = new AbortController();
+    const abortHandler = (): void => {
+      controller.abort(signal?.reason);
+    };
+    if (signal?.aborted) {
+      abortHandler();
+    } else {
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    }
     const timeout = setTimeout(() => {
       controller.abort(new DomainError(
         "mesh_acp_startup_timed_out",
@@ -101,7 +110,10 @@ export class MeshAcpGateway {
     }, MESH_ACP_STARTUP_TIMEOUT_MS);
     timeout.unref?.();
     const openingPromise = this.openRelay(socket, sessionId, sessionToken, controller.signal)
-      .finally(() => clearTimeout(timeout));
+      .finally(() => {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abortHandler);
+      });
     const opening: OpeningState = { promise: openingPromise, controller };
     this.opening.set(sessionId, opening);
     try {

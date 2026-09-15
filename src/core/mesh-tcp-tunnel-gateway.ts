@@ -126,8 +126,15 @@ export class MeshTcpTunnelGateway {
     webSocket: MeshTcpTunnelSocket,
     sessionId: string,
     sessionToken: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     const lease = await this.requireLease(sessionId, sessionToken);
+    if (signal?.aborted) {
+      throw new DomainError(
+        "mesh_tunnel_open_aborted",
+        "The Mesh TCP tunnel was closed while it was starting.",
+      );
+    }
     if (this.relays.has(sessionId)) {
       throw new DomainError("mesh_tunnel_session_in_use", "The TCP tunnel is already connected.");
     }

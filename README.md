@@ -179,6 +179,7 @@ code. SSH hosts may receive a temporary credential with
 | `CLANKY_MESH_WORKER` | Runs a restricted Mesh execution worker with no browser application or unrelated APIs; equivalent to `serve --mesh-worker` | `false` |
 | `CLANKY_MESH_ENROLLMENT_TOKEN` | Single-use token consumed by `clanky mesh enroll` when `--token` is omitted | unset |
 | `CLANKY_MESH_CONTROLLER_FINGERPRINT` | Expected controller identity for headless Mesh enrollment | unset |
+| `CLANKY_RELAY_CONTROLLER_FINGERPRINT` | Controller fingerprint trusted by `clanky relay`; obtain it with `clanky mesh relay bootstrap-info` | unset |
 | `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
@@ -213,6 +214,15 @@ application constants in `src/core/ssh-reliability-policy.ts`.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
 
 ### Docker
+
+The same Dockerfile publishes two images with matching `main`, semantic
+version, and `latest` tags:
+
+- `ghcr.io/pablozaiden/clanky` starts `clanky serve`.
+- `ghcr.io/pablozaiden/clanky-relay` starts `clanky relay`.
+
+They contain the same binary and share their production layers; only the
+default command differs.
 
 ```yaml
 services:
@@ -312,7 +322,7 @@ existing owner instance. The JSON response includes a copyable
 clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
 
 # New instance
-clanky worker join --controller 'https://coordinator.example.com' \
+clanky worker join 'https://coordinator.example.com' \
   --token '<single-use-token>' \
   --fingerprint '<controller-fingerprint>'
 ```
@@ -347,6 +357,48 @@ printing its secret; use `--rotate` to revoke that key and issue a new
 plaintext key once, repeating the bootstrap arguments. Enrollment tokens are
 stored only as hashes, expire after 15 minutes by default, and are consumed
 atomically.
+
+To run a transport-only relay behind an HTTPS reverse proxy, first print the
+controller fingerprint assignment. Put that value in the dedicated relay
+image and then pair the controller through its normal authenticated CLI
+profile:
+
+```bash
+clanky mesh relay bootstrap-info
+docker run -d --name clanky-relay \
+  --restart unless-stopped \
+  --network reverse-proxy \
+  -v clanky-relay-data:/app/data \
+  -e CLANKY_RELAY_CONTROLLER_FINGERPRINT='<controller-fingerprint>' \
+  ghcr.io/pablozaiden/clanky-relay:latest
+clanky mesh relay pair https://relay.example.com
+clanky mesh relay status
+```
+
+The relay container listens on port `8080`; keep it private on the reverse
+proxy network and forward HTTPS plus WebSocket upgrades to it. Persist all of
+`/app/data`, which contains the relay identity, pairing, worker authorization,
+and audit database. The main image remains interchangeable when an explicit
+command is preferable:
+
+```bash
+docker run ... ghcr.io/pablozaiden/clanky:latest /app/clanky relay
+```
+
+The controller stores the relay URL and pinned relay identity only after live
+signed authentication succeeds. `clanky mesh relay unpair` stops the controller
+connection and removes that local pairing; it does not reset `relay.db`.
+After stopping the relay listener, use `clanky relay pairing reset` to clear its
+controller pairing and worker authorization. Create direct invitations with
+`clanky mesh enrollment-token create --route direct` or relayed invitations
+with `--route relay`; both produce the unified
+`clanky worker join <target> --token ... --fingerprint ...` command. Relay-only
+workers bootstrap with `clanky worker bootstrap --relay-only
+--worker-directory ... --instance-name ...` and require no public worker port
+or worker TLS certificate. Public relays should sit behind an HTTPS reverse
+proxy that forwards WebSocket upgrades. Clanky rejects plaintext relay origins
+unless the hostname is loopback (`localhost`, `127.0.0.0/8`, or `::1`) for
+local development and tests; there is no insecure fallback for remote relays.
 
 The controller-worker schema is an intentional clean break from the previous
 peer Mesh. Migration 45 deletes legacy Mesh identities, hosts, and all

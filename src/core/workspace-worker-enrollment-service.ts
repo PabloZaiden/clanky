@@ -5,6 +5,7 @@
  * reservation state and its private execution-host binding.
  */
 
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import {
@@ -14,6 +15,7 @@ import {
   moveDedicatedWorkerToWorkspace,
   updateWorkerRegistrationEndpoint,
 } from "../persistence/mesh";
+import { InvalidMeshRelayRouteError } from "../persistence/errors";
 import {
   getExecutionHostByRef,
   toExecutionHostBinding,
@@ -32,6 +34,8 @@ import {
 } from "../persistence/workspace-worker-enrollments";
 import { DomainError } from "./domain-error";
 import { assertMeshEndpointAllowed } from "./mesh-transport-config";
+
+const log = createLogger("core:workspace-worker-enrollment-service");
 
 function isExpired(enrollment: WorkspaceWorkerEnrollment): boolean {
   return Date.parse(enrollment.expiresAt) <= Date.now();
@@ -65,6 +69,25 @@ function requireRegistration(
   return registration;
 }
 
+function getEnrollmentWorker(
+  enrollmentId: string,
+  userId: string,
+): MeshWorkerRegistration | null {
+  try {
+    return getWorkerRegistrationByEnrollment(enrollmentId, userId);
+  } catch (error) {
+    if (!(error instanceof InvalidMeshRelayRouteError)) {
+      throw error;
+    }
+    log.error("Workspace worker registration has an invalid relay route", {
+      enrollmentId,
+      userId,
+      error: error.message,
+    });
+    return null;
+  }
+}
+
 export interface WorkspaceWorkerEnrollmentStatus {
   enrollment: WorkspaceWorkerEnrollment;
   worker: MeshWorkerRegistration | null;
@@ -77,6 +100,8 @@ export class WorkspaceWorkerEnrollmentService {
       name: string;
       ttlSeconds: number;
       controller: { nodeId: string; fingerprint: string };
+      token?: string;
+      expiresAt?: string;
     },
   ): CreatedWorkspaceWorkerEnrollment {
     return createWorkspaceWorkerEnrollment({
@@ -107,7 +132,7 @@ export class WorkspaceWorkerEnrollmentService {
     return {
       enrollment,
       worker: enrollment.workerNodeId
-        ? getWorkerRegistrationByEnrollment(enrollmentId, userId)
+        ? getEnrollmentWorker(enrollmentId, userId)
         : null,
     };
   }
@@ -116,7 +141,7 @@ export class WorkspaceWorkerEnrollmentService {
     return listWorkspaceWorkerEnrollments(userId).map((enrollment) => ({
       enrollment,
       worker: enrollment.workerNodeId
-        ? getWorkerRegistrationByEnrollment(enrollment.id, userId)
+        ? getEnrollmentWorker(enrollment.id, userId)
         : null,
     }));
   }

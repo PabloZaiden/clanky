@@ -1,4 +1,7 @@
 import { DomainError } from "./domain-error";
+import type { MeshPeerRoute } from "@/shared/mesh";
+import { requestMeshPeer } from "./mesh-peer-transport";
+import type { MeshPeerTransport } from "./mesh-peer-transport";
 
 const MESH_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 const MESH_CONTROL_RESPONSE_MAX_BYTES = 64 * 1024;
@@ -15,8 +18,8 @@ const recognizedPeerErrors = new Map<string, string>([
 
 export interface MeshControlRequestOptions {
   headers?: Record<string, string>;
-  tls?: Bun.TLSOptions;
   signal?: AbortSignal;
+  transport?: MeshPeerTransport;
 }
 
 export interface MeshControlResponseJsonOptions {
@@ -55,7 +58,8 @@ function getSenderNodeId(payload: unknown): string {
 }
 
 export async function postMeshControlMessage(
-  endpoint: string,
+  route: MeshPeerRoute,
+  path: string,
   payload: unknown,
   requestId: string,
   options: MeshControlRequestOptions = {},
@@ -69,7 +73,7 @@ export async function postMeshControlMessage(
     options.signal?.addEventListener("abort", abortListener, { once: true });
   }
   try {
-    const response = await fetch(endpoint, {
+    const request = {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -79,8 +83,10 @@ export async function postMeshControlMessage(
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
-      tls: options.tls,
-    });
+    };
+    const response = options.transport
+      ? await options.transport.request(route, path, request)
+      : await requestMeshPeer(route, path, request);
     if (!response.ok) {
       const body = await response.clone().json().catch(() => null) as {
         error?: unknown;

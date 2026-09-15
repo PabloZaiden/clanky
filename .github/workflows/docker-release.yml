@@ -7,6 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RELAY_IMAGE_NAME: ${{ github.repository }}-relay
 
 jobs:
   build-and-push:
@@ -36,8 +37,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
+      - name: Extract server metadata (tags, labels)
+        id: meta_server
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -47,16 +48,42 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
-      - name: Build and push Docker image
+      - name: Extract relay metadata (tags, labels)
+        id: meta_relay
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.RELAY_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push server image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
+          target: server
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_server.outputs.tags }}
+          labels: ${{ steps.meta_server.outputs.labels }}
           build-args: |
             CLANKY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=clanky
           cache-to: type=gha,mode=max,scope=clanky
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push relay image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          target: relay
+          push: true
+          tags: ${{ steps.meta_relay.outputs.tags }}
+          labels: ${{ steps.meta_relay.outputs.labels }}
+          build-args: |
+            CLANKY_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=clanky
           platforms: linux/amd64,linux/arm64

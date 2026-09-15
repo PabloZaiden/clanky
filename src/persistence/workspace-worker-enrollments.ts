@@ -106,6 +106,8 @@ export function createWorkspaceWorkerEnrollment(input: {
     nodeId: string;
     fingerprint: string;
   };
+  token?: string;
+  expiresAt?: string;
 }): CreatedWorkspaceWorkerEnrollment {
   const id = crypto.randomUUID();
   const created = createMeshEnrollmentToken(
@@ -116,6 +118,8 @@ export function createWorkspaceWorkerEnrollment(input: {
     {
       purpose: "workspace-worker",
       workspaceWorkerEnrollmentId: id,
+      ...(input.token ? { token: input.token } : {}),
+      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
     },
   );
   const now = new Date().toISOString();

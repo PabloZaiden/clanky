@@ -8,6 +8,12 @@ export const CLANKY_SERVE_OPTIONS = [
     defaultValue: false,
   },
   {
+    name: "relay-only",
+    type: "boolean",
+    description: "Run a loopback-only worker through its outbound relay grant.",
+    defaultValue: false,
+  },
+  {
     name: "worker-directory",
     type: "string",
     description: "Set the worker-owned default execution directory.",

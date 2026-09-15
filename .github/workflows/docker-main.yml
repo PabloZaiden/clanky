@@ -7,6 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RELAY_IMAGE_NAME: ${{ github.repository }}-relay
   # Toggle platforms: 'linux/amd64' for fast builds, 'linux/amd64,linux/arm64' for full cross-build
   BUILD_PLATFORMS: linux/amd64
 
@@ -39,33 +40,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
+      - name: Extract server metadata (tags, labels)
+        id: meta_server
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=main
 
-      - name: Build and push Docker image
+      - name: Extract relay metadata (tags, labels)
+        id: meta_relay
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.RELAY_IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+
+      - name: Build and push server image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
+          target: server
           push: true
           load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_server.outputs.tags }}
+          labels: ${{ steps.meta_server.outputs.labels }}
           build-args: |
             CLANKY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=clanky
           cache-to: type=gha,mode=max,scope=clanky
           platforms: ${{ env.BUILD_PLATFORMS }}
 
-      - name: Test container healthcheck
+      - name: Build and push relay image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          target: relay
+          push: true
+          load: true
+          tags: ${{ steps.meta_relay.outputs.tags }}
+          labels: ${{ steps.meta_relay.outputs.labels }}
+          build-args: |
+            CLANKY_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=clanky
+          platforms: ${{ env.BUILD_PLATFORMS }}
+
+      - name: Test server and relay containers
         run: |
-          # Run the container in the background
-          docker run -d --name clanky-test -p 8080:8080 ${{ steps.meta.outputs.tags }}
+          set -e
+          docker run -d --name clanky-test -p 8080:8080 \
+            ${{ steps.meta_server.outputs.tags }}
+          docker run -d --name clanky-relay-test -p 8081:8080 \
+            -e CLANKY_RELAY_CONTROLLER_FINGERPRINT=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            ${{ steps.meta_relay.outputs.tags }}
+          trap 'docker rm -f clanky-test clanky-relay-test 2>/dev/null || true' EXIT
 
           # The production image is intended for reverse-proxy deployments.
           docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-test \
@@ -75,27 +105,26 @@ jobs:
           docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-test \
             | grep -Fx 'CLANKY_TRUST_PROXY_CHAIN=first'
 
-          # Wait for the container to be ready and healthy
-          echo "Waiting for container to become healthy..."
-          for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' clanky-test 2>/dev/null || echo "starting")
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Container is healthy!"
-              break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "Container failed to become healthy within 60s"
-              echo "Container status: $STATUS"
-              echo "Container logs:"
-              docker logs clanky-test
-              docker rm -f clanky-test
-              exit 1
-            fi
-            sleep 2
-          done
+          wait_for_healthy() {
+            name="$1"
+            for attempt in $(seq 1 30); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "starting")
+              if [ "$status" = "healthy" ]; then
+                return 0
+              fi
+              if [ "$status" = "unhealthy" ] || [ "$attempt" -eq 30 ]; then
+                echo "$name failed to become healthy (status: $status)"
+                docker logs "$name"
+                return 1
+              fi
+              sleep 2
+            done
+          }
 
-          # Verify the health endpoint directly
-          curl -f http://localhost:8080/api/health
+          wait_for_healthy clanky-test
+          wait_for_healthy clanky-relay-test
 
-          # Cleanup
-          docker rm -f clanky-test
+          curl -fsS http://localhost:8080/api/health
+          curl -fsS http://localhost:8081/api/health
+          curl -fsS http://localhost:8081/.well-known/clanky-mesh \
+            | grep -Eq '"role"[[:space:]]*:[[:space:]]*"relay"'

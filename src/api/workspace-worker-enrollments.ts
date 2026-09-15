@@ -37,6 +37,7 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
             ctx.requireUser().id,
             parsed.data.name,
             parsed.data.ttlSeconds,
+            parsed.data.route,
           ),
           { status: 201 },
         );

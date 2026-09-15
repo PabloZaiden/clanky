@@ -55,6 +55,8 @@ import { migrateCanonicalExecutionHosts } from "./canonical-execution-hosts";
 import { migrateWorkspaceExecutionTargets } from "./workspace-execution-targets";
 import { migrateMeshWorkerKillNonces } from "./mesh-worker-kill-nonces";
 import { migrateWorkspaceWorkerEnrollments } from "./workspace-worker-enrollments";
+import { migrateMeshPeerRoutes } from "./mesh-peer-routes";
+import { migrateControllerRelayPairing } from "./controller-relay-pairing";
 
 const log = createLogger("persistence:migrations");
 
@@ -117,6 +119,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "provisioning_job_logs",
   "execution_hosts",
   "workspace_execution_targets",
+  "mesh_controller_relay_pairing",
 ]);
 
 /**
@@ -1584,6 +1587,16 @@ export const migrations: Migration[] = [
         db.run("ALTER TABLE workspaces ADD COLUMN allow_worktrees INTEGER NOT NULL DEFAULT 1");
       }
     },
+  },
+  {
+    version: 52,
+    name: "add_mesh_peer_routes",
+    up: migrateMeshPeerRoutes,
+  },
+  {
+    version: 53,
+    name: "add_controller_relay_pairing",
+    up: migrateControllerRelayPairing,
   },
 ];
 

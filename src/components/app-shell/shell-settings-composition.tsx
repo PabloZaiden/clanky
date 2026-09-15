@@ -5,6 +5,7 @@ import {
   PurgeTerminalTasksAction,
   QuickChatModelRowContent,
   MeshSettingsContent,
+  RelaySettingsContent,
   SchedulerTimezoneRowContent,
   GithubUsernameRowContent,
   SettingsCheckbox,
@@ -170,6 +171,17 @@ export function buildShellSettingsSections({
         id: "mesh-management",
         title: "Mesh",
         content: <MeshSettingsContent mesh={mesh} />,
+      }],
+    },
+    {
+      id: "mesh-relay",
+      title: "Worker relay",
+      scope: "owner" as const,
+      rows: [{
+        id: "mesh-relay-pairing",
+        title: "Pairing",
+        description: "Use the controller fingerprint when starting the relay, then pair its public HTTPS origin.",
+        content: <RelaySettingsContent />,
       }],
     },
     {

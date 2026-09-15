@@ -18,6 +18,11 @@ import type {
 
 export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = (typeof MESH_TRANSPORTS)[number];
+export const MESH_DIRECT_TLS_TRUST_MODES = ["none", "system", "pinned"] as const;
+export type MeshDirectTlsTrustMode =
+  (typeof MESH_DIRECT_TLS_TRUST_MODES)[number];
+export const MESH_PEER_ROUTE_KINDS = ["direct", "relay"] as const;
+export type MeshPeerRouteKind = (typeof MESH_PEER_ROUTE_KINDS)[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 export const MESH_WORKER_KILL_REQUEST_TTL_MS = 60_000;
 
@@ -38,6 +43,24 @@ export interface MeshNodeIdentity {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface MeshDirectPeerRoute {
+  kind: "direct";
+  endpoint: string;
+  transport: MeshTransport;
+  tlsTrust: MeshDirectTlsTrustMode;
+  tlsCertificate: string | null;
+  tlsFingerprint: string | null;
+}
+
+export interface MeshRelayPeerRoute {
+  kind: "relay";
+  targetNodeId: string;
+  relayUrl: string;
+  relayFingerprint: string;
+}
+
+export type MeshPeerRoute = MeshDirectPeerRoute | MeshRelayPeerRoute;
 
 /**
  * Worker execution configuration. This is worker-owned and not remotely
@@ -64,6 +87,7 @@ export interface MeshWorkerRegistration {
   workerEncryptionPublicKey: string | null;
   workerTlsCertificate: string | null;
   workerTlsFingerprint: string | null;
+  route: MeshPeerRoute;
   workerDirectory: string | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
@@ -89,6 +113,7 @@ export interface MeshControllerGrant {
   controllerPublicKey: string;
   controllerFingerprint: string;
   controllerEncryptionPublicKey: string | null;
+  controllerRoute: MeshPeerRoute | null;
   grantStatus: MeshGrantStatus;
   createdAt: string;
   updatedAt: string;

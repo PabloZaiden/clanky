@@ -10,6 +10,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   MeshControllerGrant,
   MeshGrantStatus,
+  MeshPeerRoute,
   MeshTransport,
   MeshWorkerRegistration,
 } from "@/shared/mesh";
@@ -30,6 +31,8 @@ import {
   buildMeshWorkspaceTargetKey,
 } from "./workspace-target-key";
 import { getDatabase } from "./database";
+import { InvalidMeshRelayRouteError } from "./errors";
+import { assertActiveControllerWorkerIdentity } from "./controller-relay-pairing";
 
 const log = createLogger("persistence:mesh");
 const MAX_MESH_WORKER_KILL_NONCES = 256;
@@ -49,6 +52,7 @@ export interface SaveWorkerRegistrationInput {
   workerEncryptionPublicKey: string | null;
   workerTlsCertificate: string | null;
   workerTlsFingerprint: string | null;
+  route?: MeshPeerRoute;
   workerDirectory: string | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
@@ -110,6 +114,19 @@ export async function saveWorkerRegistration(
 ): Promise<MeshWorkerRegistration> {
   const db = getDatabase();
   const now = new Date().toISOString();
+  const route: MeshPeerRoute = input.route ?? {
+    kind: "direct",
+    endpoint: input.workerEndpoint,
+    transport: input.workerTransport,
+    tlsTrust: input.workerTransport === "https" ? "pinned" : "none",
+    tlsCertificate: input.workerTlsCertificate,
+    tlsFingerprint: input.workerTlsFingerprint,
+  };
+  assertActiveControllerWorkerIdentity({
+    nodeId: input.workerNodeId,
+    publicKey: input.workerPublicKey,
+    fingerprint: input.workerFingerprint,
+  });
 
   db.run(
     `INSERT INTO mesh_worker_registrations (
@@ -117,11 +134,12 @@ export async function saveWorkerRegistration(
       worker_endpoint, worker_transport,
       worker_public_key, worker_fingerprint, worker_encryption_public_key,
       worker_tls_certificate, worker_tls_fingerprint,
+      route_kind, relay_url, relay_fingerprint,
       worker_directory, worker_capabilities_json,
       worker_accept_remote_execution,       worker_config_revision, registration_scope,
       workspace_worker_enrollment_id, workspace_id,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -131,6 +149,9 @@ export async function saveWorkerRegistration(
       worker_encryption_public_key = excluded.worker_encryption_public_key,
       worker_tls_certificate = excluded.worker_tls_certificate,
       worker_tls_fingerprint = excluded.worker_tls_fingerprint,
+      route_kind = excluded.route_kind,
+      relay_url = excluded.relay_url,
+      relay_fingerprint = excluded.relay_fingerprint,
       worker_directory = excluded.worker_directory,
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
@@ -151,6 +172,9 @@ export async function saveWorkerRegistration(
       input.workerEncryptionPublicKey,
       input.workerTlsCertificate,
       input.workerTlsFingerprint,
+      route.kind,
+      route.kind === "relay" ? route.relayUrl : null,
+      route.kind === "relay" ? route.relayFingerprint : null,
       input.workerDirectory,
       input.workerCapabilities ? JSON.stringify(input.workerCapabilities) : null,
       input.workerAcceptRemoteExecution ? 1 : 0,
@@ -214,7 +238,7 @@ export async function listWorkerRegistrations(
       "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? ORDER BY created_at ASC",
     )
     .all(localUserId) as WorkerRegistrationRow[];
-  return rows.map(mapWorkerRegistrationRow);
+  return mapValidWorkerRegistrationRows(rows);
 }
 
 export async function listActiveWorkerRegistrations(
@@ -226,7 +250,7 @@ export async function listActiveWorkerRegistrations(
       "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' ORDER BY created_at ASC",
     )
     .all(localUserId) as WorkerRegistrationRow[];
-  return rows.map(mapWorkerRegistrationRow);
+  return mapValidWorkerRegistrationRows(rows);
 }
 
 export async function listGloballyDiscoverableWorkerRegistrations(
@@ -238,7 +262,7 @@ export async function listGloballyDiscoverableWorkerRegistrations(
       "SELECT * FROM mesh_worker_registrations WHERE local_user_id = ? AND grant_status = 'active' AND registration_scope = 'global' ORDER BY created_at ASC",
     )
     .all(localUserId) as WorkerRegistrationRow[];
-  return rows.map(mapWorkerRegistrationRow);
+  return mapValidWorkerRegistrationRows(rows);
 }
 
 export async function revokeWorkerRegistration(
@@ -249,6 +273,23 @@ export async function revokeWorkerRegistration(
   const now = new Date().toISOString();
 
   const txn = db.transaction(() => {
+    const row = db
+      .query("SELECT * FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ?")
+      .get(workerNodeId, localUserId) as WorkerRegistrationRow | null;
+    if (!row) {
+      throw new Error(`Worker registration not found: ${workerNodeId}`);
+    }
+    const host = getExecutionHostByRef(
+      localUserId,
+      getWorkerRegistrationExecutionHostRef({
+        workerNodeId: row.worker_node_id,
+        registrationScope: row.registration_scope === "workspace"
+          ? "workspace"
+          : "global",
+        workspaceWorkerEnrollmentId: row.workspace_worker_enrollment_id,
+        workspaceId: row.workspace_id,
+      }),
+    );
     const result = db.run(
       "UPDATE mesh_worker_registrations SET grant_status = 'revoked', updated_at = ? WHERE worker_node_id = ? AND local_user_id = ?",
       [now, workerNodeId, localUserId],
@@ -257,13 +298,6 @@ export async function revokeWorkerRegistration(
       throw new Error(`Worker registration not found: ${workerNodeId}`);
     }
 
-    // Revoke the associated execution host
-    const row = db
-      .query("SELECT * FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ?")
-      .get(workerNodeId, localUserId) as WorkerRegistrationRow | null;
-    const host = row
-      ? getExecutionHostByRef(localUserId, getWorkerRegistrationExecutionHostRef(mapWorkerRegistrationRow(row)))
-      : null;
     if (host) {
       revokeExecutionHost(localUserId, host.id);
     }
@@ -289,7 +323,14 @@ export async function deleteRevokedWorkerRegistration(
   }
   const host = getExecutionHostByRef(
     localUserId,
-    getWorkerRegistrationExecutionHostRef(mapWorkerRegistrationRow(row)),
+    getWorkerRegistrationExecutionHostRef({
+      workerNodeId: row.worker_node_id,
+      registrationScope: row.registration_scope === "workspace"
+        ? "workspace"
+        : "global",
+      workspaceWorkerEnrollmentId: row.workspace_worker_enrollment_id,
+      workspaceId: row.workspace_id,
+    }),
   );
   const result = db.run(
     "DELETE FROM mesh_worker_registrations WHERE worker_node_id = ? AND local_user_id = ? AND grant_status = 'revoked'",
@@ -451,6 +492,14 @@ export interface SaveControllerGrantInput {
   controllerPublicKey: string;
   controllerFingerprint: string;
   controllerEncryptionPublicKey: string | null;
+  controllerRoute?: MeshPeerRoute | null;
+}
+
+export class InconsistentMeshControllerRelayGrantError extends Error {
+  constructor(readonly controllerNodeId: string) {
+    super("A worker may have only one active relay controller association.");
+    this.name = "InconsistentMeshControllerRelayGrantError";
+  }
 }
 
 export async function saveControllerGrant(
@@ -459,30 +508,63 @@ export async function saveControllerGrant(
   const db = getDatabase();
   const now = new Date().toISOString();
 
-  db.run(
-    `INSERT INTO mesh_controller_grants (
+  const save = db.transaction(() => {
+    if (input.controllerRoute?.kind === "relay") {
+      const conflicting = db.query(`
+        SELECT controller_node_id
+        FROM mesh_controller_grants
+        WHERE grant_status = 'active'
+          AND route_kind = 'relay'
+          AND controller_node_id <> ?
+        LIMIT 1
+      `).get(input.controllerNodeId) as { controller_node_id: string } | null;
+      if (conflicting) {
+        throw new InconsistentMeshControllerRelayGrantError(
+          conflicting.controller_node_id,
+        );
+      }
+    }
+    db.run(
+      `INSERT INTO mesh_controller_grants (
       controller_node_id, controller_instance_name,
       controller_public_key, controller_fingerprint,
       controller_encryption_public_key,
+      controller_endpoint, route_kind, relay_url, relay_fingerprint,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(controller_node_id) DO UPDATE SET
       controller_instance_name = excluded.controller_instance_name,
       controller_public_key = excluded.controller_public_key,
       controller_fingerprint = excluded.controller_fingerprint,
       controller_encryption_public_key = excluded.controller_encryption_public_key,
+      controller_endpoint = excluded.controller_endpoint,
+      route_kind = excluded.route_kind,
+      relay_url = excluded.relay_url,
+      relay_fingerprint = excluded.relay_fingerprint,
       grant_status = 'active',
       updated_at = excluded.updated_at`,
-    [
-      input.controllerNodeId,
-      input.controllerInstanceName,
-      input.controllerPublicKey,
-      input.controllerFingerprint,
-      input.controllerEncryptionPublicKey,
-      now,
-      now,
-    ],
-  );
+      [
+        input.controllerNodeId,
+        input.controllerInstanceName,
+        input.controllerPublicKey,
+        input.controllerFingerprint,
+        input.controllerEncryptionPublicKey,
+        input.controllerRoute?.kind === "direct"
+          ? input.controllerRoute.endpoint
+          : null,
+        input.controllerRoute?.kind ?? "direct",
+        input.controllerRoute?.kind === "relay"
+          ? input.controllerRoute.relayUrl
+          : null,
+        input.controllerRoute?.kind === "relay"
+          ? input.controllerRoute.relayFingerprint
+          : null,
+        now,
+        now,
+      ],
+    );
+  });
+  save();
 
   const grant = await getControllerGrant(input.controllerNodeId);
   if (!grant) {
@@ -616,6 +698,9 @@ interface WorkerRegistrationRow {
   worker_encryption_public_key: string | null;
   worker_tls_certificate: string | null;
   worker_tls_fingerprint: string | null;
+  route_kind: string;
+  relay_url: string | null;
+  relay_fingerprint: string | null;
   worker_directory: string | null;
   worker_capabilities_json: string | null;
   worker_accept_remote_execution: number;
@@ -642,6 +727,27 @@ function mapWorkerRegistrationRow(
       });
     }
   }
+  let route: MeshPeerRoute;
+  if (row.route_kind === "relay") {
+    if (!row.relay_url || !row.relay_fingerprint) {
+      throw new InvalidMeshRelayRouteError("worker", row.worker_node_id);
+    }
+    route = {
+      kind: "relay",
+      targetNodeId: row.worker_node_id,
+      relayUrl: row.relay_url,
+      relayFingerprint: row.relay_fingerprint,
+    };
+  } else {
+    route = {
+      kind: "direct",
+      endpoint: row.worker_endpoint,
+      transport: row.worker_transport as MeshTransport,
+      tlsTrust: row.worker_transport === "https" ? "pinned" : "none",
+      tlsCertificate: row.worker_tls_certificate,
+      tlsFingerprint: row.worker_tls_fingerprint,
+    };
+  }
 
   return {
     workerNodeId: row.worker_node_id,
@@ -654,6 +760,7 @@ function mapWorkerRegistrationRow(
     workerEncryptionPublicKey: row.worker_encryption_public_key,
     workerTlsCertificate: row.worker_tls_certificate,
     workerTlsFingerprint: row.worker_tls_fingerprint,
+    route,
     workerDirectory: row.worker_directory,
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,
@@ -668,12 +775,36 @@ function mapWorkerRegistrationRow(
   };
 }
 
+function mapValidWorkerRegistrationRows(
+  rows: WorkerRegistrationRow[],
+): MeshWorkerRegistration[] {
+  const registrations: MeshWorkerRegistration[] = [];
+  for (const row of rows) {
+    try {
+      registrations.push(mapWorkerRegistrationRow(row));
+    } catch (error) {
+      if (!(error instanceof InvalidMeshRelayRouteError)) {
+        throw error;
+      }
+      log.error("Skipping worker registration with an invalid relay route", {
+        workerNodeId: row.worker_node_id,
+        localUserId: row.local_user_id,
+      });
+    }
+  }
+  return registrations;
+}
+
 interface ControllerGrantRow {
   controller_node_id: string;
   controller_instance_name: string | null;
   controller_public_key: string;
   controller_fingerprint: string;
   controller_encryption_public_key: string | null;
+  controller_endpoint: string | null;
+  route_kind: string;
+  relay_url: string | null;
+  relay_fingerprint: string | null;
   grant_status: string;
   created_at: string;
   updated_at: string;
@@ -682,12 +813,40 @@ interface ControllerGrantRow {
 function mapControllerGrantRow(
   row: ControllerGrantRow,
 ): MeshControllerGrant {
+  let controllerRoute: MeshPeerRoute | null;
+  if (row.route_kind === "relay") {
+    if (!row.relay_url || !row.relay_fingerprint) {
+      throw new InvalidMeshRelayRouteError("controller", row.controller_node_id);
+    }
+    controllerRoute = {
+      kind: "relay",
+      targetNodeId: row.controller_node_id,
+      relayUrl: row.relay_url,
+      relayFingerprint: row.relay_fingerprint,
+    };
+  } else {
+    controllerRoute = row.controller_endpoint
+      ? {
+        kind: "direct",
+        endpoint: row.controller_endpoint,
+        transport: row.controller_endpoint.startsWith("https:")
+          ? "https"
+          : "http",
+        tlsTrust: row.controller_endpoint.startsWith("https:")
+          ? "system"
+          : "none",
+        tlsCertificate: null,
+        tlsFingerprint: null,
+      }
+      : null;
+  }
   return {
     controllerNodeId: row.controller_node_id,
     controllerInstanceName: row.controller_instance_name,
     controllerPublicKey: row.controller_public_key,
     controllerFingerprint: row.controller_fingerprint,
     controllerEncryptionPublicKey: row.controller_encryption_public_key,
+    controllerRoute,
     grantStatus: row.grant_status as MeshGrantStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

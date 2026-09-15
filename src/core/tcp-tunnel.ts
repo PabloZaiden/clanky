@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
+import type { MeshWorkerRegistration } from "@/shared/mesh";
 import {
   MESH_TCP_TUNNEL_CAPABILITY,
   MESH_TCP_TUNNEL_MAX_FRAME_BYTES,
@@ -17,8 +18,11 @@ import {
 } from "../persistence/mesh-node-identity";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
-import { resolveMeshRoute } from "./mesh-transport-config";
-import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
+import {
+  openMeshPeerSocket,
+  requestMeshPeer,
+  type MeshDuplexSocket,
+} from "./mesh-peer-transport";
 import { executionHostService } from "./execution-host-service";
 import { requireCurrentUserId } from "./user-context";
 import { DomainError } from "./domain-error";
@@ -54,9 +58,8 @@ class DirectTcpTunnel extends EventEmitter implements TcpTunnel {
 }
 
 class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
-  private socket: WebSocket | null = null;
+  private socket: MeshDuplexSocket | null = null;
   private closed = false;
-  private workerTls: Bun.TLSOptions | undefined;
 
   constructor(
     private readonly binding: ExecutionHostBinding,
@@ -84,17 +87,13 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     if (!registration || registration.grantStatus !== "active") {
       throw new DomainError("mesh_tunnel_target_unavailable", "The Mesh tunnel target is unavailable.");
     }
-    this.workerTls = getMeshWorkerTlsOptions(registration);
     if (!identity.encryptionPublicKey) {
       throw new DomainError(
         "mesh_tunnel_identity_invalid",
         "The local Mesh identity has no encryption key.",
       );
     }
-    const endpoint = registration.workerEndpoint;
-    if (!endpoint) {
-      throw new DomainError("mesh_tunnel_target_unavailable", "The Mesh tunnel target has no endpoint.");
-    }
+    const route = registration.route;
     const expiresAt = new Date(Date.now() + MESH_TCP_TUNNEL_SESSION_TTL_MS).toISOString();
     const unsigned: Omit<MeshTcpTunnelSessionRequest, "signature"> = {
       protocolVersion: MESH_TCP_TUNNEL_PROTOCOL_VERSION,
@@ -115,7 +114,8 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       signature: await signMeshPayload(buildMeshTcpTunnelSigningPayload(unsigned)),
     };
     const response = await this.post(
-      resolveMeshRoute(endpoint, "api/mesh/internal/tcp-tunnel/session"),
+      route,
+      "api/mesh/internal/tcp-tunnel/session",
       request,
     );
     const decrypted = await decryptMeshPayload(response.encryptedPayload);
@@ -125,20 +125,12 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     if (typeof token !== "string") {
       throw new DomainError("mesh_tunnel_response_invalid", "The Mesh tunnel token is invalid.");
     }
-    const BunWebSocket = WebSocket as unknown as {
-      new (
-        url: string,
-        options: { headers: Record<string, string>; tls?: Bun.TLSOptions },
-      ): WebSocket;
-    };
-    const socket = new BunWebSocket(
-      resolveMeshRoute(endpoint, "api/mesh/internal/tcp-tunnel").replace(/^http/, "ws"),
+    const socket = openMeshPeerSocket(
+      route,
+      "api/mesh/internal/tcp-tunnel",
       {
-        headers: {
-          "x-clanky-mesh-session-id": response.sessionId,
-          "x-clanky-mesh-session-token": token,
-        },
-        tls: this.workerTls,
+        "x-clanky-mesh-session-id": response.sessionId,
+        "x-clanky-mesh-session-token": token,
       },
     );
     socket.binaryType = "arraybuffer";
@@ -184,14 +176,15 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
   }
 
   private async post(
-    url: string,
+    route: MeshWorkerRegistration["route"],
+    path: string,
     body: MeshTcpTunnelSessionRequest,
   ): Promise<{ sessionId: string; encryptedPayload: unknown }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS);
     timer.unref?.();
     try {
-      const response = await fetch(url, {
+      const response = await requestMeshPeer(route, path, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -200,7 +193,6 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
-        tls: this.workerTls,
       });
       const payload = await response.json() as Record<string, unknown>;
       if (!response.ok || typeof payload["sessionId"] !== "string") {
@@ -218,7 +210,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     }
   }
 
-  private async waitForOpen(socket: WebSocket): Promise<void> {
+  private async waitForOpen(socket: MeshDuplexSocket): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();

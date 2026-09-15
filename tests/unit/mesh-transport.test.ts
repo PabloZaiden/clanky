@@ -4,6 +4,11 @@ import {
   assertMeshEndpointAllowed,
   resolveAdvertisedMeshEndpoint,
 } from "../../src/core/mesh-transport-config";
+import { requestMeshPeer } from "../../src/core/mesh-peer-transport";
+import {
+  isMeshRelayLoopbackHostname,
+  normalizeMeshRelayOrigin,
+} from "../../src/shared/mesh-relay";
 
 const originalPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
 const originalMeshEndpoint = process.env["CLANKY_MESH_ENDPOINT"];
@@ -59,6 +64,35 @@ describe("mesh transport configuration", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: "mesh_public_base_url_invalid" });
     }
+  });
+
+  // Missing certificate pins must never downgrade an enrolled HTTPS worker to
+  // system PKI, because the pin is the worker's transport identity.
+  test("fails closed when a pinned HTTPS route has incomplete trust material", () => {
+    expect(() => requestMeshPeer({
+      kind: "direct",
+      endpoint: "https://worker.example",
+      transport: "https",
+      tlsTrust: "pinned",
+      tlsCertificate: null,
+      tlsFingerprint: null,
+    }, "/api/mesh/internal/health", {
+      fetch: globalThis.fetch,
+    })).toThrow(DomainError);
+  });
+
+  test("allows plaintext relays only on loopback origins", () => {
+    expect(normalizeMeshRelayOrigin("http://localhost:8080"))
+      .toBe("http://localhost:8080");
+    expect(normalizeMeshRelayOrigin("http://127.23.45.67:8080"))
+      .toBe("http://127.23.45.67:8080");
+    expect(normalizeMeshRelayOrigin("http://[::1]:8080"))
+      .toBe("http://[::1]:8080");
+    expect(isMeshRelayLoopbackHostname("127.255.255.255")).toBe(true);
+    expect(() => normalizeMeshRelayOrigin("http://relay.example.com"))
+      .toThrow("Remote relay URLs must use HTTPS.");
+    expect(normalizeMeshRelayOrigin("https://relay.example.com"))
+      .toBe("https://relay.example.com");
   });
 
   test("rejects transport declarations that do not match the URL", () => {

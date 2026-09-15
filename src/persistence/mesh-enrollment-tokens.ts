@@ -54,13 +54,17 @@ export function createMeshEnrollmentToken(
   options: {
     purpose?: "global" | "workspace-worker";
     workspaceWorkerEnrollmentId?: string;
+    token?: string;
+    expiresAt?: string;
   } = {},
 ): { token: string; enrollment: MeshEnrollmentTokenSummary } {
   const db = getDatabase();
   const id = crypto.randomUUID();
-  const token = `clanky_mesh_${crypto.getRandomValues(new Uint8Array(32)).toHex()}`;
+  const token = options.token
+    ?? `clanky_mesh_${crypto.getRandomValues(new Uint8Array(32)).toHex()}`;
   const createdAt = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  const expiresAt = options.expiresAt
+    ?? new Date(Date.now() + ttlSeconds * 1000).toISOString();
   db.run(
     `INSERT INTO mesh_enrollment_tokens
       (id, user_id, token_hash, name, controller_node_id,

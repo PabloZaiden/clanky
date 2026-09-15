@@ -19,10 +19,10 @@ import {
   setLocalMeshInstanceName,
 } from "../persistence/mesh-node-identity";
 import {
-  assertMeshEndpointAllowed,
   getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "../core/mesh-transport-config";
+import { normalizeMeshEnrollmentTarget } from "../core/mesh-target-discovery";
 import { meshManager } from "../core/mesh-manager";
 import type { ClankyCliContext } from "./mesh";
 import { createWorkerServiceCommand } from "./worker-service";
@@ -36,14 +36,26 @@ interface WorkerBootstrapOptions {
   host: string;
   port: number;
   workerDirectory: string;
-  meshEndpoint: string;
+  meshEndpoint: string | null;
   instanceName: string;
   keyName: string;
   rotate: boolean;
   insecure: boolean;
+  relayOnly: boolean;
 }
 
-function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptions {
+function isLoopbackHost(host: string): boolean {
+  return [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    "[::1]",
+  ].includes(host.trim().toLowerCase());
+}
+
+export function parseWorkerBootstrapArgs(
+  args: readonly string[],
+): WorkerBootstrapOptions {
   const [operation, ...rest] = args;
   if (operation !== "bootstrap") {
     throw new Error("Worker command must be bootstrap");
@@ -56,6 +68,7 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
   let instanceName: string | undefined;
   let rotate = false;
   let insecure = false;
+  let relayOnly = false;
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--rotate") {
@@ -64,6 +77,10 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
     }
     if (arg === "--insecure") {
       insecure = true;
+      continue;
+    }
+    if (arg === "--relay-only") {
+      relayOnly = true;
       continue;
     }
     if (
@@ -102,11 +119,36 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
     }
     index += 1;
   }
+  if (!workerDirectory) throw new Error("worker bootstrap requires --worker-directory");
+  if (!instanceName) throw new Error("worker bootstrap requires --instance-name");
+  if (relayOnly) {
+    if (meshEndpoint) {
+      throw new Error("worker bootstrap --relay-only does not accept --mesh-endpoint");
+    }
+    if (insecure) {
+      throw new Error("worker bootstrap --relay-only does not accept --insecure");
+    }
+    if (host && !isLoopbackHost(host)) {
+      throw new Error("worker bootstrap --relay-only requires a loopback --host");
+    }
+    if (port !== undefined && port !== 0) {
+      throw new Error("worker bootstrap --relay-only requires --port 0 when specified");
+    }
+    return {
+      host: "127.0.0.1",
+      port: 0,
+      workerDirectory,
+      meshEndpoint: null,
+      instanceName,
+      keyName,
+      rotate,
+      insecure: false,
+      relayOnly: true,
+    };
+  }
   if (!host) throw new Error("worker bootstrap requires --host");
   if (port === undefined) throw new Error("worker bootstrap requires --port");
-  if (!workerDirectory) throw new Error("worker bootstrap requires --worker-directory");
   if (!meshEndpoint) throw new Error("worker bootstrap requires --mesh-endpoint");
-  if (!instanceName) throw new Error("worker bootstrap requires --instance-name");
   const expectedTransport = insecure ? "http" : "https";
   if (getMeshTransport(meshEndpoint) !== expectedTransport) {
     throw new Error(
@@ -122,6 +164,7 @@ function parseWorkerBootstrapArgs(args: readonly string[]): WorkerBootstrapOptio
     keyName,
     rotate,
     insecure,
+    relayOnly: false,
   };
 }
 
@@ -142,6 +185,7 @@ async function persistWorkerBootstrapConfiguration(
       options: {
         ...current.serve?.options,
         "mesh-worker": true,
+        "relay-only": options.relayOnly,
         "worker-directory": options.workerDirectory,
         "worker-execution-enabled": true,
         insecure: options.insecure,
@@ -155,16 +199,24 @@ async function bootstrapWorker(
   context: Parameters<NonNullable<WebAppCliCommandDefinition<ClankyCliContext>["handler"]>>[0],
 ): Promise<CliCommandResult> {
   const options = parseWorkerBootstrapArgs(context.args);
+  if (options.relayOnly) {
+    await persistWorkerBootstrapConfiguration(options);
+  }
   const app = await getWebAppServer({
     meshWorker: true,
     workerDirectory: options.workerDirectory,
     workerExecutionEnabled: true,
     insecure: options.insecure,
-    workerEndpoint: options.meshEndpoint,
+    relayOnly: options.relayOnly,
+    ...(options.meshEndpoint ? { workerEndpoint: options.meshEndpoint } : {}),
     rotateWorkerTls: options.rotate,
   });
-  await persistWorkerBootstrapConfiguration(options);
-  await setLocalMeshEndpoint(options.meshEndpoint);
+  if (!options.relayOnly) {
+    await persistWorkerBootstrapConfiguration(options);
+  }
+  if (options.meshEndpoint) {
+    await setLocalMeshEndpoint(options.meshEndpoint);
+  }
   await setLocalMeshInstanceName(options.instanceName);
   let owner = app.store.getOwnerUser();
   if (!owner) {
@@ -188,6 +240,7 @@ async function bootstrapWorker(
       keyId: existing[0]!.id,
       ownerId: owner.id,
       meshWorker: true,
+      relayOnly: options.relayOnly,
       alreadyBootstrapped: true,
     })}\n`);
     return { exitCode: 0 };
@@ -216,27 +269,30 @@ async function bootstrapWorker(
     keyId: created.key.id,
     ownerId: owner.id,
     meshWorker: true,
+    relayOnly: options.relayOnly,
   })}\n`);
   return { exitCode: 0 };
 }
 
 interface WorkerJoinOptions {
-  controllerEndpoint: string;
+  target: string;
   enrollmentToken: string;
   controllerFingerprint: string;
 }
 
-function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions {
-  const [operation, ...rest] = args;
+export function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions {
+  const [operation, targetValue, ...rest] = args;
   if (operation !== "join") {
     throw new Error("Worker command must be bootstrap, join, or service");
+  }
+  if (!targetValue || targetValue.startsWith("--")) {
+    throw new Error("worker join requires one target");
   }
   const values: Record<string, string> = {};
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (
-      arg !== "--controller"
-      && arg !== "--token"
+      arg !== "--token"
       && arg !== "--fingerprint"
     ) {
       throw new Error(`Unknown worker option: ${String(arg)}`);
@@ -248,15 +304,12 @@ function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions {
     values[arg] = value;
     index += 1;
   }
-  const controllerEndpoint = values["--controller"];
   const enrollmentToken = values["--token"];
   const controllerFingerprint = values["--fingerprint"];
-  if (!controllerEndpoint) throw new Error("worker join requires --controller");
   if (!enrollmentToken) throw new Error("worker join requires --token");
   if (!controllerFingerprint) throw new Error("worker join requires --fingerprint");
-  assertMeshEndpointAllowed(controllerEndpoint);
   return {
-    controllerEndpoint,
+    target: normalizeMeshEnrollmentTarget(targetValue),
     enrollmentToken,
     controllerFingerprint,
   };
@@ -271,12 +324,13 @@ async function joinWorker(
   });
   await getWebAppServer({
     meshWorker: true,
+    relayOnly: runtime.relayOnly,
     workerDirectory: runtime.workerDirectory,
     workerExecutionEnabled: runtime.workerExecutionEnabled,
     insecure: runtime.insecure,
   });
   const grant = await meshManager.enrollWithController({
-    controllerEndpoint: options.controllerEndpoint,
+    target: options.target,
     enrollmentToken: options.enrollmentToken,
     expectedFingerprint: options.controllerFingerprint,
   });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createRouteCatalog, findRouteCatalogEntry } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "../../src/api";
 import { routes } from "../../src/server";
+import { MESH_RELAY_DESCRIPTOR_PATH } from "../../src/shared/mesh-relay";
 
 /**
  * Routes that are intentionally reachable without an authenticated Clanky user.
@@ -28,6 +29,7 @@ const OWNER_ROUTE_ALLOWLIST = [
   "/api/mesh/enroll",
   "/api/mesh/health",
   "/api/mesh/instance-name",
+  "/api/mesh/relay",
   "/api/mesh/workers/:workerNodeId",
   "/api/mesh/workers/:workerNodeId/kill",
   "/api/mesh/workers/revoke",
@@ -82,6 +84,8 @@ describe("API route policy metadata", () => {
   });
 
   test("keeps user and websocket policies explicit after composition", () => {
+    expect(routes[MESH_RELAY_DESCRIPTOR_PATH]?.auth).toBe("public");
+    expect(routes[MESH_RELAY_DESCRIPTOR_PATH]?.sameOrigin).toBe("never");
     expect(apiRoutes["/api/tasks"]?.auth).toBe("user");
     expect(apiRoutes["/api/tasks"]?.sameOrigin).toBe("mutations");
     expect(apiRoutes["/api/settings/reset-all"]?.auth).toBe("owner");

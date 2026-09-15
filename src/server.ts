@@ -8,7 +8,7 @@ import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import {
   meshControllerInternalRoutes,
@@ -64,6 +64,13 @@ import {
   ensureMeshWorkerTlsIdentity,
   getMeshWorkerServerTls,
 } from "./persistence/mesh-worker-tls";
+import {
+  MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
+  MESH_RELAY_DESCRIPTOR_PATH,
+  type MeshControllerWellKnownDescriptor,
+} from "./shared/mesh-relay";
+import { controllerRelayService } from "./core/controller-relay-service";
+import { workerRelayService } from "./core/worker-relay-service";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -77,6 +84,7 @@ const MESH_WORKER_CONTROL_ROUTE_METHODS = {
 
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let appMeshWorkerMode: boolean | undefined;
+let appRelayOnlyMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 let realtimeHeartbeatCleanup: (() => void) | undefined;
 let workspaceWorkerReconcileTimer: Timer | undefined;
@@ -270,6 +278,23 @@ function stopBackgroundWorkers(): void {
 }
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({
+  [MESH_RELAY_DESCRIPTOR_PATH]: {
+    auth: "public",
+    sameOrigin: "never",
+    description: "Describe this Clanky Mesh controller and its public identity.",
+    tags: ["mesh", "discovery"],
+    async GET(): Promise<Response> {
+      const identity = await ensureLocalMeshNodeIdentity();
+      const descriptor: MeshControllerWellKnownDescriptor = {
+        role: "controller",
+        enrollmentProtocol: MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
+        nodeId: identity.nodeId,
+        publicKey: identity.publicKey,
+        fingerprint: identity.fingerprint,
+      };
+      return Response.json(descriptor);
+    },
+  },
   "/api/previews/bridge": {
     auth: "user",
     sameOrigin: "always",
@@ -385,6 +410,7 @@ export function isMeshWorkerRequestAllowed(request: Request): boolean {
 export async function getWebAppServer(
   options: {
     meshWorker?: boolean;
+    relayOnly?: boolean;
     workerDirectory?: string;
     workerExecutionEnabled?: boolean;
     insecure?: boolean;
@@ -393,10 +419,29 @@ export async function getWebAppServer(
   } = {},
 ): Promise<WebAppServer<ClankyRealtimeEvent>> {
   const meshWorker = options.meshWorker ?? false;
+  const relayOnly = options.relayOnly ?? false;
+  if (relayOnly && !meshWorker) {
+    throw new Error("Relay-only mode requires Mesh worker mode.");
+  }
+  if (
+    relayOnly
+    && !["127.0.0.1", "localhost", "::1", "[::1]"].includes(
+      readRuntimeConfig({
+        appName: "Clanky",
+        envPrefix: "CLANKY",
+        appDirectoryName: ".clanky",
+      }).host.trim().toLowerCase(),
+    )
+  ) {
+    throw new Error("A relay-only Mesh worker must listen on a loopback host.");
+  }
   if (app) {
-    if (appMeshWorkerMode !== meshWorker) {
+    if (
+      appMeshWorkerMode !== meshWorker
+      || appRelayOnlyMode !== relayOnly
+    ) {
       throw new Error(
-        `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)} and cannot be reused with meshWorker=${String(meshWorker)}`,
+        `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)}, relayOnly=${String(appRelayOnlyMode)} and cannot be reused with meshWorker=${String(meshWorker)}, relayOnly=${String(relayOnly)}`,
       );
     }
     return app;
@@ -405,13 +450,18 @@ export async function getWebAppServer(
     meshWorker,
     workerDirectory: options.workerDirectory,
     workerExecutionEnabled: options.workerExecutionEnabled,
+    relayOnly,
   });
   await initializeDatabase();
   const identity = await ensureLocalMeshNodeIdentity();
   let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {
     const workerEndpoint = options.workerEndpoint ?? identity.meshEndpoint;
-    if (options.insecure === true) {
+    if (relayOnly) {
+      if (options.insecure === true) {
+        throw new Error("A relay-only Mesh worker cannot use --insecure.");
+      }
+    } else if (options.insecure === true) {
       if (workerEndpoint && getMeshTransport(workerEndpoint) !== "http") {
         throw new Error("An insecure Mesh worker requires an HTTP Mesh endpoint.");
       }
@@ -473,10 +523,30 @@ export async function getWebAppServer(
       beforeStart: meshWorker
         ? initializeMeshWorkerRuntime
         : reconcileStartupState,
-      afterStart: async (server) => await completeStartup(server, {
-        startBackgroundWorkers: !meshWorker,
-      }),
+      afterStart: async (server) => {
+        await completeStartup(server, {
+          startBackgroundWorkers: !meshWorker,
+        });
+        const appServer = app;
+        if (!appServer) {
+          throw new Error("Clanky web app server is unavailable during relay startup");
+        }
+        if (meshWorker) {
+          await workerRelayService.startRuntime(
+            async (request) => await appServer.handleRequest(request),
+          );
+        } else {
+          await controllerRelayService.startRuntime(
+            async (request) => await appServer.handleRequest(request),
+          );
+        }
+      },
       beforeStop: async () => {
+        if (meshWorker) {
+          await workerRelayService.stopRuntime();
+        } else {
+          await controllerRelayService.stopRuntime();
+        }
         realtimeHeartbeatCleanup?.();
         realtimeHeartbeatCleanup = undefined;
         stopBackgroundWorkers();
@@ -494,6 +564,7 @@ export async function getWebAppServer(
     },
   });
   appMeshWorkerMode = meshWorker;
+  appRelayOnlyMode = relayOnly;
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
@@ -513,10 +584,11 @@ export function resetWebAppServerForTests(): void {
   managedCredentialService.resetForTests();
   app = undefined;
   appMeshWorkerMode = undefined;
+  appRelayOnlyMode = undefined;
 }
 
 export async function startServer(
-  options: { meshWorker?: boolean } = {},
+  options: { meshWorker?: boolean; relayOnly?: boolean } = {},
 ): Promise<Server<WebAppWebSocketData>> {
   return await (await getWebAppServer(options)).start();
 }

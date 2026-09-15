@@ -86,11 +86,15 @@ jobs:
         run: |
           set -e
           docker build -t clanky-pr-smoke .
+          docker build --target relay -t clanky-relay-pr-smoke .
           docker run -d --name clanky-pr-smoke -p 3019:8080 \
             -e CLANKY_DISABLE_PASSKEY=1 \
             -e CLANKY_DATA_DIR=/app/data \
             clanky-pr-smoke
-          trap 'docker rm -f clanky-pr-smoke 2>/dev/null || true' EXIT
+          docker run -d --name clanky-relay-pr-smoke -p 3020:8080 \
+            -e CLANKY_RELAY_CONTROLLER_FINGERPRINT=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            clanky-relay-pr-smoke
+          trap 'docker rm -f clanky-pr-smoke clanky-relay-pr-smoke 2>/dev/null || true' EXIT
 
           docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
             | grep -Fx 'CLANKY_TRUST_PROXY=true'
@@ -99,23 +103,24 @@ jobs:
           docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
             | grep -Fx 'CLANKY_TRUST_PROXY_CHAIN=first'
 
-          for attempt in $(seq 1 45); do
-            status=$(docker inspect --format='{{.State.Health.Status}}' clanky-pr-smoke 2>/dev/null || echo "starting")
-            if [ "$status" = "healthy" ]; then
-              break
-            fi
-            if [ "$status" = "unhealthy" ]; then
-              echo "Docker smoke container became unhealthy"
-              docker logs clanky-pr-smoke
-              exit 1
-            fi
-            if [ "$attempt" -eq 45 ]; then
-              echo "Docker smoke container did not become healthy"
-              docker logs clanky-pr-smoke
-              exit 1
-            fi
-            sleep 2
-          done
+          wait_for_healthy() {
+            name="$1"
+            for attempt in $(seq 1 45); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "starting")
+              if [ "$status" = "healthy" ]; then
+                return 0
+              fi
+              if [ "$status" = "unhealthy" ] || [ "$attempt" -eq 45 ]; then
+                echo "$name failed to become healthy (status: $status)"
+                docker logs "$name"
+                return 1
+              fi
+              sleep 2
+            done
+          }
+
+          wait_for_healthy clanky-pr-smoke
+          wait_for_healthy clanky-relay-pr-smoke
 
           if ! bash scripts/pr-smoke.sh \
             --check-only \
@@ -124,3 +129,6 @@ jobs:
             docker logs clanky-pr-smoke
             exit 1
           fi
+
+          curl -fsS http://127.0.0.1:3020/.well-known/clanky-mesh \
+            | grep -Eq '"role"[[:space:]]*:[[:space:]]*"relay"'

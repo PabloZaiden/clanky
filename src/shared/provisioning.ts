@@ -53,6 +53,7 @@ export interface ProvisioningJobConfig {
   transport?: ProvisioningTransport;
   workspaceWorkerEnrollmentId?: string;
   workerEnrollmentId?: string;
+  workerEnrollmentRoute?: "direct" | "relay";
   workerHostAddress?: string;
   workerHostAddressManual?: boolean;
   repoUrl?: string;

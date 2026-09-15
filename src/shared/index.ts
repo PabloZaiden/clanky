@@ -10,6 +10,7 @@ export * from "./file-upload";
 export * from "./task";
 export * from "./message-attachments";
 export * from "./mesh";
+export * from "./mesh-relay";
 export * from "./mesh-execution";
 export * from "./mesh-terminal";
 export * from "./mesh-tcp-tunnel";

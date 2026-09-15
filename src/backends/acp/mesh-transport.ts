@@ -23,7 +23,10 @@ import {
 import {
   MeshCommandExecutorClient,
 } from "../../core/mesh-command-executor-client";
-import { resolveMeshRoute } from "../../core/mesh-transport-config";
+import {
+  openMeshPeerSocket,
+  type MeshDuplexSocket,
+} from "../../core/mesh-peer-transport";
 import type {
   AcpTransportClosedEvent,
   AcpTransportLifecycle,
@@ -40,7 +43,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
   private directory = "";
   private provider: AgentProvider | null = null;
   private session: AcpTransportSession | null = null;
-  private socket: WebSocket | null = null;
+  private socket: MeshDuplexSocket | null = null;
   private requester: (RpcRequester & RpcPendingController) | null = null;
   private closing = false;
   private connectionInfo: ConnectionInfo | null = null;
@@ -125,16 +128,18 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
         () => getMeshStartupAbortError(startup.signal),
       );
       const session = sessionClient.getSessionConnection();
-      const websocketUrl = toWebSocketUrl(
-        resolveMeshRoute(session.endpoint, "api/mesh/internal/execution/acp"),
-      );
-      const socket = createWebSocket(websocketUrl, {
+      const socket = openMeshPeerSocket(session.route, "api/mesh/internal/execution/acp", {
         "x-clanky-mesh-session-id": session.sessionId,
         "x-clanky-mesh-session-token": session.sessionToken,
-      }, session.tls);
+      });
       this.socket = socket;
       this.session = { id: crypto.randomUUID(), kind: "remote" };
-      this.connectionInfo = { baseUrl: websocketUrl, authHeaders: {} };
+      this.connectionInfo = {
+        baseUrl: session.route.kind === "direct"
+          ? session.route.endpoint
+          : session.route.relayUrl,
+        authHeaders: {},
+      };
       socket.onmessage = (event: MessageEvent) => {
         if (this.socket !== socket) return;
         void this.handleSocketMessage(event.data, socket);
@@ -214,7 +219,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     this.transportClosedHandler = null;
   }
 
-  private async handleSocketMessage(data: unknown, socket: WebSocket): Promise<void> {
+  private async handleSocketMessage(data: unknown, socket: MeshDuplexSocket): Promise<void> {
     if (this.socket !== socket) return;
     let text: string;
     if (typeof data === "string") {
@@ -243,7 +248,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
     }
   }
 
-  private failConnection(message: string, socket: WebSocket): void {
+  private failConnection(message: string, socket: MeshDuplexSocket): void {
     if (this.socket !== socket) return;
     const error = new AcpError("acp_transport_closed", message);
     this.requester?.rejectPending(error);
@@ -253,25 +258,10 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
   }
 }
 
-function createWebSocket(
-  url: string,
-  headers: Record<string, string>,
-  tls?: Bun.TLSOptions,
-): WebSocket {
-  const BunWebSocket = WebSocket as unknown as {
-    new (
-      url: string | URL,
-      options?: { headers?: Record<string, string>; tls?: Bun.TLSOptions },
-    ): WebSocket;
-  };
-  return new BunWebSocket(url, { headers, tls });
-}
-
-function toWebSocketUrl(url: string): string {
-  return url.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
-}
-
-async function waitForWebSocketOpen(socket: WebSocket, signal?: AbortSignal): Promise<void> {
+async function waitForWebSocketOpen(
+  socket: MeshDuplexSocket,
+  signal?: AbortSignal,
+): Promise<void> {
   if (socket.readyState === WebSocket.OPEN) return;
   await new Promise<void>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined;

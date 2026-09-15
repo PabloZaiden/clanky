@@ -2,7 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { UseMeshResult } from "../../hooks";
 import { Badge, Button } from "../common";
-import { SettingsError, SettingsInput } from "./settings-row-controls";
+import {
+  SettingsError,
+  SettingsInput,
+  SettingsSelect,
+} from "./settings-row-controls";
+import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 
 const WORKER_KILL_COUNTDOWN_SECONDS = 15;
 
@@ -39,7 +44,11 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [instanceName, setInstanceName] = useState("");
   const [meshEndpoint, setMeshEndpoint] = useState("");
   const [tokenName, setTokenName] = useState("Mesh worker");
-  const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [tokenRoute, setTokenRoute] = useState<MeshEnrollmentRoute>("direct");
+  const [createdEnrollment, setCreatedEnrollment] = useState<{
+    token: string;
+    workerJoinCommand: string;
+  } | null>(null);
   const [revokeWorkerNodeId, setRevokeWorkerNodeId] = useState<string | null>(null);
   const [removeWorkerNodeId, setRemoveWorkerNodeId] = useState<string | null>(null);
   const [killWorkerNodeId, setKillWorkerNodeId] = useState<string | null>(null);
@@ -84,9 +93,9 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
 
   async function createToken(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const created = await mesh.createEnrollmentToken(tokenName);
+    const created = await mesh.createEnrollmentToken(tokenName, 900, tokenRoute);
     if (!created) return;
-    setCreatedToken(created.token);
+    setCreatedEnrollment(created);
     toast.success("Worker enrollment token created.");
   }
 
@@ -130,7 +139,9 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                 ) : null}
               </div>
               <p className="break-all text-xs text-gray-500 dark:text-gray-400">
-                {worker.workerEndpoint}
+                {worker.route.kind === "relay"
+                  ? `Relay via ${worker.route.relayUrl}`
+                  : worker.workerEndpoint}
                 {worker.workerDirectory ? ` · ${worker.workerDirectory}` : ""}
               </p>
               {worker.lastSeenAt ? (
@@ -220,11 +231,30 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             disabled={mesh.saving}
           />
         </MeshFormField>
+        <MeshFormField
+          id="mesh-enrollment-route"
+          label="Route"
+          description="Direct uses this controller endpoint. Relay requires an active controller relay pairing."
+        >
+          <SettingsSelect
+            id="mesh-enrollment-route"
+            value={tokenRoute}
+            onChange={(event) => setTokenRoute(
+              event.currentTarget.value as MeshEnrollmentRoute,
+            )}
+            disabled={mesh.saving}
+          >
+            <option value="direct">Direct</option>
+            <option value="relay">Relay</option>
+          </SettingsSelect>
+        </MeshFormField>
         <Button type="submit" size="sm" loading={mesh.saving}>Create</Button>
-        {createdToken ? (
+        {createdEnrollment ? (
           <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-neutral-800">
-            <p className="font-medium">Copy this token now</p>
-            <code className="mt-1 block break-all text-xs">{createdToken}</code>
+            <p className="font-medium">Run this command on the worker</p>
+            <code className="mt-1 block break-all text-xs">
+              {createdEnrollment.workerJoinCommand}
+            </code>
           </div>
         ) : null}
       </form>

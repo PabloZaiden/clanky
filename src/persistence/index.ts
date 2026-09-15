@@ -17,5 +17,6 @@ export * from "./preview-sessions";
 export * from "./context-api-keys";
 export * from "./mesh";
 export * from "./mesh-node-identity";
+export * from "./controller-relay-pairing";
 export * from "./execution-hosts";
 export * from "./workspace-execution-targets";

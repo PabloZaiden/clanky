@@ -7,14 +7,13 @@ function shellQuote(value: string): string {
 }
 
 export function buildWorkerJoinCommand(input: {
-  controllerEndpoint: string;
+  target: string;
   enrollmentToken: string;
   controllerFingerprint: string;
 }): string {
   return [
     "clanky worker join",
-    "--controller",
-    shellQuote(input.controllerEndpoint),
+    shellQuote(input.target),
     "--token",
     shellQuote(input.enrollmentToken),
     "--fingerprint",
