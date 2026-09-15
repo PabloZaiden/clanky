@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeshControllerStatus } from "@/shared/mesh";
+import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
@@ -39,7 +40,11 @@ export interface UseMeshResult {
   refresh: (options?: { showLoading?: boolean }) => Promise<MeshControllerStatus | null>;
   updateInstanceName: (instanceName: string) => Promise<MeshControllerStatus | null>;
   updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshControllerStatus | null>;
-  createEnrollmentToken: (name: string, ttlSeconds?: number) => Promise<CreatedMeshEnrollment | null>;
+  createEnrollmentToken: (
+    name: string,
+    ttlSeconds?: number,
+    route?: MeshEnrollmentRoute,
+  ) => Promise<CreatedMeshEnrollment | null>;
   revokeWorker: (workerNodeId: string) => Promise<boolean>;
   killWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
   removeRevokedWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
@@ -136,6 +141,7 @@ export function useMesh(): UseMeshResult {
   const createEnrollmentToken = useCallback(async (
     name: string,
     ttlSeconds = 900,
+    route: MeshEnrollmentRoute = "direct",
   ): Promise<CreatedMeshEnrollment | null> => {
     setSaving(true);
     setMutationError(null);
@@ -143,7 +149,7 @@ export function useMesh(): UseMeshResult {
       const created = await apiRequest<CreatedMeshEnrollment>("/api/mesh/enrollment-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, ttlSeconds }),
+        body: JSON.stringify({ name, ttlSeconds, route }),
         action: "Create Mesh enrollment token",
         fallbackMessage: "Failed to create Mesh enrollment token",
       });

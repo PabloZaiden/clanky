@@ -51,6 +51,7 @@ import { executionHostService } from "../execution-host-service";
 import { executionHostDiscoveryService } from "../execution-host-discovery-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { meshManager } from "../mesh-manager";
+import { controllerRelayService } from "../controller-relay-service";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
 import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 
@@ -372,10 +373,16 @@ function buildDevboxArgs(
     githubUser?: string;
     startupCommand?: string;
     clearStartupCommand?: boolean;
+    relayOnlyWorker?: boolean;
   },
 ): string[] {
   const args: string[] = options.transport === "worker"
-    ? [command, "--no-ssh", "--allow-missing-ssh", "--ports", "1"]
+    ? [
+        command,
+        "--no-ssh",
+        "--allow-missing-ssh",
+        ...(options.relayOnlyWorker ? [] : ["--ports", "1"]),
+      ]
     : [command, "--ssh"];
   if (command === "up" && options.devboxTemplate) {
     args.push("--template", options.devboxTemplate);
@@ -464,7 +471,18 @@ export class ProvisioningManager {
       options,
       jobId,
     );
-    const workerHostAddress = transport === "worker" && mode === "provision"
+    const existingWorkerEnrollment = transport === "worker"
+      && (mode === "rebuild" || mode === "restart")
+      && options.workspaceId
+      ? workspaceWorkerEnrollmentService.getByWorkspace(owner.id, options.workspaceId)
+      : null;
+    const workerEnrollmentRoute = transport === "worker"
+      ? existingWorkerEnrollment?.worker?.route.kind
+        ?? controllerRelayService.getDedicatedWorkerEnrollmentRoute()
+      : undefined;
+    const workerHostAddress = transport === "worker"
+      && mode === "provision"
+      && workerEnrollmentRoute !== "relay"
       ? await this.resolveWorkerHostAddress(
           owner.id,
           executionHostBinding,
@@ -473,11 +491,6 @@ export class ProvisioningManager {
           options.workerHostAddressManual === true,
         )
       : undefined;
-    const existingWorkerEnrollment = transport === "worker"
-      && (mode === "rebuild" || mode === "restart")
-      && options.workspaceId
-      ? workspaceWorkerEnrollmentService.getByWorkspace(owner.id, options.workspaceId)
-      : null;
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
       job: {
@@ -492,8 +505,11 @@ export class ProvisioningManager {
           ...(existingWorkerEnrollment
             ? { workerEnrollmentId: existingWorkerEnrollment.enrollment.id }
             : {}),
+          ...(workerEnrollmentRoute ? { workerEnrollmentRoute } : {}),
           ...(workerHostAddress ? { workerHostAddress } : {}),
-          ...(options.workerHostAddressManual ? { workerHostAddressManual: true } : {}),
+          ...(workerHostAddress && options.workerHostAddressManual
+            ? { workerHostAddressManual: true }
+            : {}),
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
@@ -749,6 +765,7 @@ export class ProvisioningManager {
       record.owner.id,
       `${record.job.config.name} worker`,
       900,
+      record.job.config.workerEnrollmentRoute ?? "direct",
     );
     record.job.config.workerEnrollmentId = created.enrollment.id;
     record.workerEnrollmentToken = created.token;
@@ -984,12 +1001,15 @@ export class ProvisioningManager {
       }
 
       const workerTransport = record.job.config.transport === "worker";
+      const relayOnlyWorker = workerTransport
+        && record.job.config.workerEnrollmentRoute === "relay";
       let workerLauncherPaths: WorkerPaths | undefined;
       const devboxOptions = {
         transport: workerTransport ? "worker" as const : "ssh" as const,
         devcontainerSubpath: record.job.config.devcontainerSubpath,
         devboxTemplate: record.job.config.devboxTemplate,
         githubUser: record.job.config.githubUser,
+        relayOnlyWorker,
       };
 
       setStep(record, this.maxLogEntries, "devbox_up", "Starting devbox");
@@ -1113,19 +1133,25 @@ export class ProvisioningManager {
 
       let workerPaths: WorkerPaths | undefined;
       if (workerTransport) {
-        const workerHostAddress = validateWorkerHostAddress(record.job.config.workerHostAddress);
+        const workerHostAddress = relayOnlyWorker
+          ? undefined
+          : validateWorkerHostAddress(record.job.config.workerHostAddress);
         let publishedPort;
-        try {
-          publishedPort = getSinglePublishedPort(status);
-        } catch (error) {
-          throw new ProvisioningFailedError(
-            "invalid_devbox_status",
-            "devbox_status",
-            String(error),
-          );
+        if (!relayOnlyWorker) {
+          try {
+            publishedPort = getSinglePublishedPort(status);
+          } catch (error) {
+            throw new ProvisioningFailedError(
+              "invalid_devbox_status",
+              "devbox_status",
+              String(error),
+            );
+          }
         }
         workerPaths = workerLauncherPaths ?? getWorkerPaths(targetDirectory, resolvedDirectory);
-        const workerEndpoint = `https://${workerHostAddress}:${publishedPort.hostPort}`;
+        const workerEndpoint = relayOnlyWorker
+          ? undefined
+          : `https://${workerHostAddress!}:${publishedPort!.hostPort}`;
         const workerBinary = workerPaths.containerBinary;
         const workerData = workerPaths.containerData;
         await this.createWorkerEnrollment(record);
@@ -1151,16 +1177,20 @@ export class ProvisioningManager {
             workerBinary,
             "worker",
             "bootstrap",
-            "--host",
-            "0.0.0.0",
-            "--port",
-            String(publishedPort.containerPort),
             "--worker-directory",
             resolvedDirectory,
             "--instance-name",
             record.job.config.name,
-            "--mesh-endpoint",
-            workerEndpoint,
+            ...(relayOnlyWorker
+              ? ["--relay-only"]
+              : [
+                  "--host",
+                  "0.0.0.0",
+                  "--port",
+                  String(publishedPort!.containerPort),
+                  "--mesh-endpoint",
+                  workerEndpoint!,
+                ]),
           ],
           {
             step: "devbox_up",
@@ -1170,19 +1200,21 @@ export class ProvisioningManager {
             captureStdout: false,
           },
         );
-        await this.runDevboxExec(
-          record,
-          executor,
-          targetDirectory,
-          ["sh", workerPaths.containerLauncher],
-          {
-            step: "devbox_up",
-            label: "Starting the workspace worker",
-            errorCode: "worker_start_failed",
-            errorMessage: "Failed to start the workspace worker",
-            captureStdout: false,
-          },
-        );
+        if (!relayOnlyWorker) {
+          await this.runDevboxExec(
+            record,
+            executor,
+            targetDirectory,
+            ["sh", workerPaths.containerLauncher],
+            {
+              step: "devbox_up",
+              label: "Starting the workspace worker",
+              errorCode: "worker_start_failed",
+              errorMessage: "Failed to start the workspace worker",
+              captureStdout: false,
+            },
+          );
+        }
         await this.runDevboxExec(
           record,
           executor,
@@ -1196,6 +1228,21 @@ export class ProvisioningManager {
             captureStdout: false,
           },
         );
+        if (relayOnlyWorker) {
+          await this.runDevboxExec(
+            record,
+            executor,
+            targetDirectory,
+            ["sh", workerPaths.containerLauncher],
+            {
+              step: "devbox_up",
+              label: "Starting the workspace worker",
+              errorCode: "worker_start_failed",
+              errorMessage: "Failed to start the workspace worker",
+              captureStdout: false,
+            },
+          );
+        }
         await this.waitForWorkerEnrollment(record, enrollmentId);
       }
 
@@ -1435,8 +1482,10 @@ export class ProvisioningManager {
             record.job.config.workerEnrollmentId,
           )
         : null;
+      const relayOnlyWorker = workerTransport
+        && workerEnrollment?.worker?.route.kind === "relay";
       let workerHostAddress: string | undefined;
-      if (workerTransport) {
+      if (workerTransport && !relayOnlyWorker) {
         const workerEndpoint = workerEnrollment?.worker?.workerEndpoint;
         if (!workerEndpoint) {
           throw new ProvisioningFailedError(
@@ -1489,6 +1538,7 @@ export class ProvisioningManager {
         command: "devbox",
         args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
           transport: workerTransport ? "worker" : "ssh",
+          relayOnlyWorker,
           devcontainerSubpath,
           githubUser: record.job.config.githubUser,
           ...(workerLauncherPaths
@@ -1553,7 +1603,7 @@ export class ProvisioningManager {
 
       if (workerTransport) {
         const enrollmentId = record.job.config.workerEnrollmentId;
-        if (!enrollmentId || !workerHostAddress) {
+        if (!enrollmentId || (!relayOnlyWorker && !workerHostAddress)) {
           throw new ProvisioningFailedError(
             "missing_worker_enrollment",
             "devbox_status",
@@ -1561,17 +1611,21 @@ export class ProvisioningManager {
           );
         }
         let publishedPort;
-        try {
-          publishedPort = getSinglePublishedPort(status);
-        } catch (error) {
-          throw new ProvisioningFailedError(
-            "invalid_devbox_status",
-            "devbox_status",
-            String(error),
-          );
+        if (!relayOnlyWorker) {
+          try {
+            publishedPort = getSinglePublishedPort(status);
+          } catch (error) {
+            throw new ProvisioningFailedError(
+              "invalid_devbox_status",
+              "devbox_status",
+              String(error),
+            );
+          }
         }
         const paths = getWorkerPaths(targetDirectory, resolvedDirectory);
-        const workerEndpoint = `https://${workerHostAddress}:${publishedPort.hostPort}`;
+        const workerEndpoint = relayOnlyWorker
+          ? undefined
+          : `https://${workerHostAddress!}:${publishedPort!.hostPort}`;
         await this.runDevboxExec(
           record,
           executor,
@@ -1599,16 +1653,20 @@ export class ProvisioningManager {
             paths.containerBinary,
             "worker",
             "bootstrap",
-            "--host",
-            "0.0.0.0",
-            "--port",
-            String(publishedPort.containerPort),
             "--worker-directory",
             resolvedDirectory,
             "--instance-name",
             record.job.config.name,
-            "--mesh-endpoint",
-            workerEndpoint,
+            ...(relayOnlyWorker
+              ? ["--relay-only"]
+              : [
+                  "--host",
+                  "0.0.0.0",
+                  "--port",
+                  String(publishedPort!.containerPort),
+                  "--mesh-endpoint",
+                  workerEndpoint!,
+                ]),
           ],
           {
             step: action.step,
@@ -1631,18 +1689,20 @@ export class ProvisioningManager {
             captureStdout: false,
           },
         );
-        try {
-          await meshManager.updateWorkspaceWorkerEndpoint(
-            record.owner.id,
-            enrollmentId,
-            workerEndpoint,
-          );
-        } catch (error) {
-          throw new ProvisioningFailedError(
-            "workspace_worker_endpoint_update_failed",
-            action.step,
-            `Failed to update the workspace worker endpoint: ${String(error)}`,
-          );
+        if (workerEndpoint) {
+          try {
+            await meshManager.updateWorkspaceWorkerEndpoint(
+              record.owner.id,
+              enrollmentId,
+              workerEndpoint,
+            );
+          } catch (error) {
+            throw new ProvisioningFailedError(
+              "workspace_worker_endpoint_update_failed",
+              action.step,
+              `Failed to update the workspace worker endpoint: ${String(error)}`,
+            );
+          }
         }
         await this.waitForWorkerEnrollment(record, enrollmentId);
       }

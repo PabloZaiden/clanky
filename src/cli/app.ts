@@ -9,6 +9,7 @@ import { createWorkspaceCommand } from "./workspace";
 import { createServerCommand } from "./server";
 import { createWorkerCommand } from "./worker";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
+import { createRelayCommand } from "./relay";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -57,6 +58,7 @@ export function createClankyCli() {
     start: async ({ options }) => {
       const server = await getWebAppServer({
         meshWorker: options["mesh-worker"] === true,
+        relayOnly: options["relay-only"] === true,
         workerDirectory: typeof options["worker-directory"] === "string"
           ? options["worker-directory"]
           : undefined,
@@ -88,6 +90,7 @@ export function createClankyCli() {
       workspace: createWorkspaceCommand(),
       server: createServerCommand(),
       worker: createWorkerCommand(),
+      relay: createRelayCommand(),
     },
   });
 }

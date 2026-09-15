@@ -5,6 +5,7 @@ import {
   type WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { RouteCatalogEntry } from "@pablozaiden/webapp/server";
+import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 
 export interface ClankyCliContext {
   routeCatalog: readonly RouteCatalogEntry[];
@@ -14,7 +15,11 @@ export type MeshOperation =
   | "status"
   | "enroll"
   | "enrollment-token-create"
-  | "revoke";
+  | "revoke"
+  | "relay-bootstrap-info"
+  | "relay-pair"
+  | "relay-status"
+  | "relay-unpair";
 
 export interface MeshCommand {
   operation: MeshOperation;
@@ -24,6 +29,8 @@ export interface MeshCommand {
   token?: string;
   name?: string;
   ttlSeconds?: number;
+  relayUrl?: string;
+  route?: MeshEnrollmentRoute;
 }
 
 function usageError(message: string): Error {
@@ -92,7 +99,7 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     }
     return {
       operation,
-      endpoint: requireSinglePositional(positionals, "Mesh enroll requires one controller endpoint"),
+      endpoint: requireSinglePositional(positionals, "Mesh enroll requires one target"),
       token,
       fingerprint,
     };
@@ -102,7 +109,10 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     if (tokenOperation !== "create") {
       throw usageError("Mesh enrollment-token command must be create");
     }
-    const { positionals, options } = parseOptions(tokenArgs, ["--name", "--ttl-seconds"]);
+    const { positionals, options } = parseOptions(
+      tokenArgs,
+      ["--name", "--ttl-seconds", "--route"],
+    );
     if (positionals.length > 0) throw usageError(`Unexpected argument: ${positionals[0]}`);
     const ttlSeconds = options["--ttl-seconds"]
       ? Number.parseInt(options["--ttl-seconds"], 10)
@@ -110,13 +120,52 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     if (ttlSeconds !== undefined && !Number.isInteger(ttlSeconds)) {
       throw usageError("--ttl-seconds must be an integer");
     }
+    const route = options["--route"];
+    if (route !== undefined && route !== "direct" && route !== "relay") {
+      throw usageError("--route must be direct or relay");
+    }
     return {
       operation: "enrollment-token-create",
       name: options["--name"],
       ttlSeconds,
+      route,
     };
   }
-  throw usageError("Mesh command must be status, enroll, enrollment-token, or revoke");
+  if (operation === "relay") {
+    const [relayOperation, ...relayArgs] = operationArgs;
+    const { positionals } = parseOptions(relayArgs, []);
+    if (relayOperation === "pair") {
+      return {
+        operation: "relay-pair",
+        relayUrl: requireSinglePositional(
+          positionals,
+          "Mesh relay pair requires one relay URL",
+        ),
+      };
+    }
+    if (
+      relayOperation === "status"
+      || relayOperation === "unpair"
+      || relayOperation === "bootstrap-info"
+    ) {
+      if (positionals.length > 0) {
+        throw usageError(`Unexpected argument: ${positionals[0]}`);
+      }
+      return {
+        operation: relayOperation === "status"
+          ? "relay-status"
+          : relayOperation === "unpair"
+            ? "relay-unpair"
+            : "relay-bootstrap-info",
+      };
+    }
+    throw usageError(
+      "Mesh relay command must be bootstrap-info, pair, status, or unpair",
+    );
+  }
+  throw usageError(
+    "Mesh command must be status, enroll, enrollment-token, relay, or revoke",
+  );
 }
 
 export function buildMeshRequest(command: MeshCommand): {
@@ -132,7 +181,7 @@ export function buildMeshRequest(command: MeshCommand): {
         endpoint: "/api/mesh/enroll",
         method: "POST",
         payload: JSON.stringify({
-          controllerEndpoint: command.endpoint,
+          target: command.endpoint,
           enrollmentToken: command.token,
           expectedControllerFingerprint: command.fingerprint,
         }),
@@ -144,6 +193,7 @@ export function buildMeshRequest(command: MeshCommand): {
         payload: JSON.stringify({
           ...(command.name ? { name: command.name } : {}),
           ...(command.ttlSeconds !== undefined ? { ttlSeconds: command.ttlSeconds } : {}),
+          ...(command.route ? { route: command.route } : {}),
         }),
       };
     case "revoke":
@@ -152,14 +202,26 @@ export function buildMeshRequest(command: MeshCommand): {
         method: "POST",
         payload: JSON.stringify({ workerNodeId: command.workerNodeId }),
       };
+    case "relay-bootstrap-info":
+    case "relay-status":
+      return { endpoint: "/api/mesh/relay", method: "GET" };
+    case "relay-pair":
+      return {
+        endpoint: "/api/mesh/relay",
+        method: "POST",
+        payload: JSON.stringify({ relayUrl: command.relayUrl }),
+      };
+    case "relay-unpair":
+      return { endpoint: "/api/mesh/relay", method: "DELETE" };
   }
 }
 
 export async function runMeshCommand(
   context: WebAppCliCommandContext<ClankyCliContext>,
 ): Promise<CliCommandResult> {
-  const request = buildMeshRequest(parseMeshCommandArgs(context.args));
-  return await runApiCliCommand({
+  const command = parseMeshCommandArgs(context.args);
+  const request = buildMeshRequest(command);
+  const result = await runApiCliCommand({
     args: [
       request.endpoint,
       "--method",
@@ -171,13 +233,47 @@ export async function runMeshCommand(
     envPrefix: context.envPrefix,
     environment: context.environment,
     fetchFn: context.fetchFn,
+    ...(command.operation === "relay-bootstrap-info"
+      ? { responseFormat: "body" as const }
+      : {}),
   });
+  if (command.operation !== "relay-bootstrap-info" || result.exitCode !== 0) {
+    return result;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(result.output ?? "") as unknown;
+  } catch {
+    return {
+      exitCode: 1,
+      error: "Controller relay bootstrap information was not valid JSON.",
+    };
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      exitCode: 1,
+      error: "Controller relay bootstrap information was invalid.",
+    };
+  }
+  const record = body as Record<string, unknown>;
+  const fingerprint = record["controllerFingerprint"];
+  const environment = record["bootstrapEnvironment"];
+  if (typeof fingerprint !== "string" || typeof environment !== "string") {
+    return {
+      exitCode: 1,
+      error: "Controller relay bootstrap information was incomplete.",
+    };
+  }
+  return {
+    exitCode: 0,
+    output: `Controller fingerprint: ${fingerprint}\n${environment}`,
+  };
 }
 
 export function createMeshCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Enroll and manage Mesh workers.",
-    usage: "mesh <status|enroll|enrollment-token|revoke> [options]",
+    description: "Enroll workers and manage the controller Mesh relay.",
+    usage: "mesh <status|enroll|enrollment-token|relay|revoke> [options]",
     handler: runMeshCommand,
   };
 }

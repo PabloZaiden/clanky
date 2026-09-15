@@ -9,6 +9,72 @@ when an operation runs; a network failure never revokes the grant.
 Mesh, SSH, and local stdio targets all provide unrestricted access to their
 host by design.
 
+## Controller relay availability
+
+A controller can pair with a transport-only relay by running:
+
+```bash
+clanky mesh relay bootstrap-info
+```
+
+Run the relay with the dedicated image, whose default command is
+`clanky relay`:
+
+```yaml
+services:
+  relay:
+    image: ghcr.io/pablozaiden/clanky-relay:latest
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      CLANKY_RELAY_CONTROLLER_FINGERPRINT: "<controller-fingerprint>"
+    volumes:
+      - relay-data:/app/data
+
+volumes:
+  relay-data:
+```
+
+The value comes from `clanky mesh relay bootstrap-info`. The
+`ghcr.io/pablozaiden/clanky-relay` package is built from the same binary and
+workflow as `ghcr.io/pablozaiden/clanky`; their `main`, semantic-version, and
+`latest` tags stay synchronized. The main image can also run a relay by
+overriding its command with `/app/clanky relay`.
+
+After the relay is running behind its external HTTPS origin, complete the live
+pairing:
+
+```bash
+clanky mesh relay pair https://relay.example.com
+```
+
+The relay exposes health and Mesh transport endpoints behind the deployment
+reverse proxy. Pairing is persisted only after signed live authentication.
+`clanky mesh relay unpair` removes the controller-side pairing, while
+`clanky relay pairing reset` clears the relay-side controller pairing and
+worker authorization. Stop the relay listener before running the reset command.
+The durable `/app/data` volume contains the relay identity, pairing, worker
+authorization, and audit database.
+
+Internet-facing relays should terminate TLS at the reverse proxy, expose the
+relay control and stream WebSocket upgrades over WSS, and keep the Clanky relay
+listener private. The relay URL used for pairing and enrollment must be the
+external HTTPS origin. Plaintext relay origins are accepted only for
+`localhost`, `127.0.0.0/8`, and `::1` during local development and tests;
+remote relay URLs never downgrade to HTTP.
+
+The controller replaces relay authorization in bounded atomic generations.
+Only workers routed through that relay are included, with a limit of 1,000
+unique workers and 4 MiB of identity data per generation. An incomplete or
+failed generation never partially changes relay authorization; the controller
+reconnects and sends a fresh full generation.
+
+If persisted relay configuration is invalid after an upgrade or manual data
+change, Clanky keeps the main server available, leaves relay transport
+disconnected, and reports the configuration error in the Worker relay status
+so an owner can repair or remove the pairing.
+
 ## Bootstrap
 
 Run this on the host that will execute workspaces. The data directory defaults
@@ -64,6 +130,22 @@ keep it on the worker if administrative API access is needed, but the join
 command does not need it.
 Mesh execution resolves relative directories and paths against the configured
 worker directory; absolute paths are used directly.
+
+For a worker that is reachable only through a paired relay, do not configure a
+public endpoint or worker TLS identity:
+
+```bash
+clanky worker bootstrap \
+  --relay-only \
+  --worker-directory /workspaces \
+  --instance-name worker-1
+```
+
+Relay-only bootstrap persists worker mode, execution enabled, `relay-only:
+true`, host `127.0.0.1`, and port `0`. It rejects `--mesh-endpoint`,
+non-loopback hosts, nonzero ports, and `--insecure`. The worker serves its
+restricted internal surface only in process and maintains one outbound relay
+connection from its active relay controller grant.
 
 To replace a lost key or intentionally rotate the worker certificate, repeat
 the same command with `--rotate`. The old key is revoked and the new plaintext
@@ -191,14 +273,14 @@ permission preflight.
 Create a single-use token on the controller:
 
 ```bash
-clanky mesh enrollment-token create --name worker-1
+clanky mesh enrollment-token create --name worker-1 --route direct
 ```
 
 The JSON response includes `response.workerJoinCommand`. Copy that complete
 one-line string and run it on the worker:
 
 ```bash
-clanky worker join --controller 'https://controller.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
+clanky worker join 'https://controller.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
 ```
 
 The generated command uses the worker's local identity and does not require
@@ -206,6 +288,21 @@ copying the worker API key, `CLANKY_BASE_URL`, or other local environment
 variables. Repeat token creation and the generated join command for every
 controller that should use the worker. The controller endpoint must be
 configured and reachable by the worker before creating the token.
+
+For a controller with an active relay pairing, create an explicitly relayed
+invitation and run the generated command after relay-only bootstrap:
+
+```bash
+clanky mesh enrollment-token create --name worker-1 --route relay
+clanky worker join 'https://relay.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
+```
+
+Both commands fetch `/.well-known/clanky-mesh` from the positional target. A
+controller descriptor selects direct enrollment protocol v1; a relay
+descriptor selects relay enrollment protocol v2. Discovery selects only the
+transport. The expected controller fingerprint and signed controller response
+remain the trust boundary, and Clanky never falls back between direct and
+relay enrollment.
 
 Verify the enrollment on the controller:
 

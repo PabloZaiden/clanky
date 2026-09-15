@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  deleteRevokedWorkerRegistration,
   getControllerGrant,
   getWorkerRegistration,
+  InconsistentMeshControllerRelayGrantError,
   listControllerGrants,
   listWorkerRegistrations,
   revokeControllerGrant,
@@ -12,7 +15,12 @@ import {
   saveControllerGrant,
   saveWorkerRegistration,
 } from "../../src/persistence/mesh";
+import {
+  InconsistentMeshWorkerIdentityError,
+  listActiveControllerWorkerIdentities,
+} from "../../src/persistence/controller-relay-pairing";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
+import { InvalidMeshRelayRouteError } from "../../src/persistence/errors";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
 import {
@@ -21,6 +29,7 @@ import {
   listExecutionHosts,
 } from "../../src/persistence/execution-hosts";
 import { migrateMeshControllerWorker } from "../../src/persistence/migrations/mesh-controller-worker";
+import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
 
 let dataDir: string;
 
@@ -39,6 +48,97 @@ afterEach(async () => {
 });
 
 describe("controller-worker Mesh persistence", () => {
+  test("unions exact active worker identities across owners and rejects conflicts", async () => {
+    const now = new Date().toISOString();
+    getDatabase().query(`
+      INSERT INTO webapp_users (
+        id, username, role, auth_version, created_at, updated_at
+      ) VALUES ('owner-2', 'owner-2', 'owner', 1, ?, ?)
+    `).run(now, now);
+    const keys = generateKeyPairSync("ed25519");
+    const publicKey = keys.publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    const relayRoute = {
+      relayUrl: "https://relay.example",
+      relayFingerprint: "relay-fingerprint",
+    };
+    const base = {
+      workerNodeId: "worker-shared",
+      workerInstanceName: "Shared worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https" as const,
+      workerPublicKey: publicKey,
+      workerFingerprint: getMeshNodeFingerprint(publicKey),
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      route: {
+        kind: "relay" as const,
+        targetNodeId: "worker-shared",
+        ...relayRoute,
+      },
+    };
+    await saveWorkerRegistration({ ...base, localUserId: "admin" });
+    await saveWorkerRegistration({
+      ...base,
+      localUserId: "owner-2",
+      route: {
+        kind: "direct",
+        endpoint: "http://worker.example",
+        transport: "http",
+        tlsTrust: "none",
+        tlsCertificate: null,
+        tlsFingerprint: null,
+      },
+    });
+    const directKeys = generateKeyPairSync("ed25519");
+    const directPublicKey = directKeys.publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    await saveWorkerRegistration({
+      ...base,
+      workerNodeId: "worker-direct",
+      localUserId: "admin",
+      workerPublicKey: directPublicKey,
+      workerFingerprint: getMeshNodeFingerprint(directPublicKey),
+      route: {
+        kind: "direct",
+        endpoint: "http://worker.example",
+        transport: "http",
+        tlsTrust: "none",
+        tlsCertificate: null,
+        tlsFingerprint: null,
+      },
+    });
+    expect(listActiveControllerWorkerIdentities(relayRoute)).toEqual([{
+      nodeId: base.workerNodeId,
+      publicKey: base.workerPublicKey,
+      fingerprint: base.workerFingerprint,
+    }]);
+
+    await expect(saveWorkerRegistration({
+      ...base,
+      localUserId: "owner-2",
+      workerPublicKey: "different-public",
+      workerFingerprint: "different-fingerprint",
+    })).rejects.toBeInstanceOf(InconsistentMeshWorkerIdentityError);
+
+    // Simulate legacy/corrupt storage to retain fail-closed snapshot coverage.
+    getDatabase().query(`
+      UPDATE mesh_worker_registrations
+      SET worker_public_key = 'different-public',
+        worker_fingerprint = 'different-fingerprint'
+      WHERE local_user_id = 'owner-2' AND worker_node_id = 'worker-shared'
+    `).run();
+    expect(() => listActiveControllerWorkerIdentities(relayRoute))
+      .toThrow(InconsistentMeshWorkerIdentityError);
+  });
+
   test("stores independent controller grants without a roster", async () => {
     await saveControllerGrant({
       controllerNodeId: "controller-a",
@@ -62,6 +162,110 @@ describe("controller-worker Mesh persistence", () => {
     await revokeControllerGrant("controller-a");
     expect((await getControllerGrant("controller-a"))?.grantStatus).toBe("revoked");
     expect((await getControllerGrant("controller-b"))?.grantStatus).toBe("active");
+  });
+
+  test("atomically rejects a second active relay controller grant", async () => {
+    const relayRoute = {
+      kind: "relay" as const,
+      relayUrl: "https://relay.example",
+      relayFingerprint: "relay-fingerprint",
+    };
+    await saveControllerGrant({
+      controllerNodeId: "controller-relay-a",
+      controllerInstanceName: "Controller A",
+      controllerPublicKey: "public-a",
+      controllerFingerprint: "fingerprint-a",
+      controllerEncryptionPublicKey: null,
+      controllerRoute: {
+        ...relayRoute,
+        targetNodeId: "controller-relay-a",
+      },
+    });
+
+    await expect(saveControllerGrant({
+      controllerNodeId: "controller-relay-b",
+      controllerInstanceName: "Controller B",
+      controllerPublicKey: "public-b",
+      controllerFingerprint: "fingerprint-b",
+      controllerEncryptionPublicKey: null,
+      controllerRoute: {
+        ...relayRoute,
+        targetNodeId: "controller-relay-b",
+      },
+    })).rejects.toBeInstanceOf(InconsistentMeshControllerRelayGrantError);
+    expect((await listControllerGrants()).map((grant) => grant.controllerNodeId))
+      .toEqual(["controller-relay-a"]);
+  });
+
+  // Corrupt persisted route metadata is a data-safety boundary: it must never
+  // reinterpret a relay endpoint as a directly reachable peer.
+  test("fails closed for incomplete persisted relay routes", async () => {
+    const relayRoute = {
+      kind: "relay" as const,
+      relayUrl: "https://relay.example",
+      relayFingerprint: "relay-fingerprint",
+    };
+    await saveWorkerRegistration({
+      workerNodeId: "worker-corrupt-route",
+      localUserId: "admin",
+      workerInstanceName: "Corrupt route worker",
+      workerEndpoint: relayRoute.relayUrl,
+      workerTransport: "https",
+      workerPublicKey: "worker-public",
+      workerFingerprint: "worker-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      route: {
+        ...relayRoute,
+        targetNodeId: "worker-corrupt-route",
+      },
+    });
+    getDatabase().query(`
+      UPDATE mesh_worker_registrations
+      SET relay_fingerprint = NULL
+      WHERE worker_node_id = 'worker-corrupt-route'
+    `).run();
+    expect(() => getWorkerRegistration("worker-corrupt-route", "admin"))
+      .toThrow(InvalidMeshRelayRouteError);
+    expect(await listWorkerRegistrations("admin")).toEqual([]);
+    expect(() => listActiveControllerWorkerIdentities({
+      relayUrl: relayRoute.relayUrl,
+      relayFingerprint: relayRoute.relayFingerprint,
+    })).toThrow(InvalidMeshRelayRouteError);
+    await revokeWorkerRegistration("worker-corrupt-route", "admin");
+    expect(
+      getDatabase().query(`
+        SELECT grant_status
+        FROM mesh_worker_registrations
+        WHERE worker_node_id = 'worker-corrupt-route'
+      `).get(),
+    ).toEqual({ grant_status: "revoked" });
+    await deleteRevokedWorkerRegistration("worker-corrupt-route", "admin");
+    expect(getWorkerRegistration("worker-corrupt-route", "admin")).toBeNull();
+
+    await saveControllerGrant({
+      controllerNodeId: "controller-corrupt-route",
+      controllerInstanceName: "Corrupt route controller",
+      controllerPublicKey: "controller-public",
+      controllerFingerprint: "controller-fingerprint",
+      controllerEncryptionPublicKey: null,
+      controllerRoute: {
+        ...relayRoute,
+        targetNodeId: "controller-corrupt-route",
+      },
+    });
+    getDatabase().query(`
+      UPDATE mesh_controller_grants
+      SET relay_url = NULL
+      WHERE controller_node_id = 'controller-corrupt-route'
+    `).run();
+    await expect(getControllerGrant("controller-corrupt-route"))
+      .rejects.toBeInstanceOf(InvalidMeshRelayRouteError);
   });
 
   test("scopes worker registrations and revocation to their owner", async () => {

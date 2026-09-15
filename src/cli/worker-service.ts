@@ -72,6 +72,7 @@ export interface WorkerServiceConfiguration {
   dataDir: string;
   workerDirectory: string;
   workerExecutionEnabled: boolean;
+  relayOnly: boolean;
   insecure: boolean;
   host: string;
   port: number;
@@ -329,6 +330,7 @@ export async function resolveWorkerServiceConfiguration(
     dataDir,
     workerDirectory,
     workerExecutionEnabled: runtimeConfiguration.workerExecutionEnabled,
+    relayOnly: runtimeConfiguration.relayOnly,
     insecure: runtimeConfiguration.insecure,
     host: runtimeConfiguration.host,
     port: runtimeConfiguration.port,
@@ -388,6 +390,8 @@ function workerCommand(configuration: WorkerServiceConfiguration): string[] {
     "serve",
     "--mesh-worker",
     "true",
+    "--relay-only",
+    String(configuration.relayOnly),
     "--worker-directory",
     configuration.workerDirectory,
     "--worker-execution-enabled",

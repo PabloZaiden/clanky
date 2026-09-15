@@ -42,6 +42,7 @@ function configuration(
     dataDir: platform === "darwin" ? "/Users/alice/.clanky" : "/home/alice/.clanky",
     workerDirectory: platform === "darwin" ? "/Users/alice/Work Spaces" : "/srv/workspaces",
     workerExecutionEnabled: true,
+    relayOnly: false,
     insecure: false,
     host: "127.0.0.1",
     port: 4180,
@@ -169,6 +170,23 @@ describe("worker SSH-agent command and shell integration", () => {
     expect(unit).toContain(
       "Environment=SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
+  });
+
+  test("propagates relay-only mode to the worker service command", () => {
+    const unit = renderSystemdUnit({
+      ...configuration("linux"),
+      relayOnly: true,
+      host: "127.0.0.1",
+      port: 0,
+      environment: {
+        ...configuration("linux").environment,
+        CLANKY_HOST: "127.0.0.1",
+        CLANKY_PORT: "0",
+      },
+    });
+    expect(unit).toContain("--mesh-worker true --relay-only true");
+    expect(unit).toContain("Environment=CLANKY_HOST=127.0.0.1");
+    expect(unit).toContain("Environment=CLANKY_PORT=0");
   });
 
   test("renders an unlock helper and interactive shell block", () => {
@@ -300,7 +318,7 @@ describe("worker service definitions", () => {
     expect(unit).toContain("WorkingDirectory=/srv/workspaces");
     expect(unit).toContain("Restart=on-failure");
     expect(unit).toContain(
-      "ExecStart=/home/alice/.local/bin/clanky serve --mesh-worker true --worker-directory /srv/workspaces --worker-execution-enabled true --insecure false",
+      "ExecStart=/home/alice/.local/bin/clanky serve --mesh-worker true --relay-only false --worker-directory /srv/workspaces --worker-execution-enabled true --insecure false",
     );
     expect(unit).toContain("CLANKY_DATA_DIR=/home/alice/.clanky");
     expect(unit).not.toContain('"');
@@ -321,7 +339,7 @@ describe("worker service definitions", () => {
     expect(unit).toContain('WorkingDirectory="/srv/worker spaces"');
     expect(unit).toContain('Environment="CLANKY_LABEL=worker service"');
     expect(unit).toContain(
-      'ExecStart="/home/alice/bin/clanky worker" serve --mesh-worker true --worker-directory "/srv/worker spaces" --worker-execution-enabled true --insecure false',
+      'ExecStart="/home/alice/bin/clanky worker" serve --mesh-worker true --relay-only false --worker-directory "/srv/worker spaces" --worker-execution-enabled true --insecure false',
     );
   });
 
@@ -337,7 +355,7 @@ describe("worker service definitions", () => {
       },
     });
     expect(unit).toContain(
-      'ExecStart="/home/alice/bin/$$clanky`worker" serve --mesh-worker true --worker-directory "/srv/$$clanky`workspace" --worker-execution-enabled true --insecure false',
+      'ExecStart="/home/alice/bin/$$clanky`worker" serve --mesh-worker true --relay-only false --worker-directory "/srv/$$clanky`workspace" --worker-execution-enabled true --insecure false',
     );
     expect(unit).toContain('Environment="CLANKY_PUBLIC_BASE_URL=https://$host.example"');
   });

@@ -7,18 +7,25 @@
  */
 
 import type {
+  MeshEnrollmentRoute,
   MeshEnrollmentRequest,
+  MeshEnrollmentRequestV1,
+  MeshEnrollmentRequestV2,
   MeshEnrollmentResponse,
   MeshHealthCheck,
   MeshHealthCheckResponse,
   MeshRevocationNotice,
   MeshWorkerKillRequest,
 } from "@/contracts/schemas/mesh";
-import { MeshHealthCheckResponseSchema } from "@/contracts/schemas/mesh";
+import {
+  MeshEnrollmentResponseSchema,
+  MeshHealthCheckResponseSchema,
+} from "@/contracts/schemas/mesh";
 import type {
   MeshControllerGrant,
   MeshControllerStatus,
   MeshNodeIdentity,
+  MeshPeerRoute,
   MeshWorkerExecutionConfig,
   MeshWorkerRegistration,
   MeshWorkerStatus,
@@ -27,6 +34,7 @@ import { MESH_WORKER_KILL_REQUEST_TTL_MS } from "@/shared/mesh";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
+  InconsistentMeshControllerRelayGrantError,
   getControllerGrant,
   getWorkerRegistration,
   getWorkerRegistrationByEnrollment,
@@ -46,6 +54,11 @@ import {
   deleteExecutionHost,
   getExecutionHostByRef,
 } from "../persistence/execution-hosts";
+import { InvalidMeshRelayRouteError } from "../persistence/errors";
+import {
+  assertActiveControllerWorkerIdentity,
+  InconsistentMeshWorkerIdentityError,
+} from "../persistence/controller-relay-pairing";
 import {
   consumeMeshEnrollmentToken,
   createMeshEnrollmentToken,
@@ -76,14 +89,12 @@ import {
   assertMeshEndpointAllowed,
   getMeshTransport,
   resolveAdvertisedMeshEndpoint,
-  resolveMeshRoute,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "./domain-error";
 import {
   postMeshControlMessage,
   readMeshControlResponseJson,
 } from "./mesh-control-client";
-import { getMeshWorkerTlsOptions } from "./mesh-peer-tls";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import {
@@ -92,10 +103,21 @@ import {
   decideAcceptEnrollment,
 } from "../domain/mesh-transitions";
 import { buildWorkerJoinCommand } from "./mesh-join-command";
+import { controllerRelayService } from "./controller-relay-service";
+import {
+  createMeshRelayEnrollmentAdmission,
+  isMeshRelayEnrollmentAdmissionToken,
+} from "./mesh-relay-admission";
+import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
+import { MeshRelayConnector } from "./mesh-relay-connector";
+import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
+import { getMeshRelayFingerprint } from "./mesh-relay-identity";
+import { workerRelayService } from "./worker-relay-service";
 import { meshStateEventEmitter } from "./event-emitter";
 import {
   getMeshRuntimeRole,
   getMeshWorkerDirectory,
+  isMeshWorkerRelayOnly,
   isMeshWorkerExecutionEnabled,
   requireMeshRuntimeRole,
 } from "./mesh-runtime";
@@ -103,6 +125,25 @@ import {
 const log = createLogger("core:mesh-manager");
 const MESH_WORKER_KILL_DELAY_MS = 100;
 const MESH_WORKER_KILL_EXIT_CODE = 1;
+
+function meshRoutesEqual(
+  left: MeshPeerRoute | null | undefined,
+  right: MeshPeerRoute,
+): boolean {
+  if (!left || left.kind !== right.kind) {
+    return false;
+  }
+  return left.kind === "direct" && right.kind === "direct"
+    ? left.endpoint === right.endpoint
+      && left.transport === right.transport
+      && left.tlsTrust === right.tlsTrust
+      && left.tlsCertificate === right.tlsCertificate
+      && left.tlsFingerprint === right.tlsFingerprint
+    : left.kind === "relay" && right.kind === "relay"
+      && left.targetNodeId === right.targetNodeId
+      && left.relayUrl === right.relayUrl
+      && left.relayFingerprint === right.relayFingerprint;
+}
 
 async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> {
   const identity = await ensureLocalMeshNodeIdentity();
@@ -124,18 +165,42 @@ export class MeshManager {
     userId: string,
     name: string,
     ttlSeconds: number,
+    route: MeshEnrollmentRoute = "direct",
   ) {
     requireMeshRuntimeRole("controller");
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const controllerEndpoint = identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint();
-    const created = createMeshEnrollmentToken(userId, name, ttlSeconds, {
-      nodeId: identity.nodeId,
-      fingerprint: identity.fingerprint,
-    });
+    const identity = route === "direct"
+      ? await ensureLocalMeshIdentityWithEndpoint()
+      : await ensureLocalMeshNodeIdentity();
+    const invitation = await controllerRelayService.resolveEnrollmentInvitationTarget(
+      route,
+      route === "direct"
+        ? identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint()
+        : "",
+    );
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1_000).toISOString();
+    const admission = route === "relay"
+      ? await createMeshRelayEnrollmentAdmission({
+          controllerNodeId: identity.nodeId,
+          controllerFingerprint: identity.fingerprint,
+          expiresAt,
+        })
+      : undefined;
+    const created = createMeshEnrollmentToken(
+      userId,
+      name,
+      ttlSeconds,
+      {
+        nodeId: identity.nodeId,
+        fingerprint: identity.fingerprint,
+      },
+      {
+        ...(admission ? { token: admission, expiresAt } : {}),
+      },
+    );
     return {
       ...created,
       workerJoinCommand: buildWorkerJoinCommand({
-        controllerEndpoint,
+        target: invitation.target,
         enrollmentToken: created.token,
         controllerFingerprint: identity.fingerprint,
       }),
@@ -146,10 +211,26 @@ export class MeshManager {
     userId: string,
     name: string,
     ttlSeconds: number,
+    route: MeshEnrollmentRoute = "direct",
   ) {
     requireMeshRuntimeRole("controller");
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const controllerEndpoint = identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint();
+    const identity = route === "direct"
+      ? await ensureLocalMeshIdentityWithEndpoint()
+      : await ensureLocalMeshNodeIdentity();
+    const invitation = await controllerRelayService.resolveEnrollmentInvitationTarget(
+      route,
+      route === "direct"
+        ? identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint()
+        : "",
+    );
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1_000).toISOString();
+    const admission = route === "relay"
+      ? await createMeshRelayEnrollmentAdmission({
+          controllerNodeId: identity.nodeId,
+          controllerFingerprint: identity.fingerprint,
+          expiresAt,
+        })
+      : undefined;
     const created = workspaceWorkerEnrollmentService.create(userId, {
       name,
       ttlSeconds,
@@ -157,11 +238,12 @@ export class MeshManager {
         nodeId: identity.nodeId,
         fingerprint: identity.fingerprint,
       },
+      ...(admission ? { token: admission, expiresAt } : {}),
     });
     return {
       ...created,
       workerJoinCommand: buildWorkerJoinCommand({
-        controllerEndpoint,
+        target: invitation.target,
         enrollmentToken: created.token,
         controllerFingerprint: identity.fingerprint,
       }),
@@ -275,22 +357,47 @@ export class MeshManager {
         "The enrollment request has expired.",
       );
     }
-    if (envelope.workerTransport === "https") {
-      if (!envelope.workerTlsCertificate || !envelope.workerTlsFingerprint) {
+    if (envelope.protocolVersion === 1) {
+      if (envelope.workerTransport === "https") {
+        if (!envelope.workerTlsCertificate || !envelope.workerTlsFingerprint) {
+          throw new DomainError(
+            "mesh_enrollment_tls_identity_missing",
+            "HTTPS workers must provide a TLS certificate and fingerprint.",
+          );
+        }
+        assertMeshWorkerTlsCertificate(
+          envelope.workerTlsCertificate,
+          envelope.workerEndpoint,
+          envelope.workerTlsFingerprint,
+        );
+      } else if (envelope.workerTlsCertificate || envelope.workerTlsFingerprint) {
         throw new DomainError(
-          "mesh_enrollment_tls_identity_missing",
-          "HTTPS workers must provide a TLS certificate and fingerprint.",
+          "mesh_enrollment_tls_identity_unexpected",
+          "HTTP workers must not provide TLS trust material.",
         );
       }
-      assertMeshWorkerTlsCertificate(
-        envelope.workerTlsCertificate,
-        envelope.workerEndpoint,
-        envelope.workerTlsFingerprint,
+    } else {
+      const pairing = controllerRelayService.assertEnrollmentRelayRoute(
+        envelope.route,
       );
-    } else if (envelope.workerTlsCertificate || envelope.workerTlsFingerprint) {
+      if (
+        pairing.controllerNodeId !== identity.nodeId
+        || pairing.controllerFingerprint !== identity.fingerprint
+      ) {
+        throw new DomainError(
+          "mesh_relay_controller_identity_changed",
+          "The persisted relay pairing belongs to a different controller identity.",
+        );
+      }
+    }
+
+    if (
+      isMeshRelayEnrollmentAdmissionToken(envelope.enrollmentToken)
+      !== (envelope.protocolVersion === 2)
+    ) {
       throw new DomainError(
-        "mesh_enrollment_tls_identity_unexpected",
-        "HTTP workers must not provide TLS trust material.",
+        "mesh_enrollment_relay_mismatch",
+        "The enrollment token is not valid for the requested direct or relay route.",
       );
     }
 
@@ -307,6 +414,22 @@ export class MeshManager {
         "mesh_enrollment_token_invalid",
         "The Mesh enrollment token is invalid, expired, or already used.",
       );
+    }
+    try {
+      assertActiveControllerWorkerIdentity({
+        nodeId: envelope.workerNodeId,
+        publicKey: envelope.workerPublicKey,
+        fingerprint: envelope.workerFingerprint,
+      });
+    } catch (error) {
+      if (error instanceof InconsistentMeshWorkerIdentityError) {
+        throw new DomainError(
+          "mesh_worker_identity_conflict",
+          "The worker identity conflicts with an active registration.",
+          { cause: error, details: { nodeId: envelope.workerNodeId } },
+        );
+      }
+      throw error;
     }
 
     // Decide whether to apply enrollment
@@ -352,7 +475,25 @@ export class MeshManager {
       localNodeId: identity.nodeId,
     });
 
-    if (decision.kind === "apply") {
+    const enrollmentRoute: MeshPeerRoute = envelope.protocolVersion === 1
+      ? {
+          kind: "direct",
+          endpoint: envelope.workerEndpoint,
+          transport: envelope.workerTransport,
+          tlsTrust: envelope.workerTransport === "https" ? "pinned" : "none",
+          tlsCertificate: envelope.workerTlsCertificate,
+          tlsFingerprint: envelope.workerTlsFingerprint,
+        }
+      : {
+          kind: "relay",
+          targetNodeId: envelope.workerNodeId,
+          relayUrl: envelope.route.relayUrl,
+          relayFingerprint: envelope.route.relayFingerprint,
+        };
+    if (
+      decision.kind === "apply"
+      || !meshRoutesEqual(existingRegistration?.route, enrollmentRoute)
+    ) {
       const workspaceWorkerEnrollmentId = tokenResult.purpose === "workspace-worker"
         ? tokenResult.workspaceWorkerEnrollmentId!
         : undefined;
@@ -361,13 +502,22 @@ export class MeshManager {
           workerNodeId: envelope.workerNodeId,
           localUserId: tokenResult.userId,
           workerInstanceName: envelope.workerInstanceName ?? null,
-          workerEndpoint: envelope.workerEndpoint,
-          workerTransport: envelope.workerTransport,
+          workerEndpoint: envelope.protocolVersion === 1
+            ? envelope.workerEndpoint
+            : envelope.route.relayUrl,
+          workerTransport: envelope.protocolVersion === 1
+            ? envelope.workerTransport
+            : getMeshTransport(envelope.route.relayUrl),
           workerPublicKey: envelope.workerPublicKey,
           workerFingerprint: envelope.workerFingerprint,
           workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
-          workerTlsCertificate: envelope.workerTlsCertificate,
-          workerTlsFingerprint: envelope.workerTlsFingerprint,
+          workerTlsCertificate: envelope.protocolVersion === 1
+            ? envelope.workerTlsCertificate
+            : null,
+          workerTlsFingerprint: envelope.protocolVersion === 1
+            ? envelope.workerTlsFingerprint
+            : null,
+          route: enrollmentRoute,
           workerDirectory: envelope.workerDirectory,
           workerCapabilities: envelope.workerCapabilities,
           workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
@@ -437,15 +587,15 @@ export class MeshManager {
       { userId: tokenResult.userId },
     );
 
-    const response: Omit<MeshEnrollmentResponse, "signature"> = {
-      protocolVersion: 1,
+    const response = {
+      protocolVersion: envelope.protocolVersion,
       workerNodeId: envelope.workerNodeId,
       controllerNodeId: identity.nodeId,
       controllerInstanceName: identity.instanceName,
       controllerPublicKey: identity.publicKey,
       controllerFingerprint: identity.fingerprint,
       controllerEncryptionPublicKey: identity.encryptionPublicKey,
-    };
+    } satisfies Omit<MeshEnrollmentResponse, "signature">;
     return {
       ...response,
       signature: await signMeshPayload(
@@ -468,7 +618,20 @@ export class MeshManager {
     workerNodeId: string,
   ): Promise<void> {
     requireMeshRuntimeRole("controller");
-    const registration = await getWorkerRegistration(workerNodeId, userId);
+    let registration: MeshWorkerRegistration | null;
+    try {
+      registration = await getWorkerRegistration(workerNodeId, userId);
+    } catch (error) {
+      if (!(error instanceof InvalidMeshRelayRouteError)) {
+        throw error;
+      }
+      log.warn("Revoking worker with an invalid persisted relay route locally", {
+        workerNodeId,
+      });
+      await revokeWorkerRegistration(workerNodeId, userId);
+      meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+      return;
+    }
     const decision = decideRevokeWorker({ registration });
 
     const target = registration!;
@@ -503,18 +666,13 @@ export class MeshManager {
       const signature = await signMeshPayload(
         buildMeshRevocationNoticeSigningPayload(envelope),
       );
-      const route = resolveMeshRoute(
-        target.workerEndpoint,
-        "api/mesh/internal/revocation",
-      );
-      await postMeshControlMessage(route, {
+      await postMeshControlMessage(target.route, "api/mesh/internal/revocation", {
         ...envelope,
         signature,
       }, identity.nodeId, {
         headers: {
           "x-clanky-mesh-node-id": identity.nodeId,
         },
-        tls: getMeshWorkerTlsOptions(target),
       });
     } catch (error) {
       if (isDomainError(error)) {
@@ -574,18 +732,13 @@ export class MeshManager {
     const signature = await signMeshPayload(
       buildMeshWorkerKillRequestSigningPayload(envelope),
     );
-    const route = resolveMeshRoute(
-      registration.workerEndpoint,
-      "api/mesh/internal/kill",
-    );
-    await postMeshControlMessage(route, {
+    await postMeshControlMessage(registration.route, "api/mesh/internal/kill", {
       ...envelope,
       signature,
     }, nonce, {
       headers: {
         "x-clanky-mesh-node-id": identity.nodeId,
       },
-      tls: getMeshWorkerTlsOptions(registration),
     });
   }
 
@@ -689,18 +842,13 @@ export class MeshManager {
       const signature = await signMeshPayload(
         buildMeshRevocationNoticeSigningPayload(envelope),
       );
-      const route = resolveMeshRoute(
-        registration.workerEndpoint,
-        "api/mesh/internal/revocation",
-      );
-      await postMeshControlMessage(route, {
+      await postMeshControlMessage(registration.route, "api/mesh/internal/revocation", {
         ...envelope,
         signature,
       }, identity.nodeId, {
         headers: {
           "x-clanky-mesh-node-id": identity.nodeId,
         },
-        tls: getMeshWorkerTlsOptions(registration),
       });
     } catch (error) {
       log.warn("Dedicated worker remote revocation could not be delivered", {
@@ -802,15 +950,10 @@ export class MeshManager {
     const signature = await signMeshPayload(
       buildMeshHealthCheckSigningPayload(envelope),
     );
-    const route = resolveMeshRoute(
-      worker.workerEndpoint,
-      "api/mesh/internal/health",
-    );
-    const response = await postMeshControlMessage(route, {
+    const response = await postMeshControlMessage(worker.route, "api/mesh/internal/health", {
       ...envelope,
       signature,
     }, nonce, {
-      tls: getMeshWorkerTlsOptions(worker),
       signal: options.signal,
     });
     const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
@@ -999,45 +1142,25 @@ export class MeshManager {
   // --- Worker: enrollment against a controller ---
 
   async enrollWithController(input: {
-    controllerEndpoint: string;
+    target: string;
     enrollmentToken: string;
     expectedFingerprint: string;
   }): Promise<MeshControllerGrant> {
     requireMeshRuntimeRole("worker");
-    assertMeshEndpointAllowed(input.controllerEndpoint);
-    const identity = await ensureLocalMeshIdentityWithEndpoint();
+    const discovered = await discoverMeshEnrollmentTarget(input.target);
+    const identity = discovered.descriptor.role === "controller"
+      ? await ensureLocalMeshIdentityWithEndpoint()
+      : await ensureLocalMeshNodeIdentity();
     const instanceName = requireMeshInstanceName(identity);
-
-    if (!identity.meshEndpoint) {
-      throw new DomainError(
-        "mesh_endpoint_required",
-        "This worker must have a configured mesh endpoint before enrollment.",
-      );
-    }
-
     const execution = await getWorkerExecutionConfig();
-    const workerTlsIdentity = getMeshTransport(identity.meshEndpoint) === "https"
-      ? await getMeshWorkerTlsIdentity()
-      : null;
-    if (getMeshTransport(identity.meshEndpoint) === "https" && !workerTlsIdentity) {
-      throw new DomainError(
-        "mesh_worker_tls_identity_missing",
-        "The HTTPS worker TLS identity is missing from the data directory.",
-      );
-    }
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const envelope: Omit<MeshEnrollmentRequest, "signature"> = {
-      protocolVersion: 1,
+    const common = {
       workerNodeId: identity.nodeId,
       workerInstanceName: instanceName,
-      workerEndpoint: identity.meshEndpoint,
-      workerTransport: getMeshTransport(identity.meshEndpoint),
       workerPublicKey: identity.publicKey,
       workerFingerprint: identity.fingerprint,
       workerEncryptionPublicKey: identity.encryptionPublicKey,
-      workerTlsCertificate: workerTlsIdentity?.certificate ?? null,
-      workerTlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
       workerDirectory: execution.directory,
       workerCapabilities: execution.capabilities,
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
@@ -1047,27 +1170,182 @@ export class MeshManager {
       nonce,
       expiresAt,
     };
-    const signature = await signMeshPayload(
-      buildMeshEnrollmentRequestSigningPayload(envelope),
-    );
+    let controllerRoute;
+    let unsignedEnvelope:
+      | Omit<MeshEnrollmentRequestV1, "signature">
+      | Omit<MeshEnrollmentRequestV2, "signature">;
+    let rawResponse: unknown;
 
-    const route = resolveMeshRoute(
-      input.controllerEndpoint,
-      "api/mesh/internal/enrollment",
-    );
-    const response = await postMeshControlMessage(route, {
-      ...envelope,
-      signature,
-    }, identity.nodeId);
+    if (discovered.descriptor.role === "controller") {
+      if (isMeshWorkerRelayOnly()) {
+        throw new DomainError(
+          "mesh_relay_only_direct_enrollment_forbidden",
+          "A relay-only Mesh worker cannot enroll through a direct controller route.",
+        );
+      }
+      if (discovered.descriptor.fingerprint !== input.expectedFingerprint) {
+        throw new DomainError(
+          "mesh_enrollment_controller_mismatch",
+          "The discovered controller fingerprint does not match the expected value.",
+        );
+      }
+      assertMeshPeerIdentity(
+        discovered.descriptor.publicKey,
+        discovered.descriptor.fingerprint,
+        "discovered controller",
+      );
+      if (!identity.meshEndpoint) {
+        throw new DomainError(
+          "mesh_endpoint_required",
+          "This worker must have a configured mesh endpoint before direct enrollment.",
+        );
+      }
+      assertMeshEndpointAllowed(discovered.target);
+      const workerTransport = getMeshTransport(identity.meshEndpoint);
+      const workerTlsIdentity = workerTransport === "https"
+        ? await getMeshWorkerTlsIdentity()
+        : null;
+      if (workerTransport === "https" && !workerTlsIdentity) {
+        throw new DomainError(
+          "mesh_worker_tls_identity_missing",
+          "The HTTPS worker TLS identity is missing from the data directory.",
+        );
+      }
+      unsignedEnvelope = {
+        protocolVersion: 1,
+        ...common,
+        workerEndpoint: identity.meshEndpoint,
+        workerTransport,
+        workerTlsCertificate: workerTlsIdentity?.certificate ?? null,
+        workerTlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
+      };
+      const envelope = {
+        ...unsignedEnvelope,
+        signature: await signMeshPayload(
+          buildMeshEnrollmentRequestSigningPayload(unsignedEnvelope),
+        ),
+      } as MeshEnrollmentRequest;
+      controllerRoute = {
+        kind: "direct" as const,
+        endpoint: discovered.target,
+        transport: getMeshTransport(discovered.target),
+        tlsTrust: getMeshTransport(discovered.target) === "https"
+          ? "system" as const
+          : "none" as const,
+        tlsCertificate: null,
+        tlsFingerprint: null,
+      };
+      const response = await postMeshControlMessage(
+        controllerRoute,
+        "api/mesh/internal/enrollment",
+        envelope,
+        identity.nodeId,
+      );
+      rawResponse = await readMeshControlResponseJson<unknown>(response);
+    } else {
+      if (
+        discovered.descriptor.controllerFingerprint
+          !== input.expectedFingerprint
+      ) {
+        throw new DomainError(
+          "mesh_enrollment_controller_mismatch",
+          "The relay's controller fingerprint does not match the expected value.",
+        );
+      }
+      if (!discovered.descriptor.controllerNodeId) {
+        throw new DomainError(
+          "mesh_enrollment_relay_unpaired",
+          "The relay is not paired with a controller.",
+        );
+      }
+      let relayFingerprint: string;
+      try {
+        relayFingerprint = getMeshRelayFingerprint(
+          discovered.descriptor.publicKey,
+        );
+      } catch (error) {
+        throw new DomainError(
+          "mesh_enrollment_relay_identity_invalid",
+          "The relay descriptor contains an invalid public identity.",
+          { cause: error },
+        );
+      }
+      if (relayFingerprint !== discovered.descriptor.fingerprint) {
+        throw new DomainError(
+          "mesh_enrollment_relay_identity_invalid",
+          "The relay public key does not match its advertised fingerprint.",
+        );
+      }
+      controllerRoute = {
+        kind: "relay" as const,
+        targetNodeId: discovered.descriptor.controllerNodeId,
+        relayUrl: discovered.target,
+        relayFingerprint: discovered.descriptor.fingerprint,
+      };
+      await workerRelayService.assertRouteCompatible(
+        discovered.descriptor.controllerNodeId,
+        controllerRoute,
+      );
+      unsignedEnvelope = {
+        protocolVersion: 2,
+        ...common,
+        route: {
+          kind: "relay" as const,
+          relayUrl: discovered.target,
+          relayFingerprint: discovered.descriptor.fingerprint,
+        },
+      };
+      const envelope = {
+        ...unsignedEnvelope,
+        signature: await signMeshPayload(
+          buildMeshEnrollmentRequestSigningPayload(unsignedEnvelope),
+        ),
+      } as MeshEnrollmentRequest;
+      const connector = new MeshRelayConnector({
+        config: {
+          relayUrl: discovered.target,
+          relayFingerprint: discovered.descriptor.fingerprint,
+          role: "worker",
+          targetNodeId: discovered.descriptor.controllerNodeId,
+          enrollmentAdmission: input.enrollmentToken,
+        },
+      });
+      try {
+        await connector.connect();
+        const transport = createMeshRelayPeerTransport(() => connector);
+        const response = await postMeshControlMessage(
+          controllerRoute,
+          "api/mesh/internal/enrollment",
+          envelope,
+          identity.nodeId,
+          { transport },
+        );
+        rawResponse = await readMeshControlResponseJson<unknown>(response);
+      } finally {
+        connector.close(1000, "Worker relay enrollment complete");
+      }
+    }
 
-    const body = await readMeshControlResponseJson<MeshEnrollmentResponse>(
-      response,
+    const parsedResponse = MeshEnrollmentResponseSchema.safeParse(
+      rawResponse,
     );
+    if (!parsedResponse.success) {
+      throw new DomainError(
+        "mesh_enrollment_response_invalid",
+        "The controller enrollment response is incompatible or invalid.",
+        { cause: parsedResponse.error },
+      );
+    }
+    const body = parsedResponse.data;
 
     if (
-      body.protocolVersion !== 1
+      body.protocolVersion !== unsignedEnvelope.protocolVersion
       || body.workerNodeId !== identity.nodeId
       || body.controllerFingerprint !== input.expectedFingerprint
+      || (
+        controllerRoute.kind === "relay"
+        && body.controllerNodeId !== controllerRoute.targetNodeId
+      )
     ) {
       throw new DomainError(
         "mesh_enrollment_controller_mismatch",
@@ -1099,17 +1377,42 @@ export class MeshManager {
       localNodeId: identity.nodeId,
     });
 
-    if (decision.kind === "apply") {
-      return saveControllerGrant({
-        controllerNodeId: body.controllerNodeId,
-        controllerInstanceName: body.controllerInstanceName,
-        controllerPublicKey: body.controllerPublicKey,
-        controllerFingerprint: body.controllerFingerprint,
-        controllerEncryptionPublicKey: body.controllerEncryptionPublicKey ?? null,
-      });
+    if (controllerRoute.kind === "relay") {
+      await workerRelayService.assertRouteCompatible(
+        body.controllerNodeId,
+        controllerRoute,
+      );
+    }
+    if (
+      decision.kind === "apply"
+      || !meshRoutesEqual(existingGrant?.controllerRoute, controllerRoute)
+    ) {
+      let grant: MeshControllerGrant;
+      try {
+        grant = await saveControllerGrant({
+          controllerNodeId: body.controllerNodeId,
+          controllerInstanceName: body.controllerInstanceName,
+          controllerPublicKey: body.controllerPublicKey,
+          controllerFingerprint: body.controllerFingerprint,
+          controllerEncryptionPublicKey: body.controllerEncryptionPublicKey ?? null,
+          controllerRoute,
+        });
+      } catch (error) {
+        if (error instanceof InconsistentMeshControllerRelayGrantError) {
+          throw new DomainError(
+            "mesh_worker_relay_grants_inconsistent",
+            error.message,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+      await workerRelayService.refresh();
+      return grant;
     }
 
     // idempotent — return existing grant
+    await workerRelayService.refresh();
     return existingGrant!;
   }
 

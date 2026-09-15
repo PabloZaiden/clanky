@@ -15,6 +15,22 @@ import { isDomainError } from "../core/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 
+const meshErrorMappings = {
+  mesh_enrollment_target_invalid: { status: 400 },
+  mesh_enrollment_discovery_invalid: { status: 400 },
+  mesh_enrollment_discovery_too_large: { status: 400 },
+  mesh_enrollment_discovery_unreachable: { status: 503 },
+  mesh_enrollment_discovery_timeout: { status: 503 },
+  mesh_enrollment_discovery_rejected: { status: 502 },
+  mesh_enrollment_relay_unpaired: { status: 409 },
+  mesh_enrollment_relay_identity_invalid: { status: 400 },
+  mesh_enrollment_response_invalid: { status: 502 },
+  mesh_enrollment_relay_mismatch: { status: 409 },
+  mesh_relay_not_paired: { status: 409 },
+  mesh_relay_unavailable: { status: 503 },
+  mesh_worker_relay_grants_inconsistent: { status: 409 },
+} as const;
+
 export function meshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
     const status = error.code === "mesh_worker_not_found"
@@ -25,6 +41,8 @@ export function meshErrorResponse(error: unknown): Response {
           || error.code === "workspace_worker_enrollment_expired"
           ? 410
         : error.code === "mesh_enrollment_controller_mismatch"
+          || error.code === "mesh_enrollment_relay_mismatch"
+          || error.code === "mesh_relay_not_paired"
           || error.code === "mesh_enrollment_self"
           || error.code === "workspace_worker_enrollment_claimed"
           || error.code === "workspace_worker_already_attached"
@@ -39,13 +57,18 @@ export function meshErrorResponse(error: unknown): Response {
               : error.code === "mesh_peer_revoked"
                 ? 403
               : error.code === "mesh_control_request_unreachable"
+                || error.code === "mesh_enrollment_discovery_unreachable"
+                || error.code === "mesh_enrollment_discovery_timeout"
+                || error.code === "mesh_relay_unavailable"
                 ? 503
                 : error.code === "mesh_control_request_rejected"
+                  || error.code === "mesh_enrollment_discovery_rejected"
                   ? 502
                   : error.code.startsWith("mesh_")
                     ? 400
                     : 500;
     return domainErrorResponse(error, {
+      mappings: meshErrorMappings,
       fallback: {
         error: "mesh_operation_failed",
         message: "Mesh operation failed",
@@ -54,6 +77,7 @@ export function meshErrorResponse(error: unknown): Response {
     });
   }
   return domainErrorResponse(error, {
+    mappings: meshErrorMappings,
     fallback: {
       error: "mesh_operation_failed",
       message: "Mesh operation failed",
@@ -97,6 +121,7 @@ export const meshRoutes = defineRoutes({
             ctx.requireOwner().id,
             parsed.data.name,
             parsed.data.ttlSeconds,
+            parsed.data.route,
           ),
           { status: 201 },
         );
@@ -115,7 +140,7 @@ export const meshRoutes = defineRoutes({
       if (!parsed.success) return parsed.response;
       try {
         const grant = await meshManager.enrollWithController({
-          controllerEndpoint: parsed.data.controllerEndpoint,
+          target: parsed.data.target,
           enrollmentToken: parsed.data.enrollmentToken,
           expectedFingerprint: parsed.data.expectedControllerFingerprint,
         });

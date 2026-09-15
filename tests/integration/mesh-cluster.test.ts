@@ -69,6 +69,7 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
     if (bootstrap.exitCode !== 0) {
       throw new Error(bootstrap.stderr.toString());
     }
+
     apiKey = (JSON.parse(bootstrap.stdout.toString().trim().split("\n").at(-1)!) as {
       apiKey: string;
     }).apiKey;
@@ -101,6 +102,196 @@ async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
     { description: `${role} to become healthy`, timeoutMs: 10_000 },
   );
   return node;
+}
+
+async function startRelay(
+  controllerFingerprint: string,
+): Promise<MeshProcess> {
+  const dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-relay-"));
+  const port = await availablePort();
+  const baseUrl = `http://127.0.0.1:${String(port)}`;
+  const child = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "relay",
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: dataDir,
+      CLANKY_HOST: "127.0.0.1",
+      CLANKY_PORT: String(port),
+      CLANKY_RELAY_CONTROLLER_FINGERPRINT: controllerFingerprint,
+      CLANKY_LOG_LEVEL: "fatal",
+    },
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  const relay = { baseUrl, dataDir, child };
+  processes.push(relay);
+  await pollUntil(
+    async () => fetch(`${baseUrl}/.well-known/clanky-mesh`)
+      .then((response) => response.ok)
+      .catch(() => false),
+    (ready) => ready,
+    { description: "Mesh relay to become healthy", timeoutMs: 10_000 },
+  );
+  return relay;
+}
+
+async function restartRelay(
+  relay: MeshProcess,
+  controllerFingerprint: string,
+): Promise<void> {
+  relay.child.kill();
+  await relay.child.exited;
+  const port = new URL(relay.baseUrl).port;
+  relay.child = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "relay",
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: relay.dataDir,
+      CLANKY_HOST: "127.0.0.1",
+      CLANKY_PORT: port,
+      CLANKY_RELAY_CONTROLLER_FINGERPRINT: controllerFingerprint,
+      CLANKY_LOG_LEVEL: "fatal",
+    },
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  await pollUntil(
+    async () => fetch(`${relay.baseUrl}/.well-known/clanky-mesh`)
+      .then((response) => response.ok)
+      .catch(() => false),
+    (ready) => ready,
+    { description: "restarted Mesh relay to become healthy", timeoutMs: 10_000 },
+  );
+}
+
+async function startRelayOnlyWorker(input: {
+  relayUrl: string;
+  token: string;
+  controllerFingerprint: string;
+}): Promise<MeshProcess> {
+  const dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-relay-worker-"));
+  const environment = {
+    ...process.env,
+    CLANKY_DATA_DIR: dataDir,
+    CLANKY_LOG_LEVEL: "fatal",
+    CLANKY_DISABLE_PASSKEY: undefined,
+    CLANKY_PUBLIC_BASE_URL: undefined,
+  };
+  const bootstrap = Bun.spawnSync([
+    process.execPath,
+    "src/index.ts",
+    "worker",
+    "bootstrap",
+    "--relay-only",
+    "--worker-directory",
+    dataDir,
+    "--instance-name",
+    "relay-worker",
+  ], {
+    cwd: process.cwd(),
+    env: environment,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (bootstrap.exitCode !== 0) {
+    throw new Error(bootstrap.stderr.toString());
+  }
+  const joinResult = Bun.spawnSync([
+    process.execPath,
+    "src/index.ts",
+    "worker",
+    "join",
+    input.relayUrl,
+    "--token",
+    input.token,
+    "--fingerprint",
+    input.controllerFingerprint,
+  ], {
+    cwd: process.cwd(),
+    env: environment,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (joinResult.exitCode !== 0) {
+    throw new Error(joinResult.stderr.toString());
+  }
+  const child = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "serve",
+  ], {
+    cwd: process.cwd(),
+    env: environment,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  const worker = { baseUrl: "", dataDir, child };
+  processes.push(worker);
+  return worker;
+}
+
+function joinRelayWorker(input: {
+  worker: MeshProcess;
+  relayUrl: string;
+  token: string;
+  controllerFingerprint: string;
+}): void {
+  const result = Bun.spawnSync([
+    process.execPath,
+    "src/index.ts",
+    "worker",
+    "join",
+    input.relayUrl,
+    "--token",
+    input.token,
+    "--fingerprint",
+    input.controllerFingerprint,
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: input.worker.dataDir,
+      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_DISABLE_PASSKEY: undefined,
+      CLANKY_PUBLIC_BASE_URL: undefined,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.toString());
+  }
+}
+
+function restartRelayOnlyWorker(worker: MeshProcess): void {
+  worker.child = Bun.spawn([
+    process.execPath,
+    "src/index.ts",
+    "serve",
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CLANKY_DATA_DIR: worker.dataDir,
+      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_DISABLE_PASSKEY: undefined,
+      CLANKY_PUBLIC_BASE_URL: undefined,
+    },
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
 }
 
 async function restartWorker(
@@ -177,14 +368,13 @@ async function enroll(controller: MeshProcess, worker: MeshProcess): Promise<voi
     workerJoinCommand: string;
   };
   expect(enrollment.workerJoinCommand).toBe(
-    `clanky worker join --controller '${controller.baseUrl}' --token '${enrollment.token}' --fingerprint '${enrollment.enrollment.controllerFingerprint}'`,
+    `clanky worker join '${controller.baseUrl}' --token '${enrollment.token}' --fingerprint '${enrollment.enrollment.controllerFingerprint}'`,
   );
   const joinResult = Bun.spawnSync([
     process.execPath,
     "src/index.ts",
     "worker",
     "join",
-    "--controller",
     controller.baseUrl,
     "--token",
     enrollment.token,
@@ -216,6 +406,184 @@ afterEach(async () => {
 });
 
 describe("controller-worker Mesh", () => {
+  test("enrolls multiple relay-only workers and reconnects after restarts", async () => {
+    const controller = await startNode("controller");
+    const controllerStatus = await jsonRequest(controller, "/api/mesh/status");
+    const unavailableRelayInvitation = await jsonRequest(
+      controller,
+      "/api/mesh/enrollment-tokens",
+      {
+        method: "POST",
+        body: { name: "relay unavailable", ttlSeconds: 900, route: "relay" },
+      },
+    );
+    expect(unavailableRelayInvitation).toMatchObject({
+      status: 409,
+      body: { error: "mesh_relay_not_paired" },
+    });
+    const relay = await startRelay(controllerStatus.body.node.fingerprint as string);
+    const paired = await jsonRequest(controller, "/api/mesh/relay", {
+      method: "POST",
+      body: { relayUrl: relay.baseUrl },
+    });
+    expect(paired).toMatchObject({
+      status: 201,
+      body: { paired: true, relayUrl: relay.baseUrl },
+    });
+
+    const created = await jsonRequest(
+      controller,
+      "/api/mesh/enrollment-tokens",
+      {
+        method: "POST",
+        body: { name: "relay integration", ttlSeconds: 900, route: "relay" },
+      },
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.workerJoinCommand).toBe(
+      `clanky worker join '${relay.baseUrl}' --token '${created.body.token}' --fingerprint '${created.body.enrollment.controllerFingerprint}'`,
+    );
+    const worker = await startRelayOnlyWorker({
+      relayUrl: relay.baseUrl,
+      token: created.body.token as string,
+      controllerFingerprint:
+        created.body.enrollment.controllerFingerprint as string,
+    });
+    const secondEnrollment = await jsonRequest(
+      controller,
+      "/api/mesh/enrollment-tokens",
+      {
+        method: "POST",
+        body: { name: "second relay worker", ttlSeconds: 900, route: "relay" },
+      },
+    );
+    expect(secondEnrollment.status).toBe(201);
+    const secondWorker = await startRelayOnlyWorker({
+      relayUrl: relay.baseUrl,
+      token: secondEnrollment.body.token as string,
+      controllerFingerprint:
+        secondEnrollment.body.enrollment.controllerFingerprint as string,
+    });
+
+    const status = await pollUntil(
+      async () => (await jsonRequest(controller, "/api/mesh/status")).body,
+      (body) => body.workers?.length === 2
+        && body.workers.every((entry: any) => entry.route?.kind === "relay"),
+      {
+        description: "relay worker registration",
+        timeoutMs: 10_000,
+        formatLastObserved: (body) => JSON.stringify(body),
+      },
+    );
+    const workers = status.workers as Array<{
+      workerNodeId: string;
+      workerEndpoint: string;
+      route: { kind: string; targetNodeId: string; relayUrl: string };
+    }>;
+    for (const registration of workers) {
+      expect(registration).toMatchObject({
+        workerEndpoint: relay.baseUrl,
+        route: {
+          kind: "relay",
+          targetNodeId: registration.workerNodeId,
+          relayUrl: relay.baseUrl,
+        },
+      });
+    }
+
+    const execute = async (workerNodeId: string, directory: string) => await jsonRequest(
+      controller,
+      `/api/execution-hosts/mesh/${encodeURIComponent(workerNodeId)}/exec`,
+      {
+        method: "POST",
+        body: {
+          command: "pwd",
+          args: [],
+          cwd: directory,
+          timeoutMs: 5_000,
+        },
+      },
+    );
+    const executeWhenReady = async (
+      workerNodeId: string,
+      directory: string,
+      description: string,
+    ) => await pollUntil(
+      async () => await execute(workerNodeId, directory),
+      (result) => result.status === 200,
+      {
+        description,
+        timeoutMs: 15_000,
+        formatLastObserved: (result) => JSON.stringify(result),
+      },
+    );
+    const [firstRegistration, secondRegistration] = workers;
+    const initialExecutions = await Promise.all([
+      executeWhenReady(
+        firstRegistration!.workerNodeId,
+        worker.dataDir,
+        "first relay worker command execution",
+      ),
+      executeWhenReady(
+        secondRegistration!.workerNodeId,
+        secondWorker.dataDir,
+        "second relay worker command execution",
+      ),
+    ]);
+    expect(initialExecutions.map((result) => result.body.stdout).sort()).toEqual([
+      `${secondWorker.dataDir}\n`,
+      `${worker.dataDir}\n`,
+    ].sort());
+
+    const replacementEnrollment = await jsonRequest(
+      controller,
+      "/api/mesh/enrollment-tokens",
+      {
+        method: "POST",
+        body: { name: "replacement relay enrollment", ttlSeconds: 900, route: "relay" },
+      },
+    );
+    expect(replacementEnrollment.status).toBe(201);
+    joinRelayWorker({
+      worker,
+      relayUrl: relay.baseUrl,
+      token: replacementEnrollment.body.token as string,
+      controllerFingerprint:
+        replacementEnrollment.body.enrollment.controllerFingerprint as string,
+    });
+
+    worker.child.kill();
+    await worker.child.exited;
+    restartRelayOnlyWorker(worker);
+    const restartedExecution = await executeWhenReady(
+      firstRegistration!.workerNodeId,
+      worker.dataDir,
+      "persisted relay worker route after restart",
+    );
+    expect(restartedExecution.body).toMatchObject({
+      success: true,
+      stdout: `${worker.dataDir}\n`,
+    });
+
+    await restartRelay(
+      relay,
+      controllerStatus.body.node.fingerprint as string,
+    );
+    const afterRelayRestart = await Promise.all([
+      executeWhenReady(
+        firstRegistration!.workerNodeId,
+        worker.dataDir,
+        "first worker after relay restart",
+      ),
+      executeWhenReady(
+        secondRegistration!.workerNodeId,
+        secondWorker.dataDir,
+        "second worker after relay restart",
+      ),
+    ]);
+    expect(afterRelayRestart.every((result) => result.body.success === true)).toBe(true);
+  }, 60_000);
+
   test("one worker accepts isolated grants from two controllers", async () => {
     const [controllerA, controllerB, worker] = await Promise.all([
       startNode("controller"),
@@ -400,7 +768,6 @@ describe("controller-worker Mesh", () => {
       "src/index.ts",
       "worker",
       "join",
-      "--controller",
       controller.baseUrl,
       "--token",
       enrollment.token,

@@ -28,8 +28,8 @@ RUN case "$TARGETARCH" in \
     bun src/build.ts --target="$BUN_TARGET" && \
     cp "dist/clanky-${BUN_TARGET#bun-}" /tmp/clanky
 
-# Production stage - minimal image
-FROM debian:trixie-slim
+# Shared production stage - minimal image
+FROM debian:trixie-slim AS runtime
 
 WORKDIR /app
 
@@ -76,5 +76,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Use tini as init process for proper signal handling
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Run the server subcommand
+# Dedicated relay image target.
+FROM runtime AS relay
+CMD ["/app/clanky", "relay"]
+
+# Keep the main image as the default Dockerfile target.
+FROM runtime AS server
 CMD ["/app/clanky", "serve"]

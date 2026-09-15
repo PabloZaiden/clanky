@@ -207,7 +207,12 @@ export class MeshTerminalGateway {
     await this.requireValidatedLease(sessionId, sessionToken);
   }
 
-  async open(socket: MeshTerminalSocket, sessionId: string, sessionToken: string): Promise<void> {
+  async open(
+    socket: MeshTerminalSocket,
+    sessionId: string,
+    sessionToken: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (this.relays.has(sessionId) || this.opening.has(sessionId)) {
       throw new DomainError("mesh_terminal_session_in_use", "The Mesh terminal session is already connected.");
     }
@@ -216,9 +221,24 @@ export class MeshTerminalGateway {
       async () => await this.openInternal(socket, sessionId, sessionToken),
     );
     this.opening.set(sessionId, pending);
+    const abortHandler = (): void => {
+      void this.close(
+        sessionId,
+        false,
+        1000,
+        "Mesh terminal opening aborted",
+        socket,
+      );
+    };
+    if (signal?.aborted) {
+      abortHandler();
+    } else {
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    }
     try {
       await pending;
     } finally {
+      signal?.removeEventListener("abort", abortHandler);
       if (this.opening.get(sessionId) === pending) {
         this.opening.delete(sessionId);
       }

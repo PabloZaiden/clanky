@@ -12,6 +12,7 @@ import {
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
 import { ExecutionHostCapabilitiesSchema } from "./execution-host";
+import { ControllerRelayUrlSchema } from "./mesh-relay";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
 export const MeshInstanceNameSchema = z.string()
@@ -31,12 +32,29 @@ export const MeshEndpointSchema = z.string().trim().url().superRefine((value, co
     });
   }
 });
+export const MeshOriginSchema = MeshEndpointSchema.superRefine((value, context) => {
+  const url = new URL(value);
+  if (
+    url.username
+    || url.password
+    || url.pathname !== "/"
+    || url.search
+    || url.hash
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "mesh target must be an absolute HTTP(S) origin",
+    });
+  }
+});
+export const MeshEnrollmentRouteSchema = z.enum(["direct", "relay"]);
 
 // --- Controller-side enrollment token ---
 
 export const CreateMeshEnrollmentTokenRequestSchema = z.object({
   name: z.string().trim().min(1).max(120).default("Mesh enrollment"),
   ttlSeconds: z.number().int().min(60).max(86_400).default(900),
+  route: MeshEnrollmentRouteSchema.default("direct"),
 });
 
 export const CreateWorkspaceWorkerEnrollmentRequestSchema =
@@ -59,24 +77,19 @@ export const RevokeMeshWorkerRequestSchema = z.object({
 });
 
 export const EnrollMeshWorkerRequestSchema = z.object({
-  controllerEndpoint: MeshEndpointSchema,
+  target: MeshOriginSchema,
   enrollmentToken: z.string().trim().min(1),
   expectedControllerFingerprint: z.string().trim().min(1),
 });
 
 // --- Worker enrollment request (worker → controller) ---
 
-export const MeshEnrollmentRequestSchema = z.object({
-  protocolVersion: z.literal(1),
+const MeshEnrollmentRequestCommonSchema = z.object({
   workerNodeId: z.string().trim().min(1),
   workerInstanceName: MeshInstanceNameSchema.nullable().optional(),
-  workerEndpoint: MeshEndpointSchema,
-  workerTransport: MeshTransportSchema,
   workerPublicKey: z.string().min(1),
   workerFingerprint: z.string().trim().min(1),
   workerEncryptionPublicKey: z.string().min(1).optional(),
-  workerTlsCertificate: z.string().trim().min(1).nullable(),
-  workerTlsFingerprint: z.string().trim().min(1).nullable(),
   workerDirectory: z.string().trim().min(1).max(16_384),
   workerCapabilities: ExecutionHostCapabilitiesSchema,
   workerAcceptRemoteExecution: z.boolean(),
@@ -86,6 +99,14 @@ export const MeshEnrollmentRequestSchema = z.object({
   nonce: z.string().trim().min(1),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1),
+});
+
+export const MeshEnrollmentRequestV1Schema = MeshEnrollmentRequestCommonSchema.extend({
+  protocolVersion: z.literal(1),
+  workerEndpoint: MeshEndpointSchema,
+  workerTransport: MeshTransportSchema,
+  workerTlsCertificate: z.string().trim().min(1).nullable(),
+  workerTlsFingerprint: z.string().trim().min(1).nullable(),
 }).superRefine((value, context) => {
   const endpointTransport = new URL(value.workerEndpoint).protocol === "https:"
     ? "https"
@@ -115,8 +136,21 @@ export const MeshEnrollmentRequestSchema = z.object({
   }
 });
 
-export const MeshEnrollmentResponseSchema = z.object({
-  protocolVersion: z.literal(1),
+export const MeshEnrollmentRequestV2Schema = MeshEnrollmentRequestCommonSchema.extend({
+  protocolVersion: z.literal(2),
+  route: z.object({
+    kind: z.literal("relay"),
+    relayUrl: ControllerRelayUrlSchema,
+    relayFingerprint: z.string().trim().min(1),
+  }).strict(),
+}).strict();
+
+export const MeshEnrollmentRequestSchema = z.union([
+  MeshEnrollmentRequestV1Schema,
+  MeshEnrollmentRequestV2Schema,
+]);
+
+const MeshEnrollmentResponseCommonSchema = z.object({
   workerNodeId: z.string().trim().min(1),
   controllerNodeId: z.string().trim().min(1),
   controllerInstanceName: MeshInstanceNameSchema.nullable(),
@@ -125,6 +159,24 @@ export const MeshEnrollmentResponseSchema = z.object({
   controllerEncryptionPublicKey: z.string().min(1).optional(),
   signature: z.string().trim().min(1),
 });
+
+export const MeshEnrollmentResponseV1Schema =
+  MeshEnrollmentResponseCommonSchema.extend({
+    protocolVersion: z.literal(1),
+  }).strict();
+
+export const MeshEnrollmentResponseV2Schema =
+  MeshEnrollmentResponseCommonSchema.extend({
+    protocolVersion: z.literal(2),
+  }).strict();
+
+export const MeshEnrollmentResponseSchema = z.discriminatedUnion(
+  "protocolVersion",
+  [
+    MeshEnrollmentResponseV1Schema,
+    MeshEnrollmentResponseV2Schema,
+  ],
+);
 
 // --- Signed health check (controller → worker) ---
 
@@ -184,7 +236,12 @@ export type UpdateMeshInstanceNameRequest = z.infer<typeof UpdateMeshInstanceNam
 export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>;
 export type RevokeMeshWorkerRequest = z.infer<typeof RevokeMeshWorkerRequestSchema>;
 export type EnrollMeshWorkerRequest = z.infer<typeof EnrollMeshWorkerRequestSchema>;
+export type MeshEnrollmentRoute = z.infer<typeof MeshEnrollmentRouteSchema>;
+export type MeshEnrollmentRequestV1 = z.infer<typeof MeshEnrollmentRequestV1Schema>;
+export type MeshEnrollmentRequestV2 = z.infer<typeof MeshEnrollmentRequestV2Schema>;
 export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestSchema>;
+export type MeshEnrollmentResponseV1 = z.infer<typeof MeshEnrollmentResponseV1Schema>;
+export type MeshEnrollmentResponseV2 = z.infer<typeof MeshEnrollmentResponseV2Schema>;
 export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema>;
 export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
 export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseSchema>;

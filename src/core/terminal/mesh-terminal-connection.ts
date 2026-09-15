@@ -18,6 +18,7 @@ import {
 } from "@/shared/mesh-terminal";
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
+import type { MeshPeerRoute } from "@/shared/mesh";
 import { getWorkerRegistration } from "../../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
@@ -25,8 +26,11 @@ import {
 } from "../../persistence/mesh-node-identity";
 import { encryptMeshPayload, decryptMeshPayload } from "../mesh-payload-crypto";
 import { buildMeshTerminalSessionSigningPayload } from "../mesh-terminal-protocol";
-import { getMeshWorkerTlsOptions } from "../mesh-peer-tls";
-import { resolveMeshRoute } from "../mesh-transport-config";
+import {
+  openMeshPeerSocket,
+  requestMeshPeer,
+  type MeshDuplexSocket,
+} from "../mesh-peer-transport";
 import { requireCurrentUserId } from "../user-context";
 import { DomainError } from "../domain-error";
 import type {
@@ -66,11 +70,10 @@ export interface MeshTerminalConnectionConfig {
 }
 
 interface OpenMeshTerminalSession {
-  endpoint: string;
+  route: MeshPeerRoute;
   sessionId: string;
   sessionToken: string;
   expiresAt: number;
-  tls?: Bun.TLSOptions;
 }
 
 const activeMeshTerminalConnections = new Set<MeshInteractiveTerminalConnection>();
@@ -88,27 +91,9 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function toWebSocketUrl(url: string): string {
-  return url.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
-}
-
-function createWebSocket(
-  url: string,
-  headers: Record<string, string>,
-  tls?: Bun.TLSOptions,
-): WebSocket {
-  const BunWebSocket = WebSocket as unknown as {
-    new (
-      url: string | URL,
-      options?: { headers?: Record<string, string>; tls?: Bun.TLSOptions },
-    ): WebSocket;
-  };
-  return new BunWebSocket(url, { headers, tls });
-}
-
 export class MeshInteractiveTerminalConnection implements InteractiveTerminalConnection {
   private readonly fetchImpl: typeof globalThis.fetch;
-  private socket: WebSocket | null = null;
+  private socket: MeshDuplexSocket | null = null;
   private connectPromise: Promise<InteractiveTerminalConnectResult> | null = null;
   private disposePromise: Promise<void> | null = null;
   private sessionRequestController: AbortController | null = null;
@@ -121,7 +106,6 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
   private runtimeEnvironment?: Record<string, string>;
   private allowPersistentSessionCreate: boolean;
   private persistentAttachRetried = false;
-  private workerTls: Bun.TLSOptions | undefined;
 
   constructor(private readonly config: MeshTerminalConnectionConfig) {
     this.fetchImpl = config.fetch ?? globalThis.fetch;
@@ -195,13 +179,10 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (this.disposed || this.closing) {
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
-    const websocketUrl = toWebSocketUrl(
-      resolveMeshRoute(session.endpoint, "api/mesh/internal/terminal"),
-    );
-    const socket = createWebSocket(websocketUrl, {
+    const socket = openMeshPeerSocket(session.route, "api/mesh/internal/terminal", {
       "x-clanky-mesh-session-id": session.sessionId,
       "x-clanky-mesh-session-token": session.sessionToken,
-    }, session.tls);
+    });
     this.socket = socket;
     const readyPromise = new Promise<InteractiveTerminalConnectResult>((resolve, reject) => {
       this.readyResolve = resolve;
@@ -327,20 +308,17 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       this.config.executionNodeId,
       localUserId,
     );
-    const endpoint = registration?.workerEndpoint;
     if (
       !registration
       || registration.grantStatus !== "active"
       || !registration.workerEncryptionPublicKey
-      || !endpoint
     ) {
       throw new DomainError(
         "mesh_terminal_target_unavailable",
         "The selected workspace execution peer cannot accept terminal sessions.",
       );
     }
-    const workerTls = getMeshWorkerTlsOptions(registration);
-    this.workerTls = workerTls;
+    const peerRoute = registration.route;
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
     const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
       protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
@@ -375,8 +353,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       ...unsigned,
       signature: await signMeshPayload(buildMeshTerminalSessionSigningPayload(unsigned)),
     };
-    const route = resolveMeshRoute(endpoint, "api/mesh/internal/terminal/session");
-    const response = await this.post(route, request, {
+    const response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
       "x-clanky-mesh-node-id": identity.nodeId,
       "x-clanky-mesh-request-id": request.requestId,
     });
@@ -396,16 +373,16 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       throw new DomainError("mesh_terminal_session_expired", "The Mesh terminal session has expired.");
     }
     return {
-      endpoint,
+      route: peerRoute,
       sessionId: response.sessionId,
       sessionToken,
       expiresAt: expiresAtMs,
-      tls: workerTls,
     };
   }
 
   private async post(
-    url: string,
+    route: MeshPeerRoute,
+    path: string,
     body: MeshTerminalSessionRequest,
     headers: Record<string, string>,
   ): Promise<MeshTerminalSessionResponse> {
@@ -414,7 +391,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const timer = setTimeout(() => controller.abort(), MESH_TERMINAL_SESSION_REQUEST_TIMEOUT_MS);
     timer.unref?.();
     try {
-      const response = await this.fetchImpl(url, {
+      const response = await requestMeshPeer(route, path, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -422,7 +399,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         },
         body: JSON.stringify(body),
         signal: controller.signal,
-        tls: this.workerTls,
+        fetch: this.fetchImpl,
       });
       const payload = await response.json().catch(() => null) as unknown;
       if (!response.ok) {
@@ -472,7 +449,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     }
   }
 
-  private async waitForSocketOpen(socket: WebSocket): Promise<void> {
+  private async waitForSocketOpen(socket: MeshDuplexSocket): Promise<void> {
     if (socket.readyState === WebSocket.OPEN) {
       return;
     }

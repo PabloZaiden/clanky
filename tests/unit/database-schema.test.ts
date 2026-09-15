@@ -308,6 +308,7 @@ describe("database schema", () => {
       expect(tableNames()).toContain("clanky_context_api_keys");
       expect(tableNames()).toContain("terminal_sessions");
       expect(tableNames()).toContain("execution_hosts");
+      expect(tableNames()).toContain("mesh_controller_relay_pairing");
       const terminalCols = (getDatabase().query("PRAGMA table_info(terminal_sessions)").all() as Array<{ name: string }>).map((r) => r.name);
       expect(terminalCols).not.toContain("target_transport");
       expect(terminalCols).not.toContain("target_key");
@@ -338,6 +339,33 @@ describe("database schema", () => {
       expect(users.count).toBe(0);
       expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)?.version ?? 0);
     });
+  });
+
+  test("migration v53 creates the singleton controller relay pairing idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 53);
+    if (!migration) {
+      throw new Error("Migration v53 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      migration.up(db);
+      migration.up(db);
+      const columns = db.query(
+        "PRAGMA table_info(mesh_controller_relay_pairing)",
+      ).all() as Array<{ name: string }>;
+      expect(columns.map((column) => column.name)).toEqual([
+        "singleton",
+        "relay_url",
+        "relay_public_key",
+        "relay_fingerprint",
+        "controller_node_id",
+        "controller_fingerprint",
+        "paired_at",
+        "updated_at",
+      ]);
+    } finally {
+      db.close();
+    }
   });
 
   // This persistence-boundary scenario protects the only upgrade where several

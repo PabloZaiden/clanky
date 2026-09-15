@@ -134,7 +134,7 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
 4. Copy that property and run it on the worker:
 
    ```bash
-   clanky worker join --controller 'https://controller.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
+   clanky worker join 'https://controller.example.com' --token '<single-use-token>' --fingerprint '<controller-fingerprint>'
    ```
 
    `worker join` uses the worker's local identity. Do not copy its API key,

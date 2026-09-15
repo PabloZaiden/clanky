@@ -6,12 +6,14 @@ export type MeshRuntimeRole = "controller" | "worker";
 
 interface MeshRuntimeConfiguration {
   role: MeshRuntimeRole;
+  relayOnly: boolean;
   workerDirectory: string | null;
   workerExecutionEnabled: boolean;
 }
 
 let configuration: MeshRuntimeConfiguration = {
   role: "controller",
+  relayOnly: false,
   workerDirectory: null,
   workerExecutionEnabled: false,
 };
@@ -20,10 +22,12 @@ export async function configureMeshRuntime(options: {
   meshWorker: boolean;
   workerDirectory?: string;
   workerExecutionEnabled?: boolean;
+  relayOnly?: boolean;
 }): Promise<void> {
   if (!options.meshWorker) {
     configuration = {
       role: "controller",
+      relayOnly: false,
       workerDirectory: null,
       workerExecutionEnabled: false,
     };
@@ -48,6 +52,7 @@ export async function configureMeshRuntime(options: {
   }
   configuration = {
     role: "worker",
+    relayOnly: options.relayOnly === true,
     workerDirectory: directory,
     workerExecutionEnabled: options.workerExecutionEnabled ?? true,
   };
@@ -76,4 +81,9 @@ export function getMeshWorkerDirectory(): string {
 export function isMeshWorkerExecutionEnabled(): boolean {
   requireMeshRuntimeRole("worker");
   return configuration.workerExecutionEnabled;
+}
+
+export function isMeshWorkerRelayOnly(): boolean {
+  requireMeshRuntimeRole("worker");
+  return configuration.relayOnly;
 }

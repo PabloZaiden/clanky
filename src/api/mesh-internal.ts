@@ -34,6 +34,7 @@ import { parseAndValidate, validateRequest } from "./validation";
 import { DomainError, isDomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
 import { MESH_EXECUTION_PROTOCOL_VERSION } from "@/shared/mesh-execution";
+import { getMeshRelayRequestInitiatorNodeId } from "../core/mesh-relay-http";
 
 function internalMeshErrorResponse(error: unknown): Response {
   if (isDomainError(error)) {
@@ -43,6 +44,7 @@ function internalMeshErrorResponse(error: unknown): Response {
       : error.code === "mesh_role_invalid"
         ? 404
         : error.code === "mesh_enrollment_controller_mismatch"
+          || error.code === "mesh_enrollment_relay_mismatch"
         ? 409
         : error.code === "mesh_peer_not_trusted"
         ? 403
@@ -113,6 +115,20 @@ export const meshInternalRoutes = defineRoutes({
       const requestId = req.headers.get("x-clanky-mesh-request-id");
       if (nodeId !== parsed.data.workerNodeId || requestId !== parsed.data.workerNodeId) {
         return errorResponse("mesh_peer_headers_invalid", "Mesh identity headers do not match the signed request.", 400);
+      }
+      const relayInitiatorNodeId = getMeshRelayRequestInitiatorNodeId(req);
+      if (
+        (relayInitiatorNodeId !== undefined && (
+          parsed.data.protocolVersion !== 2
+          || relayInitiatorNodeId !== parsed.data.workerNodeId
+        ))
+        || (relayInitiatorNodeId === undefined && parsed.data.protocolVersion === 2)
+      ) {
+        return errorResponse(
+          "mesh_enrollment_relay_identity_mismatch",
+          "Relay enrollment must use protocol v2 and originate from the signed worker identity.",
+          403,
+        );
       }
       try {
         requireMeshRuntimeRole("controller");

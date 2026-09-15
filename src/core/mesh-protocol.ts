@@ -6,8 +6,10 @@
  */
 
 import type {
-  MeshEnrollmentRequest,
-  MeshEnrollmentResponse,
+  MeshEnrollmentRequestV1,
+  MeshEnrollmentRequestV2,
+  MeshEnrollmentResponseV1,
+  MeshEnrollmentResponseV2,
   MeshHealthCheck,
   MeshHealthCheckResponse,
   MeshRevocationNotice,
@@ -15,8 +17,16 @@ import type {
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
-type UnsignedEnrollmentRequest = Omit<MeshEnrollmentRequest, "signature">;
-type UnsignedEnrollmentResponse = Omit<MeshEnrollmentResponse, "signature">;
+type UnsignedEnrollmentRequestV1 = Omit<MeshEnrollmentRequestV1, "signature">;
+type UnsignedEnrollmentRequestV2 = Omit<MeshEnrollmentRequestV2, "signature">;
+type UnsignedEnrollmentResponseV1 = Omit<MeshEnrollmentResponseV1, "signature">;
+type UnsignedEnrollmentResponseV2 = Omit<MeshEnrollmentResponseV2, "signature">;
+type UnsignedEnrollmentRequest =
+  | UnsignedEnrollmentRequestV1
+  | UnsignedEnrollmentRequestV2;
+type UnsignedEnrollmentResponse =
+  | UnsignedEnrollmentResponseV1
+  | UnsignedEnrollmentResponseV2;
 type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
 type UnsignedHealthCheckResponse = Omit<MeshHealthCheckResponse, "signature">;
 type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
@@ -26,41 +36,71 @@ type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 export function buildMeshEnrollmentRequestSigningPayload(
   envelope: UnsignedEnrollmentRequest,
 ): string {
+  if (envelope.protocolVersion === 2) {
+    const relayEnvelope = envelope as UnsignedEnrollmentRequestV2;
+    return JSON.stringify([
+      "clanky-mesh-enrollment-request-v2",
+      relayEnvelope.protocolVersion,
+      relayEnvelope.workerNodeId,
+      relayEnvelope.workerInstanceName ?? null,
+      relayEnvelope.workerPublicKey,
+      relayEnvelope.workerFingerprint,
+      relayEnvelope.workerEncryptionPublicKey ?? null,
+      relayEnvelope.workerDirectory,
+      relayEnvelope.workerCapabilities,
+      relayEnvelope.workerAcceptRemoteExecution,
+      relayEnvelope.workerConfigRevision,
+      relayEnvelope.enrollmentToken,
+      relayEnvelope.expectedControllerFingerprint,
+      relayEnvelope.route.kind,
+      relayEnvelope.route.relayUrl,
+      relayEnvelope.route.relayFingerprint,
+      relayEnvelope.nonce,
+      relayEnvelope.expiresAt,
+    ]);
+  }
+  const directEnvelope = envelope as UnsignedEnrollmentRequestV1;
   return JSON.stringify([
     "clanky-mesh-enrollment-request-v1",
-    envelope.protocolVersion,
-    envelope.workerNodeId,
-    envelope.workerInstanceName ?? null,
-    envelope.workerEndpoint,
-    envelope.workerTransport,
-    envelope.workerPublicKey,
-    envelope.workerFingerprint,
-    envelope.workerEncryptionPublicKey ?? null,
-    envelope.workerTlsCertificate,
-    envelope.workerTlsFingerprint,
-    envelope.workerDirectory,
-    envelope.workerCapabilities,
-    envelope.workerAcceptRemoteExecution,
-    envelope.workerConfigRevision,
-    envelope.enrollmentToken,
-    envelope.expectedControllerFingerprint,
-    envelope.nonce,
-    envelope.expiresAt,
+    directEnvelope.protocolVersion,
+    directEnvelope.workerNodeId,
+    directEnvelope.workerInstanceName ?? null,
+    directEnvelope.workerEndpoint,
+    directEnvelope.workerTransport,
+    directEnvelope.workerPublicKey,
+    directEnvelope.workerFingerprint,
+    directEnvelope.workerEncryptionPublicKey ?? null,
+    directEnvelope.workerTlsCertificate,
+    directEnvelope.workerTlsFingerprint,
+    directEnvelope.workerDirectory,
+    directEnvelope.workerCapabilities,
+    directEnvelope.workerAcceptRemoteExecution,
+    directEnvelope.workerConfigRevision,
+    directEnvelope.enrollmentToken,
+    directEnvelope.expectedControllerFingerprint,
+    directEnvelope.nonce,
+    directEnvelope.expiresAt,
   ]);
 }
 
 export function buildMeshEnrollmentResponseSigningPayload(
   envelope: UnsignedEnrollmentResponse,
 ): string {
+  const domain = envelope.protocolVersion === 2
+    ? "clanky-mesh-enrollment-response-v2"
+    : "clanky-mesh-enrollment-response-v1";
+  const response = envelope.protocolVersion === 2
+    ? envelope as UnsignedEnrollmentResponseV2
+    : envelope as UnsignedEnrollmentResponseV1;
   return JSON.stringify([
-    "clanky-mesh-enrollment-response-v1",
-    envelope.protocolVersion,
-    envelope.workerNodeId,
-    envelope.controllerNodeId,
-    envelope.controllerInstanceName,
-    envelope.controllerPublicKey,
-    envelope.controllerFingerprint,
-    envelope.controllerEncryptionPublicKey ?? null,
+    domain,
+    response.protocolVersion,
+    response.workerNodeId,
+    response.controllerNodeId,
+    response.controllerInstanceName,
+    response.controllerPublicKey,
+    response.controllerFingerprint,
+    response.controllerEncryptionPublicKey ?? null,
   ]);
 }
 

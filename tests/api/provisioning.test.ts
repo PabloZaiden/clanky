@@ -15,8 +15,13 @@ import {
   saveWorkerRegistration,
 } from "../../src/persistence/mesh";
 import { ensureMeshWorkerTlsIdentity } from "../../src/persistence/mesh-worker-tls";
-import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
+import {
+  ensureLocalMeshNodeIdentity,
+  getMeshNodeFingerprint,
+} from "../../src/persistence/mesh-node-identity";
+import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
 import { buildMeshHealthCheckResponseSigningPayload } from "../../src/core/mesh-protocol";
+import { setMeshRelayTransport } from "../../src/core/mesh-peer-transport";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -38,6 +43,7 @@ interface ProvisioningSnapshotResponse {
         };
         transport?: string;
         workerEnrollmentId?: string;
+        workerEnrollmentRoute?: "direct" | "relay";
         workerHostAddress?: string;
         workerHostAddressManual?: boolean;
         devcontainerSubpath?: string;
@@ -176,7 +182,12 @@ async function waitForJobStatus(
     {
       description: `provisioning job ${jobId} to reach status [${expectedStatuses.join(", ")}]`,
       timeoutMs: 5000,
-      formatLastObserved: (snapshot) => `status=${snapshot.job.state.status}`,
+      formatLastObserved: (snapshot) =>
+        `status=${snapshot.job.state.status}, error=${
+          snapshot.job.state.error
+            ? JSON.stringify(snapshot.job.state.error)
+            : "none"
+        }`,
     },
   );
 }
@@ -215,6 +226,8 @@ describe("Provisioning API integration", () => {
     db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_servers");
+    db.run("DELETE FROM mesh_controller_relay_pairing");
+    setMeshRelayTransport(null);
   });
 
   async function createServer() {
@@ -490,6 +503,7 @@ describe("Provisioning API integration", () => {
             registrationScope: "workspace",
             workspaceWorkerEnrollmentId: enrollment!.enrollment.id,
           });
+
           workspaceWorkerEnrollmentService.markConnected(
             "admin",
             enrollment!.enrollment.id,
@@ -654,6 +668,185 @@ describe("Provisioning API integration", () => {
       expect(deleted.status).toBe(200);
     } finally {
       healthResponder.restore();
+      if (previousPublicBaseUrl === undefined) {
+        delete process.env["CLANKY_PUBLIC_BASE_URL"];
+      } else {
+        process.env["CLANKY_PUBLIC_BASE_URL"] = previousPublicBaseUrl;
+      }
+    }
+  });
+
+  test("provisions a relay-only dedicated worker without a published port", async () => {
+    const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
+    const relayUrl = "https://relay.example.test";
+    const relayKeys = generateKeyPairSync("ed25519");
+    const relayPublicKey = relayKeys.publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    const relayFingerprint = getMeshNodeFingerprint(relayPublicKey);
+    const controller = await ensureLocalMeshNodeIdentity();
+    saveControllerRelayPairing({
+      relayUrl,
+      relayPublicKey,
+      relayFingerprint,
+      controllerNodeId: controller.nodeId,
+      controllerFingerprint: controller.fingerprint,
+    });
+    let workerNodeId = "";
+    let workerPrivateKey: KeyObject | undefined;
+    setMeshRelayTransport({
+      async request(route, path, request): Promise<Response> {
+        expect(route).toMatchObject({
+          kind: "relay",
+          relayUrl,
+          relayFingerprint,
+        });
+        expect(path).toBe("api/mesh/internal/health");
+        const body = JSON.parse(String(request.body)) as {
+          senderNodeId: string;
+          nonce: string;
+        };
+        const unsignedResponse = {
+          protocolVersion: 1 as const,
+          workerNodeId,
+          controllerNodeId: body.senderNodeId,
+          requestNonce: body.nonce,
+          workerDirectory: "/workspaces/relay-example",
+          workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+          workerAcceptRemoteExecution: true,
+          workerConfigRevision: 1,
+        };
+        return Response.json({
+          ...unsignedResponse,
+          signature: sign(
+            null,
+            Buffer.from(buildMeshHealthCheckResponseSigningPayload(unsignedResponse)),
+            workerPrivateKey!,
+          ).toString("base64url"),
+        });
+      },
+      openSocket(): never {
+        throw new Error("Socket transport is not used by this provisioning scenario.");
+      },
+    });
+    try {
+      const sshServer = await createServer();
+      const executor = new ProvisioningTestExecutor({
+        devboxStatusOutput: createDevboxStatusOutput({
+          running: true,
+          sshEnabled: false,
+          password: null,
+          sshUser: null,
+          sshPort: null,
+          workdir: "/workspaces/relay-example",
+          ports: [],
+          publishedPorts: {},
+        }),
+        onWorkerJoin: async () => {
+          const enrollment = workspaceWorkerEnrollmentService.list("admin")
+            .find((candidate) => candidate.enrollment.name === "Relay Workspace worker");
+          expect(enrollment).toBeTruthy();
+          const workerKeys = generateKeyPairSync("ed25519");
+          workerPrivateKey = workerKeys.privateKey;
+          workerNodeId = `relay-worker-${crypto.randomUUID()}`;
+          const workerPublicKey = workerKeys.publicKey
+            .export({ format: "pem", type: "spki" })
+            .toString();
+          await saveWorkerRegistration({
+            workerNodeId,
+            localUserId: "admin",
+            workerInstanceName: "Relay Workspace worker",
+            workerEndpoint: relayUrl,
+            workerTransport: "https",
+            workerPublicKey,
+            workerFingerprint: getMeshNodeFingerprint(workerPublicKey),
+            workerEncryptionPublicKey: null,
+            workerTlsCertificate: null,
+            workerTlsFingerprint: null,
+            route: {
+              kind: "relay",
+              targetNodeId: workerNodeId,
+              relayUrl,
+              relayFingerprint,
+            },
+            workerDirectory: "/workspaces/relay-example",
+            workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+            workerAcceptRemoteExecution: true,
+            workerConfigRevision: 1,
+            registrationScope: "workspace",
+            workspaceWorkerEnrollmentId: enrollment!.enrollment.id,
+          });
+          workspaceWorkerEnrollmentService.markConnected(
+            "admin",
+            enrollment!.enrollment.id,
+            workerNodeId,
+          );
+        },
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+      const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Relay Workspace",
+          executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          repoUrl: "https://github.com/octocat/relay-example.git",
+          basePath: "/workspaces",
+          devcontainerSubpath: null,
+          devboxTemplate: null,
+          provider: "copilot",
+          credentialToken: null,
+          mode: "provision",
+          targetDirectory: null,
+          workspaceId: null,
+        }),
+      });
+      expect(response.status).toBe(201);
+      const started = await response.json() as ProvisioningSnapshotResponse;
+      expect(started.job.config).toMatchObject({
+        transport: "worker",
+        workerEnrollmentRoute: "relay",
+      });
+      expect(started.job.config.workerHostAddress).toBeUndefined();
+
+      const completed = await waitForJobStatus(
+        baseUrl,
+        started.job.config.id,
+        ["completed"],
+      );
+      expect(completed.workspace?.executionHostBinding?.host).toMatchObject({
+        kind: "mesh",
+        scope: "workspace",
+        nodeId: workerNodeId,
+      });
+      const upCalls = executor.calls.filter(
+        (call) => call.command === "devbox" && call.args[0] === "up",
+      );
+      expect(upCalls.length).toBeGreaterThan(0);
+      expect(upCalls.every((call) => !call.args.includes("--ports"))).toBe(true);
+      const bootstrapCall = executor.calls.find((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.includes("bootstrap")
+      );
+      expect(bootstrapCall?.args).toContain("--relay-only");
+      expect(bootstrapCall?.args).not.toContain("--mesh-endpoint");
+      const joinIndex = executor.calls.findIndex((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.some((arg) => arg.includes("worker join"))
+      );
+      const startIndex = executor.calls.findIndex((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.includes("/workspaces/relay-example/.devbox/clanky-worker/launcher.sh")
+      );
+      expect(joinIndex).toBeGreaterThan(-1);
+      expect(startIndex).toBeGreaterThan(joinIndex);
+    } finally {
+      setMeshRelayTransport(null);
       if (previousPublicBaseUrl === undefined) {
         delete process.env["CLANKY_PUBLIC_BASE_URL"];
       } else {

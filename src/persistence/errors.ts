@@ -3,6 +3,7 @@ import { DomainError, type DomainErrorOptions } from "../domain/domain-error";
 
 export type PersistenceErrorCode =
   | "database_not_initialized"
+  | "mesh_relay_route_invalid"
   | "unique_constraint"
   | "persistence_failed";
 
@@ -26,6 +27,17 @@ export class DatabaseNotInitializedError extends PersistenceError<"database_not_
       "Database not initialized. Call initializeDatabase() first.",
     );
     this.name = "DatabaseNotInitializedError";
+  }
+}
+
+export class InvalidMeshRelayRouteError extends PersistenceError<"mesh_relay_route_invalid"> {
+  constructor(peerKind: "controller" | "worker", nodeId: string) {
+    super(
+      "mesh_relay_route_invalid",
+      `The persisted Mesh ${peerKind} relay route for "${nodeId}" is incomplete.`,
+      { details: { peerKind, nodeId } },
+    );
+    this.name = "InvalidMeshRelayRouteError";
   }
 }
 

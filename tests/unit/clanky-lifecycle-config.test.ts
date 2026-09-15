@@ -103,6 +103,7 @@ describe("Clanky lifecycle state configuration", () => {
 
     const defaults = await readServeConfig();
     expect(defaults.effective.application["mesh-worker"]).toBe(false);
+    expect(defaults.effective.application["relay-only"]).toBe(false);
 
     const configured = await cli.execute([
       "serve",
@@ -130,7 +131,7 @@ describe("Clanky lifecycle state configuration", () => {
     const server = await getWebAppServer({ meshWorker: false });
     expect(await getWebAppServer({ meshWorker: false })).toBe(server);
     await expect(getWebAppServer({ meshWorker: true })).rejects.toThrow(
-      "Clanky server is already initialized with meshWorker=false and cannot be reused with meshWorker=true",
+      "Clanky server is already initialized with meshWorker=false, relayOnly=false and cannot be reused with meshWorker=true, relayOnly=false",
     );
 
     resetWebAppServerForTests();

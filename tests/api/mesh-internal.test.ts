@@ -20,6 +20,7 @@ import {
   listWorkerRegistrations,
   saveControllerGrant,
 } from "../../src/persistence/mesh";
+import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
 import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
 
@@ -123,6 +124,133 @@ describe("Mesh internal controller-worker routes", () => {
       body: JSON.stringify(body),
     }), undefined as never);
     expect(replay!.status).toBe(410);
+  });
+
+  test("rejects signed relay enrollment outside an authenticated relay stream", async () => {
+    const controller = await ensureLocalMeshNodeIdentity();
+    const relay = createSigningIdentity();
+    saveControllerRelayPairing({
+      relayUrl: "https://relay.example.com",
+      relayPublicKey: relay.publicKey,
+      relayFingerprint: relay.fingerprint,
+      controllerNodeId: controller.nodeId,
+      controllerFingerprint: controller.fingerprint,
+    });
+    const created = await meshManager.createEnrollmentToken(
+      "admin",
+      "Relay worker",
+      900,
+      "relay",
+    );
+    const worker = createSigningIdentity();
+    const unsigned = {
+      protocolVersion: 2 as const,
+      workerNodeId: "worker-relay-1",
+      workerInstanceName: "Relay worker",
+      workerPublicKey: worker.publicKey,
+      workerFingerprint: worker.fingerprint,
+      workerDirectory: "/srv/relay-worker",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      enrollmentToken: created.token,
+      expectedControllerFingerprint: controller.fingerprint,
+      route: {
+        kind: "relay" as const,
+        relayUrl: "https://relay.example.com",
+        relayFingerprint: relay.fingerprint,
+      },
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const route = meshInternalRoutes["/api/mesh/internal/enrollment"]!.POST!;
+    const response = await route(new Request(
+      "http://controller/api/mesh/internal/enrollment",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-clanky-mesh-node-id": unsigned.workerNodeId,
+          "x-clanky-mesh-request-id": unsigned.workerNodeId,
+        },
+        body: JSON.stringify({
+          ...unsigned,
+          signature: sign(
+            null,
+            Buffer.from(buildMeshEnrollmentRequestSigningPayload(unsigned)),
+            worker.privateKey,
+          ).toString("base64url"),
+        }),
+      },
+    ), undefined as never);
+
+    expect(response!.status).toBe(403);
+    expect(await readJson(response!)).toMatchObject({
+      error: "mesh_enrollment_relay_identity_mismatch",
+    });
+    expect(await listWorkerRegistrations("admin")).toEqual([]);
+  });
+
+  test("rejects a relay invitation used for direct protocol-v1 enrollment", async () => {
+    const controller = await ensureLocalMeshNodeIdentity();
+    const relay = createSigningIdentity();
+    saveControllerRelayPairing({
+      relayUrl: "https://relay.example.com",
+      relayPublicKey: relay.publicKey,
+      relayFingerprint: relay.fingerprint,
+      controllerNodeId: controller.nodeId,
+      controllerFingerprint: controller.fingerprint,
+    });
+    const created = await meshManager.createEnrollmentToken(
+      "admin",
+      "Relay worker",
+      900,
+      "relay",
+    );
+    const worker = createSigningIdentity();
+    const unsigned = {
+      protocolVersion: 1 as const,
+      workerNodeId: "worker-direct-downgrade",
+      workerInstanceName: "Downgrade worker",
+      workerPublicKey: worker.publicKey,
+      workerFingerprint: worker.fingerprint,
+      workerDirectory: "/srv/worker",
+      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+      workerEndpoint: "http://127.0.0.1:8081",
+      workerTransport: "http" as const,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      enrollmentToken: created.token,
+      expectedControllerFingerprint: controller.fingerprint,
+      nonce: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const response = await meshInternalRoutes[
+      "/api/mesh/internal/enrollment"
+    ]!.POST!(new Request("http://controller/api/mesh/internal/enrollment", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": unsigned.workerNodeId,
+        "x-clanky-mesh-request-id": unsigned.workerNodeId,
+      },
+      body: JSON.stringify({
+        ...unsigned,
+        signature: sign(
+          null,
+          Buffer.from(buildMeshEnrollmentRequestSigningPayload(unsigned)),
+          worker.privateKey,
+        ).toString("base64url"),
+      }),
+    }), undefined as never);
+
+    expect(response!.status).toBe(409);
+    expect(await readJson(response!)).toMatchObject({
+      error: "mesh_enrollment_relay_mismatch",
+    });
+    expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
   test("accepts signed health from one active controller grant in worker mode", async () => {
