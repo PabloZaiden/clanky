@@ -99,7 +99,7 @@ export const ExecutionHostDescriptorSchema = z.object({
   targetKey: RequiredIdSchema,
   name: RequiredIdSchema,
   endpoint: z.string().nullable(),
-  meshRouteKind: z.enum(["direct", "relay"]).nullable(),
+  meshRouteKind: z.enum(["direct", "relay"]).nullable().optional().default(null),
   repositoriesBasePath: z.string().nullable(),
   preferredModel: ExecutionHostPreferredModelSchema.nullable(),
   configurationRevision: z.number().int().min(1),
