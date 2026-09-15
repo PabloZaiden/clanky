@@ -24,6 +24,7 @@ import {
   MeshRelayStreamTicketFrameSchema,
 } from "@/contracts/schemas/mesh-relay";
 import {
+  MESH_RELAY_CONTROL_CLOSE_REPLACED,
   MESH_RELAY_CONTROL_PATH,
   MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   MESH_RELAY_MAX_AUTHORIZED_WORKERS,
@@ -1119,6 +1120,16 @@ export class MeshRelayConnector {
   private finalize(code: number, reason: string): void {
     if (this.state === "closed") {
       return;
+    }
+    if (code === MESH_RELAY_CONTROL_CLOSE_REPLACED) {
+      log.warn(
+        "Mesh relay control connection was replaced; another process or runtime is using the same Mesh identity",
+        {
+          relayUrl: this.options.config.relayUrl,
+          role: this.options.config.role,
+          ...(this.authFrame ? { nodeId: this.authFrame.nodeId } : {}),
+        },
+      );
     }
     this.setStatus("closed");
     this.detachSocket();
