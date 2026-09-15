@@ -69,6 +69,7 @@ describe("CLI server commands", () => {
           targetKey: "mesh:worker-1",
           name: "Diagnostics worker",
           endpoint: "https://worker.example",
+          meshRouteKind: "direct",
           repositoriesBasePath: "/srv",
           preferredModel: null,
           configurationRevision: 1,
@@ -105,6 +106,45 @@ describe("CLI server commands", () => {
       cwd: "logs",
       timeoutMs: 5000,
     });
+  });
+
+  test("accepts legacy execution-host responses without route metadata", async () => {
+    const fetchFn = createFetch((url) => {
+      if (url.pathname === "/api/execution-hosts") {
+        return Response.json([{
+          ref: { kind: "mesh", nodeId: "legacy-worker" },
+          targetKey: "mesh:legacy-worker",
+          name: "Legacy worker",
+          endpoint: "https://legacy-worker.example",
+          repositoriesBasePath: "/srv",
+          preferredModel: null,
+          configurationRevision: 1,
+          accessRequirement: { kind: "none" },
+          acceptRemoteExecution: true,
+          capabilities: {},
+          revision: 1,
+        }]);
+      }
+      return Response.json({
+        executionHost: "mesh:legacy-worker",
+        success: true,
+        stdout: "legacy output\n",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    const result = await runServerCommand(createServerContext(
+      ["exec", "Legacy worker", "--", "pwd"],
+      fetchFn,
+      stdoutChunks,
+      stderrChunks,
+    ));
+
+    expect(result).toEqual({ exitCode: 0 });
+    expect(stdoutChunks).toEqual(["legacy output\n"]);
+    expect(stderrChunks).toEqual([]);
   });
 
   test("parses a serialized execution-host reference and SSH credential token", () => {

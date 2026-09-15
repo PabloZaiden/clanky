@@ -34,6 +34,7 @@ describe("Execution hosts API", () => {
     const localHost = hosts.find((host) => host.ref.kind === "local");
     expect(localHost).toBeDefined();
     expect(localHost?.accessRequirement).toEqual({ kind: "none" });
+    expect(localHost?.meshRouteKind).toBeNull();
 
     const workingDirectoryResponse = await fetch(
       `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/working-directory`,

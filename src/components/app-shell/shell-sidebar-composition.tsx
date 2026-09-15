@@ -997,9 +997,11 @@ function buildSidebarNodes(
         [],
         handlers.showPrivateItems,
       );
-      const subtitle = host.endpoint ?? (
-        host.ref.kind === "local" ? "This server" : "Endpoint unavailable"
-      );
+      const subtitle = host.ref.kind === "mesh" && host.meshRouteKind === "relay"
+        ? "Connected via relay"
+        : host.endpoint ?? (
+            host.ref.kind === "local" ? "This server" : "Endpoint unavailable"
+          );
       const hostActions = getExecutionHostSidebarActions(host, handlers);
       return privateSidebarPresentation({
         type: "item",
