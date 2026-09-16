@@ -134,14 +134,6 @@ class PreviewTcpForwarder implements PreviewTcpForward {
         remotePort: this.remotePort,
       });
       connection.tunnel = tunnel;
-      if (connection.closed || this.closing) {
-        tunnel.destroy();
-        if (!connection.closed) {
-          closeConnection();
-        }
-        return;
-      }
-
       tunnel.on("data", (data) => {
         if (!connection.closed && !socket.destroyed) {
           socket.write(data);
@@ -149,6 +141,11 @@ class PreviewTcpForwarder implements PreviewTcpForward {
       });
       tunnel.once("close", closeConnection);
       tunnel.once("error", closeConnection);
+      if (connection.closed || this.closing || tunnel.destroyed) {
+        closeConnection();
+        return;
+      }
+
       socket.on("data", (data) => {
         if (connection.closed) {
           return;
