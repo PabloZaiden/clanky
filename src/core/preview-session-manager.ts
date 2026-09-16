@@ -18,6 +18,7 @@ import { DomainError } from "./domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig } from "./ssh-connection-target";
+import { openPreviewTcpForward, type PreviewTcpForward } from "./preview-tcp-forward";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
@@ -34,6 +35,7 @@ interface PreviewRuntime {
   targetBaseUrl: string;
   targetOrigin: string;
   tunnel?: ChildProcess;
+  meshForward?: PreviewTcpForward;
   tunnelLocalPort?: number;
 }
 
@@ -226,11 +228,15 @@ export class PreviewSessionManager {
     await this.initialize();
     const workspace = await this.resolveWorkspaceReference(options.workspace);
     await touchWorkspace(workspace.id);
-    const sshTunnel = workspace.executionHostBinding.host.kind === "ssh"
+    const executionTarget = await resolveWorkspaceExecutionTarget(workspace);
+    const sshTunnel = executionTarget.kind === "ssh"
       ? await this.startSshTunnel(workspace, options.remoteHost, options.remotePort)
       : undefined;
-    const targetPort = sshTunnel ? sshTunnel.localPort : options.remotePort;
-    const targetHost = sshTunnel ? LOCAL_TUNNEL_HOST : options.remoteHost;
+    const meshForward = executionTarget.kind === "mesh"
+      ? await openPreviewTcpForward(workspace.executionHostBinding, options.remotePort)
+      : undefined;
+    const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? options.remotePort;
+    const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
     const now = new Date().toISOString();
     const preview: PreviewSession = {
       config: {
@@ -260,7 +266,8 @@ export class PreviewSessionManager {
       targetBaseUrl,
       targetOrigin: new URL(targetBaseUrl).origin,
       tunnel: sshTunnel?.child,
-      tunnelLocalPort: sshTunnel?.localPort,
+      meshForward,
+      tunnelLocalPort: sshTunnel?.localPort ?? meshForward?.localPort,
     });
     previewEventEmitter.emit({
       type: "preview.created",
@@ -307,6 +314,9 @@ export class PreviewSessionManager {
       if (runtime.tunnel.exitCode === null) {
         runtime.tunnel.kill("SIGKILL");
       }
+    }
+    if (runtime?.meshForward) {
+      await runtime.meshForward.close();
     }
     this.closeUpstreamSockets(id);
     const bridgeSocket = this.bridgeSockets.get(id);
