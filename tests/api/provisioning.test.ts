@@ -22,7 +22,7 @@ import {
 import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
 import { buildMeshHealthCheckResponseSigningPayload } from "../../src/core/mesh-protocol";
 import { setMeshRelayTransport } from "../../src/core/mesh-peer-transport";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
@@ -134,7 +134,7 @@ function installMeshHealthResponder(): MeshHealthResponder {
       controllerNodeId: body.senderNodeId,
       requestNonce: body.nonce,
       workerDirectory: "/workspaces/worker-example",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     };
@@ -253,7 +253,7 @@ describe("Provisioning API integration", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/devbox/workspaces",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -282,7 +282,7 @@ describe("Provisioning API integration", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/devbox/workspaces",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       registrationScope: "workspace",
@@ -497,7 +497,7 @@ describe("Provisioning API integration", () => {
             workerTlsCertificate: workerTlsIdentity.certificate,
             workerTlsFingerprint: workerTlsIdentity.fingerprint,
             workerDirectory: "/workspaces/worker-example",
-            workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+            workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
             workerAcceptRemoteExecution: true,
             workerConfigRevision: 1,
             registrationScope: "workspace",
@@ -713,7 +713,7 @@ describe("Provisioning API integration", () => {
           controllerNodeId: body.senderNodeId,
           requestNonce: body.nonce,
           workerDirectory: "/workspaces/relay-example",
-          workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+          workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
           workerAcceptRemoteExecution: true,
           workerConfigRevision: 1,
         };
@@ -771,7 +771,7 @@ describe("Provisioning API integration", () => {
               relayFingerprint,
             },
             workerDirectory: "/workspaces/relay-example",
-            workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+            workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
             workerAcceptRemoteExecution: true,
             workerConfigRevision: 1,
             registrationScope: "workspace",

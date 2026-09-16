@@ -63,7 +63,10 @@ export async function resolveTerminal(
   }
   if (!session.config.workspaceId) {
     const binding = session.config.executionHostBinding;
-    executionHostService.validateBinding(binding);
+    executionHostService.requireBindingCapability(
+      binding,
+      "interactiveTerminal",
+    );
     return {
       session,
       executionHostBinding: binding,
@@ -71,6 +74,10 @@ export async function resolveTerminal(
   }
   const workspace = await workspaceManager.requireWorkspace(session.config.workspaceId);
   const binding = session.config.executionHostBinding;
+  executionHostService.requireBindingCapability(
+    binding,
+    "interactiveTerminal",
+  );
   const target = await resolveWorkspaceExecutionTarget(workspace);
   if (
     binding.targetKey !== target.targetKey

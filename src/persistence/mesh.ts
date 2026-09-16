@@ -17,13 +17,17 @@ import type {
 import {
   type ExecutionHostBinding,
   type ExecutionHostCapabilities,
+  type ExecutionHostPlatform,
   type ExecutionHostRef,
+  normalizeExecutionHostPlatform,
+  parseExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import {
   deleteExecutionHost,
   ensureExecutionHost,
   getExecutionHostByRef,
   revokeExecutionHost,
+  updateExecutionHostRuntimeSnapshot,
 } from "./execution-hosts";
 import {
   buildMeshEnrollmentTargetKey,
@@ -54,6 +58,7 @@ export interface SaveWorkerRegistrationInput {
   workerTlsFingerprint: string | null;
   route?: MeshPeerRoute;
   workerDirectory: string | null;
+  workerPlatform?: ExecutionHostPlatform | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
@@ -135,11 +140,12 @@ export async function saveWorkerRegistration(
       worker_public_key, worker_fingerprint, worker_encryption_public_key,
       worker_tls_certificate, worker_tls_fingerprint,
       route_kind, relay_url, relay_fingerprint,
-      worker_directory, worker_capabilities_json,
+      worker_directory, worker_platform_os, worker_platform_architecture,
+      worker_capabilities_json,
       worker_accept_remote_execution,       worker_config_revision, registration_scope,
       workspace_worker_enrollment_id, workspace_id,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -153,6 +159,8 @@ export async function saveWorkerRegistration(
       relay_url = excluded.relay_url,
       relay_fingerprint = excluded.relay_fingerprint,
       worker_directory = excluded.worker_directory,
+      worker_platform_os = excluded.worker_platform_os,
+      worker_platform_architecture = excluded.worker_platform_architecture,
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
       worker_config_revision = excluded.worker_config_revision,
@@ -176,6 +184,8 @@ export async function saveWorkerRegistration(
       route.kind === "relay" ? route.relayUrl : null,
       route.kind === "relay" ? route.relayFingerprint : null,
       input.workerDirectory,
+      input.workerPlatform?.os ?? null,
+      input.workerPlatform?.architecture ?? null,
       input.workerCapabilities ? JSON.stringify(input.workerCapabilities) : null,
       input.workerAcceptRemoteExecution ? 1 : 0,
       input.workerConfigRevision,
@@ -203,6 +213,12 @@ export async function saveWorkerRegistration(
       workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId,
       workspaceId: input.workspaceId,
     }),
+    {
+      runtime: {
+        platform: input.workerPlatform ?? null,
+        capabilities: input.workerCapabilities ?? {},
+      },
+    },
   );
 
   const reg = await getWorkerRegistration(input.workerNodeId, input.localUserId);
@@ -424,6 +440,12 @@ export function moveDedicatedWorkerToWorkspace(input: {
     input.localUserId,
     workspaceRef,
     buildMeshWorkspaceTargetKey(input.workspaceId, input.workerNodeId),
+    {
+      runtime: {
+        platform: registration.workerPlatform,
+        capabilities: registration.workerCapabilities ?? {},
+      },
+    },
   );
   const oldHost = getExecutionHostByRef(input.localUserId, enrollmentRef);
   const txn = db.transaction(() => {
@@ -454,6 +476,7 @@ export async function updateWorkerHealthSnapshot(input: {
   workerNodeId: string;
   localUserId: string;
   directory: string;
+  platform: ExecutionHostPlatform | null;
   capabilities: ExecutionHostCapabilities;
   acceptRemoteExecution: boolean;
   configRevision: number;
@@ -463,6 +486,8 @@ export async function updateWorkerHealthSnapshot(input: {
   db.run(
     `UPDATE mesh_worker_registrations SET
       worker_directory = ?,
+      worker_platform_os = ?,
+      worker_platform_architecture = ?,
       worker_capabilities_json = ?,
       worker_accept_remote_execution = ?,
       worker_config_revision = ?,
@@ -471,6 +496,8 @@ export async function updateWorkerHealthSnapshot(input: {
     WHERE worker_node_id = ? AND local_user_id = ?`,
     [
       input.directory,
+      input.platform?.os ?? null,
+      input.platform?.architecture ?? null,
       JSON.stringify(input.capabilities),
       input.acceptRemoteExecution ? 1 : 0,
       input.configRevision,
@@ -480,6 +507,20 @@ export async function updateWorkerHealthSnapshot(input: {
       input.localUserId,
     ],
   );
+  const registration = getWorkerRegistration(
+    input.workerNodeId,
+    input.localUserId,
+  );
+  if (registration) {
+    updateExecutionHostRuntimeSnapshot(
+      input.localUserId,
+      getWorkerRegistrationExecutionHostRef(registration),
+      {
+        platform: input.platform,
+        capabilities: input.capabilities,
+      },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +743,8 @@ interface WorkerRegistrationRow {
   relay_url: string | null;
   relay_fingerprint: string | null;
   worker_directory: string | null;
+  worker_platform_os: string | null;
+  worker_platform_architecture: string | null;
   worker_capabilities_json: string | null;
   worker_accept_remote_execution: number;
   worker_config_revision: number;
@@ -720,11 +763,18 @@ function mapWorkerRegistrationRow(
   let capabilities: ExecutionHostCapabilities | null = null;
   if (row.worker_capabilities_json) {
     try {
-      capabilities = JSON.parse(row.worker_capabilities_json);
+      const parsed = parseExecutionHostCapabilities(
+        JSON.parse(row.worker_capabilities_json) as unknown,
+      );
+      if (!parsed) {
+        throw new Error("capabilities must contain positive integer versions");
+      }
+      capabilities = parsed;
     } catch {
       log.warn("Invalid worker capabilities JSON", {
         workerNodeId: row.worker_node_id,
       });
+      capabilities = {};
     }
   }
   let route: MeshPeerRoute;
@@ -762,6 +812,12 @@ function mapWorkerRegistrationRow(
     workerTlsFingerprint: row.worker_tls_fingerprint,
     route,
     workerDirectory: row.worker_directory,
+    workerPlatform: row.worker_platform_os && row.worker_platform_architecture
+      ? normalizeExecutionHostPlatform(
+          row.worker_platform_os,
+          row.worker_platform_architecture,
+        )
+      : null,
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,
     workerConfigRevision: row.worker_config_revision,

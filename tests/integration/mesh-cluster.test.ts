@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pollUntil } from "../helpers/polling";
+import { createExecutionHostRuntimeSnapshot } from "../../src/shared/execution-host";
 
 interface MeshProcess {
   baseUrl: string;
@@ -710,6 +711,8 @@ describe("controller-worker Mesh", () => {
         ref: { kind: string; nodeId?: string };
         endpoint: string | null;
         meshRouteKind: "direct" | "relay" | null;
+        platform: { os: string; architecture: string } | null;
+        capabilities: Record<string, number>;
       }>,
       (hosts) => hosts.some(
         (host) => host.ref.kind === "mesh" && host.ref.nodeId !== undefined,
@@ -724,6 +727,7 @@ describe("controller-worker Mesh", () => {
     )).toMatchObject({
       endpoint: worker.baseUrl,
       meshRouteKind: "direct",
+      ...createExecutionHostRuntimeSnapshot(process.platform, process.arch),
     });
 
     const execution = await jsonRequest(

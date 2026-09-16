@@ -4,7 +4,12 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Chat, ExecutionHostDescriptor, TerminalSession } from "@/shared";
+import {
+  createExecutionHostRuntimeSnapshot,
+  type Chat,
+  type ExecutionHostDescriptor,
+  type TerminalSession,
+} from "@/shared";
 import { initializeDatabase } from "../../src/persistence/database";
 import { serveNativeApiRoutes } from "../native-api-server";
 
@@ -35,6 +40,13 @@ describe("Execution hosts API", () => {
     expect(localHost).toBeDefined();
     expect(localHost?.accessRequirement).toEqual({ kind: "none" });
     expect(localHost?.meshRouteKind).toBeNull();
+    expect({
+      platform: localHost?.platform,
+      capabilities: localHost?.capabilities,
+    }).toEqual(createExecutionHostRuntimeSnapshot(
+      process.platform,
+      process.arch,
+    ));
 
     const workingDirectoryResponse = await fetch(
       `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/working-directory`,

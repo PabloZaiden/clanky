@@ -1598,6 +1598,41 @@ export const migrations: Migration[] = [
     name: "add_controller_relay_pairing",
     up: migrateControllerRelayPairing,
   },
+  {
+    version: 54,
+    name: "add_execution_host_runtime_snapshots",
+    up: (db) => {
+      const hostColumns = getTableColumns(db, "execution_hosts");
+      if (!hostColumns.includes("platform_os")) {
+        db.run("ALTER TABLE execution_hosts ADD COLUMN platform_os TEXT");
+      }
+      if (!hostColumns.includes("platform_architecture")) {
+        db.run(
+          "ALTER TABLE execution_hosts ADD COLUMN platform_architecture TEXT",
+        );
+      }
+      if (!hostColumns.includes("capabilities_json")) {
+        db.run(
+          "ALTER TABLE execution_hosts ADD COLUMN capabilities_json TEXT NOT NULL DEFAULT '{}'",
+        );
+      }
+
+      const workerColumns = getTableColumns(
+        db,
+        "mesh_worker_registrations",
+      );
+      if (!workerColumns.includes("worker_platform_os")) {
+        db.run(
+          "ALTER TABLE mesh_worker_registrations ADD COLUMN worker_platform_os TEXT",
+        );
+      }
+      if (!workerColumns.includes("worker_platform_architecture")) {
+        db.run(
+          "ALTER TABLE mesh_worker_registrations ADD COLUMN worker_platform_architecture TEXT",
+        );
+      }
+    },
+  },
 ];
 
 const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());

@@ -38,7 +38,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
 ): string {
   if (envelope.protocolVersion === 2) {
     const relayEnvelope = envelope as UnsignedEnrollmentRequestV2;
-    return JSON.stringify([
+    const payload: unknown[] = [
       "clanky-mesh-enrollment-request-v2",
       relayEnvelope.protocolVersion,
       relayEnvelope.workerNodeId,
@@ -57,10 +57,14 @@ export function buildMeshEnrollmentRequestSigningPayload(
       relayEnvelope.route.relayFingerprint,
       relayEnvelope.nonce,
       relayEnvelope.expiresAt,
-    ]);
+    ];
+    if (relayEnvelope.workerPlatform !== undefined) {
+      payload.push(relayEnvelope.workerPlatform);
+    }
+    return JSON.stringify(payload);
   }
   const directEnvelope = envelope as UnsignedEnrollmentRequestV1;
-  return JSON.stringify([
+  const payload: unknown[] = [
     "clanky-mesh-enrollment-request-v1",
     directEnvelope.protocolVersion,
     directEnvelope.workerNodeId,
@@ -80,7 +84,11 @@ export function buildMeshEnrollmentRequestSigningPayload(
     directEnvelope.expectedControllerFingerprint,
     directEnvelope.nonce,
     directEnvelope.expiresAt,
-  ]);
+  ];
+  if (directEnvelope.workerPlatform !== undefined) {
+    payload.push(directEnvelope.workerPlatform);
+  }
+  return JSON.stringify(payload);
 }
 
 export function buildMeshEnrollmentResponseSigningPayload(
@@ -121,7 +129,7 @@ export function buildMeshHealthCheckSigningPayload(
 export function buildMeshHealthCheckResponseSigningPayload(
   envelope: UnsignedHealthCheckResponse,
 ): string {
-  return JSON.stringify([
+  const payload: unknown[] = [
     "clanky-mesh-health-check-response-v1",
     envelope.protocolVersion,
     envelope.workerNodeId,
@@ -131,7 +139,11 @@ export function buildMeshHealthCheckResponseSigningPayload(
     envelope.workerCapabilities,
     envelope.workerAcceptRemoteExecution,
     envelope.workerConfigRevision,
-  ]);
+  ];
+  if (envelope.workerPlatform !== undefined) {
+    payload.push(envelope.workerPlatform);
+  }
+  return JSON.stringify(payload);
 }
 
 export function buildMeshRevocationNoticeSigningPayload(

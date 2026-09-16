@@ -92,6 +92,7 @@ export class VncSessionManager {
   }): Promise<VncSession> {
     await this.initialize();
     const ref = options.executionHost;
+    await executionHostService.requireCapability(ref, "vnc");
     const executionHostBinding = executionHostService.getBinding(ref);
     const executionHost = executionHostService.validateBinding(executionHostBinding);
     const serverId = getRegisteredSshServerId(ref);

@@ -3,6 +3,7 @@
  */
 
 import { backendManager } from "../../core/backend-manager";
+import { executionHostService } from "../../core/execution-host-service";
 import {
   resolveFileExplorerRootDirectory,
   type FileExplorerTarget,
@@ -20,6 +21,10 @@ async function resolveWorkspaceFileTarget(
   if (workspaceResult instanceof Response) {
     throw workspaceResult;
   }
+  executionHostService.requireBindingCapability(
+    workspaceResult.executionHostBinding,
+    "fileOperations",
+  );
 
   const executor = await backendManager.getCommandExecutorAsync(
     workspaceResult.id,

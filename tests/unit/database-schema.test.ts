@@ -368,6 +368,66 @@ describe("database schema", () => {
     }
   });
 
+  // This migration-boundary scenario ensures pre-snapshot hosts remain usable
+  // without claiming runtime support that was never reported.
+  test("migration v54 preserves legacy hosts with conservative snapshots", () => {
+    const migration = migrations.find((candidate) => candidate.version === 54);
+    if (!migration) {
+      throw new Error("Migration v54 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE execution_hosts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          target_key TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE mesh_worker_registrations (
+          worker_node_id TEXT NOT NULL,
+          local_user_id TEXT NOT NULL
+        );
+        INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, revision,
+          created_at, updated_at
+        ) VALUES (
+          'legacy-host', 'user-1', 'mesh', 'worker-1', 'target-1', 3,
+          '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        );
+      `);
+
+      migration.up(db);
+      migration.up(db);
+
+      expect(db.query(`
+        SELECT platform_os, platform_architecture, capabilities_json
+        FROM execution_hosts
+        WHERE id = 'legacy-host'
+      `).get()).toEqual({
+        platform_os: null,
+        platform_architecture: null,
+        capabilities_json: "{}",
+      });
+      const workerColumns = db.query(
+        "PRAGMA table_info(mesh_worker_registrations)",
+      ).all() as Array<{ name: string }>;
+      expect(workerColumns.map((column) => column.name)).toEqual(
+        expect.arrayContaining([
+          "worker_platform_os",
+          "worker_platform_architecture",
+        ]),
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   // This persistence-boundary scenario protects the only upgrade where several
   // user-visible resource types move to one canonical execution-host identity.
   test("migration v46 preserves valid SSH resources and removes synthetic sessions", () => {

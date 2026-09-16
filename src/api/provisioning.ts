@@ -33,6 +33,10 @@ function mapProvisioningError(error: unknown): Response {
       invalid_execution_target: {
         status: 400,
       },
+      execution_host_capability_unavailable: {
+        status: 409,
+        message: "This execution host does not support provisioning.",
+      },
       job_not_terminal: {
         status: 409,
       },

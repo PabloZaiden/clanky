@@ -7,7 +7,10 @@
  */
 
 import type { WorkspaceSshTarget } from "@/shared/workspace";
-import type { ExecutionHostBinding } from "@/shared/execution-host";
+import {
+  POSIX_EXECUTION_HOST_CAPABILITIES,
+  type ExecutionHostBinding,
+} from "@/shared/execution-host";
 import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";
 import {
@@ -150,7 +153,13 @@ export function prepareWorkspaceSshTarget(
     userId,
     workspaceTargetRef(workspaceId),
     prepared.targetKey,
-    { forceRevision: prepared.forceRevision },
+    {
+      forceRevision: prepared.forceRevision,
+      runtime: {
+        platform: null,
+        capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      },
+    },
   );
   return {
     binding: {
@@ -339,7 +348,13 @@ export async function ensureWorkspaceSshTarget(
       userId,
       workspaceTargetRef(workspaceId),
       prepared.targetKey,
-      { forceRevision: prepared.forceRevision },
+      {
+        forceRevision: prepared.forceRevision,
+        runtime: {
+          platform: null,
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+      },
     );
     const now = new Date().toISOString();
     getDatabase().query(`

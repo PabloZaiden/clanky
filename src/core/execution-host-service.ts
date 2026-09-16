@@ -4,22 +4,26 @@
 
 import type {
   ExecutionHostBinding,
+  ExecutionHostCapabilityId,
   ExecutionHostCapabilities,
   ExecutionHostDescriptor,
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import {
-  DEFAULT_EXECUTION_HOST_CAPABILITIES,
+  POSIX_EXECUTION_HOST_CAPABILITIES,
+  createExecutionHostRuntimeSnapshot,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
   isPrivateMeshExecutionHostRef,
   isWorkspaceSshExecutionHostRef,
+  supportsExecutionHostCapability,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import {
   getExecutionHostByRef,
   ensureExecutionHost,
   listExecutionHosts,
+  updateExecutionHostRuntimeSnapshot,
   type PersistedExecutionHost,
 } from "../persistence/execution-hosts";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
@@ -55,9 +59,8 @@ export interface ExecutionHostCommandContext {
   sshTargetOverride?: SshConnectionTarget;
 }
 
-const DIRECT_HOST_CAPABILITIES: ExecutionHostCapabilities = {
-  ...DEFAULT_EXECUTION_HOST_CAPABILITIES,
-  tcpTunnel: 1,
+const SSH_HOST_CAPABILITIES: ExecutionHostCapabilities = {
+  ...POSIX_EXECUTION_HOST_CAPABILITIES,
 };
 
 function assertCurrentBinding(
@@ -109,14 +112,53 @@ export class ExecutionHostService {
     return persisted!;
   }
 
+  requireBindingCapability(
+    binding: ExecutionHostBinding,
+    capability: ExecutionHostCapabilityId,
+    userId: string = requireCurrentUserId(),
+  ): PersistedExecutionHost {
+    let persisted = this.validateBinding(binding, userId);
+    const runtime = binding.host.kind === "local"
+      ? createExecutionHostRuntimeSnapshot(process.platform, process.arch)
+      : binding.host.kind === "ssh"
+        ? {
+            platform: null,
+            capabilities: SSH_HOST_CAPABILITIES,
+          }
+        : null;
+    if (runtime) {
+      persisted = updateExecutionHostRuntimeSnapshot(
+        userId,
+        binding.host,
+        runtime,
+      ) ?? persisted;
+    }
+    if (!supportsExecutionHostCapability(
+      persisted.runtime.capabilities,
+      capability,
+    )) {
+      throw new DomainError(
+        "execution_host_capability_unavailable",
+        `The selected execution host does not provide the ${capability} capability.`,
+        { details: { capability } },
+      );
+    }
+    return persisted;
+  }
+
   async listHosts(userId: string = requireCurrentUserId()): Promise<ExecutionHostDescriptor[]> {
     const descriptors: ExecutionHostDescriptor[] = [];
     const identity = await ensureLocalMeshNodeIdentity();
+    const localRuntime = createExecutionHostRuntimeSnapshot(
+      process.platform,
+      process.arch,
+    );
     if (!isRemoteOnlyMode() && identity.execution?.acceptRemoteExecution !== false) {
       const localHost = ensureExecutionHost(
         userId,
         { kind: "local", nodeId: identity.nodeId },
         buildLocalTargetKey(await ensureLocalInstallationId()),
+        { runtime: localRuntime },
       );
       descriptors.push({
         ref: localHost.ref,
@@ -129,7 +171,8 @@ export class ExecutionHostService {
         configurationRevision: identity.execution?.revision ?? 1,
         accessRequirement: { kind: "none" },
         acceptRemoteExecution: true,
-        capabilities: identity.execution?.capabilities ?? DIRECT_HOST_CAPABILITIES,
+        platform: localHost.runtime.platform,
+        capabilities: localHost.runtime.capabilities,
         revision: localHost.revision,
       });
     }
@@ -138,25 +181,32 @@ export class ExecutionHostService {
       if (worker.workerNodeId === identity.nodeId || !worker.workerAcceptRemoteExecution) {
         continue;
       }
-        const host = ensureExecutionHost(
-          userId,
-          { kind: "mesh", nodeId: worker.workerNodeId },
-          buildMeshTargetKey(worker.workerNodeId),
-        );
-        descriptors.push({
-          ref: host.ref,
-          targetKey: host.targetKey,
-          name: worker.workerInstanceName || worker.workerNodeId,
-          endpoint: worker.workerEndpoint,
-          meshRouteKind: worker.route.kind,
-          repositoriesBasePath: worker.workerDirectory,
-          preferredModel: null,
-          configurationRevision: worker.workerConfigRevision,
-          accessRequirement: { kind: "none" },
-          acceptRemoteExecution: true,
-          capabilities: worker.workerCapabilities ?? DEFAULT_EXECUTION_HOST_CAPABILITIES,
-          revision: host.revision,
-        });
+      const host = ensureExecutionHost(
+        userId,
+        { kind: "mesh", nodeId: worker.workerNodeId },
+        buildMeshTargetKey(worker.workerNodeId),
+        {
+          runtime: {
+            platform: worker.workerPlatform,
+            capabilities: worker.workerCapabilities ?? {},
+          },
+        },
+      );
+      descriptors.push({
+        ref: host.ref,
+        targetKey: host.targetKey,
+        name: worker.workerInstanceName || worker.workerNodeId,
+        endpoint: worker.workerEndpoint,
+        meshRouteKind: worker.route.kind,
+        repositoriesBasePath: worker.workerDirectory,
+        preferredModel: null,
+        configurationRevision: worker.workerConfigRevision,
+        accessRequirement: { kind: "none" },
+        acceptRemoteExecution: true,
+        platform: host.runtime.platform,
+        capabilities: host.runtime.capabilities,
+        revision: host.revision,
+      });
     }
 
     for (const server of await listSshServerConfigs()) {
@@ -164,6 +214,12 @@ export class ExecutionHostService {
         userId,
         { kind: "ssh", serverId: server.id },
         buildSshTargetKey(server.address, server.port ?? 22, server.username),
+        {
+          runtime: {
+            platform: null,
+            capabilities: SSH_HOST_CAPABILITIES,
+          },
+        },
       );
       descriptors.push({
         ref: host.ref,
@@ -180,13 +236,37 @@ export class ExecutionHostService {
           methods: ["agent", "password"],
         },
         acceptRemoteExecution: !host.revokedAt,
-        capabilities: DIRECT_HOST_CAPABILITIES,
+        platform: host.runtime.platform,
+        capabilities: host.runtime.capabilities,
         revision: host.revision,
         isPrivate: server.isPrivate,
       });
     }
 
     return descriptors;
+  }
+
+  async requireCapability(
+    ref: ExecutionHostRef,
+    capability: ExecutionHostCapabilityId,
+    userId: string = requireCurrentUserId(),
+  ): Promise<ExecutionHostDescriptor> {
+    const descriptor = (await this.listHosts(userId))
+      .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
+    if (!descriptor) {
+      throw new DomainError(
+        "execution_host_unavailable",
+        "The selected execution host is unavailable.",
+      );
+    }
+    if (!supportsExecutionHostCapability(descriptor.capabilities, capability)) {
+      throw new DomainError(
+        "execution_host_capability_unavailable",
+        `The selected execution host does not provide the ${capability} capability.`,
+        { details: { capability } },
+      );
+    }
+    return descriptor;
   }
 
   getRegisteredHosts(userId: string = requireCurrentUserId()): PersistedExecutionHost[] {
@@ -201,14 +281,11 @@ export class ExecutionHostService {
     } = {},
   ): Promise<{ directory: string; configured: boolean }> {
     const userId = options.userId ?? requireCurrentUserId();
-    const descriptor = (await this.listHosts(userId))
-      .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
-    if (!descriptor) {
-      throw new DomainError(
-        "execution_host_unavailable",
-        "The selected execution host is unavailable.",
-      );
-    }
+    const descriptor = await this.requireCapability(
+      ref,
+      "fileOperations",
+      userId,
+    );
     const configuredDirectory = descriptor.repositoriesBasePath?.trim();
     if (configuredDirectory && configuredDirectory !== ".") {
       return {
@@ -253,6 +330,7 @@ export class ExecutionHostService {
     } = {},
   ): Promise<void> {
     const userId = options.userId ?? requireCurrentUserId();
+    await this.requireCapability(ref, "fileOperations", userId);
     const binding = this.getBinding(ref, userId);
     const executor = await this.getCommandExecutor(binding, {
       operationId: `validate-directory:${binding.targetKey}`,

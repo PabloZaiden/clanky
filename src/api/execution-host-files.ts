@@ -4,7 +4,6 @@
 
 import {
   executionHostRefFromParts,
-  executionHostRefsEqual,
   getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared";
@@ -38,11 +37,7 @@ async function resolveExecutionHostFileTarget(
   options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
   const ref = parseRef(req, id);
-  const descriptor = (await executionHostService.listHosts())
-    .find((host) => executionHostRefsEqual(host.ref, ref));
-  if (!descriptor) {
-    throw new DomainError("execution_host_unavailable", "Execution host not found or unavailable.");
-  }
+  await executionHostService.requireCapability(ref, "fileOperations");
 
   let sshPassword: string | undefined;
   if (ref.kind === "ssh") {

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor } from "@/shared";
-import { getExecutionHostSourceId } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  supportsExecutionHostCapability,
+} from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
   isAgentProvider,
@@ -28,6 +31,10 @@ export function useExecutionHostModelDiscovery(
   credentialToken: string | null = null,
   onCredentialRejected?: () => void,
 ) {
+  const enabled = supportsExecutionHostCapability(
+    host.capabilities,
+    "acpRuntime",
+  );
   const preferredProvider = host.preferredModel?.providerID;
   const [provider, setProvider] = useState<AgentProvider>(
     preferredProvider && isAgentProvider(preferredProvider)
@@ -37,7 +44,7 @@ export function useExecutionHostModelDiscovery(
         : DEFAULT_EXECUTION_AGENT_PROVIDER,
   );
   const [availableProviders, setAvailableProviders] = useState<AgentProvider[]>([]);
-  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersLoading, setProvidersLoading] = useState(enabled);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +62,10 @@ export function useExecutionHostModelDiscovery(
     setAvailableProviders([]);
     setModels([]);
     setError(null);
+    if (!enabled) {
+      setProvidersLoading(false);
+      return;
+    }
     if (host.ref.kind === "ssh" && !credentialToken) {
       setProvidersLoading(false);
       return;
@@ -117,6 +128,7 @@ export function useExecutionHostModelDiscovery(
   }, [
     apiPath,
     credentialToken,
+    enabled,
     host.ref.kind,
     onCredentialRejected,
     preferredProvider,
@@ -125,7 +137,11 @@ export function useExecutionHostModelDiscovery(
 
   useEffect(() => {
     const resolvedDirectory = directory.trim();
-    if (!resolvedDirectory || !availableProviders.includes(provider)) {
+    if (
+      !enabled
+      || !resolvedDirectory
+      || !availableProviders.includes(provider)
+    ) {
       setModels([]);
       setModelsLoading(false);
       return;
@@ -180,6 +196,7 @@ export function useExecutionHostModelDiscovery(
     availableProviders,
     credentialToken,
     directory,
+    enabled,
     host.ref.kind,
     onCredentialRejected,
     provider,

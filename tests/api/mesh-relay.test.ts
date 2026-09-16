@@ -21,7 +21,7 @@ import {
   ensureLocalMeshNodeIdentity,
 } from "../../src/persistence/mesh-node-identity";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "@/shared/execution-host";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { seedTestOwnerUser } from "../setup";
 import { pollUntil } from "../helpers/polling";
@@ -113,7 +113,7 @@ describe("controller relay owner API", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspaces",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {

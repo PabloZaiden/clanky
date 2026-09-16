@@ -318,6 +318,10 @@ export class TerminalSessionManager {
     connectionMode: TerminalConnectionMode;
     useTmux: boolean;
   }): Promise<TerminalSession> {
+    await executionHostService.requireCapability(
+      options.host,
+      "interactiveTerminal",
+    );
     const binding = executionHostService.getBinding(options.host);
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
@@ -362,6 +366,10 @@ export class TerminalSessionManager {
     connectionMode: TerminalConnectionMode;
     useTmux: boolean;
   }): Promise<TerminalSession> {
+    executionHostService.requireBindingCapability(
+      options.workspace.executionHostBinding,
+      "interactiveTerminal",
+    );
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
     const session: TerminalSession = {

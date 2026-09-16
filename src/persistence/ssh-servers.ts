@@ -3,6 +3,7 @@
  */
 
 import {
+  POSIX_EXECUTION_HOST_CAPABILITIES,
   type SshServer,
   type SshServerConfig,
 } from "@/shared";
@@ -119,6 +120,12 @@ export async function saveSshServerConfig(config: SshServerConfig): Promise<void
     userId,
     { kind: "ssh", serverId: config.id },
     buildSshTargetKey(config.address, config.port ?? 22, config.username),
+    {
+      runtime: {
+        platform: null,
+        capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      },
+    },
   );
 }
 

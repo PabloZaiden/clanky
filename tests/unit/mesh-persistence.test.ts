@@ -14,6 +14,7 @@ import {
   revokeWorkerRegistration,
   saveControllerGrant,
   saveWorkerRegistration,
+  updateWorkerHealthSnapshot,
 } from "../../src/persistence/mesh";
 import {
   InconsistentMeshWorkerIdentityError,
@@ -21,7 +22,7 @@ import {
 } from "../../src/persistence/controller-relay-pairing";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { InvalidMeshRelayRouteError } from "../../src/persistence/errors";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
 import {
   ensureExecutionHost,
@@ -74,7 +75,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {
@@ -217,7 +218,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {
@@ -281,7 +282,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -303,11 +304,58 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 2,
     });
     expect(getExecutionHostByRef("admin", { kind: "mesh", nodeId: "worker-a" })?.revokedAt).toBeNull();
+  });
+
+  // This persistence-boundary contract protects capability downgrades without
+  // invalidating bindings whose execution target did not change.
+  test("updates a worker runtime snapshot without advancing the host binding", async () => {
+    await saveWorkerRegistration({
+      workerNodeId: "worker-runtime",
+      localUserId: "admin",
+      workerInstanceName: "Runtime worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "runtime-public",
+      workerFingerprint: "runtime-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    const ref = { kind: "mesh" as const, nodeId: "worker-runtime" };
+    const initialHost = getExecutionHostByRef("admin", ref)!;
+
+    await updateWorkerHealthSnapshot({
+      workerNodeId: "worker-runtime",
+      localUserId: "admin",
+      directory: "C:\\workspaces",
+      platform: { os: "windows", architecture: "x64" },
+      capabilities: { commandExecution: 1, serverHealth: 1 },
+      acceptRemoteExecution: true,
+      configRevision: 1,
+    });
+
+    expect(await getWorkerRegistration("worker-runtime", "admin")).toMatchObject({
+      workerDirectory: "C:\\workspaces",
+      workerPlatform: { os: "windows", architecture: "x64" },
+      workerCapabilities: { commandExecution: 1, serverHealth: 1 },
+    });
+    expect(getExecutionHostByRef("admin", ref)).toMatchObject({
+      revision: initialHost.revision,
+      runtime: {
+        platform: { os: "windows", architecture: "x64" },
+        capabilities: { commandExecution: 1, serverHealth: 1 },
+      },
+    });
   });
 
   // Migration coverage is kept at the persistence boundary because a partial

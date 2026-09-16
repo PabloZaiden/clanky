@@ -81,6 +81,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!workspace) {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
+    executionHostService.requireBindingCapability(
+      workspace.executionHostBinding,
+      "acpRuntime",
+    );
 
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
     if (scope === "task" && !options.taskId) {
@@ -203,7 +207,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
-    executionHostService.validateBinding(options.executionHost);
+    executionHostService.requireBindingCapability(
+      options.executionHost,
+      "acpRuntime",
+    );
     const id = crypto.randomUUID();
     const now = createTimestamp();
     const chat: Chat = {

@@ -11,7 +11,10 @@ import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
-import { ExecutionHostCapabilitiesSchema } from "./execution-host";
+import {
+  ExecutionHostCapabilitiesSchema,
+  ExecutionHostPlatformSchema,
+} from "./execution-host";
 import { ControllerRelayUrlSchema } from "./mesh-relay";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
@@ -91,6 +94,7 @@ const MeshEnrollmentRequestCommonSchema = z.object({
   workerFingerprint: z.string().trim().min(1),
   workerEncryptionPublicKey: z.string().min(1).optional(),
   workerDirectory: z.string().trim().min(1).max(16_384),
+  workerPlatform: ExecutionHostPlatformSchema.nullable().optional(),
   workerCapabilities: ExecutionHostCapabilitiesSchema,
   workerAcceptRemoteExecution: z.boolean(),
   workerConfigRevision: z.number().int().min(1),
@@ -196,6 +200,7 @@ export const MeshHealthCheckResponseSchema = z.object({
   controllerNodeId: z.string().trim().min(1),
   requestNonce: z.string().trim().min(1),
   workerDirectory: z.string().trim().min(1).max(16_384),
+  workerPlatform: ExecutionHostPlatformSchema.nullable().optional(),
   workerCapabilities: ExecutionHostCapabilitiesSchema,
   workerAcceptRemoteExecution: z.boolean(),
   workerConfigRevision: z.number().int().min(1),

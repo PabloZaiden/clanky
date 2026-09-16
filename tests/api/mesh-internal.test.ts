@@ -21,8 +21,15 @@ import {
   saveControllerGrant,
 } from "../../src/persistence/mesh";
 import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import {
+  createExecutionHostRuntimeSnapshot,
+  POSIX_EXECUTION_HOST_CAPABILITIES,
+} from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
+import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
+} from "../../src/shared/mesh";
 
 let dataDir: string;
 
@@ -72,7 +79,8 @@ describe("Mesh internal controller-worker routes", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerPlatform: { os: "linux" as const, architecture: "x64" as const },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true as const,
       workerConfigRevision: 1,
       enrollmentToken: created.token,
@@ -113,7 +121,11 @@ describe("Mesh internal controller-worker routes", () => {
     }), undefined as never);
 
     expect(response!.status).toBe(200);
-    expect((await listWorkerRegistrations("admin"))).toHaveLength(1);
+    expect(await listWorkerRegistrations("admin")).toEqual([
+      expect.objectContaining({
+        workerPlatform: { os: "linux", architecture: "x64" },
+      }),
+    ]);
     const replay = await route(new Request("http://controller/api/mesh/internal/enrollment", {
       method: "POST",
       headers: {
@@ -150,7 +162,7 @@ describe("Mesh internal controller-worker routes", () => {
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
       workerDirectory: "/srv/relay-worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       enrollmentToken: created.token,
@@ -215,7 +227,7 @@ describe("Mesh internal controller-worker routes", () => {
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       workerEndpoint: "http://127.0.0.1:8081",
@@ -253,7 +265,7 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
-  test("accepts signed health from one active controller grant in worker mode", async () => {
+  test("returns runtime health compatible with current and legacy controllers", async () => {
     await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
     const controller = createSigningIdentity();
     await saveControllerGrant({
@@ -263,6 +275,10 @@ describe("Mesh internal controller-worker routes", () => {
       controllerFingerprint: controller.fingerprint,
       controllerEncryptionPublicKey: null,
     });
+    const runtimeSnapshot = createExecutionHostRuntimeSnapshot(
+      process.platform,
+      process.arch,
+    );
     const unsigned = {
       protocolVersion: 1 as const,
       senderNodeId: "controller-1",
@@ -278,6 +294,9 @@ describe("Mesh internal controller-worker routes", () => {
         "content-type": "application/json",
         "x-clanky-mesh-node-id": "controller-1",
         "x-clanky-mesh-request-id": unsigned.nonce,
+        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
+          MESH_RUNTIME_SNAPSHOT_VERSION,
+        ),
       },
       body: JSON.stringify({
         ...unsigned,
@@ -295,11 +314,47 @@ describe("Mesh internal controller-worker routes", () => {
       controllerNodeId: "controller-1",
       requestNonce: unsigned.nonce,
       workerDirectory: dataDir,
+      workerPlatform: runtimeSnapshot.platform,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: runtimeSnapshot.capabilities,
       signature: expect.any(String),
     });
+
+    const legacyUnsigned = {
+      ...unsigned,
+      nonce: crypto.randomUUID(),
+      sentAt: new Date().toISOString(),
+    };
+    const legacyResponse = await route(new Request(
+      "http://worker/api/mesh/internal/health",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-clanky-mesh-node-id": "controller-1",
+          "x-clanky-mesh-request-id": legacyUnsigned.nonce,
+        },
+        body: JSON.stringify({
+          ...legacyUnsigned,
+          signature: sign(
+            null,
+            Buffer.from(buildMeshHealthCheckSigningPayload(legacyUnsigned)),
+            controller.privateKey,
+          ).toString("base64url"),
+        }),
+      },
+    ), undefined as never);
+
+    expect(legacyResponse!.status).toBe(200);
+    const legacyBody = await readJson(legacyResponse!) as {
+      workerPlatform?: unknown;
+      workerCapabilities: Record<string, number>;
+    };
+    expect(legacyBody.workerPlatform).toBeUndefined();
+    expect(legacyBody.workerCapabilities["git"]).toBeUndefined();
+    expect(legacyBody.workerCapabilities["managedWorktrees"]).toBeUndefined();
+    expect(legacyBody.workerCapabilities["vnc"]).toBeUndefined();
   });
 
   test("rejects signed controller operations targeting another worker", async () => {

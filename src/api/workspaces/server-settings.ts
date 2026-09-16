@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { z } from "zod";
 /**
  * Route handlers for workspace server settings: CRUD, status, and test connection.
  */
@@ -12,7 +13,11 @@ import {
   internalErrorResponse,
 } from "../helpers";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
-import { ServerSettingsSchema, TestConnectionRequestSchema } from "@/contracts/schemas";
+import {
+  ExecutionHostDescriptorSchema,
+  ServerSettingsSchema,
+  TestConnectionRequestSchema,
+} from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:workspaces");
@@ -249,6 +254,7 @@ export const serverSettingsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List local and paired mesh stdio execution targets.",
+    responseSchema: z.array(ExecutionHostDescriptorSchema),
     async GET() {
       try {
         return Response.json(await workspaceManager.listExecutionTargets());

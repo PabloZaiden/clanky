@@ -80,6 +80,11 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         message: "Worktrees are disabled for this workspace",
         status: 409,
       },
+      execution_host_capability_unavailable: {
+        error: "execution_host_capability_unavailable",
+        message: "This execution host does not support ACP chats",
+        status: 409,
+      },
     } as const;
     if (error.code === "acp_connection_timed_out") {
       const isSsh = error.details["transport"] === "ssh";
