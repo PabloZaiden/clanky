@@ -456,6 +456,7 @@ export class WorkspaceManager {
     if (!current) {
       return null;
     }
+    const userId = requireCurrentUserId();
 
     const nameChanged = updates.name !== undefined && updates.name !== current.name;
     const directoryChanged = updates.directory !== undefined && updates.directory !== current.directory;
@@ -485,7 +486,7 @@ export class WorkspaceManager {
         nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
           current,
           updates.executionHost,
-          requireCurrentUserId(),
+          userId,
         );
         nextSshTarget = undefined;
         requestedExecutionTargetChange = current.sshTarget !== undefined
@@ -503,7 +504,7 @@ export class WorkspaceManager {
       nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
         current,
         updates.executionHost,
-        requireCurrentUserId(),
+        userId,
       );
       nextSshTarget = undefined;
       requestedExecutionTargetChange = !executionHostBindingsEqual(
@@ -564,6 +565,9 @@ export class WorkspaceManager {
         current.executionHostBinding,
         nextExecutionHostBinding,
       );
+      if (executionTargetChanged) {
+        requireWorkspaceExecutionCapabilities(nextExecutionHostBinding, userId);
+      }
       const privateChanged = updates.isPrivate !== undefined
         && updates.isPrivate !== (current.isPrivate === true);
       const archivedChanged = updates.archived !== undefined

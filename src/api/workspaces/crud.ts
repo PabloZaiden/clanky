@@ -9,10 +9,11 @@ import { isDomainError } from "../../core/domain-error";
 import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {
-  requireWorkspace,
   domainErrorResponse,
   errorResponse,
+  executionHostCapabilityUnavailableMapping,
   internalErrorResponse,
+  requireWorkspace,
 } from "../helpers";
 import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
@@ -107,6 +108,8 @@ export const crudRoutes = defineRoutes({
               execution_host_unavailable: {
                 status: 400,
               },
+              execution_host_capability_unavailable:
+                executionHostCapabilityUnavailableMapping(error),
               execution_host_private: {
                 status: 400,
               },
@@ -219,6 +222,8 @@ export const crudRoutes = defineRoutes({
               execution_host_unavailable: {
                 status: 400,
               },
+              execution_host_capability_unavailable:
+                executionHostCapabilityUnavailableMapping(error),
               workspace_execution_target_in_use: {
                 status: 409,
               },

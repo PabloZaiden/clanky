@@ -8,7 +8,10 @@ import {
   WorkspaceExecResponseSchema,
 } from "@/contracts/schemas";
 import { workspaceCommandService } from "../../core/workspace-command-service";
-import { domainErrorResponse } from "../helpers";
+import {
+  domainErrorResponse,
+  executionHostCapabilityUnavailableMapping,
+} from "../helpers";
 import { parseAndValidate } from "../validation";
 
 export const workspaceExecRoutes = defineRoutes({
@@ -46,6 +49,8 @@ export const workspaceExecRoutes = defineRoutes({
             workspace_exec_output_limit_exceeded: {
               status: 413,
             },
+            execution_host_capability_unavailable:
+              executionHostCapabilityUnavailableMapping(error),
             mesh_execution_aborted: {
               status: 499,
               message: "Workspace command was aborted",

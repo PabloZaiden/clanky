@@ -57,6 +57,7 @@ import { migrateMeshWorkerKillNonces } from "./mesh-worker-kill-nonces";
 import { migrateWorkspaceWorkerEnrollments } from "./workspace-worker-enrollments";
 import { migrateMeshPeerRoutes } from "./mesh-peer-routes";
 import { migrateControllerRelayPairing } from "./controller-relay-pairing";
+import { backfillMeshExecutionHostRuntimeSnapshots } from "./execution-host-runtime-snapshots";
 
 const log = createLogger("persistence:migrations");
 
@@ -1631,6 +1632,7 @@ export const migrations: Migration[] = [
           "ALTER TABLE mesh_worker_registrations ADD COLUMN worker_platform_architecture TEXT",
         );
       }
+      backfillMeshExecutionHostRuntimeSnapshots(db);
     },
   },
 ];
