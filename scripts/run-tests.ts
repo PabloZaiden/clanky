@@ -1,10 +1,12 @@
+export type TestMode = "all" | "backend" | "native-worker";
+
 interface SuiteDefinition {
   id: string;
   label: string;
   pattern: string;
   fileConcurrency: number;
   argsPrefix: string[];
-  modes: Array<"all" | "backend">;
+  modes: TestMode[];
 }
 
 interface SuiteFiles {
@@ -31,7 +33,7 @@ export interface ShardAssignment {
 
 interface RunTestBucketsDependencies {
   buildBuckets: (
-    mode: "all" | "backend",
+    mode: TestMode,
     workerCapacity: number,
   ) => Promise<TestBucket[]>;
   runBucket: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>;
@@ -53,6 +55,14 @@ const protectedNativeOptions = new Set([
 ]);
 
 const suiteDefinitions: SuiteDefinition[] = [
+  {
+    id: "native-worker",
+    label: "tests/e2e/native-worker-registration.test.ts",
+    pattern: "tests/e2e/native-worker-registration.test.ts",
+    fileConcurrency: 1,
+    argsPrefix: ["test", "--dots", "--timeout", "120000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    modes: ["native-worker"],
+  },
   {
     id: "unit",
     label: "tests/unit",
@@ -101,12 +111,14 @@ export function buildEnv(sourceEnv: Record<string, string | undefined> = process
   return env;
 }
 
-function assertValidMode(mode: string | undefined): "all" | "backend" {
+function assertValidMode(mode: string | undefined): TestMode {
   switch (mode ?? "all") {
     case "all":
       return "all";
     case "backend":
       return "backend";
+    case "native-worker":
+      return "native-worker";
     default:
       throw new Error(`Unknown test mode: ${mode ?? ""}`);
   }
@@ -134,7 +146,7 @@ async function listTestFiles(pattern: string): Promise<string[]> {
   return files.sort();
 }
 
-async function listTestFilesBySuiteForMode(mode: "all" | "backend"): Promise<SuiteFiles[]> {
+async function listTestFilesBySuiteForMode(mode: TestMode): Promise<SuiteFiles[]> {
   const claimedFiles = new Set<string>();
   const suiteFiles: SuiteFiles[] = [];
   for (const suite of suiteDefinitions) {
@@ -155,7 +167,7 @@ async function listTestFilesBySuiteForMode(mode: "all" | "backend"): Promise<Sui
   return suiteFiles;
 }
 
-export async function listTestFilesForMode(mode: "all" | "backend"): Promise<string[]> {
+export async function listTestFilesForMode(mode: TestMode): Promise<string[]> {
   const files = new Set<string>();
   for (const suiteFiles of await listTestFilesBySuiteForMode(mode)) {
     for (const file of suiteFiles.files) {
@@ -321,7 +333,7 @@ export function partitionFiles(files: string[], workerCapacity: number): ShardAs
 }
 
 export async function buildBuckets(
-  mode: "all" | "backend",
+  mode: TestMode,
   workerCapacity: number = defaultMaxWorkers,
 ): Promise<TestBucket[]> {
   const buckets: TestBucket[] = [];
@@ -401,7 +413,7 @@ async function runBuckets(
 }
 
 async function runNativeTests(
-  mode: "all" | "backend",
+  mode: TestMode,
   env: Record<string, string>,
   workerCapacity: number,
   nativeArgs: string[],

@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:net";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  availablePort,
+  enrollMeshWorker,
+  meshJsonRequest,
+  sourceClankyCommand,
+  startMeshNode,
+  type ManagedMeshNode,
+} from "../helpers/mesh-process-cluster";
 import { pollUntil } from "../helpers/polling";
 import { createExecutionHostRuntimeSnapshot } from "../../src/shared/execution-host";
 
@@ -16,92 +23,14 @@ interface MeshProcess {
 
 let processes: MeshProcess[] = [];
 
-async function availablePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("Failed to allocate a port"));
-        return;
-      }
-      server.close((error) => error ? reject(error) : resolve(address.port));
-    });
+async function startNode(
+  role: "controller" | "worker",
+): Promise<ManagedMeshNode> {
+  const node = await startMeshNode({
+    role,
+    command: sourceClankyCommand(),
   });
-}
-
-async function startNode(role: "controller" | "worker"): Promise<MeshProcess> {
-  const dataDir = await mkdtemp(join(tmpdir(), `clanky-mesh-${role}-`));
-  const port = await availablePort();
-  const baseUrl = `${role === "worker" ? "https" : "http"}://127.0.0.1:${String(port)}`;
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    CLANKY_DATA_DIR: dataDir,
-    CLANKY_HOST: "127.0.0.1",
-    CLANKY_PORT: String(port),
-    CLANKY_PUBLIC_BASE_URL: baseUrl,
-    CLANKY_LOG_LEVEL: "fatal",
-  };
-  let apiKey: string | undefined;
-  if (role === "controller") {
-    env["CLANKY_DISABLE_PASSKEY"] = "true";
-  } else {
-    delete env["CLANKY_DISABLE_PASSKEY"];
-    const bootstrap = Bun.spawnSync(
-      [
-        process.execPath,
-        "src/index.ts",
-        "worker",
-        "bootstrap",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(port),
-        "--worker-directory",
-        dataDir,
-        "--mesh-endpoint",
-        baseUrl,
-        "--instance-name",
-        "worker-1",
-      ],
-      { cwd: process.cwd(), env, stdout: "pipe", stderr: "pipe" },
-    );
-    if (bootstrap.exitCode !== 0) {
-      throw new Error(bootstrap.stderr.toString());
-    }
-
-    apiKey = (JSON.parse(bootstrap.stdout.toString().trim().split("\n").at(-1)!) as {
-      apiKey: string;
-    }).apiKey;
-  }
-
-  const tlsCertificate = role === "worker"
-    ? (JSON.parse(await Bun.file(join(dataDir, "mesh", "worker-tls.json")).text()) as {
-        certificate: string;
-      }).certificate
-    : undefined;
-  const child = Bun.spawn([
-    process.execPath,
-    "src/index.ts",
-    "serve",
-    ...(role === "worker" ? ["--mesh-worker", "true", "--worker-directory", dataDir] : []),
-  ], {
-    cwd: process.cwd(),
-    env,
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  const node = { baseUrl, dataDir, child, apiKey, tlsCertificate };
   processes.push(node);
-  await pollUntil(
-    async () => fetch(`${baseUrl}/api/health`, {
-      tls: tlsCertificate ? { ca: tlsCertificate } : undefined,
-    }).then((response) => response.ok).catch(() => false),
-    (ready) => ready,
-    { description: `${role} to become healthy`, timeoutMs: 10_000 },
-  );
   return node;
 }
 
@@ -343,58 +272,17 @@ async function jsonRequest(
   path: string,
   options: { method?: string; body?: unknown } = {},
 ): Promise<{ status: number; body: any }> {
-  const method = options.method ?? (options.body === undefined ? "GET" : "POST");
-  const response = await fetch(`${node.baseUrl}${path}`, {
-    method,
-    headers: {
-      ...(node.apiKey ? { authorization: `Bearer ${node.apiKey}` } : {}),
-      ...(method === "GET" ? {} : { origin: node.baseUrl }),
-      ...(options.body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
-  });
-  return { status: response.status, body: await response.json() };
+  return await meshJsonRequest<any>(node, path, options);
 }
 
-async function enroll(controller: MeshProcess, worker: MeshProcess): Promise<void> {
-  const created = await jsonRequest(controller, "/api/mesh/enrollment-tokens", {
-    method: "POST",
-    body: { name: "integration", ttlSeconds: 900 },
-  });
-  expect(created.status).toBe(201);
-  const enrollment = created.body as {
-    token: string;
-    enrollment: { controllerFingerprint: string };
-    workerJoinCommand: string;
-  };
+async function enroll(
+  controller: ManagedMeshNode,
+  worker: ManagedMeshNode,
+): Promise<void> {
+  const enrollment = await enrollMeshWorker(controller, worker);
   expect(enrollment.workerJoinCommand).toBe(
     `clanky worker join '${controller.baseUrl}' --token '${enrollment.token}' --fingerprint '${enrollment.enrollment.controllerFingerprint}'`,
   );
-  const joinResult = Bun.spawnSync([
-    process.execPath,
-    "src/index.ts",
-    "worker",
-    "join",
-    controller.baseUrl,
-    "--token",
-    enrollment.token,
-    "--fingerprint",
-    enrollment.enrollment.controllerFingerprint,
-  ], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      CLANKY_DATA_DIR: worker.dataDir,
-      CLANKY_LOG_LEVEL: "fatal",
-      CLANKY_DISABLE_PASSKEY: undefined,
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (joinResult.exitCode !== 0) {
-    throw new Error(joinResult.stderr.toString());
-  }
 }
 
 afterEach(async () => {
