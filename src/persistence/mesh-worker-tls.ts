@@ -6,6 +6,7 @@
  * server.
  */
 
+import "reflect-metadata";
 import {
   createHash,
   createPrivateKey,
