@@ -18,6 +18,7 @@ import { DomainError } from "./domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig } from "./ssh-connection-target";
+import { openPreviewTcpForward, type PreviewTcpForward } from "./preview-tcp-forward";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
 import { requireCurrentUser, runWithCurrentUser } from "./user-context";
@@ -34,6 +35,7 @@ interface PreviewRuntime {
   targetBaseUrl: string;
   targetOrigin: string;
   tunnel?: ChildProcess;
+  meshForward?: PreviewTcpForward;
   tunnelLocalPort?: number;
 }
 
@@ -226,57 +228,96 @@ export class PreviewSessionManager {
     await this.initialize();
     const workspace = await this.resolveWorkspaceReference(options.workspace);
     await touchWorkspace(workspace.id);
-    const sshTunnel = workspace.executionHostBinding.host.kind === "ssh"
-      ? await this.startSshTunnel(workspace, options.remoteHost, options.remotePort)
-      : undefined;
-    const targetPort = sshTunnel ? sshTunnel.localPort : options.remotePort;
-    const targetHost = sshTunnel ? LOCAL_TUNNEL_HOST : options.remoteHost;
-    const now = new Date().toISOString();
-    const preview: PreviewSession = {
-      config: {
-        id: crypto.randomUUID(),
+    const executionTarget = await resolveWorkspaceExecutionTarget(workspace);
+    let sshTunnel: { child: ChildProcess; localPort: number } | undefined;
+    let meshForward: PreviewTcpForward | undefined;
+    let preview: PreviewSession | undefined;
+    let previewSaved = false;
+    let runtimeRegistered = false;
+
+    try {
+      sshTunnel = executionTarget.kind === "ssh"
+        ? await this.startSshTunnel(workspace, options.remoteHost, options.remotePort)
+        : undefined;
+      meshForward = executionTarget.kind === "mesh"
+        ? await openPreviewTcpForward(workspace.executionHostBinding, options.remotePort)
+        : undefined;
+      const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? options.remotePort;
+      const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
+      const now = new Date().toISOString();
+      preview = {
+        config: {
+          id: crypto.randomUUID(),
+          workspaceId: workspace.id,
+          remoteHost: options.remoteHost,
+          remotePort: options.remotePort,
+          localHost: options.localHost,
+          localPort: options.localPort,
+          localUrl: options.localUrl,
+          initialPath: normalizeInitialPath(options.initialPath),
+          cliClientId: options.cliClientId,
+          cliHostname: options.cliHostname,
+          createdAt: now,
+          updatedAt: now,
+        },
+        state: {
+          status: "active",
+          connectedAt: now,
+        },
+      };
+      await savePreviewSession(preview);
+      previewSaved = true;
+      const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
+      this.runtimes.set(preview.config.id, {
+        localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
+        user: requireCurrentUser(),
+        targetBaseUrl,
+        targetOrigin: new URL(targetBaseUrl).origin,
+        tunnel: sshTunnel?.child,
+        meshForward,
+        tunnelLocalPort: sshTunnel?.localPort ?? meshForward?.localPort,
+      });
+      runtimeRegistered = true;
+      previewEventEmitter.emit({
+        type: "preview.created",
+        previewId: preview.config.id,
         workspaceId: workspace.id,
-        remoteHost: options.remoteHost,
-        remotePort: options.remotePort,
-        localHost: options.localHost,
-        localPort: options.localPort,
-        localUrl: options.localUrl,
-        initialPath: normalizeInitialPath(options.initialPath),
-        cliClientId: options.cliClientId,
-        cliHostname: options.cliHostname,
-        createdAt: now,
-        updatedAt: now,
-      },
-      state: {
-        status: "active",
-        connectedAt: now,
-      },
-    };
-    await savePreviewSession(preview);
-    const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
-    this.runtimes.set(preview.config.id, {
-      localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
-      user: requireCurrentUser(),
-      targetBaseUrl,
-      targetOrigin: new URL(targetBaseUrl).origin,
-      tunnel: sshTunnel?.child,
-      tunnelLocalPort: sshTunnel?.localPort,
-    });
-    previewEventEmitter.emit({
-      type: "preview.created",
-      previewId: preview.config.id,
-      workspaceId: workspace.id,
-      preview,
-      timestamp: now,
-    });
-    previewEventEmitter.emit({
-      type: "preview.connected",
-      previewId: preview.config.id,
-      workspaceId: workspace.id,
-      preview,
-      timestamp: now,
-    });
-    return { preview, targetBaseUrl, tunnel: sshTunnel?.child };
+        preview,
+        timestamp: now,
+      });
+      previewEventEmitter.emit({
+        type: "preview.connected",
+        previewId: preview.config.id,
+        workspaceId: workspace.id,
+        preview,
+        timestamp: now,
+      });
+      return { preview, targetBaseUrl, tunnel: sshTunnel?.child };
+    } catch (error) {
+      if (preview && runtimeRegistered) {
+        this.runtimes.delete(preview.config.id);
+        this.closeUpstreamSockets(preview.config.id);
+      }
+      if (preview && previewSaved) {
+        try {
+          await deletePreviewSession(preview.config.id);
+        } catch (cleanupError) {
+          log.error("Unable to remove failed preview session", {
+            previewId: preview.config.id,
+            error: String(cleanupError),
+          });
+        }
+      }
+      try {
+        await this.closePreviewTransports(sshTunnel?.child, meshForward);
+      } catch (cleanupError) {
+        log.error("Unable to clean up failed preview transport", {
+          workspaceId: workspace.id,
+          error: String(cleanupError),
+        });
+      }
+      throw error;
+    }
   }
 
   async listWorkspacePreviews(workspaceId: string): Promise<PreviewSession[]> {
@@ -301,13 +342,7 @@ export class PreviewSessionManager {
       return false;
     }
     const runtime = this.runtimes.get(id);
-    if (runtime?.tunnel) {
-      runtime.tunnel.kill("SIGTERM");
-      await waitForProcessExit(runtime.tunnel, STOP_TIMEOUT_MS);
-      if (runtime.tunnel.exitCode === null) {
-        runtime.tunnel.kill("SIGKILL");
-      }
-    }
+    await this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward);
     this.closeUpstreamSockets(id);
     const bridgeSocket = this.bridgeSockets.get(id);
     if (bridgeSocket) {
@@ -335,6 +370,25 @@ export class PreviewSessionManager {
       timestamp: now,
     });
     return true;
+  }
+
+  private async closePreviewTransports(
+    tunnel: ChildProcess | undefined,
+    meshForward: PreviewTcpForward | undefined,
+  ): Promise<void> {
+    try {
+      if (tunnel) {
+        tunnel.kill("SIGTERM");
+        await waitForProcessExit(tunnel, STOP_TIMEOUT_MS);
+        if (tunnel.exitCode === null) {
+          tunnel.kill("SIGKILL");
+        }
+      }
+    } finally {
+      if (meshForward) {
+        await meshForward.close();
+      }
+    }
   }
 
   async markPreviewFailed(id: string, error: string): Promise<void> {
