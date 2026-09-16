@@ -164,6 +164,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     handleTestWorkspaceConnection,
   } = workspaceCreate;
   const { targets: executionTargets } = useWorkspaceExecutionTargets();
+  const automaticExecutionTargets = useMemo(
+    () => executionTargets.filter((target) =>
+      Boolean(target.capabilities.provisioning)
+      && (!dashboardData.remoteOnly || target.ref.kind !== "local")
+    ),
+    [dashboardData.remoteOnly, executionTargets],
+  );
   const {
     addresses: workerHostAddresses,
     loading: workerHostAddressesLoading,
@@ -443,18 +450,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     Dedicated worker ({workspaceWorkerEnrollment.enrollment.status})
                   </option>
                 )}
-                {executionTargets
-                  .filter((target) =>
-                    !dashboardData.remoteOnly || target.ref.kind !== "local"
-                  )
-                  .map((target) => (
+                {automaticExecutionTargets.map((target) => (
                     <option
                       key={target.targetKey}
                       value={serializeExecutionHostRef(target.ref)}
                     >
                       {target.name} via {target.ref.kind}
                     </option>
-                  ))}
+                ))}
               </SelectField>
 
               {automaticExecutionHost && !workspaceWorkerEnrollmentSelected && (
@@ -528,7 +531,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   </>
               )}
 
-              {executionTargets.length === 0 && (
+              {automaticExecutionTargets.length === 0 && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                   No execution host is available for automatic workspace provisioning.
                 </p>

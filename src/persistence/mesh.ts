@@ -19,8 +19,7 @@ import {
   type ExecutionHostCapabilities,
   type ExecutionHostPlatform,
   type ExecutionHostRef,
-  normalizeExecutionHostPlatform,
-  parseExecutionHostCapabilities,
+  parseExecutionHostRuntimeSnapshot,
 } from "@/shared/execution-host";
 import {
   deleteExecutionHost,
@@ -760,20 +759,30 @@ interface WorkerRegistrationRow {
 function mapWorkerRegistrationRow(
   row: WorkerRegistrationRow,
 ): MeshWorkerRegistration {
+  const hasPlatform = row.worker_platform_os !== null
+    || row.worker_platform_architecture !== null;
+  let platform: ExecutionHostPlatform | null = null;
   let capabilities: ExecutionHostCapabilities | null = null;
-  if (row.worker_capabilities_json) {
+  if (row.worker_capabilities_json !== null || hasPlatform) {
     try {
-      const parsed = parseExecutionHostCapabilities(
-        JSON.parse(row.worker_capabilities_json) as unknown,
+      const runtime = parseExecutionHostRuntimeSnapshot(
+        {
+          os: row.worker_platform_os,
+          architecture: row.worker_platform_architecture,
+        },
+        JSON.parse(row.worker_capabilities_json ?? "null") as unknown,
       );
-      if (!parsed) {
-        throw new Error("capabilities must contain positive integer versions");
+      if (!runtime) {
+        throw new Error("platform and capabilities must form a valid runtime snapshot");
       }
-      capabilities = parsed;
-    } catch {
-      log.warn("Invalid worker capabilities JSON", {
+      platform = runtime.platform;
+      capabilities = runtime.capabilities;
+    } catch (error) {
+      log.warn("Invalid worker runtime snapshot", {
         workerNodeId: row.worker_node_id,
+        error: String(error),
       });
+      platform = null;
       capabilities = {};
     }
   }
@@ -812,12 +821,7 @@ function mapWorkerRegistrationRow(
     workerTlsFingerprint: row.worker_tls_fingerprint,
     route,
     workerDirectory: row.worker_directory,
-    workerPlatform: row.worker_platform_os && row.worker_platform_architecture
-      ? normalizeExecutionHostPlatform(
-          row.worker_platform_os,
-          row.worker_platform_architecture,
-        )
-      : null,
+    workerPlatform: platform,
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,
     workerConfigRevision: row.worker_config_revision,

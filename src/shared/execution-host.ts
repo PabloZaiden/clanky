@@ -132,7 +132,6 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
 };
 
 export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
-  commandExecution: 1,
   serverHealth: 1,
 };
 
@@ -179,6 +178,32 @@ export function createExecutionHostRuntimeSnapshot(
   return {
     platform: normalizedPlatform,
     capabilities: getExecutionHostCapabilitiesForPlatform(normalizedPlatform),
+  };
+}
+
+export function parseExecutionHostRuntimeSnapshot(
+  platform: {
+    os: string | null;
+    architecture: string | null;
+  },
+  capabilities: unknown,
+): ExecutionHostRuntimeSnapshot | null {
+  if ((platform.os === null) !== (platform.architecture === null)) {
+    return null;
+  }
+  const normalizedPlatform = platform.os === null
+    ? null
+    : normalizeExecutionHostPlatform(platform.os, platform.architecture!);
+  if (platform.os !== null && !normalizedPlatform) {
+    return null;
+  }
+  const parsedCapabilities = parseExecutionHostCapabilities(capabilities);
+  if (!parsedCapabilities) {
+    return null;
+  }
+  return {
+    platform: normalizedPlatform,
+    capabilities: parsedCapabilities,
   };
 }
 

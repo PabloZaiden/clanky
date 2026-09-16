@@ -339,7 +339,7 @@ describe("controller-worker Mesh persistence", () => {
       localUserId: "admin",
       directory: "C:\\workspaces",
       platform: { os: "windows", architecture: "x64" },
-      capabilities: { commandExecution: 1, serverHealth: 1 },
+      capabilities: { serverHealth: 1 },
       acceptRemoteExecution: true,
       configRevision: 1,
     });
@@ -347,14 +347,62 @@ describe("controller-worker Mesh persistence", () => {
     expect(await getWorkerRegistration("worker-runtime", "admin")).toMatchObject({
       workerDirectory: "C:\\workspaces",
       workerPlatform: { os: "windows", architecture: "x64" },
-      workerCapabilities: { commandExecution: 1, serverHealth: 1 },
+      workerCapabilities: { serverHealth: 1 },
     });
     expect(getExecutionHostByRef("admin", ref)).toMatchObject({
       revision: initialHost.revision,
       runtime: {
         platform: { os: "windows", architecture: "x64" },
-        capabilities: { commandExecution: 1, serverHealth: 1 },
+        capabilities: { serverHealth: 1 },
       },
+    });
+  });
+
+  // This persistence-boundary contract prevents partially trusted runtime
+  // metadata from enabling operations after storage corruption.
+  test("fails closed when either half of a runtime snapshot is corrupt", async () => {
+    const canonicalRef = { kind: "mesh" as const, nodeId: "canonical-corrupt-runtime" };
+    ensureExecutionHost("admin", canonicalRef, "mesh:canonical-corrupt-runtime", {
+      runtime: {
+        platform: { os: "linux", architecture: "x64" },
+        capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      },
+    });
+    getDatabase().query(`
+      UPDATE execution_hosts
+      SET capabilities_json = '{invalid'
+      WHERE user_id = 'admin' AND source_id = 'canonical-corrupt-runtime'
+    `).run();
+    expect(getExecutionHostByRef("admin", canonicalRef)?.runtime).toEqual({
+      platform: null,
+      capabilities: {},
+    });
+
+    await saveWorkerRegistration({
+      workerNodeId: "worker-corrupt-runtime",
+      localUserId: "admin",
+      workerInstanceName: "Corrupt runtime worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "corrupt-runtime-public",
+      workerFingerprint: "corrupt-runtime-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    getDatabase().query(`
+      UPDATE mesh_worker_registrations
+      SET worker_platform_os = 'unsupported'
+      WHERE local_user_id = 'admin' AND worker_node_id = 'worker-corrupt-runtime'
+    `).run();
+    expect(await getWorkerRegistration("worker-corrupt-runtime", "admin")).toMatchObject({
+      workerPlatform: null,
+      workerCapabilities: {},
     });
   });
 

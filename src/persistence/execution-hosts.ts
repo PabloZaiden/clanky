@@ -5,7 +5,6 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   ExecutionHostBinding,
-  ExecutionHostCapabilities,
   ExecutionHostKind,
   ExecutionHostRef,
   ExecutionHostRuntimeSnapshot,
@@ -13,8 +12,7 @@ import type {
 import {
   executionHostRefFromParts,
   getExecutionHostSourceId,
-  normalizeExecutionHostPlatform,
-  parseExecutionHostCapabilities,
+  parseExecutionHostRuntimeSnapshot,
 } from "@/shared";
 import { getDatabase } from "./database";
 
@@ -47,23 +45,28 @@ interface ExecutionHostRow {
   updated_at: string;
 }
 
-function parseCapabilities(
-  raw: string,
-  hostId: string,
-): ExecutionHostCapabilities {
+function parseRuntimeSnapshot(row: ExecutionHostRow): ExecutionHostRuntimeSnapshot {
   try {
-    const value = JSON.parse(raw) as unknown;
-    const capabilities = parseExecutionHostCapabilities(value);
-    if (!capabilities) {
-      throw new Error("capabilities must contain positive integer versions");
+    const runtime = parseExecutionHostRuntimeSnapshot(
+      {
+        os: row.platform_os,
+        architecture: row.platform_architecture,
+      },
+      JSON.parse(row.capabilities_json) as unknown,
+    );
+    if (!runtime) {
+      throw new Error("platform and capabilities must form a valid runtime snapshot");
     }
-    return capabilities;
+    return runtime;
   } catch (error) {
-    log.warn("Invalid execution host capabilities snapshot", {
-      hostId,
+    log.warn("Invalid execution host runtime snapshot", {
+      hostId: row.id,
       error: String(error),
     });
-    return {};
+    return {
+      platform: null,
+      capabilities: {},
+    };
   }
 }
 
@@ -81,15 +84,7 @@ function rowToExecutionHost(row: ExecutionHostRow): PersistedExecutionHost {
     userId: row.user_id,
     ref: refFromParts(row.kind, row.source_id),
     targetKey: row.target_key,
-    runtime: {
-      platform: row.platform_os && row.platform_architecture
-        ? normalizeExecutionHostPlatform(
-            row.platform_os,
-            row.platform_architecture,
-          )
-        : null,
-      capabilities: parseCapabilities(row.capabilities_json, row.id),
-    },
+    runtime: parseRuntimeSnapshot(row),
     revision: Math.max(1, Math.floor(row.revision)),
     revokedAt: row.revoked_at,
     createdAt: row.created_at,

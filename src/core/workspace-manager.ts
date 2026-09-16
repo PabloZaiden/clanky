@@ -173,6 +173,32 @@ function getValidationFailure(
   return null;
 }
 
+function requireWorkspaceExecutionCapabilities(
+  binding: ExecutionHostBinding,
+  userId: string,
+): void {
+  executionHostService.requireBindingCapability(binding, "fileOperations", userId);
+  executionHostService.requireBindingCapability(binding, "acpRuntime", userId);
+}
+
+async function resolveWorkspaceExecutionBinding(
+  ref: ExecutionHostRef,
+  userId: string,
+): Promise<ExecutionHostBinding> {
+  const descriptor = await executionHostService.requireCapability(
+    ref,
+    "fileOperations",
+    userId,
+  );
+  const binding = {
+    host: descriptor.ref,
+    targetKey: descriptor.targetKey,
+    revision: descriptor.revision,
+  };
+  executionHostService.requireBindingCapability(binding, "acpRuntime", userId);
+  return binding;
+}
+
 function createWorkspaceRecordFromInput(
   input: NormalizedCreateWorkspaceInput,
   workspaceId: string,
@@ -245,6 +271,7 @@ export class WorkspaceManager {
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
     const normalized = normalizeCreateInput(input);
+    const userId = requireCurrentUserId();
     if (
       !normalized.executionHost
       && !normalized.sshTarget
@@ -280,11 +307,17 @@ export class WorkspaceManager {
 
     const enrollmentBinding = normalized.workspaceWorkerEnrollmentId
       ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
-          requireCurrentUserId(),
+          userId,
           normalized.workspaceWorkerEnrollmentId,
         )
       : undefined;
-    const validationExecutionHost = normalized.executionHost
+    const registeredBinding = normalized.executionHost
+      ? await resolveWorkspaceExecutionBinding(normalized.executionHost, userId)
+      : undefined;
+    if (enrollmentBinding) {
+      requireWorkspaceExecutionCapabilities(enrollmentBinding, userId);
+    }
+    const validationExecutionHost = registeredBinding?.host
       ?? enrollmentBinding?.host;
     const validation = normalized.skipValidation
       ? { success: true, directoryExists: true, isGitRepo: true }
@@ -330,7 +363,7 @@ export class WorkspaceManager {
       } else {
         if (normalized.workspaceWorkerEnrollmentId) {
           executionHostBinding = workspaceWorkerEnrollmentService.claimForWorkspace(
-            requireCurrentUserId(),
+            userId,
             normalized.workspaceWorkerEnrollmentId,
             workspaceId,
             workspaceId,
@@ -338,8 +371,11 @@ export class WorkspaceManager {
           );
           dedicatedWorkerClaimed = true;
         } else {
-          executionHostBinding = executionHostService.getBinding(normalized.executionHost!);
+          executionHostBinding = registeredBinding!;
         }
+      }
+      if (!enrollmentBinding) {
+        requireWorkspaceExecutionCapabilities(executionHostBinding, userId);
       }
       if (normalized.provisioningHost && !provisioningHostBinding) {
         provisioningHostBinding = executionHostBinding;
@@ -358,7 +394,7 @@ export class WorkspaceManager {
       }
       if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
         workspaceWorkerEnrollmentService.attach(
-          requireCurrentUserId(),
+          userId,
           normalized.workspaceWorkerEnrollmentId,
           workspaceId,
         );
@@ -379,16 +415,16 @@ export class WorkspaceManager {
       if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
         try {
           await meshManager.revokeDedicatedWorker(
-            requireCurrentUserId(),
+            userId,
             normalized.workspaceWorkerEnrollmentId,
           );
           const status = workspaceWorkerEnrollmentService.getStatus(
-            requireCurrentUserId(),
+            userId,
             normalized.workspaceWorkerEnrollmentId,
           );
           if (status.enrollment.workerNodeId) {
             await meshManager.removeDedicatedWorker(
-              requireCurrentUserId(),
+              userId,
               status.enrollment.workerNodeId,
             );
           }

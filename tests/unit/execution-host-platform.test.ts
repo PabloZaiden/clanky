@@ -17,7 +17,6 @@ describe("Execution host platform contract", () => {
         architecture: "x64",
       },
       capabilities: {
-        commandExecution: 1,
         serverHealth: 1,
       },
     });

@@ -488,6 +488,13 @@ export class ProvisioningManager {
       options,
       jobId,
     );
+    if (mode === "arise") {
+      executionHostService.requireBindingCapability(
+        executionHostBinding,
+        "devboxLifecycle",
+        owner.id,
+      );
+    }
     const existingWorkerEnrollment = transport === "worker"
       && (mode === "rebuild" || mode === "restart")
       && options.workspaceId

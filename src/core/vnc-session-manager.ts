@@ -240,6 +240,7 @@ export class VncSessionManager {
     if (!binding) {
       throw new DomainError("execution_host_unavailable", "The VNC execution host is unavailable.");
     }
+    executionHostService.requireBindingCapability(binding, "vnc");
     if (binding.host.kind !== "ssh") {
       return {
         session,

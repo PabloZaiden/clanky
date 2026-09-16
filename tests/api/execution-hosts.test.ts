@@ -51,6 +51,10 @@ describe("Execution hosts API", () => {
     const workingDirectoryResponse = await fetch(
       `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/working-directory`,
     );
+    if (!localHost!.capabilities.fileOperations) {
+      expect(workingDirectoryResponse.status).toBe(409);
+      return;
+    }
     expect(workingDirectoryResponse.status).toBe(200);
     expect(await workingDirectoryResponse.json()).toEqual({
       directory: process.cwd(),

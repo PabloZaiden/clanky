@@ -164,7 +164,10 @@ export function ExecutionHostView({
     {
       id: "run-arise",
       label: "Run Arise",
-      disabled: !hostUsable || !host.capabilities.devboxLifecycle || provisioning.starting,
+      disabled: !hostUsable
+        || !host.capabilities.provisioning
+        || !host.capabilities.devboxLifecycle
+        || provisioning.starting,
       onAction: () => void runArise(),
     },
     {
