@@ -482,44 +482,47 @@ export async function updateWorkerHealthSnapshot(input: {
 }): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  db.run(
-    `UPDATE mesh_worker_registrations SET
-      worker_directory = ?,
-      worker_platform_os = ?,
-      worker_platform_architecture = ?,
-      worker_capabilities_json = ?,
-      worker_accept_remote_execution = ?,
-      worker_config_revision = ?,
-      last_seen_at = ?,
-      updated_at = ?
-    WHERE worker_node_id = ? AND local_user_id = ?`,
-    [
-      input.directory,
-      input.platform?.os ?? null,
-      input.platform?.architecture ?? null,
-      JSON.stringify(input.capabilities),
-      input.acceptRemoteExecution ? 1 : 0,
-      input.configRevision,
-      now,
-      now,
+  const updateSnapshot = db.transaction(() => {
+    db.run(
+      `UPDATE mesh_worker_registrations SET
+        worker_directory = ?,
+        worker_platform_os = ?,
+        worker_platform_architecture = ?,
+        worker_capabilities_json = ?,
+        worker_accept_remote_execution = ?,
+        worker_config_revision = ?,
+        last_seen_at = ?,
+        updated_at = ?
+      WHERE worker_node_id = ? AND local_user_id = ?`,
+      [
+        input.directory,
+        input.platform?.os ?? null,
+        input.platform?.architecture ?? null,
+        JSON.stringify(input.capabilities),
+        input.acceptRemoteExecution ? 1 : 0,
+        input.configRevision,
+        now,
+        now,
+        input.workerNodeId,
+        input.localUserId,
+      ],
+    );
+    const registration = getWorkerRegistration(
       input.workerNodeId,
       input.localUserId,
-    ],
-  );
-  const registration = getWorkerRegistration(
-    input.workerNodeId,
-    input.localUserId,
-  );
-  if (registration) {
-    updateExecutionHostRuntimeSnapshot(
-      input.localUserId,
-      getWorkerRegistrationExecutionHostRef(registration),
-      {
-        platform: input.platform,
-        capabilities: input.capabilities,
-      },
     );
-  }
+    if (registration) {
+      updateExecutionHostRuntimeSnapshot(
+        input.localUserId,
+        getWorkerRegistrationExecutionHostRef(registration),
+        {
+          platform: input.platform,
+          capabilities: input.capabilities,
+        },
+      );
+    }
+  });
+  updateSnapshot();
 }
 
 // ---------------------------------------------------------------------------

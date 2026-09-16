@@ -358,6 +358,65 @@ describe("controller-worker Mesh persistence", () => {
     });
   });
 
+  // Runtime capabilities are an authorization boundary. A failed canonical
+  // host write must roll back the registration snapshot from the same health
+  // update so readers cannot observe different capability grants.
+  test("rolls back the worker registration when the canonical snapshot update fails", async () => {
+    await saveWorkerRegistration({
+      workerNodeId: "worker-runtime-rollback",
+      localUserId: "admin",
+      workerInstanceName: "Runtime rollback worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "runtime-rollback-public",
+      workerFingerprint: "runtime-rollback-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    const ref = {
+      kind: "mesh" as const,
+      nodeId: "worker-runtime-rollback",
+    };
+    getDatabase().run(`
+      CREATE TRIGGER fail_runtime_snapshot_update
+      BEFORE UPDATE OF capabilities_json ON execution_hosts
+      WHEN OLD.source_id = 'worker-runtime-rollback'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced canonical snapshot failure');
+      END
+    `);
+
+    await expect(updateWorkerHealthSnapshot({
+      workerNodeId: "worker-runtime-rollback",
+      localUserId: "admin",
+      directory: "C:\\workspaces",
+      platform: { os: "windows", architecture: "x64" },
+      capabilities: { serverHealth: 1 },
+      acceptRemoteExecution: true,
+      configRevision: 2,
+    })).rejects.toThrow("forced canonical snapshot failure");
+
+    expect(await getWorkerRegistration(
+      "worker-runtime-rollback",
+      "admin",
+    )).toMatchObject({
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerConfigRevision: 1,
+    });
+    expect(getExecutionHostByRef("admin", ref)?.runtime).toEqual({
+      platform: { os: "linux", architecture: "x64" },
+      capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+    });
+  });
+
   // This persistence-boundary contract prevents partially trusted runtime
   // metadata from enabling operations after storage corruption.
   test("fails closed when either half of a runtime snapshot is corrupt", async () => {

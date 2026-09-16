@@ -5,8 +5,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_SERVER_AGENT_PROVIDER,
+  executionHostRefsEqual,
   parseExecutionHostRef,
   serializeExecutionHostRef,
+  supportsWorkspaceExecutionHost,
   type AgentProvider,
   type ExecutionHostRef,
   type ServerSettings,
@@ -57,8 +59,18 @@ export function ServerSettingsForm({
     () => targets.filter((target) =>
       target.acceptRemoteExecution
       && (!remoteOnly || target.ref.kind !== "local")
+      && supportsWorkspaceExecutionHost(target.capabilities)
     ),
     [remoteOnly, targets],
+  );
+  const unavailableInitialTarget = useMemo(
+    () => initialExecutionHost
+      ? targets.find((target) =>
+          executionHostRefsEqual(target.ref, initialExecutionHost)
+          && !selectableTargets.includes(target)
+        )
+      : undefined,
+    [initialExecutionHost, selectableTargets, targets],
   );
   const [provider, setProvider] = useState<AgentProvider>(
     initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
@@ -298,6 +310,16 @@ export function ServerSettingsForm({
                   Dedicated worker
                 </option>
               )}
+              {unavailableInitialTarget && (
+                <option
+                  value={serializeExecutionHostRef(
+                    unavailableInitialTarget.ref,
+                  )}
+                  disabled
+                >
+                  {unavailableInitialTarget.name} ({unavailableInitialTarget.ref.kind}) - unavailable
+                </option>
+              )}
               {selectableTargets.map((target) => (
                 <option
                   key={serializeExecutionHostRef(target.ref)}
@@ -307,6 +329,17 @@ export function ServerSettingsForm({
                 </option>
               ))}
             </select>
+            {unavailableInitialTarget
+              && executionHost
+              && executionHostRefsEqual(
+                unavailableInitialTarget.ref,
+                executionHost,
+              ) ? (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  This execution host no longer supports workspace file and
+                  agent operations. Select another host.
+                </p>
+              ) : null}
           </div>
         </div>
         {allowWorkspaceSshTarget && sshTarget && (

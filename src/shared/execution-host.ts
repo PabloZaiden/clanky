@@ -69,6 +69,11 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
 ] as const;
 export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[number];
 
+export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
+  "fileOperations",
+  "acpRuntime",
+] as const satisfies readonly ExecutionHostCapabilityId[];
+
 /**
  * Capability values are protocol versions. Missing capabilities are not
  * supported; clients must not infer support from the host transport.
@@ -435,4 +440,12 @@ export function supportsExecutionHostCapability(
   minimumVersion: number = 1,
 ): boolean {
   return (capabilities[capability] ?? 0) >= minimumVersion;
+}
+
+export function supportsWorkspaceExecutionHost(
+  capabilities: ExecutionHostCapabilities,
+): boolean {
+  return WORKSPACE_EXECUTION_HOST_CAPABILITIES.every((capability) =>
+    supportsExecutionHostCapability(capabilities, capability)
+  );
 }

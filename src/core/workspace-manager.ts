@@ -19,6 +19,7 @@ import {
   executionHostBindingsEqual,
   executionHostRefsEqual,
   isPrivateMeshExecutionHostRef,
+  WORKSPACE_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostBinding,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
@@ -177,8 +178,9 @@ function requireWorkspaceExecutionCapabilities(
   binding: ExecutionHostBinding,
   userId: string,
 ): void {
-  executionHostService.requireBindingCapability(binding, "fileOperations", userId);
-  executionHostService.requireBindingCapability(binding, "acpRuntime", userId);
+  for (const capability of WORKSPACE_EXECUTION_HOST_CAPABILITIES) {
+    executionHostService.requireBindingCapability(binding, capability, userId);
+  }
 }
 
 async function resolveWorkspaceExecutionBinding(
