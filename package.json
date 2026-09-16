@@ -20,26 +20,26 @@
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.10.4",
-    "@peculiar/x509": "1.14.3",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.10.5",
+    "@peculiar/x509": "2.1.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "6.0.0",
     "bun-plugin-tailwind": "0.1.2",
     "highlight.js": "11.12.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-markdown": "10.1.0",
     "reflect-metadata": "0.2.2",
     "remark-gfm": "4.0.1",
     "tailwindcss": "4.3.3",
-    "zod": "4.5.4"
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@types/bun": "1.4.0",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
+    "@types/bun": "1.4.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "typescript": "7.0.2"
   }
 }
