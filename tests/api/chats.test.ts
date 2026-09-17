@@ -18,8 +18,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { chatManager } from "../../src/core/chat-manager";
 
 import { chatEventEmitter } from "../../src/core/event-emitter";
-import { getManagedWorktreePath } from "../../src/core/git";
-import { getPlanFilePath } from "../../src/lib/planning-files";
+import { ManagedPathService } from "../../src/core/managed-path-service";
 import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import type { ChatEvent } from "@/shared/events";
@@ -2000,7 +1999,9 @@ describe("Chats API Integration", () => {
     expect(created.config.useWorktree).toBe(true);
     expect(created.config.baseBranch).toBeUndefined();
 
-    const expectedWorktreePath = getManagedWorktreePath(testWorkDir, created.config.id);
+    const expectedWorktreePath = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, created.config.id);
     const persisted = await pollUntil(
       () => loadChat(created.config.id),
       (chat): chat is Chat => chat?.state.worktree?.worktreePath === expectedWorktreePath,
@@ -2710,7 +2711,9 @@ describe("Chats API Integration", () => {
 
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
-    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const taskWorkingDirectory = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, taskId);
     const currentBranch = await getCurrentBranch(testWorkDir);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
@@ -2788,7 +2791,9 @@ describe("Chats API Integration", () => {
 
   test("keeps task-owned chats out of standalone APIs when persisted scope is stale", async () => {
     const taskId = "task-chat-stale-scope-api-test";
-    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const taskWorkingDirectory = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, taskId);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
     const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {
@@ -3182,7 +3187,12 @@ describe("Chats API Integration", () => {
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
     await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "# Fallback plan\n\n1. Use the default path.\n");
+    await writeFile(
+      new ManagedPathService(
+        process.platform === "win32" ? "windows" : "posix",
+      ).getPlanFilePath(chatWorktreePath),
+      "# Fallback plan\n\n1. Use the default path.\n",
+    );
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
@@ -3337,7 +3347,12 @@ describe("Chats API Integration", () => {
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
     await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "\n<promise>PLAN_READY</promise>\n");
+    await writeFile(
+      new ManagedPathService(
+        process.platform === "win32" ? "windows" : "posix",
+      ).getPlanFilePath(chatWorktreePath),
+      "\n<promise>PLAN_READY</promise>\n",
+    );
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",

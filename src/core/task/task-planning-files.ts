@@ -3,8 +3,11 @@ import type { Task } from "@/shared/task";
 import type { CommandExecutor } from "../command-executor";
 import { updateTaskOperationalState } from "../../persistence/tasks";
 import { log } from "@pablozaiden/webapp/server";
-import { ensurePlanningDirectory } from "../planning-directory";
-import { getPlanFilePath } from "../../lib/planning-files";
+import {
+  clearPlanningDirectory,
+  ensurePlanningDirectory,
+} from "../planning-directory";
+import { ManagedPathService } from "../managed-path-service";
 
 export async function clearPlanningFilesImpl(
   _ctx: TaskCtx,
@@ -14,21 +17,15 @@ export async function clearPlanningFilesImpl(
   worktreePath: string
 ): Promise<void> {
   const planningDir = await ensurePlanningDirectory(executor, worktreePath);
+  const managedPaths = new ManagedPathService(executor.pathStyle);
 
   if (task.config.clearPlanningFolder && !task.state.planMode?.planningFolderCleared) {
     try {
-      const files = await executor.listDirectory(planningDir);
-      const filesToDelete = files.filter((file: string) => file !== ".gitkeep");
-
-      if (filesToDelete.length > 0) {
-        const fileArgs = filesToDelete.map((file: string) => `${planningDir}/${file}`);
-        const result = await executor.exec("rm", ["-rf", ...fileArgs], {
-          cwd: worktreePath,
-        });
-        if (!result.success) {
-          throw new Error(`Failed to clear ${planningDir}: ${result.stderr || result.stdout || "unknown error"}`);
-        }
-      }
+      await clearPlanningDirectory(
+        executor,
+        planningDir,
+        new Set([".gitkeep"]),
+      );
 
       if (task.state.planMode) {
         task.state.planMode.planningFolderCleared = true;
@@ -39,11 +36,16 @@ export async function clearPlanningFilesImpl(
     }
   }
 
-  const planFilePath = getPlanFilePath(worktreePath);
+  const planFilePath = managedPaths.getPlanFilePath(worktreePath);
   try {
     const planFileExists = await executor.fileExists(planFilePath);
+    if (
+      planFileExists
+      && !(await executor.deletePath(planFilePath, { kind: "file" }))
+    ) {
+      throw new Error(`Failed to delete ${planFilePath}`);
+    }
     if (planFileExists) {
-      await executor.exec("rm", ["-f", planFilePath], { cwd: worktreePath });
       log.debug("Cleared stale plan.md file before starting plan mode");
     }
   } catch (error) {

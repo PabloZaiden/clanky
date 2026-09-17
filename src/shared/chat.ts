@@ -265,8 +265,8 @@ export class InvalidCurrentPlanError extends Error {
   readonly code = "invalid_current_plan";
   readonly status = 400;
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "InvalidCurrentPlanError";
   }
 }

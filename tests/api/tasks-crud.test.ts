@@ -11,7 +11,7 @@ import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
-import { getManagedWorktreePath } from "../../src/core/git";
+import { ManagedPathService } from "../../src/core/managed-path-service";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -1346,7 +1346,9 @@ describe("Tasks CRUD API Integration", () => {
         git: {
           originalBranch: baseCreateTaskPayload.baseBranch,
           workingBranch: `${taskId}-a1b2c3d`,
-          worktreePath: getManagedWorktreePath(testWorkDir, taskId),
+          worktreePath: new ManagedPathService(
+            process.platform === "win32" ? "windows" : "posix",
+          ).getManagedWorktreePath(testWorkDir, taskId),
           commits: [],
         },
       });

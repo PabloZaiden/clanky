@@ -7,15 +7,14 @@
  */
 
 import type { CommandExecutor } from "../command-executor";
-import { log } from "@pablozaiden/webapp/server";
 
 // Re-export all public types so callers can import from this module
 export {
   BranchMismatchError,
   GitCommandError,
   InvalidBranchNameError,
-  InvalidManagedWorktreePathError,
 } from "./git-types";
+export { InvalidManagedWorktreePathError } from "../managed-path-service";
 export type {
   GitCommandResult,
   BranchVerificationResult,
@@ -39,13 +38,7 @@ import { stash, stashPop } from "./git-stash";
 import { resetHard, mergeBranch, mergeWithConflictDetection, abortMerge, ensureMergeStrategy } from "./git-merge";
 import { getDiff, getDiffSummary, getFileDiffContent, getDiffWithContent } from "./git-diff";
 import {
-  assertManagedWorktreePath,
-  assertCanonicalManagedWorktreePath,
   createWorktree,
-  getManagedWorktreePath,
-  getManagedWorktreeRoot,
-  isManagedWorktreePath,
-  normalizeManagedWorktreeIdentifier,
   addWorktreeForExistingBranch,
   removeWorktree,
   ensureWorktreeRemoved,
@@ -53,18 +46,13 @@ import {
   pruneWorktrees,
   ensureWorktreeExcluded,
   getComparableWorktreePaths,
-  normalizeWorktreePath,
+  worktreePathComparisonKey,
 } from "./git-worktree";
+import {
+  ManagedPathService,
+} from "../managed-path-service";
 
-export {
-  MANAGED_WORKTREE_DIRECTORY_NAME,
-  assertManagedWorktreePath,
-  assertCanonicalManagedWorktreePath,
-  getManagedWorktreePath,
-  getManagedWorktreeRoot,
-  isManagedWorktreePath,
-  normalizeManagedWorktreeIdentifier,
-} from "./git-worktree";
+export { MANAGED_WORKTREE_DIRECTORY_NAME, ManagedPathService } from "../managed-path-service";
 
 import type {
   BranchVerificationResult,
@@ -86,6 +74,7 @@ import type {
  */
 export class GitService {
   private executor: CommandExecutor;
+  private readonly managedPaths: ManagedPathService;
 
   /**
    * Create a new GitService.
@@ -93,6 +82,7 @@ export class GitService {
    */
   constructor(executor: CommandExecutor) {
     this.executor = executor;
+    this.managedPaths = new ManagedPathService(executor.pathStyle);
   }
 
   /**
@@ -100,65 +90,6 @@ export class GitService {
    */
   static withExecutor(executor: CommandExecutor): GitService {
     return new GitService(executor);
-  }
-
-  /**
-   * Clean up stale git lock files that may have been left behind by crashed processes.
-   * This is especially important when a task is forcefully stopped while git operations
-   * are in progress.
-   *
-   * Handles both regular repos (lock at `.git/index.lock`) and worktrees
-   * (lock at the gitdir path referenced by the `.git` file).
-   *
-   * @param directory - The git repository or worktree directory
-   * @param retries - Number of times to retry cleanup (default: 3)
-   * @param delayMs - Delay between retries in milliseconds (default: 100)
-   * @returns true if any lock files were cleaned up, false otherwise
-   */
-  static async cleanupStaleLockFiles(directory: string, retries = 3, delayMs = 100): Promise<boolean> {
-    const path = await import("path");
-    const { rm, stat, readFile } = await import("fs/promises");
-
-    let lockFile: string;
-    const dotGitPath = path.join(directory, ".git");
-
-    try {
-      const dotGitStat = await stat(dotGitPath);
-      if (dotGitStat.isFile()) {
-        const content = await readFile(dotGitPath, "utf-8");
-        const match = content.match(/^gitdir:\s*(.+)$/m);
-        if (match?.[1]) {
-          const gitDir = match[1].trim();
-          const resolvedGitDir = path.isAbsolute(gitDir) ? gitDir : path.resolve(directory, gitDir);
-          lockFile = path.join(resolvedGitDir, "index.lock");
-        } else {
-          lockFile = path.join(directory, ".git", "index.lock");
-        }
-      } else {
-        lockFile = path.join(directory, ".git", "index.lock");
-      }
-    } catch {
-      return false;
-    }
-
-    let cleaned = false;
-
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        await stat(lockFile);
-        log.info(`[GitService] Removing stale lock file: ${lockFile} (attempt ${attempt + 1}/${retries})`);
-        await rm(lockFile, { force: true });
-        cleaned = true;
-
-        if (attempt < retries - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      } catch {
-        break;
-      }
-    }
-
-    return cleaned;
   }
 
   // ─── Read-only queries ────────────────────────────────────────────────────
@@ -337,23 +268,23 @@ export class GitService {
   // ─── Worktree operations ──────────────────────────────────────────────────
 
   getManagedWorktreeRoot(repoDirectory: string): string {
-    return getManagedWorktreeRoot(repoDirectory);
+    return this.managedPaths.getManagedWorktreeRoot(repoDirectory);
   }
 
   normalizeManagedWorktreeIdentifier(identifier: string): string {
-    return normalizeManagedWorktreeIdentifier(identifier);
+    return this.managedPaths.normalizeManagedWorktreeIdentifier(identifier);
   }
 
   getManagedWorktreePath(repoDirectory: string, identifier: string): string {
-    return getManagedWorktreePath(repoDirectory, identifier);
+    return this.managedPaths.getManagedWorktreePath(repoDirectory, identifier);
   }
 
   isManagedWorktreePath(repoDirectory: string, worktreePath: string): boolean {
-    return isManagedWorktreePath(repoDirectory, worktreePath);
+    return this.managedPaths.isManagedWorktreePath(repoDirectory, worktreePath);
   }
 
   assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
-    return assertManagedWorktreePath(repoDirectory, worktreePath);
+    return this.managedPaths.assertManagedWorktreePath(repoDirectory, worktreePath);
   }
 
   assertCanonicalManagedWorktreePath(
@@ -361,7 +292,11 @@ export class GitService {
     identifier: string,
     worktreePath: string,
   ): string {
-    return assertCanonicalManagedWorktreePath(repoDirectory, identifier, worktreePath);
+    return this.managedPaths.assertCanonicalManagedWorktreePath(
+      repoDirectory,
+      identifier,
+      worktreePath,
+    );
   }
 
   async createWorktree(
@@ -408,11 +343,16 @@ export class GitService {
   }
 
   async worktreeExists(repoDirectory: string, worktreePath: string): Promise<boolean> {
-    const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+    const managedWorktreePath = this.managedPaths.assertManagedWorktreePath(
+      repoDirectory,
+      worktreePath,
+    );
     // Use this.listWorktrees() so test mocks of listWorktrees are respected
     const worktrees = await this.listWorktrees(repoDirectory);
     const comparablePaths = await getComparableWorktreePaths(this.executor, managedWorktreePath);
-    return worktrees.some((wt) => comparablePaths.has(normalizeWorktreePath(wt.path)));
+    return worktrees.some((wt) => comparablePaths.has(
+      worktreePathComparisonKey(wt.path, this.executor.pathStyle),
+    ));
   }
 
   async ensureWorktreeExcluded(repoDirectory: string): Promise<void> {

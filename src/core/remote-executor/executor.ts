@@ -235,6 +235,20 @@ export class CommandExecutorImpl implements CommandExecutor {
     this.defaultTimeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
+  async getEnvironmentVariable(name: string): Promise<string | null> {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Invalid environment variable name: ${name}`);
+    }
+    if (this.provider === "local") {
+      return process.env[name] ?? null;
+    }
+
+    const result = await this.exec("printenv", [name], {
+      logFailures: false,
+    });
+    return result.success ? result.stdout.trim() || null : null;
+  }
+
   /**
    * Execute a shell command.
    */

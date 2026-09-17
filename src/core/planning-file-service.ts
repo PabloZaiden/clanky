@@ -1,13 +1,18 @@
-import { posix as pathPosix, win32 as pathWin32 } from "node:path";
 import type { CommandExecutor } from "./command-executor";
 import { ensurePlanningDirectory } from "./planning-directory";
 import {
+  dirnameExecutionPath,
+  isAbsoluteExecutionPath,
+  joinExecutionPath,
+  normalizeExecutionPath,
+  resolveExecutionPath,
+  type ExecutionPathStyle,
+} from "./execution-path";
+import {
   DEFAULT_PLAN_DISPLAY_PATH,
-  getPlanFilePath,
-  getStatusFilePath,
-  normalizePlanningBasePath,
+  ManagedPathService,
   STATUS_FILE_NAME,
-} from "../lib/planning-files";
+} from "./managed-path-service";
 import { InvalidCurrentPlanError } from "@/shared/chat";
 
 const PLAN_READY_MARKER = /<promise>PLAN_READY<\/promise>/gi;
@@ -49,45 +54,62 @@ function sanitizePlanPathForMessage(planPath: string): string {
     .trim();
 }
 
-function isExplicitAbsolutePlanPath(rawPath: string, normalizedPath: string): boolean {
-  return pathPosix.isAbsolute(normalizedPath)
-    || pathWin32.isAbsolute(rawPath)
-    || pathWin32.isAbsolute(normalizedPath);
-}
-
-function isPathContainedWithinWorkspace(workspaceDirectory: string, targetPath: string): boolean {
-  const relativePath = pathPosix.relative(workspaceDirectory, targetPath);
-  return relativePath === ""
-    || (!relativePath.startsWith("../") && relativePath !== ".." && !pathPosix.isAbsolute(relativePath));
-}
-
-function resolvePlanningFileSource(directory: string, requestedPlanPath?: string): PlanningFileSource {
+function resolvePlanningFileSource(
+  directory: string,
+  pathStyle: ExecutionPathStyle,
+  requestedPlanPath?: string,
+): PlanningFileSource {
+  const managedPaths = new ManagedPathService(pathStyle);
   const trimmedPlanPath = requestedPlanPath?.trim() ?? "";
   if (!trimmedPlanPath) {
     return {
-      planPath: getPlanFilePath(directory),
-      statusPath: getStatusFilePath(directory),
+      planPath: managedPaths.getPlanFilePath(directory),
+      statusPath: managedPaths.getStatusFilePath(directory),
       displayPath: DEFAULT_PLAN_DISPLAY_PATH,
       isDefault: true,
     };
   }
 
-  const workspaceDirectory = normalizePlanningBasePath(directory);
-  const normalizedRequestedPath = pathPosix.normalize(trimmedPlanPath.replaceAll("\\", "/"));
-  if (!normalizedRequestedPath || normalizedRequestedPath === "." || normalizedRequestedPath === "/") {
+  let normalizedRequestedPath: string;
+  try {
+    normalizedRequestedPath = normalizeExecutionPath(trimmedPlanPath, pathStyle);
+  } catch (error) {
+    throw new InvalidCurrentPlanError(
+      "The selected plan file path is invalid for the workspace host.",
+      { cause: error },
+    );
+  }
+  if (
+    !normalizedRequestedPath
+    || normalizedRequestedPath === "."
+    || normalizedRequestedPath === "/"
+    || normalizedRequestedPath === "\\"
+  ) {
     throw new InvalidCurrentPlanError("The selected plan file path must point to a plan file.");
   }
-  const isAbsolutePlanPath = isExplicitAbsolutePlanPath(trimmedPlanPath, normalizedRequestedPath);
-  const planPath = isAbsolutePlanPath
+  const isAbsolutePlanPath = isAbsoluteExecutionPath(
+    normalizedRequestedPath,
+    pathStyle,
+  );
+  let planPath: string;
+  try {
+    planPath = isAbsolutePlanPath
     ? normalizedRequestedPath
-    : pathPosix.normalize(pathPosix.join(workspaceDirectory, normalizedRequestedPath));
-  if (!isAbsolutePlanPath && !isPathContainedWithinWorkspace(workspaceDirectory, planPath)) {
-    throw new InvalidCurrentPlanError("Relative plan file paths must stay within the current chat workspace.");
+    : resolveExecutionPath(directory, normalizedRequestedPath, pathStyle);
+  } catch (error) {
+    throw new InvalidCurrentPlanError(
+      "Relative plan file paths must stay within the current chat workspace.",
+      { cause: error },
+    );
   }
 
   return {
     planPath,
-    statusPath: pathPosix.join(pathPosix.dirname(planPath), STATUS_FILE_NAME),
+    statusPath: joinExecutionPath(
+      pathStyle,
+      dirnameExecutionPath(planPath, pathStyle),
+      STATUS_FILE_NAME,
+    ),
     displayPath: sanitizePlanPathForMessage(normalizedRequestedPath),
     isDefault: false,
   };
@@ -98,7 +120,11 @@ export async function readValidatedPlanningFiles(
   directory: string,
   requestedPlanPath?: string,
 ): Promise<ValidatedPlanningFiles> {
-  const source = resolvePlanningFileSource(directory, requestedPlanPath);
+  const source = resolvePlanningFileSource(
+    directory,
+    executor.pathStyle,
+    requestedPlanPath,
+  );
   const rawPlanContent = await executor.readFile(source.planPath);
   if (rawPlanContent === null) {
     if (source.isDefault) {
@@ -163,11 +189,12 @@ export async function writePlanningFiles(
   files: ValidatedPlanningFiles,
 ): Promise<void> {
   await ensurePlanningDirectory(executor, directory);
+  const managedPaths = new ManagedPathService(executor.pathStyle);
 
   const planWritten = await writePlanningFile(
     executor,
     files.planSourcePath,
-    getPlanFilePath(directory),
+    managedPaths.getPlanFilePath(directory),
     files.planContent,
   );
   if (!planWritten) {
@@ -182,7 +209,7 @@ export async function writePlanningFiles(
   const statusWritten = await writePlanningFile(
     executor,
     files.statusSourcePath,
-    getStatusFilePath(directory),
+    managedPaths.getStatusFilePath(directory),
     nextStatusContent,
   );
   if (!statusWritten) {

@@ -134,6 +134,12 @@ export interface CommandExecutor {
   readonly pathStyle: ExecutionPathStyle;
 
   /**
+   * Read one environment variable from the execution host.
+   * Returns null when the variable is unset.
+   */
+  getEnvironmentVariable(name: string): Promise<string | null>;
+
+  /**
    * Execute a shell command.
    * @param command - The command to execute (e.g., "git status")
    * @param args - Arguments to pass to the command

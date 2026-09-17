@@ -7,13 +7,12 @@ import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import { GitCommandError } from "./git-types";
 import type { GitCommandResult } from "./git-types";
-import { resolve } from "node:path";
+import { resolveExecutionPathUnscoped } from "../execution-path";
 
 const DEFAULT_GIT_SSH_COMMAND = "ssh";
 const ACCEPT_NEW_HOST_KEY_OPTION = "-o StrictHostKeyChecking=accept-new";
 const KNOWN_HOSTS_OPTION_NAME = "UserKnownHostsFile";
 const CLANKY_KNOWN_HOSTS_FILENAME = "clanky-known-hosts";
-const LOCAL_GIT_FALLBACK_COMMANDS = ["/usr/local/bin/git", "/usr/bin/git"];
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -32,23 +31,17 @@ export async function runGitCommand(
   const cmdStr = `git ${args.join(" ")}`;
   log.trace(`[GitService] Running: ${cmdStr} in ${directory}`);
   const gitArgs = ["-C", directory, ...args];
-  let result = await executor.exec("git", gitArgs, { cwd: directory });
-
-  if (!result.success && result.stderr.includes("posix_spawn 'git'")) {
-    for (const fallbackCommand of LOCAL_GIT_FALLBACK_COMMANDS) {
-      log.debug(`[GitService] Retrying with local git fallback: ${fallbackCommand}`);
-      result = await executor.exec(fallbackCommand, gitArgs, { cwd: directory });
-      if (result.success || !result.stderr.includes("ENOENT")) {
-        break;
-      }
-    }
-  }
+  let result = await executor.exec("git", gitArgs, {
+    cwd: directory,
+    logFailures: false,
+  });
 
   if (!result.success && shouldRetryWithAcceptedHostKey(result.stderr)) {
     log.info(`[GitService] Retrying with auto-accepted SSH host key: ${cmdStr}`);
     const retryEnv = await buildAcceptedHostKeyRetryEnv(executor, directory);
     result = await executor.exec("git", gitArgs, {
       cwd: directory,
+      logFailures: false,
       ...(retryEnv ? { env: retryEnv } : {}),
     });
   }
@@ -112,12 +105,11 @@ async function buildAcceptedHostKeyRetryEnv(
 }
 
 async function getConfiguredGitSshCommand(executor: CommandExecutor, directory: string): Promise<string> {
-  const envResult = await executor.exec("bash", ["-lc", "printf %s \"${GIT_SSH_COMMAND:-}\""], {
-    cwd: directory,
-  });
-  if (envResult.success) {
-    const envCommand = envResult.stdout.trim();
-    if (envCommand) return envCommand;
+  const environmentCommand = await executor.getEnvironmentVariable(
+    "GIT_SSH_COMMAND",
+  );
+  if (environmentCommand?.trim()) {
+    return environmentCommand.trim();
   }
 
   const configResult = await executor.exec("git", ["-C", directory, "config", "--get", "core.sshCommand"], {
@@ -145,5 +137,9 @@ async function getGitKnownHostsPath(executor: CommandExecutor, directory: string
   const gitPath = result.stdout.trim();
   if (!gitPath) return null;
 
-  return gitPath.startsWith("/") ? gitPath : resolve(directory, gitPath);
+  return resolveExecutionPathUnscoped(
+    directory,
+    gitPath,
+    executor.pathStyle,
+  );
 }

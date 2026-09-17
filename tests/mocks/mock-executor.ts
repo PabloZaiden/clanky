@@ -30,6 +30,10 @@ export class TestCommandExecutor implements CommandExecutor {
   private readonly localFileSystem = new LocalFileSystem();
   readonly pathStyle = this.localFileSystem.pathStyle;
 
+  async getEnvironmentVariable(name: string): Promise<string | null> {
+    return process.env[name] ?? null;
+  }
+
   /**
    * Execute a shell command locally.
    * Streams stdout chunks incrementally so long-running processes

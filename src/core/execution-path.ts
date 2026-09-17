@@ -23,6 +23,17 @@ function pathApi(style: ExecutionPathStyle): typeof posix {
   return style === "windows" ? win32 : posix;
 }
 
+function normalizePathValue(
+  value: string,
+  style: ExecutionPathStyle,
+): string {
+  const api = pathApi(style);
+  const normalized = api.normalize(value);
+  return normalized === api.parse(normalized).root
+    ? normalized
+    : normalized.replace(/[\\/]+$/, "");
+}
+
 function isWindowsDevicePath(value: string): boolean {
   const normalized = value.replace(/\//g, "\\").toLowerCase();
   return normalized.startsWith("\\\\?\\") || normalized.startsWith("\\\\.\\");
@@ -40,6 +51,14 @@ function hasWindowsReservedPathComponent(value: string): boolean {
     });
 }
 
+function hasUnstableWindowsPathComponent(value: string): boolean {
+  const root = win32.parse(value).root;
+  return value
+    .slice(root.length)
+    .split(/[\\/]+/)
+    .some((component) => component.endsWith(" ") || component.endsWith("."));
+}
+
 function assertSupportedWindowsPath(
   value: string,
   code: "invalid_root" | "invalid_path",
@@ -50,6 +69,7 @@ function assertSupportedWindowsPath(
     || /^[a-z]:(?![\\/])/i.test(value)
     || value.slice(win32.parse(value).root.length).includes(":")
     || hasWindowsReservedPathComponent(value)
+    || hasUnstableWindowsPathComponent(value)
   ) {
     throw new ExecutionPathError(
       code,
@@ -150,8 +170,8 @@ export function executionPathsEqual(
   right: string,
   style: ExecutionPathStyle,
 ): boolean {
-  const normalizedLeft = pathApi(style).normalize(left);
-  const normalizedRight = pathApi(style).normalize(right);
+  const normalizedLeft = normalizePathValue(left, style);
+  const normalizedRight = normalizePathValue(right, style);
   return style === "windows"
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
@@ -165,7 +185,7 @@ export function normalizeExecutionPath(
   if (style === "windows") {
     assertSupportedWindowsPath(value, "invalid_path", "Path");
   }
-  return pathApi(style).normalize(value);
+  return normalizePathValue(value, style);
 }
 
 export function joinExecutionPath(
@@ -173,6 +193,13 @@ export function joinExecutionPath(
   ...parts: string[]
 ): string {
   return pathApi(style).join(...parts);
+}
+
+export function isAbsoluteExecutionPath(
+  path: string,
+  style: ExecutionPathStyle,
+): boolean {
+  return pathApi(style).isAbsolute(path);
 }
 
 export function dirnameExecutionPath(

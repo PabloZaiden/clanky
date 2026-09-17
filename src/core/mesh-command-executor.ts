@@ -50,6 +50,25 @@ export class MeshCommandExecutor implements CommandExecutor {
     return this.configuredPathStyle;
   }
 
+  async getEnvironmentVariable(name: string): Promise<string | null> {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Invalid environment variable name: ${name}`);
+    }
+    const result = this.pathStyle === "windows"
+      ? await this.client.exec(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::Out.Write([Environment]::GetEnvironmentVariable($env:CLANKY_ENV_NAME))",
+          ],
+          { env: { CLANKY_ENV_NAME: name } },
+        )
+      : await this.client.exec("printenv", [name]);
+    return result.success ? result.stdout.trim() || null : null;
+  }
+
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
     return await this.client.exec(command, args, options);
   }

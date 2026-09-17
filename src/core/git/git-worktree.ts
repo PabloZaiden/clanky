@@ -5,114 +5,19 @@
 import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import { runGitCommand, gitError } from "./git-core";
-import { posix } from "node:path";
-import { InvalidManagedWorktreePathError } from "./git-types";
-import { PLANNING_DIRECTORY_NAME } from "../../lib/planning-files";
-
-export const MANAGED_WORKTREE_DIRECTORY_NAME = ".clanky-worktrees";
-
-function normalizeManagedPath(worktreePath: string): string {
-  const normalizedPath = posix.normalize(worktreePath);
-  return normalizedPath.length > 1
-    ? normalizedPath.replace(/\/+$/, "")
-    : normalizedPath;
-}
-
-export function normalizeManagedWorktreeIdentifier(identifier: string): string {
-  const normalizedIdentifier = identifier.trim();
-  if (
-    normalizedIdentifier.length === 0
-    || normalizedIdentifier === "."
-    || normalizedIdentifier === ".."
-    || normalizedIdentifier.includes("/")
-    || normalizedIdentifier.includes("\\")
-    || normalizedIdentifier.includes("\0")
-  ) {
-    throw new InvalidManagedWorktreePathError(
-      identifier,
-      "Managed worktree identifiers must be a non-empty, single safe path component",
-    );
-  }
-
-  return normalizedIdentifier;
-}
-
-export function getManagedWorktreeRoot(repoDirectory: string): string {
-  if (repoDirectory.length === 0 || repoDirectory.includes("\0")) {
-    throw new InvalidManagedWorktreePathError(
-      repoDirectory,
-      "A repository directory is required to construct a managed worktree path",
-    );
-  }
-
-  return normalizeManagedPath(posix.join(repoDirectory, MANAGED_WORKTREE_DIRECTORY_NAME));
-}
-
-export function getManagedWorktreePath(repoDirectory: string, identifier: string): string {
-  return posix.join(
-    getManagedWorktreeRoot(repoDirectory),
-    normalizeManagedWorktreeIdentifier(identifier),
-  );
-}
-
-export function isManagedWorktreePath(repoDirectory: string, worktreePath: string): boolean {
-  if (
-    repoDirectory.length === 0
-    || repoDirectory.includes("\0")
-    || worktreePath.length === 0
-    || worktreePath.includes("\0")
-  ) {
-    return false;
-  }
-
-  const root = getManagedWorktreeRoot(repoDirectory);
-  const normalizedPath = normalizeManagedPath(worktreePath);
-  const rootPrefix = root === "/" ? "/" : `${root}/`;
-  if (!normalizedPath.startsWith(rootPrefix)) {
-    return false;
-  }
-
-  const identifier = normalizedPath.slice(rootPrefix.length);
-  if (
-    identifier.length === 0
-    || identifier === "."
-    || identifier === ".."
-    || identifier.includes("/")
-    || identifier.includes("\\")
-    || identifier.trim() !== identifier
-  ) {
-    return false;
-  }
-
-  return normalizeManagedWorktreeIdentifier(identifier) === identifier;
-}
-
-export function assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
-  if (!isManagedWorktreePath(repoDirectory, worktreePath)) {
-    throw new InvalidManagedWorktreePathError(
-      worktreePath,
-      `Managed worktree path must be a direct child of '${getManagedWorktreeRoot(repoDirectory)}'`,
-    );
-  }
-
-  return normalizeManagedPath(worktreePath);
-}
-
-export function assertCanonicalManagedWorktreePath(
-  repoDirectory: string,
-  identifier: string,
-  worktreePath: string,
-): string {
-  const canonicalPath = getManagedWorktreePath(repoDirectory, identifier);
-  if (worktreePath !== canonicalPath) {
-    throw new InvalidManagedWorktreePathError(
-      worktreePath,
-      `Managed worktree path must equal the canonical path '${canonicalPath}'`,
-    );
-  }
-
-  return canonicalPath;
-}
+import {
+  dirnameExecutionPath,
+  joinExecutionPath,
+  normalizeExecutionPath,
+  relativeExecutionPath,
+  resolveExecutionPathUnscoped,
+  type ExecutionPathStyle,
+} from "../execution-path";
+import {
+  MANAGED_WORKTREE_DIRECTORY_NAME,
+  ManagedPathService,
+  PLANNING_DIRECTORY_NAME,
+} from "../managed-path-service";
 
 export async function createWorktree(
   executor: CommandExecutor,
@@ -121,11 +26,10 @@ export async function createWorktree(
   branchName: string,
   baseBranch?: string
 ): Promise<void> {
-  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(repoDirectory, worktreePath);
   await ensureWorktreeExcluded(executor, repoDirectory);
-
-  await executor.exec("mkdir", ["-p", managedWorktreePath]);
-  await executor.exec("rmdir", [managedWorktreePath]);
 
   let args = ["worktree", "add", managedWorktreePath, "-b", branchName];
   if (baseBranch) {
@@ -168,11 +72,10 @@ export async function addWorktreeForExistingBranch(
   worktreePath: string,
   branchName: string
 ): Promise<void> {
-  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(repoDirectory, worktreePath);
   await ensureWorktreeExcluded(executor, repoDirectory);
-
-  await executor.exec("mkdir", ["-p", managedWorktreePath]);
-  await executor.exec("rmdir", [managedWorktreePath]);
 
   const args = ["worktree", "add", managedWorktreePath, branchName];
   const result = await runGitCommand(executor, repoDirectory, args);
@@ -189,7 +92,9 @@ export async function removeWorktree(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
-  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(repoDirectory, worktreePath);
   const args = ["worktree", "remove", managedWorktreePath];
   if (options?.force) {
     args.push("--force");
@@ -209,7 +114,9 @@ export async function ensureWorktreeRemoved(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
-  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(repoDirectory, worktreePath);
   const registeredBefore = await worktreeExists(executor, repoDirectory, managedWorktreePath);
 
   if (registeredBefore) {
@@ -291,10 +198,14 @@ export async function worktreeExists(
   repoDirectory: string,
   worktreePath: string
 ): Promise<boolean> {
-  const managedWorktreePath = assertManagedWorktreePath(repoDirectory, worktreePath);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(repoDirectory, worktreePath);
   const worktrees = await listWorktrees(executor, repoDirectory);
   const comparablePaths = await getComparableWorktreePaths(executor, managedWorktreePath);
-  return worktrees.some((wt) => comparablePaths.has(normalizeWorktreePath(wt.path)));
+  return worktrees.some((wt) => comparablePaths.has(
+    worktreePathComparisonKey(wt.path, executor.pathStyle),
+  ));
 }
 
 export async function ensureWorktreeExcluded(
@@ -302,31 +213,30 @@ export async function ensureWorktreeExcluded(
   repoDirectory: string
 ): Promise<void> {
   const excludePatterns = [MANAGED_WORKTREE_DIRECTORY_NAME, PLANNING_DIRECTORY_NAME];
+  const result = await runGitCommand(
+    executor,
+    repoDirectory,
+    ["rev-parse", "--git-path", "info/exclude"],
+    { allowFailure: true },
+  );
+  const fallbackPath = joinExecutionPath(
+    executor.pathStyle,
+    repoDirectory,
+    ".git",
+    "info",
+    "exclude",
+  );
+  const resolvedPath = result.success ? result.stdout.trim() : "";
+  const excludePath = resolvedPath
+    ? resolveExecutionPathUnscoped(
+        repoDirectory,
+        resolvedPath,
+        executor.pathStyle,
+      )
+    : fallbackPath;
+  const content = await executor.readFile(excludePath);
 
-  let excludePath: string;
-  try {
-    const result = await runGitCommand(executor, repoDirectory, ["rev-parse", "--git-path", "info/exclude"]);
-    if (result.success && result.stdout.trim()) {
-      const resolvedPath = result.stdout.trim();
-      excludePath = resolvedPath.startsWith("/")
-        ? resolvedPath
-        : `${repoDirectory}/${resolvedPath}`;
-    } else {
-      excludePath = `${repoDirectory}/.git/info/exclude`;
-    }
-  } catch {
-    excludePath = `${repoDirectory}/.git/info/exclude`;
-  }
-
-  const excludeDir = excludePath.substring(0, excludePath.lastIndexOf("/"));
-
-  try {
-    const content = await executor.readFile(excludePath);
-
-    if (content === null) {
-      throw new Error("File not found");
-    }
-
+  if (content !== null) {
     const lines = content.split("\n");
     const missingPatterns = excludePatterns.filter((pattern) => !lines.some(
       (line) => line.trim() === pattern || line.trim() === `${pattern}/`
@@ -342,32 +252,49 @@ export async function ensureWorktreeExcluded(
       ? `${content}${appendedPatterns}`
       : `${content}\n${appendedPatterns}`;
 
-    await executor.exec("sh", ["-c", `cat > "${excludePath}" << 'EXCLUDE_EOF'\n${newContent}EXCLUDE_EOF`]);
+    if (!(await executor.writeFile(excludePath, newContent))) {
+      throw new Error(`Failed to update ${excludePath}`);
+    }
     log.info(`[GitService] Added ${missingPatterns.join(", ")} to .git/info/exclude`);
-  } catch {
-    log.debug(`[GitService] .git/info/exclude not found, creating it`);
-    await executor.exec("mkdir", ["-p", excludeDir]);
-    const content = `# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n${excludePatterns.join("\n")}\n`;
-    await executor.exec("sh", ["-c", `cat > "${excludePath}" << 'EXCLUDE_EOF'\n${content}EXCLUDE_EOF`]);
-    log.info("[GitService] Created .git/info/exclude with Clanky-managed directory entries");
+    return;
   }
+
+  log.debug(`[GitService] .git/info/exclude not found, creating it`);
+  const initialContent = `# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n${excludePatterns.join("\n")}\n`;
+  if (!(await executor.writeFile(excludePath, initialContent))) {
+    throw new Error(`Failed to create ${excludePath}`);
+  }
+  log.info("[GitService] Created .git/info/exclude with Clanky-managed directory entries");
 }
 
 // ─── Path-comparison helpers (exported for use in GitService facade) ─────────
 
-export function normalizeWorktreePath(worktreePath: string): string {
-  return posix.resolve(worktreePath).replace(/\/+$/, "");
+export function normalizeWorktreePath(
+  worktreePath: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  return normalizeExecutionPath(worktreePath, pathStyle);
+}
+
+export function worktreePathComparisonKey(
+  worktreePath: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  const normalizedPath = normalizeWorktreePath(worktreePath, pathStyle);
+  return pathStyle === "windows" ? normalizedPath.toLowerCase() : normalizedPath;
 }
 
 export async function getComparableWorktreePaths(
   executor: CommandExecutor,
   worktreePath: string
 ): Promise<Set<string>> {
-  const comparablePaths = new Set<string>([normalizeWorktreePath(worktreePath)]);
+  const comparablePaths = new Set<string>([
+    worktreePathComparisonKey(worktreePath, executor.pathStyle),
+  ]);
 
   const canonicalPath = await resolvePathThroughExistingParent(executor, worktreePath);
   if (canonicalPath) {
-    comparablePaths.add(canonicalPath);
+    comparablePaths.add(worktreePathComparisonKey(canonicalPath, executor.pathStyle));
   }
 
   if (await executor.directoryExists(worktreePath)) {
@@ -390,7 +317,9 @@ export async function getComparableWorktreePaths(
     );
     const resolvedTopLevel = result.stdout.trim();
     if (result.success && resolvedTopLevel) {
-      comparablePaths.add(normalizeWorktreePath(resolvedTopLevel));
+      comparablePaths.add(
+        worktreePathComparisonKey(resolvedTopLevel, executor.pathStyle),
+      );
     }
   }
 
@@ -401,11 +330,11 @@ async function resolvePathThroughExistingParent(
   executor: CommandExecutor,
   worktreePath: string
 ): Promise<string | null> {
-  const normalizedPath = normalizeWorktreePath(worktreePath);
+  const normalizedPath = normalizeWorktreePath(worktreePath, executor.pathStyle);
   let existingParent = normalizedPath;
 
   while (!(await executor.directoryExists(existingParent))) {
-    const parentPath = posix.dirname(existingParent);
+    const parentPath = dirnameExecutionPath(existingParent, executor.pathStyle);
     if (parentPath === existingParent) return null;
     existingParent = parentPath;
   }
@@ -413,26 +342,52 @@ async function resolvePathThroughExistingParent(
   const canonicalParent = await resolveExistingDirectory(executor, existingParent);
   if (!canonicalParent) return null;
 
-  const relativeSuffix = posix.relative(existingParent, normalizedPath);
-  return normalizeWorktreePath(
-    relativeSuffix ? posix.resolve(canonicalParent, relativeSuffix) : canonicalParent
+  const relativeSuffix = relativeExecutionPath(
+    existingParent,
+    normalizedPath,
+    executor.pathStyle,
   );
+  return relativeSuffix
+    ? joinExecutionPath(executor.pathStyle, canonicalParent, relativeSuffix)
+    : canonicalParent;
 }
 
 async function resolveExistingDirectory(
   executor: CommandExecutor,
   directory: string
 ): Promise<string | null> {
-  const result = await executor.exec("pwd", ["-P"], { cwd: directory });
-  if (!result.success) {
+  const topLevelResult = await runGitCommand(
+    executor,
+    directory,
+    ["rev-parse", "--path-format=absolute", "--show-toplevel"],
+    { allowFailure: true },
+  );
+  if (!topLevelResult.success || !topLevelResult.stdout.trim()) {
     log.debug(
-      `[GitService] Failed to canonicalize directory ${directory}: ${result.stderr || result.stdout || "unknown error"}`
+      `[GitService] Failed to canonicalize directory ${directory}: ${topLevelResult.stderr || topLevelResult.stdout || "unknown error"}`
     );
     return null;
   }
 
-  const resolvedDirectory = result.stdout.trim();
-  if (!resolvedDirectory) return null;
+  const prefixResult = await runGitCommand(
+    executor,
+    directory,
+    ["rev-parse", "--show-prefix"],
+    { allowFailure: true },
+  );
+  if (!prefixResult.success) {
+    log.debug(
+      `[GitService] Failed to resolve repository-relative path for ${directory}: ${prefixResult.stderr || prefixResult.stdout || "unknown error"}`,
+    );
+    return null;
+  }
 
-  return normalizeWorktreePath(resolvedDirectory);
+  const topLevel = normalizeWorktreePath(
+    topLevelResult.stdout.trim(),
+    executor.pathStyle,
+  );
+  const prefix = prefixResult.stdout.trim();
+  return prefix
+    ? joinExecutionPath(executor.pathStyle, topLevel, prefix)
+    : topLevel;
 }

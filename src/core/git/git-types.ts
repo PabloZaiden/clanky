@@ -53,20 +53,6 @@ export class InvalidBranchNameError extends Error {
 }
 
 /**
- * Error thrown when a managed worktree identifier or path is unsafe.
- */
-export class InvalidManagedWorktreePathError extends Error {
-  readonly code = "INVALID_MANAGED_WORKTREE_PATH";
-  readonly path: string;
-
-  constructor(path: string, message = `Invalid managed worktree path: '${path}'`) {
-    super(message);
-    this.name = "InvalidManagedWorktreePathError";
-    this.path = path;
-  }
-}
-
-/**
  * Result of a git command execution.
  */
 export interface GitCommandResult {
