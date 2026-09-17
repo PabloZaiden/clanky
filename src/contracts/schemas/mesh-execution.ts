@@ -51,6 +51,7 @@ export const MeshExecutionRpcRequestSchema = z.object({
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
   gitScope: z.enum(GIT_COMMAND_SCOPES).optional(),
   gitEnvironmentName: z.literal("GIT_SSH_COMMAND").optional(),
+  agentProvider: AgentProviderSchema.optional(),
   path: MeshExecutionPathSchema.optional(),
   sourcePath: MeshExecutionPathSchema.optional(),
   destinationPath: MeshExecutionPathSchema.optional(),
@@ -90,6 +91,30 @@ export const MeshExecutionRpcRequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["gitEnvironmentName"],
       message: "Git environment operations require gitEnvironmentName.",
+    });
+  }
+  if (
+    value.operation === "agentProviderAvailability"
+    && !value.agentProvider
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["agentProvider"],
+      message: "Agent provider availability requires agentProvider.",
+    });
+  }
+  if (
+    value.operation === "agentProviderAvailability"
+    && (
+      value.command !== undefined
+      || value.args !== undefined
+      || value.env !== undefined
+    )
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operation"],
+      message: "Agent provider availability does not accept command inputs.",
     });
   }
 });

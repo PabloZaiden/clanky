@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   POSIX_EXECUTION_HOST_CAPABILITIES,
-  WINDOWS_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostCapabilities,
   type ExecutionHostBinding,
   type ExecutionHostRef,
@@ -138,14 +137,18 @@ beforeEach(async () => {
         },
       },
     ));
+    const filesystemOnlyCapabilities = {
+      fileOperations: 2,
+      serverHealth: 1,
+    };
     unsupportedBinding = toExecutionHostBinding(ensureExecutionHost(
       testOwnerUser.id,
       unsupportedRef,
-      "mesh:health-only-worker",
+      "mesh:filesystem-only-worker",
       {
         runtime: {
           platform: { os: "windows", architecture: "x64" },
-          capabilities: WINDOWS_EXECUTION_HOST_CAPABILITIES,
+          capabilities: filesystemOnlyCapabilities,
         },
       },
     ));
@@ -167,9 +170,9 @@ beforeEach(async () => {
     );
     registerMeshWorker(
       unsupportedRef,
-      "Health-only worker",
+      "Filesystem-only worker",
       "windows",
-      WINDOWS_EXECUTION_HOST_CAPABILITIES,
+      filesystemOnlyCapabilities,
     );
     registerMeshWorker(
       noGitRef,

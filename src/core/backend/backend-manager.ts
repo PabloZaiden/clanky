@@ -137,7 +137,12 @@ class BackendManager {
     sshPassword?: string,
     sshTargetOverride?: SshConnectionTarget,
   ): Promise<RuntimeServerSettings> {
-    executionHostService.requireBindingCapability(binding, "acpRuntime");
+    executionHostService.requireBindingCapability(
+      binding,
+      "acpRuntime",
+      undefined,
+      1,
+    );
     if (binding.host.kind !== "ssh") {
       return {
         agent: {

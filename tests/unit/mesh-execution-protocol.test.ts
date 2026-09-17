@@ -91,4 +91,26 @@ describe("Mesh execution session protocol", () => {
       env: { PATH: "/tmp" },
     }).success).toBe(false);
   });
+
+  test("validates provider discovery as a command-free ACP operation", () => {
+    const request = {
+      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+      sessionId: "session-1",
+      sessionToken: "x".repeat(32),
+      requestId: "request-1",
+      operation: "agentProviderAvailability",
+      agentProvider: "copilot",
+    } as const;
+
+    expect(MeshExecutionRpcRequestSchema.safeParse(request).success).toBe(true);
+    expect(MeshExecutionRpcRequestSchema.safeParse({
+      ...request,
+      agentProvider: undefined,
+    }).success).toBe(false);
+    expect(MeshExecutionRpcRequestSchema.safeParse({
+      ...request,
+      command: "sh",
+      args: ["-lc", "command -v copilot"],
+    }).success).toBe(false);
+  });
 });

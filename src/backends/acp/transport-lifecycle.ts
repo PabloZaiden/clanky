@@ -195,12 +195,17 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     signal: AbortSignal | undefined,
     requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
-    const providerCommand = getProviderAcpCommand(
-      config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
-      config.transport,
-    );
-    const command = config.command ?? providerCommand.command;
-    const args = config.args ?? providerCommand.args;
+    const providerCommand = config.command
+      ? {
+          command: config.command,
+          args: config.args ?? [],
+        }
+      : getProviderAcpCommand(
+          config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
+          config.transport,
+        );
+    const command = providerCommand.command;
+    const args = providerCommand.args;
     const spawnEnv = config.transport === "ssh"
       ? config.env
       : buildProviderSpawnEnvironment(providerCommand, process.env, config.env);

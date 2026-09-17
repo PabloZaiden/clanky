@@ -11,7 +11,9 @@ export interface AgentRuntimeCommand {
 }
 
 interface AgentProviderRuntime {
-  getAcpCommand(): AgentRuntimeCommand;
+  options: AcpResolverOptions;
+  args: string[];
+  env?: Record<string, string>;
 }
 
 const CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp";
@@ -20,6 +22,13 @@ const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
 const GROK_PACKAGE = "@xai-official/grok";
+const WINDOWS_COMMAND_SHIM_PATTERN = /\.(?:cmd|bat)$/i;
+const WINDOWS_COMMAND_SHIM_SCRIPT = [
+  "$commandPath = $args[0]",
+  "$commandArgs = @($args | Select-Object -Skip 1)",
+  "& $commandPath @commandArgs",
+  "exit $LASTEXITCODE",
+].join("; ");
 const CODEX_ACP_ENV = {
   INITIAL_AGENT_MODE: "agent-full-access",
   CODEX_CONFIG: JSON.stringify({
@@ -90,6 +99,16 @@ function buildAcpResolverCommand(
   };
 }
 
+export class AgentRuntimeUnavailableError extends Error {
+  readonly provider: AgentProvider;
+
+  constructor(provider: AgentProvider, message: string) {
+    super(message);
+    this.name = "AgentRuntimeUnavailableError";
+    this.provider = provider;
+  }
+}
+
 const CODEX_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   executable: "codex-acp",
   packageName: CODEX_ACP_PACKAGE,
@@ -132,41 +151,29 @@ const GROK_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
 
 const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   opencode: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      OPENCODE_ACP_RESOLVER_OPTIONS,
-      ["acp"],
-    ),
+    options: OPENCODE_ACP_RESOLVER_OPTIONS,
+    args: ["acp"],
   },
   copilot: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      COPILOT_ACP_RESOLVER_OPTIONS,
-      ["--yolo", "--acp"],
-    ),
+    options: COPILOT_ACP_RESOLVER_OPTIONS,
+    args: ["--yolo", "--acp"],
   },
   codex: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      CODEX_ACP_RESOLVER_OPTIONS,
-      [],
-      CODEX_ACP_ENV,
-    ),
+    options: CODEX_ACP_RESOLVER_OPTIONS,
+    args: [],
+    env: CODEX_ACP_ENV,
   },
   claude: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      CLAUDE_ACP_RESOLVER_OPTIONS,
-      [],
-    ),
+    options: CLAUDE_ACP_RESOLVER_OPTIONS,
+    args: [],
   },
   pi: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      PI_ACP_RESOLVER_OPTIONS,
-      [],
-    ),
+    options: PI_ACP_RESOLVER_OPTIONS,
+    args: [],
   },
   grok: {
-    getAcpCommand: () => buildAcpResolverCommand(
-      GROK_ACP_RESOLVER_OPTIONS,
-      ["agent", "--always-approve", "stdio"],
-    ),
+    options: GROK_ACP_RESOLVER_OPTIONS,
+    args: ["agent", "--always-approve", "stdio"],
   },
 };
 
@@ -189,7 +196,129 @@ export function getProviderAcpCommand(
   if (transport === "stdio" && isMockAcpEnabled()) {
     return getMockAcpCommand();
   }
-  return AGENT_PROVIDER_RUNTIMES[provider].getAcpCommand();
+  const runtime = AGENT_PROVIDER_RUNTIMES[provider];
+  if (transport === "ssh") {
+    return buildAcpResolverCommand(
+      runtime.options,
+      runtime.args,
+      runtime.env,
+    );
+  }
+  return resolveProviderAcpCommand(provider);
+}
+
+export function resolveProviderAcpCommand(
+  provider: AgentProvider,
+  which: (command: string) => string | null = Bun.which,
+  platform: NodeJS.Platform = process.platform,
+): AgentRuntimeCommand {
+  if (isMockAcpEnabled()) {
+    return getMockAcpCommand();
+  }
+  const runtime = AGENT_PROVIDER_RUNTIMES[provider];
+  const requiredCli = runtime.options.requiredCli;
+  if (requiredCli && !which(requiredCli.command)) {
+    throw new AgentRuntimeUnavailableError(provider, requiredCli.errorMessage);
+  }
+
+  const executable = runtime.options.executable
+    ? which(runtime.options.executable)
+    : null;
+  if (executable) {
+    return adaptProviderCommandForPlatform(
+      provider,
+      executable,
+      runtime.args,
+      runtime.env,
+      which,
+      platform,
+    );
+  }
+
+  const npx = which("npx");
+  if (npx) {
+    return adaptProviderCommandForPlatform(
+      provider,
+      npx,
+      ["--yes", runtime.options.packageName, ...runtime.args],
+      runtime.env,
+      which,
+      platform,
+    );
+  }
+
+  const bunx = which("bunx");
+  if (bunx) {
+    return adaptProviderCommandForPlatform(
+      provider,
+      bunx,
+      ["--yes", runtime.options.packageName, ...runtime.args],
+      runtime.env,
+      which,
+      platform,
+    );
+  }
+
+  throw new AgentRuntimeUnavailableError(
+    provider,
+    `clanky: ${runtime.options.errorLabel} not found. ${
+      buildResolverErrorHint(runtime.options)
+    }`,
+  );
+}
+
+function adaptProviderCommandForPlatform(
+  provider: AgentProvider,
+  command: string,
+  args: string[],
+  env: Record<string, string> | undefined,
+  which: (command: string) => string | null,
+  platform: NodeJS.Platform,
+): AgentRuntimeCommand {
+  if (platform !== "win32" || !WINDOWS_COMMAND_SHIM_PATTERN.test(command)) {
+    return {
+      command,
+      args: [...args],
+      ...(env ? { env } : {}),
+    };
+  }
+
+  const powershell = which("powershell.exe") ?? which("powershell");
+  if (!powershell) {
+    throw new AgentRuntimeUnavailableError(
+      provider,
+      "clanky: Windows PowerShell is required to run the resolved ACP command shim.",
+    );
+  }
+  return {
+    command: powershell,
+    args: [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      WINDOWS_COMMAND_SHIM_SCRIPT,
+      command,
+      ...args,
+    ],
+    ...(env ? { env } : {}),
+  };
+}
+
+export function isAgentProviderAvailable(
+  provider: AgentProvider,
+  which: (command: string) => string | null = Bun.which,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  try {
+    resolveProviderAcpCommand(provider, which, platform);
+    return true;
+  } catch (error) {
+    if (error instanceof AgentRuntimeUnavailableError) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export function buildProviderShellInvocation(

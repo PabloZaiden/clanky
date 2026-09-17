@@ -17,7 +17,7 @@ import {
 } from "./agent-runtime-command";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { DomainError } from "./domain-error";
-import { CommandExecutorImpl } from "./remote-command-executor";
+import { LocalFileSystem } from "./remote-executor/local-filesystem";
 
 const log = createLogger("core:mesh-acp-gateway");
 const MAX_RELAY_SESSIONS = 64;
@@ -85,6 +85,7 @@ function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
 export class MeshAcpGateway {
   private readonly relays = new Map<string, RelayState>();
   private readonly opening = new Map<string, OpeningState>();
+  private readonly stopping = new Map<string, Promise<void>>();
   private readonly closing = new Set<string>();
 
   async open(
@@ -143,30 +144,7 @@ export class MeshAcpGateway {
       );
       throwIfAborted(signal);
       await this.stopRelay(sessionId);
-      const directoryCheck = await new CommandExecutorImpl({
-        provider: "local",
-        directory: ".",
-      }).exec(
-        "/bin/sh",
-        ["-c", "test -d \"$1\"", "clanky-acp-directory-check", config.directory],
-        {
-          cwd: ".",
-          maxOutputBytes: 16 * 1024,
-          signal,
-          timeout: MESH_ACP_STARTUP_TIMEOUT_MS,
-        },
-      );
-      if (signal.aborted || directoryCheck.exitCode === 130) {
-        throwIfAborted(signal);
-        throw new DomainError("mesh_acp_open_aborted", "The Mesh ACP directory check was aborted.");
-      }
-      if (directoryCheck.exitCode === 124) {
-        throw new DomainError(
-          "mesh_acp_startup_timed_out",
-          `The Mesh ACP directory check timed out after ${MESH_ACP_STARTUP_TIMEOUT_MS}ms.`,
-        );
-      }
-      if (!directoryCheck.success) {
+      if (!(await new LocalFileSystem().directoryExists(config.directory))) {
         throw new DomainError(
           "mesh_acp_directory_invalid",
           `The ACP working directory does not exist: ${config.directory}`,
@@ -391,6 +369,11 @@ export class MeshAcpGateway {
   }
 
   private async stopRelay(sessionId: string): Promise<void> {
+    const existingStop = this.stopping.get(sessionId);
+    if (existingStop) {
+      await existingStop;
+      return;
+    }
     const relay = this.relays.get(sessionId);
     if (!relay) {
       return;
@@ -400,10 +383,18 @@ export class MeshAcpGateway {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
     }
-    await relay.process.stop({
-      gracefulWaitMs: 500,
-      forceWaitMs: 0,
-    });
+    const stopping = relay.process
+      .stop({
+        gracefulWaitMs: 500,
+        forceWaitMs: 0,
+      })
+      .finally(() => {
+        if (this.stopping.get(sessionId) === stopping) {
+          this.stopping.delete(sessionId);
+        }
+      });
+    this.stopping.set(sessionId, stopping);
+    await stopping;
   }
 
   private async closeRelay(sessionId: string): Promise<void> {
@@ -412,7 +403,11 @@ export class MeshAcpGateway {
   }
 
   async closeAll(): Promise<void> {
-    const sessionIds = new Set([...this.relays.keys(), ...this.opening.keys()]);
+    const sessionIds = new Set([
+      ...this.relays.keys(),
+      ...this.opening.keys(),
+      ...this.stopping.keys(),
+    ]);
     await Promise.all([...sessionIds].map((sessionId) => this.close(sessionId)));
     meshExecutionGateway.closeAll();
   }

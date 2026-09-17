@@ -29,10 +29,13 @@ import { DomainError } from "./domain-error";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   getUnavailableGitCommandCapability,
+  supportsAcpRuntime,
   supportsGitCommandScope,
+  supportsPortableAcpRuntime,
   supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
+import { buildProviderAvailabilityShellCheck } from "./agent-runtime-command";
 
 export interface MeshCommandExecutorConfig {
   workspaceId: string;
@@ -127,6 +130,33 @@ export class MeshCommandExecutor implements CommandExecutor {
 
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
     return await this.client.exec(command, args, options);
+  }
+
+  async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
+    if (supportsPortableAcpRuntime(this.capabilities)) {
+      return await this.client.isAgentProviderAvailable(provider);
+    }
+    if (
+      supportsAcpRuntime(this.capabilities)
+      && supportsExecutionHostCapability(
+        this.capabilities,
+        "commandExecution",
+      )
+    ) {
+      return (await this.exec(
+        "sh",
+        ["-lc", buildProviderAvailabilityShellCheck(provider)],
+        { cwd: "/" },
+      )).success;
+    }
+    const capability = supportsAcpRuntime(this.capabilities)
+      ? "commandExecution"
+      : "acpRuntime";
+    throw new DomainError(
+      "execution_host_capability_unavailable",
+      `The selected Mesh execution host does not support ${capability}.`,
+      { details: { capability } },
+    );
   }
 
   private supportsGitRpc(scope: GitCommandScope): boolean {

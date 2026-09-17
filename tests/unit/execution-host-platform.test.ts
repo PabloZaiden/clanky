@@ -3,8 +3,11 @@ import {
   createExecutionHostRuntimeSnapshot,
   getUnavailableGitCommandCapability,
   normalizeExecutionHostPlatform,
+  supportsAcpRuntime,
   supportsExecutionHostCapability,
   supportsGitCommandScope,
+  supportsPortableAcpRuntime,
+  supportsWorkspaceExecutionHost,
 } from "../../src/shared/execution-host";
 
 describe("Execution host platform contract", () => {
@@ -23,6 +26,7 @@ describe("Execution host platform contract", () => {
         fileOperations: 2,
         git: 2,
         managedWorktrees: 2,
+        acpRuntime: 2,
         serverHealth: 1,
       },
     });
@@ -45,5 +49,12 @@ describe("Execution host platform contract", () => {
     expect(getUnavailableGitCommandCapability({
       git: 2,
     }, "managedWorktrees")).toBe("managedWorktrees");
+    expect(supportsAcpRuntime({ acpRuntime: 1 })).toBe(true);
+    expect(supportsPortableAcpRuntime({ acpRuntime: 1 })).toBe(false);
+    expect(supportsPortableAcpRuntime({ acpRuntime: 2 })).toBe(true);
+    expect(supportsWorkspaceExecutionHost({
+      fileOperations: 2,
+      acpRuntime: 1,
+    })).toBe(true);
   });
 });

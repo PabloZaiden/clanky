@@ -24,6 +24,8 @@ import type {
 } from "../../src/core/command-executor";
 import { CommandOutputLimitError } from "../../src/core/command-executor";
 import { LocalFileSystem } from "../../src/core/remote-executor/local-filesystem";
+import type { AgentProvider } from "../../src/shared/settings";
+import { isAgentProviderAvailable } from "../../src/core/agent-runtime-command";
 
 /**
  * TestCommandExecutor runs commands locally for testing purposes.
@@ -55,6 +57,10 @@ export class TestCommandExecutor implements CommandExecutor {
     options: GitCommandOptions,
   ): Promise<CommandResult> {
     return await this.exec("git", ["-C", directory, ...args], options);
+  }
+
+  async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
+    return isAgentProviderAvailable(provider);
   }
 
   /**

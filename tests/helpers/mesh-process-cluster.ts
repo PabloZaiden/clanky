@@ -194,6 +194,7 @@ export async function startMeshNode(options: {
   command: string[];
   instanceName?: string;
   timeoutMs?: number;
+  environment?: Record<string, string | undefined>;
 }): Promise<ManagedMeshNode> {
   const { role, command } = options;
   const dataDir = await mkdtemp(join(tmpdir(), `clanky-mesh-${role}-`));
@@ -204,6 +205,7 @@ export async function startMeshNode(options: {
     const baseUrl = `${role === "worker" ? "https" : "http"}://127.0.0.1:${String(port)}`;
     const environment: Record<string, string | undefined> = {
       ...process.env,
+      ...options.environment,
       CLANKY_DATA_DIR: dataDir,
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),

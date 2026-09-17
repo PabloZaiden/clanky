@@ -676,6 +676,13 @@ export class MeshCommandExecutorClient {
     });
   }
 
+  async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
+    return await this.execute<boolean>({
+      operation: "agentProviderAvailability",
+      agentProvider: provider,
+    });
+  }
+
   private async execLongRunning(
     command: string,
     args: string[],

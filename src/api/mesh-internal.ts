@@ -37,7 +37,10 @@ import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
 import { DomainError, isDomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
-import { MESH_EXECUTION_PROTOCOL_VERSION } from "@/shared/mesh-execution";
+import {
+  MESH_ACP_CHANNEL,
+  MESH_EXECUTION_PROTOCOL_VERSION,
+} from "@/shared/mesh-execution";
 import { getMeshRelayRequestInitiatorNodeId } from "../core/mesh-relay-http";
 
 function internalMeshErrorResponse(error: unknown): Response {
@@ -286,7 +289,13 @@ export const meshInternalRoutes = defineRoutes({
       }
       try {
         requireMeshRuntimeRole("worker");
-        meshExecutionGateway.releaseSession(parsed.data.sessionId, parsed.data.sessionToken);
+        const channel = meshExecutionGateway.releaseSession(
+          parsed.data.sessionId,
+          parsed.data.sessionToken,
+        );
+        if (channel === MESH_ACP_CHANNEL) {
+          await meshAcpGateway.close(parsed.data.sessionId);
+        }
         return Response.json({ success: true });
       } catch (error) {
         return internalMeshErrorResponse(error);

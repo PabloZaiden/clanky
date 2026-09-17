@@ -16,6 +16,7 @@ import type {
   GitCommandScope,
   GitEnvironmentVariableName,
 } from "../shared/execution-host";
+import type { AgentProvider } from "../shared/settings";
 
 export type {
   GitCommandScope,
@@ -177,6 +178,11 @@ export interface CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult>;
+
+  /**
+   * Check whether a known ACP provider can be resolved on the execution host.
+   */
+  isAgentProviderAvailable(provider: AgentProvider): Promise<boolean>;
 
   /**
    * Execute a shell command.

@@ -276,6 +276,11 @@ export interface TrustedExecutionRoot {
 
 type PhysicalPathMode = "follow" | "entry" | "metadata";
 
+const MESH_EXECUTION_SESSION_CAPABILITIES = [
+  "commandExecution",
+  "fileOperations",
+  "git",
+] as const;
 const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
   "getFileMetadata",
   "listDirectoryEntries",
@@ -286,7 +291,7 @@ const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
 export function getMeshExecutionOperationCapability(
   operation: MeshExecutionOperation,
 ): {
-  id: "commandExecution" | "fileOperations" | "git";
+  id: "commandExecution" | "fileOperations" | "git" | "acpRuntime";
   minimumVersion: number;
 } {
   if (operation === "exec") {
@@ -296,6 +301,12 @@ export function getMeshExecutionOperationCapability(
     return {
       id: "git",
       minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.git,
+    };
+  }
+  if (operation === "agentProviderAvailability") {
+    return {
+      id: "acpRuntime",
+      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.acpRuntime,
     };
   }
   return {
@@ -766,11 +777,9 @@ export class MeshExecutionGateway {
         options.requiredCapability.minimumVersion,
       );
     } else if (session.channel !== MESH_ACP_CHANNEL) {
-      await requireLocalMeshExecutionAnyCapability([
-        "commandExecution",
-        "fileOperations",
-        "git",
-      ]);
+      await requireLocalMeshExecutionAnyCapability(
+        MESH_EXECUTION_SESSION_CAPABILITIES,
+      );
     }
     const grant = await getControllerGrant(session.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
@@ -795,11 +804,9 @@ export class MeshExecutionGateway {
     if (request.channel === MESH_ACP_CHANNEL) {
       await requireLocalMeshExecutionCapability("acpRuntime");
     } else {
-      await requireLocalMeshExecutionAnyCapability([
-        "commandExecution",
-        "fileOperations",
-        "git",
-      ]);
+      await requireLocalMeshExecutionAnyCapability(
+        MESH_EXECUTION_SESSION_CAPABILITIES,
+      );
     }
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError(
@@ -921,9 +928,13 @@ export class MeshExecutionGateway {
     return session.expiresAt;
   }
 
-  releaseSession(sessionId: string, sessionToken: string): void {
-    this.requireSessionRecord(sessionId, sessionToken);
+  releaseSession(
+    sessionId: string,
+    sessionToken: string,
+  ): MeshExecutionSession["channel"] {
+    const session = this.requireSessionRecord(sessionId, sessionToken);
     this.closeSession(sessionId);
+    return session.channel;
   }
 
   async getAcpSessionConfig(
@@ -1379,6 +1390,17 @@ export class MeshExecutionGateway {
             assertStringSize(value, "Git environment value");
           }
           return value;
+        }
+        case "agentProviderAvailability": {
+          if (!request.agentProvider) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "agentProviderAvailability requires agentProvider.",
+            );
+          }
+          return await executor.isAgentProviderAvailable(
+            request.agentProvider,
+          );
         }
 
         case "fileExists": {

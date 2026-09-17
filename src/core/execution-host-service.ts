@@ -53,6 +53,7 @@ import {
   executionPathStyleForPlatform,
   resolveExecutionPathUnscoped,
 } from "./execution-path";
+import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
 
 export interface ExecutionHostCommandContext {
   directory: string;
@@ -120,6 +121,7 @@ export class ExecutionHostService {
     binding: ExecutionHostBinding,
     capability: ExecutionHostCapabilityId,
     userId: string = requireCurrentUserId(),
+    minimumVersion?: number,
   ): PersistedExecutionHost {
     let persisted = this.validateBinding(binding, userId);
     const runtime = binding.host.kind === "local"
@@ -140,11 +142,18 @@ export class ExecutionHostService {
     if (!supportsExecutionHostCapability(
       persisted.runtime.capabilities,
       capability,
+      minimumVersion,
     )) {
       throw new DomainError(
         "execution_host_capability_unavailable",
         `The selected execution host does not provide the ${capability} capability.`,
-        { details: { capability } },
+        {
+          details: {
+            capability,
+            requiredVersion: minimumVersion ?? 1,
+            actualVersion: persisted.runtime.capabilities[capability] ?? 0,
+          },
+        },
       );
     }
     return persisted;
@@ -254,6 +263,7 @@ export class ExecutionHostService {
     ref: ExecutionHostRef,
     capability: ExecutionHostCapabilityId,
     userId: string = requireCurrentUserId(),
+    minimumVersion?: number,
   ): Promise<ExecutionHostDescriptor> {
     const descriptor = (await this.listHosts(userId))
       .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
@@ -263,11 +273,21 @@ export class ExecutionHostService {
         "The selected execution host is unavailable.",
       );
     }
-    if (!supportsExecutionHostCapability(descriptor.capabilities, capability)) {
+    if (!supportsExecutionHostCapability(
+      descriptor.capabilities,
+      capability,
+      minimumVersion,
+    )) {
       throw new DomainError(
         "execution_host_capability_unavailable",
         `The selected execution host does not provide the ${capability} capability.`,
-        { details: { capability } },
+        {
+          details: {
+            capability,
+            requiredVersion: minimumVersion ?? 1,
+            actualVersion: descriptor.capabilities[capability] ?? 0,
+          },
+        },
       );
     }
     return descriptor;
@@ -407,6 +427,29 @@ export class ExecutionHostService {
       targetKey: host.targetKey,
       revision: host.revision,
     };
+  }
+
+  async discoverAgentProviders(
+    ref: ExecutionHostRef,
+    context: ExecutionHostCommandContext,
+  ): Promise<Array<{ providerID: AgentProvider; available: boolean }>> {
+    const userId = context.localUserId ?? requireCurrentUserId();
+    await this.requireCapability(ref, "acpRuntime", userId, 1);
+    const binding = this.getBinding(ref, userId);
+    const executor = await this.getCommandExecutor(binding, {
+      ...context,
+      localUserId: userId,
+    });
+    try {
+      return await Promise.all(
+        AGENT_PROVIDER_IDS.map(async (providerID) => ({
+          providerID,
+          available: await executor.isAgentProviderAvailable(providerID),
+        })),
+      );
+    } finally {
+      closeCommandExecutor(executor);
+    }
   }
 
   async getCommandExecutor(

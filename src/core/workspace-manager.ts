@@ -193,6 +193,7 @@ function requireWorkspaceExecutionCapabilities(
       binding,
       capability,
       userId,
+      capability === "acpRuntime" ? 1 : undefined,
     );
   }
   const unavailableGitCapability = workspaceType === "git"
