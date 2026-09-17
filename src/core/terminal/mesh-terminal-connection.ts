@@ -181,9 +181,12 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const session = await this.openSession();
     this.session = session;
     if (this.disposed || this.closing) {
-      await this.releaseSession(session);
-      if (this.session === session) {
-        this.session = null;
+      try {
+        await this.releaseSessionBeforeSocket(session);
+      } finally {
+        if (this.session === session) {
+          this.session = null;
+        }
       }
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
@@ -552,6 +555,35 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     }
   }
 
+  private async releaseSessionBeforeSocket(
+    session: OpenMeshTerminalSession,
+  ): Promise<void> {
+    if (await this.releaseSession(session)) {
+      return;
+    }
+    const socket = openMeshPeerSocket(
+      session.route,
+      "api/mesh/internal/terminal",
+      {
+        "x-clanky-mesh-session-id": session.sessionId,
+        "x-clanky-mesh-session-token": session.sessionToken,
+      },
+    );
+    try {
+      await this.waitForSocketOpen(socket);
+      socket.send(JSON.stringify({ type: "terminal.close" }));
+      await this.waitForSocketClose(socket);
+    } finally {
+      if (socket.readyState !== WebSocket.CLOSED) {
+        try {
+          socket.close(1000, "Terminal disconnected");
+        } catch {
+          // The transport may already be closing.
+        }
+      }
+    }
+  }
+
   private async waitForSocketClose(socket: MeshDuplexSocket): Promise<void> {
     if (socket.readyState === WebSocket.CLOSED) {
       return;
@@ -612,6 +644,16 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       socket.addEventListener("open", onOpen);
       socket.addEventListener("error", onError);
       socket.addEventListener("close", onClose);
+      if (socket.readyState === WebSocket.OPEN) {
+        cleanup();
+        resolve();
+      } else if (socket.readyState === WebSocket.CLOSED) {
+        cleanup();
+        reject(new DomainError(
+          "mesh_terminal_connection_closed",
+          "The Mesh terminal WebSocket closed before opening.",
+        ));
+      }
     });
   }
 

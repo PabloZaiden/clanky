@@ -159,7 +159,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       ws.data.terminalCredentialTimeout.unref?.();
       return;
     }
-    void startTerminalBridge(ws);
+    void startTerminalBridge(ws).catch((error: Error) => {
+      log.error("Unhandled terminal bridge startup failure", {
+        terminalSessionId,
+        error: String(error),
+      });
+    });
     return;
   }
 

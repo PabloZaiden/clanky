@@ -71,6 +71,22 @@ export interface TerminalErrorPayload {
   message: string;
 }
 
+async function disposeTerminalBridgeAfterStartup(
+  bridge: NonNullable<WebSocketData["terminalBridge"]>,
+  terminalSessionId: string,
+  context: string,
+): Promise<void> {
+  try {
+    await bridge.dispose();
+  } catch (error) {
+    log.error("Failed to dispose terminal bridge during startup", {
+      terminalSessionId,
+      context,
+      error: String(error),
+    });
+  }
+}
+
 export async function startTerminalBridge(
   ws: ServerWebSocket<WebSocketData>,
   credentialToken?: string,
@@ -152,7 +168,11 @@ export async function startTerminalBridge(
       }, credentialToken),
     );
     if (!isTerminalSocketActive(terminalSessionId, ws)) {
-      await connection.dispose();
+      await disposeTerminalBridgeAfterStartup(
+        connection,
+        terminalSessionId,
+        "socket closed before connection setup",
+      );
       attachment.release();
       return;
     }
@@ -160,7 +180,11 @@ export async function startTerminalBridge(
     ws.data.terminalAttachment = attachment;
     const result = await runWithCurrentUser(ws.data.user, async () => await connection.connect());
     if (!isTerminalSocketActive(terminalSessionId, ws)) {
-      await connection.dispose();
+      await disposeTerminalBridgeAfterStartup(
+        connection,
+        terminalSessionId,
+        "socket closed while connecting",
+      );
       attachment.release();
       ws.data.terminalBridge = undefined;
       return;
@@ -194,7 +218,13 @@ export async function startTerminalBridge(
     ws.data.terminalAttachment?.release();
     ws.data.terminalAttachment = undefined;
     releaseTerminalSocket(terminalSessionId, ws);
-    await bridge?.dispose();
+    if (bridge) {
+      await disposeTerminalBridgeAfterStartup(
+        bridge,
+        terminalSessionId,
+        "terminal connection failed",
+      );
+    }
   }
 }
 
