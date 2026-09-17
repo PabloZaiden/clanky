@@ -9,6 +9,7 @@ import type { Server } from "bun";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import {
   POSIX_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostCapabilities,
@@ -49,6 +50,10 @@ const unsupportedRef = {
   kind: "mesh",
   nodeId: "health-only-worker",
 } as const satisfies ExecutionHostRef;
+const secondarySupportedRef = {
+  kind: "mesh",
+  nodeId: "secondary-supported-worker",
+} as const satisfies ExecutionHostRef;
 const noGitRef = {
   kind: "mesh",
   nodeId: "no-git-worker",
@@ -59,6 +64,15 @@ let server: Server<unknown>;
 let baseUrl: string;
 let supportedBinding: ExecutionHostBinding;
 let unsupportedBinding: ExecutionHostBinding;
+let secondarySupportedBinding: ExecutionHostBinding;
+
+const secondaryUser: CurrentUser = {
+  id: "secondary",
+  username: "secondary",
+  role: "user",
+  isOwner: false,
+  isAdmin: false,
+};
 
 function workspace(
   id: string,
@@ -120,6 +134,17 @@ function registerMeshWorker(
     now,
     now,
   );
+}
+
+function seedUser(user: CurrentUser): void {
+  const now = new Date().toISOString();
+  getDatabase()
+    .query(`
+      INSERT OR IGNORE INTO webapp_users (
+        id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at
+      ) VALUES (?, ?, ?, 1, ?, ?, NULL, NULL)
+    `)
+    .run(user.id, user.username, user.role, now, now);
 }
 
 beforeEach(async () => {
@@ -187,6 +212,21 @@ beforeEach(async () => {
     await createWorkspace(workspace("supported-workspace", supportedBinding));
     await createWorkspace(workspace("unsupported-workspace", unsupportedBinding));
   });
+  seedUser(secondaryUser);
+  await runWithCurrentUser(secondaryUser, async () => {
+    secondarySupportedBinding = toExecutionHostBinding(ensureExecutionHost(
+      secondaryUser.id,
+      secondarySupportedRef,
+      "mesh:secondary-supported-worker",
+      {
+        runtime: {
+          platform: { os: "linux", architecture: "x64" },
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+      },
+    ));
+    await createWorkspace(workspace("secondary-supported-workspace", secondarySupportedBinding));
+  });
 
   server = serveNativeApiRoutes();
   baseUrl = server.url.toString().replace(/\/$/, "");
@@ -252,9 +292,9 @@ describe("workspace capability boundaries", () => {
     });
   });
 
-  // This integration regression verifies the remote execution cache contract
-  // through the Mesh state boundary rather than asserting a private map.
-  test("rebuilds a cached Mesh executor after execution-host runtime changes", async () => {
+  // This integration regression verifies owner-scoped cache invalidation
+  // through the Mesh state boundary rather than asserting private maps.
+  test("rebuilds only the affected owner's Mesh executor", async () => {
     let createdExecutors = 0;
     executionHostService.setExecutorFactoryForTesting((directory) => {
       createdExecutors += 1;
@@ -272,28 +312,45 @@ describe("workspace capability boundaries", () => {
           dataDir,
         ),
       ).toBe(firstExecutor);
+    });
+    const secondaryExecutor = await runWithCurrentUser(
+      secondaryUser,
+      async () => await backendManager.getCommandExecutorAsync(
+        "secondary-supported-workspace",
+        dataDir,
+      ),
+    );
 
-      meshStateEventEmitter.emit(
-        { type: "mesh.changed", executionHostsChanged: true },
-        { userId: testOwnerUser.id },
-      );
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: testOwnerUser.id },
+    );
 
-      await pollUntil(
+    await pollUntil(
+      async () => await runWithCurrentUser(
+        testOwnerUser,
         async () => {
-          const executor = await backendManager.getCommandExecutorAsync(
+          await backendManager.getCommandExecutorAsync(
             "supported-workspace",
             dataDir,
           );
-          return { createdExecutors, executor };
+          return createdExecutors;
         },
-        (result) => result.createdExecutors === 2,
-        {
-          description: "Mesh executor cache invalidation",
-          formatLastObserved: (result) => (
-            `createdExecutors=${String(result.createdExecutors)}`
-          ),
-        },
-      );
+      ),
+      (result) => result === 3,
+      {
+        description: "Mesh executor cache invalidation",
+        formatLastObserved: (result) => `createdExecutors=${String(result)}`,
+      },
+    );
+
+    await runWithCurrentUser(secondaryUser, async () => {
+      expect(
+        await backendManager.getCommandExecutorAsync(
+          "secondary-supported-workspace",
+          dataDir,
+        ),
+      ).toBe(secondaryExecutor);
     });
   });
 

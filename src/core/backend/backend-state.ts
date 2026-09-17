@@ -30,6 +30,7 @@ export const DEFAULT_CONNECTION_TIMEOUT_MS = SSH_CONNECTION_TIMEOUT_MS;
  * Used for workspace-level operations (directory validation, model listing, name generation).
  */
 export interface WorkspaceConnectionState {
+  userId: string;
   backend: Backend;
   settings: RuntimeServerSettings;
   connectionError: string | null;
@@ -44,6 +45,7 @@ export interface WorkspaceConnectionState {
  * in setupSession() with the worktree directory.
  */
 export interface TaskConnectionState {
+  userId: string;
   backend: Backend;
   workspaceId: string;
 }

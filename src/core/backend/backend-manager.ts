@@ -39,7 +39,6 @@ import type { CommandExecutorFactory } from "./backend-executor-factory";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
 import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../user-context";
-import { meshAcpGateway } from "../mesh-acp-gateway";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
@@ -227,6 +226,7 @@ class BackendManager {
    * configuration has been loaded from persistence.
    */
   private async ensureWorkspaceState(workspaceId: string): Promise<WorkspaceConnectionState> {
+    const userId = requireCurrentUserId();
     const workspace = await getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
@@ -240,6 +240,7 @@ class BackendManager {
     let state = this.connections.get(workspaceId);
     if (!state) {
       state = {
+        userId,
         backend: this.createBackendForSettings(settings, {
           ...workspaceOptions,
         }),
@@ -275,6 +276,7 @@ class BackendManager {
       this.clearCommandExecutorsForWorkspace(workspaceId);
     }
     state.settings = settings;
+    state.userId = userId;
     state.localNodeId = workspaceOptions.localNodeId;
     state.executionHostBinding = workspaceOptions.executionHostBinding;
     return state;
@@ -309,11 +311,11 @@ class BackendManager {
       return;
     }
     this.initialized = true;
-    this.meshStateUnsubscribe = meshStateEventEmitter.subscribe((event) => {
-      if (!event.executionHostsChanged) {
+    this.meshStateUnsubscribe = meshStateEventEmitter.subscribe((event, context) => {
+      if (!event.executionHostsChanged || !context.userId) {
         return;
       }
-      void this.invalidateMeshExecutionConnections().catch((error) => {
+      void this.invalidateMeshExecutionConnections(context.userId).catch((error) => {
         log.error("Failed to invalidate Mesh execution connections", {
           error: String(error),
         });
@@ -402,9 +404,11 @@ class BackendManager {
     }
 
     // Create connection state with test backend
+    const userId = requireCurrentUserId();
     let state = this.connections.get(workspaceId);
     if (!state) {
       state = {
+        userId,
         backend: this.testBackend,
         settings: this.testSettings,
         connectionError: null,
@@ -486,42 +490,80 @@ class BackendManager {
   }
 
   /**
-   * Invalidate only mesh-owned stdio execution resources. SSH connections are
-   * intentionally left untouched when mesh membership or transport state changes.
+   * Invalidate remote Mesh execution resources for one owner. SSH connections
+   * and resources owned by other users are intentionally left untouched.
    */
-  async invalidateMeshExecutionConnections(): Promise<void> {
-    await meshAcpGateway.closeAll();
-    const { meshTerminalGateway } = await import("../mesh-terminal-gateway");
-    const { closeAllMeshTerminalConnections } = await import("../terminal");
-    await meshTerminalGateway.closeAll();
-    await closeAllMeshTerminalConnections();
+  async invalidateMeshExecutionConnections(userId: string): Promise<void> {
     const localNodeId = await this.getLocalMeshNodeId();
+    const affectedWorkspaceIds = new Set<string>();
 
     for (const [workspaceId, state] of this.connections) {
       const host = state.executionHostBinding?.host;
       if (
-        host?.kind !== "mesh"
-        || host.nodeId === state.localNodeId
+        state.userId !== userId
+        || host?.kind !== "mesh"
+        || host.nodeId === localNodeId
       ) {
         continue;
       }
-      await this.resetWorkspaceConnection(workspaceId);
+      affectedWorkspaceIds.add(workspaceId);
+    }
+    for (const key of this.commandExecutors.keys()) {
+      let parsed: {
+        workspaceId?: string;
+        executionHostBinding?: ExecutionHostBinding | null;
+      };
+      try {
+        parsed = JSON.parse(key) as {
+          workspaceId?: string;
+          executionHostBinding?: ExecutionHostBinding | null;
+        };
+      } catch {
+        continue;
+      }
+      const workspaceId = parsed.workspaceId;
+      const state = workspaceId === undefined
+        ? undefined
+        : this.connections.get(workspaceId);
+      const host = parsed.executionHostBinding?.host;
+      if (
+        workspaceId === undefined
+        || !state
+        || state.userId !== userId
+        || !host
+        || host.kind !== "mesh"
+        || host.nodeId === localNodeId
+      ) {
+        continue;
+      }
+      affectedWorkspaceIds.add(workspaceId);
     }
     for (const [taskId, state] of this.taskConnections) {
-      const workspace = await getWorkspace(state.workspaceId);
+      const workspaceState = this.connections.get(state.workspaceId);
+      const host = workspaceState?.executionHostBinding?.host;
       if (
-        workspace?.executionHostBinding.host.kind !== "mesh"
-        || workspace.executionHostBinding.host.nodeId === localNodeId
+        state.userId !== userId
+        || !affectedWorkspaceIds.has(state.workspaceId)
+        || host?.kind !== "mesh"
+        || host.nodeId === localNodeId
       ) {
         continue;
       }
       await this.disconnectTask(taskId);
     }
+
     for (const key of this.commandExecutors.keys()) {
       try {
         const parsed = JSON.parse(key) as {
+          workspaceId?: string;
           executionHostBinding?: ExecutionHostBinding | null;
         };
+        if (
+          parsed.workspaceId === undefined
+          || !affectedWorkspaceIds.has(parsed.workspaceId)
+        ) {
+          continue;
+        }
         const host = parsed.executionHostBinding?.host;
         if (host?.kind === "mesh" && host.nodeId !== localNodeId) {
           const executor = this.commandExecutors.get(key);
@@ -531,8 +573,11 @@ class BackendManager {
           this.commandExecutors.delete(key);
         }
       } catch {
-        this.commandExecutors.delete(key);
+        continue;
       }
+    }
+    for (const workspaceId of affectedWorkspaceIds) {
+      await this.resetWorkspaceConnection(workspaceId);
     }
   }
 
@@ -975,6 +1020,7 @@ class BackendManager {
       executionHostBinding: workspaceState.executionHostBinding,
     });
     this.taskConnections.set(taskId, {
+      userId: workspaceState.userId,
       backend,
       workspaceId,
     });
@@ -1154,6 +1200,7 @@ class BackendManager {
     const settings = await this.buildRuntimeSettings(binding, provider, sshPassword);
     if (this.isTestBackend && this.testBackend) {
       this.taskConnections.set(connectionId, {
+        userId: requireCurrentUserId(),
         backend: this.testBackend,
         workspaceId: "",
       });
@@ -1168,6 +1215,7 @@ class BackendManager {
     };
     const backend = this.createBackendForSettings(settings, options);
     this.taskConnections.set(connectionId, {
+      userId: requireCurrentUserId(),
       backend,
       workspaceId: "",
     });
