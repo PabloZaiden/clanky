@@ -592,15 +592,35 @@ export class MeshTerminalGateway {
       throw new DomainError("mesh_terminal_session_invalid", "The Mesh terminal session is invalid.");
     }
     if (lease.expiresAt <= Date.now()) {
-      await this.close(sessionId, true, 1000, "Mesh terminal session expired");
+      await this.closeInvalidLease(
+        sessionId,
+        1000,
+        "Mesh terminal session expired",
+      );
       throw new DomainError("mesh_terminal_session_expired", "The Mesh terminal session has expired.");
     }
     const grant = await getControllerGrant(lease.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
-      await this.close(sessionId, true, 1008, "Mesh terminal authority changed");
+      await this.closeInvalidLease(
+        sessionId,
+        1008,
+        "Mesh terminal authority changed",
+      );
       throw new DomainError("mesh_terminal_context_changed", "The Mesh terminal controller grant is no longer active.");
     }
     return lease;
+  }
+
+  private async closeInvalidLease(
+    sessionId: string,
+    closeCode: number,
+    closeReason: string,
+  ): Promise<void> {
+    if (this.opening.has(sessionId)) {
+      this.closeInBackground(sessionId, true, closeCode, closeReason);
+      return;
+    }
+    await this.close(sessionId, true, closeCode, closeReason);
   }
 
   private pruneExpired(): void {

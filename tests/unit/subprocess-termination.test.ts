@@ -219,6 +219,32 @@ describe("subprocess tree termination", () => {
     });
   });
 
+  // The root process exiting does not prove that a failed taskkill invocation
+  // terminated its descendants, so requireExit must preserve that failure.
+  test("rejects when taskkill fails after the root process exits", async () => {
+    await withMockWindowsTermination(async ({
+      target,
+      commands,
+      setTaskkillFactory,
+    }) => {
+      setTaskkillFactory(() => createTaskkillProcess(
+        () => target.exit(1),
+        1,
+      ));
+
+      await expect(terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      })).rejects.toThrow(
+        "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
+      );
+
+      expect(commands).toHaveLength(1);
+      expect(target.kill).not.toHaveBeenCalled();
+    });
+  });
+
   // A root-handle kill is not success for a tree contract; this protects ACP
   // and terminal descendants when no Windows tree-kill mechanism is available.
   test("rejects when Windows tree termination cannot be guaranteed", async () => {

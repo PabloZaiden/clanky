@@ -95,13 +95,13 @@ async function terminateWindowsSubprocessTree(
       stderr: "ignore",
     });
     const exitCode = await termination.exited;
-    if (exitCode !== 0 && subprocess.exitCode === null) {
+    if (exitCode !== 0) {
       log.debug("Windows taskkill did not terminate the subprocess tree", {
         pid: subprocess.pid,
         force,
         exitCode,
       });
-      if (force) {
+      if (force && subprocess.exitCode === null) {
         tryKillSubprocessHandle(subprocess);
       }
       return false;
