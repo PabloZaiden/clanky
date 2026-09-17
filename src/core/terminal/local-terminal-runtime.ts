@@ -166,5 +166,10 @@ export function buildWindowsTerminalFallbackNotice(
   if (!requestedPersistentSession && !requestedTmux) {
     return undefined;
   }
-  return "Persistent terminal sessions and tmux are unavailable on Windows; using a direct terminal.";
+  if (requestedPersistentSession && requestedTmux) {
+    return "Persistent terminal sessions and tmux are unavailable on Windows; using a direct terminal.";
+  }
+  return requestedPersistentSession
+    ? "Persistent terminal sessions are unavailable on Windows; using a direct terminal."
+    : "Tmux is unavailable on Windows; using a direct terminal.";
 }
