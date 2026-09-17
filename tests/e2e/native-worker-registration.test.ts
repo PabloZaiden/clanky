@@ -913,7 +913,29 @@ describe("native worker registration", () => {
         { force: true },
       );
       expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
-      await exerciseMeshAcpRuntime(registration, executionDirectory);
+      try {
+        await exerciseMeshAcpRuntime(registration, executionDirectory);
+      } catch (error) {
+        if (worker.child.exitCode === null) {
+          throw error;
+        }
+        const [stdout, stderr] = await Promise.all([
+          worker.output.stdout,
+          worker.output.stderr,
+        ]);
+        const diagnostics = [stdout.trim(), stderr.trim()]
+          .filter((value) => value.length > 0)
+          .join("\n")
+          .slice(-20_000);
+        throw new Error(
+          `Native worker exited during the ACP scenario (code ${
+            String(worker.child.exitCode)
+          }, signal ${String(worker.child.signalCode)})${
+            diagnostics ? `:\n${diagnostics}` : "."
+          }`,
+          { cause: error },
+        );
+      }
     } finally {
       meshExecutor.close();
       closeDatabase();
