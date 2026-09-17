@@ -68,8 +68,10 @@ import {
   basenameExecutionPath,
   dirnameExecutionPath,
   executionPathStyleForPlatform,
+  isAbsoluteExecutionPath,
   isExecutionPathWithinRoot,
   joinExecutionPath,
+  normalizeExecutionRoot,
   resolveExecutionPath,
   type ExecutionPathStyle,
 } from "./execution-path";
@@ -413,11 +415,35 @@ export async function assertPhysicalExecutionPath(
   requested: string,
   mode: PhysicalPathMode = "follow",
 ): Promise<string> {
-  const candidate = assertMeshExecutionPath(
-    session.executionRoot,
-    requested,
-    session.pathStyle,
-  );
+  let candidate: string;
+  try {
+    candidate = assertMeshExecutionPath(
+      session.executionRoot,
+      requested,
+      session.pathStyle,
+    );
+  } catch (error) {
+    if (!isAbsoluteExecutionPath(requested, session.pathStyle)) {
+      throw error;
+    }
+    let physicalCandidate: string;
+    try {
+      physicalCandidate = normalizeExecutionRoot(
+        requested,
+        session.pathStyle,
+      );
+    } catch {
+      throw error;
+    }
+    if (!isExecutionPathWithinRoot(
+      session.physicalExecutionRoot,
+      physicalCandidate,
+      session.pathStyle,
+    )) {
+      throw error;
+    }
+    candidate = physicalCandidate;
+  }
   if (mode === "entry") {
     const parent = dirnameExecutionPath(candidate, session.pathStyle);
     const physicalParent = await assertPhysicalExecutionPath(

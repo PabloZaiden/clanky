@@ -96,6 +96,29 @@ describe("mesh execution path validation", () => {
     }
   });
 
+  test("accepts canonical paths returned through an aliased execution root", async () => {
+    const container = await mkdtemp(join(tmpdir(), "clanky-mesh-root-alias-"));
+    const physicalRoot = join(container, "physical");
+    const logicalRoot = join(container, "logical");
+    await mkdir(physicalRoot);
+    await writeFile(join(physicalRoot, "note.txt"), "inside\n");
+    await symlink(physicalRoot, logicalRoot);
+
+    try {
+      const trustedRoot = await resolveTrustedExecutionRoot(
+        logicalRoot,
+        logicalRoot,
+        "posix",
+      );
+      expect(await assertPhysicalExecutionPath(
+        trustedRoot,
+        join(physicalRoot, "note.txt"),
+      )).toBe(join(physicalRoot, "note.txt"));
+    } finally {
+      await rm(container, { recursive: true, force: true });
+    }
+  });
+
   test("assigns capability versions by Mesh operation contract", () => {
     expect(getMeshExecutionOperationCapability("exec")).toEqual({
       id: "commandExecution",
