@@ -74,8 +74,6 @@ export interface StartTaskOptions {
 export interface SeedPlanFilesOptions {
   planContent: string;
   statusContent?: string;
-  planSourcePath?: string;
-  statusSourcePath?: string;
 }
 
 export interface GenerateTaskTitleOptions {

@@ -6,6 +6,7 @@
 
 import { createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, truncate } from "node:fs/promises";
+import { resolve } from "node:path";
 import type {
   CommandExecutor,
   CommandResult,
@@ -29,6 +30,12 @@ import { LocalFileSystem } from "../../src/core/remote-executor/local-filesystem
 export class TestCommandExecutor implements CommandExecutor {
   private readonly localFileSystem = new LocalFileSystem();
   readonly pathStyle = this.localFileSystem.pathStyle;
+
+  constructor(private readonly executionDirectory = process.cwd()) {}
+
+  async getExecutionDirectory(): Promise<string> {
+    return resolve(this.executionDirectory);
+  }
 
   async getEnvironmentVariable(name: string): Promise<string | null> {
     return process.env[name] ?? null;

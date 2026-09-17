@@ -1,4 +1,7 @@
-import type { CommandExecutor } from "./command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "./command-executor";
 import { ensurePlanningDirectory } from "./planning-directory";
 import {
   dirnameExecutionPath,
@@ -6,7 +9,6 @@ import {
   joinExecutionPath,
   normalizeExecutionPath,
   resolveExecutionPathWithinDirectory,
-  type ExecutionPathStyle,
 } from "./execution-path";
 import {
   DEFAULT_PLAN_DISPLAY_PATH,
@@ -20,8 +22,6 @@ const PLAN_READY_MARKER = /<promise>PLAN_READY<\/promise>/gi;
 export interface ValidatedPlanningFiles {
   planContent: string;
   statusContent?: string;
-  planSourcePath?: string;
-  statusSourcePath?: string;
 }
 
 export function normalizePlanContent(content: string): string {
@@ -56,7 +56,7 @@ function sanitizePlanPathForMessage(planPath: string): string {
 
 function resolvePlanningFileSource(
   directory: string,
-  pathStyle: ExecutionPathStyle,
+  pathStyle: CommandExecutor["pathStyle"],
   requestedPlanPath?: string,
 ): PlanningFileSource {
   const managedPaths = new ManagedPathService(pathStyle);
@@ -124,8 +124,12 @@ export async function readValidatedPlanningFiles(
   directory: string,
   requestedPlanPath?: string,
 ): Promise<ValidatedPlanningFiles> {
-  const source = resolvePlanningFileSource(
+  const executionDirectory = await resolveCommandExecutorDirectory(
+    executor,
     directory,
+  );
+  const source = resolvePlanningFileSource(
+    executionDirectory,
     executor.pathStyle,
     requestedPlanPath,
   );
@@ -152,8 +156,6 @@ export async function readValidatedPlanningFiles(
   return {
     planContent,
     statusContent,
-    planSourcePath: rawPlanContent === planContent ? source.planPath : undefined,
-    statusSourcePath: statusContent !== undefined && rawStatusContent === statusContent ? source.statusPath : undefined,
   };
 }
 
@@ -194,11 +196,14 @@ export async function writePlanningFiles(
 ): Promise<void> {
   await ensurePlanningDirectory(executor, directory);
   const managedPaths = new ManagedPathService(executor.pathStyle);
+  const executionDirectory = await resolveCommandExecutorDirectory(
+    executor,
+    directory,
+  );
 
   const planWritten = await writePlanningFile(
     executor,
-    files.planSourcePath,
-    managedPaths.getPlanFilePath(directory),
+    managedPaths.getPlanFilePath(executionDirectory),
     files.planContent,
   );
   if (!planWritten) {
@@ -212,8 +217,7 @@ export async function writePlanningFiles(
 
   const statusWritten = await writePlanningFile(
     executor,
-    files.statusSourcePath,
-    managedPaths.getStatusFilePath(directory),
+    managedPaths.getStatusFilePath(executionDirectory),
     nextStatusContent,
   );
   if (!statusWritten) {
@@ -223,17 +227,9 @@ export async function writePlanningFiles(
 
 async function writePlanningFile(
   executor: CommandExecutor,
-  sourcePath: string | undefined,
   destinationPath: string,
   content: string,
 ): Promise<boolean> {
-  if (sourcePath && executor.copyFile) {
-    const copied = await executor.copyFile(sourcePath, destinationPath);
-    if (copied) {
-      return true;
-    }
-  }
-
   if (executor.writeFileStream) {
     const result = await executor.writeFileStream(destinationPath, new Blob([content]).stream());
     return result.success;

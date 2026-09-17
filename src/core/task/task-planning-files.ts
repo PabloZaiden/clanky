@@ -1,6 +1,9 @@
 import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
-import type { CommandExecutor } from "../command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "../command-executor";
 import { updateTaskOperationalState } from "../../persistence/tasks";
 import { log } from "@pablozaiden/webapp/server";
 import {
@@ -17,6 +20,10 @@ export async function clearPlanningFilesImpl(
   worktreePath: string
 ): Promise<void> {
   const planningDir = await ensurePlanningDirectory(executor, worktreePath);
+  const executionDirectory = await resolveCommandExecutorDirectory(
+    executor,
+    worktreePath,
+  );
   const managedPaths = new ManagedPathService(executor.pathStyle);
 
   if (task.config.clearPlanningFolder && !task.state.planMode?.planningFolderCleared) {
@@ -36,7 +43,7 @@ export async function clearPlanningFilesImpl(
     }
   }
 
-  const planFilePath = managedPaths.getPlanFilePath(worktreePath);
+  const planFilePath = managedPaths.getPlanFilePath(executionDirectory);
   try {
     const planFileExists = await executor.fileExists(planFilePath);
     if (

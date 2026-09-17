@@ -12,11 +12,15 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 class RelativePlanningFileExecutor extends TestCommandExecutor {
   override readonly pathStyle = "posix";
 
+  override async getExecutionDirectory(): Promise<string> {
+    return "/resolved/repository";
+  }
+
   override async readFile(path: string): Promise<string | null> {
-    if (path === "relative/repository/plans/plan.md") {
+    if (path === "/resolved/repository/plans/plan.md") {
       return "# Relative plan";
     }
-    if (path === "relative/repository/plans/status.md") {
+    if (path === "/resolved/repository/plans/status.md") {
       return "# Relative status";
     }
     return null;
@@ -122,7 +126,7 @@ describe("execution path containment", () => {
     ).toThrow("Requested path must stay within the execution directory.");
   });
 
-  test("reads planning files from a relative workspace directory", async () => {
+  test("reads planning files from the executor's canonical absolute directory", async () => {
     const files = await readValidatedPlanningFiles(
       new RelativePlanningFileExecutor(),
       "relative/repository",
@@ -132,8 +136,6 @@ describe("execution path containment", () => {
     expect(files).toEqual({
       planContent: "# Relative plan",
       statusContent: "# Relative status",
-      planSourcePath: "relative/repository/plans/plan.md",
-      statusSourcePath: "relative/repository/plans/status.md",
     });
   });
 });

@@ -165,6 +165,7 @@ export interface MeshExecutionSessionResponse {
   protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
   sessionId: string;
   sessionToken: string;
+  executionRoot: string;
   expiresAt: string;
 }
 
@@ -758,6 +759,7 @@ export class MeshExecutionGateway {
       protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
       sessionId,
       sessionToken,
+      executionRoot,
       expiresAt: new Date(expiresAt).toISOString(),
     };
   }

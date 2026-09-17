@@ -81,7 +81,7 @@ describe("deterministic agent runner — API key lifecycle", () => {
 
     const mockBackend = new MockAcpBackend({ models: [defaultTestModel] });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -281,7 +281,7 @@ describe("deterministic agent runner — prompt bridge route", () => {
 
     mockBackend = new MockAcpBackend({ models: [defaultTestModel] });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");

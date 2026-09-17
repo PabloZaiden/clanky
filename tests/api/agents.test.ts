@@ -219,7 +219,7 @@ describe("Agents API Integration", () => {
       },
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     server = serveNativeApiRoutes({ idleTimeout: TEST_HTTP_IDLE_TIMEOUT_SECONDS });
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -316,7 +316,7 @@ describe("Agents API Integration", () => {
     backendManager.setBackendForTesting(new NeverCompletingMockBackend({
       models: [defaultTestModel],
     }));
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     chatManager.setActivityTimeoutForTesting(10);
 
     try {
@@ -340,7 +340,7 @@ describe("Agents API Integration", () => {
     } finally {
       chatManager.setActivityTimeoutForTesting(undefined);
       backendManager.setBackendForTesting(mockBackend);
-      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     }
   });
 

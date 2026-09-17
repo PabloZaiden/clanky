@@ -452,7 +452,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   } else {
     backendManager.setBackendForTesting(mockBackend);
   }
-  backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+  backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
   // Start test server
   const server = serveNativeApiRoutes();

@@ -21,7 +21,10 @@ import {
 import type { Workspace } from "@/shared/workspace";
 import { taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
-import type { CommandExecutor } from "../command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "../command-executor";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
@@ -675,7 +678,11 @@ class BackendManager {
       const executor = this.testExecutorFactory(directory);
 
       // First check if directory exists
-      const directoryExists = await executor.directoryExists(directory);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        executor,
+        directory,
+      );
+      const directoryExists = await executor.directoryExists(executionDirectory);
       if (!directoryExists) {
         log.debug("Directory does not exist on remote server", { directory });
         return { success: true, directoryExists: false, isGitRepo: false };
@@ -730,7 +737,11 @@ class BackendManager {
 
       }
 
-      const directoryExists = await executor.directoryExists(directory);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        executor,
+        directory,
+      );
+      const directoryExists = await executor.directoryExists(executionDirectory);
       if (!directoryExists) {
         log.debug("Directory does not exist on execution target", { directory });
         return { success: true, directoryExists: false, isGitRepo: false };
@@ -806,7 +817,11 @@ class BackendManager {
 
     try {
       const executor = await this.getCommandExecutorAsync(workspaceId, workspace.directory);
-      const directoryExists = await executor.directoryExists(workspace.directory);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        executor,
+        workspace.directory,
+      );
+      const directoryExists = await executor.directoryExists(executionDirectory);
       let isGitRepo = false;
       if (directoryExists) {
         const git = GitService.withExecutor(executor);

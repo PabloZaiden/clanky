@@ -17,6 +17,10 @@ import type {
 } from "./command-executor";
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
 import type { AgentProvider } from "@/shared/settings";
+import {
+  isAbsoluteExecutionPath,
+  normalizeExecutionRoot,
+} from "./execution-path";
 import type { ExecutionPathStyle } from "./execution-path";
 import { DomainError } from "./domain-error";
 
@@ -33,10 +37,12 @@ export interface MeshCommandExecutorConfig {
 
 export class MeshCommandExecutor implements CommandExecutor {
   private readonly configuredPathStyle: ExecutionPathStyle | null;
+  private readonly configuredDirectory: string;
   private readonly client: MeshCommandExecutorClient;
 
   constructor(config: MeshCommandExecutorConfig) {
     this.configuredPathStyle = config.pathStyle;
+    this.configuredDirectory = config.directory;
     this.client = new MeshCommandExecutorClient(config);
   }
 
@@ -48,6 +54,20 @@ export class MeshCommandExecutor implements CommandExecutor {
       );
     }
     return this.configuredPathStyle;
+  }
+
+  async getExecutionDirectory(): Promise<string> {
+    const executionDirectory = await this.client.getExecutionDirectory();
+    if (executionDirectory) {
+      return normalizeExecutionRoot(executionDirectory, this.pathStyle);
+    }
+    if (isAbsoluteExecutionPath(this.configuredDirectory, this.pathStyle)) {
+      return normalizeExecutionRoot(this.configuredDirectory, this.pathStyle);
+    }
+    throw new DomainError(
+      "mesh_execution_response_invalid",
+      "The Mesh worker did not return its canonical execution directory for a relative workspace path.",
+    );
   }
 
   async getEnvironmentVariable(name: string): Promise<string | null> {

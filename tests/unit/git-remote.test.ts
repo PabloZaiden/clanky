@@ -13,7 +13,11 @@ class GitRemoteTestExecutor extends TestCommandExecutor {
   }> = [];
 
   constructor(private readonly results: CommandResult[]) {
-    super();
+    super("/absolute/repository");
+  }
+
+  override async getEnvironmentVariable(_name: string): Promise<string | null> {
+    return null;
   }
 
   override async exec(
@@ -102,7 +106,7 @@ describe("GitService remote ref classification", () => {
         stderr: "",
         exitCode: 1,
       }),
-      commandResult({ stdout: ".git/clanky_known_hosts\n" }),
+      commandResult({ stdout: "/absolute/repository/.git/clanky-known-hosts\n" }),
       commandResult(),
     ]);
     const git = GitService.withExecutor(executor);
@@ -113,7 +117,8 @@ describe("GitService remote ref classification", () => {
     )).resolves.toBe("origin/feature");
 
     expect(executor.calls.at(-1)?.options?.env?.["GIT_SSH_COMMAND"]).toContain(
-      "relative/repository/.git/clanky_known_hosts",
+      "/absolute/repository/.git/clanky-known-hosts",
     );
+    expect(executor.calls[1]?.options?.logFailures).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import {
   isExecutionPathWithinRoot,
   joinExecutionPath,
   normalizeExecutionPath,
+  normalizeExecutionRoot,
   relativeExecutionPath,
   type ExecutionPathStyle,
 } from "./execution-path";
@@ -143,7 +144,7 @@ export class ManagedPathService {
   getPlanningDirectoryPath(directory: string): string {
     return joinExecutionPath(
       this.pathStyle,
-      normalizeExecutionPath(directory, this.pathStyle),
+      normalizeExecutionRoot(directory, this.pathStyle),
       PLANNING_DIRECTORY_NAME,
     );
   }
@@ -173,7 +174,7 @@ export class ManagedPathService {
     }
 
     try {
-      return normalizeExecutionPath(repoDirectory, this.pathStyle);
+      return normalizeExecutionRoot(repoDirectory, this.pathStyle);
     } catch (error) {
       throw new InvalidManagedWorktreePathError(
         repoDirectory,

@@ -14,6 +14,10 @@ class RelativeGitPathExecutor extends TestCommandExecutor {
   override readonly pathStyle = "posix";
   readonly writes = new Map<string, string>();
 
+  override async getExecutionDirectory(): Promise<string> {
+    return "/remote/workspaces/repository";
+  }
+
   override async exec(
     command: string,
     args: string[],
@@ -21,11 +25,11 @@ class RelativeGitPathExecutor extends TestCommandExecutor {
   ): Promise<CommandResult> {
     if (
       command === "git"
-      && args.slice(-3).join(" ") === "rev-parse --git-path info/exclude"
+      && args.slice(-4).join(" ") === "rev-parse --path-format=absolute --git-path info/exclude"
     ) {
       return {
         success: true,
-        stdout: ".git/info/exclude\n",
+        stdout: "/remote/workspaces/repository/.git/info/exclude\n",
         stderr: "",
         exitCode: 0,
       };
@@ -58,9 +62,9 @@ describe("Managed worktree paths", () => {
     expect(paths.getManagedWorktreePath("/remote/workspaces/repository", "task-123")).toBe(
       "/remote/workspaces/repository/.clanky-worktrees/task-123",
     );
-    expect(paths.getManagedWorktreePath("remote/workspaces/repository", "chat-123")).toBe(
-      "remote/workspaces/repository/.clanky-worktrees/chat-123",
-    );
+    expect(() =>
+      paths.getManagedWorktreePath("remote/workspaces/repository", "chat-123")
+    ).toThrow(InvalidManagedWorktreePathError);
   });
 
   test("normalizes safe identifiers and rejects path traversal", () => {
@@ -145,14 +149,14 @@ describe("Managed worktree paths", () => {
     );
   });
 
-  test("resolves relative Git metadata paths from the repository directory", async () => {
+  test("resolves Git metadata from the executor's canonical absolute directory", async () => {
     const executor = new RelativeGitPathExecutor();
     const git = GitService.withExecutor(executor);
 
     await git.ensureWorktreeExcluded("relative/repository");
 
     expect(executor.writes.get(
-      "relative/repository/.git/info/exclude",
+      "/remote/workspaces/repository/.git/info/exclude",
     )).toContain(".clanky-worktrees");
   });
 });

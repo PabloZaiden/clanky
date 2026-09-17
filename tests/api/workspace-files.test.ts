@@ -44,7 +44,7 @@ describe("workspace files API integration", () => {
     await writeFile(join(alternateRootDir, "notes", "todo.txt"), "alternate root note\n");
 
     backendManager.setBackendForTesting(createMockBackend());
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -62,7 +62,7 @@ describe("workspace files API integration", () => {
   beforeEach(() => {
     const db = getDatabase();
     db.run("DELETE FROM workspaces");
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   });
 
   async function createWorkspace() {

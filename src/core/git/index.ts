@@ -51,6 +51,7 @@ import {
 import {
   ManagedPathService,
 } from "../managed-path-service";
+import { resolveGitDirectory } from "./git-core";
 
 export { MANAGED_WORKTREE_DIRECTORY_NAME, ManagedPathService } from "../managed-path-service";
 
@@ -267,33 +268,44 @@ export class GitService {
 
   // ─── Worktree operations ──────────────────────────────────────────────────
 
-  getManagedWorktreeRoot(repoDirectory: string): string {
-    return this.managedPaths.getManagedWorktreeRoot(repoDirectory);
+  async getManagedWorktreeRoot(repoDirectory: string): Promise<string> {
+    return this.managedPaths.getManagedWorktreeRoot(
+      await resolveGitDirectory(this.executor, repoDirectory),
+    );
   }
 
   normalizeManagedWorktreeIdentifier(identifier: string): string {
     return this.managedPaths.normalizeManagedWorktreeIdentifier(identifier);
   }
 
-  getManagedWorktreePath(repoDirectory: string, identifier: string): string {
-    return this.managedPaths.getManagedWorktreePath(repoDirectory, identifier);
+  async getManagedWorktreePath(repoDirectory: string, identifier: string): Promise<string> {
+    return this.managedPaths.getManagedWorktreePath(
+      await resolveGitDirectory(this.executor, repoDirectory),
+      identifier,
+    );
   }
 
-  isManagedWorktreePath(repoDirectory: string, worktreePath: string): boolean {
-    return this.managedPaths.isManagedWorktreePath(repoDirectory, worktreePath);
+  async isManagedWorktreePath(repoDirectory: string, worktreePath: string): Promise<boolean> {
+    return this.managedPaths.isManagedWorktreePath(
+      await resolveGitDirectory(this.executor, repoDirectory),
+      worktreePath,
+    );
   }
 
-  assertManagedWorktreePath(repoDirectory: string, worktreePath: string): string {
-    return this.managedPaths.assertManagedWorktreePath(repoDirectory, worktreePath);
+  async assertManagedWorktreePath(repoDirectory: string, worktreePath: string): Promise<string> {
+    return this.managedPaths.assertManagedWorktreePath(
+      await resolveGitDirectory(this.executor, repoDirectory),
+      worktreePath,
+    );
   }
 
-  assertCanonicalManagedWorktreePath(
+  async assertCanonicalManagedWorktreePath(
     repoDirectory: string,
     identifier: string,
     worktreePath: string,
-  ): string {
+  ): Promise<string> {
     return this.managedPaths.assertCanonicalManagedWorktreePath(
-      repoDirectory,
+      await resolveGitDirectory(this.executor, repoDirectory),
       identifier,
       worktreePath,
     );
@@ -343,12 +355,13 @@ export class GitService {
   }
 
   async worktreeExists(repoDirectory: string, worktreePath: string): Promise<boolean> {
+    const absoluteRepoDirectory = await resolveGitDirectory(this.executor, repoDirectory);
     const managedWorktreePath = this.managedPaths.assertManagedWorktreePath(
-      repoDirectory,
+      absoluteRepoDirectory,
       worktreePath,
     );
     // Use this.listWorktrees() so test mocks of listWorktrees are respected
-    const worktrees = await this.listWorktrees(repoDirectory);
+    const worktrees = await this.listWorktrees(absoluteRepoDirectory);
     const comparablePaths = await getComparableWorktreePaths(this.executor, managedWorktreePath);
     return worktrees.some((wt) => comparablePaths.has(
       worktreePathComparisonKey(wt.path, this.executor.pathStyle),

@@ -26,7 +26,11 @@ import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
 import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
 import { LocalFileSystem } from "./local-filesystem";
-import type { ExecutionPathStyle } from "../execution-path";
+import {
+  normalizeExecutionRoot,
+  resolveExecutionPathUnscoped,
+  type ExecutionPathStyle,
+} from "../execution-path";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -209,6 +213,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   private readonly identityFile?: string;
   private readonly defaultTimeoutMs: number;
   private readonly localFileSystem: LocalFileSystem | null;
+  private executionDirectoryPromise: Promise<string> | undefined;
 
   /** Queue of pending commands */
   private commandQueue: Array<{
@@ -233,6 +238,41 @@ export class CommandExecutorImpl implements CommandExecutor {
     this.password = config.password;
     this.identityFile = config.identityFile?.trim() || undefined;
     this.defaultTimeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  async getExecutionDirectory(): Promise<string> {
+    const pending = this.executionDirectoryPromise
+      ??= this.resolveExecutionDirectory();
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.executionDirectoryPromise === pending) {
+        this.executionDirectoryPromise = undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async resolveExecutionDirectory(): Promise<string> {
+    if (this.provider === "local") {
+      return resolveExecutionPathUnscoped(
+        process.cwd(),
+        this.directory,
+        this.pathStyle,
+      );
+    }
+
+    const result = await this.exec("pwd", ["-P"], {
+      logFailures: false,
+    });
+    if (!result.success || !result.stdout.trim()) {
+      throw new Error(
+        `Failed to resolve the SSH execution directory: ${
+          result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`
+        }`,
+      );
+    }
+    return normalizeExecutionRoot(result.stdout.trim(), this.pathStyle);
   }
 
   async getEnvironmentVariable(name: string): Promise<string | null> {
@@ -919,7 +959,11 @@ export class CommandExecutorImpl implements CommandExecutor {
       logFailures: false,
     });
     if (!result.success) {
-      return [];
+      throw new Error(
+        `Failed to list remote directory ${path}: ${
+          result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`
+        }`,
+      );
     }
     return result.stdout
       .split("\0")

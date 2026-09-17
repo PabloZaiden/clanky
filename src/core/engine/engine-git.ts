@@ -15,6 +15,7 @@ import { syncMainCheckoutBeforeWorktree } from "../git/worktree-sync";
 import { log } from "@pablozaiden/webapp/server";
 import { clearPlanningDirectory } from "../planning-directory";
 import { ManagedPathService } from "../managed-path-service";
+import { resolveCommandExecutorDirectory } from "../command-executor";
 
 export interface GitOperationContext {
   git: GitService;
@@ -34,9 +35,13 @@ export interface GitCommitContext extends GitOperationContext {
 export async function clearTaskPlanningFolder(ctx: GitOperationContext): Promise<void> {
   try {
     const executor = await backendManager.getCommandExecutorAsync(ctx.config.workspaceId, ctx.workingDirectory);
+    const executionDirectory = await resolveCommandExecutorDirectory(
+      executor,
+      ctx.workingDirectory,
+    );
     const planningDir = new ManagedPathService(
       executor.pathStyle,
-    ).getPlanningDirectoryPath(ctx.workingDirectory);
+    ).getPlanningDirectoryPath(executionDirectory);
 
     const exists = await executor.directoryExists(planningDir);
 
@@ -45,19 +50,24 @@ export async function clearTaskPlanningFolder(ctx: GitOperationContext): Promise
       return;
     }
 
-    const filesToDelete = await clearPlanningDirectory(
+    const clearResult = await clearPlanningDirectory(
       executor,
       planningDir,
       new Set([".gitkeep"]),
     );
-    if (filesToDelete.length === 0) {
-      ctx.emitLog("debug", ".clanky-planning directory only contains .gitkeep");
+    if (clearResult.deletedNames.length === 0) {
+      ctx.emitLog(
+        "debug",
+        clearResult.preservedNames.length > 0
+          ? `.clanky-planning directory only contains preserved files: ${clearResult.preservedNames.join(", ")}`
+          : ".clanky-planning directory is already empty",
+      );
       return;
     }
 
-    ctx.emitLog("info", `Cleared .clanky-planning folder: ${filesToDelete.length} file(s) deleted`, {
-      deletedCount: filesToDelete.length,
-      preservedFiles: [".gitkeep"],
+    ctx.emitLog("info", `Cleared .clanky-planning folder: ${clearResult.deletedNames.length} file(s) deleted`, {
+      deletedCount: clearResult.deletedNames.length,
+      preservedFiles: clearResult.preservedNames,
     });
 
     const hasChanges = await ctx.git.hasUncommittedChanges(ctx.workingDirectory);
@@ -197,7 +207,7 @@ async function resolveOriginalBranch(ctx: GitOperationContext, directory: string
 }
 
 async function setupWorktree(ctx: GitOperationContext, directory: string, branchName: string, originalBranch: string): Promise<string> {
-  const worktreePath = ctx.git.getManagedWorktreePath(directory, ctx.config.id);
+  const worktreePath = await ctx.git.getManagedWorktreePath(directory, ctx.config.id);
 
   const branchExists = await ctx.git.branchExists(directory, branchName);
 

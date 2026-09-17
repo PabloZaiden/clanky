@@ -49,7 +49,10 @@ import type { SshConnectionTarget } from "./ssh-connection-target";
 import { sshServerManager } from "./ssh-server-manager";
 import { requireCurrentUserId } from "./user-context";
 import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
-import { executionPathStyleForPlatform } from "./execution-path";
+import {
+  executionPathStyleForPlatform,
+  resolveExecutionPathUnscoped,
+} from "./execution-path";
 
 export interface ExecutionHostCommandContext {
   directory: string;
@@ -347,7 +350,13 @@ export class ExecutionHostService {
     });
     const directoryExists = await (async () => {
       try {
-        return await executor.directoryExists(directory);
+        const executionDirectory = await executor.getExecutionDirectory();
+        const absoluteDirectory = resolveExecutionPathUnscoped(
+          executionDirectory,
+          directory,
+          executor.pathStyle,
+        );
+        return await executor.directoryExists(absoluteDirectory);
       } finally {
         closeCommandExecutor(executor);
       }

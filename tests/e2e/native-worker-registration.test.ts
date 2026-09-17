@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -25,6 +25,12 @@ import type {
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
+import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
+import { executionPathStyleForPlatform } from "../../src/core/execution-path";
+import {
+  closeDatabase,
+  initializeDatabase,
+} from "../../src/persistence/database";
 
 interface MeshHealthResponse {
   success: boolean;
@@ -97,9 +103,10 @@ describe("native worker registration", () => {
   test("runs Git and managed worktree paths on the native host", async () => {
     const root = await mkdtemp(join(tmpdir(), "clanky-native-git-"));
     const repoDirectory = join(root, "repository with spaces");
+    const configuredRepoDirectory = relative(process.cwd(), repoDirectory);
     const executor = new CommandExecutorImpl({
       provider: "local",
-      directory: root,
+      directory: configuredRepoDirectory,
     });
     const git = GitService.withExecutor(executor);
 
@@ -108,7 +115,7 @@ describe("native worker registration", () => {
         join(repoDirectory, "tracked.txt"),
         "initial\n",
       )).toBe(true);
-      await expect(git.hasStagedChanges(repoDirectory)).rejects.toBeInstanceOf(
+      await expect(git.hasStagedChanges(configuredRepoDirectory)).rejects.toBeInstanceOf(
         GitCommandError,
       );
       for (const args of [
@@ -120,22 +127,23 @@ describe("native worker registration", () => {
         expect(result.success).toBe(true);
       }
 
-      expect(await git.isGitRepo(repoDirectory)).toBe(true);
+      expect(await executor.getExecutionDirectory()).toBe(repoDirectory);
+      expect(await git.isGitRepo(configuredRepoDirectory)).toBe(true);
       const planningDirectory = await ensurePlanningDirectory(
         executor,
-        repoDirectory,
+        configuredRepoDirectory,
       );
       expect(await executor.directoryExists(planningDirectory)).toBe(true);
       expect(await executor.listDirectory(planningDirectory, {
         includeHidden: true,
       })).toEqual([]);
-      const currentBranch = await git.getCurrentBranch(repoDirectory);
+      const currentBranch = await git.getCurrentBranch(configuredRepoDirectory);
       expect(currentBranch.length).toBeGreaterThan(0);
 
-      await git.stageAll(repoDirectory);
-      await git.commit(repoDirectory, "test: initialize native repository");
-      expect(await git.hasUncommittedChanges(repoDirectory)).toBe(false);
-      expect(await git.getLocalBranches(repoDirectory)).toEqual([
+      await git.stageAll(configuredRepoDirectory);
+      await git.commit(configuredRepoDirectory, "test: initialize native repository");
+      expect(await git.hasUncommittedChanges(configuredRepoDirectory)).toBe(false);
+      expect(await git.getLocalBranches(configuredRepoDirectory)).toEqual([
         { name: currentBranch, current: true },
       ]);
 
@@ -143,19 +151,19 @@ describe("native worker registration", () => {
         join(repoDirectory, "tracked.txt"),
         "updated\n",
       )).toBe(true);
-      expect(await git.getChangedFiles(repoDirectory)).toEqual(["tracked.txt"]);
+      expect(await git.getChangedFiles(configuredRepoDirectory)).toEqual(["tracked.txt"]);
 
-      const worktreePath = git.getManagedWorktreePath(
-        repoDirectory,
+      const worktreePath = await git.getManagedWorktreePath(
+        configuredRepoDirectory,
         "native-e2e",
       );
       await git.createWorktree(
-        repoDirectory,
+        configuredRepoDirectory,
         worktreePath,
         "native-e2e",
         currentBranch,
       );
-      expect(await git.worktreeExists(repoDirectory, worktreePath)).toBe(true);
+      expect(await git.worktreeExists(configuredRepoDirectory, worktreePath)).toBe(true);
 
       const excludePathResult = await executor.exec(
         "git",
@@ -169,7 +177,7 @@ describe("native worker registration", () => {
       expect(excludeContent).toContain(".clanky-worktrees");
       expect(excludeContent).toContain(".clanky-planning");
 
-      await git.removeWorktree(repoDirectory, worktreePath, { force: true });
+      await git.removeWorktree(configuredRepoDirectory, worktreePath, { force: true });
       expect(await executor.directoryExists(worktreePath)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -279,18 +287,60 @@ describe("native worker registration", () => {
     expect(createdFile.status).toBe(200);
     expect(createdFile.body.file.path).toBe("native-files/worker.txt");
 
+    const createdPlan = await meshJsonRequest<FileWriteResponse>(
+      controller,
+      `${filesPath}/write`,
+      {
+        method: "POST",
+        body: {
+          path: "native-files/.clanky-planning/plan.md",
+          content: "# Native relative workspace plan\n",
+          expectedVersionToken: null,
+          overwrite: false,
+          startDirectory: null,
+        },
+      },
+    );
+    expect(createdPlan.status).toBe(200);
+
+    const previousDataDir = process.env["CLANKY_DATA_DIR"];
+    closeDatabase();
+    process.env["CLANKY_DATA_DIR"] = controller.dataDir;
+    await initializeDatabase();
+    const meshExecutor = new MeshCommandExecutor({
+      workspaceId: "native-relative-workspace",
+      directory: "native-files",
+      executionNodeId: registration.workerNodeId,
+      provider: "copilot",
+      localUserId: registration.localUserId,
+      pathStyle: executionPathStyleForPlatform(process.platform),
+    });
+    try {
+      const executionDirectory = await meshExecutor.getExecutionDirectory();
+      expect(executionDirectory).toBe(join(worker.dataDir, "native-files"));
+      expect(await meshExecutor.fileExists(
+        join(executionDirectory, ".clanky-planning", "plan.md"),
+      )).toBe(true);
+    } finally {
+      meshExecutor.close();
+      closeDatabase();
+      if (previousDataDir === undefined) {
+        delete process.env["CLANKY_DATA_DIR"];
+      } else {
+        process.env["CLANKY_DATA_DIR"] = previousDataDir;
+      }
+    }
+
     const listedFiles = await meshJsonRequest<FileListResponse>(
       controller,
       `${filesPath}?path=${encodeURIComponent("native-files")}`,
     );
     expect(listedFiles.status).toBe(200);
-    expect(listedFiles.body).toMatchObject({
-      directory: "native-files",
-      entries: [{
-        name: "worker.txt",
-        path: "native-files/worker.txt",
-        kind: "file",
-      }],
+    expect(listedFiles.body.directory).toBe("native-files");
+    expect(listedFiles.body.entries).toContainEqual({
+      name: "worker.txt",
+      path: "native-files/worker.txt",
+      kind: "file",
     });
 
     const readFile = await meshJsonRequest<FileReadResponse>(

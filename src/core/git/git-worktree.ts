@@ -4,13 +4,12 @@
 
 import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
-import { runGitCommand, gitError } from "./git-core";
+import { runGitCommand, gitError, resolveGitDirectory } from "./git-core";
 import {
   dirnameExecutionPath,
   joinExecutionPath,
   normalizeExecutionPath,
   relativeExecutionPath,
-  resolveExecutionPathFromDirectory,
   type ExecutionPathStyle,
 } from "../execution-path";
 import {
@@ -26,16 +25,17 @@ export async function createWorktree(
   branchName: string,
   baseBranch?: string
 ): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
     executor.pathStyle,
-  ).assertManagedWorktreePath(repoDirectory, worktreePath);
-  await ensureWorktreeExcluded(executor, repoDirectory);
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
+  await ensureWorktreeExcluded(executor, absoluteRepoDirectory);
 
   let args = ["worktree", "add", managedWorktreePath, "-b", branchName];
   if (baseBranch) {
     const baseBranchResult = await runGitCommand(
       executor,
-      repoDirectory,
+      absoluteRepoDirectory,
       ["rev-parse", "--verify", baseBranch],
       { allowFailure: true }
     );
@@ -45,7 +45,7 @@ export async function createWorktree(
     } else {
       const currentBranchResult = await runGitCommand(
         executor,
-        repoDirectory,
+        absoluteRepoDirectory,
         ["symbolic-ref", "--short", "HEAD"],
         { allowFailure: true }
       );
@@ -58,7 +58,7 @@ export async function createWorktree(
     }
   }
 
-  const result = await runGitCommand(executor, repoDirectory, args);
+  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to create worktree at ${managedWorktreePath}`, result, args);
   }
@@ -72,13 +72,14 @@ export async function addWorktreeForExistingBranch(
   worktreePath: string,
   branchName: string
 ): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
     executor.pathStyle,
-  ).assertManagedWorktreePath(repoDirectory, worktreePath);
-  await ensureWorktreeExcluded(executor, repoDirectory);
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
+  await ensureWorktreeExcluded(executor, absoluteRepoDirectory);
 
   const args = ["worktree", "add", managedWorktreePath, branchName];
-  const result = await runGitCommand(executor, repoDirectory, args);
+  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to add worktree for branch ${branchName} at ${managedWorktreePath}`, result, args);
   }
@@ -92,15 +93,16 @@ export async function removeWorktree(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
     executor.pathStyle,
-  ).assertManagedWorktreePath(repoDirectory, worktreePath);
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
   const args = ["worktree", "remove", managedWorktreePath];
   if (options?.force) {
     args.push("--force");
   }
 
-  const result = await runGitCommand(executor, repoDirectory, args);
+  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to remove worktree at ${managedWorktreePath}`, result, args);
   }
@@ -114,25 +116,26 @@ export async function ensureWorktreeRemoved(
   worktreePath: string,
   options?: { force?: boolean }
 ): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
     executor.pathStyle,
-  ).assertManagedWorktreePath(repoDirectory, worktreePath);
-  const registeredBefore = await worktreeExists(executor, repoDirectory, managedWorktreePath);
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
+  const registeredBefore = await worktreeExists(executor, absoluteRepoDirectory, managedWorktreePath);
 
   if (registeredBefore) {
     const args = ["worktree", "remove", managedWorktreePath];
     if (options?.force) {
       args.push("--force");
     }
-    const result = await runGitCommand(executor, repoDirectory, args, { allowFailure: true });
+    const result = await runGitCommand(executor, absoluteRepoDirectory, args, { allowFailure: true });
     if (!result.success) {
       log.warn(`[GitService] Worktree removal command failed for ${managedWorktreePath}: ${result.stderr || result.stdout || "unknown error"}`);
     }
   }
 
-  await pruneWorktrees(executor, repoDirectory);
+  await pruneWorktrees(executor, absoluteRepoDirectory);
 
-  const registeredAfter = await worktreeExists(executor, repoDirectory, managedWorktreePath);
+  const registeredAfter = await worktreeExists(executor, absoluteRepoDirectory, managedWorktreePath);
   if (registeredAfter) {
     throw new Error(`Worktree is still registered after cleanup: ${managedWorktreePath}`);
   }
@@ -198,10 +201,11 @@ export async function worktreeExists(
   repoDirectory: string,
   worktreePath: string
 ): Promise<boolean> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
     executor.pathStyle,
-  ).assertManagedWorktreePath(repoDirectory, worktreePath);
-  const worktrees = await listWorktrees(executor, repoDirectory);
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
+  const worktrees = await listWorktrees(executor, absoluteRepoDirectory);
   const comparablePaths = await getComparableWorktreePaths(executor, managedWorktreePath);
   return worktrees.some((wt) => comparablePaths.has(
     worktreePathComparisonKey(wt.path, executor.pathStyle),
@@ -212,27 +216,24 @@ export async function ensureWorktreeExcluded(
   executor: CommandExecutor,
   repoDirectory: string
 ): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const excludePatterns = [MANAGED_WORKTREE_DIRECTORY_NAME, PLANNING_DIRECTORY_NAME];
   const result = await runGitCommand(
     executor,
-    repoDirectory,
-    ["rev-parse", "--git-path", "info/exclude"],
+    absoluteRepoDirectory,
+    ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
     { allowFailure: true },
   );
   const fallbackPath = joinExecutionPath(
     executor.pathStyle,
-    repoDirectory,
+    absoluteRepoDirectory,
     ".git",
     "info",
     "exclude",
   );
   const resolvedPath = result.success ? result.stdout.trim() : "";
   const excludePath = resolvedPath
-    ? resolveExecutionPathFromDirectory(
-        repoDirectory,
-        resolvedPath,
-        executor.pathStyle,
-      )
+    ? normalizeExecutionPath(resolvedPath, executor.pathStyle)
     : fallbackPath;
   const content = await executor.readFile(excludePath);
 

@@ -41,7 +41,7 @@ async function assertTaskWorktreesAllowed(task: Task): Promise<void> {
       task.config.directory,
     );
     const git = GitService.withExecutor(executor);
-    const canonicalWorktreePath = git.getManagedWorktreePath(task.config.directory, task.config.id);
+    const canonicalWorktreePath = await git.getManagedWorktreePath(task.config.directory, task.config.id);
     if (
       persistedWorktreePath === canonicalWorktreePath
       && await git.worktreeExists(task.config.directory, canonicalWorktreePath)
@@ -279,7 +279,13 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
 
   const workingDirectory = engine.workingDirectory;
 
-  await clearPlanningFilesImpl(ctx, taskId, task, executor, workingDirectory);
+  await clearPlanningFilesImpl(
+    ctx,
+    taskId,
+    task,
+    executor,
+    workingDirectory,
+  );
 
   ctx.engines.set(taskId, engine);
 

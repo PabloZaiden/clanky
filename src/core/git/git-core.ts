@@ -3,11 +3,14 @@
  * These are NOT exported from the package public API.
  */
 
-import type { CommandExecutor } from "../command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import { GitCommandError } from "./git-types";
 import type { GitCommandResult } from "./git-types";
-import { resolveExecutionPathFromDirectory } from "../execution-path";
+import { normalizeExecutionRoot } from "../execution-path";
 
 const DEFAULT_GIT_SSH_COMMAND = "ssh";
 const ACCEPT_NEW_HOST_KEY_OPTION = "-o StrictHostKeyChecking=accept-new";
@@ -21,6 +24,13 @@ function quoteShellArg(value: string): string {
 /**
  * Run a git command in the specified directory using the given executor.
  */
+export async function resolveGitDirectory(
+  executor: CommandExecutor,
+  directory: string,
+): Promise<string> {
+  return resolveCommandExecutorDirectory(executor, directory);
+}
+
 export async function runGitCommand(
   executor: CommandExecutor,
   directory: string,
@@ -29,10 +39,10 @@ export async function runGitCommand(
 ): Promise<GitCommandResult> {
   const { allowFailure = false } = options;
   const cmdStr = `git ${args.join(" ")}`;
-  log.trace(`[GitService] Running: ${cmdStr} in ${directory}`);
-  const gitArgs = ["-C", directory, ...args];
+  const gitDirectory = await resolveGitDirectory(executor, directory);
+  log.trace(`[GitService] Running: ${cmdStr} in ${gitDirectory}`);
+  const gitArgs = ["-C", gitDirectory, ...args];
   let result = await executor.exec("git", gitArgs, {
-    cwd: directory,
     logFailures: false,
   });
 
@@ -40,7 +50,6 @@ export async function runGitCommand(
     log.info(`[GitService] Retrying with auto-accepted SSH host key: ${cmdStr}`);
     const retryEnv = await buildAcceptedHostKeyRetryEnv(executor, directory);
     result = await executor.exec("git", gitArgs, {
-      cwd: directory,
       logFailures: false,
       ...(retryEnv ? { env: retryEnv } : {}),
     });
@@ -112,8 +121,9 @@ async function getConfiguredGitSshCommand(executor: CommandExecutor, directory: 
     return environmentCommand.trim();
   }
 
-  const configResult = await executor.exec("git", ["-C", directory, "config", "--get", "core.sshCommand"], {
-    cwd: directory,
+  const gitDirectory = await resolveGitDirectory(executor, directory);
+  const configResult = await executor.exec("git", ["-C", gitDirectory, "config", "--get", "core.sshCommand"], {
+    logFailures: false,
   });
   if (configResult.success) {
     const configCommand = configResult.stdout.trim();
@@ -124,10 +134,18 @@ async function getConfiguredGitSshCommand(executor: CommandExecutor, directory: 
 }
 
 async function getGitKnownHostsPath(executor: CommandExecutor, directory: string): Promise<string | null> {
+  const gitDirectory = await resolveGitDirectory(executor, directory);
   const result = await executor.exec(
     "git",
-    ["-C", directory, "rev-parse", "--git-path", CLANKY_KNOWN_HOSTS_FILENAME],
-    { cwd: directory }
+    [
+      "-C",
+      gitDirectory,
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      CLANKY_KNOWN_HOSTS_FILENAME,
+    ],
+    { logFailures: false },
   );
   if (!result.success) {
     log.warn(`[GitService] Failed to resolve git known-hosts path for ${directory}: ${result.stderr || result.stdout || "unknown error"}`);
@@ -137,9 +155,5 @@ async function getGitKnownHostsPath(executor: CommandExecutor, directory: string
   const gitPath = result.stdout.trim();
   if (!gitPath) return null;
 
-  return resolveExecutionPathFromDirectory(
-    directory,
-    gitPath,
-    executor.pathStyle,
-  );
+  return normalizeExecutionRoot(gitPath, executor.pathStyle);
 }

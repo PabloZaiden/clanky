@@ -211,7 +211,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   if (useMockAcpProcess) {
     process.env["CLANKY_MOCK_ACP"] = "true";
     backendManager.setBackendForTesting(new AcpBackend());
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   } else if (useMockBackend) {
     mockBackend = new MockAcpBackend({ 
       responses: mockResponses,
@@ -219,7 +219,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
     });
     backendManager.setBackendForTesting(mockBackend);
     // Set the executor factory for testing (uses local Bun.$ execution)
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   }
 
   // Create manager

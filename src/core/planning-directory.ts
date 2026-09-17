@@ -1,4 +1,7 @@
-import type { CommandExecutor } from "./command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "./command-executor";
 import { joinExecutionPath } from "./execution-path";
 import { ManagedPathService } from "./managed-path-service";
 
@@ -6,9 +9,13 @@ export async function ensurePlanningDirectory(
   executor: CommandExecutor,
   directory: string,
 ): Promise<string> {
+  const executionDirectory = await resolveCommandExecutorDirectory(
+    executor,
+    directory,
+  );
   const planningDir = new ManagedPathService(
     executor.pathStyle,
-  ).getPlanningDirectoryPath(directory);
+  ).getPlanningDirectoryPath(executionDirectory);
   const exists = await executor.directoryExists(planningDir);
   if (exists) {
     return planningDir;
@@ -33,14 +40,16 @@ export async function clearPlanningDirectory(
   executor: CommandExecutor,
   planningDirectory: string,
   preservedNames: ReadonlySet<string> = new Set(),
-): Promise<string[]> {
+): Promise<{ deletedNames: string[]; preservedNames: string[] }> {
   const entries = await executor.listDirectoryEntries(planningDirectory, {
     includeHidden: true,
   });
   const deletedNames: string[] = [];
+  const observedPreservedNames: string[] = [];
 
   for (const entry of entries) {
     if (preservedNames.has(entry.name)) {
+      observedPreservedNames.push(entry.name);
       continue;
     }
     const path = joinExecutionPath(
@@ -58,5 +67,8 @@ export async function clearPlanningDirectory(
     deletedNames.push(entry.name);
   }
 
-  return deletedNames;
+  return {
+    deletedNames,
+    preservedNames: observedPreservedNames,
+  };
 }

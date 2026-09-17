@@ -207,14 +207,10 @@ export class LocalFileSystem {
     path: string,
     options?: { includeHidden?: boolean },
   ): Promise<string[]> {
-    try {
-      const entries = await readdir(path);
-      return options?.includeHidden
-        ? entries
-        : entries.filter((entry) => !entry.startsWith("."));
-    } catch {
-      return [];
-    }
+    const entries = await readdir(path);
+    return options?.includeHidden
+      ? entries
+      : entries.filter((entry) => !entry.startsWith("."));
   }
 
   async getFileMetadata(

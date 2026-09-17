@@ -31,7 +31,7 @@ describe("Models API", () => {
     ctx = await setupTestContext();
     backend = new VariantTrackingBackend();
     backendManager.setBackendForTesting(backend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");

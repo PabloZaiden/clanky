@@ -38,32 +38,6 @@ import { fetchTestLocalExecutionHost } from "../setup";
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
 
-class PlanSeedTrackingExecutor extends TestCommandExecutor {
-  copyFileCalls: Array<{ sourcePath: string; destinationPath: string }> = [];
-  writeFileCalls: Array<{ path: string; contentLength: number }> = [];
-  writeFileStreamCalls: Array<{ path: string; bytesWritten: number }> = [];
-
-  override async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
-    this.copyFileCalls.push({ sourcePath, destinationPath });
-    return await super.copyFile(sourcePath, destinationPath);
-  }
-
-  override async writeFile(path: string, content: string): Promise<boolean> {
-    this.writeFileCalls.push({ path, contentLength: content.length });
-    return await super.writeFile(path, content);
-  }
-
-  override async writeFileStream(
-    path: string,
-    stream: ReadableStream<Uint8Array>,
-    options?: Parameters<TestCommandExecutor["writeFileStream"]>[2],
-  ) {
-    const result = await super.writeFileStream(path, stream, options);
-    this.writeFileStreamCalls.push({ path, bytesWritten: result.bytesWritten });
-    return result;
-  }
-}
-
 class DeferredWorktreeCleanupExecutor extends TestCommandExecutor {
   blockWorktreeCleanup = false;
   cleanupStarted = false;
@@ -133,7 +107,7 @@ describe("Chats API Integration", () => {
       ],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   }
 
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
@@ -465,7 +439,7 @@ describe("Chats API Integration", () => {
     } finally {
       cleanupExecutor.releaseCleanup();
       unsubscribe();
-      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     }
   });
 
@@ -657,7 +631,7 @@ describe("Chats API Integration", () => {
         input: { path: "README.md" },
       },
     }));
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -784,7 +758,7 @@ describe("Chats API Integration", () => {
       },
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -853,7 +827,7 @@ describe("Chats API Integration", () => {
       },
     });
     backendManager.setBackendForTesting(backend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     chatManager.setActivityTimeoutForTesting(10);
 
     try {
@@ -1297,7 +1271,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     const events: ChatEvent[] = [];
     const unsubscribe = chatEventEmitter.subscribe((event) => {
@@ -1403,7 +1377,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -1463,7 +1437,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
@@ -3072,14 +3046,7 @@ describe("Chats API Integration", () => {
     });
   });
 
-  test("copies a large current plan file instead of rewriting it through command arguments", async () => {
-    const executors: PlanSeedTrackingExecutor[] = [];
-    backendManager.setExecutorFactoryForTesting(() => {
-      const executor = new PlanSeedTrackingExecutor();
-      executors.push(executor);
-      return executor;
-    });
-
+  test("preserves a large current plan when spawning a task", async () => {
     const largePlanContent = `# Large imported plan\n\n${Array.from({ length: 2500 }, (_value, index) => (
       `${index + 1}. Preserve this existing plan file line while spawning a task.`
     )).join("\n")}`;
@@ -3140,13 +3107,6 @@ describe("Chats API Integration", () => {
       exists: true,
       content: largePlanContent,
     });
-
-    const copyCalls = executors.flatMap((executor) => executor.copyFileCalls);
-    expect(copyCalls.some((call) => call.sourcePath === largePlanPath && call.destinationPath.endsWith("/.clanky-planning/plan.md"))).toBe(true);
-
-    const largeContentWrites = executors.flatMap((executor) => executor.writeFileCalls)
-      .filter((call) => call.contentLength === largePlanContent.length);
-    expect(largeContentWrites).toHaveLength(0);
 
     installMockBackend(["Hello from chat API", "Second response"]);
   });
