@@ -43,10 +43,20 @@ import {
   initializeDatabase,
 } from "../../src/persistence/database";
 import { buildTerminalResizeProbe } from "../helpers/terminal-resize-probe";
+import {
+  MeshTerminalSessionCloseRequestSchema,
+  type MeshTerminalSessionCloseRequest,
+} from "../../src/contracts/schemas";
 
 interface MeshHealthResponse {
   success: boolean;
   status: MeshControllerStatus;
+}
+
+interface CapturedTerminalRelease {
+  url: string;
+  request: MeshTerminalSessionCloseRequest;
+  tls?: Bun.TLSOptions;
 }
 
 interface FileWriteResponse {
@@ -209,6 +219,9 @@ async function exerciseMeshTerminal(
   executionRoot: string,
   directory: string,
   platformOs: "linux" | "darwin" | "windows",
+  options: {
+    legacyRelease?: boolean;
+  } = {},
 ): Promise<void> {
   await runWithCurrentUser({
     id: registration.localUserId,
@@ -220,6 +233,36 @@ async function exerciseMeshTerminal(
     const output: string[] = [];
     const errors: Error[] = [];
     const windows = platformOs === "windows";
+    let capturedRelease: CapturedTerminalRelease | undefined;
+    const releaseAwareFetch: typeof globalThis.fetch = Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (
+          init?.method === "DELETE"
+          && new URL(url).pathname.endsWith("/api/mesh/internal/terminal/session")
+        ) {
+          const request = MeshTerminalSessionCloseRequestSchema.parse(
+            JSON.parse(String(init.body)),
+          );
+          capturedRelease = {
+            url,
+            request,
+            ...("tls" in init && init.tls ? { tls: init.tls } : {}),
+          };
+          if (options.legacyRelease) {
+            return Response.json(
+              { message: "Method not allowed" },
+              { status: 405 },
+            );
+          }
+        }
+        return await globalThis.fetch(input, init);
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    );
     const connection = new MeshInteractiveTerminalConnection({
       workspaceId: "native-worker-terminal-e2e",
       executionRoot,
@@ -236,6 +279,7 @@ async function exerciseMeshTerminal(
         onError: (error) => errors.push(error),
       },
       localUserId: registration.localUserId,
+      fetch: releaseAwareFetch,
     });
 
     try {
@@ -265,7 +309,46 @@ async function exerciseMeshTerminal(
     } finally {
       await connection.dispose();
     }
+    if (!capturedRelease) {
+      throw new Error("The native Mesh terminal did not issue its release request");
+    }
+    await expectTerminalSessionReleased(capturedRelease);
   });
+}
+
+async function expectTerminalSessionReleased(
+  release: CapturedTerminalRelease,
+): Promise<void> {
+  const terminalUrl = new URL(release.url);
+  terminalUrl.pathname = terminalUrl.pathname.replace(/\/session$/, "");
+  const authorizationResponse = await fetch(terminalUrl, {
+    headers: {
+      "x-clanky-mesh-session-id": release.request.sessionId,
+      "x-clanky-mesh-session-token": release.request.sessionToken,
+    },
+    ...(release.tls ? { tls: release.tls } : {}),
+  });
+  expect(authorizationResponse.status).toBe(401);
+  expect(await authorizationResponse.json()).toMatchObject({
+    error: "mesh_terminal_session_invalid",
+  });
+
+  const repeatedRequest: MeshTerminalSessionCloseRequest = {
+    ...release.request,
+    requestId: crypto.randomUUID(),
+  };
+  const repeatedRelease = await fetch(release.url, {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+      "x-clanky-mesh-session-id": repeatedRequest.sessionId,
+      "x-clanky-mesh-request-id": repeatedRequest.requestId,
+    },
+    body: JSON.stringify(repeatedRequest),
+    ...(release.tls ? { tls: release.tls } : {}),
+  });
+  expect(repeatedRelease.status).toBe(200);
+  expect(await repeatedRelease.json()).toEqual({ success: true });
 }
 
 async function expectTunnelEcho(
@@ -696,12 +779,18 @@ describe("native worker registration", () => {
       )).toBe(true);
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
 
-      await exerciseMeshTerminal(
-        registration,
-        worker.dataDir,
-        join(worker.dataDir, "native-terminal"),
-        platformOs,
-      );
+      for (const scenario of [
+        { legacyRelease: false },
+        { legacyRelease: true },
+      ]) {
+        await exerciseMeshTerminal(
+          registration,
+          worker.dataDir,
+          join(worker.dataDir, "native-terminal"),
+          platformOs,
+          { legacyRelease: scenario.legacyRelease },
+        );
+      }
       const deletedTerminalDirectory = await meshJsonRequest<FileMutationResponse>(
         controller,
         `${filesPath}/delete`,
