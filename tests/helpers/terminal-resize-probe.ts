@@ -22,7 +22,7 @@ export function buildTerminalResizeProbe(options: {
     };
   }
   return {
-    input: `echo ${options.marker}:CMD:DONE\r\n`,
-    expectedOutput: `${options.marker}:CMD:DONE`,
+    input: `set "_clanky_rows=" & set "_clanky_size_done=" & for /f "skip=2 tokens=2 delims=: " %A in ('mode con') do @if not defined _clanky_rows (set "_clanky_rows=%A") else if not defined _clanky_size_done (echo ${options.marker}:!_clanky_rows! %A:DONE&set "_clanky_size_done=1")\r\n`,
+    expectedOutput: `${options.marker}:${String(options.rows)} ${String(options.cols)}:DONE`,
   };
 }

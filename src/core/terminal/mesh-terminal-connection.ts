@@ -573,6 +573,10 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         resolve();
       };
       socket.addEventListener("close", onClose);
+      if (socket.readyState === WebSocket.CLOSED) {
+        cleanup();
+        resolve();
+      }
     });
   }
 

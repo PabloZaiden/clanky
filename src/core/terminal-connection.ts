@@ -190,11 +190,21 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
       return;
     }
     this.disposed = true;
-    await this.connection.dispose();
+    let disposeError: unknown;
+    let disposeFailed = false;
+    try {
+      await this.connection.dispose();
+    } catch (error) {
+      disposeFailed = true;
+      disposeError = error;
+    }
     if (!this.connected) {
       try {
         await this.cleanupLaunchCredential(
-          new DomainError("terminal_connection_closed", "The terminal connection was closed before it connected."),
+          disposeError ?? new DomainError(
+            "terminal_connection_closed",
+            "The terminal connection was closed before it connected.",
+          ),
         );
       } catch (error) {
         if (!(isDomainError(error) && error.code === "terminal_connection_closed")) {
@@ -205,22 +215,25 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
         }
       }
     }
-    if (isTerminalAttachmentBlocked(this.sessionId)) {
-      return;
+    if (
+      !isTerminalAttachmentBlocked(this.sessionId)
+      && !this.connectFailed
+      && this.lifecycle.exitStatus !== "failed"
+    ) {
+      try {
+        await runWithCurrentUser(
+          this.user,
+          async () => await terminalSessionManager.markStatus(this.sessionId, "disconnected"),
+        );
+      } catch (error) {
+        log.warn("Failed to mark terminal session disconnected", {
+          terminalSessionId: this.sessionId,
+          error: String(error),
+        });
+      }
     }
-    if (this.connectFailed || this.lifecycle.exitStatus === "failed") {
-      return;
-    }
-    try {
-      await runWithCurrentUser(
-        this.user,
-        async () => await terminalSessionManager.markStatus(this.sessionId, "disconnected"),
-      );
-    } catch (error) {
-      log.warn("Failed to mark terminal session disconnected", {
-        terminalSessionId: this.sessionId,
-        error: String(error),
-      });
+    if (disposeFailed) {
+      throw disposeError;
     }
   }
 }

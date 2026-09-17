@@ -387,12 +387,21 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.disposed = true;
     this.ready = false;
     const processHandle = this.process;
+    const cleanupErrors: unknown[] = [];
     if (processHandle?.exitCode === null) {
-      await this.terminateProcess(processHandle);
+      try {
+        await this.terminateProcess(processHandle);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
     this.process = null;
     if (this.terminal && !this.terminal.closed) {
-      this.terminal.close();
+      try {
+        this.terminal.close();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
     this.terminal = null;
     try {
@@ -404,6 +413,15 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       });
     }
     this.output.flush();
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(
+        cleanupErrors,
+        "Failed to fully clean up the local terminal.",
+      );
+    }
   }
 
   private async waitUntilReady(processHandle: Bun.Subprocess): Promise<void> {
