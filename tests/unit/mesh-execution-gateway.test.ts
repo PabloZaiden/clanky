@@ -109,6 +109,14 @@ describe("mesh execution path validation", () => {
       id: "fileOperations",
       minimumVersion: 2,
     });
+    expect(getMeshExecutionOperationCapability("git")).toEqual({
+      id: "git",
+      minimumVersion: 2,
+    });
+    expect(getMeshExecutionOperationCapability("gitEnvironment")).toEqual({
+      id: "git",
+      minimumVersion: 2,
+    });
   });
 });
 
@@ -348,6 +356,18 @@ describe("mesh asynchronous command lifecycle", () => {
     await expect(execute({
       operation: "readFile",
       path: "../outside.txt",
+    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+    await expect(execute({
+      operation: "git",
+      cwd: workerDirectory,
+      args: [
+        "worktree",
+        "add",
+        join(dataDir, "escaped-worktree"),
+        "-b",
+        "escaped-worktree",
+      ],
+      gitScope: "managedWorktrees",
     })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
 
     await Bun.write(join(dataDir, "outside.txt"), "outside\n");

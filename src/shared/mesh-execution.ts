@@ -42,6 +42,8 @@ export const MESH_EXECUTION_OPERATIONS = [
   "listDirectoryEntries",
   "movePath",
   "deletePath",
+  "git",
+  "gitEnvironment",
 ] as const;
 export type MeshExecutionOperation = typeof MESH_EXECUTION_OPERATIONS[number];
 

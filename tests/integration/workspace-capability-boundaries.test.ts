@@ -12,6 +12,7 @@ import { join } from "node:path";
 import {
   POSIX_EXECUTION_HOST_CAPABILITIES,
   WINDOWS_EXECUTION_HOST_CAPABILITIES,
+  type ExecutionHostCapabilities,
   type ExecutionHostBinding,
   type ExecutionHostRef,
   type Workspace,
@@ -45,6 +46,10 @@ const unsupportedRef = {
   kind: "mesh",
   nodeId: "health-only-worker",
 } as const satisfies ExecutionHostRef;
+const noGitRef = {
+  kind: "mesh",
+  nodeId: "no-git-worker",
+} as const satisfies ExecutionHostRef;
 
 let dataDir: string;
 let server: Server<unknown>;
@@ -72,6 +77,46 @@ function workspace(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function registerMeshWorker(
+  ref: Extract<ExecutionHostRef, { kind: "mesh" }>,
+  name: string,
+  os: "linux" | "windows",
+  capabilities: ExecutionHostCapabilities,
+): void {
+  const now = new Date().toISOString();
+  getDatabase().query(`
+    INSERT INTO mesh_worker_registrations (
+      worker_node_id, local_user_id, worker_instance_name,
+      worker_endpoint, worker_transport,
+      worker_public_key, worker_fingerprint,
+      route_kind, worker_directory,
+      worker_platform_os, worker_platform_architecture,
+      worker_capabilities_json, worker_accept_remote_execution,
+      worker_config_revision, registration_scope, grant_status,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    ref.nodeId,
+    testOwnerUser.id,
+    name,
+    "http://127.0.0.1:1",
+    "http",
+    "fixture-public-key",
+    "fixture-fingerprint",
+    "direct",
+    null,
+    os,
+    "x64",
+    JSON.stringify(capabilities),
+    1,
+    1,
+    "global",
+    "active",
+    now,
+    now,
+  );
 }
 
 beforeEach(async () => {
@@ -104,37 +149,33 @@ beforeEach(async () => {
         },
       },
     ));
-    const now = new Date().toISOString();
-    getDatabase().query(`
-      INSERT INTO mesh_worker_registrations (
-        worker_node_id, local_user_id, worker_instance_name,
-        worker_endpoint, worker_transport,
-        worker_public_key, worker_fingerprint,
-        route_kind, worker_directory,
-        worker_platform_os, worker_platform_architecture,
-        worker_capabilities_json, worker_accept_remote_execution,
-        worker_config_revision, registration_scope, grant_status,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      unsupportedRef.nodeId,
+    const noGitCapabilities = {
+      fileOperations: 2,
+      acpRuntime: 1,
+      serverHealth: 1,
+    };
+    ensureExecutionHost(
       testOwnerUser.id,
+      noGitRef,
+      "mesh:no-git-worker",
+      {
+        runtime: {
+          platform: { os: "linux", architecture: "x64" },
+          capabilities: noGitCapabilities,
+        },
+      },
+    );
+    registerMeshWorker(
+      unsupportedRef,
       "Health-only worker",
-      "http://127.0.0.1:1",
-      "http",
-      "fixture-public-key",
-      "fixture-fingerprint",
-      "direct",
-      null,
       "windows",
-      "x64",
-      JSON.stringify(WINDOWS_EXECUTION_HOST_CAPABILITIES),
-      1,
-      1,
-      "global",
-      "active",
-      now,
-      now,
+      WINDOWS_EXECUTION_HOST_CAPABILITIES,
+    );
+    registerMeshWorker(
+      noGitRef,
+      "No Git worker",
+      "linux",
+      noGitCapabilities,
     );
     await createWorkspace(workspace("supported-workspace", supportedBinding));
     await createWorkspace(workspace("unsupported-workspace", unsupportedBinding));
@@ -175,6 +216,31 @@ describe("workspace capability boundaries", () => {
     expect(await response.json()).toMatchObject({
       error: "execution_host_capability_unavailable",
       capability: "acpRuntime",
+    });
+  });
+
+  test("rejects a Git workspace on a host without Git transport", async () => {
+    const response = await fetch(`${baseUrl}/api/workspaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unsupported Git workspace",
+        directory: dataDir,
+        workspaceType: "git",
+        allowWorktrees: false,
+        executionHost: noGitRef,
+        serverSettings: {
+          agent: {
+            provider: "copilot",
+          },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "execution_host_capability_unavailable",
+      capability: "git",
     });
   });
 

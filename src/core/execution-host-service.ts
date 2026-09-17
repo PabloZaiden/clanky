@@ -470,6 +470,7 @@ export class ExecutionHostService {
             : await this.resolveAgentProvider(host, userId)),
         localUserId: userId,
         pathStyle,
+        capabilities: runtime?.capabilities ?? {},
       });
     }
 

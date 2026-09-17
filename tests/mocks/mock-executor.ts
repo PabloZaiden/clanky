@@ -19,6 +19,8 @@ import type {
   FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
+  GitCommandOptions,
+  GitEnvironmentVariableName,
 } from "../../src/core/command-executor";
 import { CommandOutputLimitError } from "../../src/core/command-executor";
 import { LocalFileSystem } from "../../src/core/remote-executor/local-filesystem";
@@ -39,6 +41,20 @@ export class TestCommandExecutor implements CommandExecutor {
 
   async getEnvironmentVariable(name: string): Promise<string | null> {
     return process.env[name] ?? null;
+  }
+
+  async getGitEnvironmentVariable(
+    name: GitEnvironmentVariableName,
+  ): Promise<string | null> {
+    return await this.getEnvironmentVariable(name);
+  }
+
+  async execGit(
+    directory: string,
+    args: string[],
+    options: GitCommandOptions,
+  ): Promise<CommandResult> {
+    return await this.exec("git", ["-C", directory, ...args], options);
   }
 
   /**

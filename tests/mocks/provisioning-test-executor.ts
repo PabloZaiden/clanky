@@ -8,6 +8,8 @@ import type {
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
+  GitCommandOptions,
+  GitEnvironmentVariableName,
 } from "../../src/core/command-executor";
 import type { DevboxStatusResult } from "@/shared";
 
@@ -87,6 +89,20 @@ export class ProvisioningTestExecutor implements CommandExecutor {
 
   async getEnvironmentVariable(_name: string): Promise<string | null> {
     return null;
+  }
+
+  async getGitEnvironmentVariable(
+    _name: GitEnvironmentVariableName,
+  ): Promise<string | null> {
+    return null;
+  }
+
+  async execGit(
+    directory: string,
+    args: string[],
+    options: GitCommandOptions,
+  ): Promise<CommandResult> {
+    return await this.exec("git", ["-C", directory, ...args], options);
   }
 
   constructor(private readonly options: ProvisioningTestExecutorOptions = {}) {
