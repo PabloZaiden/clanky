@@ -382,9 +382,12 @@ async function exerciseMeshTunnels(
       const tunnelClosed = new Promise<void>((resolve) => {
         tunnel.once("close", resolve);
       });
-      await expectTunnelEcho(tunnel, "native-mesh-tunnel");
-      tunnel.destroy();
-      await tunnelClosed;
+      try {
+        await expectTunnelEcho(tunnel, "native-mesh-tunnel");
+      } finally {
+        tunnel.destroy();
+        await tunnelClosed;
+      }
 
       const preview = await openPreviewTcpForward(binding, server.port);
       try {
