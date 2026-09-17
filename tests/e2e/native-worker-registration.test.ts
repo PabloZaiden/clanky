@@ -232,6 +232,7 @@ describe("native worker registration", () => {
       },
     });
     expectRuntimeSnapshot(registration, expectedRuntime);
+    const workerCapabilities = registration.workerCapabilities ?? {};
 
     const workerStatus = await meshJsonRequest<MeshWorkerStatus>(
       worker,
@@ -314,6 +315,7 @@ describe("native worker registration", () => {
       provider: "copilot",
       localUserId: registration.localUserId,
       pathStyle: executionPathStyleForPlatform(process.platform),
+      capabilities: workerCapabilities,
     });
     try {
       const executionDirectory = await meshExecutor.getExecutionDirectory();
@@ -321,6 +323,77 @@ describe("native worker registration", () => {
       expect(await meshExecutor.fileExists(
         join(executionDirectory, ".clanky-planning", "plan.md"),
       )).toBe(true);
+      if (expectedRuntime.platform?.os === "windows") {
+        expect(
+          workerCapabilities.commandExecution,
+        ).toBeUndefined();
+      }
+
+      const git = GitService.withExecutor(meshExecutor);
+      for (const args of [
+        ["init"],
+        ["config", "user.name", "Clanky Mesh E2E"],
+        ["config", "user.email", "mesh-e2e@clanky.invalid"],
+      ]) {
+        const result = await meshExecutor.execGit(
+          executionDirectory,
+          args,
+          { scope: "repository" },
+        );
+        expect(result.success).toBe(true);
+      }
+      const gitSshCommand = await meshExecutor.getGitEnvironmentVariable(
+        "GIT_SSH_COMMAND",
+      );
+      expect(
+        gitSshCommand === null || typeof gitSshCommand === "string",
+      ).toBe(true);
+      expect(await git.isGitRepo(executionDirectory)).toBe(true);
+      expect(await meshExecutor.writeFile(
+        join(executionDirectory, "git-tracked.txt"),
+        "initial through Mesh\n",
+      )).toBe(true);
+      await git.stageAll(executionDirectory);
+      await git.commit(
+        executionDirectory,
+        "test: initialize Mesh repository",
+      );
+      const currentBranch = await git.getCurrentBranch(executionDirectory);
+      expect(currentBranch.length).toBeGreaterThan(0);
+      expect(await git.hasUncommittedChanges(executionDirectory)).toBe(false);
+
+      expect(await meshExecutor.writeFile(
+        join(executionDirectory, "git-tracked.txt"),
+        "changed through Mesh\n",
+      )).toBe(true);
+      expect(await git.getChangedFiles(executionDirectory)).toEqual([
+        "git-tracked.txt",
+      ]);
+
+      const worktreePath = await git.getManagedWorktreePath(
+        executionDirectory,
+        "native-mesh-e2e",
+      );
+      await git.createWorktree(
+        executionDirectory,
+        worktreePath,
+        "native-mesh-e2e",
+        currentBranch,
+      );
+      expect(
+        await git.worktreeExists(executionDirectory, worktreePath),
+      ).toBe(true);
+      expect(
+        (await git.listWorktrees(executionDirectory)).some(
+          (worktree) => worktree.branch === "native-mesh-e2e",
+        ),
+      ).toBe(true);
+      await git.removeWorktree(
+        executionDirectory,
+        worktreePath,
+        { force: true },
+      );
+      expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
     } finally {
       meshExecutor.close();
       closeDatabase();

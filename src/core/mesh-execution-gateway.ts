@@ -55,6 +55,7 @@ import {
   type FileMoveResult,
   type FileWriteStreamOptions,
   type FileWriteStreamResult,
+  type GitCommandScope,
 } from "./command-executor";
 import { DomainError } from "./domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
@@ -67,8 +68,10 @@ import {
   basenameExecutionPath,
   dirnameExecutionPath,
   executionPathStyleForPlatform,
+  isAbsoluteExecutionPath,
   isExecutionPathWithinRoot,
   joinExecutionPath,
+  normalizeExecutionRoot,
   resolveExecutionPath,
   type ExecutionPathStyle,
 } from "./execution-path";
@@ -81,11 +84,12 @@ import type { MeshExecutionOperation } from "@/shared/mesh-execution";
 const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
 const MAX_REQUEST_IDS = 512;
-const MUTATING_FILE_OPERATIONS = new Set<MeshExecutionOperation>([
+const EXCLUSIVE_EXECUTION_OPERATIONS = new Set<MeshExecutionOperation>([
   "writeFile",
   "copyFile",
   "movePath",
   "deletePath",
+  "git",
 ]);
 
 class AsyncReadWriteLock {
@@ -282,11 +286,17 @@ const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
 export function getMeshExecutionOperationCapability(
   operation: MeshExecutionOperation,
 ): {
-  id: "commandExecution" | "fileOperations";
+  id: "commandExecution" | "fileOperations" | "git";
   minimumVersion: number;
 } {
   if (operation === "exec") {
     return { id: "commandExecution", minimumVersion: 1 };
+  }
+  if (operation === "git" || operation === "gitEnvironment") {
+    return {
+      id: "git",
+      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.git,
+    };
   }
   return {
     id: "fileOperations",
@@ -294,6 +304,93 @@ export function getMeshExecutionOperationCapability(
       ? EXECUTION_HOST_CAPABILITY_VERSIONS.fileOperations
       : 1,
   };
+}
+
+async function assertGitArguments(
+  session: MeshExecutionSession,
+  scope: GitCommandScope,
+  args: string[],
+): Promise<void> {
+  const subcommand = args[0];
+  if (!subcommand || subcommand.startsWith("-")) {
+    throw new DomainError(
+      "mesh_execution_request_invalid",
+      "Git operations require an explicit subcommand.",
+    );
+  }
+  if (scope === "repository" && subcommand === "worktree") {
+    throw new DomainError(
+      "mesh_execution_request_invalid",
+      "Git worktree commands require the managedWorktrees scope.",
+    );
+  }
+  if (
+    scope === "managedWorktrees"
+    && !["worktree", "rev-parse", "symbolic-ref"].includes(subcommand)
+  ) {
+    throw new DomainError(
+      "mesh_execution_request_invalid",
+      "The managedWorktrees scope does not allow this Git subcommand.",
+    );
+  }
+  if (scope !== "managedWorktrees" || subcommand !== "worktree") {
+    return;
+  }
+
+  const action = args[1];
+  let worktreePath: string | undefined;
+  if (action === "list" && args.length === 3 && args[2] === "--porcelain") {
+    return;
+  }
+  if (action === "prune" && args.length === 2) {
+    return;
+  }
+  if (
+    action === "remove"
+    && (args.length === 3 || (args.length === 4 && args[3] === "--force"))
+    && isGitOperand(args[2])
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && args.length === 4
+    && isGitOperand(args[2])
+    && isGitOperand(args[3])
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && (args.length === 5 || args.length === 6)
+    && isGitOperand(args[2])
+    && args[3] === "-b"
+    && isGitOperand(args[4])
+    && (args.length === 5 || isGitOperand(args[5]))
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && args.length === 6
+    && args[2] === "--orphan"
+    && args[3] === "-b"
+    && isGitOperand(args[4])
+    && isGitOperand(args[5])
+  ) {
+    worktreePath = args[5];
+  } else {
+    throw unsupportedManagedWorktreeCommand();
+  }
+  await assertPhysicalExecutionPath(session, worktreePath);
+}
+
+function isGitOperand(value: string | undefined): value is string {
+  return Boolean(value && !value.startsWith("-"));
+}
+
+function unsupportedManagedWorktreeCommand(): DomainError {
+  return new DomainError(
+    "mesh_execution_request_invalid",
+    "The managed worktree command is not supported.",
+  );
 }
 
 function meshPathError(message: string, cause?: unknown): DomainError {
@@ -354,11 +451,35 @@ export async function assertPhysicalExecutionPath(
   requested: string,
   mode: PhysicalPathMode = "follow",
 ): Promise<string> {
-  const candidate = assertMeshExecutionPath(
-    session.executionRoot,
-    requested,
-    session.pathStyle,
-  );
+  let candidate: string;
+  try {
+    candidate = assertMeshExecutionPath(
+      session.executionRoot,
+      requested,
+      session.pathStyle,
+    );
+  } catch (error) {
+    if (!isAbsoluteExecutionPath(requested, session.pathStyle)) {
+      throw error;
+    }
+    let physicalCandidate: string;
+    try {
+      physicalCandidate = normalizeExecutionRoot(
+        requested,
+        session.pathStyle,
+      );
+    } catch {
+      throw error;
+    }
+    if (!isExecutionPathWithinRoot(
+      session.physicalExecutionRoot,
+      physicalCandidate,
+      session.pathStyle,
+    )) {
+      throw error;
+    }
+    candidate = physicalCandidate;
+  }
   if (mode === "entry") {
     const parent = dirnameExecutionPath(candidate, session.pathStyle);
     const physicalParent = await assertPhysicalExecutionPath(
@@ -648,6 +769,7 @@ export class MeshExecutionGateway {
       await requireLocalMeshExecutionAnyCapability([
         "commandExecution",
         "fileOperations",
+        "git",
       ]);
     }
     const grant = await getControllerGrant(session.callerNodeId);
@@ -676,6 +798,7 @@ export class MeshExecutionGateway {
       await requireLocalMeshExecutionAnyCapability([
         "commandExecution",
         "fileOperations",
+        "git",
       ]);
     }
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
@@ -1143,6 +1266,15 @@ export class MeshExecutionGateway {
         requiredCapability,
       },
     );
+    if (
+      request.operation === "git"
+      && request.gitScope === "managedWorktrees"
+    ) {
+      await requireLocalMeshExecutionCapability(
+        "managedWorktrees",
+        EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
+      );
+    }
 
     this.claimRequestId(session, request.requestId);
     if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
@@ -1152,7 +1284,7 @@ export class MeshExecutionGateway {
     const releaseFileOperation = request.operation === "exec"
       ? undefined
       : await this.fileOperationsLock.acquire(
-          MUTATING_FILE_OPERATIONS.has(request.operation) ? "write" : "read",
+          EXCLUSIVE_EXECUTION_OPERATIONS.has(request.operation) ? "write" : "read",
         );
 
     try {
@@ -1189,6 +1321,64 @@ export class MeshExecutionGateway {
           assertStringSize(result.stdout, "stdout");
           assertStringSize(result.stderr, "stderr");
           return result;
+        }
+        case "git": {
+          if (!request.args || !request.gitScope) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "git requires args and gitScope.",
+            );
+          }
+          if (
+            request.env
+            && Object.keys(request.env).some(
+              (name) => name !== "GIT_SSH_COMMAND",
+            )
+          ) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "Git operations only accept GIT_SSH_COMMAND.",
+            );
+          }
+          await assertGitArguments(session, request.gitScope, request.args);
+          let result: CommandResult;
+          try {
+            result = await executor.execGit(cwd, request.args, {
+              scope: request.gitScope,
+              timeout: request.timeout,
+              maxOutputBytes: request.maxOutputBytes,
+              env: request.env,
+              signal,
+              logFailures: false,
+            });
+          } catch (error) {
+            if (isCommandOutputLimitError(error)) {
+              throw new DomainError(
+                "mesh_execution_result_too_large",
+                `The ${error.stream} exceeds the mesh execution size limit.`,
+                { cause: error },
+              );
+            }
+            throw error;
+          }
+          assertStringSize(result.stdout, "stdout");
+          assertStringSize(result.stderr, "stderr");
+          return result;
+        }
+        case "gitEnvironment": {
+          if (!request.gitEnvironmentName) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "gitEnvironment requires gitEnvironmentName.",
+            );
+          }
+          const value = await executor.getGitEnvironmentVariable(
+            request.gitEnvironmentName,
+          );
+          if (value !== null) {
+            assertStringSize(value, "Git environment value");
+          }
+          return value;
         }
 
         case "fileExists": {
@@ -1592,6 +1782,12 @@ export const meshExecutionGateway = new MeshExecutionGateway();
 
 meshInboundResourceRegistry.register({
   id: "execution",
-  capabilities: ["commandExecution", "fileOperations", "acpRuntime"],
+  capabilities: [
+    "commandExecution",
+    "fileOperations",
+    "git",
+    "managedWorktrees",
+    "acpRuntime",
+  ],
   close: () => meshExecutionGateway.closeAll(),
 });

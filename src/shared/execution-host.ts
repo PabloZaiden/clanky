@@ -69,11 +69,18 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
 ] as const;
 export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[number];
 
+export const GIT_COMMAND_SCOPES = [
+  "repository",
+  "managedWorktrees",
+] as const;
+export type GitCommandScope = typeof GIT_COMMAND_SCOPES[number];
+export type GitEnvironmentVariableName = "GIT_SSH_COMMAND";
+
 export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   commandExecution: 1,
   fileOperations: 2,
-  git: 1,
-  managedWorktrees: 1,
+  git: 2,
+  managedWorktrees: 2,
   acpRuntime: 1,
   interactiveTerminal: 1,
   provisioning: 1,
@@ -139,8 +146,8 @@ export interface ExecutionNodeConfiguration {
 export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
   fileOperations: 2,
-  git: 1,
-  managedWorktrees: 1,
+  git: 2,
+  managedWorktrees: 2,
   acpRuntime: 1,
   interactiveTerminal: 1,
   provisioning: 1,
@@ -152,6 +159,8 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
 
 export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   fileOperations: 2,
+  git: 2,
+  managedWorktrees: 2,
   serverHealth: 1,
 };
 
@@ -455,6 +464,38 @@ export function supportsExecutionHostCapability(
   minimumVersion: number = EXECUTION_HOST_CAPABILITY_VERSIONS[capability],
 ): boolean {
   return (capabilities[capability] ?? 0) >= minimumVersion;
+}
+
+export function supportsGitCommandScope(
+  capabilities: ExecutionHostCapabilities,
+  scope: GitCommandScope,
+): boolean {
+  return getUnavailableGitCommandCapability(capabilities, scope) === null;
+}
+
+export function getUnavailableGitCommandCapability(
+  capabilities: ExecutionHostCapabilities,
+  scope: GitCommandScope,
+): "git" | "managedWorktrees" | null {
+  const supportsGitRpc = supportsExecutionHostCapability(
+    capabilities,
+    "git",
+  );
+  const supportsLegacyGit = capabilities.git === 1
+    && supportsExecutionHostCapability(capabilities, "commandExecution");
+  if (!supportsGitRpc && !supportsLegacyGit) {
+    return "git";
+  }
+  if (scope === "repository") {
+    return null;
+  }
+  const supportsWorktreeRpc = supportsGitRpc
+    && supportsExecutionHostCapability(capabilities, "managedWorktrees");
+  const supportsLegacyWorktrees = supportsLegacyGit
+    && capabilities.managedWorktrees === 1;
+  return supportsWorktreeRpc || supportsLegacyWorktrees
+    ? null
+    : "managedWorktrees";
 }
 
 export function supportsWorkspaceExecutionHost(

@@ -49,6 +49,8 @@ import type {
   FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
+  GitCommandOptions,
+  GitEnvironmentVariableName,
 } from "./command-executor";
 import type { AgentProvider } from "@/shared/settings";
 
@@ -644,6 +646,34 @@ export class MeshCommandExecutorClient {
     if (result.stdout) options?.onStdoutChunk?.(result.stdout);
     if (result.stderr) options?.onStderrChunk?.(result.stderr);
     return result;
+  }
+
+  async execGit(
+    directory: string,
+    args: string[],
+    options: GitCommandOptions,
+  ): Promise<CommandResult> {
+    const result = await this.execute<CommandResult>({
+      operation: "git",
+      cwd: directory,
+      args,
+      gitScope: options.scope,
+      timeout: options.timeout,
+      maxOutputBytes: options.maxOutputBytes,
+      env: options.env,
+    }, options.signal);
+    if (result.stdout) options.onStdoutChunk?.(result.stdout);
+    if (result.stderr) options.onStderrChunk?.(result.stderr);
+    return result;
+  }
+
+  async getGitEnvironmentVariable(
+    name: GitEnvironmentVariableName,
+  ): Promise<string | null> {
+    return await this.execute<string | null>({
+      operation: "gitEnvironment",
+      gitEnvironmentName: name,
+    });
   }
 
   private async execLongRunning(
@@ -1311,7 +1341,9 @@ export class MeshCommandExecutorClient {
             "x-clanky-mesh-request-id": requestId,
           },
           signal,
-          request.operation === "exec" && request.timeout !== undefined && request.timeout !== null
+          (request.operation === "exec" || request.operation === "git")
+            && request.timeout !== undefined
+            && request.timeout !== null
             ? Math.max(this.requestTimeoutMs, request.timeout + 1_000)
             : undefined,
         );

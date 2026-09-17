@@ -8,6 +8,7 @@ import {
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
 import { AgentProviderSchema } from "./workspace";
+import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 
@@ -48,6 +49,8 @@ export const MeshExecutionRpcRequestSchema = z.object({
   timeout: z.number().int().min(1).max(MESH_EXECUTION_MAX_RPC_TIMEOUT_MS).nullable().optional(),
   maxOutputBytes: z.number().int().min(1).max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   env: z.record(z.string().max(1_024), z.string().max(32_768)).optional(),
+  gitScope: z.enum(GIT_COMMAND_SCOPES).optional(),
+  gitEnvironmentName: z.literal("GIT_SSH_COMMAND").optional(),
   path: MeshExecutionPathSchema.optional(),
   sourcePath: MeshExecutionPathSchema.optional(),
   destinationPath: MeshExecutionPathSchema.optional(),
@@ -57,6 +60,38 @@ export const MeshExecutionRpcRequestSchema = z.object({
   overwrite: z.boolean().optional(),
   kind: z.enum(["file", "directory"]).optional(),
   recursive: z.boolean().optional(),
+}).superRefine((value, context) => {
+  if (
+    value.operation === "git"
+    && (!value.cwd || !value.args?.length || !value.gitScope)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operation"],
+      message: "Git operations require cwd, args, and gitScope.",
+    });
+  }
+  if (
+    value.operation === "git"
+    && value.env
+    && Object.keys(value.env).some((name) => name !== "GIT_SSH_COMMAND")
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["env"],
+      message: "Git operations only accept GIT_SSH_COMMAND.",
+    });
+  }
+  if (
+    value.operation === "gitEnvironment"
+    && !value.gitEnvironmentName
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["gitEnvironmentName"],
+      message: "Git environment operations require gitEnvironmentName.",
+    });
+  }
 });
 
 export const MeshExecutionAsyncCommandRequestSchema = z.object({

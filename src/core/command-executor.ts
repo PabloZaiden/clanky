@@ -12,6 +12,15 @@ import {
   normalizeExecutionRoot,
   type ExecutionPathStyle,
 } from "./execution-path";
+import type {
+  GitCommandScope,
+  GitEnvironmentVariableName,
+} from "../shared/execution-host";
+
+export type {
+  GitCommandScope,
+  GitEnvironmentVariableName,
+} from "../shared/execution-host";
 
 export interface CommandResult {
   success: boolean;
@@ -45,6 +54,10 @@ export interface CommandOptions {
    * when one is available instead of holding a single request open.
    */
   longRunning?: boolean;
+}
+
+export interface GitCommandOptions extends CommandOptions {
+  scope: GitCommandScope;
 }
 
 export class CommandOutputLimitError extends Error {
@@ -147,6 +160,23 @@ export interface CommandExecutor {
    * Returns null when the variable is unset.
    */
   getEnvironmentVariable(name: string): Promise<string | null>;
+
+  /**
+   * Read an environment variable used by Git without requiring generic
+   * command execution.
+   */
+  getGitEnvironmentVariable(
+    name: GitEnvironmentVariableName,
+  ): Promise<string | null>;
+
+  /**
+   * Execute Git through the host's Git capability boundary.
+   */
+  execGit(
+    directory: string,
+    args: string[],
+    options: GitCommandOptions,
+  ): Promise<CommandResult>;
 
   /**
    * Execute a shell command.

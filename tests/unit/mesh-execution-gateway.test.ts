@@ -96,6 +96,29 @@ describe("mesh execution path validation", () => {
     }
   });
 
+  test("accepts canonical paths returned through an aliased execution root", async () => {
+    const container = await mkdtemp(join(tmpdir(), "clanky-mesh-root-alias-"));
+    const physicalRoot = join(container, "physical");
+    const logicalRoot = join(container, "logical");
+    await mkdir(physicalRoot);
+    await writeFile(join(physicalRoot, "note.txt"), "inside\n");
+    await symlink(physicalRoot, logicalRoot);
+
+    try {
+      const trustedRoot = await resolveTrustedExecutionRoot(
+        logicalRoot,
+        logicalRoot,
+        "posix",
+      );
+      expect(await assertPhysicalExecutionPath(
+        trustedRoot,
+        join(physicalRoot, "note.txt"),
+      )).toBe(join(physicalRoot, "note.txt"));
+    } finally {
+      await rm(container, { recursive: true, force: true });
+    }
+  });
+
   test("assigns capability versions by Mesh operation contract", () => {
     expect(getMeshExecutionOperationCapability("exec")).toEqual({
       id: "commandExecution",
@@ -107,6 +130,14 @@ describe("mesh execution path validation", () => {
     });
     expect(getMeshExecutionOperationCapability("movePath")).toEqual({
       id: "fileOperations",
+      minimumVersion: 2,
+    });
+    expect(getMeshExecutionOperationCapability("git")).toEqual({
+      id: "git",
+      minimumVersion: 2,
+    });
+    expect(getMeshExecutionOperationCapability("gitEnvironment")).toEqual({
+      id: "git",
       minimumVersion: 2,
     });
   });
@@ -349,6 +380,31 @@ describe("mesh asynchronous command lifecycle", () => {
       operation: "readFile",
       path: "../outside.txt",
     })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+    await expect(execute({
+      operation: "git",
+      cwd: workerDirectory,
+      args: [
+        "worktree",
+        "add",
+        join(dataDir, "escaped-worktree"),
+        "-b",
+        "escaped-worktree",
+      ],
+      gitScope: "managedWorktrees",
+    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+    await expect(execute({
+      operation: "git",
+      cwd: workerDirectory,
+      args: [
+        "worktree",
+        "add",
+        "-b",
+        "escaped-worktree",
+        join(dataDir, "escaped-worktree"),
+        "HEAD",
+      ],
+      gitScope: "managedWorktrees",
+    })).rejects.toMatchObject({ code: "mesh_execution_request_invalid" });
 
     await Bun.write(join(dataDir, "outside.txt"), "outside\n");
     await symlink(dataDir, join(workerDirectory, "outside-link"));

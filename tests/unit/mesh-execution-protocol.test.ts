@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  MeshExecutionRpcRequestSchema,
   MeshExecutionSessionRequestSchema,
   type MeshExecutionSessionRequest,
 } from "../../src/contracts/schemas/mesh-execution";
@@ -66,5 +67,28 @@ describe("Mesh execution session protocol", () => {
       ...buildRequest({ ciphertext: "encrypted" }),
       signature: "signature",
     }).success).toBe(true);
+  });
+
+  test("validates the structured Git RPC boundary", () => {
+    const request = {
+      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+      sessionId: "session-1",
+      sessionToken: "x".repeat(32),
+      requestId: "request-1",
+      operation: "git",
+      cwd: "/workspaces/repo",
+      args: ["status", "--short"],
+      gitScope: "repository",
+    } as const;
+
+    expect(MeshExecutionRpcRequestSchema.safeParse(request).success).toBe(true);
+    expect(MeshExecutionRpcRequestSchema.safeParse({
+      ...request,
+      gitScope: undefined,
+    }).success).toBe(false);
+    expect(MeshExecutionRpcRequestSchema.safeParse({
+      ...request,
+      env: { PATH: "/tmp" },
+    }).success).toBe(false);
   });
 });

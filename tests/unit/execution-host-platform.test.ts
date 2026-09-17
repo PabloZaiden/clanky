@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   createExecutionHostRuntimeSnapshot,
+  getUnavailableGitCommandCapability,
   normalizeExecutionHostPlatform,
   supportsExecutionHostCapability,
+  supportsGitCommandScope,
 } from "../../src/shared/execution-host";
 
 describe("Execution host platform contract", () => {
@@ -19,10 +21,29 @@ describe("Execution host platform contract", () => {
       },
       capabilities: {
         fileOperations: 2,
+        git: 2,
+        managedWorktrees: 2,
         serverHealth: 1,
       },
     });
     expect(supportsExecutionHostCapability({ fileOperations: 1 }, "fileOperations"))
       .toBe(false);
+    expect(supportsGitCommandScope({
+      commandExecution: 1,
+      git: 1,
+      managedWorktrees: 1,
+    }, "managedWorktrees")).toBe(true);
+    expect(supportsGitCommandScope({
+      git: 1,
+      managedWorktrees: 1,
+    }, "managedWorktrees")).toBe(false);
+    expect(getUnavailableGitCommandCapability({
+      commandExecution: 1,
+      git: 1,
+      managedWorktrees: 1,
+    }, "managedWorktrees")).toBeNull();
+    expect(getUnavailableGitCommandCapability({
+      git: 2,
+    }, "managedWorktrees")).toBe("managedWorktrees");
   });
 });

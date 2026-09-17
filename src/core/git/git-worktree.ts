@@ -18,6 +18,18 @@ import {
   PLANNING_DIRECTORY_NAME,
 } from "../managed-path-service";
 
+function runWorktreeGitCommand(
+  executor: CommandExecutor,
+  directory: string,
+  args: string[],
+  options: { allowFailure?: boolean } = {},
+) {
+  return runGitCommand(executor, directory, args, {
+    ...options,
+    scope: "managedWorktrees",
+  });
+}
+
 export async function createWorktree(
   executor: CommandExecutor,
   repoDirectory: string,
@@ -33,7 +45,7 @@ export async function createWorktree(
 
   let args = ["worktree", "add", managedWorktreePath, "-b", branchName];
   if (baseBranch) {
-    const baseBranchResult = await runGitCommand(
+    const baseBranchResult = await runWorktreeGitCommand(
       executor,
       absoluteRepoDirectory,
       ["rev-parse", "--verify", baseBranch],
@@ -43,7 +55,7 @@ export async function createWorktree(
     if (baseBranchResult.success) {
       args.push(baseBranch);
     } else {
-      const currentBranchResult = await runGitCommand(
+      const currentBranchResult = await runWorktreeGitCommand(
         executor,
         absoluteRepoDirectory,
         ["symbolic-ref", "--short", "HEAD"],
@@ -58,7 +70,7 @@ export async function createWorktree(
     }
   }
 
-  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
+  const result = await runWorktreeGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to create worktree at ${managedWorktreePath}`, result, args);
   }
@@ -79,7 +91,7 @@ export async function addWorktreeForExistingBranch(
   await ensureWorktreeExcluded(executor, absoluteRepoDirectory);
 
   const args = ["worktree", "add", managedWorktreePath, branchName];
-  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
+  const result = await runWorktreeGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to add worktree for branch ${branchName} at ${managedWorktreePath}`, result, args);
   }
@@ -102,7 +114,7 @@ export async function removeWorktree(
     args.push("--force");
   }
 
-  const result = await runGitCommand(executor, absoluteRepoDirectory, args);
+  const result = await runWorktreeGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to remove worktree at ${managedWorktreePath}`, result, args);
   }
@@ -127,7 +139,12 @@ export async function ensureWorktreeRemoved(
     if (options?.force) {
       args.push("--force");
     }
-    const result = await runGitCommand(executor, absoluteRepoDirectory, args, { allowFailure: true });
+    const result = await runWorktreeGitCommand(
+      executor,
+      absoluteRepoDirectory,
+      args,
+      { allowFailure: true },
+    );
     if (!result.success) {
       log.warn(`[GitService] Worktree removal command failed for ${managedWorktreePath}: ${result.stderr || result.stdout || "unknown error"}`);
     }
@@ -150,7 +167,7 @@ export async function listWorktrees(
   repoDirectory: string
 ): Promise<Array<{ path: string; head: string; branch: string }>> {
   const listArgs = ["worktree", "list", "--porcelain"];
-  const result = await runGitCommand(executor, repoDirectory, listArgs);
+  const result = await runWorktreeGitCommand(executor, repoDirectory, listArgs);
   if (!result.success) {
     throw gitError("Failed to list worktrees", result, listArgs);
   }
@@ -188,7 +205,7 @@ export async function listWorktrees(
 
 export async function pruneWorktrees(executor: CommandExecutor, repoDirectory: string): Promise<void> {
   const pruneArgs = ["worktree", "prune"];
-  const result = await runGitCommand(executor, repoDirectory, pruneArgs);
+  const result = await runWorktreeGitCommand(executor, repoDirectory, pruneArgs);
   if (!result.success) {
     throw gitError("Failed to prune worktrees", result, pruneArgs);
   }
@@ -218,7 +235,7 @@ export async function ensureWorktreeExcluded(
 ): Promise<void> {
   const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const excludePatterns = [MANAGED_WORKTREE_DIRECTORY_NAME, PLANNING_DIRECTORY_NAME];
-  const result = await runGitCommand(
+  const result = await runWorktreeGitCommand(
     executor,
     absoluteRepoDirectory,
     ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
@@ -299,7 +316,7 @@ export async function getComparableWorktreePaths(
   }
 
   if (await executor.directoryExists(worktreePath)) {
-    const cdupResult = await runGitCommand(
+    const cdupResult = await runWorktreeGitCommand(
       executor,
       worktreePath,
       ["rev-parse", "--show-cdup"],
@@ -310,7 +327,7 @@ export async function getComparableWorktreePaths(
       return comparablePaths;
     }
 
-    const result = await runGitCommand(
+    const result = await runWorktreeGitCommand(
       executor,
       worktreePath,
       ["rev-parse", "--show-toplevel"],
@@ -357,7 +374,7 @@ async function resolveExistingDirectory(
   executor: CommandExecutor,
   directory: string
 ): Promise<string | null> {
-  const topLevelResult = await runGitCommand(
+  const topLevelResult = await runWorktreeGitCommand(
     executor,
     directory,
     ["rev-parse", "--path-format=absolute", "--show-toplevel"],
@@ -370,7 +387,7 @@ async function resolveExistingDirectory(
     return null;
   }
 
-  const prefixResult = await runGitCommand(
+  const prefixResult = await runWorktreeGitCommand(
     executor,
     directory,
     ["rev-parse", "--show-prefix"],

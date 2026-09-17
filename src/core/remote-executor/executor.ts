@@ -19,6 +19,8 @@ import type {
   FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
+  GitCommandOptions,
+  GitEnvironmentVariableName,
 } from "../command-executor";
 import { CommandOutputLimitError } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
@@ -287,6 +289,20 @@ export class CommandExecutorImpl implements CommandExecutor {
       logFailures: false,
     });
     return result.success ? result.stdout.trim() || null : null;
+  }
+
+  async getGitEnvironmentVariable(
+    name: GitEnvironmentVariableName,
+  ): Promise<string | null> {
+    return await this.getEnvironmentVariable(name);
+  }
+
+  async execGit(
+    directory: string,
+    args: string[],
+    options: GitCommandOptions,
+  ): Promise<CommandResult> {
+    return await this.exec("git", ["-C", directory, ...args], options);
   }
 
   /**

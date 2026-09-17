@@ -18,6 +18,7 @@ import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings }
 import {
   executionHostBindingsEqual,
   executionHostRefsEqual,
+  getUnavailableGitCommandCapability,
   isPrivateMeshExecutionHostRef,
   WORKSPACE_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostBinding,
@@ -177,15 +178,43 @@ function getValidationFailure(
 function requireWorkspaceExecutionCapabilities(
   binding: ExecutionHostBinding,
   userId: string,
+  workspaceType: WorkspaceType,
+  allowWorktrees: boolean,
 ): void {
-  for (const capability of WORKSPACE_EXECUTION_HOST_CAPABILITIES) {
-    executionHostService.requireBindingCapability(binding, capability, userId);
+  const [primaryCapability, ...additionalCapabilities] =
+    WORKSPACE_EXECUTION_HOST_CAPABILITIES;
+  const persisted = executionHostService.requireBindingCapability(
+    binding,
+    primaryCapability,
+    userId,
+  );
+  for (const capability of additionalCapabilities) {
+    executionHostService.requireBindingCapability(
+      binding,
+      capability,
+      userId,
+    );
+  }
+  const unavailableGitCapability = workspaceType === "git"
+    ? getUnavailableGitCommandCapability(
+        persisted.runtime.capabilities,
+        allowWorktrees ? "managedWorktrees" : "repository",
+      )
+    : null;
+  if (unavailableGitCapability) {
+    throw new DomainError(
+      "execution_host_capability_unavailable",
+      `The selected execution host does not provide the ${unavailableGitCapability} capability.`,
+      { details: { capability: unavailableGitCapability } },
+    );
   }
 }
 
 async function resolveWorkspaceExecutionBinding(
   ref: ExecutionHostRef,
   userId: string,
+  workspaceType: WorkspaceType,
+  allowWorktrees: boolean,
 ): Promise<ExecutionHostBinding> {
   const descriptor = await executionHostService.requireCapability(
     ref,
@@ -197,7 +226,12 @@ async function resolveWorkspaceExecutionBinding(
     targetKey: descriptor.targetKey,
     revision: descriptor.revision,
   };
-  executionHostService.requireBindingCapability(binding, "acpRuntime", userId);
+  requireWorkspaceExecutionCapabilities(
+    binding,
+    userId,
+    workspaceType,
+    allowWorktrees,
+  );
   return binding;
 }
 
@@ -314,10 +348,20 @@ export class WorkspaceManager {
         )
       : undefined;
     const registeredBinding = normalized.executionHost
-      ? await resolveWorkspaceExecutionBinding(normalized.executionHost, userId)
+      ? await resolveWorkspaceExecutionBinding(
+          normalized.executionHost,
+          userId,
+          normalized.workspaceType,
+          normalized.allowWorktrees,
+        )
       : undefined;
     if (enrollmentBinding) {
-      requireWorkspaceExecutionCapabilities(enrollmentBinding, userId);
+      requireWorkspaceExecutionCapabilities(
+        enrollmentBinding,
+        userId,
+        normalized.workspaceType,
+        normalized.allowWorktrees,
+      );
     }
     const validationExecutionHost = registeredBinding?.host
       ?? enrollmentBinding?.host;
@@ -377,7 +421,12 @@ export class WorkspaceManager {
         }
       }
       if (!enrollmentBinding) {
-        requireWorkspaceExecutionCapabilities(executionHostBinding, userId);
+        requireWorkspaceExecutionCapabilities(
+          executionHostBinding,
+          userId,
+          normalized.workspaceType,
+          normalized.allowWorktrees,
+        );
       }
       if (normalized.provisioningHost && !provisioningHostBinding) {
         provisioningHostBinding = executionHostBinding;
@@ -459,6 +508,8 @@ export class WorkspaceManager {
       return null;
     }
     const userId = requireCurrentUserId();
+    const nextAllowWorktrees = updates.allowWorktrees
+      ?? (current.allowWorktrees !== false);
 
     const nameChanged = updates.name !== undefined && updates.name !== current.name;
     const directoryChanged = updates.directory !== undefined && updates.directory !== current.directory;
@@ -567,8 +618,19 @@ export class WorkspaceManager {
         current.executionHostBinding,
         nextExecutionHostBinding,
       );
-      if (executionTargetChanged) {
-        requireWorkspaceExecutionCapabilities(nextExecutionHostBinding, userId);
+      if (
+        executionTargetChanged
+        || (
+          updates.allowWorktrees === true
+          && current.allowWorktrees === false
+        )
+      ) {
+        requireWorkspaceExecutionCapabilities(
+          nextExecutionHostBinding,
+          userId,
+          current.workspaceType,
+          nextAllowWorktrees,
+        );
       }
       const privateChanged = updates.isPrivate !== undefined
         && updates.isPrivate !== (current.isPrivate === true);
