@@ -913,29 +913,36 @@ describe("native worker registration", () => {
         { force: true },
       );
       expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
-      try {
-        await exerciseMeshAcpRuntime(registration, executionDirectory);
-      } catch (error) {
-        if (worker.child.exitCode === null) {
-          throw error;
-        }
+      await exerciseMeshAcpRuntime(registration, executionDirectory);
+    } catch (error) {
+      const serverLogFile = Bun.file(
+        join(worker.dataDir, "logs", "server.log"),
+      );
+      const serverLog = await serverLogFile.exists()
+        ? await serverLogFile.text()
+        : "";
+      let processOutput = "";
+      if (worker.child.exitCode !== null) {
         const [stdout, stderr] = await Promise.all([
           worker.output.stdout,
           worker.output.stderr,
         ]);
-        const diagnostics = [stdout.trim(), stderr.trim()]
+        processOutput = [stdout.trim(), stderr.trim()]
           .filter((value) => value.length > 0)
-          .join("\n")
-          .slice(-20_000);
-        throw new Error(
-          `Native worker exited during the ACP scenario (code ${
-            String(worker.child.exitCode)
-          }, signal ${String(worker.child.signalCode)})${
-            diagnostics ? `:\n${diagnostics}` : "."
-          }`,
-          { cause: error },
-        );
+          .join("\n");
       }
+      const diagnostics = [serverLog.trim(), processOutput]
+        .filter((value) => value.length > 0)
+        .join("\n")
+        .slice(-20_000);
+      throw new Error(
+        `Native worker feature scenario failed (exit ${
+          String(worker.child.exitCode)
+        }, signal ${String(worker.child.signalCode)})${
+          diagnostics ? `:\n${diagnostics}` : "."
+        }`,
+        { cause: error },
+      );
     } finally {
       meshExecutor.close();
       closeDatabase();
