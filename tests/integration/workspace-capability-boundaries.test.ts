@@ -17,6 +17,8 @@ import {
   type Workspace,
 } from "@/shared";
 import { backendManager } from "../../src/core/backend-manager";
+import { meshStateEventEmitter } from "../../src/core/event-emitter";
+import { executionHostService } from "../../src/core/execution-host-service";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import {
   closeDatabase,
@@ -36,6 +38,8 @@ import {
   seedTestOwnerUser,
   testOwnerUser,
 } from "../setup";
+import { pollUntil } from "../helpers/polling";
+import { TestCommandExecutor } from "../mocks/mock-executor";
 
 const supportedRef = {
   kind: "mesh",
@@ -186,6 +190,7 @@ beforeEach(async () => {
 
   server = serveNativeApiRoutes();
   baseUrl = server.url.toString().replace(/\/$/, "");
+  await backendManager.initialize();
 });
 
 afterEach(async () => {
@@ -244,6 +249,51 @@ describe("workspace capability boundaries", () => {
     expect(await response.json()).toMatchObject({
       error: "execution_host_capability_unavailable",
       capability: "git",
+    });
+  });
+
+  // This integration regression verifies the remote execution cache contract
+  // through the Mesh state boundary rather than asserting a private map.
+  test("rebuilds a cached Mesh executor after execution-host runtime changes", async () => {
+    let createdExecutors = 0;
+    executionHostService.setExecutorFactoryForTesting((directory) => {
+      createdExecutors += 1;
+      return new TestCommandExecutor(directory);
+    });
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      const firstExecutor = await backendManager.getCommandExecutorAsync(
+        "supported-workspace",
+        dataDir,
+      );
+      expect(
+        await backendManager.getCommandExecutorAsync(
+          "supported-workspace",
+          dataDir,
+        ),
+      ).toBe(firstExecutor);
+
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", executionHostsChanged: true },
+        { userId: testOwnerUser.id },
+      );
+
+      await pollUntil(
+        async () => {
+          const executor = await backendManager.getCommandExecutorAsync(
+            "supported-workspace",
+            dataDir,
+          );
+          return { createdExecutors, executor };
+        },
+        (result) => result.createdExecutors === 2,
+        {
+          description: "Mesh executor cache invalidation",
+          formatLastObserved: (result) => (
+            `createdExecutors=${String(result.createdExecutors)}`
+          ),
+        },
+      );
     });
   });
 

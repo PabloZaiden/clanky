@@ -19,7 +19,7 @@ import {
   type ServerSettings,
 } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
-import { taskEventEmitter } from "../event-emitter";
+import { meshStateEventEmitter, taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import {
   resolveCommandExecutorDirectory,
@@ -87,6 +87,7 @@ class BackendManager {
   private localMeshNodeId: string | null = null;
   private localMeshNodeIdPromise: Promise<string> | null = null;
   private localMeshNodeIdGeneration = 0;
+  private meshStateUnsubscribe: (() => void) | null = null;
 
   private async getLocalMeshNodeId(): Promise<string> {
     if (this.localMeshNodeId) {
@@ -308,6 +309,16 @@ class BackendManager {
       return;
     }
     this.initialized = true;
+    this.meshStateUnsubscribe = meshStateEventEmitter.subscribe((event) => {
+      if (!event.executionHostsChanged) {
+        return;
+      }
+      void this.invalidateMeshExecutionConnections().catch((error) => {
+        log.error("Failed to invalidate Mesh execution connections", {
+          error: String(error),
+        });
+      });
+    });
   }
 
   /**
@@ -1218,6 +1229,8 @@ class BackendManager {
    * Clears all connections and resets initialization state.
    */
   resetForTesting(): void {
+    this.meshStateUnsubscribe?.();
+    this.meshStateUnsubscribe = null;
     this.connections.clear();
     this.taskConnections.clear();
     this.commandExecutors.clear();
